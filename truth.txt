@@ -1,0 +1,9 @@
+"'Yields a falsehood when appended to its own quotation' yields a falsehood when appended to its own quotation."
+
+"Truth is disquotation."
+
+"Language is where intersubjectivity sets in. Communication is well-named."
+
+
+
+— quoted from "Pursuit of Truth" by W. V. O. Quine
