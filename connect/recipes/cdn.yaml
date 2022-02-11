@@ -1,0 +1,94 @@
+recipeDefinitionVersionNumber: 1
+canonicalName: CDN-Analytics
+title: CDN Analytics
+contributor: engineering@thatdot.com
+summary: Ingest CDN data file print analytic results to standard out
+description: Ingests each line in CDN data file "$in_file" as a graph node. Computes
+  analytics results which are output to standard out.
+ingestStreams:
+- type: FileIngest
+  format:
+    type: CypherJson
+    query: match (event) where id(event) = idFrom($that) set event = $that set event._type
+      = 'event'
+  path: $in_file
+standingQueries:
+- outputs:
+    Hit/Miss:
+      type: CypherQuery
+      query: match (event) where id(event) = $that.data.id set event.hit_or_miss =
+        case event.cache_status when 'HIT-CLUSTER' then 'hit' when 'MISS-CLUSTER'
+        then 'miss' when 'HIT' then 'hit' when 'MISS' then 'miss' when 'HIT-WAIT-CLUSTER'
+        then 'hit' when 'MISS-WAIT-CLUSTER' then 'miss' when 'HIT-WAIT' then 'hit'
+        when 'MISS-WAIT' then 'miss' else 'other' end return null skip 1
+  pattern:
+    type: Cypher
+    query: match (event) where event._type = 'event' and event.hit_or_miss is null
+      return distinct id(event) as id
+    mode: DistinctId
+- outputs:
+    By Customer:
+      type: CypherQuery
+      query: >-
+        match (event) where id(event) = $that.data.id match (counts) where id(counts)
+        = idFrom('Events By Customer') CALL incrementCounter(counts, 'Client ASN:
+        ' + toString(event.client_asn), 1) return null skip 1
+    By Hit/Miss:
+      type: CypherQuery
+      query: match (event) where id(event) = $that.data.id match (counts) where id(counts)
+        = idFrom('Events By Hit/Miss') CALL incrementCounter(counts, event.hit_or_miss,
+        1) return null skip 1
+    Total:
+      type: CypherQuery
+      query: match (event) where id(event) = $that.data.id match (counts) where id(counts)
+        = idFrom('Total Events') CALL incrementCounter(counts, 'total', 1) return
+        null skip 1
+    By Customer/POP:
+      type: CypherQuery
+      query: >-
+        match (event) where id(event) = $that.data.id match (counts) where id(counts)
+        = idFrom('Events By Customer/POP') CALL incrementCounter(counts, 'Client
+        ASN: ' + toString(event.client_asn) + ' POP: ' + event.pop, 1) return null
+        skip 1
+    By POP:
+      type: CypherQuery
+      query: >-
+        match (event) where id(event) = $that.data.id match (counts) where id(counts)
+        = idFrom('Events By POP') CALL incrementCounter(counts, 'POP: ' + event.pop,
+        1) return null skip 1
+  pattern:
+    type: Cypher
+    query: match (event) where event._type = 'event' and event.hit_or_miss is not
+      null return distinct id(event) as id
+    mode: DistinctId
+nodeAppearances: []
+quickQueries: []
+sampleQueries:
+- name: Total Events
+  query: match (counts) where id(counts) = idFrom('Total Events') return counts
+- name: Events By Customer
+  query: match (counts) where id(counts) = idFrom('Events By Customer') return counts
+- name: Events By POP
+  query: match (counts) where id(counts) = idFrom('Events By POP') return counts
+- name: Events By Customer/POP
+  query: match (counts) where id(counts) = idFrom('Events By Customer/POP') return
+    counts
+- name: Events By Hit/Miss
+  query: match (counts) where id(counts) = idFrom('Events By Hit/Miss') return counts
+- name: Hit / Total Ratio
+  query: match (counts) where id(counts) = idFrom('Total Events') match (hitmiss)
+    where id(hitmiss) = idFrom('Events By Hit/Miss') return (hitmiss.hit*1.0) / counts.total
+    as ratio
+printQueries:
+- cypherQuery: match (n) return count(n)
+- cypherQuery: match (counts) where id(counts) = idFrom('Total Events') return counts
+- cypherQuery: match (counts) where id(counts) = idFrom('Events By Customer') return
+    counts
+- cypherQuery: match (counts) where id(counts) = idFrom('Events By POP') return counts
+- cypherQuery: match (counts) where id(counts) = idFrom('Events By Customer/POP')
+    return counts
+- cypherQuery: match (counts) where id(counts) = idFrom('Events By Hit/Miss') return
+    counts
+- cypherQuery: match (counts) where id(counts) = idFrom('Total Events') match (hitmiss)
+    where id(hitmiss) = idFrom('Events By Hit/Miss') return (hitmiss.hit*1.0) / counts.total
+    as ratio

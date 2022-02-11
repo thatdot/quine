@@ -1,0 +1,59 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request_target:
+  workflow_dispatch:
+    inputs:
+      copybaraArgs:
+        description: "Arguments to be passed to the copybara agent"
+        required: false
+        default: ""
+        type: string
+      copybaraWorkflow:
+        description: "Which copybara action to run"
+        required: false
+        type: choice
+        options:
+          - ""
+          - initialize
+          - push
+          - pr
+
+jobs:
+  clone-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v2
+        with:
+          path: /tmp/docker-registry
+          key: universal
+      - name: Generate token
+        id: generate-token
+        uses: tibdex/github-app-token@7ce9ffdcdeb2ba82b01b51d6584a6a85872336d4
+        with:
+          app_id: 169359 # thatBot Copy Application on thatBot account
+          private_key: ${{ secrets.THATBOT_COPY_KEY }}
+      - name: Update cached Copybara docker image
+        run: |
+          docker run -d -p 5000:5000 --restart=always --name registry -v /tmp/docker-registry:/var/lib/registry registry:2 && npx wait-on tcp:5000
+          docker pull localhost:5000/copybara:latest || docker pull public.ecr.aws/p0a2o6c9/copybara:latest
+          docker tag public.ecr.aws/p0a2o6c9/copybara:latest localhost:5000/copybara:latest && docker push localhost:5000/copybara:latest || true
+      - name: Copybara Action 2
+        uses: Olivr/copybara-action@a0bb6a37362014a57421a6c8dec43fa1908dda06 #v1.2.3: verify action source code before updating
+        with:
+          copybara_image: localhost:5000/copybara # thatdot-managed copy of olivr/copybara (itself a build of https://github.com/google/copybara/blob/master/Dockerfile)
+          copybara_image_tag: latest
+          custom_config: ".github/workflows/copy.bara.sky"
+          copybara_options: ${{ github.event.inputs.copybaraArgs }}
+          workflow: ${{ github.event.inputs.copybaraWorkflow }}
+          ssh_key: ${{ secrets.COPYBARA_SSH_KEY }}
+          access_token: ${{ steps.generate-token.outputs.token }}
+          committer: "thatbot-copy[bot] <98922356+thatbot-copy[bot]@users.noreply.github.com>" # INV: should match COMMITTER in copy.bara.sky -- this one is used for the commits, the one in there is used as a default author
+          sot_branch: master
+          sot_repo: thatdot/quine-plus
+          destination_branch: main
+          destination_repo: thatdot/quine

@@ -1,0 +1,220 @@
+recipeDefinitionVersionNumber: 1
+canonicalName: Ethereum
+title: Ethereum Tag Propagation
+contributor: engineering@thatdot.com
+summary: Ethereum Blockchain model with tag propagation
+description: 
+  Models data on the thoroughgoing Ethereum blockchain using tag propagation
+  to track the flow of transactions from flagged accounts.
+
+
+  Newly-mined Ethereum transaction metadata is imported via a Server-Sent Events data
+  source. Transactions are grouped by the block in which they were mined then imported
+  into the graph. Each wallet address is represented by a node, linked by an edge
+  to each transaction sent or received by that account, and linked by an edge to any
+  blocks mined by that account. Quick queries allow marking an account as "tainted".
+  The tainted flag is propagated along outgoing transaction paths via Standing Queries
+  to record the least degree of separation between a tainted source and an account
+  receiving a transaction.
+
+
+  The Ethereum diamond logo is property of the Ethereum Foundation, used under the
+  terms of the Creative Commons Attribution 3.0 License.
+iconImage: https://i.imgur.com/sSl6BQd.png
+ingestStreams:
+  - format:
+      query: MATCH (BA), (minerAcc), (blk), (parentBlk)
+        WHERE id(blk) = idFrom('block', $that.hash)
+          AND id(parentBlk) = idFrom('block', $that.parentHash)
+          AND id(BA) = idFrom('block_assoc', $that.hash)
+          AND id(minerAcc) = idFrom('account', $that.miner)
+        CREATE (minerAcc)<-[:mined_by]-(blk)-[:header_for]->(BA),
+          (blk)-[:preceded_by]->(parentBlk)
+        SET BA:block_assoc, BA.number = $that.number, BA.hash = $that.hash,
+          blk:block, blk = $that,
+          minerAcc:account, minerAcc.address = $that.miner
+      type: CypherJson
+    url: https://ethereum.demo.thatdot.com/blocks_head
+    type: ServerSentEventsIngest
+  - format:
+      query: MATCH (BA), (toAcc), (fromAcc), (tx)
+          WHERE id(BA) = idFrom('block_assoc', $that.blockHash)
+          AND id(toAcc) = idFrom('account', $that.to)
+          AND id(fromAcc) = idFrom('account', $that.from)
+          AND id(tx) = idFrom('transaction', $that.hash)
+        CREATE (tx)-[:defined_in]->(BA), (tx)-[:from]->(fromAcc), (tx)-[:to]->(toAcc)
+        SET tx:transaction, BA:block_assoc, toAcc:account, fromAcc:account,
+          tx = $that,
+          fromAcc.address = $that.from, toAcc.address = $that.to
+      type: CypherJson
+    url: https://ethereum.demo.thatdot.com/mined_transactions
+    type: ServerSentEventsIngest
+standingQueries:
+  - pattern:
+      query: MATCH (tainted:account)<-[:from]-(tx:transaction)-[:to]->(otherAccount:account),
+          (tx)-[:defined_in]->(ba:block_assoc)
+        WHERE tainted.tainted IS NOT NULL
+        AND NOT EXISTS (ba.orphaned)
+        RETURN id(tainted) AS accountId,
+          tainted.tainted AS oldTaintedLevel,
+          id(otherAccount) AS otherAccountId
+      type: Cypher
+      mode: MultipleValues
+    outputs:
+      propagate-tainted:
+        query: MATCH (tainted), (otherAccount)
+          WHERE tainted <> otherAccount
+            AND id(tainted) = $that.data.accountId
+            AND id(otherAccount) = $that.data.otherAccountId
+          WITH *, coll.min([($that.data.oldTaintedLevel + 1), otherAccount.tainted]) AS newTaintedLevel
+          SET otherAccount.tainted = newTaintedLevel
+          RETURN strId(tainted) AS taintedSource,
+            strId(otherAccount) AS newlyTainted,
+            newTaintedLevel
+        type: CypherQuery
+        andThen:
+          type: PrintToStandardOut
+nodeAppearances:
+  - predicate:
+      dbLabel: block
+      propertyKeys: []
+      knownValues:
+        orphaned: true
+    icon: ion-backspace-outline
+    label:
+      prefix: 'Orphaned '
+      key: number
+      type: Property
+  - predicate:
+      dbLabel: block
+      propertyKeys: []
+      knownValues: {}
+    icon: cube
+    label:
+      prefix: 'Block '
+      key: number
+      type: Property
+  - predicate:
+      dbLabel: transaction
+      propertyKeys: []
+      knownValues: {}
+    icon: cash
+    label:
+      prefix: 'Wei Transfer: '
+      key: value
+      type: Property
+  - predicate:
+      dbLabel: account
+      propertyKeys: []
+      knownValues:
+        tainted: 0
+    icon: social-bitcoin
+    label:
+      prefix: 'Account '
+      key: address
+      type: Property
+    color: '#fb00ff'
+  - predicate:
+      dbLabel: account
+      propertyKeys:
+        - tainted
+      knownValues: {}
+    icon: social-bitcoin
+    label:
+      prefix: 'Account '
+      key: address
+      type: Property
+    color: '#c94d44'
+  - predicate:
+      dbLabel: account
+      propertyKeys: []
+      knownValues: {}
+    icon: social-bitcoin
+    label:
+      prefix: 'Account '
+      key: address
+      type: Property
+  - predicate:
+      dbLabel: block_assoc
+      propertyKeys: []
+      knownValues: {}
+    icon: ios-folder
+    label:
+      prefix: 'Transactions in block '
+      key: number
+      type: Property
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: account
+    quickQuery:
+      name: Outgoing transactions
+      querySuffix: MATCH (n)<-[:from]-(tx)-[:to]->(m:account) RETURN m
+      edgeLabel: Sent Tx To
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: account
+    quickQuery:
+      name: Incoming transactions
+      querySuffix: MATCH (n)<-[:to]-(tx)-[:from]->(m:account) RETURN m
+      edgeLabel: Got Tx From
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: account
+    quickQuery:
+      name: Mark as tainted
+      querySuffix: SET n.tainted = 0 RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: account
+    quickQuery:
+      name: Incoming tainted transactions
+      querySuffix: MATCH (n)<-[:to]-(tx)-[:from]->(m:account) WHERE m.tainted IS NOT
+        NULL AND m<>n RETURN m
+      edgeLabel: Got Tainted From
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+sampleQueries:
+  - name: Get a few recently-accessed blocks
+    query: CALL recentNodes(1000) YIELD node AS nId
+      MATCH (n:block) WHERE id(n) = nId RETURN n
+  - name: Find accounts that have both sent and received ETH
+    query: MATCH (downstream:account)<-[:to]-(tx1)-[:from]->(a:account)<-[:to]-(tx2)-[:from]->(upstream:account)
+      WHERE tx1<>tx2 AND upstream <> downstream
+      AND upstream <> a AND downstream <> a
+      RETURN downstream, tx1, a, tx2, upstream LIMIT 1
+printQueries: []

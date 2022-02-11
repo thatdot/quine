@@ -1,0 +1,30 @@
+recipeDefinitionVersionNumber: 1
+canonicalName: Ping
+title: Ping
+contributor: engineering@thatdot.com
+summary: Ingest input file lines and echo to output file
+description: |-
+  Ingests each line in "$in_file" as graph node with property "line".
+  Writes all graph nodes to "$out_file".
+ingestStreams: 
+- type: FileIngest
+  path: $in_file
+  format:
+    type: CypherLine
+    query: "CREATE ({ line: $that })"
+standingQueries:
+- pattern:
+    type: Cypher
+    query: MATCH (n) RETURN DISTINCT id(n) AS id
+  outputs:
+    output-1:
+      type: CypherQuery
+      query: MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n) AS record
+      andThen:
+        type: WriteToFile
+        path: $out_file
+nodeAppearances: []
+quickQueries: []
+sampleQueries: []
+printQueries:
+- cypherQuery: match (n) return count(n)

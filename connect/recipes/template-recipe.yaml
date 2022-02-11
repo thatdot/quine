@@ -1,0 +1,64 @@
+# Recipe schema version (currently only supported value is 1; 🎉)
+recipeDefinitionVersionNumber: 1
+
+# Globally unique immutable identifier for this Recipe
+canonicalName: template-recipe
+
+# Identifies the Recipe but is not necessarily unique or immutable
+title: Template Recipe
+
+# Email address of the person or organization responsible for this Recipe
+contributor: name@example.com
+
+# Brief copy about this Recipe
+summary: This is a valid Recipe that ingests and writes back a file
+
+# Longer form copy about this Recipe
+description: |-
+  This Recipe description
+  has multiple lines.
+
+# Ingest Streams define how data is processed and transformed
+ingestStreams:
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherLine
+      query: |-
+        MATCH (n)
+        WHERE id(n) = idFrom($that)
+        SET n.line = $that
+
+# Standing Queries define how data is transformed and output.
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: MATCH (n) RETURN DISTINCT id(n) AS id
+    outputs:
+      output-1:
+        type: CypherQuery
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          RETURN n.line
+        andThen:
+          type: WriteToFile
+          path: $out_file
+
+# Customize node appearance in web UI.
+nodeAppearances: [ ]
+
+# Add queries to node context menus in web UI
+quickQueries: [ ]
+
+# Customize sample queries listed in web UI
+sampleQueries:
+  - name: Nodes
+    query: match(n) return n limit 10
+  - name: Count Nodes
+    query: match (n) return count(n)
+
+# Cypher queries that are executed and reported to the Recipe user
+printQueries:
+  - cypherQuery: match (n) return n limit 10
+  - cypherQuery: match (n) return count(n)

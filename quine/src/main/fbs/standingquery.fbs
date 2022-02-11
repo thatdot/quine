@@ -1,0 +1,253 @@
+include "base.fbs";
+include "cypher.fbs";
+
+namespace com.thatdot.quine.persistence;
+
+// See [[com.thatdot.quine.graph.StandingQueryPattern]]
+union StandingQueryPattern {
+  BranchQuery,
+  SqV4Query,
+}
+
+// See [[com.thatdot.quine.graph.PatternOrigin.DgbOrigin]]
+union BranchOrigin {
+  DirectDgb,
+  GraphPatternOrigin,
+}
+
+// See [[com.thatdot.quine.graph.PatternOrigin.Sqv4Origin]]
+union SqV4Origin {
+  DirectSqV4,
+  GraphPatternOrigin,
+}
+
+// See [[com.thatdot.quine.graph.PatternOrigin.DirectDgb]]
+table DirectDgb { }
+
+// See [[com.thatdot.quine.graph.PatternOrigin.DirectSqV4]]
+table DirectSqV4 { }
+
+// See [[com.thatdot.quine.graph.PatternOrigin.GraphPattern]]
+table GraphPatternOrigin {
+  pattern: GraphQueryPattern (required);
+  cypher_original: string;
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.ReturnColumn]]
+union ReturnColumn {
+  ReturnColumnId,
+  ReturnColumnProperty,
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery]]
+union CypherStandingQuery {
+  CypherUnitStandingQuery,
+  CypherCrossStandingQuery,
+  CypherLocalPropertyStandingQuery,
+  CypherLocalIdStandingQuery,
+  CypherSubscribeAcrossEdgeStandingQuery,
+  CypherEdgeSubscriptionReciprocalStandingQuery,
+  CypherFilterMapStandingQuery,
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.ValueConstraint]]
+union CypherValueConstraint {
+  CypherValueConstraintEqual,
+  CypherValueConstraintNotEqual,
+  CypherValueConstraintAny,
+  CypherValueConstraintNone,
+  CypherValueConstraintRegex,
+  CypherValueConstraintListContains,
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Equal]]
+table CypherValueConstraintEqual {
+  compare_to: CypherValue (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.NotEqual]]
+table CypherValueConstraintNotEqual {
+  compare_to: CypherValue (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Any]]
+table CypherValueConstraintAny { }
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.None]]
+table CypherValueConstraintNone { }
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.None]]
+table CypherValueConstraintRegex {
+  pattern: string (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.ListContains]]
+table CypherValueConstraintListContains {
+  values: [CypherValue];
+}
+
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.UnitSq]]
+table CypherUnitStandingQuery { }
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.Cross]]
+table CypherCrossStandingQuery {
+  queries: [CypherStandingQuery];
+  emit_subscriptions_lazily: bool;
+}
+
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty]]
+table CypherLocalPropertyStandingQuery {
+  property_key: string (required);
+  property_constraint: CypherValueConstraint (required);
+  aliased_as: string;
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalId]]
+table CypherLocalIdStandingQuery {
+  aliased_as: string (required);
+  format_as_string: bool;
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.SubscribeAcrossEdge]]
+table CypherSubscribeAcrossEdgeStandingQuery {
+  edge_name: string;
+  edge_direction: BoxedEdgeDirection;
+  and_then: CypherStandingQuery;
+}
+
+// Like `EdgeDirection`, but can be null
+table BoxedEdgeDirection {
+  edge_direction: EdgeDirection;
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.EdgeSubscriptionReciprocal]]
+table CypherEdgeSubscriptionReciprocalStandingQuery {
+  half_edge: HalfEdge (required);
+  and_then_id: StandingQueryPartId;
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.FilterMap]]
+table CypherFilterMapStandingQuery {
+  condition: CypherExpr;
+  to_filter: CypherStandingQuery (required);
+  drop_existing: bool;
+  to_add: [CypherMapExprEntry];
+}
+
+// See [[com.thatdot.quine.graph.StandingQuery]]
+table StandingQuery {
+  name: string (required);
+  id: StandingQueryId (required);
+  query: StandingQueryPattern (required);
+  queue_backpressure_threshold: int;
+  queue_max_size: int;
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryPattern.Branch]]
+table BranchQuery {
+  branch: DomainGraphBranch (required);
+  format_return_as_string: bool;
+  alias_return_as: string (required);
+  include_cancellation: bool;
+  origin: BranchOrigin (required);
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryPattern.GraphPattern]]
+table GraphPatternStandingQuery {
+  graph: GraphQueryPattern (required);
+  cypher_query: string;
+  include_cancellation: bool;
+  use_domain_graph_branch: bool;
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern]]
+table GraphQueryPattern {
+  nodes: [NodePattern];
+  edges: [EdgePattern];
+  starting_point: NodePatternId;
+  to_extract: [ReturnColumn];
+  filter_cond: CypherExpr;
+  to_return: [CypherMapExprEntry];
+  distinct: bool = null;
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryPattern.SqV4]]
+table SqV4Query {
+  query: CypherStandingQuery (required);
+  include_cancellation: bool;
+  origin: SqV4Origin (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.NodePatternId]]
+struct NodePatternId {
+  id: int;
+}
+
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.NodePattern]]
+table NodePattern {
+  pattern_id: NodePatternId;
+  labels: [string];
+  quine_id: QuineId;
+  properties: [NodePatternProperty];
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern]]
+union NodePatternPropertyValuePattern {
+  NodePatternPropertyValue,
+  NodePatternPropertyAnyValueExcept,
+  NodePatternPropertyRegexMatch,
+  NodePatternPropertyAnyValue,
+  NodePatternPropertyNoValue,
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern.Value]]
+table NodePatternPropertyValue {
+  compare_to: QuineValue (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern.AnyValueExcept]]
+table NodePatternPropertyAnyValueExcept {
+  compare_to: QuineValue (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern.RegexMatch]]
+table NodePatternPropertyRegexMatch {
+  pattern: string (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern.AnyValue]]
+table NodePatternPropertyAnyValue { }
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.PropertyValuePattern.NoValue]]
+table NodePatternPropertyNoValue { }
+
+table NodePatternProperty {
+  key: string (required);
+  pattern: NodePatternPropertyValuePattern (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.EdgePattern]]
+table EdgePattern {
+  from: NodePatternId;
+  to: NodePatternId;
+  is_directed: bool;
+  label: string (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.ReturnColumn.Id]]
+table ReturnColumnId {
+  node: NodePatternId;
+  format_as_string: bool;
+  aliased_as: string (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.ReturnColumn.Property]]
+table ReturnColumnProperty {
+  node: NodePatternId;
+  property_key: string (required);
+  aliased_as: string (required);
+}
+

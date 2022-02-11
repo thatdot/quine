@@ -1,0 +1,64 @@
+include "base.fbs";
+
+namespace com.thatdot.quine.persistence;
+
+// See [[com.thatdot.quine.graph.NodeChangeEvent]]
+union NodeChangeEventUnion {
+  AddEdge,
+  RemoveEdge,
+  AddProperty,
+  RemoveProperty,
+  MergeIntoOther,
+  MergeIntoHere,
+}
+
+// See [[com.thatdot.quine.graph.EdgeAdded]]
+table AddEdge {
+  edge_type: string (required);
+  direction: EdgeDirection;
+  other_id: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// See [[com.thatdot.quine.graph.EdgeRemoved]]
+table RemoveEdge {
+  edge_type: string (required);
+  direction: EdgeDirection;
+  other_id: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// See [[com.thatdot.quine.graph.PropertySet]]
+table AddProperty {
+  key: string (required);
+  value: [byte] (required); // MessagePack-serialized `QuineValue`
+}
+
+// See [[com.thatdot.quine.graph.PropertyRemoved]]
+table RemoveProperty {
+  key: string (required);
+  value: [byte] (required); // MessagePack-serialized `QuineValue`
+}
+
+// See [[com.thatdot.quine.graph.MergedIntoOther]]
+table MergeIntoOther {
+  into_id: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// See [[com.thatdot.quine.graph.MergedHere]]
+table MergeIntoHere {
+  from_id: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// Also see [[com.thatdot.quine.graph.NodeChangeEvent.WithTime]]
+// Unlike `NodeChangeEventUnion`, this can be used as a root type
+table NodeChangeEventWithTime {
+  event_time: long;
+  event: NodeChangeEventUnion (required);
+}
+root_type NodeChangeEventWithTime;
+
+// Also see [[com.thatdot.quine.graph.NodeChangeEvent]]
+// Unlike `NodeChangeEventUnion`, this can be used as a root type
+table NodeChangeEvent {
+  event: NodeChangeEventUnion (required);
+}
+root_type NodeChangeEvent;

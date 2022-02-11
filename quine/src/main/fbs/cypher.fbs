@@ -1,0 +1,329 @@
+include "base.fbs";
+
+namespace com.thatdot.quine.persistence;
+
+// See [[com.thatdot.quine.graph.cypher.Value]]
+union CypherValue {
+  CypherStr,
+  CypherInteger,
+  CypherFloating,
+  CypherTrue,
+  CypherFalse,
+  CypherNull,
+  CypherBytes,
+  CypherNode,
+  CypherRelationship,
+  CypherList,
+  CypherMap,
+  CypherPath,
+  CypherLocalDateTime,
+  CypherDateTime,
+  CypherDuration,
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr]]
+union CypherExpr {
+  CypherStr,
+  CypherInteger,
+  CypherFloating,
+  CypherTrue,
+  CypherFalse,
+  CypherNull,
+  CypherBytes,
+  CypherNode,
+  CypherRelationship,
+  CypherList,
+  CypherMap,
+  CypherPath,
+  CypherLocalDateTime,
+  CypherDateTime,
+  CypherDuration,
+
+  CypherVariable,
+  CypherPropertyAccess,
+  CypherDynamicPropertyAccess,
+  CypherListSlice,
+  CypherParameter,
+  CypherMapLiteral,
+  CypherMapProjection,
+  CypherUnaryOp,
+  CypherBinaryOp,
+  CypherNaryOp,
+  CypherCase,
+  CypherFunction,
+  CypherListComprehension,
+  CypherListFold,
+  CypherReduceList,
+  CypherFreshNodeId,
+}
+
+// Key-value pair in a map with string keys
+table CypherProperty {
+  key: string (required);
+  value: CypherValue (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Str]]
+table CypherStr {
+  text: string (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Integer]]
+table CypherInteger {
+  integer: long;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Floating]]
+table CypherFloating {
+  floating: double;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.True]]
+table CypherTrue { }
+
+// See [[com.thatdot.quine.graph.cypher.Expr.False]]
+table CypherFalse { }
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Null]]
+table CypherNull { }
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Bytes]]
+table CypherBytes {
+  bytes: [byte];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Node]]
+table CypherNode {
+  id: QuineId (required);
+  labels: [string];
+  properties: [CypherProperty];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Relationship]]
+table CypherRelationship {
+  start: QuineId (required);
+  name: string (required);
+  properties: [CypherProperty];
+  end: QuineId (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.List]]
+table CypherList {
+  elements: [CypherValue];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Map]]
+table CypherMap {
+  entries: [CypherProperty];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Path]]
+table CypherPath {
+  head: CypherNode (required);
+  tails: [CypherPathSegment];
+}
+
+// TODO: there is some redundancy in this format (IDs duplicated across nodes and segments)
+table CypherPathSegment {
+  edge: CypherRelationship (required);
+  to: CypherNode (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.LocalDateTime]]
+table CypherLocalDateTime {
+  local_date_time: LocalDateTime;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.DateTime]]
+table CypherDateTime {
+  zoned_date_time: ZonedDateTime (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Duration]]
+table CypherDuration {
+  duration: Duration;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Variable]]
+table CypherVariable {
+  id: string (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Property]]
+table CypherPropertyAccess {
+  expr: CypherExpr (required);
+  key: string (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.DynamicProperty]]
+table CypherDynamicPropertyAccess {
+  expr: CypherExpr (required);
+  key_expr: CypherExpr (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.ListSlice]]
+table CypherListSlice {
+  list: CypherExpr (required);
+  from: CypherExpr;
+  to: CypherExpr;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Parameter]]
+table CypherParameter {
+  index: int;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.MapLiteral]]
+table CypherMapLiteral {
+  arguments: [CypherMapExprEntry];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.MapProjection]]
+table CypherMapProjection {
+  original: CypherExpr (required);
+  items: [CypherMapExprEntry];
+  include_all_props: bool;
+}
+
+table CypherMapExprEntry {
+  key: string (required);
+  value: CypherExpr (required);
+}
+
+enum CypherUnaryOperator: byte {
+  Add,
+  Negate,
+  Not,
+  IsNull,
+  IsNotNull,
+  RelationshipStart,
+  RelationshipEnd,
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.UnaryAdd]]
+// See [[com.thatdot.quine.graph.cypher.Expr.UnarySubtract]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Not]]
+// See [[com.thatdot.quine.graph.cypher.Expr.IsNull]]
+// See [[com.thatdot.quine.graph.cypher.Expr.IsNotNull]]
+// See [[com.thatdot.quine.graph.cypher.Expr.RelationshipStart]]
+// See [[com.thatdot.quine.graph.cypher.Expr.RelationshipEnd]]
+table CypherUnaryOp {
+  operation: CypherUnaryOperator;
+  rhs: CypherExpr (required);
+}
+
+enum CypherBinaryOperator: byte {
+  Add,
+  Subtract,
+  Multiply,
+  Divide,
+  Modulo,
+  Exponentiate,
+  Equal,
+  GreaterEqual,
+  LessEqual,
+  Greater,
+  Less,
+  InList,
+  StartsWith,
+  EndsWith,
+  Contains,
+  Regex,
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Add]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Subtract]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Multiply]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Divide]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Modulo]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Exponentiate]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Equal]]
+// See [[com.thatdot.quine.graph.cypher.Expr.GreaterEqual]]
+// See [[com.thatdot.quine.graph.cypher.Expr.LessEqual]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Greater]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Less]]
+// See [[com.thatdot.quine.graph.cypher.Expr.InList]]
+// See [[com.thatdot.quine.graph.cypher.Expr.StartsWith]]
+// See [[com.thatdot.quine.graph.cypher.Expr.EndsWith]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Contains]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Regex]]
+table CypherBinaryOp {
+  operation: CypherBinaryOperator;
+  lhs: CypherExpr (required);
+  rhs: CypherExpr (required);
+}
+
+enum CypherNaryOperator: byte {
+  And,
+  Or,
+  ListLiteral,
+  PathExpression,
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.And]]
+// See [[com.thatdot.quine.graph.cypher.Expr.Or]]
+// See [[com.thatdot.quine.graph.cypher.Expr.ListLiteral]]
+// See [[com.thatdot.quine.graph.cypher.Expr.PathExpression]]
+table CypherNaryOp {
+  operation: CypherNaryOperator;
+  arguments: [CypherExpr];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Case]]
+table CypherCase {
+  scrutinee: CypherExpr;
+  branches: [CypherCaseBranch];
+  fall_through: CypherExpr;
+}
+
+table CypherCaseBranch {
+  condition: CypherExpr;
+  outcome: CypherExpr;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Function]]
+table CypherFunction {
+  function: string (required);
+  arguments: [CypherExpr];
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.ListComprehension]]
+table CypherListComprehension {
+  variable: string (required);
+  list: CypherExpr (required);
+  filter_predicate: CypherExpr (required);
+  extract: CypherExpr (required);
+}
+
+enum CypherListFoldOperator: byte {
+  All,
+  Any,
+  Single,
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.AllInList]]
+// See [[com.thatdot.quine.graph.cypher.Expr.AnyInList]]
+// See [[com.thatdot.quine.graph.cypher.Expr.SingleInList]]
+table CypherListFold {
+  operator: CypherListFoldOperator;
+  variable: string (required);
+  list: CypherExpr (required);
+  filter_predicate: CypherExpr (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.ReduceList]]
+table CypherReduceList {
+  accumulator: string (required);
+  initial: CypherExpr (required);
+  variable: string (required);
+  list: CypherExpr (required);
+  reducer: CypherExpr (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.FreshNodeId]]
+table CypherFreshNodeId { }
+
+table BoxedCypherExpr {
+  expr: CypherExpr (required);
+}
+root_type BoxedCypherExpr;
