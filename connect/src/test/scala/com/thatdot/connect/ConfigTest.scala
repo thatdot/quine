@@ -47,4 +47,13 @@ class ConfigTest extends AnyFunSuite {
     val roundtripped = readConfig(writeConfig(unknown))
     assert(unknown === roundtripped)
   }
+
+  test("Annotated default config parses and matches the empty config") {
+    val configStream = getClass.getResourceAsStream("/documented_config.conf")
+    val annotated = readConfig(scala.io.Source.fromInputStream(configStream).mkString)
+    val defaultConf = readConfig("")
+    val roundtripped = readConfig(writeConfig(annotated))
+    assert(annotated === roundtripped)
+    assert(annotated === defaultConf)
+  }
 }
