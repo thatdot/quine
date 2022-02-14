@@ -1,4 +1,4 @@
-recipeDefinitionVersionNumber: 1
+version: 1
 canonicalName: foo
 title: bar
 contributor: abc
@@ -22,6 +22,6 @@ standingQueries:
 nodeAppearances: []
 quickQueries: []
 sampleQueries: []
-printQueries:
-- cypherQuery: match (n) return count(n)
+statusQuery:
+  cypherQuery: match (n) return count(n)
 summary: summary

@@ -1,5 +1,5 @@
 # Recipe schema version (currently only supported value is 1; 🎉)
-recipeDefinitionVersionNumber: 1
+version: 1
 
 # Globally unique immutable identifier for this Recipe
 canonicalName: template-recipe
@@ -58,7 +58,6 @@ sampleQueries:
   - name: Count Nodes
     query: match (n) return count(n)
 
-# Cypher queries that are executed and reported to the Recipe user
-printQueries:
-  - cypherQuery: match (n) return n limit 10
-  - cypherQuery: match (n) return count(n)
+# Optional Cypher query to be executed and reported to the Recipe user
+statusQuery:
+  cypherQuery: match (n) return n limit 10

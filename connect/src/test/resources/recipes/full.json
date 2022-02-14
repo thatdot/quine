@@ -1,42 +1,40 @@
 {
- "recipeDefinitionVersionNumber": 1,
- "canonicalName": "foo",
- "title": "bar",
- "contributor": "abc",
- "summary": "summary",
- "description": "desc",
- "iconImage": "http://example.com",
- "ingestStreams": [
-   {
-     "type": "FileIngest",
-     "path": "/tmp/somefile",
-     "format": {
-       "type": "CypherJson",
-       "query": "yadda"
-     }
-   }
- ],
- "standingQueries": [
-   {
-     "pattern": {
-       "query": "MATCH (n) RETURN id(n)",
-       "type": "Cypher"
-     },
-     "outputs": {
-       "output-1": {
-         "type": "CypherQuery",
-         "query": "X",
-         "parameter": "bar"
-       }
-     }
-   }
- ],
- "nodeAppearances": [],
- "quickQueries": [],
- "sampleQueries": [],
- "printQueries": [
-   {
-     "cypherQuery": "match (n) return count(n)"
-   }
- ]
+  "version": 1,
+  "canonicalName": "foo",
+  "title": "bar",
+  "contributor": "abc",
+  "summary": "summary",
+  "description": "desc",
+  "iconImage": "http://example.com",
+  "ingestStreams": [
+    {
+      "type": "FileIngest",
+      "path": "/tmp/somefile",
+      "format": {
+        "type": "CypherJson",
+        "query": "yadda"
+      }
+    }
+  ],
+  "standingQueries": [
+    {
+      "pattern": {
+        "query": "MATCH (n) RETURN id(n)",
+        "type": "Cypher"
+      },
+      "outputs": {
+        "output-1": {
+          "type": "CypherQuery",
+          "query": "X",
+          "parameter": "bar"
+        }
+      }
+    }
+  ],
+  "nodeAppearances": [],
+  "quickQueries": [],
+  "sampleQueries": [],
+  "statusQuery": {
+    "cypherQuery": "match (n) return count(n)"
+  }
 }

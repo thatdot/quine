@@ -94,16 +94,15 @@ object RecipeInterpreter extends LazyLogging {
           tasks +:= ingestStreamProgressReporter(printLogger, appState, graphService, ingestStreamName)
       }
 
-      // For each Print Query, print a URL with the query and schedule the query to be executed and printed
+      // If status query is defined, print a URL with the query and schedule the query to be executed and printed
       for {
-        (printQuery, i) <- recipe.printQueries.zipWithIndex
-        printQueryName = s"PRINT-${i + 1}"
+        statusQuery @ StatusQuery(cypherQuery) <- recipe.statusQuery
       } {
         for {
           url <- connectWebserverUrl
-          escapedQuery = new PercentEscaper("", false).escape(printQuery.cypherQuery)
-        } printLogger.info(s"$printQueryName URL is $url#$escapedQuery")
-        tasks +:= printQueryProgressReporter(printLogger, graphService, printQueryName, printQuery)
+          escapedQuery = new PercentEscaper("", false).escape(cypherQuery)
+        } printLogger.info(s"Status query URL is $url#$escapedQuery")
+        tasks +:= statusQueryProgressReporter(printLogger, graphService, statusQuery)
       }
     }
 
@@ -184,11 +183,10 @@ object RecipeInterpreter extends LazyLogging {
   }
 
   private val printQueryMaxResults = 10L
-  private def printQueryProgressReporter(
+  private def statusQueryProgressReporter(
     printLogger: Logger,
     graphService: CypherOpsGraph,
-    printQueryName: String,
-    printQuery: PrintQuery,
+    statusQuery: StatusQuery,
     interval: FiniteDuration = 5 second
   )(implicit ec: ExecutionContext): Cancellable = {
     val actorSystem = graphService.system
@@ -198,7 +196,7 @@ object RecipeInterpreter extends LazyLogging {
       delay = interval
     ) { () =>
       val queryResult: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
-        queryText = printQuery.cypherQuery
+        queryText = statusQuery.cypherQuery
       )(graphService, 10 seconds)
       try {
         val resultContent: immutable.Seq[Vector[Value]] =
@@ -206,9 +204,9 @@ object RecipeInterpreter extends LazyLogging {
             queryResult.results.take(printQueryMaxResults).toMat(Sink.seq)(Keep.right).run()(graphService.materializer),
             5 seconds
           )
-        onChanged(s"$printQueryName result $resultContent")(printLogger.info(_))
+        onChanged(s"Status query result $resultContent")(printLogger.info(_))
       } catch {
-        case _: TimeoutException => onChanged(s"$printQueryName timed out")(printLogger.warn(_))
+        case _: TimeoutException => onChanged("Status query timed out")(printLogger.warn(_))
       }
     }
     task

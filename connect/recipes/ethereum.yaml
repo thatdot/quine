@@ -1,4 +1,4 @@
-recipeDefinitionVersionNumber: 1
+version: 1
 canonicalName: Ethereum
 title: Ethereum Tag Propagation
 contributor: engineering@thatdot.com
@@ -245,4 +245,3 @@ sampleQueries:
         tx1<>tx2 AND upstream <> downstream
         AND upstream <> a AND downstream <> a
       RETURN downstream, tx1, a, tx2, upstream LIMIT 1
-printQueries: [ ]

@@ -13,7 +13,7 @@ import StandingQueryResultOutputUserDef._
 
 @docs("A specification of a Quine Recipe")
 final case class Recipe(
-  @docs("Schema version (only supported value is 1)") recipeDefinitionVersionNumber: Int,
+  @docs("Schema version (only supported value is 1)") version: Int,
   @docs("Globally unique identifier for this Recipe") canonicalName: String,
   @docs("Identifies the Recipe but is not necessarily unique") title: String,
   @docs("Email address of the person or organization responsible for this Recipe") contributor: Option[String],
@@ -27,11 +27,11 @@ final case class Recipe(
   @docs("For web UI customization") nodeAppearances: List[UiNodeAppearance],
   @docs("For web UI customization") quickQueries: List[UiNodeQuickQuery],
   @docs("For web UI customization") sampleQueries: List[SampleQuery],
-  @docs("Cypher queries that are run periodically while Recipe is running") printQueries: List[PrintQuery]
+  @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery]
 )
 
 @docs("A Cypher query to be run periodically while Recipe is running")
-final case class PrintQuery(cypherQuery: String)
+final case class StatusQuery(cypherQuery: String)
 
 private object RecipeSchema
     extends endpoints4s.ujson.JsonSchemas
@@ -41,8 +41,8 @@ private object RecipeSchema
     with QueryUiConfigurationSchemas
     with UjsonAnySchema {
 
-  implicit lazy val printQuerySchema: JsonSchema[PrintQuery] =
-    genericJsonSchema[PrintQuery]
+  implicit lazy val printQuerySchema: JsonSchema[StatusQuery] =
+    genericJsonSchema[StatusQuery]
 
   implicit lazy val recipeSchema: JsonSchema[Recipe] =
     genericJsonSchema[Recipe]
@@ -250,10 +250,10 @@ object Recipe {
       validatedRecipe <- isCurrentVersion(recipe)
     } yield validatedRecipe
 
-  private val currentRecipeDefinitionVersionNumber = 1
+  private val version = 1
   private def isCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
-    recipe.recipeDefinitionVersionNumber == currentRecipeDefinitionVersionNumber,
+    recipe.version == version,
     recipe,
-    Seq(s"The only supported recipe definition version number is $currentRecipeDefinitionVersionNumber")
+    Seq(s"The only supported Recipe version number is $version")
   )
 }

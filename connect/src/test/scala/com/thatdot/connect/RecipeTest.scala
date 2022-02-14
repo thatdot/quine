@@ -50,38 +50,36 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     assert(
       loadYamlString("{}").left.value ==
         List(
-          "Missing property 'recipeDefinitionVersionNumber' in JSON object: {}",
+          "Missing property 'version' in JSON object: {}",
           "Missing property 'canonicalName' in JSON object: {}",
           "Missing property 'title' in JSON object: {}",
           "Missing property 'ingestStreams' in JSON object: {}",
           "Missing property 'standingQueries' in JSON object: {}",
           "Missing property 'nodeAppearances' in JSON object: {}",
           "Missing property 'quickQueries' in JSON object: {}",
-          "Missing property 'sampleQueries' in JSON object: {}",
-          "Missing property 'printQueries' in JSON object: {}"
+          "Missing property 'sampleQueries' in JSON object: {}"
         )
     )
   }
   test("wrong type") {
     assert(
-      loadYamlString("recipeDefinitionVersionNumber: foo").left.value ==
+      loadYamlString("version: foo").left.value ==
         List(
           """Invalid integer value: "foo"""",
-          """Missing property 'canonicalName' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'title' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'ingestStreams' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'standingQueries' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'nodeAppearances' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'quickQueries' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'sampleQueries' in JSON object: {"recipeDefinitionVersionNumber":"foo"}""",
-          """Missing property 'printQueries' in JSON object: {"recipeDefinitionVersionNumber":"foo"}"""
+          """Missing property 'canonicalName' in JSON object: {"version":"foo"}""",
+          """Missing property 'title' in JSON object: {"version":"foo"}""",
+          """Missing property 'ingestStreams' in JSON object: {"version":"foo"}""",
+          """Missing property 'standingQueries' in JSON object: {"version":"foo"}""",
+          """Missing property 'nodeAppearances' in JSON object: {"version":"foo"}""",
+          """Missing property 'quickQueries' in JSON object: {"version":"foo"}""",
+          """Missing property 'sampleQueries' in JSON object: {"version":"foo"}"""
         )
     )
   }
   test("minimal recipe") {
     assert(
       loadYamlString("""
-          | recipeDefinitionVersionNumber: 1
+          | version: 1
           | canonicalName: foo
           | title: bar
           | ingestStreams: []
@@ -89,10 +87,10 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           | nodeAppearances: []
           | quickQueries: []
           | sampleQueries: []
-          | printQueries: []
+          | statusQuery: null # need to verify this works
           |""".stripMargin).value ==
         Recipe(
-          recipeDefinitionVersionNumber = 1,
+          version = 1,
           canonicalName = "foo",
           title = "bar",
           contributor = None,
@@ -104,7 +102,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          printQueries = List.empty[PrintQuery]
+          statusQuery = None
         )
     )
   }
@@ -112,7 +110,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     assert(
       loadRecipeFromClasspath("/recipes/full.yaml").value ==
         Recipe(
-          recipeDefinitionVersionNumber = 1,
+          version = 1,
           canonicalName = "foo",
           title = "bar",
           contributor = Some("abc"),
@@ -145,7 +143,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          printQueries = List(PrintQuery("match (n) return count(n)"))
+          statusQuery = Some(StatusQuery("match (n) return count(n)"))
         )
     )
   }
@@ -167,7 +165,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
 
   test("recipe substitution") {
     val yaml = """
-        | recipeDefinitionVersionNumber: 1
+        | version: 1
         | canonicalName: foo
         | title: bar
         | contributor: abc
@@ -184,8 +182,8 @@ class RecipeTest extends AnyFunSuite with EitherValues {
         | nodeAppearances: []
         | quickQueries: []
         | sampleQueries: []
-        | printQueries:
-        | - cypherQuery: match (n) return count(n)
+        | statusQuery:
+        |   cypherQuery: match (n) return count(n)
         |""".stripMargin
     val recipe = loadYamlString(yaml)
     val values = Map(
@@ -194,7 +192,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     assert(
       Recipe.applySubstitutions(recipe.value, values) ==
         Recipe(
-          recipeDefinitionVersionNumber = 1,
+          version = 1,
           canonicalName = "foo",
           title = "bar",
           contributor = Some("abc"),
@@ -216,7 +214,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          printQueries = List(PrintQuery("match (n) return count(n)"))
+          statusQuery = Some(StatusQuery("match (n) return count(n)"))
         )
     )
   }
