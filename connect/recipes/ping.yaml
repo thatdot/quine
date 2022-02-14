@@ -6,25 +6,28 @@ summary: Ingest input file lines and echo to output file
 description: |-
   Ingests each line in "$in_file" as graph node with property "line".
   Writes all graph nodes to "$out_file".
-ingestStreams: 
-- type: FileIngest
-  path: $in_file
-  format:
-    type: CypherLine
-    query: "CREATE ({ line: $that })"
+ingestStreams:
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherLine
+      query: |-
+        MATCH (n)
+        WHERE id(n) = idFrom($that)
+        SET n.line = $that
 standingQueries:
-- pattern:
-    type: Cypher
-    query: MATCH (n) RETURN DISTINCT id(n) AS id
-  outputs:
-    output-1:
-      type: CypherQuery
-      query: MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n) AS record
-      andThen:
-        type: WriteToFile
-        path: $out_file
-nodeAppearances: []
-quickQueries: []
-sampleQueries: []
+  - pattern:
+      type: Cypher
+      query: MATCH (n) RETURN DISTINCT id(n) AS id
+    outputs:
+      output-1:
+        type: CypherQuery
+        query: MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n) AS record
+        andThen:
+          type: WriteToFile
+          path: $out_file
+nodeAppearances: [ ]
+quickQueries: [ ]
+sampleQueries: [ ]
 printQueries:
-- cypherQuery: match (n) return count(n)
+  - cypherQuery: MATCH (n) RETURN count(n)

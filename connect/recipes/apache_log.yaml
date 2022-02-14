@@ -5,53 +5,53 @@ contributor: engineering@thatdot.com
 summary: ''
 description: ''
 ingestStreams:
-- type: FileIngest
-  path: $in_file
-  format:
-    type: CypherLine
-    query: >-
-      WITH *, text.regexFirstMatch($that, '(\\S+)\\s+\\S+\\s+(\\S+)\\s+\\[(.+)\\]\\s+\"(.*)\\s+(.*)\\s+(.*)\"\\s+([0-9]+)\\s+(\\S+)\\s+\"(.*)\"\\s+\"(.*)\"')
-      AS r
-      CREATE ({
-        sourceIp: r[1],
-        user: r[2],
-        time: r[3],
-        verb: r[4],
-        path: r[5],
-        httpVersion: r[6],
-        status: r[7],
-        size: r[8],
-        referrer: r[9],
-        agent: r[10],
-        type: 'log'
-      })
-standingQueries:
-- outputs:
-    verb:
-      type: CypherQuery
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherLine
       query: >-
-        match (l) where id(l) = $that.data.id
-        match (v) where id(v) = idFrom('verb', l.verb)
-        create (l)-[:verb]->(v)
-        set v.type = 'verb'
-        set v.verb = l.verb
-        return null
-        skip 1
-  pattern:
-    type: Cypher
-    query: match (l) where l.type = 'log' return distinct id(l) as id
-    mode: DistinctId
-nodeAppearances: []
-quickQueries: []
+        WITH *, text.regexFirstMatch($that, '(\\S+)\\s+\\S+\\s+(\\S+)\\s+\\[(.+)\\]\\s+\"(.*)\\s+(.*)\\s+(.*)\"\\s+([0-9]+)\\s+(\\S+)\\s+\"(.*)\"\\s+\"(.*)\"')
+        AS r
+        CREATE ({
+          sourceIp: r[1],
+          user: r[2],
+          time: r[3],
+          verb: r[4],
+          path: r[5],
+          httpVersion: r[6],
+          status: r[7],
+          size: r[8],
+          referrer: r[9],
+          agent: r[10],
+          type: 'log'
+        })
+standingQueries:
+  - outputs:
+      verb:
+        type: CypherQuery
+        query: >-
+          MATCH (l) WHERE id(l) = $that.data.id
+          MATCH (v) WHERE id(v) = idFrom('verb', l.verb)
+          CREATE (l)-[:verb]->(v)
+          SET v.type = 'verb'
+          SET v.verb = l.verb
+          RETURN null
+          SKIP 1
+    pattern:
+      type: Cypher
+      query: MATCH (l) WHERE l.type = 'log' RETURN DISTINCT id(l) AS id
+      mode: DistinctId
+nodeAppearances: [ ]
+quickQueries: [ ]
 sampleQueries:
-- name: Count HTTP GET Requests
-  query: match (l)-[rel:verb]->(v)
-         where l.type = 'log' and v.type = 'verb' and v.verb = 'GET'
-         return count(rel) as get_count
+  - name: Count HTTP GET Requests
+    query: MATCH (l)-[rel:verb]->(v)
+      WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
+      RETURN count(rel) AS get_count
 printQueries:
-- cypherQuery: match (v) return v limit 1
-- cypherQuery: >-
-    match (l)-[rel:verb]->(v)
-    where l.type = 'log' and v.type = 'verb' and v.verb = 'GET'
-    return count(rel) as get_count
-- cypherQuery: match (v) where v.type = 'verb' return v
+  - cypherQuery: MATCH (v) RETURN v limit 1
+  - cypherQuery: >-
+      MATCH (l)-[rel:verb]->(v)
+      WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
+      RETURN count(rel) AS get_count
+  - cypherQuery: MATCH (v) WHERE v.type = 'verb' RETURN v
