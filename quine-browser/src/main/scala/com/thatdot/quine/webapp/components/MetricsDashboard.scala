@@ -51,8 +51,8 @@ object MetricsDashboard {
     state.refresh.foreach(handle => clearTimeout(handle))
 
   def pollMetrics(): SetTimeoutHandle = setTimeout(2.seconds) {
-    val metricsF = props.routes.metrics(())
-    val shardSizesF = props.routes.shardSizes(Map.empty)
+    val metricsF = props.routes.metrics(()).future
+    val shardSizesF = props.routes.shardSizes(Map.empty).future
     metricsF.zip(shardSizesF).onComplete {
       case Failure(exception) =>
         val errorMsg = if (exception.getMessage.isEmpty) {

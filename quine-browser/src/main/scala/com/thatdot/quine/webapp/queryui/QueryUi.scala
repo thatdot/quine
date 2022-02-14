@@ -205,14 +205,21 @@ import com.thatdot.{visnetwork => vis}
     // Populate node appearances, and only after that submit a possible initial query
     props.routes
       .queryUiAppearance(())
+      .future
       .map(nas => setState(_.copy(uiNodeAppearances = nas)))
       .onComplete(_ => if (props.initialQuery.nonEmpty) submitQuery(UiQueryType.Node))
 
     // Populate the sample queries
-    props.routes.queryUiSampleQueries(()).foreach(sqs => setState(_.copy(sampleQueries = sqs)))
+    props.routes
+      .queryUiSampleQueries(())
+      .future
+      .foreach(sqs => setState(_.copy(sampleQueries = sqs)))
 
     // Populate quick queries
-    props.routes.queryUiQuickQueries(()).foreach(qqs => setState(_.copy(uiNodeQuickQueries = qqs)))
+    props.routes
+      .queryUiQuickQueries(())
+      .future
+      .foreach(qqs => setState(_.copy(uiNodeQuickQueries = qqs)))
   }
 
   /** Convert a [[UiNode]] to a `vis` one
@@ -518,9 +525,9 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.Restful =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinNodesPost((atTime, None, GremlinQuery(query)))
+            props.routes.gremlinNodesPost((atTime, None, GremlinQuery(query))).future
           case QueryLanguage.Cypher =>
-            props.routes.cypherNodesPost((atTime, None, CypherQuery(query)))
+            props.routes.cypherNodesPost((atTime, None, CypherQuery(query))).future
         }).map(Some(_))
 
       case QueryMethod.WebSocket =>
@@ -547,9 +554,9 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.Restful =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinEdgesPost((atTime, None, GremlinQuery(query, parameters)))
+            props.routes.gremlinEdgesPost((atTime, None, GremlinQuery(query, parameters))).future
           case QueryLanguage.Cypher =>
-            props.routes.cypherEdgesPost((atTime, None, CypherQuery(query, parameters)))
+            props.routes.cypherEdgesPost((atTime, None, CypherQuery(query, parameters))).future
         }).map(Some(_))
 
       case QueryMethod.WebSocket =>
@@ -576,14 +583,14 @@ import com.thatdot.{visnetwork => vis}
   ): Future[Option[Unit]] =
     (props.queryMethod, language) match {
       case (QueryMethod.Restful, QueryLanguage.Gremlin) =>
-        val gremlinResults = props.routes.gremlinPost((atTime, None, GremlinQuery(query, parameters)))
+        val gremlinResults = props.routes.gremlinPost((atTime, None, GremlinQuery(query, parameters))).future
         mergeEndpointErrorsIntoFuture(gremlinResults).map { results =>
           updateResults(Left(results))
           Some(())
         }
 
       case (QueryMethod.Restful, QueryLanguage.Cypher) =>
-        val cypherResults = props.routes.cypherPost((atTime, None, CypherQuery(query, parameters)))
+        val cypherResults = props.routes.cypherPost((atTime, None, CypherQuery(query, parameters))).future
         mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
           updateResults(Right(results))
           Some(())
@@ -1032,7 +1039,7 @@ import com.thatdot.{visnetwork => vis}
       val visNode: vis.Node = props.graphData.nodeSet.get(heldNodeId).merge
       val uiNode = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
       println(uiNode)
-      props.routes.literalDebug(uiNode.id -> None).onComplete(println(_))
+      props.routes.literalDebug(uiNode.id -> None).future.onComplete(println(_))
     }
   }
 
