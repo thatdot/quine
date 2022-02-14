@@ -122,7 +122,7 @@ lazy val `quine-cypher`: Project = project
       "org.opencypher" % "parser-9.0" % openCypherV,
       "org.opencypher" % "util-9.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
-      "io.github.classgraph" % "classgraph" % "4.8.138",
+      "io.github.classgraph" % "classgraph" % "4.8.139",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
     ),
