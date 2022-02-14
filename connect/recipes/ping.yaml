@@ -29,5 +29,5 @@ standingQueries:
 nodeAppearances: [ ]
 quickQueries: [ ]
 sampleQueries: [ ]
-printQueries:
-  - cypherQuery: MATCH (n) RETURN count(n)
+statusQuery:
+  cypherQuery: MATCH (n) RETURN count(n)

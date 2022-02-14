@@ -57,12 +57,16 @@ object Main extends App with LazyLogging {
   // specifies that logback configuration will be loaded from the "thatdot.logging" Typesafe Config scope
   sys.props("logback-root") = "thatdot.logging"
 
-  // This name comes from quine's logging.conf
-  private val printLogger = Logger("thatdot.Interactive")
+  private val statusLines =
+    new StatusLines(
+      // This name comes from quine's logging.conf
+      Logger("thatdot.Interactive"),
+      System.err
+    )
 
   // Optionally print a message on startup
   if (BuildInfo.startupMessage.nonEmpty) {
-    printLogger.warn(BuildInfo.startupMessage)
+    statusLines.warn(BuildInfo.startupMessage)
   }
 
   logger.info {
@@ -87,7 +91,7 @@ object Main extends App with LazyLogging {
         tempDataFile.deleteOnExit()
       } else {
         // Only print the data file name when NOT DELETING the temporary file
-        printLogger.info(s"Using data path ${tempDataFile.getAbsolutePath}")
+        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
       }
       rawConfig.copy(
         webserver = rawConfig.webserver.copy(
@@ -105,7 +109,7 @@ object Main extends App with LazyLogging {
   }
 
   if (config.dumpConfig) {
-    printLogger.info(Config.loadedConfigHocon)
+    statusLines.info(Config.loadedConfigHocon)
   }
 
   val timeout: Timeout = config.timeout
@@ -145,7 +149,7 @@ object Main extends App with LazyLogging {
 
   val graph: GraphService = graphTry.fold(
     { err =>
-      printLogger.error("Unable to start graph", err)
+      statusLines.error("Unable to start graph", err)
       sys.exit(1)
     },
     g => g
@@ -159,13 +163,13 @@ object Main extends App with LazyLogging {
 
   // Warn if character encoding is unexpected
   if (Charset.defaultCharset() != StandardCharsets.UTF_8) {
-    printLogger.warn(
+    statusLines.warn(
       s"System character encoding is ${Charset.defaultCharset()} - did you mean to specify -Dfile.encoding=UTF-8?"
     )
   }
 
   // Inform when the graph is ready
-  printLogger.info("Graph is ready!")
+  statusLines.info("Graph is ready!")
 
   // The web service is started when asked for by command line arguments,
   // or when no command arguments are specified.
@@ -181,40 +185,40 @@ object Main extends App with LazyLogging {
   appState
     .load(timeout, config.shouldResumeIngest)
     .onComplete { _ =>
-      printLogger.info("Application state loaded.")
+      statusLines.info("Application state loaded.")
       recipeInterpreterTask =
-        recipe.map(r => RecipeInterpreter(printLogger, r, appState, graph, connectWebserverUrl)(system.dispatcher))
+        recipe.map(r => RecipeInterpreter(statusLines, r, appState, graph, connectWebserverUrl)(system.dispatcher))
     }(ec)
 
   connectWebserverUrl foreach { url =>
     new ConnectRoutes(graph, appState, ec, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
-        case Success(_) => printLogger.info(s"Connect web server available at $url")
+        case Success(_) => statusLines.info(s"Connect web server available at $url")
         case Failure(_) => // akka will have logged a stacktrace to the debug logger
       }(ec)
   }
 
   sys.addShutdownHook {
-    printLogger.info("Connect is shutting down... ")
+    statusLines.info("Connect is shutting down... ")
     try recipeInterpreterTask.foreach(_.cancel())
     catch {
       case NonFatal(e) =>
-        printLogger.error("Graceful shutdown of Recipe interpreter encountered an error:", e)
+        statusLines.error("Graceful shutdown of Recipe interpreter encountered an error:", e)
     }
     try {
       Await.result(appState.shutdown(), timeout.duration)
       Metrics.stopReporters()
     } catch {
       case NonFatal(e) =>
-        printLogger.error("Graceful shutdown of Connect encountered an error:", e)
+        statusLines.error("Graceful shutdown of Connect encountered an error:", e)
     }
     try Await.result(graph.shutdown(), timeout.duration)
     catch {
       case NonFatal(e) =>
-        printLogger.error(s"Graceful shutdown of Quine encountered an error", e)
+        statusLines.error(s"Graceful shutdown of Quine encountered an error", e)
     }
-    printLogger.info("Shutdown complete.")
+    statusLines.info("Shutdown complete.")
     LoggerFactory.getILoggerFactory match {
       case context: LoggerContext => context.stop()
       case _ => ()

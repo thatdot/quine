@@ -13,7 +13,6 @@ import akka.actor.Cancellable
 import akka.stream.scaladsl.{Keep, Sink}
 
 import com.google.common.net.PercentEscaper
-import com.typesafe.scalalogging.{LazyLogging, Logger}
 
 import com.thatdot.connect.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
 import com.thatdot.quine.graph.cypher.{QueryResults, Value}
@@ -25,29 +24,29 @@ import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph}
   * Also starts fixed rate scheduled tasks to poll for and report status updates. These
   * should be cancelled using the returned Cancellable.
   */
-object RecipeInterpreter extends LazyLogging {
+object RecipeInterpreter {
 
   type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStore
 
   def apply(
-    printLogger: Logger,
+    statusLines: StatusLines,
     recipe: Recipe,
     appState: RecipeState,
     graphService: CypherOpsGraph,
     connectWebserverUrl: Option[String]
   )(implicit ec: ExecutionContext): Cancellable = {
-    printLogger.info(s"Running Recipe ${recipe.title}")
+    statusLines.info(s"Running Recipe ${recipe.title}")
 
     if (recipe.nodeAppearances.nonEmpty) {
-      printLogger.info(s"Using ${recipe.nodeAppearances.length} node appearances")
+      statusLines.info(s"Using ${recipe.nodeAppearances.length} node appearances")
       appState.setNodeAppearances(recipe.nodeAppearances.toVector)
     }
     if (recipe.quickQueries.nonEmpty) {
-      printLogger.info(s"Using ${recipe.quickQueries.length} quick queries ")
+      statusLines.info(s"Using ${recipe.quickQueries.length} quick queries ")
       appState.setQuickQueries(recipe.quickQueries.toVector)
     }
     if (recipe.sampleQueries.nonEmpty) {
-      printLogger.info(s"Using ${recipe.sampleQueries.length} sample queries ")
+      statusLines.info(s"Using ${recipe.sampleQueries.length} sample queries ")
       appState.setSampleQueries(recipe.sampleQueries.toVector)
     }
 
@@ -63,13 +62,13 @@ object RecipeInterpreter extends LazyLogging {
         standingQueryDefinition
       )
       try if (!Await.result(addStandingQueryResult, 5 seconds)) {
-        logger.error(s"Standing Query $standingQueryName already exists")
+        statusLines.error(s"Standing Query $standingQueryName already exists")
       } else {
-        printLogger.info(s"Running Standing Query $standingQueryName")
-        tasks +:= standingQueryProgressReporter(printLogger, appState, graphService, standingQueryName)
+        statusLines.info(s"Running Standing Query $standingQueryName")
+        tasks +:= standingQueryProgressReporter(statusLines, appState, graphService, standingQueryName)
       } catch {
         case NonFatal(ex) =>
-          logger.error(s"Failed creating Standing Query $standingQueryName: $standingQueryDefinition", ex)
+          statusLines.error(s"Failed creating Standing Query $standingQueryName: $standingQueryDefinition", ex)
       }
       ()
     }
@@ -86,12 +85,12 @@ object RecipeInterpreter extends LazyLogging {
         timeout = 5 seconds
       ) match {
         case Failure(ex) =>
-          logger.error(s"Failed creating Ingest Stream $ingestStreamName\n$ingestStream", ex)
+          statusLines.error(s"Failed creating Ingest Stream $ingestStreamName\n$ingestStream", ex)
         case Success(false) =>
-          logger.error(s"Ingest Stream $ingestStreamName already exists")
+          statusLines.error(s"Ingest Stream $ingestStreamName already exists")
         case Success(true) =>
-          printLogger.info(s"Running Ingest Stream $ingestStreamName")
-          tasks +:= ingestStreamProgressReporter(printLogger, appState, graphService, ingestStreamName)
+          statusLines.info(s"Running Ingest Stream $ingestStreamName")
+          tasks +:= ingestStreamProgressReporter(statusLines, appState, graphService, ingestStreamName)
       }
 
       // If status query is defined, print a URL with the query and schedule the query to be executed and printed
@@ -101,49 +100,45 @@ object RecipeInterpreter extends LazyLogging {
         for {
           url <- connectWebserverUrl
           escapedQuery = new PercentEscaper("", false).escape(cypherQuery)
-        } printLogger.info(s"Status query URL is $url#$escapedQuery")
-        tasks +:= statusQueryProgressReporter(printLogger, graphService, statusQuery)
+        } statusLines.info(s"Status query URL is $url#$escapedQuery")
+        tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
       }
     }
 
-    new Cancellable {
-
-      /** Cancel all the tasks, returning true if any task cancel returns true. */
-      override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel || a)
-
-      /** Returns true if all the tasks report isCancelled true. */
-      override def isCancelled: Boolean = tasks.forall(_.isCancelled)
-    }
+    new MultiCancellable(tasks)
   }
 
   private def ingestStreamProgressReporter(
-    printLogger: Logger,
+    statusLines: StatusLines,
     appState: RecipeState,
     graphService: BaseGraph,
     ingestStreamName: String,
     interval: FiniteDuration = 1 second
   )(implicit ec: ExecutionContext): Cancellable = {
     val actorSystem = graphService.system
-    val onChanged = new OnChanged[String]
+    val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
       initialDelay = interval,
       interval = interval
     ) { () =>
       appState.getIngestStream(ingestStreamName) match {
         case None =>
-          logger.error(s"Failed getting Ingest Stream $ingestStreamName (it does not exist)")
+          statusLines.error(s"Failed getting Ingest Stream $ingestStreamName (it does not exist)")
           task.cancel()
+          statusLines.remove(statusLine)
           ()
         case Some(ingestStream) =>
           for {
             status <- ingestStream.status
             stats = ingestStream.metrics.toEndpointResponse
           } {
-            onChanged(
+            statusLines.update(
+              statusLine,
               s"$ingestStreamName status is ${status.toString.toLowerCase} and ingested ${stats.ingestedCount}"
-            )(printLogger.info(_))
+            )
             if (status.isTerminal) {
               task.cancel()
+              statusLines.remove(statusLine)
             }
           }
       }
@@ -152,31 +147,33 @@ object RecipeInterpreter extends LazyLogging {
   }
 
   private def standingQueryProgressReporter(
-    printLogger: Logger,
+    statusLines: StatusLines,
     appState: RecipeState,
     graph: BaseGraph,
     standingQueryName: String,
     interval: FiniteDuration = 1 second
   )(implicit ec: ExecutionContext): Cancellable = {
     val actorSystem = graph.system
-    val onChanged = new OnChanged[String]
+    val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
       initialDelay = interval,
       interval = interval
     ) { () =>
       appState.getStandingQuery(standingQueryName) onComplete {
         case Failure(ex) =>
-          logger.error(s"Failed getting Standing Query $standingQueryName", ex)
+          statusLines.error(s"Failed getting Standing Query $standingQueryName", ex)
           task.cancel()
+          statusLines.remove(statusLine)
           ()
         case Success(None) =>
-          logger.error(s"Failed getting Standing Query $standingQueryName (it does not exist)")
+          statusLines.error(s"Failed getting Standing Query $standingQueryName (it does not exist)")
           task.cancel()
+          statusLines.remove(statusLine)
           ()
         case Success(Some(standingQuery)) =>
           val standingQueryStatsCount =
             standingQuery.stats.values.view.map(_.rates.count).sum
-          onChanged(s"$standingQueryName count ${standingQueryStatsCount}")(printLogger.info(_))
+          statusLines.update(statusLine, s"$standingQueryName count ${standingQueryStatsCount}")
       }
     }
     task
@@ -184,13 +181,13 @@ object RecipeInterpreter extends LazyLogging {
 
   private val printQueryMaxResults = 10L
   private def statusQueryProgressReporter(
-    printLogger: Logger,
+    statusLines: StatusLines,
     graphService: CypherOpsGraph,
     statusQuery: StatusQuery,
     interval: FiniteDuration = 5 second
   )(implicit ec: ExecutionContext): Cancellable = {
     val actorSystem = graphService.system
-    val onChanged = new OnChanged[String]
+    val changed = new OnChanged[String]
     lazy val task: Cancellable = actorSystem.scheduler.scheduleWithFixedDelay(
       initialDelay = interval,
       delay = interval
@@ -204,9 +201,9 @@ object RecipeInterpreter extends LazyLogging {
             queryResult.results.take(printQueryMaxResults).toMat(Sink.seq)(Keep.right).run()(graphService.materializer),
             5 seconds
           )
-        onChanged(s"Status query result $resultContent")(printLogger.info(_))
+        changed(s"Status query result $resultContent")(statusLines.info(_))
       } catch {
-        case _: TimeoutException => onChanged("Status query timed out")(printLogger.warn(_))
+        case _: TimeoutException => statusLines.warn("Status query timed out")
       }
     }
     task
@@ -229,4 +226,13 @@ class OnChanged[T] {
     }
     ()
   }
+}
+
+class MultiCancellable(tasks: List[Cancellable]) extends Cancellable {
+
+  /** Cancel all the tasks, returning true if any task cancel returns true. */
+  override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel || a)
+
+  /** Returns true if all the tasks report isCancelled true. */
+  override def isCancelled: Boolean = tasks.forall(_.isCancelled)
 }

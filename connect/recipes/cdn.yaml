@@ -143,20 +143,13 @@ sampleQueries:
       WHERE counts._type = 'count'
       RETURN counts
 
-printQueries:
-  - cypherQuery: MATCH (n) RETURN count(n)
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Total Events') RETURN counts
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Events By Customer') RETURN counts
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Events By POP') RETURN counts
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Events By Customer and POP') RETURN counts
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Events By Hit or Miss') RETURN counts
-  - cypherQuery: MATCH (counts) WHERE id(counts) = idFrom('Count Events By Hit or Miss and POP') RETURN counts
-  - cypherQuery: >-
-      MATCH (counts)
-      WHERE id(counts) = idFrom('Count Total Events')
-      MATCH (hitmiss)
-      WHERE id(hitmiss) = idFrom('Count Events By Hit or Miss')
-      RETURN (hitmiss.hit*1.0) / counts.total AS ratio
+statusQuery:
+  cypherQuery: >-
+    MATCH (counts)
+    WHERE id(counts) = idFrom('Count Total Events')
+    MATCH (hitmiss)
+    WHERE id(hitmiss) = idFrom('Count Events By Hit or Miss')
+    RETURN (hitmiss.hit*1.0) / counts.total AS ratio
 
 nodeAppearances: [ ]
 quickQueries: [ ]

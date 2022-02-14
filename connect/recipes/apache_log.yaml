@@ -48,10 +48,8 @@ sampleQueries:
     query: MATCH (l)-[rel:verb]->(v)
       WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
       RETURN count(rel) AS get_count
-printQueries:
-  - cypherQuery: MATCH (v) RETURN v limit 1
-  - cypherQuery: >-
-      MATCH (l)-[rel:verb]->(v)
-      WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
-      RETURN count(rel) AS get_count
-  - cypherQuery: MATCH (v) WHERE v.type = 'verb' RETURN v
+statusQuery:
+  cypherQuery: >-
+    MATCH (l)-[rel:verb]->(v)
+    WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
+    RETURN count(rel) AS get_count
