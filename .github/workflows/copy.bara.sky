@@ -11,7 +11,7 @@ PROJECT_LEVEL_INCLUDE = [
     "project/Dependencies.scala",
     "project/FlatcPlugin.scala",
     "project/Packaging.scala",
-    "project/ParadoxThatDot.scala",
+    "project/ParadoxThatdot.scala",
     "project/plugins.sbt",
     "project/QuineSettings.scala",
     "project/ScalaFix.scala",
