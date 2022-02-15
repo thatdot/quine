@@ -264,3 +264,65 @@ lazy val connect: Project = project
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),
     buildInfoPackage := "com.thatdot.connect"
   )
+
+lazy val `connect-docs` = {
+  val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
+  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_builtin_functions.md")
+  val cypherTable2 =
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_functions.md")
+  val cypherTable3 =
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_procedures.md")
+  Project("connect-docs", file("connect-docs"))
+    .dependsOn(`connect`)
+    .settings(commonSettings)
+    .settings(`scala 2.12`)
+    .enablePlugins(ParadoxThatdot, GhpagesPlugin)
+    .settings(
+      version := connectV,
+      projectName := "thatDot Connect",
+      git.remoteRepo := "git@github.com:thatdot/docs.thatdot.com.git",
+      ghpagesBranch := "master",
+      ghpagesCleanSite / excludeFilter := { (f: File) =>
+        (ghpagesRepository.value / "CNAME").getCanonicalPath == f.getCanonicalPath
+      },
+      // Same as `paradox` itself
+      libraryDependencies ++= Seq(
+        "org.pegdown" % "pegdown" % pegdownV,
+        "org.parboiled" % "parboiled-java" % parboiledV
+      ),
+      Compile / paradoxProperties ++= Map(
+        "snip.github_link" -> "false",
+        "snip.connect.base_dir" -> baseDirectory.in(connect).value.getAbsolutePath,
+        "material.repo" -> "https://github.com/thatdot/quine",
+        "material.repo.type" -> "github",
+        "material.social" -> "https://quine-io.slack.com",
+        "material.social.type" -> "slack",
+        "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString
+      ),
+      description := "Connect is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
+      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
+        (Compile / runMain)
+          .toTask(s" com.thatdot.connect.GenerateOpenApi ${docJson.value.getAbsolutePath}")
+          .map(_ => Seq()) // return no files because files returned are supposed to be markdown
+      },
+      // Register the `openapi.json` file here
+      Compile / paradox / mappings ++= List(
+        docJson.value -> "reference/openapi.json"
+      ),
+      paradoxNavigationDepth := 3,
+      paradoxNavigationExpandDepth := Some(3),
+      paradoxRoots := List("index.html", "docs.html", "about.html", "download.html"),
+      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
+        (Compile / runMain)
+          .toTask(
+            List(
+              " com.thatdot.connect.GenerateCypherTables",
+              cypherTable1.value.getAbsolutePath,
+              cypherTable2.value.getAbsolutePath,
+              cypherTable3.value.getAbsolutePath
+            ).mkString(" ")
+          )
+          .map(_ => Nil) // files returned are included, not top-level
+      }
+    )
+}

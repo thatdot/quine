@@ -1,0 +1,101 @@
+/** Hyperlinks in main page content **/
+
+[data-md-color-primary="thatdot-blue"] .md-typeset a, [data-md-color-primary="thatdot-blue"] .md-nav__link:active, [data-md-color-primary="thatdot-blue"] .md-nav__link--active {
+  text-decoration: underline;
+}
+
+/** Code block formatting */
+
+pre, code, kbd {
+  font-family: Courier, monospace !important;
+}
+
+@media only screen and (min-width: 45em) {
+  pre.prettyprint {
+    border: 1px solid #eee !important;
+    border-left: 10px solid #eee !important;
+    margin-top: 1.5em;
+    margin-bottom: 1.5em;
+  }
+}
+
+/** Hide the weird "copy" button in snippets */
+
+[data-md-color-primary="thatdot-blue"] .snippet-button.copy-snippet {
+  visibility: hidden;
+}
+
+/** Material theme override */
+
+button[data-md-color-primary="thatdot-blue"],
+[data-md-color-primary="thatdot-blue"] .md-header,
+[data-md-color-primary="thatdot-blue"] .md-hero {
+  background-color: #173759;
+}
+
+[data-md-color-primary="thatdot-blue"] .md-typeset a,
+[data-md-color-primary="thatdot-blue"] .md-nav__link:active,
+[data-md-color-primary="thatdot-blue"] .md-nav__link--active {
+  color: #173759;
+}
+
+[data-md-color-primary="thatdot-blue"] .md-nav__item--nested > .md-nav__link {
+  color: inherit;
+}
+
+button[data-md-color-accent="thatdot-grey"],
+[data-md-color-accent="thatdot-grey"] .md-typeset pre code::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="thatdot-grey"] .md-typeset .codehilite pre::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="thatdot-grey"] .md-search__scrollwrap::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="thatdot-grey"] .md-sidebar__scrollwrap::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="thatdot-grey"] .md-source-file:hover::before {
+  background-color: #798089;
+}
+
+[data-md-color-accent="thatdot-grey"] .md-typeset a:hover,
+[data-md-color-accent="thatdot-grey"] .md-typeset a:active,
+[data-md-color-accent="thatdot-grey"] .md-typeset .md-clipboard:hover::before,
+[data-md-color-accent="thatdot-grey"] .md-typeset .md-clipboard:active::before,
+[data-md-color-accent="thatdot-grey"] .md-typeset .footnote li:hover .footnote-backref:hover,
+[data-md-color-accent="thatdot-grey"] .md-typeset .footnote li:target .footnote-backref,
+[data-md-color-accent="thatdot-grey"] .md-typeset [id]:hover .headerlink:hover,
+[data-md-color-accent="thatdot-grey"] .md-typeset [id]:target .headerlink,
+[data-md-color-accent="thatdot-grey"] .md-typeset [id] .headerlink:focus,
+[data-md-color-accent="thatdot-grey"] .md-nav__link:focus,
+[data-md-color-accent="thatdot-grey"] .md-nav__link:hover {
+  color: #798089;
+}
+
+[data-md-color-accent="thatdot-grey"] .md-search-result__link[data-md-state="active"],
+[data-md-color-accent="thatdot-grey"] .md-search-result__link:hover {
+  background-color: rgba(121, 128, 137, 0.1);
+}
+
+@media only screen and (min-width: 60em) {
+  [data-md-color-primary="thatdot-blue"] .md-search__input {
+    background-color: rgba(255, 255, 255, 0.26);
+  }
+}
+
+@media only screen and (max-width: 76.1875em) {
+  html [data-md-color-primary="thatdot-blue"] .md-nav--primary .md-nav__title--site {
+    background-color: #798089;
+  }
+  html [data-md-color-primary="thatdot-blue"] .md-nav--primary .md-nav__title--site .md-nav__button {
+    display: block;
+    position: absolute;
+    top: 0.4rem;
+    left: 0.4rem;
+    width: 18rem;
+    height: 6.4rem;
+    font-size: 4.8rem;
+  }
+}
+
+[data-md-color-primary="thatdot-blue"] .md-footer-nav,
+[data-md-color-primary="thatdot-blue"] .md-footer-meta {
+  background-color: #173759;
+}
+[data-md-color-primary="thatdot-blue"] .md-footer-copyright__highlight {
+  color: rgba(255, 255, 255, 0.5);
+}
