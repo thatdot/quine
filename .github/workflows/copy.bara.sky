@@ -5,7 +5,26 @@ DESTINATION_BRANCH = "main"
 COMMITTER = "thatbot-copy[bot] <98922356+thatbot-copy[bot]@users.noreply.github.com>"
 LOCAL_SOT = "file:///usr/src/app"
 
-PUSH_INCLUDE = ["public/**",".github/workflows/copybara.yml",".github/workflows/copy.bara.sky"]
+
+PROJECT_LEVEL_INCLUDE = [
+    "project/build.properties",
+    "project/Dependencies.scala",
+    "project/FlatcPlugin.scala",
+    "project/Packaging.scala",
+    "project/ParadoxThatDot.scala",
+    "project/plugins.sbt",
+    "project/QuineSettings.scala",
+    "project/ScalaFix.scala",
+]
+
+PUSH_INCLUDE = [
+    "public/**",
+    ".github/workflows/copybara.yml",
+    ".github/workflows/copy.bara.sky",
+    ".scalafix.conf",
+    ".scalafmt.conf",
+] + PROJECT_LEVEL_INCLUDE
+
 PUSH_EXCLUDE = []
 PUSH_TRANSFORMATIONS = [
 ]
@@ -15,6 +34,9 @@ PR_EXCLUDE = []
 PR_TRANSFORMATIONS = [
     core.move("", "public", paths = glob(["**"])),
     core.move("public/.github/workflows/", ".github/workflows/", paths = glob(["copybara.yml", "copy.bara.sky"])),
+    core.move("public/.scalafix.conf", ".scalafix.conf"),
+    core.move("public/.scalafmt.conf", ".scalafmt.conf"),
+    core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE))
 ]
 
 SCRUB_MESSAGE = [

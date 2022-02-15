@@ -16,19 +16,26 @@ class CmdArgsTest extends AnyFunSuite with EitherValues {
 
   test("help") {
     val cmdArgs = CmdArgs(Array("--help"))
-    assert(cmdArgs.left.value == """Quine universal program
-                                 |Usage: quine [options]
-                                 |
-                                 |  -w, --web-service        start connect web service
-                                 |  -p, --port <value>       web service port (default is 8080)
-                                 |  -r, --recipe file or URL
-                                 |                           follow the specified recipe
-                                 |  -x, --recipe-value key=value
-                                 |                           recipe parameter substitution
-                                 |  --force-config           disable recipe configuration defaults
-                                 |  --no-delete              disable deleting data file when process exits
-                                 |  -h, --help
-                                 |  -v, --version            print Quine program version""".stripMargin)
+
+    // Different platforms can render the boundary whitespace differently (eg tabs vs spaces), so check only the content
+    def contentOf(multiline: String): List[String] = multiline.split('\n').map(_.trim).toList
+
+    assert(
+      contentOf(cmdArgs.left.value) ===
+        contentOf("""Quine universal program
+                    |Usage: quine [options]
+                    |
+                    |  -w, --web-service        start connect web service
+                    |  -p, --port <value>       web service port (default is 8080)
+                    |  -r, --recipe file or URL
+                    |                           follow the specified recipe
+                    |  -x, --recipe-value key=value
+                    |                           recipe parameter substitution
+                    |  --force-config           disable recipe configuration defaults
+                    |  --no-delete              disable deleting data file when process exits
+                    |  -h, --help
+                    |  -v, --version            print Quine program version""".stripMargin)
+    )
   }
 
   test("webservice") {
