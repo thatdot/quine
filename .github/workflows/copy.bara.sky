@@ -43,7 +43,7 @@ SCRUB_MESSAGE = [
     # Replace anything beginning "ENTERPRISE:" (until "PUBLIC:" if present, or else to the end of the message with \z)
     metadata.scrubber("ENTERPRISE:\\s(?:.|\n)*?(?:PUBLIC:\\s|\\z)"),
     # Best effort to remove references to internal PRs that will be dead links publicly 
-    metadata.scrubber(" (#\\d+)$"),
+    metadata.scrubber(" \\(#\\d+\\)$"),
 ]
 def cancel_after_frozen(ctx):
     ctx.console.verbose("TODO add a way to freeze private copies of PRs")
