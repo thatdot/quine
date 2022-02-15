@@ -42,7 +42,7 @@ trait BaseNodeActor extends BaseNodeActorView {
     * @param atTimeOverride overrides the time at which the event occurs (take great care if using this!)
     * @return future tracking completion of off-node actions
     */
-  def processEvent(
+  protected def processEvent(
     event: NodeChangeEvent,
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type]
@@ -52,15 +52,15 @@ trait BaseNodeActor extends BaseNodeActorView {
     * @param labels new labels for this node (overwriting previously set labels)
     * @return future signaling when the write is done
     */
-  def setLabels(labels: Set[Symbol]): Future[Done.type] = {
+  protected def setLabels(labels: Set[Symbol]): Future[Done.type] = {
     val labelsValue = QuineValue.List(labels.map(_.name).toVector.sorted.map(QuineValue.Str(_)))
     val propertyEvent = NodeChangeEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
     processEvent(propertyEvent)
   }
 
   /** Record that some update pertinent to snapshots has occurred */
-  def updateRelevantToSnapshotOccurred(): Unit
+  protected def updateRelevantToSnapshotOccurred(): Unit
 
   /** Serializes a snapshot and also resets the `latestUpdateAfterSnapshot` */
-  def toSnapshotBytes(): Array[Byte]
+  protected def toSnapshotBytes(): Array[Byte]
 }

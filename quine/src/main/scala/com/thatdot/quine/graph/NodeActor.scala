@@ -42,7 +42,7 @@ import com.thatdot.quine.util.HexConversions
   *                     sent to it)
   * @param restoreAfterFailureSnapshotOpt
   */
-class NodeActor(
+private[graph] class NodeActor(
   val qidAtTime: QuineIdAtTime,
   val graph: StandingQueryOpsGraph with CypherOpsGraph,
   costToSleep: CostToSleep,
@@ -76,26 +76,26 @@ class NodeActor(
   val qid: QuineId = qidAtTime.id
   val atTime: Option[Milliseconds] = qidAtTime.atTime
   implicit val idProvider: QuineIdProvider = graph.idProvider
-  val persistor: InNodePersistor = graph.persistor.forNode(this)
-  val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
-  val metrics: HostQuineMetrics = graph.metrics
-  var properties: Map[Symbol, PropertyValue] = Map.empty
-  val edges: EdgeCollection = graph.edgeCollectionFactory.get()
+  protected val persistor: InNodePersistor = graph.persistor.forNode(qid)
+  protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
+  protected val metrics: HostQuineMetrics = graph.metrics
+  protected var properties: Map[Symbol, PropertyValue] = Map.empty
+  protected val edges: EdgeCollection = graph.edgeCollectionFactory.get()
 
-  var forwardTo: Option[QuineId] = None
-  var mergedIntoHere: Set[QuineId] = Set.empty[QuineId]
+  private var forwardTo: Option[QuineId] = None
+  private var mergedIntoHere: Set[QuineId] = Set.empty[QuineId]
 
-  var latestUpdateAfterSnapshot: Option[EventTime] = None
-  var lastWriteMillis: Long = 0
+  protected var latestUpdateAfterSnapshot: Option[EventTime] = None
+  protected var lastWriteMillis: Long = 0
 
-  def updateRelevantToSnapshotOccurred(): Unit =
+  protected def updateRelevantToSnapshotOccurred(): Unit =
     // TODO: should this update `lastWriteMillis` too?
     latestUpdateAfterSnapshot = Some(latestEventTime())
 
   /** Index for efficiently determining which subscribers to standing queries (be they other standing queries or sets
     * of Notifiables) should be notified for node events
     */
-  var localEventIndex: StandingQueryLocalEventIndex =
+  protected var localEventIndex: StandingQueryLocalEventIndex =
     StandingQueryLocalEventIndex.empty
 
   { // here be the side-effects performed by the constructor
@@ -126,7 +126,7 @@ class NodeActor(
       updateUniversalCypherQueriesOnWake()
     }
 
-  def processEvent(
+  protected def processEvent(
     event: NodeChangeEvent,
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type] = {
@@ -195,7 +195,7 @@ class NodeActor(
     } else Future.successful(Done)
   }
 
-  private def applyEvent(event: NodeChangeEvent): Unit = {
+  private[this] def applyEvent(event: NodeChangeEvent): Unit = {
     event match {
       case PropertySet(propKey, propValue) =>
         properties = properties + (propKey -> propValue)

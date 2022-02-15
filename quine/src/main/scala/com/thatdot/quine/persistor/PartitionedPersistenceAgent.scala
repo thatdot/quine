@@ -6,14 +6,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  BaseNodeActorView,
-  EventTime,
-  NodeChangeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
+import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents
@@ -85,6 +78,6 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     Future.traverse(getAgents.toSeq)(_.shutdown()).map(_ => ())
   }
 
-  override def forNode(node: BaseNodeActorView): InNodePersistor = new NodePersistor(node.qid, getAgent(node.qid))
+  override def forNode(qid: QuineId): InNodePersistor = new NodePersistor(qid, getAgent(qid))
 
 }

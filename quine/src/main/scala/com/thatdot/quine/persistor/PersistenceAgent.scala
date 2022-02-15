@@ -9,7 +9,6 @@ import akka.stream.scaladsl.Source
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
-  BaseNodeActorView,
   EventTime,
   MemberIdx,
   NodeChangeEvent,
@@ -269,7 +268,7 @@ abstract class PersistenceAgent extends StrictLogging {
     * @note reference to the node should not leak out of the `InNodePersistor`
     * @return an inidivdual node's view of the persistence layer
     */
-  def forNode(node: BaseNodeActorView): InNodePersistor = new NodePersistor(node.qid, this)
+  def forNode(qid: QuineId): InNodePersistor = new NodePersistor(qid, this)
 
   /** Configuration that determines how the client of PersistenceAgent should use it.
     */

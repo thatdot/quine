@@ -143,7 +143,7 @@ object RecentNodeIds extends UserDefinedProcedure {
       location.graph.recentNodes(limit, location.atTime).map { (nodes: Set[QuineId]) =>
         Source
           .fromIterator(() => nodes.iterator)
-          .map(qid => Vector(Expr.Str(location.idProvider.qidToPrettyString(qid))))
+          .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
       }
     }
   }

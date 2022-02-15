@@ -23,7 +23,6 @@ import com.thatdot.quine.graph.{
   LastNotification,
   Notifiable,
   StandingQueryId,
-  StandingQueryLocalEventIndex,
   StandingQueryLocalEvents,
   StandingQueryOpsGraph,
   StandingQueryPattern
@@ -312,24 +311,21 @@ trait DomainNodeIndexBehavior
     with BaseNodeActor
     with DomainNodeTests
     with QuineIdOps
-    with QuineRefOps {
+    with QuineRefOps
+    with StandingQueryBehavior {
   import DomainNodeIndexBehavior._
-
-  def graph: StandingQueryOpsGraph
 
   /** @see [[SubscribersToThisNode]]
     */
-  var subscribers: SubscribersToThisNode = SubscribersToThisNode()
+  protected var subscribers: SubscribersToThisNode = SubscribersToThisNode()
 
   /** @see [[DomainNodeIndex]]
     */
-  var domainNodeIndex: DomainNodeIndex = DomainNodeIndex()
+  protected var domainNodeIndex: DomainNodeIndex = DomainNodeIndex()
 
   /** @see [[BranchParentIndex]]
     */
-  var branchParentIndex: BranchParentIndex = BranchParentIndex()
-
-  def localEventIndex: StandingQueryLocalEventIndex
+  protected var branchParentIndex: BranchParentIndex = BranchParentIndex()
 
   /** Called once on node wakeup, this updates universal SQs.
     *
@@ -696,7 +692,7 @@ trait DomainNodeIndexBehavior
         StandingQueryLocalEvents
           .extractWatchableEvents(testBranch)
           .foreach { event =>
-            localEventIndex.registerStandingQuery(EventSubscriber(subscriptionKey), event, DomainNodeIndexBehavior.this)
+            localEventIndex.registerStandingQuery(EventSubscriber(subscriptionKey), event, properties, edges)
           }
 
         subscribersToThisNode(subscriptionKey) =

@@ -10,17 +10,17 @@ import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdPro
 /** Read-only view of a node actor */
 trait BaseNodeActorView extends Actor {
 
-  /** Handle to the enclsoing graph */
-  def graph: BaseGraph
+  /** Handle to the enclosing graph */
+  protected def graph: BaseGraph
 
   /** Materializer */
-  implicit val materializer: Materializer = graph.materializer
+  implicit protected val materializer: Materializer = graph.materializer
 
   /** Properties of the node */
-  def properties: Map[Symbol, PropertyValue]
+  protected def properties: Map[Symbol, PropertyValue]
 
   /** Edges of the node */
-  def edges: EdgeCollectionView
+  protected def edges: EdgeCollectionView
 
   /** Unique ID of the node tracked by this node actor
     *
@@ -39,8 +39,10 @@ trait BaseNodeActorView extends Actor {
   /** ID provider */
   implicit def idProvider: QuineIdProvider
 
+  def qidPrettyString: String = idProvider.qidToPrettyString(qid)
+
   /** Metrics about the quine system */
-  def metrics: HostQuineMetrics
+  protected def metrics: HostQuineMetrics
 
   /** Fetch the labels of this node
     *
@@ -68,5 +70,5 @@ trait BaseNodeActorView extends Actor {
         }
     }
 
-  def latestUpdateAfterSnapshot: Option[EventTime]
+  protected def latestUpdateAfterSnapshot: Option[EventTime]
 }

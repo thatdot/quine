@@ -4,8 +4,9 @@ import scala.collection.mutable
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.StandingQueryState
+import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, SingleBranch, Test}
+import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, PropertyValue, SingleBranch, Test}
 
 /** Local events a standing query may want to watch
   *
@@ -107,24 +108,25 @@ final case class StandingQueryLocalEventIndex(
   def registerStandingQuery(
     handler: EventSubscriber,
     event: StandingQueryLocalEvents,
-    node: BaseNodeActorView
+    properties: Map[Symbol, PropertyValue],
+    edges: EdgeCollectionView
   ): Seq[NodeChangeEvent] =
     event match {
       case StandingQueryLocalEvents.Property(key) =>
         watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
-        node.properties.get(key).toSeq.map { propVal =>
+        properties.get(key).toSeq.map { propVal =>
           NodeChangeEvent.PropertySet(key, propVal)
         }
 
       case StandingQueryLocalEvents.Edge(Some(key)) =>
         watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler
-        node.edges.matching(key).toSeq.map { halfEdge =>
+        edges.matching(key).toSeq.map { halfEdge =>
           NodeChangeEvent.EdgeAdded(halfEdge)
         }
 
       case StandingQueryLocalEvents.Edge(None) =>
         watchingForAnyEdge.add(handler)
-        node.edges.all.toSeq.map { halfEdge =>
+        edges.all.toSeq.map { halfEdge =>
           NodeChangeEvent.EdgeAdded(halfEdge)
         }
     }

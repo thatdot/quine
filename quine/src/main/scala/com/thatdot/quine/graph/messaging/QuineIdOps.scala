@@ -10,7 +10,7 @@ import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 trait QuineIdOps {
 
-  def graph: BaseGraph
+  protected def graph: BaseGraph
   def atTime: Option[Milliseconds]
 
   /** Support sending typed messages to some other node in the graph, which

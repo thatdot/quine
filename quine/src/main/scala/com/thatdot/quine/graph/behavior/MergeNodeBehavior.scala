@@ -80,7 +80,7 @@ object MergeNodeBehavior extends LazyLogging {
       temporarilyProcessWithOriginalBehavior(msg, thisNodeActor, graph, mergedIntoOther)
     case msg: NodeControlMessage =>
       logger.info(
-        s"Merged node: ${thisNodeActor.idProvider.qidToPrettyString(thisNodeActor.qid)} received control message: $msg"
+        s"Merged node: ${thisNodeActor.qidPrettyString} received control message: $msg"
       )
       temporarilyProcessWithOriginalBehavior(msg, thisNodeActor, graph, mergedIntoOther)
     case StashedMessage(msg) =>
@@ -89,7 +89,7 @@ object MergeNodeBehavior extends LazyLogging {
       graph.relayTell(QuineIdAtTime(mergedIntoOther, thisNodeActor.atTime), m, thisNodeActor.sender())
     case m =>
       logger.error(
-        s"Received an unexpected message: $m on a merged node: ${thisNodeActor.idProvider.qidToPrettyString(thisNodeActor.qid)}"
+        s"Received an unexpected message: $m on a merged node: ${thisNodeActor.qidPrettyString}"
       )
   }
 }

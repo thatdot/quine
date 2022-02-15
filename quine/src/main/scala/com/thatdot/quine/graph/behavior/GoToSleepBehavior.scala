@@ -18,26 +18,26 @@ import com.thatdot.quine.persistor.{InNodePersistor, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
-  def persistenceConfig: PersistenceConfig
+  protected def persistenceConfig: PersistenceConfig
 
-  def persistor: InNodePersistor
+  protected def persistor: InNodePersistor
 
-  def graph: BaseGraph
+  protected def graph: BaseGraph
 
-  def toSnapshotBytes(): Array[Byte]
+  protected def toSnapshotBytes(): Array[Byte]
 
-  def actorRefLock: StampedLock
+  protected def actorRefLock: StampedLock
 
-  def wakefulState: AtomicReference[WakefulState]
+  protected def wakefulState: AtomicReference[WakefulState]
 
-  def pendingStandingQueryWrites: collection.Set[(StandingQueryId, StandingQueryPartId)]
+  protected def pendingStandingQueryWrites: collection.Set[(StandingQueryId, StandingQueryPartId)]
 
-  def standingQueries: collection.Map[
+  protected def standingQueries: collection.Map[
     (StandingQueryId, StandingQueryPartId),
     (StandingQuerySubscribers, cypher.StandingQueryState)
   ]
 
-  def lastWriteMillis: Long
+  protected def lastWriteMillis: Long
 
   /* NB: all of the messages being sent/received in `goToSleep` are to/from the
    *     shard actor. Consequently, it is safe (and more efficient) to use

@@ -10,7 +10,7 @@ import com.thatdot.quine.graph.BaseGraph
 
 trait QuineRefOps {
 
-  def graph: BaseGraph
+  protected def graph: BaseGraph
 
   /** Support sending typed messages to some destination in the graph */
   implicit final class RichQuineRef(quineRef: QuineRef) {

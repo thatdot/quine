@@ -26,9 +26,7 @@ import com.thatdot.quine.graph.{
   BaseNodeActor,
   NodeChangeEvent,
   StandingQueryId,
-  StandingQueryLocalEventIndex,
   StandingQueryLocalEvents,
-  StandingQueryOpsGraph,
   StandingQueryPartId,
   StandingQueryPattern,
   TimeFuture,
@@ -38,17 +36,18 @@ import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
 import com.thatdot.quine.persistor.{InNodePersistor, PersistenceConfig, PersistenceSchedule}
 
-trait CypherStandingBehavior extends Actor with BaseNodeActor with QuineIdOps with QuineRefOps {
+trait CypherStandingBehavior
+    extends Actor
+    with BaseNodeActor
+    with QuineIdOps
+    with QuineRefOps
+    with StandingQueryBehavior {
 
   protected def syncStandingQueries(): Unit
 
-  def graph: StandingQueryOpsGraph
+  protected def persistor: InNodePersistor
 
-  def persistor: InNodePersistor
-
-  def persistenceConfig: PersistenceConfig
-
-  def localEventIndex: StandingQueryLocalEventIndex
+  protected def persistenceConfig: PersistenceConfig
 
   /** Bring this node's locally-tracked standing queries in sync with the current graph state.
     *  - Remove SQs registered on the node but not on the graph by cancelling subscriptions to subqueries as appropriate
@@ -173,7 +172,8 @@ trait CypherStandingBehavior extends Actor with BaseNodeActor with QuineIdOps wi
             val initialEvents = localEventIndex.registerStandingQuery(
               EventSubscriber(combinedId),
               event,
-              this
+              properties,
+              edges
             )
 
             // Notify the standing query of events for pre-existing node state
