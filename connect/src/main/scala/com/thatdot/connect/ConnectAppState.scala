@@ -351,7 +351,7 @@ final class ConnectAppState(graph: GraphService)
     */
   def load(timeout: Timeout, shouldResumeIngest: Boolean): Future[Unit] = {
     val sampleQueriesFut =
-      getOrDefaultClusterMetaData(SampleQueriesKey, SampleQuery.harryPotterGraph +: SampleQuery.defaults)
+      getOrDefaultClusterMetaData(SampleQueriesKey, SampleQuery.defaults)
     val quickQueriesFut = getOrDefaultClusterMetaData(QuickQueriesKey, UiNodeQuickQuery.defaults)
     val nodeAppearancesFut = getOrDefaultClusterMetaData(NodeAppearancesKey, UiNodeAppearance.defaults)
     val standingQueriesFut = getOrDefaultClusterMetaData(

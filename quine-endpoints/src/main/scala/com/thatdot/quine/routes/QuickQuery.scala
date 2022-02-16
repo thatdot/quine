@@ -125,12 +125,4 @@ object QuickQuery {
       edgeLabel = None
     )
   }
-
-  val potterSiblings: QuickQuery = QuickQuery(
-    name = "Siblings",
-    querySuffix = "MATCH (n)-[:has_father|:has_mother]->(p)<-[:has_father|:has_mother]-(s) RETURN DISTINCT s",
-    queryLanguage = QueryLanguage.Cypher,
-    sort = QuerySort.Node,
-    edgeLabel = Some("has sibling")
-  )
 }

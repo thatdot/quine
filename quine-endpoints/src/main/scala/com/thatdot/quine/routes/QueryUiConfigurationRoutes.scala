@@ -19,21 +19,6 @@ object SampleQuery {
     query = "MATCH (n) WHERE id(n) = 0 RETURN n"
   )
 
-  def harryPotterGraph: SampleQuery = SampleQuery(
-    name = "Create a small graph of Harry Potter characters",
-    query = List(
-      "CREATE",
-      " (jamessr:Person {name: \"James Potter\", born: 1960})<-[:has_father]-(harry:Person {name: \"Harry Potter\", born: 1980})-[:has_mother]->(:Person {name: \"Lily Potter\", born: 1960}),",
-      " (arthur:Person {name: \"Arthur Weasley\", born: 1950})<-[:has_father]-(ginny:Person {name: \"Ginny Weasley\", born: 1981})-[:has_mother]->(molly:Person {name: \"Molly Weasley\", born: 1949}),",
-      " (arthur)<-[:has_father]-(ron:Person {name: \"Ron Weasley\", born: 1980})-[:has_mother]->(molly),",
-      " (harry)<-[:has_father]-(:Person {name: \"James Sirius Potter\", born: 2003})-[:has_mother]->(ginny),",
-      " (harry)<-[:has_father]-(:Person {name: \"Albus Severus Potter\", born: 2005})-[:has_mother]->(ginny),",
-      " (harry)<-[:has_father]-(:Person {name: \"Lily Luna\", born: 2007})-[:has_mother]->(ginny),",
-      " (ron)<-[:has_father]-(:Person {name: \"Rose Weasley\", born: 2005})-[:has_mother]->(hermione:Person {name: \"Hermione Granger\", born: 1979}),",
-      " (ron)<-[:has_father]-(:Person {name: \"Hugo Weasley\", born: 2008})-[:has_mother]->(hermione);"
-    ).mkString
-  )
-
   val defaults: Vector[SampleQuery] = Vector(recentNodes, getNodesById)
 }
 
@@ -130,8 +115,7 @@ object UiNodeQuickQuery {
   val defaults: Vector[UiNodeQuickQuery] = Vector(
     UiNodeQuickQuery.every(QuickQuery.adjacentNodes(QueryLanguage.Cypher)),
     UiNodeQuickQuery.every(QuickQuery.refreshNode(QueryLanguage.Cypher)),
-    UiNodeQuickQuery.every(QuickQuery.getProperties(QueryLanguage.Cypher)),
-    UiNodeQuickQuery.every(QuickQuery.potterSiblings)
+    UiNodeQuickQuery.every(QuickQuery.getProperties(QueryLanguage.Cypher))
   )
 }
 
