@@ -1,5 +1,5 @@
 SOT_REPO = "git@github.com:thatdot/quine-plus.git"
-SOT_BRANCH = "master"
+SOT_BRANCH = "main"
 DESTINATION_REPO = "git@github.com:thatdot/quine.git"
 DESTINATION_BRANCH = "main"
 COMMITTER = "thatbot-copy[bot] <98922356+thatbot-copy[bot]@users.noreply.github.com>"

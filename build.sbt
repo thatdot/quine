@@ -285,7 +285,7 @@ lazy val `quine-docs`: Project = {
       version := quineAppV,
       projectName := "Quine",
       git.remoteRepo := "git@github.com:thatdot/docs.thatdot.com.git",
-      ghpagesBranch := "master",
+      ghpagesBranch := "main",
       ghpagesCleanSite / excludeFilter := { (f: File) =>
         (ghpagesRepository.value / "CNAME").getCanonicalPath == f.getCanonicalPath
       },

@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - master
+      - main
   pull_request_target:
   workflow_dispatch:
     inputs:
@@ -53,7 +53,7 @@ jobs:
           ssh_key: ${{ secrets.COPYBARA_SSH_KEY }}
           access_token: ${{ steps.generate-token.outputs.token }}
           committer: "thatbot-copy[bot] <98922356+thatbot-copy[bot]@users.noreply.github.com>" # INV: should match COMMITTER in copy.bara.sky -- this one is used for the commits, the one in there is used as a default author
-          sot_branch: master
+          sot_branch: main
           sot_repo: thatdot/quine-plus
           destination_branch: main
           destination_repo: thatdot/quine
