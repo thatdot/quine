@@ -21,7 +21,7 @@ object IngestStreamStatus {
   case object Terminated extends IngestStreamStatus(isTerminal = true)
 
   @docs(
-    "The stream has been restored from a saved state, but is not yet running: For example, after restarting Connect."
+    "The stream has been restored from a saved state, but is not yet running: For example, after restarting Quine."
   )
   case object Restored extends IngestStreamStatus(isTerminal = false)
 
@@ -364,7 +364,7 @@ object StreamedRecordFormat {
   */
 @title("File Ingest Stream")
 @unnamed
-@docs("An active stream of data being ingested from a file on this Connect host.")
+@docs("An active stream of data being ingested from a file on this Quine host.")
 final case class FileIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
   @docs("path to the file")

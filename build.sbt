@@ -5,8 +5,8 @@ addCommandAlias("scala212", "++" + scalaV212)
 addCommandAlias("scala213", "++" + scalaV213)
 addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
 
-// Core graph interpreter
-lazy val quine: Project = project
+// Core streaming graph interpreter
+lazy val `quine-core`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
   .settings(
@@ -57,10 +57,11 @@ lazy val quine: Project = project
     buildInfoPackage := "com.thatdot.quine"
   )
 
+// MapDB implementation of a Quine persistor
 lazy val `quine-mapdb-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(quine % "compile->compile;test->test")
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     /* `net.jpountz.lz4:lz4` was moved to `org.lz4:lz4-java`, but MapDB hasn't
      * adapted to this change quickly. However, since other parts of the Java
@@ -75,20 +76,22 @@ lazy val `quine-mapdb-persistor`: Project = project
     )
   )
 
+// RocksDB implementation of a Quine persistor
 lazy val `quine-rocksdb-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(quine % "compile->compile;test->test")
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.rocksdb" % "rocksdbjni" % rocksdbV
     )
   )
 
+// Cassandra implementation of a Quine persistor
 lazy val `quine-cassandra-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(quine)
+  .dependsOn(`quine-core`)
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
@@ -96,11 +99,11 @@ lazy val `quine-cassandra-persistor`: Project = project
     )
   )
 
-// This provides a server-side parser and implementation for the Gremlin query language
+// Parser and interepreter foor a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(quine, `quine-mapdb-persistor` % "test->test")
+  .dependsOn(`quine-core`, `quine-mapdb-persistor` % "test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang.modules" %% "scala-parser-combinators" % scalaParserCombinatorsV,
@@ -110,11 +113,11 @@ lazy val `quine-gremlin`: Project = project
     )
   )
 
-// A compiler from Cypher to something that Quine can interpret
+// Compiler for compiling [Cypher](https://neo4j.com/docs/cypher-manual/current/) into Quine queries
 lazy val `quine-cypher`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12`)
-  .dependsOn(quine % "compile->compile;test->test")
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.opencypher" % "expressions-9.0" % openCypherV,
@@ -148,7 +151,7 @@ lazy val `quine-cypher`: Project = project
  * [ts-importer]: https://github.com/sjrd/scala-js-ts-importer
  * [visjs]: https://github.com/visjs/vis-network
  */
-lazy val `visnetwork-facade` = project
+lazy val `visnetwork-facade`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
   .enablePlugins(ScalaJSPlugin)
@@ -158,7 +161,7 @@ lazy val `visnetwork-facade` = project
     )
   )
 
-// Defines Quine's REST API (for the server implementation and client use)
+// REST API specifications for `quine`-based applications
 lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Pure)
   .in(file("quine-endpoints"))
@@ -198,11 +201,12 @@ lazy val `quine-browser`: Project = project
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js")
   )
 
-lazy val connect: Project = project
+// Streaming graph application built on top of the Quine library
+lazy val `quine`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12`)
   .dependsOn(
-    `quine` % "compile->compile;test->test",
+    `quine-core` % "compile->compile;test->test",
     `quine-cypher`,
     `quine-endpoints`.jvm % "compile->compile;test->test",
     `quine-gremlin`,
@@ -211,7 +215,7 @@ lazy val connect: Project = project
     `quine-rocksdb-persistor`
   )
   .settings(
-    version := connectV,
+    version := quineAppV,
     libraryDependencies ++= Seq(
       "org.gnieh" % "logback-config" % logbackConfigV,
       "ch.qos.logback" % "logback-classic" % logbackV,
@@ -262,24 +266,24 @@ lazy val connect: Project = project
   .settings(
     startupMessage := "",
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),
-    buildInfoPackage := "com.thatdot.connect"
+    buildInfoPackage := "com.thatdot.quine.app"
   )
 
-lazy val `connect-docs` = {
+lazy val `quine-docs`: Project = {
   val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
   val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_builtin_functions.md")
   val cypherTable2 =
     Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_functions.md")
   val cypherTable3 =
     Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_procedures.md")
-  Project("connect-docs", file("connect-docs"))
-    .dependsOn(`connect`)
+  Project("quine-docs", file("quine-docs"))
+    .dependsOn(`quine`)
     .settings(commonSettings)
     .settings(`scala 2.12`)
     .enablePlugins(ParadoxThatdot, GhpagesPlugin)
     .settings(
-      version := connectV,
-      projectName := "thatDot Connect",
+      version := quineAppV,
+      projectName := "Quine",
       git.remoteRepo := "git@github.com:thatdot/docs.thatdot.com.git",
       ghpagesBranch := "master",
       ghpagesCleanSite / excludeFilter := { (f: File) =>
@@ -292,17 +296,17 @@ lazy val `connect-docs` = {
       ),
       Compile / paradoxProperties ++= Map(
         "snip.github_link" -> "false",
-        "snip.connect.base_dir" -> baseDirectory.in(connect).value.getAbsolutePath,
+        "snip.quine.base_dir" -> baseDirectory.in(`quine`).value.getAbsolutePath,
         "material.repo" -> "https://github.com/thatdot/quine",
         "material.repo.type" -> "github",
         "material.social" -> "https://quine-io.slack.com",
         "material.social.type" -> "slack",
         "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString
       ),
-      description := "Connect is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
+      description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
       Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
         (Compile / runMain)
-          .toTask(s" com.thatdot.connect.GenerateOpenApi ${docJson.value.getAbsolutePath}")
+          .toTask(s" com.thatdot.quine.docs.GenerateOpenApi ${docJson.value.getAbsolutePath}")
           .map(_ => Seq()) // return no files because files returned are supposed to be markdown
       },
       // Register the `openapi.json` file here
@@ -316,7 +320,7 @@ lazy val `connect-docs` = {
         (Compile / runMain)
           .toTask(
             List(
-              " com.thatdot.connect.GenerateCypherTables",
+              " com.thatdot.quine.docs.GenerateCypherTables",
               cypherTable1.value.getAbsolutePath,
               cypherTable2.value.getAbsolutePath,
               cypherTable3.value.getAbsolutePath

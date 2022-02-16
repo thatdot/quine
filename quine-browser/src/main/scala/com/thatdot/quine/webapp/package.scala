@@ -53,13 +53,13 @@ package object webapp {
     )
   }
 
-  /** Mount the Connect web app onto the DOM
+  /** Mount the Quine web app onto the DOM
     *
     * @param target DOM element onto which the webapp is mounted
     * @param options configuration options
     */
-  @JSExportTopLevel("connectAppMount")
-  def connectAppMount(target: dom.Element, options: ConnectUiOptions): ReactInstance = {
+  @JSExportTopLevel("quineAppMount")
+  def quineAppMount(target: dom.Element, options: QuineUiOptions): ReactInstance = {
     val clientRoutes = new ClientRoutes(options.serverUrl)
     val component = if (!options.isQueryBarVisible.getOrElse(true)) {
       makeQueryUi(options, clientRoutes)
@@ -77,8 +77,8 @@ package object webapp {
 
 package webapp {
 
-  /** Configuration for making an instance of the Connect UI */
-  trait ConnectUiOptions extends QueryUiOptions {
+  /** Configuration for making an instance of the Quine UI */
+  trait QuineUiOptions extends QueryUiOptions {
 
     /** URL for loading the OpenAPI documentation */
     val documentationUrl: String

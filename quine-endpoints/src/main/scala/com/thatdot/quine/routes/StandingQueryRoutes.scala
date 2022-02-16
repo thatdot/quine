@@ -277,7 +277,7 @@ object StandingQueryResultOutputUserDef {
 
   @unnamed
   @title("Log JSON to Console")
-  @docs("Prints each result as a single-line JSON object to stdout on the Connect server.")
+  @docs("Prints each result as a single-line JSON object to stdout on the Quine server.")
   final case class PrintToStandardOut(
     logLevel: PrintToStandardOut.LogLevel = PrintToStandardOut.LogLevel.Info,
     logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete

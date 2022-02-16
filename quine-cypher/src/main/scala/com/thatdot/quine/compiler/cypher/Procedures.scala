@@ -310,14 +310,14 @@ object JsonLoad extends UserDefinedProcedure {
   }
 }
 
-/** Procedures which are not currently implemented in Connect, but which must be present
-  * for certain external systems to operate with Connect (eg cypher-shell or neo4j-browser)
+/** Procedures which are not currently implemented in Quine, but which must be present
+  * for certain external systems to operate with Quine (eg cypher-shell or neo4j-browser)
   */
 abstract class StubbedUserDefinedProcedure(
   override val name: String,
   outputColumnNames: Vector[String]
 ) extends UserDefinedProcedure {
-  // Stubbed procedures are used for compatibility with other systems, therefore we avoid any Connect-specific semantic analysis
+  // Stubbed procedures are used for compatibility with other systems, therefore we avoid any Quine-specific semantic analysis
   override val canContainUpdates = false
   override val isIdempotent = true
   override val canContainAllNodeScan = false

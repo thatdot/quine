@@ -64,9 +64,9 @@ final class MapDbPersistor(
     metricRegistry.counter(MetricRegistry.name("map-db-persistor", "journal-event-total-size"))
 
   implicit val ioDispatcher: ExecutionContext =
-    actorSystem.dispatchers.lookup("quine.actor.persistor-blocking-dispatcher")
+    actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
 
-  // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `quine.actor.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
+  // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `akka.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
   // TODO: don't hardcode magical values - config them
   protected val db: DB = {
     val dbBuilder1 = filePath
@@ -83,7 +83,7 @@ final class MapDbPersistor(
     case None => Cancellable.alreadyCancelled
     case Some(dur) =>
       actorSystem.scheduler.scheduleWithFixedDelay(dur, dur)(() => db.commit())(
-        actorSystem.dispatchers.lookup("quine.actor.persistor-blocking-dispatcher")
+        actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
       )
   }
 

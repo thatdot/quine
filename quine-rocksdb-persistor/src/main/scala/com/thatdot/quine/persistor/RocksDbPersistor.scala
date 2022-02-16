@@ -63,7 +63,7 @@ final class RocksDbPersistor(
   import RocksDbPersistor._
 
   implicit val ioDispatcher: ExecutionContext =
-    actorSystem.dispatchers.lookup("quine.actor.persistor-blocking-dispatcher")
+    actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
 
   /* All mutable fields below are mutated only when this lock is held exclusively
    *
