@@ -23,9 +23,17 @@ standingQueries: [ ]
 nodeAppearances: [ ]
 quickQueries:
   - quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+    predicate:
+      propertyKeys: [ ]
+      knownValues: { }
+  - quickQuery:
       name: Siblings
       querySuffix: >-
-        MATCH (n)-[:has_father|:has_mother]->(p)<-[:has_father|:has_mother]-(s)
+        MATCH (n)-[:has_parent]->(p)<-[:has_parent]-(s)
         RETURN DISTINCT s
       queryLanguage: Cypher
       sort: Node

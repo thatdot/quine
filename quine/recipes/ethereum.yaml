@@ -89,8 +89,8 @@ standingQueries:
             AND id(otherAccount) = $that.data.otherAccountId
           WITH *, coll.min([($that.data.oldTaintedLevel + 1), otherAccount.tainted]) AS newTaintedLevel
           SET otherAccount.tainted = newTaintedLevel
-          RETURN s
-            trId(tainted) AS taintedSource,
+          RETURN
+            strId(tainted) AS taintedSource,
             strId(otherAccount) AS newlyTainted,
             newTaintedLevel
         type: CypherQuery
@@ -232,7 +232,7 @@ quickQueries:
       sort: Text
 sampleQueries:
   - name: Get a few recently-accessed blocks
-    query: |-
+    query:
       CALL recentNodes(1000) YIELD node AS nId
       MATCH (n:block)
       WHERE id(n) = nId
