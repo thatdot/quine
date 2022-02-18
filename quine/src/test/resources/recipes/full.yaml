@@ -1,0 +1,26 @@
+version: 1
+title: bar
+contributor: abc
+description: desc
+iconImage: http://example.com
+ingestStreams:
+- type: FileIngest
+  format:
+    type: CypherJson
+    query: yadda
+  path: /tmp/somefile
+standingQueries:
+- outputs:
+    output-1:
+      parameter: bar
+      type: CypherQuery
+      query: X
+  pattern:
+    type: Cypher
+    query: MATCH (n) RETURN id(n)
+nodeAppearances: []
+quickQueries: []
+sampleQueries: []
+statusQuery:
+  cypherQuery: match (n) return count(n)
+summary: summary

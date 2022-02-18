@@ -1,0 +1,36 @@
+version: 1
+title: Harry Potter
+contributor: engineering@thatdot.com
+summary: Small graph of connected nodes
+description: |-
+  This Recipe loads a small graph of connected nodes.
+  Before running this Recipe, download the dataset using
+  curl https://docs.thatdot.com/tutorials/harry_potter.json.log -o harry_potter.json.log
+ingestStreams:
+  - type: FileIngest
+    path: harry_potter.json.log
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (p) WHERE id(p) = idFrom('name', $that.name)
+        SET p = { name: $that.name, gender: $that.gender, birth_year: $that.birth_year }
+        SET p: Person
+        WITH $that.children AS childrenNames, p
+        UNWIND childrenNames AS childName
+        MATCH (c) WHERE id(c) = idFrom('name', childName)
+        CREATE (c)-[:has_parent]->(p)
+standingQueries: [ ]
+nodeAppearances: [ ]
+quickQueries:
+  - quickQuery:
+      name: Siblings
+      querySuffix: >-
+        MATCH (n)-[:has_father|:has_mother]->(p)<-[:has_father|:has_mother]-(s)
+        RETURN DISTINCT s
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: has sibling
+    predicate:
+      propertyKeys: [ ]
+      knownValues: { }
+sampleQueries: [ ]

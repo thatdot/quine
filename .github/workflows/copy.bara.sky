@@ -1,0 +1,114 @@
+SOT_REPO = "git@github.com:thatdot/quine-plus.git"
+SOT_BRANCH = "main"
+DESTINATION_REPO = "git@github.com:thatdot/quine.git"
+DESTINATION_BRANCH = "main"
+COMMITTER = "thatbot-copy[bot] <98922356+thatbot-copy[bot]@users.noreply.github.com>"
+LOCAL_SOT = "file:///usr/src/app"
+
+
+PROJECT_LEVEL_INCLUDE = [
+    "build.properties",
+    "Dependencies.scala",
+    "FlatcPlugin.scala",
+    "Packaging.scala",
+    "ParadoxThatdot.scala",
+    "plugins.sbt",
+    "QuineSettings.scala",
+    "ScalaFix.scala",
+]
+
+PUSH_INCLUDE = [
+    "public/**",
+    ".github/workflows/copybara.yml",
+    ".github/workflows/copy.bara.sky",
+    ".scalafix.conf",
+    ".scalafmt.conf",
+] + ["project/" + f for f in PROJECT_LEVEL_INCLUDE]
+
+PUSH_EXCLUDE = []
+PUSH_TRANSFORMATIONS = [
+]
+
+PR_INCLUDE = ["**"]
+PR_EXCLUDE = []
+PR_TRANSFORMATIONS = [
+    core.move("", "public", paths = glob(["**"])),
+    core.move("public/.github/workflows/", ".github/workflows/", paths = glob(["copybara.yml", "copy.bara.sky"])),
+    core.move("public/.scalafix.conf", ".scalafix.conf"),
+    core.move("public/.scalafmt.conf", ".scalafmt.conf"),
+    core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE))
+]
+
+SCRUB_MESSAGE = [
+    # Replace anything beginning "ENTERPRISE:" (until "PUBLIC:" if present, or else to the end of the message with \z)
+    metadata.scrubber("ENTERPRISE:\\s(?:.|\n)*?(?:PUBLIC:\\s|\\z)"),
+    # Best effort to remove references to internal PRs that will be dead links publicly 
+    metadata.scrubber(" \\(#\\d+\\)$"),
+]
+def cancel_after_frozen(ctx):
+    ctx.console.verbose("TODO add a way to freeze private copies of PRs")
+    if False:
+        return ctx.console.error("Internal copy of PR is write-protected")
+    else:
+        return ctx.success()
+
+# Push workflow
+core.workflow(
+    name = "push",
+    origin = git.origin(
+        url = LOCAL_SOT if LOCAL_SOT else SOT_REPO,
+        ref = SOT_BRANCH,
+    ),
+    destination = git.github_destination(
+        url = DESTINATION_REPO,
+        push = DESTINATION_BRANCH,
+    ),
+    origin_files = glob(PUSH_INCLUDE, exclude = PUSH_EXCLUDE),
+    authoring = authoring.pass_thru(default = COMMITTER),
+    mode = "ITERATIVE",
+    transformations = SCRUB_MESSAGE + [
+        metadata.restore_author("ORIGINAL_AUTHOR", search_all_changes = True),
+        metadata.expose_label("COPYBARA_INTEGRATE_REVIEW"),
+    ] + (PUSH_TRANSFORMATIONS if PUSH_TRANSFORMATIONS else core.reverse(PR_TRANSFORMATIONS)),
+)
+
+# Init workflow
+core.workflow(
+    name = "initialize",
+    origin = git.origin(
+        url = LOCAL_SOT if LOCAL_SOT else SOT_REPO,
+        ref = SOT_BRANCH,
+    ),
+    destination = git.github_destination(
+        url = DESTINATION_REPO,
+        push = DESTINATION_BRANCH,
+    ),
+    origin_files = glob(PUSH_INCLUDE, exclude = PUSH_EXCLUDE),
+    authoring = authoring.pass_thru(default = COMMITTER),
+    mode = "SQUASH",
+    transformations = [metadata.use_last_change()] + core.reverse(PR_TRANSFORMATIONS),
+)
+
+# Pull Request workflow
+core.workflow(
+    name = "pr",
+    origin = git.github_pr_origin( # NB will not accept PRs with submodules
+        url = DESTINATION_REPO,
+        branch = DESTINATION_BRANCH,
+    ),
+    destination = git.github_pr_destination(
+        url = SOT_REPO,
+        destination_ref = SOT_BRANCH,
+        integrates = [],
+    ),
+    destination_files = glob(PUSH_INCLUDE, exclude = PUSH_EXCLUDE),
+    origin_files = glob(PR_INCLUDE if PR_INCLUDE else ["**"], exclude = PR_EXCLUDE),
+    authoring = authoring.pass_thru(default = COMMITTER),
+    mode = "CHANGE_REQUEST",
+    set_rev_id = False,
+    transformations = [
+        cancel_after_frozen,
+        metadata.save_author("ORIGINAL_AUTHOR"),
+        metadata.expose_label("GITHUB_PR_NUMBER", new_name = "Closes", separator = DESTINATION_REPO.replace("git@github.com:", " ").replace(".git", "#")),
+    ] + PR_TRANSFORMATIONS,
+)

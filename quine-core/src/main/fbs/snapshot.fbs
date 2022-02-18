@@ -1,0 +1,54 @@
+include "base.fbs";
+
+namespace com.thatdot.quine.persistence;
+
+table NodeSnapshot {
+  properties: [Property];
+  edges: [HalfEdge];
+  forward_to: QuineId;
+  merged_into_here: [QuineId];
+  subscribers: [Subscriber];
+  domain_node_index: [NodeIndex];
+}
+
+table PropertyCollectionValue {
+  value: [byte];
+}
+
+table AssumedDomainEdge {
+  edge: GenericEdge;
+  branch: DomainGraphBranch;
+}
+
+union Notifiable {
+  QuineId,
+  StandingQueryId,
+}
+
+enum LastNotification: byte {
+  True,
+  False,
+  None,
+}
+
+table Subscriber {
+  branch: DomainGraphBranch (required);
+  assumed_edge: AssumedDomainEdge;
+  notifiable: [Notifiable];
+  last_notification: LastNotification;
+  related_queries: [StandingQueryId] (required);
+}
+
+table NodeIndex {
+  subscriber: QuineId;
+  queries: [NodeIndexQuery];
+}
+
+table NodeIndexQuery {
+  branch: DomainGraphBranch (required);
+  assumed_edge: AssumedDomainEdge;
+  result: LastNotification;
+}
+
+root_type NodeSnapshot;
+

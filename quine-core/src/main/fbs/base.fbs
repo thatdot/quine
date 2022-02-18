@@ -1,0 +1,253 @@
+namespace com.thatdot.quine.persistence;
+
+// See [[com.thatdot.quine.model.EdgeDirection]]
+enum EdgeDirection: byte {
+  Outgoing,
+  Incoming,
+  Undirected,
+}
+
+// See [[com.thatdot.quine.model.QuineId]]
+table QuineId {
+  id: [byte] (required);
+}
+
+// See [[com.thatdot.quine.model.HalfEdge]]
+table HalfEdge {
+  edge_type: string (required);
+  direction: EdgeDirection;
+  other: QuineId (required);
+}
+
+table Property {
+  key: string (required);
+  value: [byte] (required);
+}
+
+// See [[com.thatdot.quine.model.QuineValue]]
+table QuineValue {
+  // We serialize all `QuineValue`'s using MessagePack instead of FlatBuffers.
+  //
+  // This is because FlatBuffer's is quite a bit heavier, especially for small
+  // values. MessagePack is a perfect fit for `QuineValue` too:
+  //
+  //  - it is designed for JSON-like structure
+  //  - it supports "extension" types
+  //  - it is optimized to require less bytes for small values, using bitpacking
+  //  - this is a known format, so users can make sense of the raw data too
+  //  - we can validate MessagePack quickly (so we might even ingest serialized data)
+  //
+  msg_packed: [byte] (required);
+}
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunc]]
+union PropertyComparisonFunction {
+  PropertyComparisonFunctionIdenticality,
+  PropertyComparisonFunctionWildcard,
+  PropertyComparisonFunctionNone,
+  PropertyComparisonFunctionNonIdenticality,
+  PropertyComparisonFunctionRegexMatch,
+  PropertyComparisonFunctionListContains,
+}
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.identicality]]
+table PropertyComparisonFunctionIdenticality { }
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.wildcard]]
+table PropertyComparisonFunctionWildcard { }
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.none]]
+table PropertyComparisonFunctionNone { }
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.nonIdenticality]]
+table PropertyComparisonFunctionNonIdenticality { }
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.regexMatch]]
+table PropertyComparisonFunctionRegexMatch {
+  pattern: string (required);
+}
+
+// See [[com.thatdot.quine.model.PropertyComparisonFunctions.listContains]]
+table PropertyComparisonFunctionListContains {
+  values: [QuineValue];
+}
+
+
+// See [[com.thatdot.quine.model.NodeLocalComparisonFunc]]
+enum NodeLocalComparisonFunction: byte {
+  Identicality,
+  EqualSubset,
+  Wildcard,
+}
+
+// See [[com.thatdot.quine.model.DependencyDirection]]
+enum DependencyDirection: byte {
+  DependsUpon,
+  IsDependedUpon,
+  Incidental,
+}
+
+// See [[com.thatdot.quine.model.DomainNodeEquiv]]
+table DomainNodeEquiv {
+  class_name: string;
+  local_properties: [LocalProperty];
+  circular_edges: [CircularEdge];
+}
+
+table LocalProperty {
+  property_key: string (required);
+  comparison_function: PropertyComparisonFunction (required);
+  value: [byte];
+}
+
+// See [[com.thatdot.quine.model.CircularEdge]]
+table CircularEdge {
+  edge_type: string (required);
+  is_directed: bool;
+}
+
+// See [[com.thatdot.quine.model.GenericEdge]]
+table GenericEdge {
+  edge_type: string (required);
+  direction: EdgeDirection;
+}
+
+// See [[com.thatdot.quine.model.EdgeMatchConstraints]]
+union EdgeMatchConstraints {
+  FetchConstraint,
+  MandatoryConstraint,
+}
+
+// See [[com.thatdot.quine.model.FetchConstraint]]
+table FetchConstraint {
+  min: int;
+  has_max: bool; // if this is defined, the max is meaningful
+  max: int;
+}
+
+// See [[com.thatdot.quine.model.MandatoryConstraint]]
+table MandatoryConstraint { }
+
+// See [[com.thatdot.quine.model.DomainGraphBranch]]
+union DomainGraphBranch {
+  SingleBranch,
+  OrBranch,
+  AndBranch,
+  NotBranch,
+  MuBranch,
+  MuVarBranch,
+}
+
+// See [[com.thatdot.quine.model.SingleBranch]]
+table SingleBranch {
+  domain_node_equiv: DomainNodeEquiv (required);
+  identification: Identification;
+  next_branches: [DomainEdge];
+  comparison_function: NodeLocalComparisonFunction;
+}
+
+table Identification {
+  id: QuineId (required);
+}
+
+// See [[com.thatdot.quine.model.Or]]
+table OrBranch {
+  disjuncts: [DomainGraphBranch];
+}
+
+// See [[com.thatdot.quine.model.And]]
+table AndBranch {
+  conjuncts: [DomainGraphBranch];
+}
+
+// See [[com.thatdot.quine.model.Not]]
+table NotBranch {
+  negated: DomainGraphBranch (required);
+}
+
+// See [[com.thatdot.quine.model.Mu]]
+table MuBranch {
+  variable: string (required);
+  branch: DomainGraphBranch (required);
+}
+
+// See [[com.thatdot.quine.model.MuVar]]
+table MuVarBranch {
+  variable: string (required);
+}
+
+// See [[com.thatdot.quine.model.DomainEdge]]
+table DomainEdge {
+  edge: GenericEdge (required);
+  dependency: DependencyDirection;
+  branch: DomainGraphBranch (required);
+  circular_match_allowed: bool;
+  constraints: EdgeMatchConstraints (required);
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryId]]
+table StandingQueryId {
+  low_bytes: long;
+  high_bytes: long;
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryPartId]]
+table StandingQueryPartId {
+  low_bytes: long;
+  high_bytes: long;
+}
+
+// See [[com.thatdot.quine.graph.StandingQueryMessage.ResultId]]
+table StandingQueryResultId {
+  low_bytes: long;
+  high_bytes: long;
+}
+
+// See [[java.time.Duration]]
+struct Duration {
+  seconds: long;
+  nanos: int;
+}
+
+// See [[java.time.LocalDate]]
+struct LocalDate {
+  year: int;
+  month: byte;
+  day: byte;
+}
+
+// See [[java.time.LocalTime]]
+struct LocalTime {
+  hour: byte;
+  minute: byte;
+  second: byte;
+  nano: int;
+}
+
+// See [[java.time.Instant]]
+struct Instant {
+  seconds: long;
+  nanos: int;
+}
+
+// See [[java.time.LocalDateTime]]
+struct LocalDateTime {
+  local_date: LocalDate;
+  local_time: LocalTime;
+}
+
+// See [[java.time.ZonedDateTime]]
+// This must be a table rather than a struct because of the string member
+table ZonedDateTime {
+  instant: Instant (required);
+  zone_id: string (required);
+}
+
+root_type QuineValue;
+
+// Also see [[com.thatdot.quine.model.DomainGraphBranch]]
+// Unlike `DomainGraphBranch`, this can be used as a root type
+table BoxedDomainGraphBranch {
+  branch: DomainGraphBranch (required);
+}
+root_type BoxedDomainGraphBranch;

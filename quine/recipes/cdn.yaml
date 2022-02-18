@@ -1,0 +1,343 @@
+version: 1
+title: CDN Cache Efficiency By Segment
+contributor: Alok Aggarwal, Sr. Engineering Manager, Fastly - https://www.linkedin.com/in/alokaggarwal2/
+summary: Real-time computation of CDN cache node efficiency from Fastly CDN logs, with graph association of each log to it’s serving PoP, ASN, asset and cache server, to identify potential root cause of issues.
+description: Raw CDN Log data is imported from a .json file via a file ingest, and a node is created for each line. Standing queries map log data into the Quine streaming graph data model, creating graph nodes for each PoP, ASN, cache server and asset. Each of those nodes increments with a counter to track the number of cache hits and misses and calculates hit/miss ratios as data is ingested. Selecting any node (PoP, ASN…) allows you to query for associated ASNs and CDN cache servers to identify potential root cause of poor performance. Thresholds are set to create qualitative ‘state’ properties on each node indicating the health of the component as ‘good,’ ‘warn,’ or ‘alarm.’ Node appearance properties are set to add icons and colors to represent the type of node and it’s ‘state,’ respectively, in the exploration UI.
+# Note: This recipe includes numerical thresholds for the hit/miss ratios in each node creation standing query. Chnage the thresholds ads needed to provide the right color indicators for your data!
+# Single ingest of line by line data to create individual event nodes for each .json line.
+ingestStreams:
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherJson
+      query: |-
+        match (event) 
+        where id(event) = idFrom($that) 
+        set event = $that
+        set event._type = 'CDN_log_event', event:Request
+standingQueries:
+  # SQ1 - Transform the cache_status field (which contain several possible values) to a simplified "hit" or "miss" value.
+  - pattern:
+      type: Cypher
+      query: |-
+        match (event)
+        where event._type = 'CDN_log_event' and event.hit_or_miss is null
+        return distinct id(event) as id
+      mode: DistinctId
+    outputs:
+      Hit or Miss:
+        type: CypherQuery
+        query: |-
+          match (event)
+          where id(event) = $that.data.id
+          set event.hit_or_miss = case event.cache_status
+            when 'HIT' then 'hit'
+            when 'MISS' then 'miss'
+            when 'HIT-WAIT' then 'hit'
+            when 'MISS-WAIT' then 'miss'
+            when 'HIT-CLUSTER' then 'hit'
+            when 'MISS-CLUSTER' then 'miss'
+            when 'HIT-WAIT-CLUSTER' then 'hit'
+            when 'MISS-WAIT-CLUSTER' then 'miss'
+          else 'other' end
+          return null skip 1
+  # SQ2 - PoP Node Creation
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+        WHERE exists(event.pop) and exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      PoPs:
+        type: CypherQuery
+        query: |-
+          MATCH (event) 
+            WHERE id(event) = $that.data.id 
+          MATCH (p) 
+            WHERE id(p) =idFrom('PoP', event.pop) 
+          //set relationship between event and entity 'pop'//
+          CREATE (event)-[:requested_to]->(p) 
+          SET p.source = event.pop, p.type = 'pop'
+          //Set counters for Hit, Miss, and Ratios//
+          WITH * CALL incrementCounter(p, 'total')
+          WITH * CALL incrementCounter(p, event.hit_or_miss)
+          WITH * CALL incrementCounter(p, event.cache_status)
+          WITH * set p.Hit_Percent = coalesce((p.hit*1.0)/(p.total*1.0)*100.0, 0.0)
+          WITH * set p.Miss_Percent = coalesce((p.miss*1.0)/(p.total*1.0)*100.0, 0.0)
+          //Create 'state' parameter//
+          WITH * set p.state = case
+            //Set threshold ratios below for each of three cases// 
+            when p.Hit_Percent >= 15 then 'good'
+            when p.Hit_Percent >= 5 and p.Hit_Percent < 15 then 'warn'
+            when p.Hit_Percent < 5 then 'alarm'
+            else 'alarm'
+          end
+          //Create Node Label//
+          WITH * CALL create.setLabels(p, [(event.pop), 'PoP']) 
+          Return null skip 1
+  # SQ3 - ASN Node creation
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+          WHERE exists(event.client_asn) and exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      ASNs:
+        type: CypherQuery
+        query: |-
+          MATCH (event) 
+            WHERE id(event) = $that.data.id 
+          MATCH (a) 
+            WHERE id(a) = idFrom('ASN', event.client_asn) 
+          CREATE (event)-[:requested_from]->(a) 
+          SET a.asn_id = event.client_asn, a.type = 'ASN'
+          WITH * CALL incrementCounter(a, 'total')
+          WITH * CALL incrementCounter(a, event.hit_or_miss)
+          WITH * set a.Hit_Percent = coalesce((a.hit*1.0)/(a.total*1.0)*100.0, 0.0)
+          WITH * set a.Miss_Percent = coalesce((a.miss*1.0)/(a.total*1.0)*100.0, 0.0)
+          //Create 'state' parameter//
+          WITH * set a.state = case
+            //Set threshold ratios below for each of three cases// 
+            when a.Hit_Percent >= 15 then 'good'
+            when a.Hit_Percent >= 5 and a.Hit_Percent < 15 then 'warn'
+            when a.Hit_Percent < 5 then 'alarm'
+            else 'alarm'
+          end 
+          WITH * CALL create.setLabels(a, [toString(event.client_asn), 'ASN_'])
+          Return null skip 1
+  # SQ4 - Server Node Creation
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+        WHERE exists(event.server_id) and exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      Servers:
+        type: CypherQuery
+        query: |-
+          MATCH (event) 
+            WHERE id(event) = $that.data.id 
+          MATCH (s) 
+            WHERE id(s) = idFrom('Server', event.server_id) 
+          CREATE (event)-[:targeted_cache]->(s)
+          SET s.id = event.server_id, s.Ip = event.server_ip, s.type = 'Server'
+          WITH * CALL incrementCounter(s, 'total')
+          WITH * CALL incrementCounter(s, event.hit_or_miss)
+          WITH * set s.Hit_Percent = coalesce((s.hit*1.0)/(s.total*1.0)*100.0, 0.0)
+          WITH * set s.Miss_Percent = coalesce((s.miss*1.0)/(s.total*1.0)*100.0, 0.0)
+          //Create 'state' parameter//
+          WITH * set s.state = case
+            //Set threshold ratios below for each of three cases// 
+            when s.Hit_Percent >= 15 then 'good'
+            when s.Hit_Percent >= 5 and s.Hit_Percent < 15 then 'warn'
+            when s.Hit_Percent < 5 then 'alarm'
+            else 'alarm'
+          end
+          WITH * CALL create.setLabels(s,[event.server_id])
+          Return null skip 1
+  # SQ5 - Asset Node Creation
+  - pattern:
+      Assets:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+        WHERE exists(event.path) and exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      Assets:
+        type: CypherQuery
+        query: |-
+          MATCH (event) 
+            WHERE id(event) = $that.data.id
+          MATCH (ast) 
+            WHERE id(ast) = idFrom('Asset', event.path) 
+          CREATE (event)-[:req_asset]->(ast) 
+          SET ast.id = event.path, ast.Name = event.path, ast.type = 'Asset'
+          WITH * CALL incrementCounter(ast, 'total')
+          WITH * CALL incrementCounter(ast, event.hit_or_miss)
+          WITH * set ast.Hit_Percent = coalesce((ast.hit*1.0)/(ast.total*1.0)*100.0, 0.0)
+          WITH * set ast.Miss_Percent = coalesce((ast.miss*1.0)/(ast.total*1.0)*100.0, 0.0)
+          WITH * CALL create.setLabels(ast,[event.path])
+          WITH * set ast.state = case
+            //Set threshold ratios below for each of three cases// 
+            when ast.Hit_Percent >= 15 then 'good'
+            when ast.Hit_Percent >= 5 and ast.Hit_Percent < 15 then 'warn'
+            when ast.Hit_Percent < 5 then 'alarm'
+            else 'alarm'
+          end
+          Return Null Skip 1
+  # SQ6 - Relabel Request Nodes with Req-Hit (or -miss)
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+        WHERE exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      assets:
+        type: CypherQuery
+        query: |-
+          MATCH (event) 
+            WHERE id(event) = $that.data.id 
+          WITH * CALL create.setLabels(event, [(event.hit_or_miss), 'Request_'])
+          Return Null Skip 1
+nodeAppearances:
+  #Pop Icon/color *******************
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "good"
+        type: "pop"
+    icon: arrow-shrink
+    color: "#32a852"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "warn"
+        type: "pop"
+    icon: arrow-shrink
+    color: "#d68400"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "alarm"
+        type: "pop"
+    icon: arrow-shrink
+    color: "#cf151e"
+    size: 40.00
+  #ASN Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "good"
+        type: "ASN"
+    icon: radio-waves
+    color: "#32a852"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "warn"
+        type: "ASN"
+    icon: radio-waves
+    color: "#d68400"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "alarm"
+        type: "ASN"
+    icon: radio-waves
+    color: "#cf151e"
+    size: 40.00
+  #Server Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "good"
+        type: "Server"
+    icon: navicon-round
+    color: "#32a852"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "warn"
+        type: "Server"
+    icon: navicon-round
+    color: "#d68400"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "alarm"
+        type: "Server"
+    icon: navicon-round
+    color: "#cf151e"
+    size: 40.00
+  #Asset Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "good"
+        type: "Asset"
+    icon: document-text
+    color: "#32a852"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "warn"
+        type: "Asset"
+    icon: document-text
+    color: "#d68400"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - state
+        - type
+      knownValues:
+        state: "alarm"
+        type: "Asset"
+    icon: document-text
+    color: "#cf151e"
+    size: 40.00
+  #Event Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - hit_or_miss
+        - _type
+      knownValues:
+        hit_or_miss: "hit"
+        _type: "CDN_log_event"
+    icon: checkmark-circled
+    color: "#32a852"
+    size: 30.00
+  - predicate:
+      propertyKeys:
+        - hit_or_miss
+        - _type
+      knownValues:
+        hit_or_miss: "miss"
+        _type: "CDN_log_event"
+    icon: close-circled
+    color: "#cf151e"
+    size: 30.00
+quickQueries: [ ]
+sampleQueries:
+  # provide easy access to node types in the exploration ui
+  - name: PoP Node
+    query: match (p) where p.type = 'pop' return p
+  - name: ASN Nodes
+    query: match (a) where a.type = 'ASN' return a
+  - name: Server Nodes
+    query: match (s) where s.type = 'Server' return s
+  - name: Asset Nodes
+    query: match (ast) where ast.type = 'Asset' return ast

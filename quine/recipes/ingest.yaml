@@ -1,0 +1,18 @@
+version: 1
+title: Ingest
+contributor: engineering@thatdot.com
+summary: Ingest input file lines as graph nodes
+description: Ingests each line in "$in_file" as graph node with property "line".
+ingestStreams:
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherLine
+      query: |-
+        MATCH (n)
+        WHERE id(n) = idFrom($that)
+        SET n.line = $that
+standingQueries: [ ]
+nodeAppearances: [ ]
+quickQueries: [ ]
+sampleQueries: [ ]
