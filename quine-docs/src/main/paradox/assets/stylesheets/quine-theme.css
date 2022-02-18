@@ -1,0 +1,38 @@
+/** Hyperlinks in main page content **/
+
+/*
+[data-md-color-primary="thatdot-blue"] .md-typeset a, [data-md-color-primary="thatdot-blue"] .md-nav__link:active, [data-md-color-primary="thatdot-blue"] .md-nav__link--active {
+  text-decoration: underline;
+}
+*/
+
+/** Material theme override */
+
+button[data-md-color-accent="quine-blue"],
+[data-md-color-accent="quine-blue"] .md-typeset pre code::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="quine-blue"] .md-typeset .codehilite pre::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="quine-blue"] .md-search__scrollwrap::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="quine-blue"] .md-sidebar__scrollwrap::-webkit-scrollbar-thumb:hover,
+[data-md-color-accent="quine-blue"] .md-source-file:hover::before {
+  background-color: #003b94;
+}
+
+[data-md-color-accent="quine-blue"] .md-typeset a:hover,
+[data-md-color-accent="quine-blue"] .md-typeset a:active,
+[data-md-color-accent="quine-blue"] .md-typeset .md-clipboard:hover::before,
+[data-md-color-accent="quine-blue"] .md-typeset .md-clipboard:active::before,
+[data-md-color-accent="quine-blue"] .md-typeset .footnote li:hover .footnote-backref:hover,
+[data-md-color-accent="quine-blue"] .md-typeset .footnote li:target .footnote-backref,
+[data-md-color-accent="quine-blue"] .md-typeset [id]:hover .headerlink:hover,
+[data-md-color-accent="quine-blue"] .md-typeset [id]:target .headerlink,
+[data-md-color-accent="quine-blue"] .md-typeset [id] .headerlink:focus,
+[data-md-color-accent="quine-blue"] .md-nav__link:focus,
+[data-md-color-accent="quine-blue"] .md-nav__link:hover {
+  color: #003b94;
+}
+
+[data-md-color-accent="quine-blue"] .md-search-result__link[data-md-state="active"],
+[data-md-color-accent="quine-blue"] .md-search-result__link:hover {
+  background-color: rgba(121, 128, 137, 0.1);
+}
+

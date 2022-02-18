@@ -34,4 +34,3 @@ PR.registerLangHandler(
   ),
   ['cypher']
 );
-console.log("Loaded")

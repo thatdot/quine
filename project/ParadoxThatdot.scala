@@ -29,9 +29,7 @@ object ParadoxThatdot extends AutoPlugin {
   override lazy val projectSettings = inConfig(Compile)(
     Seq(
       paradoxMaterialTheme ~= {
-        _.withColor("thatdot-blue", "thatdot-grey")
-          .withCustomStylesheet("assets/thatdot-theme.css")
-          .withCustomJavaScript("assets/lang-cypher.js")
+        _ // .withColor("thatdot-blue", "thatdot-grey")
           .withoutFont()
           .withLogo("assets/images/logo.svg")
           .withFavicon("assets/images/favicon.svg")
@@ -46,7 +44,12 @@ object ParadoxThatdot extends AutoPlugin {
       templateDirectory := overlayDirectory.value / "_template",
       paradoxOverlayDirectories := Seq(overlayDirectory.value),
       paradoxTheme / sourceDirectories += templateDirectory.value,
-      paradoxTheme / WebKeys.deduplicators += SbtWeb.selectFileFrom(templateDirectory.value)
+      paradoxTheme / WebKeys.deduplicators += SbtWeb.selectFileFrom(templateDirectory.value),
+      // For included MD files (see <https://github.com/lightbend/paradox/issues/350>)
+      Compile / paradoxMarkdownToHtml / excludeFilter := {
+        (Compile / paradoxMarkdownToHtml / excludeFilter).value ||
+        ParadoxPlugin.InDirectoryFilter((Compile / paradox / sourceDirectory).value / "includes")
+      }
     )
   )
 }

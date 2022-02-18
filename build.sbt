@@ -329,7 +329,10 @@ lazy val `quine-docs`: Project = {
           .map(_ => Nil) // files returned are included, not top-level
       },
       Compile / paradoxMaterialTheme ~= {
-        _.withLogo("assets/images/logo.svg").withFavicon("assets/images/favicon.svg")
+        _.withCustomStylesheet("assets/quine.css")
+          .withLogo("assets/images/quine_logo.svg")
+          .withColor("white", "quine-blue")
+          .withFavicon("assets/images/favicon.svg")
       }
     )
 }
