@@ -4,8 +4,10 @@ version: 1
 # Identifies the Recipe but is not necessarily unique or immutable
 title: Template Recipe
 
-# Email address of the person or organization responsible for this Recipe
-contributor: name@example.com
+# Profile URL (GitHub, Twitter, etc.), email address,
+# or other identifying information of the person or organization
+# responsible for this Recipe
+contributor: https://github.com/example-user
 
 # Brief copy about this Recipe
 summary: This is a valid Recipe that ingests and writes back a file

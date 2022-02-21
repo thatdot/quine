@@ -19,7 +19,9 @@ import StandingQueryResultOutputUserDef._
 final case class Recipe(
   @docs("Schema version (only supported value is 1)") version: Int,
   @docs("Identifies the Recipe but is not necessarily unique") title: String,
-  @docs("Email address of the person or organization responsible for this Recipe") contributor: Option[String],
+  @docs(
+    "Profile URL (GitHub, Twitter, etc.), email address, or other identifying information of the person or organization responsible for this Recipe"
+  ) contributor: Option[String],
   @docs("Brief copy about this Recipe") summary: Option[String],
   @docs("Longer form copy about this Recipe") description: Option[String],
   @docs("URL to image asset for this Recipe") iconImage: Option[String],

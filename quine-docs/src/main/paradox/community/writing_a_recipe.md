@@ -56,14 +56,14 @@ statusQuery: null
 The following are brief descriptions of the Recipe fields:
 
 * `version` is for schema versioning and the only supported value is "1"
-* `title` identifies the recipe but is not necessarily unique
-* `contributor` is the profile URL (github, twitter, etc.) of the person who contributed this recipe
-* `summary` is brief copy about this recipe
-* `description` is longer form copy about this recipe
+* `title` identifies the Recipe but is not necessarily unique
+* `contributor` is the profile URL (GitHub, Twitter, etc.), email address, or other identifying information of the person or organization responsible for this Recipe
+* `summary` is brief copy about this Recipe
+* `description` is longer form copy about this Recipe
 * `nodeAppearances`, `quickQueries`, and `sampleQueries` are API entities for customizing the UI (see API reference for more information)
 * `ingestStreams` define how data is read from a data source (in this case `apache_log`)
 * `standingQueries` define how data is processed and transformed
-* `statusQuery` defines a Cypher query that is executed and reported to the recipe user
+* `statusQuery` defines a Cypher query that is executed and reported to the Recipe user
 
 At this point we have the following workspace directory:
 
@@ -225,6 +225,6 @@ Status query result Vector(Vector(Integer(9951)))
 * A Standing Query is used to organize information for efficient query
 * A status query is run periodically during Recipe execution to show status in the console
 
-# Contribute
+## Contribute
 
 If you make a Recipe and think others might find it useful, please consider contributing it back to the repository on Github so that others can use it. They could use it on their own data, or even just use it as a starting point for customization and remixing for other goals. To share with the community, just @link:[open a pull request on Github](https://github.com/thatdot/quine/pulls).
