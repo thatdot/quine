@@ -3,7 +3,8 @@ title: CDN Cache Efficiency By Segment
 contributor: Alok Aggarwal, Sr. Engineering Manager, Fastly - https://www.linkedin.com/in/alokaggarwal2/
 summary: Real-time computation of CDN cache node efficiency from Fastly CDN logs, with graph association of each log to it’s serving PoP, ASN, asset and cache server, to identify potential root cause of issues.
 description: Raw CDN Log data is imported from a .json file via a file ingest, and a node is created for each line. Standing queries map log data into the Quine streaming graph data model, creating graph nodes for each PoP, ASN, cache server and asset. Each of those nodes increments with a counter to track the number of cache hits and misses and calculates hit/miss ratios as data is ingested. Selecting any node (PoP, ASN…) allows you to query for associated ASNs and CDN cache servers to identify potential root cause of poor performance. Thresholds are set to create qualitative ‘state’ properties on each node indicating the health of the component as ‘good,’ ‘warn,’ or ‘alarm.’ Node appearance properties are set to add icons and colors to represent the type of node and it’s ‘state,’ respectively, in the exploration UI.
-# Note: This recipe includes numerical thresholds for the hit/miss ratios in each node creation standing query. Chnage the thresholds ads needed to provide the right color indicators for your data!
+# Note: Sample data file for this recipe is in the file 'cdn_data_25k.json' which can be accessed at: https://that.re/cdn-data
+# Note: This recipe includes numerical thresholds for the hit/miss ratios in each node creation standing query. Change the thresholds as needed to provide the right color indicators for your data!
 # Single ingest of line by line data to create individual event nodes for each .json line.
 ingestStreams:
   - type: FileIngest
