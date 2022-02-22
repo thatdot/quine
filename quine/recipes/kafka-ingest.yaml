@@ -1,0 +1,20 @@
+version: 1
+title: Kafka Ingest
+contributor: engineering@thatdot.com
+summary: Ingest Kafka topic messages as graph nodes
+description: Ingests each message in the Kafka topic "test-topic" as a graph node
+ingestStreams:
+  - type: KafkaIngest
+    topics:
+      - test-topic
+    bootstrapServers: localhost:9092
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (n)
+        WHERE id(n) = idFrom($that)
+        SET n = $that
+standingQueries: [ ]
+nodeAppearances: [ ]
+quickQueries: [ ]
+sampleQueries: [ ]
