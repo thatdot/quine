@@ -389,6 +389,23 @@ final case class FileIngest(
   ) fileIngestMode: Option[FileIngestMode]
 ) extends IngestStreamConfiguration
 
+/** Standard input ingest stream configuration */
+@title("Standard Input Ingest Stream")
+@unnamed
+@docs("An active stream of data being ingested from standard input to this Quine process.")
+final case class StandardInputIngest(
+  format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
+  @docs(s"""text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly
+           |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).""".stripMargin)
+  encoding: String = "UTF-8",
+  @docs("maximum number of records being processed as once")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
+  @docs("maximum size (in bytes) of any line")
+  maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
+  @docs("maximum records to process per second")
+  maximumPerSecond: Option[Int]
+) extends IngestStreamConfiguration
+
 @title("File Ingest Format")
 @docs("Format by which a file will be interpreted as a stream of elements for ingest.")
 sealed abstract class FileIngestFormat

@@ -1,0 +1,33 @@
+version: 1
+title: Pipe
+contributor: https://github.com/landon9720
+summary: Ingest from Standard Input and writes to Standard Output
+description: |-
+  Ingests each line from Standard Input as a graph node with property "line".
+  All graph nodes all written to Standard Output.
+ingestStreams:
+  - type: StandardInputIngest
+    format:
+      type: CypherLine
+      query: |-
+        MATCH (n)
+        WHERE id(n) = idFrom($that)
+        SET n.line = $that
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (n)
+        RETURN DISTINCT id(n) AS id
+    outputs:
+      output-1:
+        type: CypherQuery
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          RETURN n.line AS line
+        andThen:
+          type: PrintToStandardOut
+nodeAppearances: [ ]
+quickQueries: [ ]
+sampleQueries: [ ]

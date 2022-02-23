@@ -53,9 +53,9 @@ Sends a message to Slack via a configured Slack App webhook URL. See @link:[http
 
 Slack limits the rate of messages which can be posted; limited to 1 message per second at the time of writing. Quine matches that rate-limit internally by aggregating `StandingQueryResult`s together if they arrive faster than can be published to Slack. The aggregated results will be published as a single message to Slack when the rate-limit allows.
 
-### Log JSON to Console
+### Log JSON to Standard Out
 
-Prints each result as a single-line JSON object to stdout on the Quine server. This output type can be configured with `Complete`  to print a line for every `StandingQueryResult`, backpressuring and slowing down the stream as needed to print every result. Or it can be configured with `FastSampling` to log results in a best-effort, but dropping some results if it would slow down the stream. Note that neither option changes the behavior of other StandingQueryResultOutputs registered on the same standing query.
+Prints each result as a single-line JSON object to standard output on the Quine server. This output type can be configured with `Complete` to print a line for every `StandingQueryResult`, backpressuring and slowing down the stream as needed to print every result. Or it can be configured with `FastSampling` to log results in a best-effort, but dropping some results if it would slow down the stream. Note that neither option changes the behavior of other StandingQueryResultOutputs registered on the same standing query.
 
 ### Log JSON to a File
 

@@ -10,7 +10,7 @@ Each file has one special feature which distinguishes it from a normal stream of
 
 `"type" : "CypherJson"`
 
-JSON data is ubiquitous; it is a very natural source of a data fora  streaming system. The typical approach is to save records as JSON objects to a file, separated by new-lines: `\n`. It is very common to call that format a `.json` file. That format is not technically valid JSON, and so sometimes it is referred to as "@link:[JSON Lines](https://jsonlines.org)" and given the `.jsonl` file extension.
+JSON data is ubiquitous; it is a very natural source of a data for a streaming system. The typical approach is to save records as JSON objects to a file, separated by new-lines: `\n`. It is very common to call that format a `.json` file. That format is not technically valid JSON, and so sometimes it is referred to as "@link:[JSON Lines](https://jsonlines.org)" and given the `.jsonl` file extension.
 
 Quine reads these `.json` or `.jsonl` files one line at a time, passing each parsed JSON object to the Cypher ingest query as `$that` to be used in the rest of the ingest query.
 

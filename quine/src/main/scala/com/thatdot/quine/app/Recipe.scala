@@ -208,6 +208,20 @@ object Recipe {
             maximumPerSecond,
             fileIngestMode
           )
+        case StandardInputIngest(
+              format,
+              encoding,
+              parallelism,
+              maximumLineSize,
+              maximumPerSecond
+            ) =>
+          StandardInputIngest(
+            format,
+            encoding,
+            parallelism,
+            maximumLineSize,
+            maximumPerSecond
+          )
       },
       standingQueries = recipe.standingQueries.map(sq =>
         sq.copy(

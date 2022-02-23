@@ -177,145 +177,194 @@ package object importers extends StrictLogging {
             maxPerSecond,
             fileIngestMode
           ) =>
-        def throttled[A] = maxPerSecond match {
-          case None => Flow[A]
-          case Some(perSec) => Flow[A].throttle(perSec, 1.second)
-        }
-
-        val newLineDelimited = Framing
-          .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)
-          .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
-
-        def bounded[A] = ingestLimit match {
-          case None => Flow[A].drop(startAtOffset)
-          case Some(limit) => Flow[A].drop(startAtOffset).take(limit)
-        }
-
-        /* Extract out the character set that should be assumed, along with a possible
-         * transcoding flow needed to reach that encoding. Although we want to support all character
-         * sets, this is quite difficult when our framing methods are designed to work over byte
-         * sequences. Thankfully, since we frame over only a small number of delimiters, we can
-         * overfit to a small subset of very common encodings which:
-         *
-         *   - share the same single-byte representation for these delimiter characters
-         *   - those single-byte representations can't occur anywhere else in the string's bytes
-         *
-         * For all other character sets, we first transcode to UTF-8.
-         *
-         * TODO: optimize ingest for other character sets (transcoding is not cheap)
-         */
-        val (charset, transcode) = Charset.forName(encodingString) match {
-          case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
-            userCharset -> Flow[ByteString]
-          case otherCharset =>
-            logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
-            StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
-        }
-
-        def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], cypher.Value, NotUsed] =
-          headerDef match {
-            case Right(h) =>
-              CsvToMap
-                .withHeaders(h: _*)
-                .via(bounded)
-                .wireTap(bssm => meter.mark(bssm.values.map(_.length).sum))
-                .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
-            case Left(true) =>
-              CsvToMap
-                .toMap()
-                .via(bounded)
-                .wireTap(bssm => meter.mark(bssm.values.map(_.length).sum))
-                .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
-            case Left(false) =>
-              Flow[List[ByteString]]
-                .via(bounded)
-                .wireTap((bss: Seq[ByteString]) => meter.mark(bss.map(_.length).sum))
-                .map(l => cypher.Expr.List(l.map(bs => cypher.Expr.Str(bs.decodeString(charset))).toVector))
-          }
-
-        val source = NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode)
-
-        val ((cypherQuery, cypherParameterName), deserializedSource): (
-          (String, String),
-          Source[Value, (UniqueKillSwitch, Future[ValveSwitch])]
-        ) = format match {
-          case FileIngestFormat.CypherLine(query, parameterName) =>
-            query -> parameterName -> source
-              .via(transcode)
-              .via(newLineDelimited)
-              .viaMat(KillSwitches.single)(Keep.right)
-              .viaMat(Valve(initialSwitchMode))(Keep.both)
-              .via(bounded)
-              .wireTap(bs => meter.mark(bs.length))
-              .map(bs => cypher.Expr.Str(bs.decodeString(charset)))
-          case FileIngestFormat.CypherJson(query, parameterName) =>
-            query -> parameterName -> source
-              .via(transcode)
-              .via(newLineDelimited)
-              .viaMat(KillSwitches.single)(Keep.right)
-              .viaMat(Valve(initialSwitchMode))(Keep.both)
-              .via(bounded)
-              .wireTap(bs => meter.mark(bs.length))
-              .map(bs => cypher.Value.fromJson(ujson.read(bs.decodeString(charset))))
-          case FileIngestFormat.CypherCsv(query, parameterName, headers, delimiter, quote, escape) =>
-            query -> parameterName -> source
-              .via(transcode)
-              .via(CsvParsing.lineScanner(delimiter.char, quote.char, escape.char, maximumLineSize))
-              .via(csvHeadersFlow(headers))
-              .viaMat(KillSwitches.single)(Keep.right)
-              .viaMat(Valve(initialSwitchMode))(Keep.both)
-        }
-
-        // TODO: think about error handling of failed compilation
-        val compiled = compiler.cypher.compile(
-          cypherQuery,
-          unfixedParameters = Seq(cypherParameterName)
+        ingestFromSource(
+          initialSwitchMode,
+          format,
+          NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode),
+          encodingString,
+          parallelism,
+          maximumLineSize,
+          startAtOffset,
+          ingestLimit,
+          maxPerSecond,
+          meter,
+          IngestSrcExecToken(s"File: $path")
         )
-        if (!compiled.query.isIdempotent) {
-          // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
-          logger.warn(
-            """Could not verify that the provided ingest query is idempotent. If timeouts occur, query
-              |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
-          )
-        }
 
-        val execToken = IngestSrcExecToken(s"File: $path")
-
-        deserializedSource
-          .via(throttled)
-          .via(graph.ingestThrottleFlow)
-          .mapAsyncUnordered(parallelism) { (value: cypher.Value) =>
-            // this Source represents the work that would be needed to query over one specific `value`
-            // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
-            // If a recoverable error occurs, instead return a Source that will fail after a small delay
-            // so that recoverWithRetries (below) can retry the query
-            def cypherQuerySource: Source[Vector[Value], NotUsed] =
-              try compiled
-                .run(parameters = Map(cypherParameterName -> value))(graph)
-                .results
-              catch {
-                case RetriableIngestFailure(e) =>
-                  // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above
-                  Source.future(akka.pattern.after(100.millis)(Future.failed(e))(graph.system))
-              }
-
-            cypherQuerySource
-              .recoverWithRetries(
-                attempts = -1, // retry forever, relying on the relayAsk timer itself to slow down attempts
-                { case RetriableIngestFailure(e) =>
-                  logger.info(
-                    s"""Suppressed ${e.getClass.getSimpleName} during execution of file ingest query, retrying now.
-                       |Ingested item: $value. Query: "$cypherQuery. Suppressed exception:
-                       |${e.getMessage}"""".stripMargin.replace('\n', ' ')
-                  )
-                  cypherQuerySource
-                }
-              )
-              .runWith(Sink.ignore)
-              .map(_ => execToken)
-          }
-          .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c)) }
+      case StandardInputIngest(
+            format,
+            encodingString,
+            parallelism,
+            maximumLineSize,
+            maxPerSecond
+          ) =>
+        ingestFromSource(
+          initialSwitchMode,
+          format,
+          StreamConverters.fromInputStream(() => System.in).mapMaterializedValue(_ => NotUsed),
+          encodingString,
+          parallelism,
+          maximumLineSize,
+          startAtOffset = 0L,
+          ingestLimit = None,
+          maxPerSecond,
+          meter,
+          IngestSrcExecToken("STDIN")
+        )
     }
+
+  private def ingestFromSource(
+    initialSwitchMode: SwitchMode,
+    format: FileIngestFormat,
+    source: Source[ByteString, NotUsed],
+    encodingString: String,
+    parallelism: Int,
+    maximumLineSize: Int,
+    startAtOffset: Long,
+    ingestLimit: Option[Long],
+    maxPerSecond: Option[Int],
+    meter: IngestMeter,
+    execToken: IngestSrcExecToken
+  )(implicit
+    graph: CypherOpsGraph,
+    executionContext: ExecutionContext,
+    materializer: Materializer
+  ): Source[IngestSrcExecToken, Future[ControlSwitches]] = {
+    def throttled[A] = maxPerSecond match {
+      case None => Flow[A]
+      case Some(perSec) => Flow[A].throttle(perSec, 1.second)
+    }
+
+    val newLineDelimited = Framing
+      .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)
+      .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
+
+    def bounded[A] = ingestLimit match {
+      case None => Flow[A].drop(startAtOffset)
+      case Some(limit) => Flow[A].drop(startAtOffset).take(limit)
+    }
+
+    /* Extract out the character set that should be assumed, along with a possible
+     * transcoding flow needed to reach that encoding. Although we want to support all character
+     * sets, this is quite difficult when our framing methods are designed to work over byte
+     * sequences. Thankfully, since we frame over only a small number of delimiters, we can
+     * overfit to a small subset of very common encodings which:
+     *
+     *   - share the same single-byte representation for these delimiter characters
+     *   - those single-byte representations can't occur anywhere else in the string's bytes
+     *
+     * For all other character sets, we first transcode to UTF-8.
+     *
+     * TODO: optimize ingest for other character sets (transcoding is not cheap)
+     */
+    val (charset, transcode) = Charset.forName(encodingString) match {
+      case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
+        userCharset -> Flow[ByteString]
+      case otherCharset =>
+        logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
+        StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
+    }
+
+    def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =
+      headerDef match {
+        case Right(h) =>
+          CsvToMap
+            .withHeaders(h: _*)
+            .via(bounded)
+            .wireTap(bssm => meter.mark(bssm.values.map(_.length).sum))
+            .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+        case Left(true) =>
+          CsvToMap
+            .toMap()
+            .via(bounded)
+            .wireTap(bssm => meter.mark(bssm.values.map(_.length).sum))
+            .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+        case Left(false) =>
+          Flow[List[ByteString]]
+            .via(bounded)
+            .wireTap((bss: Seq[ByteString]) => meter.mark(bss.map(_.length).sum))
+            .map(l => cypher.Expr.List(l.map(bs => cypher.Expr.Str(bs.decodeString(charset))).toVector))
+      }
+
+    val ((cypherQuery, cypherParameterName), deserializedSource): (
+      (String, String),
+      Source[Value, (UniqueKillSwitch, Future[ValveSwitch])]
+    ) = format match {
+      case FileIngestFormat.CypherLine(query, parameterName) =>
+        query -> parameterName -> source
+          .via(transcode)
+          .via(newLineDelimited)
+          .viaMat(KillSwitches.single)(Keep.right)
+          .viaMat(Valve(initialSwitchMode))(Keep.both)
+          .via(bounded)
+          .wireTap(bs => meter.mark(bs.length))
+          .map(bs => cypher.Expr.Str(bs.decodeString(charset)))
+      case FileIngestFormat.CypherJson(query, parameterName) =>
+        query -> parameterName -> source
+          .via(transcode)
+          .via(newLineDelimited)
+          .viaMat(KillSwitches.single)(Keep.right)
+          .viaMat(Valve(initialSwitchMode))(Keep.both)
+          .via(bounded)
+          .wireTap(bs => meter.mark(bs.length))
+          .map(bs => cypher.Value.fromJson(ujson.read(bs.decodeString(charset))))
+      case FileIngestFormat.CypherCsv(query, parameterName, headers, delimiter, quote, escape) =>
+        query -> parameterName -> source
+          .via(transcode)
+          .via(CsvParsing.lineScanner(delimiter.char, quote.char, escape.char, maximumLineSize))
+          .via(csvHeadersFlow(headers))
+          .viaMat(KillSwitches.single)(Keep.right)
+          .viaMat(Valve(initialSwitchMode))(Keep.both)
+    }
+
+    // TODO: think about error handling of failed compilation
+    val compiled = compiler.cypher.compile(
+      cypherQuery,
+      unfixedParameters = Seq(cypherParameterName)
+    )
+    if (!compiled.query.isIdempotent) {
+      // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
+      logger.warn(
+        """Could not verify that the provided ingest query is idempotent. If timeouts occur, query
+          |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
+      )
+    }
+
+    deserializedSource
+      .via(throttled)
+      .via(graph.ingestThrottleFlow)
+      .mapAsyncUnordered(parallelism) { (value: Value) =>
+        // this Source represents the work that would be needed to query over one specific `value`
+        // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
+        // If a recoverable error occurs, instead return a Source that will fail after a small delay
+        // so that recoverWithRetries (below) can retry the query
+        def cypherQuerySource: Source[Vector[Value], NotUsed] =
+          try compiled
+            .run(parameters = Map(cypherParameterName -> value))(graph)
+            .results
+          catch {
+            case RetriableIngestFailure(e) =>
+              // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above
+              Source.future(akka.pattern.after(100.millis)(Future.failed(e))(graph.system))
+          }
+
+        cypherQuerySource
+          .recoverWithRetries(
+            attempts = -1, // retry forever, relying on the relayAsk timer itself to slow down attempts
+            { case RetriableIngestFailure(e) =>
+              logger.info(
+                s"""Suppressed ${e.getClass.getSimpleName} during execution of file ingest query, retrying now.
+                   |Ingested item: $value. Query: "$cypherQuery. Suppressed exception:
+                   |${e.getMessage}"""".stripMargin.replace('\n', ' ')
+              )
+              cypherQuerySource
+            }
+          )
+          .runWith(Sink.ignore)
+          .map(_ => execToken)
+      }
+      .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c)) }
+  }
 
   private[this] def importFormatFor(label: StreamedRecordFormat): ImportFormat with KafkaImportFormat =
     label match {

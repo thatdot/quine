@@ -38,7 +38,7 @@ object NamedPipeSource extends LazyLogging {
   def fileOrNamedPipeSource(
     path: Path,
     fileIngestMode: Option[FileIngestMode]
-  ): Source[ByteString, Object] = {
+  ): Source[ByteString, NotUsed] = {
     val isNamedPipe = fileIngestMode map (_ == NamedPipe) getOrElse {
       try POSIXFactory.getPOSIX.stat(path.toString).isFifo
       catch {
@@ -51,7 +51,7 @@ object NamedPipeSource extends LazyLogging {
       logger.debug(s"Using named pipe mode for reading $path")
       NamedPipeSource.fromPath(path)
     } else
-      FileIO.fromPath(path)
+      FileIO.fromPath(path).mapMaterializedValue(_ => NotUsed)
   }
 
   private[this] val attributes = Attributes.name("namedPipeSource")
