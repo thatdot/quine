@@ -10,12 +10,20 @@
   background-color: #bbb;
 }
 
+pre.wrap {
+  white-space: pre-wrap;
+  /* Equivalents for older browsers: */
+  white-space: -moz-pre-wrap;
+  white-space: -pre-wrap;
+  white-space: -o-pre-wrap;
+  word-wrap: break-word;
+}
+
 .message-bar {
   position: absolute;
   bottom: 0;
   width: 100%;
   box-sizing: content-box;
-  overflow-y: scroll;
 }
 .message-bar-button {
   cursor: pointer;

@@ -847,12 +847,33 @@ import com.thatdot.{visnetwork => vis}
 
         case Failure(err) =>
           val message = err.getMessage
-          val fallbackMessage = if (message.isEmpty) "Cannot connect to server" else message
-          val failureBar = MessageBarContent(pre(fallbackMessage), "pink")
+          val contents = Seq.newBuilder[ReactElement]
+          contents += pre(className := "wrap")(if (message.isEmpty) "Cannot connect to server" else message)
+          if (message.startsWith("TypeMismatchError Expected type(s) Node but got value")) {
+            val failedQuery = state.query
+            contents += a(
+              onClick := { () =>
+                setState(
+                  _.copy(
+                    query = failedQuery
+                  )
+                )
+                submitQuery(UiQueryType.Text)
+              },
+              href := "#"
+            )("Run again as text query")
+          }
           setState(s =>
             s.copy(
               queryBarColor = Some("pink"),
-              bottomBar = Some(failureBar),
+              bottomBar = Some(
+                MessageBarContent(
+                  div(
+                    contents.result
+                  ),
+                  "pink"
+                )
+              ),
               runningQueryCount = s.runningQueryCount - 1
             )
           )
