@@ -20,7 +20,7 @@ final case class Recipe(
   @docs("Schema version (only supported value is 1)") version: Int,
   @docs("Identifies the Recipe but is not necessarily unique") title: String,
   @docs(
-    "Profile URL (GitHub, Twitter, etc.), email address, or other identifying information of the person or organization responsible for this Recipe"
+    "URL to social profile of the person or organization responsible for this Recipe"
   ) contributor: Option[String],
   @docs("Brief copy about this Recipe") summary: Option[String],
   @docs("Longer form copy about this Recipe") description: Option[String],

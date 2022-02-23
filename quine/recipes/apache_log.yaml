@@ -1,6 +1,6 @@
 version: 1
 title: Apache Log Analytics
-contributor: engineering@thatdot.com
+contributor: https://github.com/joshcody
 summary: ''
 description: ''
 ingestStreams:

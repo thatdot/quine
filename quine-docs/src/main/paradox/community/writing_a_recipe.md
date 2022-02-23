@@ -57,7 +57,7 @@ The following are brief descriptions of the Recipe fields:
 
 * `version` is for schema versioning and the only supported value is "1"
 * `title` identifies the Recipe but is not necessarily unique
-* `contributor` is the profile URL (GitHub, Twitter, etc.), email address, or other identifying information of the person or organization responsible for this Recipe
+* `contributor` URL to social profile of the person or organization responsible for this Recipe
 * `summary` is brief copy about this Recipe
 * `description` is longer form copy about this Recipe
 * `nodeAppearances`, `quickQueries`, and `sampleQueries` are API entities for customizing the UI (see API reference for more information)

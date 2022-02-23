@@ -4,9 +4,7 @@ version: 1
 # Identifies the Recipe but is not necessarily unique or immutable
 title: Template Recipe
 
-# Profile URL (GitHub, Twitter, etc.), email address,
-# or other identifying information of the person or organization
-# responsible for this Recipe
+# URL to social profile of the person or organization responsible for this Recipe
 contributor: https://github.com/example-user
 
 # Brief copy about this Recipe

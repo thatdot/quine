@@ -1,6 +1,6 @@
 version: 1
 title: Kafka Ingest
-contributor: engineering@thatdot.com
+contributor: https://github.com/landon9720
 summary: Ingest Kafka topic messages as graph nodes
 description: Ingests each message in the Kafka topic "test-topic" as a graph node
 ingestStreams:

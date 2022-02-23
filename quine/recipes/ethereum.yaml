@@ -1,6 +1,6 @@
 version: 1
 title: Ethereum Tag Propagation
-contributor: engineering@thatdot.com
+contributor: https://github.com/emanb29
 summary: Ethereum Blockchain model with tag propagation
 description: |-
   Models data on the thoroughgoing Ethereum blockchain using tag propagation

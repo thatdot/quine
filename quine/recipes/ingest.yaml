@@ -1,6 +1,6 @@
 version: 1
 title: Ingest
-contributor: engineering@thatdot.com
+contributor: https://github.com/landon9720
 summary: Ingest input file lines as graph nodes
 description: Ingests each line in "$in_file" as graph node with property "line".
 ingestStreams:

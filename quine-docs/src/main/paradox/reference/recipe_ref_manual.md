@@ -45,7 +45,7 @@ A Recipe is represented by a text file containing either JSON or YAML structured
 
 * `version`: Schema versioning; only supported value is 1 (number)
 * `title`: Identifies the Recipe but is not necessarily unique or immutable (string)
-* `contributor` is the profile URL (GitHub, Twitter, etc.), email address, or other identifying information of the person or organization responsible for this Recipe
+* `contributor` URL to social profile of the person or organization responsible for this Recipe
 * `summary`: Brief copy about this Recipe (string)
 * `description` Longer form copy about this Recipe (string)
 * `ingestStreams`: Define how data is read from data sources (array of `IngestStream` API objects¹)
