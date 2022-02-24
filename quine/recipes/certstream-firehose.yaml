@@ -18,17 +18,15 @@ standingQueries:
       type: Cypher
       query: MATCH (n) RETURN DISTINCT id(n) AS id
     outputs:
-      log-new-nodes:
+      log-new-certs:
         type: CypherQuery
         query: |-
           MATCH (n)
           WHERE id(n) = $that.data.id
-          RETURN n
+          RETURN n.data
         andThen:
           type: PrintToStandardOut
           logMode: FastSampling
-
 nodeAppearances: []
 quickQueries: []
 sampleQueries: []
-statusQuery: []
