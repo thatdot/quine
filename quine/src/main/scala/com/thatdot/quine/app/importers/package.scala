@@ -231,7 +231,9 @@ package object importers extends StrictLogging {
       case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
         userCharset -> Flow[ByteString]
       case otherCharset =>
-        logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
+        logger.warn(
+          s"Charset-sensitive ingest does not directly support $otherCharset - transcoding through UTF-8 first"
+        )
         StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
     }
 
