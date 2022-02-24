@@ -1,5 +1,10 @@
 package com.thatdot.quine.app.importers
 
+import java.nio.charset.Charset
+
+import scala.compat.ExecutionContexts
+import scala.util.{Failure, Success}
+
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
@@ -16,17 +21,15 @@ import akka.stream.KillSwitches
 import akka.stream.contrib.{SwitchMode, Valve}
 import akka.stream.scaladsl.{Flow, Keep, Source}
 import akka.util.ByteString
+
+import com.typesafe.scalalogging.LazyLogging
+
 import com.thatdot.quine.app.ControlSwitches
 import com.thatdot.quine.app.importers.WebsocketSimpleStartup.UpgradeFailedException
 import com.thatdot.quine.app.importers.serialization.ImportFormat
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}
-import com.typesafe.scalalogging.LazyLogging
-
-import java.nio.charset.Charset
-import scala.compat.ExecutionContexts
-import scala.util.{Failure, Success}
 object WebsocketSimpleStartup {
   class UpgradeFailedException(cause: Throwable)
       extends RuntimeException("Unable to upgrade to websocket connection", cause) {
