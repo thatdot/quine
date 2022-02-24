@@ -166,6 +166,19 @@ package object importers extends StrictLogging {
         )
         sqsStream.stream
 
+      case WebsocketIngestSimpleStartup(format, wsUrl, initMessages, parallelism, encoding) =>
+        val (charset, transcoder) = getTranscoder(encoding)
+        WebsocketSimpleStartup(
+          importFormatFor(format),
+          wsUrl,
+          initMessages,
+          parallelism,
+          charset,
+          transcoder,
+          meter,
+          initialSwitchMode
+        ).stream
+
       case FileIngest(
             format,
             path,
@@ -213,6 +226,15 @@ package object importers extends StrictLogging {
         )
     }
 
+  private def getTranscoder(charsetName: String): (Charset, Flow[ByteString, ByteString, NotUsed]) =
+    Charset.forName(charsetName) match {
+      case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
+        userCharset -> Flow[ByteString]
+      case otherCharset =>
+        logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
+        StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
+    }
+
   private def ingestFromSource(
     initialSwitchMode: SwitchMode,
     format: FileIngestFormat,
@@ -257,13 +279,7 @@ package object importers extends StrictLogging {
      *
      * TODO: optimize ingest for other character sets (transcoding is not cheap)
      */
-    val (charset, transcode) = Charset.forName(encodingString) match {
-      case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
-        userCharset -> Flow[ByteString]
-      case otherCharset =>
-        logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
-        StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
-    }
+    val (charset, transcode) = getTranscoder(encodingString)
 
     def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =
       headerDef match {

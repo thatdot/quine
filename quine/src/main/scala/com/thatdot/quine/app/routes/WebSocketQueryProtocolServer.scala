@@ -94,7 +94,7 @@ trait WebSocketQueryProtocolServer
           clientMessages.out
             .flatMapConcat {
               case textMessage: ws.TextMessage =>
-                textMessage.getStreamedText
+                textMessage.textStream
                   .fold("")(_ + _)
                   .map(deserializeClientTextMessage)
               case _: ws.BinaryMessage =>

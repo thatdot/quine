@@ -186,6 +186,14 @@ object Recipe {
             deleteReadMessages,
             maximumPerSecond
           )
+        case WebsocketIngestSimpleStartup(format, wsUrl, initMessages, parallelism, encoding) =>
+          WebsocketIngestSimpleStartup(
+            format,
+            applySubstitution(wsUrl, values),
+            initMessages.map(_.subs),
+            parallelism,
+            encoding
+          )
         case FileIngest(
               format,
               path,
