@@ -623,7 +623,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
 
       interceptQuery(
-        "MATCH (p) WHERE p.first = 'Molly' RETURN p.last.nonExistantProperty",
+        "MATCH (p) WHERE p.first = 'Molly' RETURN p.last.nonExistentProperty",
         CypherException.TypeMismatch(
           expected = Seq(
             Type.Map,
