@@ -227,6 +227,19 @@ package object importers extends StrictLogging {
         )
     }
 
+  /* Identify by name the character set that should be assumed, along with a possible
+   * transcoding flow needed to reach that encoding. Although we want to support all character
+   * sets, this is quite difficult when our framing methods are designed to work over byte
+   * sequences. Thankfully, for content-delimited formats, since we frame over only a small
+   * number of delimiters, we can overfit to a small subset of very common encodings which:
+   *
+   *   - share the same single-byte representation for these delimiter characters
+   *   - those single-byte representations can't occur anywhere else in the string's bytes
+   *
+   * For all other character sets, we first transcode to UTF-8.
+   *
+   * TODO: optimize ingest for other character sets (transcoding is not cheap)
+   */
   private def getTranscoder(charsetName: String): (Charset, Flow[ByteString, ByteString, NotUsed]) =
     Charset.forName(charsetName) match {
       case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
@@ -269,19 +282,6 @@ package object importers extends StrictLogging {
       case Some(limit) => Flow[A].drop(startAtOffset).take(limit)
     }
 
-    /* Extract out the character set that should be assumed, along with a possible
-     * transcoding flow needed to reach that encoding. Although we want to support all character
-     * sets, this is quite difficult when our framing methods are designed to work over byte
-     * sequences. Thankfully, since we frame over only a small number of delimiters, we can
-     * overfit to a small subset of very common encodings which:
-     *
-     *   - share the same single-byte representation for these delimiter characters
-     *   - those single-byte representations can't occur anywhere else in the string's bytes
-     *
-     * For all other character sets, we first transcode to UTF-8.
-     *
-     * TODO: optimize ingest for other character sets (transcoding is not cheap)
-     */
     val (charset, transcode) = getTranscoder(encodingString)
 
     def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =

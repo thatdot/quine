@@ -9,7 +9,6 @@ import scala.util.{Failure, Success}
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.IllegalUriException
 import akka.http.scaladsl.model.ws.{
   BinaryMessage,
   InvalidUpgradeResponse,
@@ -37,10 +36,11 @@ import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
 object WebsocketSimpleStartup {
   class UpgradeFailedException(cause: Throwable)
       extends RuntimeException("Unable to upgrade to websocket connection", cause) {
+
     def this(cause: String) = this(new Throwable(cause))
   }
 }
-case class WebsocketSimpleStartup(
+final case class WebsocketSimpleStartup(
   format: ImportFormat,
   wsUrl: String,
   initMessages: Seq[String],
@@ -51,7 +51,7 @@ case class WebsocketSimpleStartup(
   meter: IngestMeter,
   initialSwitchMode: SwitchMode
 ) extends LazyLogging {
-  @throws[IllegalUriException]("When the provided url is invalid")
+  @throws[IllegalArgumentException]("When the provided url is invalid")
   def stream(implicit graph: CypherOpsGraph): IngestSrcType[ControlSwitches] = {
     implicit val system: ActorSystem = graph.system
     val execToken = IngestSrcExecToken(s"WebSocket: $wsUrl")

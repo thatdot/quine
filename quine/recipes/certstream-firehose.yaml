@@ -7,8 +7,8 @@ description: |-
   connecting to the certstream firehose via SSL-encrypted websocket and printing to
   standard out each time a new certificate is detected
 ingestStreams:
-  - type: WebsocketIngestSimpleStartup
-    wsUrl: wss://certstream.calidog.io/
+  - type: WebsocketSimpleStartupIngest
+    url: wss://certstream.calidog.io/
     format:
       type: CypherJson
       query: |-
