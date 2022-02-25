@@ -277,6 +277,8 @@ lazy val `quine-docs`: Project = {
     Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_functions.md")
   val cypherTable3 =
     Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_procedures.md")
+  val recipesFolder =
+    Def.task((Compile / paradox / sourceManaged).value / "recipes")
   Project("quine-docs", file("quine-docs"))
     .dependsOn(`quine`)
     .settings(commonSettings)
@@ -314,6 +316,13 @@ lazy val `quine-docs`: Project = {
       Compile / paradox / mappings ++= List(
         docJson.value -> "reference/openapi.json"
       ),
+      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
+        val inDir: File = (quine / baseDirectory).value / "recipes"
+        val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
+        (Compile / runMain)
+          .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
+          .map(_ => (outDir * "*.md").get)
+      },
       Compile / paradoxNavigationDepth := 3,
       Compile / paradoxNavigationExpandDepth := Some(3),
       paradoxRoots := List("index.html", "docs.html", "about.html", "download.html"),

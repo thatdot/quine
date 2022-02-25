@@ -6,6 +6,7 @@
 * @ref:[Components](components/index.md)
 * @ref:[Reference](reference/index.md)
 * @ref:[Community](community/index.md)
+* @ref:[Recipes](recipes/index.md)
 @@@
 
 @@toc { depth=1 }
