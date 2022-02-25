@@ -10,6 +10,11 @@ on:
       - main
   pull_request:
 
+env:
+  # define Java options for both official sbt and sbt-extras
+  JAVA_OPTS: -Xms4096M -Xmx4096M -Xss6M -Dfile.encoding=UTF-8
+  JVM_OPTS:  -Xms4096M -Xmx4096M -Xss6M -Dfile.encoding=UTF-8
+
 jobs:
   test_scala_213:
     name: Test (Scala 2.13)
