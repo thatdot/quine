@@ -27,11 +27,9 @@ object FlatcPlugin extends AutoPlugin {
 
   import autoImport._
 
-  override def projectSettings: Seq[Def.Setting[_]] =
+  // Use `buildSettings` to download the `flatc` executable only once (not once per project)
+  override def buildSettings: Seq[Def.Setting[_]] =
     Seq(
-      flatcOptions := Seq("--java"),
-      flatcSources := Seq((Compile / sourceDirectory).value / "fbs"),
-      flatcOutput := (Compile / sourceManaged).value / "fbs",
       flatcDependency := {
         val prefix = "https://github.com/google/flatbuffers/releases/download/v2.0.0/"
         val suffixOpt =
@@ -43,7 +41,7 @@ object FlatcPlugin extends AutoPlugin {
         suffixOpt.map(suffix => new URL(prefix + suffix))
       },
       flatcExecutable := {
-        val outputDirectory = (Compile / target).value / "flatc"
+        val outputDirectory = (ThisBuild / baseDirectory).value / BuildPaths.DefaultTargetName / "flatc"
         val url: URL = flatcDependency.value.getOrElse {
           val os = System.getProperty("os.name")
           val suggestion = "set flatcExecutable := file(path-to-flatc)"
@@ -88,7 +86,14 @@ object FlatcPlugin extends AutoPlugin {
 
         getFlatc(outputDirectory, url)
 
-      },
+      }
+    )
+
+  override def projectSettings: Seq[Def.Setting[_]] =
+    Seq(
+      flatcOptions := Seq("--java"),
+      flatcSources := Seq((Compile / sourceDirectory).value / "fbs"),
+      flatcOutput := (Compile / sourceManaged).value / "fbs",
       Compile / sourceGenerators += Def.task {
         val logger = streams.value.log
         val flatcBin = flatcExecutable.value.getAbsolutePath
