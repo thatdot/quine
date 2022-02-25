@@ -1,4 +1,5 @@
 # Quine
+![Build and Test](https://github.com/thatdot/quine/workflows/CI/badge.svg)
 
 Quine - a Streaming Graph
 
