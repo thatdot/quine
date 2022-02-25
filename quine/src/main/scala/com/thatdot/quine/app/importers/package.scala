@@ -166,12 +166,13 @@ package object importers extends StrictLogging {
         )
         sqsStream.stream
 
-      case WebsocketIngestSimpleStartup(format, wsUrl, initMessages, parallelism, encoding) =>
+      case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
         val (charset, transcoder) = getTranscoder(encoding)
         WebsocketSimpleStartup(
           importFormatFor(format),
           wsUrl,
           initMessages,
+          keepAliveProtocol,
           parallelism,
           charset,
           transcoder,
