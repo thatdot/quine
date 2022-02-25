@@ -98,7 +98,7 @@ final case class MessageBarContent(
   val fullBarRef: ReactRef[html.Div] = React.createRef[html.Div]
   val contentRef: ReactRef[html.Div] = React.createRef[html.Div]
 
-  def render: ReactElement = {
+  def render(): ReactElement = {
 
     val barStyle = jsObj(
       height = state.draggedHeight.fold("20%")(x => s"${x}px"),

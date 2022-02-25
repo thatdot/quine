@@ -37,7 +37,7 @@ final case class ContextMenuItem(
   )
 
   val component: FunctionalComponent[ContextMenu.Props] = FunctionalComponent[Props] { props =>
-    val menuStyle = jsObj(top = props.y + "px", left = props.x + "px")
+    val menuStyle = jsObj(top = s"${props.y}px", left = s"${props.x}px")
     div(style := menuStyle, className := Styles.contextMenu)(
       ul(
         props.items.map { case ContextMenuItem(item, itemTitle, action) =>

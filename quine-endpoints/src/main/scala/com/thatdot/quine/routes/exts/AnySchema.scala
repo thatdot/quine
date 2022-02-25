@@ -20,8 +20,8 @@ trait AnySchema extends endpoints4s.algebra.JsonSchemas {
 trait UjsonAnySchema extends AnySchema with endpoints4s.ujson.JsonSchemas {
 
   def anySchema(format: Option[String]): JsonSchema[Value] = new JsonSchema[ujson.Value] {
-    val encoder = identity[ujson.Value]
-    val decoder = endpoints4s.Valid.apply
+    val encoder = (value: ujson.Value) => value
+    val decoder = (value: ujson.Value) => endpoints4s.Valid(value)
   }
 
   def optionalSchema[A](implicit schema: JsonSchema[A]): JsonSchema[Option[A]] = new JsonSchema[Option[A]] {
@@ -45,8 +45,8 @@ trait OpenApiAnySchema extends AnySchema with endpoints4s.openapi.JsonSchemas {
     )
 
     val schema = new ujsonSchemas.JsonSchema[ujson.Value] {
-      val encoder = identity[ujson.Value]
-      val decoder = endpoints4s.Valid.apply
+      val encoder = (value: ujson.Value) => value
+      val decoder = (value: ujson.Value) => endpoints4s.Valid(value)
     }
 
     new JsonSchema(schema, docs)

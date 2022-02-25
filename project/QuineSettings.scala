@@ -82,8 +82,18 @@ object QuineSettings {
       "react-dom" -> Dependencies.reactV
     ),
     // Needed for the `@react` macro annotation in `slinky`
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full),
-    // scalacOptions += "-Ymacro-annotations",
+    libraryDependencies ++= (CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, 12)) =>
+        Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
+      case _ =>
+        Nil
+    }),
+    scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
+      case Some((2, 12)) =>
+        Nil
+      case _ =>
+        Seq("-Ymacro-annotations")
+    }),
     doc := file("phony-no-doc-file"), // Avoid <https://github.com/shadaj/slinky/issues/380>
     packageDoc / publishArtifact := false // Avoid <https://github.com/shadaj/slinky/issues/380>
   )

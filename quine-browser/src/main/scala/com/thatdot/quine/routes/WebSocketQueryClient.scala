@@ -386,5 +386,6 @@ class WebSocketNotOpen(webSocketState: String)
     case dom.WebSocket.OPEN => "OPEN"
     case dom.WebSocket.CLOSING => "CLOSING"
     case dom.WebSocket.CLOSED => "CLOSED"
+    case _ => "INVALID" // should be unreachable
   })
 }

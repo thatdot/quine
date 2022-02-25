@@ -86,8 +86,12 @@ object ShardInfoCard {
     displayAlerts: Boolean
   )
   // The initial state sets a silencing threshold for all known alerts to 0, where "known" means "name was provided as part of props"
-  override def initialState: State =
-    State(silencedAlerts = props.info.alertCounters.mapValues(_ => ShardInfoCard.DefaultAlertThreshold))
+  override def initialState: State = {
+    val silencedAlerts = props.info.alertCounters.map { case (alertName, _) =>
+      alertName -> ShardInfoCard.DefaultAlertThreshold
+    }.toMap
+    State(silencedAlerts = silencedAlerts)
+  }
 
   private def setAlertThreshold(alert: String, newThreshold: Long): Unit =
     setState(s => s.copy(silencedAlerts = s.silencedAlerts.updated(alert, newThreshold)))

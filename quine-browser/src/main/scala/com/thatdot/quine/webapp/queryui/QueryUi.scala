@@ -869,7 +869,7 @@ import com.thatdot.{visnetwork => vis}
               bottomBar = Some(
                 MessageBarContent(
                   div(
-                    contents.result
+                    contents.result()
                   ),
                   "pink"
                 )
@@ -922,7 +922,7 @@ import com.thatdot.{visnetwork => vis}
   }
 
   /** Toggle the current layout (tree to/from graph) */
-  def toggleNetworkLayout(): Unit = {
+  val toggleNetworkLayout: () => Unit = { () =>
     layout match {
       case NetworkLayout.Graph =>
         layout = NetworkLayout.Tree
@@ -964,20 +964,21 @@ import com.thatdot.{visnetwork => vis}
   }
 
   /** Return to the center of the canvas */
-  def recenterNetworkViewport(): Unit =
-    network.get.moveTo(
-      new vis.MoveToOptions {
-        override val position = new vis.Position {
-          val x = 0d
-          val y = 0d
+  val recenterNetworkViewport: () => Unit =
+    () =>
+      network.get.moveTo(
+        new vis.MoveToOptions {
+          override val position = new vis.Position {
+            val x = 0d
+            val y = 0d
+          }
+          override val scale = 1d
+          override val animation = new vis.AnimationOptions {
+            val duration = 2000d
+            val easingFunction = "easeInOutCubic"
+          }
         }
-        override val scale = 1d
-        override val animation = new vis.AnimationOptions {
-          val duration = 2000d
-          val easingFunction = "easeInOutCubic"
-        }
-      }
-    )
+      )
 
   /** Animate the network for some milliseconds */
   def animateNetwork(millis: Double = 1000): Unit =
@@ -1226,10 +1227,10 @@ import com.thatdot.{visnetwork => vis}
       event.preventDefault()
       val selectedIds = network.get.getSelectedNodes()
       if (selectedIds.nonEmpty) {
-        val nodes: Seq[QueryUiEvent.Node] = selectedIds.map { id: vis.IdType =>
+        val nodes: Seq[QueryUiEvent.Node] = selectedIds.map { (id: vis.IdType) =>
           val visNode: vis.Node = props.graphData.nodeSet.get(id).merge
           visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
-        }
+        }.toSeq
         val removeEvent = QueryUiEvent.Remove(nodes, Seq.empty, Seq.empty, Seq.empty, None)
         updateHistory(hist => Some(hist.observe(removeEvent)))
       }
@@ -1301,8 +1302,8 @@ import com.thatdot.{visnetwork => vis}
     for (event <- state.history.future.reverse)
       event match {
         case QueryUiEvent.Checkpoint(name) =>
-          def stepForward() =
-            setState(_.copy(contextMenuOpt = None), () => stepForwardToCheckpoint(Some(name)))
+          val stepForward =
+            () => setState(_.copy(contextMenuOpt = None), () => stepForwardToCheckpoint(Some(name)))
           contextItems += ContextMenuItem(div(name, em(" (future)")), name, stepForward)
 
         case _ =>
@@ -1312,8 +1313,8 @@ import com.thatdot.{visnetwork => vis}
       event match {
         case QueryUiEvent.Checkpoint(name) =>
           val item = div(name, em(if (idx == 0) " (present)" else " (past)"))
-          def stepBack() =
-            setState(_.copy(contextMenuOpt = None), () => stepBackToCheckpoint(Some(name)))
+          val stepBack =
+            () => setState(_.copy(contextMenuOpt = None), () => stepBackToCheckpoint(Some(name)))
           contextItems += ContextMenuItem(item, name, stepBack)
 
         case _ =>
@@ -1367,12 +1368,12 @@ import com.thatdot.{visnetwork => vis}
         window.alert("You cannot cancel queries when issuing queries throught the REST api")
     }
 
-  def render: ReactElement = {
-    def when[A](cond: Boolean, a: A): Option[A] = if (cond) Some(a) else None
+  def render(): ReactElement = {
+    def when[A](cond: Boolean, a: => A): Option[A] = if (cond) Some(a) else None
     val elements = Seq.newBuilder[ReactElement]
 
-    def stepBackMany() = updateHistory(_.stepBack(), () => stepBackToCheckpoint())
-    def stepForwardMany() = updateHistory(_.stepForward(), () => stepForwardToCheckpoint())
+    def stepBackMany = () => updateHistory(_.stepBack(), () => stepBackToCheckpoint())
+    def stepForwardMany = () => updateHistory(_.stepForward(), () => stepForwardToCheckpoint())
 
     if (props.isQueryBarVisible) {
       val pendingTextQueries = state.pendingTextQueries

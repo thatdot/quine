@@ -77,7 +77,7 @@ final case class Tab(
     }
   }
 
-  def render: ReactElement = {
+  def render(): ReactElement = {
     // Side-bar: a list of two-column table rows where the first column is an icon and the second column is a page title
     val sideBarItems: List[ReactElement] = props.children.toList.zipWithIndex.map { case (tab: Tab, idx: Int) =>
       val cls = if (state.selected == idx) Styles.selectedSideBarItem else Styles.sideBarItem

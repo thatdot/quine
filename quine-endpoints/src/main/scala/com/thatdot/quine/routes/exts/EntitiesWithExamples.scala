@@ -28,7 +28,7 @@ trait EntitiesWithExamples extends endpoints4s.algebra.JsonEntities with endpoin
   /** Turn a CSV into a string */
   final def renderCsv(csv: List[List[String]]): String =
     csv.view
-      .map(_.view.map(cell => '"' + cell.replace("\"", "\"\"") + '"').mkString(","))
+      .map(_.view.map(cell => cell.replace("\"", "\"\"")).mkString("\"", "\",\"", "\""))
       .mkString("\r\n")
 }
 

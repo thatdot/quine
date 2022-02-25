@@ -98,7 +98,7 @@ class HistoryNavigationButtons extends Component {
   // Hidden input that drives the upload button
   val uploadInputRef: ReactRef[html.Input] = React.createRef[html.Input]
 
-  def render: ReactElement =
+  def render(): ReactElement =
     div(style := jsObj(flexGrow = "1", display = "flex"))(
       HistoryNavButton(
         "ion-ios-rewind",

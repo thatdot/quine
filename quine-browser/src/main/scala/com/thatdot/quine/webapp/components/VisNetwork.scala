@@ -93,7 +93,7 @@ object VisData {
     position = "absolute",
     top = "0"
   )
-  def render: ReactElement = div(
+  def render(): ReactElement = div(
     style := divStyle,
     ref := networkRef,
     onClick := (e => props.onClick(e)),

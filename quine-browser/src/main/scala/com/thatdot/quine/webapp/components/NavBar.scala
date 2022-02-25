@@ -55,7 +55,7 @@ final case class NavItem(
     transition = "background-color 0.2s"
   )
 
-  def render: ReactElement = {
+  def render(): ReactElement = {
     val elements = ul(style := listStyle)(
       props.children.map { nav: NavItem =>
         if (state.selected == nav.title) {

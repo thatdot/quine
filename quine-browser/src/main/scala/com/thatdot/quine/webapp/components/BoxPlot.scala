@@ -77,10 +77,10 @@ import com.thatdot.quine.Util.toJsObject
         "q3" -> q3,
         "upperfence" -> max
       ) ++ mean.map[(String, js.Any)](x => "mean" -> x))
-        .mapValues(js.Array(_)) // make into unary arrays
+        .map { case (k, v) => k -> js.Array(v) } // make into unary arrays
 
     def asPlotlyData(): js.Object =
-      toJsObject(statistics ++ dataLayout)
+      toJsObject((statistics ++ dataLayout).toMap)
 
     private def asPlotlyLayoutBase(): Map[String, js.Any] =
       Map(

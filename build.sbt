@@ -198,7 +198,8 @@ lazy val `quine-browser`: Project = project
     ),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
-    Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js")
+    Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
+    test := {}
   )
 
 // Streaming graph application built on top of the Quine library

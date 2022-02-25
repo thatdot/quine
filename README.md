@@ -1,6 +1,6 @@
 # Quine
 
-Quine - a Streaming Graph 
+Quine - a Streaming Graph
 
 Documentation: <https://quine.io>
 
