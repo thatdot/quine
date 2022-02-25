@@ -303,6 +303,43 @@ final case class SQSIngest(
   @docs("maximum records to process per second") maximumPerSecond: Option[Int]
 ) extends IngestStreamConfiguration
 
+object WebsocketSimpleStartupIngest {
+  @unnamed
+  @title("Websockets Keepalive Protocol")
+  sealed abstract class KeepaliveProtocol
+  @unnamed
+  @title("Ping/Pong on interval")
+  @docs("Send empty websocket messages at the specified interval (in milliseconds)")
+  final case class PingPongInterval(intervalMillis: Int = 5000) extends KeepaliveProtocol
+  @unnamed
+  @title("Text Keepalive Message on Interval")
+  @docs("Send the same text-based Websocket message at the specified interval (in milliseconds)")
+  final case class SendMessageInterval(message: String, intervalMillis: Int = 5000) extends KeepaliveProtocol
+  @unnamed
+  @title("No Keepalive")
+  @docs("Only send data messages, no keepalives")
+  final case object NoKeepalive extends KeepaliveProtocol
+}
+@title("Websockets Ingest Stream (Simple Startup)")
+@unnamed
+@docs("A websocket stream started after a sequence of text messages")
+final case class WebsocketSimpleStartupIngest(
+  @docs("format used to decode each incoming message")
+  format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
+  @docs("websocket (ws: or wss:) url to connect to")
+  url: String,
+  @docs("initial messages to send to the server on connecting")
+  initMessages: Seq[String] = Seq.empty,
+  @docs("what strategy to use for sending keepalive messages, if any")
+  keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
+  @docs("maximum number of records to ingest simultaneously")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
+  @docs(s"""text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
+           |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
+           |""".stripMargin)
+  encoding: String = "UTF-8"
+) extends IngestStreamConfiguration
+
 @title("Streamed Record Format")
 @docs("Format by which streamed records are decoded.")
 sealed abstract class StreamedRecordFormat
@@ -551,6 +588,8 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
   implicit lazy val kafkaOffsetCommittingSchema: JsonSchema[KafkaOffsetCommitting] =
     genericJsonSchema[KafkaOffsetCommitting]
+  implicit lazy val wsKeepaliveSchema: JsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
+    genericJsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol]
   implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] =
     genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
   implicit lazy val ingestStreamStatsSchema: JsonSchema[IngestStreamStats] =

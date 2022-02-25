@@ -166,6 +166,20 @@ package object importers extends StrictLogging {
         )
         sqsStream.stream
 
+      case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
+        val (charset, transcoder) = getTranscoder(encoding)
+        WebsocketSimpleStartup(
+          importFormatFor(format),
+          wsUrl,
+          initMessages,
+          keepAliveProtocol,
+          parallelism,
+          charset,
+          transcoder,
+          meter,
+          initialSwitchMode
+        ).stream
+
       case FileIngest(
             format,
             path,
@@ -213,6 +227,30 @@ package object importers extends StrictLogging {
         )
     }
 
+  /* Identify by name the character set that should be assumed, along with a possible
+   * transcoding flow needed to reach that encoding. Although we want to support all character
+   * sets, this is quite difficult when our framing methods are designed to work over byte
+   * sequences. Thankfully, for content-delimited formats, since we frame over only a small
+   * number of delimiters, we can overfit to a small subset of very common encodings which:
+   *
+   *   - share the same single-byte representation for these delimiter characters
+   *   - those single-byte representations can't occur anywhere else in the string's bytes
+   *
+   * For all other character sets, we first transcode to UTF-8.
+   *
+   * TODO: optimize ingest for other character sets (transcoding is not cheap)
+   */
+  private def getTranscoder(charsetName: String): (Charset, Flow[ByteString, ByteString, NotUsed]) =
+    Charset.forName(charsetName) match {
+      case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
+        userCharset -> Flow[ByteString]
+      case otherCharset =>
+        logger.warn(
+          s"Charset-sensitive ingest does not directly support $otherCharset - transcoding through UTF-8 first"
+        )
+        StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
+    }
+
   private def ingestFromSource(
     initialSwitchMode: SwitchMode,
     format: FileIngestFormat,
@@ -244,26 +282,7 @@ package object importers extends StrictLogging {
       case Some(limit) => Flow[A].drop(startAtOffset).take(limit)
     }
 
-    /* Extract out the character set that should be assumed, along with a possible
-     * transcoding flow needed to reach that encoding. Although we want to support all character
-     * sets, this is quite difficult when our framing methods are designed to work over byte
-     * sequences. Thankfully, since we frame over only a small number of delimiters, we can
-     * overfit to a small subset of very common encodings which:
-     *
-     *   - share the same single-byte representation for these delimiter characters
-     *   - those single-byte representations can't occur anywhere else in the string's bytes
-     *
-     * For all other character sets, we first transcode to UTF-8.
-     *
-     * TODO: optimize ingest for other character sets (transcoding is not cheap)
-     */
-    val (charset, transcode) = Charset.forName(encodingString) match {
-      case userCharset @ (StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII) =>
-        userCharset -> Flow[ByteString]
-      case otherCharset =>
-        logger.warn(s"File ingest does not directly support $otherCharset - transcoding through UTF-8 first")
-        StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
-    }
+    val (charset, transcode) = getTranscoder(encodingString)
 
     def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =
       headerDef match {
