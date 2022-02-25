@@ -67,7 +67,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     testQuery(
       "WITH 1 + 2 AS x RETURN x",
       expectedColumns = Vector("x"),
-      expectedRows = Seq(Vector(Expr.Integer(3L)))
+      expectedRows = Seq(Vector(Expr.Integer(3L))),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -95,7 +96,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       "WITH 3 AS x RETURN x UNION WITH \"str\" as x RETURN x",
       expectedColumns = Vector("x"),
       expectedRows = Seq(Vector(Expr.Integer(3L)), Vector(Expr.Str("str"))),
-      ordered = false
+      ordered = false,
+      expectedCannotFail = true
     )
   }
 
@@ -109,7 +111,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(3L)),
         Vector(Expr.Integer(1L)),
         Vector(Expr.Integer(2L))
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -120,7 +123,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(2L), Expr.Str("val")),
         Vector(Expr.Integer(3L), Expr.Str("val")),
         Vector(Expr.Null, Expr.Str("val"))
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -128,7 +132,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         |UNWIND coll AS x
         |RETURN collect(DISTINCT x) AS setOfVals""".stripMargin('|'),
       expectedColumns = Vector("setOfVals"),
-      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Integer(2L)))))
+      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Integer(2L))))),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -154,19 +159,22 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(3L)),
         Vector(Expr.Integer(4L)),
         Vector(Expr.Integer(5L))
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS empty RETURN empty, 'literal_that_is_not_returned'",
       expectedColumns = Vector("empty", "'literal_that_is_not_returned'"),
-      expectedRows = Seq.empty
+      expectedRows = Seq.empty,
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND NULL AS x RETURN x, 'some_literal'",
       expectedColumns = Vector("x", "'some_literal'"),
-      expectedRows = Seq.empty
+      expectedRows = Seq.empty,
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -320,7 +328,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     testQuery(
       "RETURN 1 AS k, 2 AS b, 3 AS d, 4 AS e, 5 AS x, 6 AS q, 7 AS o, 8 AS l",
       expectedColumns = Vector("k", "b", "d", "e", "x", "q", "o", "l"),
-      expectedRows = Seq((1 to 8).map(i => Expr.Integer(i.toLong)).toVector)
+      expectedRows = Seq((1 to 8).map(i => Expr.Integer(i.toLong)).toVector),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -336,7 +345,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(1L), Expr.Str("c")),
         Vector(Expr.Integer(2L), Expr.Str("c")),
         Vector(Expr.Integer(3L), Expr.Str("c"))
-      )
+      ),
+      expectedCannotFail = true
     )
 
     describe("aggregations") {
@@ -364,14 +374,16 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Integer(3L), Expr.Integer(5L)),
           Vector(Expr.Integer(3L), Expr.Integer(6L)),
           Vector(Expr.Integer(3L), Expr.Integer(4L))
-        )
+        ),
+        expectedCannotFail = true
       )
 
       testQuery(
         "MATCH (p)-[:has_mother]->(m) RETURN count(*)",
         expectedColumns = Vector("count(*)"),
         expectedRows = Seq(Vector(Expr.Integer(9L))),
-        expectedCanContainAllNodeScan = true
+        expectedCanContainAllNodeScan = true,
+        expectedCannotFail = true
       )
 
       testQuery(
@@ -450,7 +462,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.True),
           Vector(Expr.False),
           Vector(Expr.False)
-        )
+        ),
+        expectedCannotFail = true
       )
 
       testQuery(
@@ -459,19 +472,22 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedRows = Seq(
           Vector(Expr.False),
           Vector(Expr.True)
-        )
+        ),
+        expectedCannotFail = true
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN count(x)",
         expectedColumns = Vector("count(x)"),
-        expectedRows = Seq(Vector(Expr.Integer(5L)))
+        expectedRows = Seq(Vector(Expr.Integer(5L))),
+        expectedCannotFail = true
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN count(DISTINCT x)",
         expectedColumns = Vector("count(DISTINCT x)"),
-        expectedRows = Seq(Vector(Expr.Integer(3L)))
+        expectedRows = Seq(Vector(Expr.Integer(3L))),
+        expectedCannotFail = true
       )
 
       testQuery(
@@ -481,19 +497,22 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Integer(1L)),
           Vector(Expr.Integer(2L)),
           Vector(Expr.Integer(3L))
-        )
+        ),
+        expectedCannotFail = true
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN DISTINCT count(x)",
         expectedColumns = Vector("count(x)"),
-        expectedRows = Seq(Vector(Expr.Integer(5L)))
+        expectedRows = Seq(Vector(Expr.Integer(5L))),
+        expectedCannotFail = true
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN DISTINCT count(DISTINCT x)",
         expectedColumns = Vector("count(DISTINCT x)"),
-        expectedRows = Seq(Vector(Expr.Integer(3L)))
+        expectedRows = Seq(Vector(Expr.Integer(3L))),
+        expectedCannotFail = true
       )
     }
   }

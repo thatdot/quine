@@ -29,7 +29,11 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       row <- booleanOperators
       expr = buildExpression(printBool(row.lhs), printBool(row.rhs))
       if exprsSeen.add(expr)
-    } testExpression(expr, componentToTest(row))(pos)
+    } testExpression(
+      buildExpression("x", "y"),
+      componentToTest(row),
+      queryPreamble = s"WITH ${printBool(row.lhs)} AS x, ${printBool(row.rhs)} AS y RETURN "
+    )(pos)
   }
 
   /** Given two inputs, what are the expected outputs for all boolean operators */
@@ -58,7 +62,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
   describe("Neo4j bugs") {
     testExpression(
       "+null",
-      Expr.Null
+      Expr.Null,
+      expectedCannotFail = true
     )
   }
 
@@ -307,7 +312,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     testQuery(
       "RETURN CASE 2.0 WHEN 2 THEN 'equal' ELSE 'not-equal' END AS answer",
       expectedColumns = Vector("answer"),
-      expectedRows = Seq(Vector(Expr.Str("equal")))
+      expectedRows = Seq(Vector(Expr.Str("equal"))),
+      expectedCannotFail = true
     )
 
     testQuery(

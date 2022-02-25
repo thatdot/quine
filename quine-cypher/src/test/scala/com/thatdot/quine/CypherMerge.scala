@@ -10,6 +10,7 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
     "match (n0) return n0",
     expectedColumns = Vector("n0"),
     expectedRows = Seq.empty,
+    expectedCannotFail = true,
     expectedCanContainAllNodeScan = true
   )
 
@@ -38,6 +39,7 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
   testQuery(
     "match (n3) return n3",
     expectedColumns = Vector("n3"),
+    expectedCannotFail = true,
     expectedRows = Seq(
       Vector(Expr.Node(0L, Set(Symbol("Foo")), Map(Symbol("prop1") -> Expr.Str("val1"))))
     ),
@@ -78,6 +80,7 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
       Vector(Expr.Node(3L, Set(Symbol("Foo")), Map()))
     ),
     ordered = false,
+    expectedCannotFail = true,
     expectedCanContainAllNodeScan = true
   )
 

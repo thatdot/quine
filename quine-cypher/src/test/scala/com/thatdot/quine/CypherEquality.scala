@@ -14,15 +14,15 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression("6 IN [1,2,3,4]", Expr.False)
     testExpression("2 IN [1,null,2,3,4]", Expr.True)
     testExpression("6 IN [1,null,2,3,4]", Expr.Null)
-    testExpression("[1,2] IN [[1,null,3]]", Expr.False)
-    testExpression("[1,2] IN [[1,null]]", Expr.Null)
-    testExpression("[1,2] IN [[1,2]]", Expr.True)
+    testExpression("[1,2] IN [[1,null,3]]", Expr.False, expectedCannotFail = true)
+    testExpression("[1,2] IN [[1,null]]", Expr.Null, expectedCannotFail = true)
+    testExpression("[1,2] IN [[1,2]]", Expr.True, expectedCannotFail = true)
   }
 
   describe("`=` operator") {
-    testExpression("1 = 2.0", Expr.False)
-    testExpression("1 = 1.0", Expr.True)
-    testExpression("[1] = [1.0]", Expr.True)
+    testExpression("1 = 2.0", Expr.False, expectedCannotFail = true)
+    testExpression("1 = 1.0", Expr.True, expectedCannotFail = true)
+    testExpression("[1] = [1.0]", Expr.True, expectedCannotFail = true)
 
     // NaN = NaN  ==>  false
     //
@@ -30,10 +30,10 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression("sqrt(-1) = sqrt(-1)", Expr.False)
 
     // Infinity = Infinity  ==>  true
-    testExpression("1.0/0.0 = 1.0/0.0", Expr.True)
+    testExpression("1.0/0.0 = 1.0/0.0", Expr.True, expectedCannotFail = true)
 
     // Infinity = -Infinity  ==> false
-    testExpression("1.0/0.0 = -1.0/0.0", Expr.False)
+    testExpression("1.0/0.0 = -1.0/0.0", Expr.False, expectedCannotFail = true)
 
     testExpression("null + {}", Expr.Null)
   }
@@ -42,6 +42,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression(
       "x IS NOT NULL",
       Expr.False,
+      expectedCannotFail = true,
       expectedIsIdempotent = true,
       queryPreamble = "WITH null AS x RETURN "
     )
@@ -49,6 +50,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression(
       "x IS NULL",
       Expr.True,
+      expectedCannotFail = true,
       expectedIsIdempotent = true,
       queryPreamble = "WITH null AS x RETURN "
     )
@@ -56,6 +58,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression(
       "x IS NOT NULL",
       Expr.True,
+      expectedCannotFail = true,
       expectedIsIdempotent = true,
       queryPreamble = "WITH 1 AS x RETURN "
     )
@@ -63,18 +66,20 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression(
       "x IS NULL",
       Expr.False,
+      expectedCannotFail = true,
       expectedIsIdempotent = true,
       queryPreamble = "WITH 1 AS x RETURN "
     )
   }
 
   describe("NaN equality") {
-    testExpression("0.0/0.0 = 0.0/0.0", Expr.False)
+    testExpression("0.0/0.0 = 0.0/0.0", Expr.False, expectedCannotFail = true)
     testExpression("0.0/0.0 <> 0.0/0.0", Expr.True)
     testExpression(
       "0.0/0.0 = nan",
       Expr.False,
       expectedIsIdempotent = true,
+      expectedCannotFail = true,
       queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
     )
     testExpression(
@@ -83,25 +88,49 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       expectedIsIdempotent = true,
       queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
     )
-    testExpression("nan = nan", Expr.False, expectedIsIdempotent = true, queryPreamble = "WITH 0.0/0.0 AS nan RETURN ")
+    testExpression(
+      "nan = nan",
+      Expr.False,
+      expectedIsIdempotent = true,
+      expectedCannotFail = true,
+      queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
+    )
     testExpression("nan <> nan", Expr.True, expectedIsIdempotent = true, queryPreamble = "WITH 0.0/0.0 AS nan RETURN ")
   }
 
   describe("infinite equality") {
-    testExpression("NOT (n <> n)", Expr.True, expectedIsIdempotent = true, queryPreamble = "WITH 1.0/0.0 AS n RETURN ")
-    testExpression("n = n", Expr.True, expectedIsIdempotent = true, queryPreamble = "WITH 1.0/0.0 AS n RETURN ")
+    testExpression(
+      "NOT (n <> n)",
+      Expr.True,
+      expectedIsIdempotent = true,
+      expectedCannotFail = true,
+      queryPreamble = "WITH 1.0/0.0 AS n RETURN "
+    )
+    testExpression(
+      "n = n",
+      Expr.True,
+      expectedIsIdempotent = true,
+      expectedCannotFail = true,
+      queryPreamble = "WITH 1.0/0.0 AS n RETURN "
+    )
   }
 
   describe("NaN and infinite comparisons") {
-    testExpression("1.0/0.0 > 0.0/0.0", Expr.False)
-    testExpression("1.0/0.0 < 0.0/0.0", Expr.False)
-    testExpression("-1.0/0.0 < 0.0/0.0", Expr.False)
-    testExpression("1.0/0.0 = 0.0/0.0", Expr.False)
+    testExpression("1.0/0.0 > 0.0/0.0", Expr.False, expectedCannotFail = true)
+    testExpression("1.0/0.0 < 0.0/0.0", Expr.False, expectedCannotFail = true)
+    testExpression("-1.0/0.0 < 0.0/0.0", Expr.False, expectedCannotFail = true)
+    testExpression("1.0/0.0 = 0.0/0.0", Expr.False, expectedCannotFail = true)
     testExpression("1.0/0.0 <> 0.0/0.0", Expr.True)
   }
 
   describe("NULL equality") {
-    testExpression("n = n", Expr.Null, expectedIsIdempotent = true, queryPreamble = "WITH null AS n RETURN ")
+    testExpression(
+      "n = n",
+      Expr.Null,
+      expectedCannotFail = true,
+      expectedIsIdempotent = true,
+      queryPreamble = "WITH null AS n RETURN "
+    )
     testExpression("n <> n", Expr.Null, expectedIsIdempotent = true, queryPreamble = "WITH null AS n RETURN ")
   }
 

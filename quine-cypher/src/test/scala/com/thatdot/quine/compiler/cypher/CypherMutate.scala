@@ -11,6 +11,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       "MATCH (n) RETURN count(*)",
       expectedColumns = Vector("count(*)"),
       expectedRows = Seq(Vector(Expr.Integer(0L))),
+      expectedCannotFail = true,
       expectedCanContainAllNodeScan = true
     )
 

@@ -36,6 +36,11 @@ sealed abstract class Expr {
     */
   def isPure: Boolean
 
+  /** Barring unbound variable or parameter exceptions, is it impossible for
+    * the expression to throw exceptions when evaluated?
+    */
+  def cannotFail: Boolean
+
   /** Evaluate an expression under a current context and with parameters
     *
     * @param context    variables in scope and their values
@@ -658,7 +663,9 @@ object Expr {
     */
   final case class Variable(id: Symbol) extends Expr {
 
-    val isPure = true
+    def isPure: Boolean = true
+
+    def cannotFail: Boolean = true
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       qc.getOrElse(id, Null)
@@ -677,7 +684,10 @@ object Expr {
     */
   final case class Property(expr: Expr, key: Symbol) extends Expr {
 
-    def isPure = expr.isPure
+    def isPure: Boolean = expr.isPure
+
+    // Argument is not map-like
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       expr.eval(qc) match {
@@ -732,6 +742,9 @@ object Expr {
   final case class DynamicProperty(expr: Expr, keyExpr: Expr) extends Expr {
 
     def isPure: Boolean = expr.isPure && keyExpr.isPure
+
+    // Key is not string or object is not map-like
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       expr.eval(qc) match {
@@ -798,6 +811,9 @@ object Expr {
 
     def isPure: Boolean = list.isPure && from.forall(_.isPure) && to.forall(_.isPure)
 
+    // Non-list argument
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       list.eval(qc) match {
         case List(elems) =>
@@ -838,7 +854,9 @@ object Expr {
     */
   final case class Parameter(name: Int) extends Expr {
 
-    val isPure = true
+    val isPure: Boolean = true
+
+    def cannotFail: Boolean = true
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       p.params.apply(name)
@@ -856,6 +874,8 @@ object Expr {
 
     def isPure: Boolean = expressions.forall(_.isPure)
 
+    def cannotFail: Boolean = expressions.forall(_.cannotFail)
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       List(expressions.map(_.eval(qc)))
   }
@@ -871,6 +891,8 @@ object Expr {
   final case class MapLiteral(entries: ScalaMap[String, Expr]) extends Expr {
 
     def isPure: Boolean = entries.values.forall(_.isPure)
+
+    def cannotFail: Boolean = entries.values.forall(_.cannotFail)
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Map(entries.view.mapValues(_.eval(qc)).toMap)
@@ -894,6 +916,9 @@ object Expr {
   ) extends Expr {
 
     def isPure: Boolean = original.isPure && items.forall(_._2.isPure)
+
+    // Original value is not map-like
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val newItems: Seq[(String, Value)] = items.map { case (variable, expr) =>
@@ -927,6 +952,9 @@ object Expr {
 
     def isPure: Boolean = nodeEdges.forall(_.isPure)
 
+    // Argument is not alternating node/relationship values
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val evaled = nodeEdges.map(_.eval(qc))
       val head = evaled.head.asInstanceOf[Node]
@@ -947,7 +975,10 @@ object Expr {
     */
   final case class RelationshipStart(relationship: Expr) extends Expr {
 
-    def isPure = relationship.isPure
+    def isPure: Boolean = relationship.isPure
+
+    // Argument is not a relationship
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
@@ -969,7 +1000,10 @@ object Expr {
     */
   final case class RelationshipEnd(relationship: Expr) extends Expr {
 
-    def isPure = relationship.isPure
+    def isPure: Boolean = relationship.isPure
+
+    // Argument is not a relationship
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
@@ -999,6 +1033,8 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    def cannotFail: Boolean = lhs.cannotFail && rhs.cannotFail
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       Value.compare(lhs.eval(qc), rhs.eval(qc))
   }
@@ -1014,6 +1050,9 @@ object Expr {
 
     val lhs: Expr
     val rhs: Expr
+
+    // Non-number arguments
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
       (lhs.eval(qc), rhs.eval(qc)) match {
@@ -1054,6 +1093,9 @@ object Expr {
   final case class Subtract(lhs: Expr, rhs: Expr) extends Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
+
+    // Incompatible argument types
+    def cannotFail: Boolean = false
 
     @throws[ArithmeticException]("if the result overflows")
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
@@ -1199,6 +1241,9 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    // Incompatible argument types
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       (lhs.eval(qc), rhs.eval(qc)) match {
         case (Null, _) | (_, Null) => Null
@@ -1278,7 +1323,10 @@ object Expr {
     */
   final case class UnaryAdd(argument: Expr) extends Expr {
 
-    def isPure = argument.isPure
+    def isPure: Boolean = argument.isPure
+
+    // Non-number argument
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
       argument.eval(qc) match {
@@ -1303,7 +1351,10 @@ object Expr {
     */
   final case class UnarySubtract(argument: Expr) extends Expr {
 
-    def isPure = argument.isPure
+    def isPure: Boolean = argument.isPure
+
+    // Non-number argument
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
       argument.eval(qc) match {
@@ -1340,6 +1391,9 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    // Incompatible types cannot be compared
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x >= 0) True else False
@@ -1360,6 +1414,9 @@ object Expr {
   final case class LessEqual(lhs: Expr, rhs: Expr) extends Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
+
+    // Incompatible types cannot be compared
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
@@ -1382,6 +1439,9 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    // Incompatible types cannot be compared
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x > 0) True else False
@@ -1402,6 +1462,9 @@ object Expr {
   final case class Less(lhs: Expr, rhs: Expr) extends Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
+
+    // Incompatible types cannot be compared
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
@@ -1425,6 +1488,9 @@ object Expr {
   final case class InList(element: Expr, list: Expr) extends Expr {
 
     def isPure: Boolean = element.isPure && list.isPure
+
+    // Non-list RHS
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       (element.eval(qc), list.eval(qc)) match {
@@ -1455,6 +1521,8 @@ object Expr {
 
     def isPure: Boolean = scrutinee.isPure && startsWith.isPure
 
+    def cannotFail: Boolean = scrutinee.cannotFail && startsWith.cannotFail
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), startsWith.eval(qc)) match {
         case (Str(scrut), Str(start)) => Bool.apply(scrut.startsWith(start))
@@ -1475,6 +1543,8 @@ object Expr {
 
     def isPure: Boolean = scrutinee.isPure && endsWith.isPure
 
+    def cannotFail: Boolean = scrutinee.cannotFail && endsWith.cannotFail
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), endsWith.eval(qc)) match {
         case (Str(scrut), Str(end)) => Bool.apply(scrut.endsWith(end))
@@ -1494,6 +1564,8 @@ object Expr {
   final case class Contains(scrutinee: Expr, contained: Expr) extends Expr {
 
     def isPure: Boolean = scrutinee.isPure && contained.isPure
+
+    def cannotFail: Boolean = scrutinee.cannotFail && contained.cannotFail
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), contained.eval(qc)) match {
@@ -1520,6 +1592,9 @@ object Expr {
 
     def isPure: Boolean = scrutinee.isPure && regex.isPure
 
+    // Regex pattern can be invalid
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), regex.eval(qc)) match {
         case (Str(scrut), Str(reg)) => Bool.apply(scrut.matches(reg))
@@ -1537,7 +1612,9 @@ object Expr {
     */
   final case class IsNotNull(notNull: Expr) extends Expr {
 
-    def isPure = notNull.isPure
+    def isPure: Boolean = notNull.isPure
+
+    def cannotFail: Boolean = notNull.cannotFail
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       notNull.eval(qc) match {
@@ -1556,7 +1633,9 @@ object Expr {
     */
   final case class IsNull(isNull: Expr) extends Expr {
 
-    def isPure = isNull.isPure
+    def isPure: Boolean = isNull.isPure
+
+    def cannotFail: Boolean = isNull.cannotFail
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       isNull.eval(qc) match {
@@ -1576,7 +1655,10 @@ object Expr {
     */
   final case class Not(negated: Expr) extends Expr {
 
-    def isPure = negated.isPure
+    def isPure: Boolean = negated.isPure
+
+    // Non boolean argument
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       negated.eval(qc) match {
@@ -1603,6 +1685,9 @@ object Expr {
   final case class And(conjuncts: Vector[Expr]) extends Expr {
 
     def isPure: Boolean = conjuncts.forall(_.isPure)
+
+    // Non boolean arguments
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       conjuncts.foldLeft[Bool](True) { case (acc: Bool, boolExpr: Expr) =>
@@ -1631,6 +1716,9 @@ object Expr {
   final case class Or(disjuncts: Vector[Expr]) extends Expr {
 
     def isPure: Boolean = disjuncts.forall(_.isPure)
+
+    // Non boolean arguments
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       disjuncts.foldLeft[Bool](False) { case (acc: Bool, boolExpr: Expr) =>
@@ -1663,7 +1751,11 @@ object Expr {
   ) extends Expr {
 
     def isPure: Boolean = scrutinee.forall(_.isPure) &&
-      branches.forall(_._2.isPure) && default.forall(_.isPure)
+      branches.forall(t => t._1.isPure && t._2.isPure) && default.forall(_.isPure)
+
+    // If nothing matches, this return `NULL`, not an exception
+    def cannotFail: Boolean = scrutinee.forall(_.cannotFail) &&
+      branches.forall(t => t._1.cannotFail && t._2.cannotFail) && default.forall(_.cannotFail)
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val scrut = scrutinee.getOrElse(True).eval(qc)
@@ -1691,6 +1783,9 @@ object Expr {
   ) extends Expr {
 
     def isPure: Boolean = function.isPure && arguments.forall(_.isPure)
+
+    // TODO: consider tracking which _functions_ cannot fail
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val argVals = arguments.map(_.eval(qc))
@@ -1722,6 +1817,8 @@ object Expr {
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure && extract.isPure
+
+    def cannotFail: Boolean = list.cannotFail && filterPredicate.cannotFail && extract.cannotFail
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): List =
       List(
@@ -1761,6 +1858,9 @@ object Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
 
+    // Can fail when `filterPredicate` returns a non-boolean
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       list
         .eval(qc)
@@ -1799,6 +1899,9 @@ object Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
 
+    // Can fail when `filterPredicate` returns a non-boolean
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       list
         .eval(qc)
@@ -1836,6 +1939,9 @@ object Expr {
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
+
+    // Can fail when `filterPredicate` returns a non-boolean
+    def cannotFail: Boolean = false
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool = {
       val (truesCount: Int, sawNull: Boolean) = list
@@ -1891,6 +1997,9 @@ object Expr {
 
     def isPure: Boolean = initial.isPure && list.isPure && reducer.isPure
 
+    // Can fail when `list` returns a non-list
+    def cannotFail: Boolean = false
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       list
         .eval(qc)
@@ -1906,7 +2015,9 @@ object Expr {
     */
   case object FreshNodeId extends Expr {
 
-    def isPure = false
+    def isPure: Boolean = false
+
+    def cannotFail: Boolean = true
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Expr.fromQuineValue(idp.qidToValue(idp.newQid()))
@@ -1926,7 +2037,9 @@ object Expr {
   */
 sealed abstract class Value extends Expr {
 
-  override def isPure = true
+  def isPure: Boolean = true
+
+  def cannotFail: Boolean = true
 
   @throws[CypherException.TypeMismatch]("if the value is not an integer")
   def asLong(context: String): Long = this match {

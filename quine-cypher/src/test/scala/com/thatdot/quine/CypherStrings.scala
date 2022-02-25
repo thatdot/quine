@@ -5,12 +5,12 @@ import com.thatdot.quine.graph.cypher.Expr
 class CypherStrings extends CypherHarness("cypher-string-tests") {
 
   describe("`STARTS WITH` operator") {
-    testExpression("\"hello world\" STARTS WITH \"hell\"", Expr.True)
-    testExpression("\"hello world\" STARTS WITH \"llo\"", Expr.False)
-    testExpression("\"hello world\" STARTS WITH \"world\"", Expr.False)
+    testExpression("\"hello world\" STARTS WITH \"hell\"", Expr.True, expectedCannotFail = true)
+    testExpression("\"hello world\" STARTS WITH \"llo\"", Expr.False, expectedCannotFail = true)
+    testExpression("\"hello world\" STARTS WITH \"world\"", Expr.False, expectedCannotFail = true)
 
-    testExpression("\"hello world\" STARTS WITH NULL", Expr.Null)
-    testExpression("NULL STARTS WITH \"hell\"", Expr.Null)
+    testExpression("\"hello world\" STARTS WITH NULL", Expr.Null, expectedCannotFail = true)
+    testExpression("NULL STARTS WITH \"hell\"", Expr.Null, expectedCannotFail = true)
 
     testQuery(
       "UNWIND [1, 'foo'] AS lhs UNWIND [1, 'foo'] AS rhs RETURN lhs STARTS WITH rhs",
@@ -22,17 +22,18 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.True)
       ),
       expectedIsIdempotent = true,
-      expectedIsReadOnly = true
+      expectedIsReadOnly = true,
+      expectedCannotFail = true
     )
   }
 
   describe("`CONTAINS` operator") {
-    testExpression("\"hello world\" CONTAINS \"hell\"", Expr.True)
-    testExpression("\"hello world\" CONTAINS \"llo\"", Expr.True)
-    testExpression("\"hello world\" CONTAINS \"world\"", Expr.True)
+    testExpression("\"hello world\" CONTAINS \"hell\"", Expr.True, expectedCannotFail = true)
+    testExpression("\"hello world\" CONTAINS \"llo\"", Expr.True, expectedCannotFail = true)
+    testExpression("\"hello world\" CONTAINS \"world\"", Expr.True, expectedCannotFail = true)
 
-    testExpression("\"hello world\" CONTAINS NULL", Expr.Null)
-    testExpression("NULL CONTAINS \"hell\"", Expr.Null)
+    testExpression("\"hello world\" CONTAINS NULL", Expr.Null, expectedCannotFail = true)
+    testExpression("NULL CONTAINS \"hell\"", Expr.Null, expectedCannotFail = true)
 
     testQuery(
       "UNWIND [1, 'foo'] AS lhs UNWIND [1, 'foo'] AS rhs RETURN lhs CONTAINS rhs",
@@ -44,17 +45,18 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.True)
       ),
       expectedIsIdempotent = true,
-      expectedIsReadOnly = true
+      expectedIsReadOnly = true,
+      expectedCannotFail = true
     )
   }
 
   describe("`ENDS WITH` operator") {
-    testExpression("\"hello world\" ENDS WITH \"hell\"", Expr.False)
-    testExpression("\"hello world\" ENDS WITH \"llo\"", Expr.False)
-    testExpression("\"hello world\" ENDS WITH \"world\"", Expr.True)
+    testExpression("\"hello world\" ENDS WITH \"hell\"", Expr.False, expectedCannotFail = true)
+    testExpression("\"hello world\" ENDS WITH \"llo\"", Expr.False, expectedCannotFail = true)
+    testExpression("\"hello world\" ENDS WITH \"world\"", Expr.True, expectedCannotFail = true)
 
-    testExpression("\"hello world\" ENDS WITH NULL", Expr.Null)
-    testExpression("NULL ENDS WITH \"hell\"", Expr.Null)
+    testExpression("\"hello world\" ENDS WITH NULL", Expr.Null, expectedCannotFail = true)
+    testExpression("NULL ENDS WITH \"hell\"", Expr.Null, expectedCannotFail = true)
 
     testQuery(
       "UNWIND [1, 'foo'] AS lhs UNWIND [1, 'foo'] AS rhs RETURN lhs ENDS WITH rhs",
@@ -66,7 +68,8 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.True)
       ),
       expectedIsIdempotent = true,
-      expectedIsReadOnly = true
+      expectedIsReadOnly = true,
+      expectedCannotFail = true
     )
   }
 

@@ -90,6 +90,11 @@ sealed abstract class Query[+Start <: Location] extends Product with Serializabl
     */
   def isIdempotent: Boolean
 
+  /** Barring unbound variable or parameter exceptions, is it impossible for
+    * the expression to throw exceptions when evaluated?
+    */
+  def cannotFail: Boolean
+
   /** Is it possibly for this query to touch node-local state?
     *
     * This is used for determining when it is OK to skip some thread-safety
@@ -173,6 +178,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
+    def cannotFail: Boolean = true
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
@@ -183,6 +189,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
+    def cannotFail: Boolean = true
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
@@ -199,6 +206,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = andThen.isReadOnly
+    def cannotFail: Boolean = andThen.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = andThen.isIdempotent
     def canContainAllNodeScan: Boolean = entry match {
@@ -219,6 +227,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = andThen.isReadOnly
+    def cannotFail: Boolean = node.cannotFail && andThen.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = node.isPure && andThen.isIdempotent
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
@@ -237,6 +246,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = true
+    def cannotFail: Boolean = true
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
@@ -263,6 +273,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = andThen.isReadOnly
+    def cannotFail: Boolean = toNode.isEmpty && range.isEmpty && andThen.cannotFail
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = toNode.forall(_.isPure)
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
@@ -284,6 +295,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = true
+    def cannotFail: Boolean = propertiesOpt.isEmpty
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = propertiesOpt.forall(_.isPure)
     def canContainAllNodeScan: Boolean = false
@@ -305,6 +317,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
+    def cannotFail: Boolean = false // URL might lead nowhere
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = urlString.isPure
     def canContainAllNodeScan: Boolean = false
@@ -321,6 +334,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = unionLhs.isReadOnly && unionRhs.isReadOnly
+    def cannotFail: Boolean = unionLhs.cannotFail && unionRhs.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = unionLhs.isIdempotent && unionRhs.isIdempotent
     def canContainAllNodeScan: Boolean = unionLhs.canContainAllNodeScan || unionRhs.canContainAllNodeScan
@@ -338,6 +352,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = tryFirst.isReadOnly && trySecond.isReadOnly
+    def cannotFail: Boolean = tryFirst.cannotFail && trySecond.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = tryFirst.isIdempotent && trySecond.isIdempotent
     def canContainAllNodeScan: Boolean = tryFirst.canContainAllNodeScan || trySecond.canContainAllNodeScan
@@ -367,6 +382,8 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = joinLhs.isReadOnly && joinRhs.isReadOnly
+    def cannotFail: Boolean =
+      lhsProperty.cannotFail && rhsProperty.cannotFail && joinLhs.cannotFail && joinRhs.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = joinLhs.isIdempotent && joinRhs.isIdempotent &&
       lhsProperty.isPure && rhsProperty.isPure
@@ -386,6 +403,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = acceptIfThisSucceeds.isReadOnly
+    def cannotFail: Boolean = acceptIfThisSucceeds.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = acceptIfThisSucceeds.isIdempotent
     def canContainAllNodeScan: Boolean = acceptIfThisSucceeds.canContainAllNodeScan
@@ -407,6 +425,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = startWithThis.isReadOnly && thenCrossWithThis.isReadOnly
+    def cannotFail: Boolean = startWithThis.cannotFail && thenCrossWithThis.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = startWithThis.isIdempotent && thenCrossWithThis.isIdempotent
     def canContainAllNodeScan: Boolean = startWithThis.canContainAllNodeScan || thenCrossWithThis.canContainAllNodeScan
@@ -422,6 +441,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = query.isReadOnly
+    def cannotFail: Boolean = query.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = query.isIdempotent
     def canContainAllNodeScan: Boolean = query.canContainAllNodeScan
@@ -439,6 +459,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toFilter.isReadOnly
+    def cannotFail: Boolean = condition.cannotFail && toFilter.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = condition.isPure && toFilter.isIdempotent
     def canContainAllNodeScan: Boolean = toFilter.canContainAllNodeScan
@@ -455,6 +476,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toSkip.isReadOnly
+    def cannotFail: Boolean = false // non-number skip
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = drop.isPure && toSkip.isIdempotent
     def canContainAllNodeScan: Boolean = toSkip.canContainAllNodeScan
@@ -471,6 +493,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toLimit.isReadOnly
+    def cannotFail: Boolean = false // non-number limit
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = take.isPure && toLimit.isIdempotent
     def canContainAllNodeScan: Boolean = toLimit.canContainAllNodeScan
@@ -488,6 +511,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toSort.isReadOnly
+    def cannotFail: Boolean = by.forall(_._1.cannotFail) && toSort.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = by.forall(_._1.isPure) && toSort.isIdempotent
     def canContainAllNodeScan: Boolean = toSort.canContainAllNodeScan
@@ -509,6 +533,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toTop.isReadOnly
+    def cannotFail: Boolean = false // non-number limit
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = by.forall(_._1.isPure) && limit.isPure && toTop.isIdempotent
     def canContainAllNodeScan: Boolean = toTop.canContainAllNodeScan
@@ -525,6 +550,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toDedup.isReadOnly
+    def cannotFail: Boolean = by.forall(_.cannotFail) && toDedup.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = by.forall(_.isPure) && toDedup.isIdempotent
     def canContainAllNodeScan: Boolean = toDedup.canContainAllNodeScan
@@ -544,6 +570,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = unwindFrom.isReadOnly
+    def cannotFail: Boolean = listExpr.cannotFail && unwindFrom.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = listExpr.isPure && unwindFrom.isIdempotent
     def canContainAllNodeScan: Boolean = unwindFrom.canContainAllNodeScan
@@ -562,6 +589,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = adjustThis.isReadOnly
+    def cannotFail: Boolean = toAdd.forall(_._2.cannotFail) && adjustThis.cannotFail
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = toAdd.forall(_._2.isPure) && adjustThis.isIdempotent
     def canContainAllNodeScan: Boolean = adjustThis.canContainAllNodeScan
@@ -578,6 +606,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
+    def cannotFail: Boolean = false // Trying to set a non-property value
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = newValue.forall(_.isPure)
     def canContainAllNodeScan: Boolean = false
@@ -594,6 +623,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
+    def cannotFail: Boolean = false // Trying to set non-property values
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = !includeExisting && properties.isPure
     def canContainAllNodeScan: Boolean = false
@@ -613,6 +643,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = false
+    def cannotFail: Boolean = false // Trying to delete non-deletable entity
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = toDelete.isPure
     def canContainAllNodeScan: Boolean = false
@@ -638,6 +669,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
+    def cannotFail: Boolean = false // Target is not node-like
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = target.isPure && andThen.isIdempotent
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
@@ -654,6 +686,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
+    def cannotFail: Boolean = true
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = true // NB labels are a deduplicated `Set`
     def canContainAllNodeScan: Boolean = false
@@ -679,6 +712,8 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = toAggregate.isReadOnly
+    def cannotFail: Boolean =
+      aggregateAlong.forall(_._2.cannotFail) && toAggregate.cannotFail && aggregateWith.forall(_._2.cannotFail)
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean =
       aggregateAlong.forall(_._2.isPure) && aggregateWith.forall(_._2.isPure) && toAggregate.isIdempotent
@@ -700,6 +735,7 @@ object Query {
     columns: Columns = Columns.Omitted
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = !procedure.canContainUpdates
+    def cannotFail: Boolean = false
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = procedure.isIdempotent && arguments.forall(_.isPure)
 

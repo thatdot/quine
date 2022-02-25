@@ -41,6 +41,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     * @param expectedColumns the expected columns of output
     * @param expectedRows the expected output rows
     * @param expectedIsReadOnly
+    * @param expectedCannotFail
     * @param expectedIsIdempotent
     * @param expectedCanContainAllNodeScan
     * @param parameters query parameters
@@ -53,6 +54,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     expectedColumns: Vector[String],
     expectedRows: Seq[Vector[cypher.Value]],
     expectedIsReadOnly: Boolean = true,
+    expectedCannotFail: Boolean = false,
     expectedIsIdempotent: Boolean = true,
     expectedCanContainAllNodeScan: Boolean = false,
     parameters: Map[String, cypher.Value] = Map.empty,
@@ -83,6 +85,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
 
       assert({ Plan.fromQuery(queryResults.compiled.query).toValue; true }, "query plan can be rendered")
       assert(queryResults.compiled.query.isReadOnly == expectedIsReadOnly, "isReadOnly must match")
+      assert(queryResults.compiled.query.cannotFail == expectedCannotFail, "cannotFail must match")
       assert(queryResults.compiled.query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
       assert(
         queryResults.compiled.query.canContainAllNodeScan == expectedCanContainAllNodeScan,
@@ -101,6 +104,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     * @param expressionText expression whose output we are checking
     * @param expectedValue the expected output value
     * @param expectedIsReadOnly should the expression be readonly?
+    * @param expectedCannotFail should the expression be never throw an exception?
     * @param expectedIsIdempotent should the expression be idempotent?
     * @param expectedCanContainAllNodeScan is it possible for the expression to scan all nodes?
     * @param skip should the test be skipped
@@ -111,6 +115,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     expressionText: String,
     expectedValue: cypher.Value,
     expectedIsReadOnly: Boolean = true,
+    expectedCannotFail: Boolean = false,
     expectedIsIdempotent: Boolean = true,
     expectedCanContainAllNodeScan: Boolean = false,
     skip: Boolean = false,
@@ -123,6 +128,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
       expectedColumns = Vector(expressionText),
       expectedRows = Seq(Vector(expectedValue)),
       expectedIsReadOnly = expectedIsReadOnly,
+      expectedCannotFail = expectedCannotFail,
       expectedIsIdempotent = expectedIsIdempotent,
       expectedCanContainAllNodeScan = expectedCanContainAllNodeScan,
       skip = skip
@@ -157,12 +163,14 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     *
     * @param queryText query whose output we are checking
     * @param expectedIsReadOnly
+    * @param expectedCannotFail
     * @param expectedIsIdempotent
     * @param expectedCanContainAllNodeScan
     */
   final def testQueryStaticAnalysis(
     queryText: String,
     expectedIsReadOnly: Boolean,
+    expectedCannotFail: Boolean,
     expectedIsIdempotent: Boolean,
     expectedCanContainAllNodeScan: Boolean
   )(implicit
@@ -171,6 +179,7 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
     it(queryText) {
       val CompiledQuery(_, query, _, _, _) = compile(queryText)
       assert(query.isReadOnly == expectedIsReadOnly, "isReadOnly must match")
+      assert(query.cannotFail == expectedCannotFail, "cannotFail must match")
       assert(query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
       assert(
         query.canContainAllNodeScan == expectedCanContainAllNodeScan,

@@ -8,19 +8,22 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
     testQuery(
       "UNWIND [1,2,\"hello\",4.0,null,true] AS n RETURN count(*)",
       expectedColumns = Vector("count(*)"),
-      expectedRows = Seq(Vector(Expr.Integer(6L)))
+      expectedRows = Seq(Vector(Expr.Integer(6L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN count(*)",
       expectedColumns = Vector("count(*)"),
-      expectedRows = Seq(Vector(Expr.Integer(1L)))
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS n RETURN count(*)",
       expectedColumns = Vector("count(*)"),
-      expectedRows = Seq(Vector(Expr.Integer(0L)))
+      expectedRows = Seq(Vector(Expr.Integer(0L))),
+      expectedCannotFail = true
     )
   }
 
@@ -28,37 +31,43 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
     testQuery(
       "UNWIND [1,2,\"hello\",2,1,null,true] AS n RETURN count(n)",
       expectedColumns = Vector("count(n)"),
-      expectedRows = Seq(Vector(Expr.Integer(6L)))
+      expectedRows = Seq(Vector(Expr.Integer(6L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1,2,\"hello\",2,1,null,true] AS n RETURN count(DISTINCT n)",
       expectedColumns = Vector("count(DISTINCT n)"),
-      expectedRows = Seq(Vector(Expr.Integer(4L)))
+      expectedRows = Seq(Vector(Expr.Integer(4L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN count(1)",
       expectedColumns = Vector("count(1)"),
-      expectedRows = Seq(Vector(Expr.Integer(1L)))
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN count(null)",
       expectedColumns = Vector("count(null)"),
-      expectedRows = Seq(Vector(Expr.Integer(0L)))
+      expectedRows = Seq(Vector(Expr.Integer(0L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1,2,3] AS N RETURN count(null)",
       expectedColumns = Vector("count(null)"),
-      expectedRows = Seq(Vector(Expr.Integer(0L)))
+      expectedRows = Seq(Vector(Expr.Integer(0L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS n RETURN count(n)",
       expectedColumns = Vector("count(n)"),
-      expectedRows = Seq(Vector(Expr.Integer(0L)))
+      expectedRows = Seq(Vector(Expr.Integer(0L))),
+      expectedCannotFail = true
     )
   }
 
@@ -79,7 +88,8 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
             )
           )
         )
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -96,31 +106,36 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
             )
           )
         )
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN collect(1)",
       expectedColumns = Vector("collect(1)"),
-      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L)))))
+      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L))))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN collect(null)",
       expectedColumns = Vector("collect(null)"),
-      expectedRows = Seq(Vector(Expr.List(Vector.empty)))
+      expectedRows = Seq(Vector(Expr.List(Vector.empty))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1,2,3] AS N RETURN collect(null)",
       expectedColumns = Vector("collect(null)"),
-      expectedRows = Seq(Vector(Expr.List(Vector.empty)))
+      expectedRows = Seq(Vector(Expr.List(Vector.empty))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS n RETURN collect(n)",
       expectedColumns = Vector("collect(n)"),
-      expectedRows = Seq(Vector(Expr.List(Vector.empty)))
+      expectedRows = Seq(Vector(Expr.List(Vector.empty))),
+      expectedCannotFail = true
     )
   }
 
@@ -235,37 +250,43 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
     testQuery(
       "UNWIND [13, NULL, 44, 33, NULL] AS val RETURN max(val)",
       expectedColumns = Vector("max(val)"),
-      expectedRows = Seq(Vector(Expr.Integer(44L)))
+      expectedRows = Seq(Vector(Expr.Integer(44L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1, 'a', NULL , 0.2, 'b', '1', '99'] AS val RETURN max(val)",
       expectedColumns = Vector("max(val)"),
-      expectedRows = Seq(Vector(Expr.Integer(1L)))
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1,2,\"hello\",4.0,null,true] AS n RETURN max(n)",
       expectedColumns = Vector("max(n)"),
-      expectedRows = Seq(Vector(Expr.Floating(4.0)))
+      expectedRows = Seq(Vector(Expr.Floating(4.0))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [[1, 'a', 89],[1, 2]] AS val RETURN max(val)",
       expectedColumns = Vector("max(val)"),
-      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Integer(2L)))))
+      expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Integer(2L))))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN max(1)",
       expectedColumns = Vector("max(1)"),
-      expectedRows = Seq(Vector(Expr.Integer(1L)))
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS n RETURN max(n)",
       expectedColumns = Vector("max(n)"),
-      expectedRows = Seq(Vector(Expr.Null))
+      expectedRows = Seq(Vector(Expr.Null)),
+      expectedCannotFail = true
     )
   }
 
@@ -273,19 +294,22 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
     testQuery(
       "UNWIND [13, NULL, 44, 33, NULL] AS val RETURN min(val)",
       expectedColumns = Vector("min(val)"),
-      expectedRows = Seq(Vector(Expr.Integer(13L)))
+      expectedRows = Seq(Vector(Expr.Integer(13L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1, 'a', NULL , 0.2, 'b', '1', '99'] AS val RETURN min(val)",
       expectedColumns = Vector("min(val)"),
-      expectedRows = Seq(Vector(Expr.Str("1")))
+      expectedRows = Seq(Vector(Expr.Str("1"))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [1,2,\"hello\",4.0,null,true] AS n RETURN min(n)",
       expectedColumns = Vector("min(n)"),
-      expectedRows = Seq(Vector(Expr.Str("hello")))
+      expectedRows = Seq(Vector(Expr.Str("hello"))),
+      expectedCannotFail = true
     )
 
     testQuery(
@@ -293,19 +317,22 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedColumns = Vector("min(val)"),
       expectedRows = Seq(
         Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Str("a"), Expr.Integer(89L))))
-      )
+      ),
+      expectedCannotFail = true
     )
 
     testQuery(
       "RETURN min(1)",
       expectedColumns = Vector("min(1)"),
-      expectedRows = Seq(Vector(Expr.Integer(1L)))
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedCannotFail = true
     )
 
     testQuery(
       "UNWIND [] AS n RETURN min(n)",
       expectedColumns = Vector("min(n)"),
-      expectedRows = Seq(Vector(Expr.Null))
+      expectedRows = Seq(Vector(Expr.Null)),
+      expectedCannotFail = true
     )
   }
 

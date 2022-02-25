@@ -109,6 +109,7 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       expectedRows = Seq(
         Vector(Expr.Floating(10.1))
       ),
+      expectedCannotFail = true,
       expectedIsIdempotent = true
     )
   }
@@ -126,7 +127,9 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       expectedColumns = Vector("min(x)"),
       expectedRows = Seq(
         Vector(Expr.Integer(2L))
-      )
+      ),
+      expectedCannotFail = true,
+      expectedIsIdempotent = true
     )
   }
 

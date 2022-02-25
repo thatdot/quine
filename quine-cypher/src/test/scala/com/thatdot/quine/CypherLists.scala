@@ -7,10 +7,11 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
   describe("list literals") {
     testExpression(
       "[0, 1, 2, 2 + 1, 4, 5, 6, 7, 8, 9]",
-      Expr.List(Vector.tabulate(10)(i => Expr.Integer(i.toLong)))
+      Expr.List(Vector.tabulate(10)(i => Expr.Integer(i.toLong))),
+      expectedCannotFail = true
     )
 
-    testExpression("[]", Expr.List(Vector.empty))
+    testExpression("[]", Expr.List(Vector.empty), expectedCannotFail = true)
   }
 
   describe("`[]` list operator") {

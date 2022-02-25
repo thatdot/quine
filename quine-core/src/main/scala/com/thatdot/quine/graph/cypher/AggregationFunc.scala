@@ -20,6 +20,11 @@ sealed abstract class Aggregator {
     * - Does not cause side effects
     */
   def isPure: Boolean
+
+  /** Barring unbound variable or parameter exceptions, is it impossible for
+    * the expression to throw exceptions when evaluated?
+    */
+  def cannotFail: Boolean
 }
 
 object Aggregator {
@@ -63,6 +68,7 @@ object Aggregator {
       extractOutput = Expr.Integer(_: Long)
     )
     val isPure = true
+    def cannotFail = true
   }
 
   /** Tally up the number of non-null results */
@@ -75,6 +81,7 @@ object Aggregator {
       extractOutput = Expr.Integer(_: Long)
     )
     def isPure = expr.isPure
+    def cannotFail = expr.cannotFail
   }
 
   /** Accumulate the results in a list value */
@@ -87,6 +94,7 @@ object Aggregator {
       extractOutput = (l: List[Value]) => Expr.List(l.reverse.toVector)
     )
     def isPure = expr.isPure
+    def cannotFail = expr.cannotFail
   }
 
   /** Compute the average of numeric results */
@@ -119,7 +127,11 @@ object Aggregator {
           case Some((count, total)) => Expr.Floating(total / count.toDouble)
         }
     )
-    def isPure = expr.isPure
+
+    def isPure: Boolean = expr.isPure
+
+    // Non-number arguments
+    def cannotFail: Boolean = false
   }
 
   // TODO: this needs to work for duration types
@@ -147,7 +159,11 @@ object Aggregator {
         },
       extractOutput = acc => acc
     )
-    def isPure = expr.isPure
+
+    def isPure: Boolean = expr.isPure
+
+    // Non-number arguments
+    def cannotFail: Boolean = false
   }
 
   /** Compute the maximum of results.
@@ -169,7 +185,10 @@ object Aggregator {
         },
       extractOutput = _.getOrElse(Expr.Null)
     )
-    def isPure = expr.isPure
+
+    def isPure: Boolean = expr.isPure
+
+    def cannotFail: Boolean = expr.cannotFail
   }
 
   /** Compute the minimum of results.
@@ -191,7 +210,10 @@ object Aggregator {
         },
       extractOutput = (acc: Option[Value]) => acc.getOrElse(Expr.Null)
     )
-    def isPure = expr.isPure
+
+    def isPure: Boolean = expr.isPure
+
+    def cannotFail: Boolean = expr.cannotFail
   }
 }
 
