@@ -81,6 +81,13 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedColumns = Vector("x"),
       expectedRows = Seq()
     )
+
+    // See QU-433
+    testQuery(
+      "WITH 123 AS n WITH 124 AS n RETURN toJson(n)",
+      expectedColumns = Vector("toJson(n)"),
+      expectedRows = Seq(Vector(Expr.Str("124")))
+    )
   }
 
   describe("`UNION` query clause") {

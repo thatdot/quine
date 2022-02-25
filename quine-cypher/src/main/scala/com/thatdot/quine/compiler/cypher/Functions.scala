@@ -18,7 +18,9 @@ import com.google.common.hash.Hashing
 import org.opencypher.v9_0.expressions._
 import org.opencypher.v9_0.expressions.functions.Function
 import org.opencypher.v9_0.frontend.phases._
-import org.opencypher.v9_0.util.{InputPosition, Rewriter, bottomUp, symbols}
+import org.opencypher.v9_0.util.Foldable.TreeAny
+import org.opencypher.v9_0.util.Rewritable.IteratorEq
+import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
 
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
@@ -75,9 +77,32 @@ final class QuineFunctionInvocation(
   override val functionName: FunctionName,
   override val args: IndexedSeq[Expression],
   override val position: InputPosition
-) extends FunctionInvocation(namespace, functionName, false, args)(position) {
+) extends FunctionInvocation(namespace, functionName, false, args)(position)
+    with Rewritable {
   override val distinct = false
   override val function = new OpenCypherUdf(udf)
+
+  /* This _must_ be overriden or else `QuineFunctionInvocation` risks being
+   * re-written back to `FunctionInvocation`. This is all thanks to the fact
+   * that this class is extending a `case class` and `ASTNode.dup` looks up the
+   * constructor to use from `Rewritable.copyConstructor`, which in turn defers
+   * to `Product`...
+   *
+   * See QU-433
+   */
+  override def dup(children: Seq[AnyRef]): this.type =
+    if (children.iterator eqElements this.children) {
+      this
+    } else {
+      require(children.length == 4, "Wrong number of AST children")
+      new QuineFunctionInvocation(
+        udf,
+        children(0).asInstanceOf[Namespace],
+        children(1).asInstanceOf[FunctionName],
+        children(3).asInstanceOf[IndexedSeq[Expression @unchecked]],
+        position
+      ).asInstanceOf[this.type]
+    }
 }
 
 /** Re-write unresolved functions into variants that are resolved via
