@@ -19,6 +19,7 @@ PROJECT_LEVEL_INCLUDE = [
 
 PUSH_INCLUDE = [
     "public/**",
+    ".gitignore",
     ".github/workflows/copybara.yml",
     ".github/workflows/copy.bara.sky",
     ".scalafix.conf",
@@ -36,13 +37,14 @@ PR_TRANSFORMATIONS = [
     core.move("public/.github/workflows/", ".github/workflows/", paths = glob(["copybara.yml", "copy.bara.sky"])),
     core.move("public/.scalafix.conf", ".scalafix.conf"),
     core.move("public/.scalafmt.conf", ".scalafmt.conf"),
+    core.move("public/.gitignore", ".gitignore"),
     core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE))
 ]
 
 SCRUB_MESSAGE = [
     # Replace anything beginning "ENTERPRISE:" (until "PUBLIC:" if present, or else to the end of the message with \z)
     metadata.scrubber("ENTERPRISE:\\s(?:.|\n)*?(?:PUBLIC:\\s|\\z)"),
-    # Best effort to remove references to internal PRs that will be dead links publicly 
+    # Best effort to remove references to internal PRs that will be dead links publicly
     metadata.scrubber(" \\(#\\d+\\)$"),
 ]
 def cancel_after_frozen(ctx):

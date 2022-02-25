@@ -48,7 +48,7 @@ object QuineSettings {
           "-Wvalue-discard",
           // "-Wunused:imports", // See https://github.com/scala/scala-collection-compat/issues/240
           "-Wunused:privates,locals,patvars"
-        )
+        ) ++ (if (insideCI.value) Seq("-Werror") else Seq.empty)
       case _ =>
         Seq.empty
     }),
