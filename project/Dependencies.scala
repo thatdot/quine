@@ -62,5 +62,5 @@ object Dependencies {
   val swaggerUiV = "4.1.0"
   val ujsonV = "1.5.0"
   val visNetworkV = "8.2.0"
-  val webjarsLocatorV = "0.42"
+  val webjarsLocatorV = "0.45"
 }
