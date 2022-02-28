@@ -1,10 +1,10 @@
 import sbt._
 import sbt.Keys._
 import sbt.util.CacheImplicits._
-import scala.util.Properties
 
+import scala.util.{Properties, Using}
 import java.net.URL
-import java.nio.channels.{Channels, FileChannel};
+import java.nio.channels.{Channels, FileChannel}
 import java.nio.file._
 import java.util.zip._
 
@@ -43,7 +43,7 @@ object FlatcPlugin extends AutoPlugin {
       flatcExecutable := {
         val outputDirectory = (ThisBuild / baseDirectory).value / BuildPaths.DefaultTargetName / "flatc"
         val url: URL = flatcDependency.value.getOrElse {
-          val os = System.getProperty("os.name")
+          val os = Properties.osName
           val suggestion = "set flatcExecutable := file(path-to-flatc)"
           throw new sbt.internal.util.MessageOnlyException(
             s"Could not identify flatc binary for $os (try manually setting `$suggestion`)"
@@ -58,30 +58,23 @@ object FlatcPlugin extends AutoPlugin {
          * @param url URL from which to download a ZIP of the `flatc` binary
          * @return path to the downloaded flatc
          */
-        val getFlatc: Tuple2[File, URL] => File = Cache.cached[(File, URL), File](flatcStore) {
+        val getFlatc: ((File, URL)) => File = Cache.cached[(File, URL), File](flatcStore) {
           case (outputDirectory, url) =>
             val logger = streams.value.log
 
-            var zipIS: ZipInputStream = null
-            var fileChannel: FileChannel = null
-            var toPath: Path = null
-
-            try {
+            Using.Manager { use =>
               logger.info(s"Downloading flatc from $url...")
-              zipIS = new ZipInputStream(Channels.newInputStream(Channels.newChannel(url.openStream())))
+              val zipIS = use(new ZipInputStream(Channels.newInputStream(Channels.newChannel(url.openStream()))))
               val entry = zipIS.getNextEntry
-              toPath = outputDirectory.toPath.resolve(entry.getName())
+              val toPath = outputDirectory.toPath.resolve(entry.getName)
               IO.createDirectory(outputDirectory)
-              fileChannel = FileChannel.open(toPath, StandardOpenOption.WRITE, StandardOpenOption.CREATE)
+              val fileChannel = use(FileChannel.open(toPath, StandardOpenOption.WRITE, StandardOpenOption.CREATE))
               fileChannel.transferFrom(Channels.newChannel(zipIS), 0, Long.MaxValue)
               if (IO.isPosix) IO.chmod("rwxr--r--", toPath.toFile)
               logger.info(s"Saved flatc to $toPath")
-            } finally {
-              if (zipIS != null) zipIS.close()
-              if (fileChannel != null) fileChannel.close()
-            }
+              toPath.toFile
+            }.get
 
-            toPath.toFile
         }
 
         getFlatc(outputDirectory, url)
@@ -108,7 +101,7 @@ object FlatcPlugin extends AutoPlugin {
           IO.delete(outFolder)
           val args: List[String] = flatcOptions.value.toList ++ ("-o" :: outFolder.getAbsolutePath :: inFiles)
           logger.debug(s"Running '$flatcBin ${args.mkString(" ")}'")
-          val exitCode = scala.sys.process.Process(flatcBin, args) ! logger
+          val exitCode = sys.process.Process(flatcBin, args) ! logger
           if (exitCode != 0) throw new sbt.internal.util.MessageOnlyException("Could not generate FlatBuffers classes")
           (outFolder ** "*.java").get.toSet
         }
