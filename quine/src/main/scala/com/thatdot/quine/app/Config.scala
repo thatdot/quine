@@ -33,8 +33,8 @@ object Config extends BaseConfig {
   // Unknown keys anywhere inside the `quine { .. }` scope are errors
   // TODO: scala 2.12 incorrectly thinks it is unused
   @nowarn implicit private[this] def sealedProductHint[T]: ProductHint[T] = ProductHint[T](allowUnknownKeys = false)
-  @nowarn implicit private[this] val topLevelProductHint: ProductHint[Config] =
-    ProductHint[Config](allowUnknownKeys = true)
+  @nowarn implicit private[this] val topLevelProductHint: ProductHint[QuineConfigRoot] =
+    ProductHint[QuineConfigRoot](allowUnknownKeys = true)
 
   final case class QuineConfig(
     dumpConfig: Boolean = false,
@@ -67,13 +67,15 @@ object Config extends BaseConfig {
     )
 
   // This class is necessary to make sure our config is always situated at the `quine` root
-  final private case class Config(quine: QuineConfig = QuineConfig())
+  final private case class QuineConfigRoot(quine: QuineConfig = QuineConfig())
 
-  val quineReader: ConfigReader[QuineConfig] = ConfigReader[Config].map(_.quine)
-  val quineWriter: ConfigWriter[QuineConfig] = ConfigWriter[Config].contramap(c => Config(c))
+  val quineReader: ConfigReader[QuineConfig] = ConfigReader[QuineConfigRoot].map(_.quine)
+  val quineWriter: ConfigWriter[QuineConfig] = ConfigWriter[QuineConfigRoot].contramap(c => QuineConfigRoot(c))
 
-  /** The config that gets loaded at startup from the `.conf` file */
-  val config: QuineConfig = ConfigSource.default
+  /** The config that gets loaded at startup from the `.conf` file
+    * `lazy` so that applications can refer to utilities in [[Config]] without triggering a QuineConfig parse
+    */
+  lazy val config: QuineConfig = ConfigSource.default
     .load(quineReader)
     .valueOr { failures =>
       println(new ConfigReaderException[QuineConfig](failures).getMessage())
@@ -82,5 +84,5 @@ object Config extends BaseConfig {
       exit(1)
     }
 
-  val configVal: ConfigValue = quineWriter.to(config)
+  lazy val configVal: ConfigValue = quineWriter.to(config)
 }

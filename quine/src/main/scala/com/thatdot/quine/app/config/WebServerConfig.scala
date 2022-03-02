@@ -11,6 +11,8 @@ final case class WebServerConfig private (
 object WebServerConfig {
 
   def apply(address: String, port: Int): WebServerConfig = {
+    // These special cased hostnames match the special cases in akka's ArterySettings:
+    // This allows using akka-style <get...> syntax in Quine's webserver binding config
     val resolvedAddress = address match {
       case "<getHostAddress>" => InetAddress.getLocalHost.getHostAddress
       case "<getHostName>" => InetAddress.getLocalHost.getHostName

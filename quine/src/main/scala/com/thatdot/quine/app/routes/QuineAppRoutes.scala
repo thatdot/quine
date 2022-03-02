@@ -45,7 +45,7 @@ class QuineAppRoutes(
     with LazyLogging {
 
   val version = BuildInfo.version
-  val currentConfig = Config.loadedConfigJson
+  lazy val currentConfig: ujson.Value = Config.loadedConfigJson
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
 
   val webJarAssetLocator = new WebJarAssetLocator()

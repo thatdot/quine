@@ -6,7 +6,7 @@ import com.typesafe.config.{ConfigRenderOptions, ConfigValue}
 
 trait BaseConfig {
 
-  val configVal: ConfigValue
+  def configVal: ConfigValue
 
   /** @return JSON representation of the current config */
   def loadedConfigJson: ujson.Value = {

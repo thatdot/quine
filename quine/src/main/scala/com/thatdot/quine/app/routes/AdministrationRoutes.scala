@@ -35,7 +35,7 @@ trait AdministrationRoutesImpl
   val version: String
 
   /** Current config */
-  val currentConfig: ujson.Value
+  def currentConfig: ujson.Value
 
   /** State in the application */
   val serviceState: AdministrationRoutesState
