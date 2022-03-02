@@ -7,7 +7,7 @@ import com.thatdot.quine.model.Milliseconds
   */
 class GraphNotReadyException extends IllegalStateException() {
 
-  val atTime: Milliseconds = Milliseconds.currentTime();
+  val atTime: Milliseconds = Milliseconds.currentTime()
 
   override def getMessage: String =
     s"Graph not ready at time $atTime"

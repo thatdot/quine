@@ -14,7 +14,7 @@ trait QueryUiConfigurationRoutesImpl
   protected val serviceState: QueryUiConfigurationState
 
   def queryUiConfigurationRoutes: Route =
-    queryUiSampleQueries.implementedByAsync(_ => serviceState.getStartingQueries) ~
+    queryUiSampleQueries.implementedByAsync(_ => serviceState.getSampleQueries) ~
     updateQueryUiSampleQueries.implementedByAsync(serviceState.setSampleQueries) ~
     queryUiQuickQueries.implementedByAsync(_ => serviceState.getQuickQueries) ~
     updateQueryUiQuickQueries.implementedByAsync(serviceState.setQuickQueries) ~

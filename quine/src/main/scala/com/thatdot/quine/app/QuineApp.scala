@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
 import scala.collection.compat._
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -69,6 +70,43 @@ final class QuineApp(graph: GraphService)
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
   implicit private[this] val system: ActorSystem = graph.system // implicitly creates a Materializer
 
+  /** == Local state ==
+    * Notes on synchronization:
+    * Accesses to the following collections must be threadsafe. Additionally, the persisted copy of these collections
+    * (ie those accessed by `*Metadata` functions) must be kept in sync with the in-memory copy. Because all of these
+    * functions are expected to have a low volume of usage, and thus don't need to be performance-optimized, we
+    * aggressively synchronize on `this`. In particular, synchronizing on the variable itself is not sufficent, because
+    * the lock offered by `synchronize` is with respect to the locked *value*, not the locked *field* -- so locking on
+    * a mutating variable does not result in a mutex. By contrast, locking on `this` is more than is strictly necessary,
+    * but represents a deliberate choice to simplify the synchronization logic at the cost of reduced performance,
+    * as all these synchronization points should be low-volume.
+    *
+    * In the case of collections with only `get`/`set` functions, the @volatile annotation is sufficient to ensure the
+    * thread-safety of `get`. `set` functions must synchronize with a lock on `this` to ensure that setting both the
+    * in-memory and persisted copies of the collection happens at the same time.
+    *
+    * Get/set example:
+    * - `getQuickQueries` relies only on @volatile for its synchronization, because @volatile ensures all threads
+    * read the same state of the underlying `quickQueries` variable
+    * - `setQuickQueries` is wrapped in a `this.synchronized` to ensure that 2 simultaneous calls to `setQuickQueries`
+    * will not interleave their local and remote update steps. Without synchronized, execution (1) might set the local
+    * variable while execution (2) sets the persisted version
+    *
+    * In the case of collections with update (eg `add`/`remove`) semantics, all accesses must be synchronized
+    * with a lock on `this`, because all accesses involve both a read and a write which might race concurrent executions.
+    *
+    * Add example:
+    * - `addIngestStream` is wrapped in a `this.synchronized` because the updates it makes to `ingestStreams` depend on
+    * the results of a read of `ingestStreams`. Thus, the read and the write must happen atomically with respect to
+    * other `addIngestStream` invocations. Additionally, the `synchronized` ensures the local and persisted copies of
+    * the collection are kept in sync (as in the get/set case)
+    *
+    * Additionally, note that each synchronized{} block forces execution synchronization of futures it invokes (ie,
+    * each time a future is created, it is Await-ed). By Await-ing all futures created, we ensure that the
+    * synchronization boundary accounts for *all* work involved in the operation, not just the parts that happen on the
+    * local thread. TODO: instead of Await(), use actors or strengthen persistor guarantees to preserve happens-before
+    */
+
   @volatile
   private[this] var sampleQueries: Vector[SampleQuery] = Vector.empty
   @volatile
@@ -81,68 +119,55 @@ final class QuineApp(graph: GraphService)
   @volatile
   private[this] var ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]] = Map.empty
 
-  def getStartingQueries: Future[Vector[SampleQuery]] = Future.successful(sampleQueries)
+  /** == Accessors == */
+
+  def getSampleQueries: Future[Vector[SampleQuery]] = Future.successful(sampleQueries)
 
   def getQuickQueries: Future[Vector[UiNodeQuickQuery]] = Future.successful(quickQueries)
 
   def getNodeAppearances: Future[Vector[UiNodeAppearance]] = Future.successful(nodeAppearances)
 
-  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] = {
+  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] = synchronizedFakeFuture(this) {
     sampleQueries = newSampleQueries
     storeGlobalMetaData(SampleQueriesKey, sampleQueries)
   }
 
-  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] = {
+  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] = synchronizedFakeFuture(this) {
     quickQueries = newQuickQueries
     storeGlobalMetaData(QuickQueriesKey, quickQueries)
   }
 
-  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] = {
+  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] = synchronizedFakeFuture(this) {
     nodeAppearances = newNodeAppearances.map(QueryUiConfigurationState.renderNodeIcons)
     storeGlobalMetaData(NodeAppearancesKey, nodeAppearances)
   }
-  type FriendlySQName = String
-  type SQOutputName = String
-
-  implicit private[this] val standingQueriesSchema
-    : JsonSchema[Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]] = {
-    implicit val sqIdSchema = genericJsonSchema[StandingQueryId]
-    implicit val tupSchema = genericJsonSchema[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
-    mapJsonSchema(tupSchema)
-  }
-
-  private[this] def storeStandingQueries(): Future[Unit] =
-    storeGlobalMetaData(
-      StandingQueryOutputsKey,
-      standingQueryOutputTargets.map { case (name, (id, outputsMap)) =>
-        name -> (id -> outputsMap.view.mapValues(_._1).toMap)
-      }.toMap
-    )
 
   def addStandingQuery(queryName: FriendlySQName, query: StandingQueryDefinition): Future[Boolean] =
-    if (standingQueryOutputTargets.contains(queryName)) {
-      Future.successful(false)
-    } else {
-      val sqResultsConsumers = query.outputs.map { case (k, v) =>
-        k -> StandingQueryResultOutput.resultHandlingFlow(k, v, graph)
-      }
-      val (sq, killSwitches) = graph.createStandingQuery(
-        queryName,
-        pattern = compileToInternalSqPattern(query, graph),
-        outputs = sqResultsConsumers,
-        queueBackpressureThreshold = query.inputBufferSize
-      )
+    synchronizedFakeFuture(this) {
+      if (standingQueryOutputTargets.contains(queryName)) {
+        Future.successful(false)
+      } else {
+        val sqResultsConsumers = query.outputs.map { case (k, v) =>
+          k -> StandingQueryResultOutput.resultHandlingFlow(k, v, graph)
+        }
+        val (sq, killSwitches) = graph.createStandingQuery(
+          queryName,
+          pattern = compileToInternalSqPattern(query, graph),
+          outputs = sqResultsConsumers,
+          queueBackpressureThreshold = query.inputBufferSize
+        )
 
-      val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
-        name -> (out -> killSwitches(name))
+        val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
+          name -> (out -> killSwitches(name))
+        }
+        standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
+        storeStandingQueries().map(_ => true)
       }
-      standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
-      storeStandingQueries().map(_ => true)
     }
 
   def cancelStandingQuery(
     queryName: String
-  ): Future[Option[RegisteredStandingQuery]] = {
+  ): Future[Option[RegisteredStandingQuery]] = synchronizedFakeFuture(this) {
     val optionResult: Option[Future[RegisteredStandingQuery]] = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       futSq <- graph.cancelStandingQuery(sqId)
@@ -160,7 +185,7 @@ final class QuineApp(graph: GraphService)
     queryName: String,
     outputName: String,
     sqResultOutput: StandingQueryResultOutputUserDef
-  ): Future[Option[Boolean]] = {
+  ): Future[Option[Boolean]] = synchronizedFakeFuture(this) {
     val optionFut = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       sqResultSource <- graph.wireTapStandingQuery(sqId)
@@ -185,7 +210,7 @@ final class QuineApp(graph: GraphService)
   def removeStandingQueryOutput(
     queryName: String,
     outputName: String
-  ): Future[Option[StandingQueryResultOutputUserDef]] = {
+  ): Future[Option[StandingQueryResultOutputUserDef]] = synchronizedFakeFuture(this) {
     val outputOpt = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       (output, killSwitch) <- outputs.get(outputName)
@@ -209,24 +234,25 @@ final class QuineApp(graph: GraphService)
     * @param names which standing queries to retrieve, empty list corresponds to all SQs
     * @return queries registered on the graph
     */
-  private def getStandingQueriesWithNames(queryNames: List[String]): Future[List[RegisteredStandingQuery]] = {
-    val matchingInfo = for {
-      queryName <- queryNames match {
-        case Nil => standingQueryOutputTargets.keys
-        case names => names
-      }
-      (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
-      (internalSq, startTime, bufferSize) <- graph.listStandingQueries.get(sqId)
-    } yield makeRegisteredStandingQuery(
-      internalSq,
-      outputs.mapValues(_._1),
-      startTime,
-      bufferSize,
-      graph.metrics
-    )
+  private def getStandingQueriesWithNames(queryNames: List[String]): Future[List[RegisteredStandingQuery]] =
+    synchronizedFakeFuture(this) {
+      val matchingInfo = for {
+        queryName <- queryNames match {
+          case Nil => standingQueryOutputTargets.keys
+          case names => names
+        }
+        (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
+        (internalSq, startTime, bufferSize) <- graph.listStandingQueries.get(sqId)
+      } yield makeRegisteredStandingQuery(
+        internalSq,
+        outputs.mapValues(_._1),
+        startTime,
+        bufferSize,
+        graph.metrics
+      )
 
-    Future.successful(matchingInfo.toList)
-  }
+      Future.successful(matchingInfo.toList)
+    }
 
   def getStandingQueryId(queryName: String): Option[StandingQueryId] =
     standingQueryOutputTargets.get(queryName).map(_._1)
@@ -237,13 +263,10 @@ final class QuineApp(graph: GraphService)
     wasRestoredFromStorage: Boolean,
     timeout: Timeout
   ): Try[Boolean] =
-    if (ingestStreams.contains(name)) {
-      Success(false)
-    } else
-      // Because this stores asynchronously with `storeLocalMetaData`, concurrent calls to this
-      // function run the risk of a race condition overwriting with older data and losing data.
-      // Since the function is called infrequently, taking the easy way out with `synchronized`.
-      ingestStreams.synchronized {
+    this.synchronized {
+      if (ingestStreams.contains(name)) {
+        Success(false)
+      } else
         Try {
           val meter = IngestMetered.ingestMeter(name)
           val ingestSrc = createIngestStream(
@@ -263,7 +286,8 @@ final class QuineApp(graph: GraphService)
             restored = wasRestoredFromStorage
           )
           streamDefWithControl.close = () => {
-            ingestControl.terminate(); ()
+            ingestControl.terminate()
+            ()
           }
           streamDefWithControl.terminated = ingestControl.termSignal
           streamDefWithControl.registerTerminationHooks(name, logger)
@@ -281,7 +305,7 @@ final class QuineApp(graph: GraphService)
 
           true
         }
-      }
+    }
 
   def getIngestStream(name: String): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
     ingestStreams.get(name)
@@ -293,18 +317,23 @@ final class QuineApp(graph: GraphService)
     name: String
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = Try {
     val thisMemberId = 0
-    ingestStreams.synchronized { // `synchronized` is tolerable because it's low-traffic
+    this.synchronized {
       ingestStreams.get(name).map { stream =>
         ingestStreams -= name
-        storeLocalMetaData(
-          IngestStreamsKey,
-          thisMemberId,
-          ingestStreams.map { case (name, stream) => name -> stream.settings }.toMap
+        Await.result(
+          storeLocalMetaData(
+            IngestStreamsKey,
+            thisMemberId,
+            ingestStreams.map { case (name, stream) => name -> stream.settings }.toMap
+          ),
+          QuineApp.ConfigApiTimeout
         )
         stream
       }
     }
   }.toOption.flatten
+
+  /** == Utilities == */
 
   /** If any ingest streams are currently in the `RESTORED` state, start them all. */
   def startRestoredIngests(): Unit =
@@ -334,7 +363,9 @@ final class QuineApp(graph: GraphService)
 
   /** Load all the state from the persistor
     *
-    * @param timeout used repeatedly for individual calls to get meta data when restoring ingest streams.
+    * Not threadsafe -- must be called only once (eg from Main)
+    *
+    * @param timeout       used repeatedly for individual calls to get meta data when restoring ingest streams.
     * @param restoreIngest should restored ingest streams be resumed
     */
   def load(timeout: Timeout, shouldResumeIngest: Boolean): Future[Unit] = {
@@ -399,6 +430,24 @@ final class QuineApp(graph: GraphService)
       }
     }
   }
+
+  type FriendlySQName = String
+  type SQOutputName = String
+
+  implicit private[this] val standingQueriesSchema
+    : JsonSchema[Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]] = {
+    implicit val sqIdSchema = genericJsonSchema[StandingQueryId]
+    implicit val tupSchema = genericJsonSchema[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
+    mapJsonSchema(tupSchema)
+  }
+
+  private[this] def storeStandingQueries(): Future[Unit] =
+    storeGlobalMetaData(
+      StandingQueryOutputsKey,
+      standingQueryOutputTargets.map { case (name, (id, outputsMap)) =>
+        name -> (id -> outputsMap.view.mapValues(_._1).toMap)
+      }.toMap
+    )
 }
 
 object QuineApp {
@@ -411,6 +460,24 @@ object QuineApp {
   final val NodeAppearancesKey = "node_appearances"
   final val StandingQueryOutputsKey = "standing_query_outputs"
   final val IngestStreamsKey = "ingest_streams"
+
+  // the maximum time to allow a configuring API call (eg, "add ingest query" or "update node appearances") to execute
+  final val ConfigApiTimeout: FiniteDuration = 30.seconds
+
+  /** Aggressively synchronize a unit of work returning a Future, and block on the Future's completion
+    *
+    * Multiple executions of synchronizedFakeFuture are guaranteed to not interleave any effects represented by their
+    * arguments. This is used to ensure that local and persisted effects within `synchronizeMe` are fully applied
+    * without interleaving. For certain persistors, such as Cassandra, synchronization (without an Await) would be
+    * sufficient, because the Cassandra persistor guarantees that effects started in sequence will be applied in the
+    * same sequence.
+    *
+    * NB while this does inherit the reentrance properties of `synchronized`, this function might still be prone to
+    * deadlocking! Use with *extreme* caution!
+    */
+  private[app] def synchronizedFakeFuture[T](lock: Object)(synchronizeMe: => Future[T]): Future[T] = lock.synchronized {
+    Await.ready(synchronizeMe: Future[T], QuineApp.ConfigApiTimeout)
+  }
 
   /** Version to track schemas saved by Quine app state
     *
@@ -430,11 +497,11 @@ object QuineApp {
   /** Aggregate Quine SQ outputs and Quine standing query into a user-facing SQ
     *
     * @note this includes only local information/metrics!
-    * @param internal Quine representation of the SQ
-    * @param outputs SQ outputs registered on the query
-    * @param startTime when the query was started (or re-started)
+    * @param internal   Quine representation of the SQ
+    * @param outputs    SQ outputs registered on the query
+    * @param startTime  when the query was started (or re-started)
     * @param bufferSize number of elements buffered in the SQ output queue
-    * @param metrics Quine metrics object
+    * @param metrics    Quine metrics object
     */
   private def makeRegisteredStandingQuery(
     internal: StandingQuery,

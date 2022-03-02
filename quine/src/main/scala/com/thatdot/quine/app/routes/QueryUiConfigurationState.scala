@@ -38,7 +38,7 @@ object QueryUiConfigurationState {
 
 trait QueryUiConfigurationState {
 
-  def getStartingQueries: Future[Vector[SampleQuery]]
+  def getSampleQueries: Future[Vector[SampleQuery]]
 
   def getQuickQueries: Future[Vector[UiNodeQuickQuery]]
 
