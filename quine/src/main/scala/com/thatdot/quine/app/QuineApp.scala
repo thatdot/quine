@@ -484,7 +484,7 @@ object QuineApp {
     * Remember to increment this if schemas in Quine app state evolve in
     * backwards incompatible ways.
     */
-  final val CurrentPersistenceVersion: Version = Version(1, 0, 0)
+  final val CurrentPersistenceVersion: Version = Version(1, 1, 0)
 
   def quineAppIsEmpty(persistenceAgent: PersistenceAgent)(implicit ec: ExecutionContext): Future[Boolean] = {
     val metaDataKeys =
