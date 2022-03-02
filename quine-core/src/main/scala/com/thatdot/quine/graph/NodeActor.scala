@@ -258,6 +258,7 @@ private[graph] class NodeActor(
     *
     * @param untilOpt load changes made up to and including this time
     */
+  @throws[NodeWakeupFailedException]("When node wakeup fails irrecoverably")
   private[this] def restoreFromSnapshotAndJournal(untilOpt: Option[Milliseconds]): Unit = {
     import context.dispatcher
 
@@ -297,6 +298,8 @@ private[graph] class NodeActor(
           metrics.persistorGetJournalTimer.time {
             persistor.getJournal(startingAt, endingAt)
           }
+          // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
+          // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
         } else
           Future.successful(Vector.empty)
     } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
@@ -341,7 +344,13 @@ private[graph] class NodeActor(
             val idProvider = idProv
           }
           for ((handler, bytes) <- standingQueryStates) {
-            val sqState = PersistenceCodecs.standingQueryStateFormat.read(bytes).get
+            val sqState = PersistenceCodecs.standingQueryStateFormat
+              .read(bytes)
+              .getOrElse(
+                throw new NodeWakeupFailedException(
+                  s"NodeActor state (Standing Query States) for node: ${qid.debug} could not be loaded"
+                )
+              )
             sqState._2.preStart(lookupInfo)
             standingQueries += handler -> sqState
           }
@@ -355,7 +364,11 @@ private[graph] class NodeActor(
           costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
         case Failure(err) =>
           // See QU-429
-          log.error(err, "NodeActor state could not be loaded - this may lead to inconsistent state")
+          throw new NodeWakeupFailedException(
+            s"""NodeActor state for node: ${qid.debug} could not be loaded - this was most
+               |likely due to a problem deserializing journal events""".stripMargin.replace('\n', ' '),
+            err
+          )
       }
     )
   }
@@ -381,17 +394,24 @@ private[graph] class NodeActor(
     )
   }
 
-  /** Deserialize a binary node snapshot and use it to initialize node state
+  /** During wake-up, deserialize a binary node snapshot and use it to initialize node state
     *
     * @note must be called on the actor thread
     * @param snapshotBytes binary node snapshot
     */
-  @throws("if snapshot bytes cannot be deserialized")
+  @throws[NodeWakeupFailedException]("if snapshot bytes cannot be deserialized")
   private def restoreFromSnapshotBytes(snapshotBytes: Array[Byte]): Unit = {
     val restored: NodeSnapshot =
       PersistenceCodecs.nodeSnapshotFormat
         .read(snapshotBytes)
-        .get // Throws! ...because there's nothing better to do...
+        .fold(
+          err =>
+            throw new NodeWakeupFailedException(
+              s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
+              err
+            ),
+          identity
+        )
     properties = restored.properties
     restored.edges.foreach(edges +=)
     forwardTo = restored.forwardTo

@@ -10,7 +10,7 @@ import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteD
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, Timers}
+import akka.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, SupervisorStrategy, Timers}
 import akka.dispatch.Envelope
 import akka.pattern.{AskTimeoutException, ask}
 import akka.stream.scaladsl.Source
@@ -101,7 +101,7 @@ final private[quine] class GraphShardActor(
   private[this] val nodesRemovedCounter = graph.metrics.shardNodesRemovedCounter(name)
 
   // Counters that track occurences of supposedly unlikely (and generally bad) code paths
-  private[this] val unlikelyWakupFailed = graph.metrics.shardUnlikelyWakupFailed(name)
+  private[this] val unlikelyWakeupFailed = graph.metrics.shardUnlikelyWakeupFailed(name)
   private[this] val unlikelyIncompleteShdnCounter = graph.metrics.shardUnlikelyIncompleteShdnCounter(name)
   private[this] val unlikelyActorNameRsvdCounter = graph.metrics.shardUnlikelyActorNameRsvdCounter(name)
   private[this] val unlikelyHardLimitReachedCounter = graph.metrics.shardUnlikelyHardLimitReachedCounter(name)
@@ -142,6 +142,8 @@ final private[quine] class GraphShardActor(
 
     case _ => new ExpiringLruSet.Noop[QuineIdAtTime]
   }
+
+  override val supervisorStrategy: SupervisorStrategy = new NodeAndShardSupervisorStrategy().create()
 
   /** Try to ensure an actor is awake for a node, and if successful, do
     * something with the associated [[ActorRef]]. This is the only place where
@@ -401,7 +403,7 @@ final private[quine] class GraphShardActor(
         case WakeUpOutcome.AlreadyAwake | WakeUpOutcome.Awoken => ()
         // Failure and out of retry attempts
         case badOutcome if remaining <= 0 =>
-          unlikelyWakupFailed.inc()
+          unlikelyWakeupFailed.inc()
           val stats = shardStats()
           if (log.isWarningEnabled) {
             log.warning(
@@ -412,6 +414,7 @@ final private[quine] class GraphShardActor(
               s"Errors: " + errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", ")
             )
           }
+          throw new NodeWakeupFailedException(s"Failed to wake node: ${id.debug} after exhausting retries.")
 
         // Retry because the actor name should (hopefully) be freed by then.
         case _: WakeUpOutcome.ActorNameStillReserved =>

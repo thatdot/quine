@@ -34,7 +34,7 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "removed"))
 
   // Counters that track occurences of supposedly unlikely (and generally bad) code paths
-  def shardUnlikelyWakupFailed(shardName: String): Counter =
+  def shardUnlikelyWakeupFailed(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "wake-up-failed"))
   def shardUnlikelyIncompleteShdnCounter(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "incomplete-shutdown"))
