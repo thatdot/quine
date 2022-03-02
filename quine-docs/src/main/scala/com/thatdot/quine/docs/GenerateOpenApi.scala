@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import endpoints4s.openapi.model.OpenApi
 
 import com.thatdot.quine.app.routes.QuineAppOpenApiDocs
-import com.thatdot.quine.graph.QuineIdRandomLongProvider
+import com.thatdot.quine.graph.QuineUUIDProvider
 
 object GenerateOpenApi extends App {
 
@@ -17,7 +17,7 @@ object GenerateOpenApi extends App {
       sys.exit(1)
   }
 
-  val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineIdRandomLongProvider).api
+  val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider).api
   val openApiDocumentationJson: String = OpenApi.stringEncoder.encode(openApiRoutes)
 
   Files.createDirectories(outputPath.getParent())

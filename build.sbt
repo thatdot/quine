@@ -304,7 +304,9 @@ lazy val `quine-docs`: Project = {
         "material.repo.type" -> "github",
         "material.social" -> "https://quine-io.slack.com",
         "material.social.type" -> "slack",
-        "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString
+        "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
+        "project.name" -> projectName.value,
+        "logo.link.title" -> "Quine"
       ),
       description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
       Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
@@ -343,9 +345,12 @@ lazy val `quine-docs`: Project = {
           .withLogo("assets/images/quine_logo.svg")
           .withColor("white", "quine-blue")
           .withFavicon("assets/images/favicon.svg")
-      }
+      },
+      Compile / overlayDirectory := (`paradox-overlay` / baseDirectory).value
     )
 }
+
+lazy val `paradox-overlay`: Project = project
 
 // Spurious warnings
 Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationExpandDepth

@@ -29,18 +29,15 @@ object ParadoxThatdot extends AutoPlugin {
   override lazy val projectSettings = inConfig(Compile)(
     Seq(
       paradoxMaterialTheme ~= {
-        _ // .withColor("thatdot-blue", "thatdot-grey")
-          .withoutFont()
+        _.withoutFont()
           .withLogo("assets/images/logo.svg")
           .withFavicon("assets/images/favicon.svg")
           .withCopyright(s"© ${Calendar.getInstance.get(Calendar.YEAR)} thatDot, Inc.")
           .withGoogleAnalytics("UA-148518730-1")
       },
       paradoxProperties ++= Map(
-        "project.name" -> projectName.value,
-        "logo.link.title" -> "Quine"
+        "project.name" -> projectName.value
       ),
-      overlayDirectory := baseDirectory.value / ".." / "paradox-overlay",
       templateDirectory := overlayDirectory.value / "_template",
       paradoxOverlayDirectories := Seq(overlayDirectory.value),
       paradoxTheme / sourceDirectories += templateDirectory.value,

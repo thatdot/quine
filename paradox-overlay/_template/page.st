@@ -96,7 +96,7 @@
               <div class="md-content__searchable">
                 $page.content$
               </div>
-              $ if (page.source_url) $
+              $ if (page.source_url && page.property_is.("github_edit_link").("true")) $
                 <div>
                   <a href="$page.source_url$" title="Edit this page" class="md-source-file md-edit">
                     Edit this page
