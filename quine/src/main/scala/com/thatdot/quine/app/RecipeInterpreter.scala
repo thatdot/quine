@@ -1,9 +1,9 @@
 package com.thatdot.quine.app
 
+import java.lang.System.lineSeparator
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
-import scala.collection.immutable
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.NonFatal
@@ -18,6 +18,7 @@ import com.google.common.net.PercentEscaper
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
 import com.thatdot.quine.graph.cypher.{QueryResults, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph}
+import com.thatdot.quine.model.QuineIdProvider
 
 /** Runs a Recipe by making a series of blocking graph method calls as determined
   * by the recipe content.
@@ -35,7 +36,7 @@ object RecipeInterpreter {
     appState: RecipeState,
     graphService: CypherOpsGraph,
     quineWebserverUrl: Option[String]
-  )(implicit ec: ExecutionContext): Cancellable = {
+  )(implicit ec: ExecutionContext, idProvider: QuineIdProvider): Cancellable = {
     statusLines.info(s"Running Recipe ${recipe.title}")
 
     if (recipe.nodeAppearances.nonEmpty) {
@@ -190,28 +191,80 @@ object RecipeInterpreter {
     graphService: CypherOpsGraph,
     statusQuery: StatusQuery,
     interval: FiniteDuration = 5 second
-  )(implicit ec: ExecutionContext): Cancellable = {
+  )(implicit ec: ExecutionContext, idProvider: QuineIdProvider): Cancellable = {
     val actorSystem = graphService.system
     val changed = new OnChanged[String]
     lazy val task: Cancellable = actorSystem.scheduler.scheduleWithFixedDelay(
       initialDelay = interval,
       delay = interval
     ) { () =>
-      val queryResult: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
+      val queryResults: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
         queryText = statusQuery.cypherQuery
       )(graphService, 10 seconds)
       try {
-        val resultContent: immutable.Seq[Vector[Value]] =
+        val resultContent: Seq[Seq[Value]] =
           Await.result(
-            queryResult.results.take(printQueryMaxResults).toMat(Sink.seq)(Keep.right).run()(graphService.materializer),
+            queryResults.results
+              .take(printQueryMaxResults)
+              .toMat(Sink.seq)(Keep.right)
+              .run()(graphService.materializer),
             5 seconds
           )
-        changed(s"Status query result $resultContent")(statusLines.info(_))
+        changed(queryResultToString(queryResults, resultContent))(statusLines.info(_))
       } catch {
         case _: TimeoutException => statusLines.warn("Status query timed out")
       }
     }
     task
+  }
+
+  /** Formats query results into a multi-line string designed to be easily human-readable. */
+  private def queryResultToString(queryResults: QueryResults, resultContent: Seq[Seq[Value]])(implicit
+    idProvider: QuineIdProvider
+  ): String = {
+
+    /** Builds a repeated string by concatenation. */
+    def repeated(s: String, times: Int): String =
+      Seq.fill(times)(s).mkString
+
+    /** Sets the string length, by adding padding or truncating. */
+    def fixedLength(s: String, length: Int, padding: Char): String =
+      if (s.length < length) {
+        s + repeated(padding.toString, length - s.length)
+      } else if (s.length > length) {
+        s.substring(0, length)
+      } else {
+        s
+      }
+
+    (for { (resultRecord, resultRecordIndex) <- resultContent.zipWithIndex } yield {
+      val columnNameFixedWidthMax = 20
+      val columnNameFixedWidth =
+        Math.min(
+          queryResults.columns.map(_.name.length).max,
+          columnNameFixedWidthMax
+        )
+      val valueStrings = resultRecord.map(Value.toJson(_).toString)
+      val valueStringMaxLength = valueStrings.map(_.length).max
+      val separator = " | "
+      val headerLengthMax = 200
+      val header =
+        fixedLength(
+          s"---[ Status Query result ${resultRecordIndex + 1} ]",
+          Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax),
+          '-'
+        )
+      val footer =
+        repeated("-", columnNameFixedWidth + 1) + "+" + repeated("-", header.length - columnNameFixedWidth - 2)
+      header + lineSeparator + {
+        {
+          for {
+            (columnName, value) <- queryResults.columns.zip(valueStrings)
+            fixedLengthColumnName = fixedLength(columnName.name, columnNameFixedWidth, ' ')
+          } yield fixedLengthColumnName + separator + value
+        } mkString lineSeparator
+      } + lineSeparator + footer
+    }) mkString lineSeparator
   }
 }
 

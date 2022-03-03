@@ -186,8 +186,9 @@ object Main extends App with LazyLogging {
     .load(timeout, config.shouldResumeIngest)
     .onComplete { _ =>
       statusLines.info("Application state loaded.")
-      recipeInterpreterTask =
-        recipe.map(r => RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(system.dispatcher))
+      recipeInterpreterTask = recipe.map(r =>
+        RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(system.dispatcher, graph.idProvider)
+      )
     }(ec)
 
   quineWebserverUrl foreach { url =>
