@@ -5,7 +5,7 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 import scala.collection.compat._
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
@@ -263,7 +263,7 @@ final class QuineApp(graph: GraphService)
     wasRestoredFromStorage: Boolean,
     timeout: Timeout
   ): Try[Boolean] =
-    this.synchronized {
+    blocking(this.synchronized {
       if (ingestStreams.contains(name)) {
         Success(false)
       } else
@@ -305,7 +305,7 @@ final class QuineApp(graph: GraphService)
 
           true
         }
-    }
+    })
 
   def getIngestStream(name: String): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
     ingestStreams.get(name)
@@ -317,7 +317,7 @@ final class QuineApp(graph: GraphService)
     name: String
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = Try {
     val thisMemberId = 0
-    this.synchronized {
+    blocking(this.synchronized {
       ingestStreams.get(name).map { stream =>
         ingestStreams -= name
         Await.result(
@@ -330,7 +330,7 @@ final class QuineApp(graph: GraphService)
         )
         stream
       }
-    }
+    })
   }.toOption.flatten
 
   /** == Utilities == */
@@ -475,9 +475,11 @@ object QuineApp {
     * NB while this does inherit the reentrance properties of `synchronized`, this function might still be prone to
     * deadlocking! Use with *extreme* caution!
     */
-  private[app] def synchronizedFakeFuture[T](lock: Object)(synchronizeMe: => Future[T]): Future[T] = lock.synchronized {
-    Await.ready(synchronizeMe: Future[T], QuineApp.ConfigApiTimeout)
-  }
+  private[app] def synchronizedFakeFuture[T](lock: AnyRef)(synchronizeMe: => Future[T]): Future[T] = blocking(
+    lock.synchronized(
+      Await.ready(synchronizeMe: Future[T], QuineApp.ConfigApiTimeout)
+    )
+  )
 
   /** Version to track schemas saved by Quine app state
     *
