@@ -10,6 +10,7 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.actor.Cancellable
+import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Sink}
 
 import com.google.common.net.PercentEscaper
@@ -129,7 +130,7 @@ object RecipeInterpreter {
           ()
         case Some(ingestStream) =>
           for {
-            status <- ingestStream.status
+            status <- ingestStream.status(Materializer.matFromSystem(actorSystem))
             stats = ingestStream.metrics.toEndpointResponse
           } {
             val message =

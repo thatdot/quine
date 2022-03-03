@@ -3,8 +3,8 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 import akka.http.scaladsl.server.Directives._
@@ -53,20 +53,31 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   var close: () => Unit = () => (),
   var terminated: Future[Done] = Future.failed(new Exception("Stream never started"))
 ) {
-  def status: Future[IngestStreamStatus] =
+  def status(implicit materializer: Materializer): Future[IngestStreamStatus] =
     terminated.value match {
       case Some(Success(Done)) => Future.successful(IngestStreamStatus.Completed)
       case Some(Failure(_)) => Future.successful(IngestStreamStatus.Failed)
       case None =>
         valve.value match {
           case Some(Success(valve)) =>
-            valve
-              .getMode()
-              .map {
-                case SwitchMode.Open => IngestStreamStatus.Running
-                case SwitchMode.Close if restored => IngestStreamStatus.Restored
-                case SwitchMode.Close => IngestStreamStatus.Paused
-              }(ExecutionContexts.parasitic)
+            /* Add a timeout to work around <https://github.com/akka/akka-stream-contrib/issues/119>
+             *
+             * Race the actual call to `getMode` with a timeout action
+             */
+            val theStatus = Promise[IngestStreamStatus]()
+            theStatus.completeWith(
+              valve
+                .getMode()
+                .map {
+                  case SwitchMode.Open => IngestStreamStatus.Running
+                  case SwitchMode.Close if restored => IngestStreamStatus.Restored
+                  case SwitchMode.Close => IngestStreamStatus.Paused
+                }(materializer.executionContext)
+            )
+            materializer.system.scheduler.scheduleOnce(1.second) {
+              val _ = theStatus.trySuccess(IngestStreamStatus.Terminated)
+            }(materializer.executionContext)
+            theStatus.future
 
           case _ =>
             Future.successful(IngestStreamStatus.Running)
