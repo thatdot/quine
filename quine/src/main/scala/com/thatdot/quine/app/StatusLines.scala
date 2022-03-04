@@ -2,6 +2,8 @@ package com.thatdot.quine.app
 
 import java.io.PrintStream
 
+import scala.collection.mutable
+
 import com.typesafe.scalalogging.Logger
 
 class StatusLines(
@@ -43,7 +45,8 @@ class StatusLines(
 
   class StatusLine
 
-  private val messages: collection.mutable.Map[StatusLine, String] = collection.mutable.Map.empty[StatusLine, String]
+  // Using LinkedHashMap so that status messages will be printed in insertion order
+  private val messages: mutable.LinkedHashMap[StatusLine, String] = mutable.LinkedHashMap.empty[StatusLine, String]
 
   def create(message: String = ""): StatusLine = {
     val statusLine = new StatusLine
