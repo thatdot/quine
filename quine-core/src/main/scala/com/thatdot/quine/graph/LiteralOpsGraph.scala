@@ -12,7 +12,7 @@ import com.thatdot.quine.model._
 /** Functionality for directly modifying the runtime property graph. Always prefer using something else. */
 trait LiteralOpsGraph extends BaseGraph {
 
-  requireBehavior("LiteralOperations", classOf[behavior.LiteralCommandBehavior])
+  requireBehavior(classOf[LiteralOpsGraph].getSimpleName, classOf[behavior.LiteralCommandBehavior])
 
   // TODO: should we keep this object indirection? It serves no purpose other than namespacing...
   object literalOps {

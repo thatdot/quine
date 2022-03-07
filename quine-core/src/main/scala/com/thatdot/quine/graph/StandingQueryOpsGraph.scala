@@ -30,8 +30,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
     */
   def runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery]
 
-  requireBehavior("StandingQueryOperations", classOf[behavior.CypherStandingBehavior])
-  requireBehavior("StandingQueryOperations", classOf[behavior.DomainNodeIndexBehavior])
+  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.CypherStandingBehavior])
+  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.DomainNodeIndexBehavior])
 
   // NB this initialization needs to occur before we restore standing queries,
   // otherwise a null pointer exception occurs

@@ -8,7 +8,7 @@ import com.thatdot.quine.model._
 /** Functionality for querying the graph using Cypher. */
 trait CypherOpsGraph extends BaseGraph {
 
-  requireBehavior("CypherOperations", classOf[behavior.CypherBehavior])
+  requireBehavior(classOf[CypherOpsGraph].getSimpleName, classOf[behavior.CypherBehavior])
 
   private def getInterpreter(forTime: Option[Milliseconds]): AnchoredInterpreter =
     new AnchoredInterpreter {
