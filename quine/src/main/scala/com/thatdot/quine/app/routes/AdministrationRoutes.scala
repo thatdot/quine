@@ -53,9 +53,7 @@ trait AdministrationRoutesImpl
       version,
       gitCommit,
       QuineBuildInfo.gitHeadCommitDate,
-      QuineBuildInfo.scalaVersion,
       QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
-      QuineBuildInfo.sbtVersion,
       PersistenceAgent.CurrentVersion.shortString
     )
   }

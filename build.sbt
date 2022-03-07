@@ -45,8 +45,6 @@ lazy val `quine-core`: Project = project
     buildInfoOptions := Seq(BuildInfoOption.BuildTime),
     buildInfoKeys := Seq[BuildInfoKey](
       version,
-      scalaVersion,
-      sbtVersion,
       git.gitHeadCommit,
       git.gitUncommittedChanges,
       git.gitHeadCommitDate,

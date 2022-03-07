@@ -13,9 +13,7 @@ final case class QuineInfo(
   @docs("version of the system") version: String,
   @docs("commit associated with this build") gitCommit: Option[String],
   @docs("date associated with the commit") gitCommitDate: Option[String],
-  @docs("version of Scala used during compilation") scalaVersion: String,
   @docs("version of Java used during compilation") javaVersion: String,
-  @docs("version of SBT build tool used for compilation") sbtVersion: String,
   @docs("version of the persisted data format written by this build") persistenceWriteVersion: String
 )
 
@@ -84,9 +82,7 @@ trait AdministrationRoutes
           version = "0.1",
           gitCommit = None,
           gitCommitDate = None,
-          scalaVersion = "2.12.15",
           javaVersion = "OpenJDK 64-Bit Server VM 1.8.0_312 (Azul Systems, Inc.)",
-          sbtVersion = "1.6.1",
           persistenceWriteVersion = "10.1.0"
         )
       )
