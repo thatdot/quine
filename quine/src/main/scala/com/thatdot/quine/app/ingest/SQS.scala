@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers
+package com.thatdot.quine.app.ingest
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
@@ -15,9 +15,9 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sqs.SqsAsyncClient
 
 import com.thatdot.quine.app.ControlSwitches
-import com.thatdot.quine.app.importers.serialization.ImportFormat
-import com.thatdot.quine.app.importers.util.AwsOps
-import com.thatdot.quine.app.importers.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.util.AwsOps
+import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}

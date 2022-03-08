@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers
+package com.thatdot.quine.app.ingest
 
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
@@ -23,9 +23,9 @@ import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
 import com.thatdot.quine.app.ControlSwitches
-import com.thatdot.quine.app.importers.serialization.ImportFormat
-import com.thatdot.quine.app.importers.util.AwsOps
-import com.thatdot.quine.app.importers.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.util.AwsOps
+import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}

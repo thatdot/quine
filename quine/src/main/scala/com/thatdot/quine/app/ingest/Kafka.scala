@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers
+package com.thatdot.quine.app.ingest
 
 import java.net.URL
 
@@ -26,7 +26,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
 import com.thatdot.quine.app.KafkaControl
-import com.thatdot.quine.app.importers.serialization.{ImportFormat, Protobuf}
+import com.thatdot.quine.app.ingest.serialization.{ImportFormat, Protobuf}
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}

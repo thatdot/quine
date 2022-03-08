@@ -31,8 +31,8 @@ import software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry
 import software.amazon.awssdk.services.sns.SnsAsyncClient
 import ujson.BytesRenderer
 
-import com.thatdot.quine.app.importers.util.AwsOps
-import com.thatdot.quine.app.importers.util.AwsOps.AwsBuilderOps
+import com.thatdot.quine.app.ingest.util.AwsOps
+import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.serialization.QuineValueToProtobuf
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken

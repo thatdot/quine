@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers.serialization
+package com.thatdot.quine.app.ingest.serialization
 
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
@@ -10,7 +10,7 @@ import akka.{Done, NotUsed}
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.importers.serialization.ImportFormat.RetriableIngestFailure
+import com.thatdot.quine.app.ingest.serialization.ImportFormat.RetriableIngestFailure
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
