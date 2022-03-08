@@ -158,6 +158,10 @@ trait CypherStandingBehavior
     persisted.getOrElse(Future.unit)
   }
 
+  /** Process a query command to create/remove a standing query or to report/invalidate a result
+    *
+    * @param command standing query command to process
+    */
   protected def cypherStandingQueryBehavior(command: CypherStandingQueryCommand): Unit = command match {
     case CreateCypherSubscription(subscriber, query) =>
       val combinedId = subscriber.globalId -> query.id
