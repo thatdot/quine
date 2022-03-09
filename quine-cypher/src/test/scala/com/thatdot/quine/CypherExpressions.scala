@@ -332,7 +332,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
    */
 
   describe("Errors") {
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1] AS x RETURN 9223372036854775807 + x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
@@ -340,7 +340,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1] AS x RETURN -9223372036854775808 - x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
@@ -348,7 +348,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [-9223372036854775808] AS x RETURN -x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
@@ -356,7 +356,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [0] AS x RETURN 500 / x",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
@@ -364,7 +364,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [0] AS x RETURN 500 % x",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
@@ -372,7 +372,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [922337203685] AS x RETURN x * 45938759384",
       CypherException.Arithmetic(
         wrapping = "long overflow",

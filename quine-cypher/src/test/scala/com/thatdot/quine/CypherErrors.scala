@@ -5,7 +5,7 @@ import com.thatdot.quine.graph.cypher.{CypherException, Expr, Position, SourceTe
 class CypherErrors extends CypherHarness("cypher-errors") {
 
   describe("Syntax") {
-    interceptQuery(
+    assertStaticQueryFailure(
       "RETRN 1",
       CypherException.Syntax(
         position = Some(Position(1, 4, 3, SourceText("RETRN 1"))),
@@ -15,7 +15,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
   }
 
   describe("Arithmetic") {
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [6, 0] AS p RETURN p / 0",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
@@ -23,7 +23,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       )
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [-34, 1949] AS p WITH p + 9223372036854775800 AS N RETURN 1",
       CypherException.Arithmetic(
         wrapping = "long overflow",
@@ -34,7 +34,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
 
   describe("Compile") {
     val query1 = "FOREACH (p IN [1,3,7] | UNWIND range(9,78) AS N)"
-    interceptQuery(
+    assertStaticQueryFailure(
       query1,
       CypherException.Compile(
         wrapping = "Invalid use of UNWIND inside FOREACH",
@@ -45,7 +45,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
     )
 
     val query2 = "CREATE (n)-[*]-(m)"
-    interceptQuery(
+    assertStaticQueryFailure(
       query2,
       CypherException.Compile(
         wrapping = "Variable length relationships cannot be used in CREATE",
@@ -59,7 +59,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
   describe("Unsupported Cypher features") {
     describe("Variable length path expressions") {
       val query1 = "MATCH p = (n)-[e*]-(m) RETURN *"
-      interceptQuery(
+      assertStaticQueryFailure(
         query1,
         CypherException.Compile(
           wrapping = "Unsupported path expression",
@@ -70,7 +70,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       )
 
       val query2 = "MATCH p = (bob {name: 'Bob'})-[e:KNOWS*1..3]-(guy:Person) RETURN p"
-      interceptQuery(
+      assertStaticQueryFailure(
         query2,
         CypherException.Compile(
           wrapping = "Unsupported path expression",
@@ -83,7 +83,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
 
     describe("Edge properties") {
       val query = "CREATE (:Account { accId: 1 })-[r:TRANSERS {quantity: 4}]->(:Account { accId: 2 })"
-      interceptQuery(
+      assertStaticQueryFailure(
         query,
         CypherException.Compile(
           wrapping = "Properties on edges are not yet supported",
@@ -97,7 +97,7 @@ class CypherErrors extends CypherHarness("cypher-errors") {
     describe("Shortest path matching") {
       val query =
         "MATCH (bob:Person {name: 'Bob'}), (joe:Person {name: 'Joe'}), p = shortestPath((bob)-[*..15]-(joe)) RETURN p"
-      interceptQuery(
+      assertStaticQueryFailure(
         query,
         CypherException.Compile(
           wrapping = "`shortestPath` planning in graph patterns is not supported",

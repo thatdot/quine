@@ -2,25 +2,28 @@ package com.thatdot.quine.compiler.cypher
 
 import scala.collection.immutable.HashSet
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, Future}
+import scala.reflect.ClassTag
 
 import akka.stream.scaladsl.{Keep, Sink}
 import akka.stream.{KillSwitches, Materializer}
 import akka.util.Timeout
 
 import org.scalactic.source.Position
-import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.CompiledQuery
 import com.thatdot.quine.persistor.InMemoryPersistor
 
-class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll {
+class CypherHarness(graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
 
-  implicit val timeout: Timeout = Timeout(10.seconds)
+  val timeout: Timeout = Timeout(10.seconds)
+  // Used for e.g. literal ops that insert data - they use this as the timeout on relayAsk invocations.
+  implicit val relayAskTimeout: Timeout = Timeout(3.seconds)
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
-  implicit val graph: GraphService = Await.result(
+  val graph: GraphService = Await.result(
     GraphService(
       graphName,
       persistor = _ => InMemoryPersistor.empty,
@@ -32,8 +35,6 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
 
   override def afterAll(): Unit =
     Await.result(graph.shutdown(), timeout.duration * 2L)
-
-  implicit val ec: ExecutionContext = graph.shardDispatcherEC
 
   /** Check that a given query matches an expected output.
     *
@@ -63,8 +64,8 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
   )(implicit
     pos: Position
   ): Unit = {
-    def theTest(): Assertion = {
-      val queryResults = queryCypherValues(queryText, parameters = parameters)
+    def theTest(): Future[Assertion] = {
+      val queryResults = queryCypherValues(queryText, parameters = parameters)(graph)
       assert(expectedColumns.map(Symbol(_)) === queryResults.columns, "columns must match")
       val (killSwitch, rowsFut) = queryResults.results
         .viaMat(KillSwitches.single)(Keep.right)
@@ -77,20 +78,21 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
         () => killSwitch.abort(new java.util.concurrent.TimeoutException())
       )
 
-      val actualRows = Await.result(rowsFut, timeout.duration)
-      if (ordered)
-        assert(actualRows === expectedRows, "ordered rows must match")
-      else
-        assert(HashSet(actualRows: _*) == HashSet(expectedRows: _*), "unordered rows must match")
+      rowsFut map { actualRows =>
+        if (ordered)
+          assert(actualRows === expectedRows, "ordered rows must match")
+        else
+          assert(HashSet(actualRows: _*) == HashSet(expectedRows: _*), "unordered rows must match")
 
-      assert({ Plan.fromQuery(queryResults.compiled.query).toValue; true }, "query plan can be rendered")
-      assert(queryResults.compiled.query.isReadOnly == expectedIsReadOnly, "isReadOnly must match")
-      assert(queryResults.compiled.query.cannotFail == expectedCannotFail, "cannotFail must match")
-      assert(queryResults.compiled.query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
-      assert(
-        queryResults.compiled.query.canContainAllNodeScan == expectedCanContainAllNodeScan,
-        "canContainAllNodeScan must match"
-      )
+        assert(Plan.fromQuery(queryResults.compiled.query).toValue.isPure, "query plan can be rendered")
+        assert(queryResults.compiled.query.isReadOnly == expectedIsReadOnly, "isReadOnly must match")
+        assert(queryResults.compiled.query.cannotFail == expectedCannotFail, "cannotFail must match")
+        assert(queryResults.compiled.query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
+        assert(
+          queryResults.compiled.query.canContainAllNodeScan == expectedCanContainAllNodeScan,
+          "canContainAllNodeScan must match"
+        )
+      }
     }
 
     if (skip)
@@ -134,27 +136,37 @@ class CypherHarness(graphName: String) extends AnyFunSpec with BeforeAndAfterAll
       skip = skip
     )
 
-  /** Check that a given query crashes with the given exception.
+  /** Check that a given query fails to be constructed with the given error.
     *
     * @param queryText query whose output we are checking
     * @param expected exception that we expect to intercept
     * @param pos source position of the call to `interceptQuery`
-    * @param manifest information about the exception type we expect
     */
-  final def interceptQuery[T <: AnyRef](
-    queryText: String,
-    expected: T
-  )(implicit
-    pos: Position,
-    manifest: Manifest[T]
+  final def assertStaticQueryFailure[E <: AnyRef: ClassTag](queryText: String, expectedError: E)(implicit
+    pos: Position
   ): Unit = {
     def theTest(): Assertion = {
-      val actual = intercept[T] {
-        val queried = queryCypherValues(queryText).results.runWith(Sink.ignore)
-        Await.result(queried, timeout.duration)
-      }
-      assert(actual == expected, "exception must match")
+      val actual = intercept[E](queryCypherValues(queryText)(graph))
+      assert(actual == expectedError, "Query construction did not fail with expected error")
     }
+    it(queryText)(theTest())
+  }
+
+  /** Check that a given query fails at runtime with the given error.
+    *
+    * @param queryText query whose output we are checking
+    * @param expected exception that we expect to intercept
+    * @param pos source position of the call to `interceptQuery`
+    */
+  final def assertQueryExecutionFailure[E <: AnyRef: ClassTag](
+    queryText: String,
+    expected: E
+  )(implicit
+    pos: Position
+  ): Unit = {
+    def theTest(): Future[Assertion] = recoverToExceptionIf[E](
+      queryCypherValues(queryText)(graph).results.runWith(Sink.ignore)
+    ) map (actual => assert(actual == expected, "Query execution did not fail with expected error"))
 
     it(queryText)(theTest())(pos)
   }

@@ -170,7 +170,7 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedRows = Seq(Vector(Expr.Null))
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1,2,\"hi\",3] AS N RETURN avg(N)",
       CypherException.TypeMismatch(
         expected = Seq(Type.Number),
@@ -224,7 +224,7 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedRows = Seq(Vector(Expr.Integer(0L)))
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1,2,\"hi\",3] AS N RETURN sum(N)",
       CypherException.TypeMismatch(
         expected = Seq(Type.Number),
