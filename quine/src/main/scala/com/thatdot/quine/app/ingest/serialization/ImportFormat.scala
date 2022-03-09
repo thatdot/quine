@@ -120,13 +120,22 @@ object ImportFormat {
   /** Helper to recognize errors that can be caught and retried during ingest (for example, errors that could occur
     * as a result of cluster topology changing, or GC pauses)
     *
+    * These exceptions should include any that can occur as the result of cluster latency (eg temporary network
+    * failures), but should not include any exceptions that will always get thrown on subsequent retries (eg
+    * deserialization errors)
+    *
     * Inspired by [[scala.util.control.NonFatal]]
     */
   object RetriableIngestFailure {
     def unapply(e: Throwable): Option[Throwable] = e match {
+      // A relayAsk-based protocol timed out, but might succeed when retried
       case _: ExactlyOnceTimeoutException => Some(e)
+      // Graph is not currently ready, but may be in the future
       case _: GraphNotReadyException => Some(e)
+      // Retriable failures related to StreamRefs
       case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
+      case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)
+      case _: akka.stream.InvalidSequenceNumberException => Some(e)
       case _ => None
     }
   }
