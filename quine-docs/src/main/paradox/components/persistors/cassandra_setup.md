@@ -89,52 +89,7 @@ Alternatively, you may specify the environment variable `CASSANDRA_ENDPOINTS` (a
 
 The full range of config options available for this store section is (with default values) is as follows:
 
-```
- store {
-  # store data in an Apache Cassandra instance
-  type = cassandra
-
-  # "host:port" strings at which Cassandra nodes can be accessed from
-  # the application
-  endpoints = [
-    "localhost:9042"
-  ]
-
-  # the keyspace to use
-  keyspace = thatdot
-
-  # whether the application should create the keyspace if it does not
-  # yet exist
-  should-create-keyspace = true
-
-  # whether the application should create tables in the keyspace if
-  # they do not yet exist
-  should-create-tables = true
-
-  # how many copies of each datum the Cassandra cluster should retain
-  replication-factor = 1
-
-  # how many hosts must agree on a datum for Quine to consider that
-  # datum written/read
-  write-consistency = LOCAL_QUORUM
-  read-consistency = LOCAL_QUORUM
-
-  # specifies which datacenter is to be considered local to your app
-  # (in the case your Cassandra cluster is spread across multiple datacenters)
-  # Cassandra's default snitch uses "datacenter1"
-  local-datacenter = "datacenter1"
-
-  # how long to wait before considering an insert operation failed
-  insert-timeout = "10s"
-
-  # how long to wait before considering a select operation failed
-  select-timeout = "10s"
-
-  # If set, a bloom filter is used to short-circuit looking up nodes
-  # which are new to the system
-  # bloom-filter-size =
-}
-```
+@@snip [reference.conf]($quine$/src/test/resources/documented_cassandra_config.conf)
 
 #### Actual config used:
 
