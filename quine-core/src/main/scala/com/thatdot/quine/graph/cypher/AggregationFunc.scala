@@ -1,5 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
+import scala.collection.mutable.ArrayBuffer
+
 import com.thatdot.quine.model.QuineIdProvider
 
 sealed abstract class Aggregator {
@@ -214,6 +216,134 @@ object Aggregator {
     def isPure: Boolean = expr.isPure
 
     def cannotFail: Boolean = expr.cannotFail
+  }
+
+  /** Compute the standard deviation of results.
+    *
+    * This is intentionally done as the usual two-pass solution.
+    *
+    * @param expr expression for whose output we are calculating the standard deviation
+    * @param partialSample is the sampling partial or complete (affects the denominator)
+    */
+  final case class StDev(expr: Expr, partialSampling: Boolean) extends Aggregator {
+    def aggregate(): AggregateState = new AggregateState {
+      var sum = 0.0d
+      val original = ArrayBuffer.empty[Double]
+
+      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Unit =
+        expr.eval(qc) match {
+          // Skip null values
+          case Expr.Null =>
+
+          case Expr.Number(dbl) =>
+            sum += dbl
+            original += dbl
+
+          case other =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Number),
+              actualValue = other,
+              context = "standard deviation of values"
+            )
+        }
+
+      def result(): Value = {
+        val count = original.length
+        val denominator = if (partialSampling) (count - 1) else count
+        val average = sum / count.toDouble
+        val numerator = original.foldLeft(0.0d) { case (sum, value) =>
+          val diff = value - average
+          sum + diff * diff
+        }
+        Expr.Floating(if (denominator <= 0) 0.0 else math.sqrt(numerator / denominator))
+      }
+    }
+
+    def isPure: Boolean = expr.isPure
+
+    // Non-number arguments
+    def cannotFail: Boolean = false
+  }
+
+  /** Compute the percentile of results.
+    *
+    * @param expr expression for whose output we are calculating the percentile
+    * @param percentileExpr expression for getting the percentile (between 0.0 and 1.0)
+    * @param continuous is the sampling interpolated
+    */
+  final case class Percentile(expr: Expr, percentileExpr: Expr, continuous: Boolean) extends Aggregator {
+    def aggregate(): AggregateState = new AggregateState {
+      val original = ArrayBuffer.empty[Expr.Number]
+
+      /** This is the percentile value and it gets filled in based on the firs
+        * row fed into the aggregator. Yes, these semantics are a little bit
+        * insane.
+        */
+      var percentileOpt: Option[Double] = None
+
+      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Unit = {
+        expr.eval(qc) match {
+          // Skip null values
+          case Expr.Null =>
+
+          case n: Expr.Number =>
+            original += n
+
+          case other =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Number),
+              actualValue = other,
+              context = "percentile of values"
+            )
+        }
+
+        // Fill in the percentile with the first row
+        if (percentileOpt.isEmpty) {
+          percentileExpr.eval(qc) match {
+            case Expr.Number(dbl) =>
+              if (0.0d <= dbl && dbl <= 1.0d) {
+                percentileOpt = Some(dbl)
+              } else {
+                throw CypherException.Runtime("percentile of values between 0.0 and 1.0")
+              }
+
+            case other =>
+              throw CypherException.TypeMismatch(
+                expected = Seq(Type.Number),
+                actualValue = other,
+                context = "percentile of values"
+              )
+          }
+        }
+      }
+
+      def result(): Value = {
+        val sorted = original.sorted(Value.ordering) // Switch to `sortInPlace` when 2.12 is dropped
+        percentileOpt match {
+          case None => Expr.Null
+          case _ if sorted.length == 0 => Expr.Null
+          case _ if sorted.length == 1 => sorted.head
+          case Some(percentile) =>
+            val indexDbl: Double = percentile * (sorted.length - 1)
+            if (continuous) {
+              val indexLhs = math.floor(indexDbl).toInt
+              val indexRhs = math.ceil(indexDbl).toInt
+              val mult: Double = indexDbl - indexLhs
+              val valueLhs = sorted(indexLhs)
+              val valueRhs = sorted(indexRhs)
+              valueLhs + Expr.Floating(mult) * (valueRhs - valueLhs)
+            } else {
+              val index = math.round(indexDbl).toInt
+              sorted(index)
+            }
+        }
+      }
+    }
+
+    def isPure: Boolean = expr.isPure && percentileExpr.isPure
+
+    // Non-number arguments
+    def cannotFail: Boolean = false
   }
 }
 
