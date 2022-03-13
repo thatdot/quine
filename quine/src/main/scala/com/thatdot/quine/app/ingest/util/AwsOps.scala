@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers.util
+package com.thatdot.quine.app.ingest.util
 
 import scala.reflect.{ClassTag, classTag}
 

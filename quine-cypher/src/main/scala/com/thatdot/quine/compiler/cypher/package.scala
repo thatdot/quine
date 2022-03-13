@@ -4,7 +4,7 @@ import scala.concurrent.{ExecutionException, Future}
 
 import akka.Done
 import akka.stream.scaladsl.{Framing, Keep, Sink, Source}
-import akka.util.{ByteString, Timeout}
+import akka.util.ByteString
 
 import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
@@ -28,8 +28,7 @@ package object cypher {
     *                         Most Ethan has seen is 10.5MB
     */
   def runScript(script: Source[ByteString, _], maxLengthPerLine: Int = 1000 * 1000 * 100)(implicit
-    graph: CypherOpsGraph,
-    timeout: Timeout
+    graph: CypherOpsGraph
   ): Future[Done] =
     script
       .watchTermination()(Keep.right)
@@ -294,14 +293,14 @@ package object cypher {
     atTime: Option[Milliseconds] = None,
     cacheCompilation: Boolean = true
   )(implicit
-    graph: CypherOpsGraph,
-    timeout: Timeout
+    graph: CypherOpsGraph
   ): QueryResults = {
+
     val initialCompiledColumns: Seq[(String, symbols.CypherType)] = initialColumns.toSeq.map { case (col, value) =>
       (col, OpenCypherUdf.typeToOpenCypherType(value.typ))
     }
     compile(queryText, parameters.keys.toSeq, initialCompiledColumns, cache = cacheCompilation)
-      .run(parameters, initialColumns, atTime)
+      .run(parameters, initialColumns, atTime)(graph)
   }
 
   /* TODO this hack works around a bug in `openCypher` semantic checking of unary

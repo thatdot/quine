@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers.serialization
+package com.thatdot.quine.app.ingest.serialization
 
 import java.net.URL
 

@@ -12,11 +12,20 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineValue}
 import com.thatdot.quine.util.Hashable
 
+/** AST for a `MultipleValues` standing query */
 sealed abstract class StandingQuery extends Product with Serializable {
-  def columns: Columns
 
   /** Type of associated standing query states */
   type State <: StandingQueryState
+
+  /** Create a new associated standing query state
+    *
+    * Each created state is an independent object capable of tracking on some fixed node the
+    * progress of the standing query as it attempts to match on the node. Standing query states
+    * tend to be mutable since they do the book-keeping around which components of the standing
+    * query have matched or not matched yet.
+    */
+  def createState(): State
 
   /** An unique identifier for this sub-query
     *
@@ -26,21 +35,17 @@ sealed abstract class StandingQuery extends Product with Serializable {
     */
   val id: StandingQueryPartId = StandingQueryPartId(StandingQuery.hashable.hashToUuid(murmur3_128(), this))
 
-  def createState(): State
-
-  // Direct children of this query -- ie, not including the receiver, and not including any further descendants
+  /** Direct children of this query
+    *
+    * Doesn't include the receiver (`this`) or any further descendants.
+    */
   def children: Seq[StandingQuery]
+
+  /** Which columns do we expect this query to return at runtime? */
+  def columns: Columns
 }
 
 object StandingQuery {
-  // enumerate all subqueries including the provided query, excluding those which should not be indexed globally
-  def indexableSubqueries(sq: StandingQuery, acc: Set[StandingQuery] = Set.empty): Set[StandingQuery] =
-    // EdgeSubscriptionReciprocal are not useful to index -- they're ephemeral, fully owned/created/used by 1 node
-    if (sq.isInstanceOf[EdgeSubscriptionReciprocal]) acc
-    // Since subqueries can be duplicated, try not to traverse already-traversed subqueries
-    else if (acc.contains(sq)) acc
-    // otherwise, traverse
-    else sq.children.foldLeft(acc + sq)((acc, child) => indexableSubqueries(child, acc))
 
   /** Produces exactly one result, as soon as initialized, with no columns */
   final case class UnitSq() extends StandingQuery {
@@ -147,7 +152,12 @@ object StandingQuery {
     }
   }
 
-  /** Watches for a certain local property to be set and returns a result if/when that happens */
+  /** Watches for a certain local property to be set and returns a result if/when that happens
+    *
+    * @param propKey key of the local property to watch
+    * @param propConstraint additional constraints to enforce on the local property
+    * @param aliasedAs if the property should be extracted, under what name is it stored?
+    */
   final case class LocalProperty(
     propKey: Symbol,
     propConstraint: LocalProperty.ValueConstraint,
@@ -188,6 +198,12 @@ object StandingQuery {
     val children: Seq[StandingQuery] = Seq.empty
   }
 
+  /** Watch for an edge pattern and match however many edges fit that pattern.
+    *
+    * @param edgeName if populated, the edges matched must have this label
+    * @param edgeDirection if populated, the edges matched must have this direction
+    * @param andThen once an edge matched, this subquery must match on the other side
+    */
   final case class SubscribeAcrossEdge(
     edgeName: Option[Symbol],
     edgeDirection: Option[EdgeDirection],
@@ -206,7 +222,13 @@ object StandingQuery {
     val children: Seq[StandingQuery] = Seq(andThen)
   }
 
-  // Do not generate SQ's with this AST node - it is used internally in the interpreter
+  /** Watch for an edge reciprocal and relay the recursive standing query only if the reciprocal
+    * half edge is present.
+    *
+    * @note do not generate SQ's with this AST node - it is used internally in the interpreter
+    * @param halfEdge the edge that must be on this node for it to match
+    * @param andThenId ID of the standing query to execute if the half edge is present
+    */
   final case class EdgeSubscriptionReciprocal(
     halfEdge: HalfEdge,
     andThenId: StandingQueryPartId,
@@ -228,7 +250,13 @@ object StandingQuery {
     val children: Seq[StandingQuery] = Seq.empty
   }
 
-  /** Filter and map over results of another query */
+  /** Filter and map over results of another query
+    *
+    * @param condition if present, this must condition is a filter (uses columns from `subQuery`)
+    * @param toFilter subquery whose results are being filtered and mapped
+    * @param dropExisting should existing columns from the subquery be truncated?
+    * @param toAdd which new columns should be added
+    */
   final case class FilterMap(
     condition: Option[Expr],
     toFilter: StandingQuery,
@@ -247,6 +275,23 @@ object StandingQuery {
 
     val children: Seq[StandingQuery] = Seq(toFilter)
   }
+
+  /** Enumerate all globally indexable subqueries in a standing query
+    *
+    * The only subqueries that are excluded are `EdgeSubscriptionReciprocal`,
+    * since those get synthetically introduced to watch for edge reciprocals.
+    *
+    * @param sq query whose subqueries are being extracted
+    * @param acc accumulator of subqueries
+    * @return set of globally indexable subqueries
+    */
+  def indexableSubqueries(sq: StandingQuery, acc: Set[StandingQuery] = Set.empty): Set[StandingQuery] =
+    // EdgeSubscriptionReciprocal are not useful to index -- they're ephemeral, fully owned/created/used by 1 node
+    if (sq.isInstanceOf[EdgeSubscriptionReciprocal]) acc
+    // Since subqueries can be duplicated, try not to traverse already-traversed subqueries
+    else if (acc.contains(sq)) acc
+    // otherwise, traverse
+    else sq.children.foldLeft(acc + sq)((acc, child) => indexableSubqueries(child, acc))
 
   val hashable: Hashable[StandingQuery] = implicitly[Hashable[StandingQuery]]
 }

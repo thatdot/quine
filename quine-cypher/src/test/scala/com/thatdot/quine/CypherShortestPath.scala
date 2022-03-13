@@ -1,7 +1,8 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
+import cats.syntax.functor._
 import org.scalactic.source.Position
 
 import com.thatdot.quine.graph.cypher.{Expr, Value}
@@ -24,15 +25,11 @@ class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
   private val e51 = Expr.Relationship(5L, Symbol("baz"), Map.empty, 1L)
   private val e54 = Expr.Relationship(5L, Symbol("foo"), Map.empty, 4L)
 
-  override def beforeAll(): Unit = {
-    super.beforeAll()
-
-    val _ = Await.result(
-      Future.traverse(List(e12, e13, e23, e35, e43, e51, e54)) { case Expr.Relationship(from, name, _, to) =>
-        graph.literalOps.addEdge(from, to, name.name)
-      },
-      timeout.duration
-    )
+  // if this setup test fails, nothing else in this suite is expected to pass
+  it("should load some test nodes") {
+    Future.traverse(List(e12, e13, e23, e35, e43, e51, e54)) { case Expr.Relationship(from, name, _, to) =>
+      graph.literalOps.addEdge(from, to, name.name)
+    } as assert(true)
   }
 
   final private def testShortestPath(

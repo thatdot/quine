@@ -200,7 +200,7 @@ object RecipeInterpreter {
     ) { () =>
       val queryResults: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
         queryText = statusQuery.cypherQuery
-      )(graphService, 10 seconds)
+      )(graphService)
       try {
         val resultContent: Seq[Seq[Value]] =
           Await.result(

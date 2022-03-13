@@ -23,6 +23,7 @@ PUSH_INCLUDE = [
     ".github/workflows/copy.bara.sky",
     ".scalafix.conf",
     ".scalafmt.conf",
+    ".gitignore",
 ] + ["project/" + f for f in PROJECT_LEVEL_INCLUDE]
 
 PUSH_EXCLUDE = []
@@ -36,6 +37,7 @@ PR_TRANSFORMATIONS = [
     core.move("public/.github/workflows/", ".github/workflows/", paths = glob(["copybara.yml", "copy.bara.sky"])),
     core.move("public/.scalafix.conf", ".scalafix.conf"),
     core.move("public/.scalafmt.conf", ".scalafmt.conf"),
+    core.move("public/.gitignore", ".gitignore"),
     core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE))
 ]
 

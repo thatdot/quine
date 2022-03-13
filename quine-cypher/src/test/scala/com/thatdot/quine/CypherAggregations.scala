@@ -170,7 +170,7 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedRows = Seq(Vector(Expr.Null))
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1,2,\"hi\",3] AS N RETURN avg(N)",
       CypherException.TypeMismatch(
         expected = Seq(Type.Number),
@@ -224,7 +224,7 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedRows = Seq(Vector(Expr.Integer(0L)))
     )
 
-    interceptQuery(
+    assertQueryExecutionFailure(
       "UNWIND [1,2,\"hi\",3] AS N RETURN sum(N)",
       CypherException.TypeMismatch(
         expected = Seq(Type.Number),
@@ -367,4 +367,280 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       )
     )
   }
+
+  describe("`stDev(...)` aggregation") {
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN stDev(n)",
+      expectedColumns = Vector("stDev(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.8366600265340756d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN stDev(DISTINCT n)",
+      expectedColumns = Vector("stDev(DISTINCT n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.8366600265340756d)))
+    )
+
+    testQuery(
+      "UNWIND [1.1,2.5,2.4,1.3,3.1] AS n RETURN stDev(n)",
+      expectedColumns = Vector("stDev(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.8497058314499201d)))
+    )
+
+    testQuery(
+      "RETURN stDev(1)",
+      expectedColumns = Vector("stDev(1)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    testQuery(
+      "RETURN stDev(null)",
+      expectedColumns = Vector("stDev(null)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [1,2,\"hi\",3] AS N RETURN stDev(N)",
+      CypherException.TypeMismatch(
+        expected = Seq(Type.Number),
+        actualValue = Expr.Str("hi"),
+        context = "standard deviation of values"
+      )
+    )
+
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN stDev(null)",
+      expectedColumns = Vector("stDev(null)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    testQuery(
+      "UNWIND [] AS n RETURN stDev(n)",
+      expectedColumns = Vector("stDev(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+  }
+
+  describe("`stDevP(...)` aggregation") {
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN stDevP(n)",
+      expectedColumns = Vector("stDevP(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.7483314773547883d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN stDevP(DISTINCT n)",
+      expectedColumns = Vector("stDevP(DISTINCT n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.7483314773547883d)))
+    )
+
+    testQuery(
+      "UNWIND [1.1,2.5,2.4,1.3,3.1] AS n RETURN stDevP(n)",
+      expectedColumns = Vector("stDevP(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.76d)))
+    )
+
+    testQuery(
+      "RETURN stDevP(1)",
+      expectedColumns = Vector("stDevP(1)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    testQuery(
+      "RETURN stDevP(null)",
+      expectedColumns = Vector("stDevP(null)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [1,2,\"hi\",3] AS N RETURN stDevP(N)",
+      CypherException.TypeMismatch(
+        expected = Seq(Type.Number),
+        actualValue = Expr.Str("hi"),
+        context = "standard deviation of values"
+      )
+    )
+
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN stDevP(null)",
+      expectedColumns = Vector("stDevP(null)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+
+    testQuery(
+      "UNWIND [] AS n RETURN stDevP(n)",
+      expectedColumns = Vector("stDevP(n)"),
+      expectedRows = Seq(Vector(Expr.Floating(0.0d)))
+    )
+  }
+
+  describe("`percentileDisc(...)` aggregation") {
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileDisc(n, 0)",
+      expectedColumns = Vector("percentileDisc(n, 0)"),
+      expectedRows = Seq(Vector(Expr.Integer(1L)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileDisc(n, 0.1)",
+      expectedColumns = Vector("percentileDisc(n, 0.1)"),
+      expectedRows = Seq(Vector(Expr.Integer(1L)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,5,1,3] AS n RETURN percentileDisc(n, 0.45)",
+      expectedColumns = Vector("percentileDisc(n, 0.45)"),
+      expectedRows = Seq(Vector(Expr.Integer(2L)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileDisc(n, 0.7)",
+      expectedColumns = Vector("percentileDisc(n, 0.7)"),
+      expectedRows = Seq(Vector(Expr.Integer(2L)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileDisc(n, 1)",
+      expectedColumns = Vector("percentileDisc(n, 1)"),
+      expectedRows = Seq(Vector(Expr.Integer(3L)))
+    )
+
+    testQuery(
+      "RETURN percentileDisc(1.1, 0.3)",
+      expectedColumns = Vector("percentileDisc(1.1, 0.3)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.1d)))
+    )
+
+    testQuery(
+      "RETURN percentileDisc(null, 0.4)",
+      expectedColumns = Vector("percentileDisc(null, 0.4)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [1,2,\"hi\",3] AS N RETURN percentileDisc(N, 0.2)",
+      CypherException.TypeMismatch(
+        expected = Seq(Type.Number),
+        actualValue = Expr.Str("hi"),
+        context = "percentile of values"
+      )
+    )
+
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN percentileDisc(null, 0.2)",
+      expectedColumns = Vector("percentileDisc(null, 0.2)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    testQuery(
+      "UNWIND [] AS n RETURN percentileDisc(n, 0.45)",
+      expectedColumns = Vector("percentileDisc(n, 0.45)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    // Evil use of `N` in the percentile
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN percentileDisc(N, N / 3.0)",
+      expectedColumns = Vector("percentileDisc(N, N / 3.0)"),
+      expectedRows = Seq(Vector(Expr.Integer(2L)))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [-0.2, 1,2,3] AS N RETURN percentileDisc(N, N)",
+      CypherException.Runtime("percentile of values between 0.0 and 1.0")
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [2,2,3] AS N RETURN percentileDisc(N, N)",
+      CypherException.Runtime("percentile of values between 0.0 and 1.0")
+    )
+  }
+
+  describe("`percentileCont(...)` aggregation") {
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileCont(n, 0)",
+      expectedColumns = Vector("percentileCont(n, 0)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.0d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileCont(n, 0.1)",
+      expectedColumns = Vector("percentileCont(n, 0.1)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.0d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,5,1,3] AS n RETURN percentileCont(n, 0.45)",
+      expectedColumns = Vector("percentileCont(n, 0.45)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.8d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileCont(n, 0.7)",
+      expectedColumns = Vector("percentileCont(n, 0.7)"),
+      expectedRows = Seq(Vector(Expr.Floating(2.0d)))
+    )
+
+    testQuery(
+      "UNWIND [1,2,2,1,3] AS n RETURN percentileCont(n, 1)",
+      expectedColumns = Vector("percentileCont(n, 1)"),
+      expectedRows = Seq(Vector(Expr.Floating(3.0d)))
+    )
+
+    testQuery(
+      "RETURN percentileCont(1.1, 0.3)",
+      expectedColumns = Vector("percentileCont(1.1, 0.3)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.1d)))
+    )
+
+    testQuery(
+      "RETURN percentileCont(null, 0.4)",
+      expectedColumns = Vector("percentileCont(null, 0.4)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [1,2,\"hi\",3] AS N RETURN percentileCont(N, 0.2)",
+      CypherException.TypeMismatch(
+        expected = Seq(Type.Number),
+        actualValue = Expr.Str("hi"),
+        context = "percentile of values"
+      )
+    )
+
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN percentileCont(null, 0.2)",
+      expectedColumns = Vector("percentileCont(null, 0.2)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    testQuery(
+      "UNWIND [] AS n RETURN percentileCont(n, 0.45)",
+      expectedColumns = Vector("percentileCont(n, 0.45)"),
+      expectedRows = Seq(Vector(Expr.Null))
+    )
+
+    // Evil use of `N` in the percentile
+    testQuery(
+      "UNWIND [1,2,3] AS N RETURN percentileCont(N, N / 3.0)",
+      expectedColumns = Vector("percentileCont(N, N / 3.0)"),
+      expectedRows = Seq(Vector(Expr.Floating(1.6666666666666665d)))
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [-0.2, 1,2,3] AS N RETURN percentileCont(N, N)",
+      CypherException.Runtime("percentile of values between 0.0 and 1.0")
+    )
+
+    assertQueryExecutionFailure(
+      "UNWIND [2,2,3] AS N RETURN percentileCont(N, N)",
+      CypherException.Runtime("percentile of values between 0.0 and 1.0")
+    )
+
+  }
+
 }

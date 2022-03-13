@@ -365,7 +365,28 @@ object QueryPart {
                     Right(retSym -> cypher.Aggregator.max(arg))
                   }
 
-                // TODO
+                case expressions.functions.StdDev =>
+                  Expression.compile(fi.args(0)).map { arg =>
+                    Right(retSym -> cypher.Aggregator.StDev(arg, partialSampling = true))
+                  }
+
+                case expressions.functions.StdDevP =>
+                  Expression.compile(fi.args(0)).map { arg =>
+                    Right(retSym -> cypher.Aggregator.StDev(arg, partialSampling = false))
+                  }
+
+                case expressions.functions.PercentileCont =>
+                  for {
+                    expr <- Expression.compile(fi.args(0))
+                    perc <- Expression.compile(fi.args(1))
+                  } yield Right(retSym -> cypher.Aggregator.Percentile(expr, perc, continuous = true))
+
+                case expressions.functions.PercentileDisc =>
+                  for {
+                    expr <- Expression.compile(fi.args(0))
+                    perc <- Expression.compile(fi.args(1))
+                  } yield Right(retSym -> cypher.Aggregator.Percentile(expr, perc, continuous = false))
+
                 case func =>
                   WithQueryT.lift(
                     CompM.raiseCompileError(

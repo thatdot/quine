@@ -4,6 +4,8 @@ import scala.concurrent.{Await, Future}
 
 import akka.stream.scaladsl.Sink
 
+import cats.implicits._
+
 import com.thatdot.quine.compiler.cypher.{CypherHarness, queryCypherValues}
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.model.QuineValue
@@ -38,22 +40,15 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
     List(_0, _1, _2, _3, a, b, c)
   }
 
-  override def beforeAll(): Unit = {
-    super.beforeAll()
-    import idProv.ImplicitConverters._
-    Await.result(
+  // if this setup test fails, nothing else in this suite is expected to pass
+  describe("Load some test data") {
+    it("should insert some people and their parents") {
+      import idProv.ImplicitConverters._
       Future.traverse(people) { (person: Person) =>
-        for {
-          _ <- graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first))
-          _ <- person.parent match {
-            case Some(parent) => graph.literalOps.addEdge(person.id, parent, "parent")
-            case _ => Future.unit
-          }
-        } yield ()
-      },
-      timeout.duration
-    )
-    ()
+        graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first)) zip
+        person.parent.traverse(parent => graph.literalOps.addEdge(person.id, parent, "parent"))
+      } as assert(true)
+    }
   }
 
   describe("Variable length relationship patterns") {
@@ -250,7 +245,7 @@ class VariableLengthRelationshipPatternHarryPotter
           " (ron)<-[:has_father]-(:Person {name: \"Rose Weasley\", born: 2005})-[:has_mother]->(hermione:Person {name: \"Hermione Granger\", born: 1979}),",
           " (ron)<-[:has_father]-(:Person {name: \"Hugo Weasley\", born: 2008})-[:has_mother]->(hermione);"
         ).mkString
-      ).results.runWith(Sink.ignore),
+      )(graph).results.runWith(Sink.ignore),
       timeout.duration
     )
     ()
@@ -397,7 +392,7 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
         (Morpheus)-[:KNOWS]->(Cypher),
         (Cypher)-[:KNOWS]->(Smith),
         (Smith)-[:CODED_BY]->(Architect)"""
-      ).results.runWith(Sink.ignore),
+      )(graph).results.runWith(Sink.ignore),
       timeout.duration
     )
     ()

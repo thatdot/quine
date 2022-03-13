@@ -17,7 +17,7 @@ import akka.util.Timeout
 import cats.implicits._
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.importers.createIngestStream
+import com.thatdot.quine.app.ingest.createIngestStream
 import com.thatdot.quine.app.routes.{
   AdministrationRoutesState,
   IngestMetered,

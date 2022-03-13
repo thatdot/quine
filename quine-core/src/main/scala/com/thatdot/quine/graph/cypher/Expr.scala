@@ -490,6 +490,7 @@ object Expr {
       hasher
         .putInt("Map".hashCode)
         .putInt(map.size)
+      // TODO: ensure iteration order is reliable (see QU-654)
       for ((key, value) <- map) {
         hasher.putString(key, StandardCharsets.UTF_8)
         value.addToHasher(hasher)

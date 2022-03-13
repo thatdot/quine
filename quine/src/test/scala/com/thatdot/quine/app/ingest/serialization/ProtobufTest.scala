@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.importers.serialization
+package com.thatdot.quine.app.ingest.serialization
 
 import java.net.URL
 import java.nio.charset.StandardCharsets.UTF_8

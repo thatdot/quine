@@ -727,8 +727,7 @@ object CypherDoWhen extends UserDefinedProcedure {
         initialColumns = params,
         atTime = location.atTime
       )(
-        location.graph,
-        timeout
+        location.graph
       )
 
       subQueryResults.results.map { (row: Vector[Value]) =>
@@ -771,8 +770,7 @@ object CypherDoIt extends UserDefinedProcedure {
       initialColumns = parameters,
       atTime = location.atTime
     )(
-      location.graph,
-      timeout
+      location.graph
     )
 
     subQueryResults.results.map { (row: Vector[Value]) =>
@@ -837,8 +835,7 @@ object CypherDoCase extends UserDefinedProcedure {
           initialColumns = parameters,
           atTime = location.atTime
         )(
-          location.graph,
-          timeout
+          location.graph
         )
 
         subQueryResults.results.map { (row: Vector[Value]) =>
@@ -880,8 +877,7 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
       initialColumns = parameters,
       atTime = location.atTime
     )(
-      location.graph,
-      timeout
+      location.graph
     )
 
     subQueryResults.results

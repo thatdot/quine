@@ -1,6 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.model.QuineValue
@@ -19,16 +19,13 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
 
   describe("The edge collection") {
     it("should load some edges with literal ops") {
-      Await.ready(
-        for {
-          _ <- Future.traverse(david.knows)(addPerson)
-          _ <- addPerson(david)
-          _ <- Future.traverse(david.knows)(p =>
-            graph.literalOps.addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows")
-          )
-        } yield (),
-        timeout.duration
-      )
+      for {
+        _ <- Future.traverse(david.knows)(addPerson)
+        _ <- addPerson(david)
+        _ <- Future.traverse(david.knows)(p =>
+          graph.literalOps.addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows")
+        )
+      } yield assert(true)
     }
 
     testQuery(

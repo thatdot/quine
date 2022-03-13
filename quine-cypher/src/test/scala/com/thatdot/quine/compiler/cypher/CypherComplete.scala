@@ -1,6 +1,8 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
+
+import cats.implicits._
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.{
@@ -38,29 +40,27 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     List(ancestors, arthur, molly, ron, mrs, mr, herm, rose, hugo)
   }
 
-  override def beforeAll(): Unit = {
-    super.beforeAll()
+  // if this setup test fails, nothing else in this suite is expected to pass
+  describe("Load some test data") {
 
-    import idProv.ImplicitConverters._
+    it("should insert some people and their parents") {
+      import idProv.ImplicitConverters._
 
-    Await.result(
       Future.traverse(people) { (person: Person) =>
         val mother = person.hasMother.getOrElse(person.id)
         val father = person.hasFather.getOrElse(person.id)
         for {
           _ <- graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first))
           _ <- graph.literalOps.setProp(person.id, "last", QuineValue.Str(person.last))
-          _ <- person.birthYear.fold(Future.unit) { year =>
+          _ <- person.birthYear.traverse { year =>
             graph.literalOps.setProp(person.id, "birthYear", QuineValue.Integer(year))
           }
           _ <- graph.literalOps.addEdge(person.id, mother, "has_mother")
           _ <- graph.literalOps.addEdge(person.id, father, "has_father")
         } yield ()
-      },
-      timeout.duration
-    )
+      } as assert(true)
+    }
 
-    ()
   }
 
   describe("`WITH` query clause") {
@@ -639,7 +639,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
 
   describe("Exceptions") {
     describe("TypeMismatch") {
-      interceptQuery(
+      assertQueryExecutionFailure(
         "MATCH (p) WHERE p.first = 'Molly' RETURN p.last / 1",
         CypherException.TypeMismatch(
           expected = Seq(Type.Number),
@@ -648,7 +648,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         )
       )
 
-      interceptQuery(
+      assertQueryExecutionFailure(
         "MATCH (p) WHERE p.first = 'Molly' RETURN p.last.nonExistentProperty",
         CypherException.TypeMismatch(
           expected = Seq(
@@ -666,7 +666,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     }
 
     describe("Arithmetic") {
-      interceptQuery(
+      assertQueryExecutionFailure(
         "MATCH (p) WHERE p.first = 'Molly' RETURN p.birthYear / 0",
         CypherException.Arithmetic(
           wrapping = "/ by zero",
@@ -674,7 +674,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         )
       )
 
-      interceptQuery(
+      assertQueryExecutionFailure(
         "MATCH (p) WHERE p.first = 'Molly' WITH p.birthYear + 9223372036854775800 AS N RETURN 1",
         CypherException.Arithmetic(
           wrapping = "long overflow",

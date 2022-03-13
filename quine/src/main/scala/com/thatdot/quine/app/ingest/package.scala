@@ -20,10 +20,10 @@ import akka.util.ByteString
 import com.typesafe.scalalogging.StrictLogging
 import org.apache.kafka.common.TopicPartition
 
-import com.thatdot.quine.app.importers.Kinesis.KinesisSourceDef
-import com.thatdot.quine.app.importers.SQS.SqsStreamDef
-import com.thatdot.quine.app.importers.serialization.ImportFormat
-import com.thatdot.quine.app.importers.serialization.ImportFormat.RetriableIngestFailure
+import com.thatdot.quine.app.ingest.Kinesis.KinesisSourceDef
+import com.thatdot.quine.app.ingest.SQS.SqsStreamDef
+import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.ImportFormat.RetriableIngestFailure
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}
@@ -32,7 +32,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
-package object importers extends StrictLogging {
+package object ingest extends StrictLogging {
 
   /** Create (and start) and ingest stream from the configuration
     *

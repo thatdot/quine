@@ -4,6 +4,8 @@ import org.scalatest.funsuite.AnyFunSuite
 import pureconfig._
 import pureconfig.error._
 
+import com.thatdot.quine.app.config.PersistenceAgentType
+
 class ConfigTest extends AnyFunSuite {
   import Config._
 
@@ -42,6 +44,15 @@ class ConfigTest extends AnyFunSuite {
     val configStream = getClass.getResourceAsStream("/documented_config.conf")
     val annotated = readConfig(scala.io.Source.fromInputStream(configStream).mkString)
     val defaultConf = readConfig("")
+    val roundtripped = readConfig(writeConfig(annotated))
+    assert(annotated === roundtripped)
+    assert(annotated === defaultConf)
+  }
+
+  test("Annotated default config for Cassandra parses and matches the empty config") {
+    val configStream = getClass.getResourceAsStream("/documented_cassandra_config.conf")
+    val annotated = readConfig(scala.io.Source.fromInputStream(configStream).mkString)
+    val defaultConf = QuineConfig(store = PersistenceAgentType.Cassandra())
     val roundtripped = readConfig(writeConfig(annotated))
     assert(annotated === roundtripped)
     assert(annotated === defaultConf)
