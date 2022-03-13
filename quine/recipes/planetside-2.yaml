@@ -6,7 +6,7 @@ description: |-
   Ingest interesting events from Daybreak Games' MMOFPS "PlanetSide 2", invoking the getJsonLines procedure to lazily fill out unknown data. Requires a service_id parameter
 ingestStreams:
   - type: WebsocketSimpleStartupIngest
-    wsUrl: wss://push.planetside2.com/streaming?environment=ps2&service-id=s:ps2QuineRecipe
+    url: wss://push.planetside2.com/streaming?environment=ps2&service-id=s:ps2QuineRecipe
     initMessages:
     # A couple notes: character names are not reused across servers, so we can subscribe to all servers ("worlds") and not worry about namespacing character names
     # Characters can be *renamed*, but this is rare because it costs the player $25
@@ -28,10 +28,18 @@ ingestStreams:
         MATCH (murder) WHERE id(murder) = mId
         MATCH (victim) WHERE id(victim) = idFrom('character', murder.character_id)
         MATCH (attacker) WHERE id(attacker) = idFrom('character', murder.attacker_character_id)
-        SET victim:character, attacker:character, 
-          victim.character_id = murder.character_id, attacker.character_id = murder.attacker_character_id
-        CREATE (victim)<-[:victim]-(murder)-[:attacker]->(attacker)
+        MATCH (weapon) WHERE id(weapon) = idFrom('weapon', murder.attacker_weapon_id)
+        SET weapon.uninitialized = weapon.weapon_id IS NULL // flag the weapon for initialization if applicable
+        SET victim:character, attacker:character, weapon:weapon,
+          victim.character_id = murder.character_id, attacker.character_id = murder.attacker_character_id,
+          weapon.weapon_id = murder.attacker_weapon_id
+        CREATE (victim)<-[:victim]-(murder)-[:attacker]->(attacker), (murder)-[:weapon]->(weapon)
+        // characters contain mutable data, eg certs. We'll add the timestamp to give us something to hook for refreshing data
+        WITH murder, victim, attacker
+        UNWIND [victim, attacker] AS character
+        SET character.last_update = murder.timestamp
 standingQueries:
+  # Populate character data
   - pattern:
       type: Cypher
       # match each new character-label node
@@ -43,11 +51,20 @@ standingQueries:
           MATCH (c)
           WHERE id(c) = $that.data.id
           CALL loadJsonLines("https://census.daybreakgames.com/s:ps2QuineRecipe/get/ps2:v2/character/?character_id="+c.character_id) YIELD value
-          SET c += COALESCE(value.character_list[0], {}) // there is always a "character_list" with exactly 1 value: the character we queried
-          RETURN value, properties(c)
-        andThen:
-          type: PrintToStandardOut
-          logMode: FastSampling
+          SET c += COALESCE(value.character_list[0], {}) // there should always be a "character_list" with exactly 1 value: the character we queried
+          // RETURN value, properties(c)
+  # Populate weapon data
+  - pattern:
+      type: Cypher
+      query: MATCH (weapon:weapon) WHERE weapon.uninitialized = true AND exists(weapon.weapon_id) RETURN DISTINCT id(weapon) AS id
+    outputs:
+      populate-weapon:
+        type: CypherQuery
+        query: |-
+          MATCH (weapon) WHERE id(weapon) = $that.data.id
+          CALL loadJsonLines("https://census.daybreakgames.com/s:ps2QuineRecipe/get/ps2:v2/item?item_id="+weapon.weapon_id+"&c:join=weapon_datasheet") YIELD value
+          SET weapon += COALESCE(value.item_list[0], {}) // there should always be a "item_list" with exactly 1 value: the weapon we queried
+          REMOVE weapon.uninitialized
   # TODO monitor for trades
 nodeAppearances: []
 quickQueries: []
