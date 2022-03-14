@@ -7,7 +7,6 @@ description: |-
   (corecursively) computed along :improved_by edges, and each arctangent approximation is quadrupled
   to yield an approximation of pi.
 ingestStreams: []
-# Standing Queries define how data is transformed and output.
 standingQueries:
   - pattern:
       type: Cypher
