@@ -27,6 +27,14 @@ class StatusLines(
     refreshStatusLines()
   }
 
+  /** Logs an warning message and refreshes the status lines display.
+    * @param message
+    */
+  def warn(message: String, t: Throwable): Unit = {
+    logger.warn(message, t)
+    refreshStatusLines()
+  }
+
   /** Logs an error message and refreshes the status lines display.
     * @param message
     */

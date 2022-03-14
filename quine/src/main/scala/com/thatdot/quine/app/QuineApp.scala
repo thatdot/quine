@@ -363,7 +363,7 @@ final class QuineApp(graph: GraphService)
 
   /** Load all the state from the persistor
     *
-    * Not threadsafe -- must be called only once (eg from Main)
+    * Not threadsafe - this can race API calls made while starting the system
     *
     * @param timeout       used repeatedly for individual calls to get meta data when restoring ingest streams.
     * @param restoreIngest should restored ingest streams be resumed

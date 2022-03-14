@@ -182,14 +182,28 @@ object Main extends App with LazyLogging {
   @volatile
   var recipeInterpreterTask: Option[Cancellable] = None
 
-  appState
-    .load(timeout, config.shouldResumeIngest)
-    .onComplete { _ =>
-      statusLines.info("Application state loaded.")
-      recipeInterpreterTask = recipe.map(r =>
-        RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(system.dispatcher, graph.idProvider)
-      )
-    }(ec)
+  def attemptAppLoad(): Unit =
+    appState
+      .load(timeout, config.shouldResumeIngest)
+      .onComplete {
+        case Success(()) =>
+          statusLines.info("Application state loaded.")
+          recipeInterpreterTask = recipe.map(r =>
+            RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(
+              system.dispatcher,
+              graph.idProvider
+            )
+          )
+        case Failure(cause) =>
+          statusLines.warn(
+            "Failed to load application state. This is most likely due to a failure" +
+            "in the persistence backend",
+            cause
+          )
+          system.scheduler.scheduleOnce(500.millis)(attemptAppLoad())(ec)
+      }(ec)
+
+  attemptAppLoad()
 
   quineWebserverUrl foreach { url =>
     new QuineAppRoutes(graph, appState, ec, timeout)
