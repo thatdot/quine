@@ -1,0 +1,62 @@
+version: 1
+title: Pi
+contributor: ethan@thatdot.com
+summary: Incrementally approximates pi using Leibniz' formula
+description: |-
+  Incrementally approximates pi using Leibniz' formula -- the arctangent function is incrementally
+  (corecursively) computed along :improved_by edges, and each arctangent approximation is quadrupled
+  to yield an approximation of pi.
+ingestStreams: []
+# Standing Queries define how data is transformed and output.
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: MATCH (n:arctan) WHERE exists(n.approximation) AND exists(n.denominator) RETURN DISTINCT id(n) AS id
+    outputs:
+      # iterate over arctan
+      iterate:
+        type: CypherQuery
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          WITH n, -sign(n.denominator)*(abs(n.denominator)+2) as nextDenom
+          WITH n, nextDenom, n.approximation+(1/nextDenom) as nextApprox
+          MATCH (next) WHERE id(next) = idFrom(nextDenom)
+          SET next:arctan, next.denominator = nextDenom, next.approximation=nextApprox
+          CREATE (n)-[:improved_by]->(next)
+      # map arctan to piApprox
+      piApprox:
+        type: CypherQuery
+        query: |-
+          MATCH (arctan)
+          WHERE id(arctan) = $that.data.id
+          WITH arctan, arctan.denominator AS denominator, arctan.approximation*4 AS approximatedPi
+          MATCH (approximation) WHERE id(approximation) = idFrom('approximation', denominator)
+          SET approximation:piApproximation, approximation.approximatedPi = approximatedPi
+          CREATE (arctan)-[:approximates]->(approximation)
+          RETURN approximatedPi
+        andThen:
+          type: WriteToFile
+          path: $out_file
+nodeAppearances: [ ] # TODO surely there's a usable pi symbol
+quickQueries: [ ]
+sampleQueries:
+  - name: Start Processing
+    query: WITH 1 AS initialDenominator MATCH (n) WHERE id(n) = idFrom(1) SET n.denominator = toFloat(1), n.approximation = toFloat(1), n:arctan
+  - name: Get Best Approximation (So far)
+    query:
+      CALL recentNodes(15) YIELD node AS nId
+      MATCH (n)
+      WHERE id(n) = nId AND exists(n.approximatedPi)
+      RETURN n.approximatedPi LIMIT 1
+  - name: Repeatedly Get Best Approximation (So far)
+    query:
+      UNWIND range(0, 1000) AS x UNWIND range(0, 1000) AS y
+      CALL util.sleep(1000)
+      CALL cypher.doIt("
+        CALL recentNodes(15) YIELD node AS nId
+        MATCH (n)
+        WHERE id(n) = nId AND exists(n.approximatedPi)
+        RETURN n.approximatedPi AS approximatedPi LIMIT 1
+      ") YIELD value
+      RETURN value.approximatedPi AS approximatedPi, abs(pi() - value.approximatedPi) AS error
