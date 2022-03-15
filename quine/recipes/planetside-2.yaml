@@ -66,6 +66,25 @@ standingQueries:
           SET weapon += COALESCE(value.item_list[0], {}) // there should always be a "item_list" with exactly 1 value: the weapon we queried
           REMOVE weapon.uninitialized
   # TODO monitor for trades
-nodeAppearances: []
+nodeAppearances:
+  - predicate:
+      propertyKeys: []
+      dbLabel: character
+      knownValues: {}
+    icon: ion-android-person
+  - predicate:
+      propertyKeys: []
+      dbLabel: murder
+      knownValues: {}
+    icon: "\u2694\uFE0F"
+  - predicate:
+      propertyKeys: []
+      dbLabel: weapon
+      knownValues: {}
+    icon: "\uD83D\uDD2B"
+  - predicate:
+      propertyKeys: []
+      dbLabels: []
+      knownValues: {}
 quickQueries: []
 sampleQueries: []
