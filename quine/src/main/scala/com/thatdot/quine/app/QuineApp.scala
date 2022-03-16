@@ -109,15 +109,22 @@ final class QuineApp(graph: GraphService)
 
   @volatile
   private[this] var sampleQueries: Vector[SampleQuery] = Vector.empty
+  // Locks are on the object; we can't use a var (e.g. the collection) as something to synchronize on
+  // as it's always being updated to point to a new object.
+  final private[this] val sampleQueriesLock = new AnyRef
   @volatile
   private[this] var quickQueries: Vector[UiNodeQuickQuery] = Vector.empty
+  final private[this] val quickQueriesLock = new AnyRef
   @volatile
   private[this] var nodeAppearances: Vector[UiNodeAppearance] = Vector.empty
+  final private[this] val nodeAppearancesLock = new AnyRef
   @volatile
   private[this] var standingQueryOutputTargets
     : Map[String, (StandingQueryId, Map[String, (StandingQueryResultOutputUserDef, UniqueKillSwitch)])] = Map.empty
+  final private[this] val standingQueryOutputTargetsLock = new AnyRef
   @volatile
   private[this] var ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]] = Map.empty
+  final private[this] val ingestStreamsLock = new AnyRef
 
   /** == Accessors == */
 
@@ -127,23 +134,26 @@ final class QuineApp(graph: GraphService)
 
   def getNodeAppearances: Future[Vector[UiNodeAppearance]] = Future.successful(nodeAppearances)
 
-  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] = synchronizedFakeFuture(this) {
-    sampleQueries = newSampleQueries
-    storeGlobalMetaData(SampleQueriesKey, sampleQueries)
-  }
+  def setSampleQueries(newSampleQueries: Vector[SampleQuery]): Future[Unit] =
+    synchronizedFakeFuture(sampleQueriesLock) {
+      sampleQueries = newSampleQueries
+      storeGlobalMetaData(SampleQueriesKey, sampleQueries)
+    }
 
-  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] = synchronizedFakeFuture(this) {
-    quickQueries = newQuickQueries
-    storeGlobalMetaData(QuickQueriesKey, quickQueries)
-  }
+  def setQuickQueries(newQuickQueries: Vector[UiNodeQuickQuery]): Future[Unit] =
+    synchronizedFakeFuture(quickQueriesLock) {
+      quickQueries = newQuickQueries
+      storeGlobalMetaData(QuickQueriesKey, quickQueries)
+    }
 
-  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] = synchronizedFakeFuture(this) {
-    nodeAppearances = newNodeAppearances.map(QueryUiConfigurationState.renderNodeIcons)
-    storeGlobalMetaData(NodeAppearancesKey, nodeAppearances)
-  }
+  def setNodeAppearances(newNodeAppearances: Vector[UiNodeAppearance]): Future[Unit] =
+    synchronizedFakeFuture(nodeAppearancesLock) {
+      nodeAppearances = newNodeAppearances.map(QueryUiConfigurationState.renderNodeIcons)
+      storeGlobalMetaData(NodeAppearancesKey, nodeAppearances)
+    }
 
   def addStandingQuery(queryName: FriendlySQName, query: StandingQueryDefinition): Future[Boolean] =
-    synchronizedFakeFuture(this) {
+    synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       if (standingQueryOutputTargets.contains(queryName)) {
         Future.successful(false)
       } else {
@@ -167,7 +177,7 @@ final class QuineApp(graph: GraphService)
 
   def cancelStandingQuery(
     queryName: String
-  ): Future[Option[RegisteredStandingQuery]] = synchronizedFakeFuture(this) {
+  ): Future[Option[RegisteredStandingQuery]] = synchronizedFakeFuture(standingQueryOutputTargetsLock) {
     val optionResult: Option[Future[RegisteredStandingQuery]] = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       futSq <- graph.cancelStandingQuery(sqId)
@@ -185,7 +195,7 @@ final class QuineApp(graph: GraphService)
     queryName: String,
     outputName: String,
     sqResultOutput: StandingQueryResultOutputUserDef
-  ): Future[Option[Boolean]] = synchronizedFakeFuture(this) {
+  ): Future[Option[Boolean]] = synchronizedFakeFuture(standingQueryOutputTargetsLock) {
     val optionFut = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       sqResultSource <- graph.wireTapStandingQuery(sqId)
@@ -210,7 +220,7 @@ final class QuineApp(graph: GraphService)
   def removeStandingQueryOutput(
     queryName: String,
     outputName: String
-  ): Future[Option[StandingQueryResultOutputUserDef]] = synchronizedFakeFuture(this) {
+  ): Future[Option[StandingQueryResultOutputUserDef]] = synchronizedFakeFuture(standingQueryOutputTargetsLock) {
     val outputOpt = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
       (output, killSwitch) <- outputs.get(outputName)
@@ -235,7 +245,7 @@ final class QuineApp(graph: GraphService)
     * @return queries registered on the graph
     */
   private def getStandingQueriesWithNames(queryNames: List[String]): Future[List[RegisteredStandingQuery]] =
-    synchronizedFakeFuture(this) {
+    synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val matchingInfo = for {
         queryName <- queryNames match {
           case Nil => standingQueryOutputTargets.keys
@@ -263,7 +273,7 @@ final class QuineApp(graph: GraphService)
     wasRestoredFromStorage: Boolean,
     timeout: Timeout
   ): Try[Boolean] =
-    blocking(this.synchronized {
+    blocking(ingestStreamsLock.synchronized {
       if (ingestStreams.contains(name)) {
         Success(false)
       } else
@@ -317,7 +327,7 @@ final class QuineApp(graph: GraphService)
     name: String
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = Try {
     val thisMemberId = 0
-    blocking(this.synchronized {
+    blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(name).map { stream =>
         ingestStreams -= name
         Await.result(
