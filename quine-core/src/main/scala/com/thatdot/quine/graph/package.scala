@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.{util => ju}
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.util.control.NonFatal
 
 import com.codahale.metrics.Timer
@@ -58,7 +58,7 @@ package object graph {
    * Multithreaded deserialization was creating a race condition in nested object creation. Somehow this lead to a deadlock.
    * https://issues.scala-lang.org/browse/SI-3007
    */
-  private[quine] def initializeNestedObjects(): Unit = synchronized {
+  private[quine] def initializeNestedObjects(): Unit = blocking(synchronized {
     EdgeDirection
     EdgeDirection.Outgoing
     EdgeDirection.Incoming
@@ -66,7 +66,7 @@ package object graph {
     NodeLocalComparisonFunctions
     PropertyComparisonFunctions
     ()
-  }
+  })
 
   implicit class FutureRecoverWith[T](f: Future[T]) {
     /* NB: it is important that the message be call by name, since we want to avoid actually
