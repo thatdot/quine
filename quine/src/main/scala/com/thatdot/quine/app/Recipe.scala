@@ -90,13 +90,14 @@ object Recipe {
         case PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
           PostToSlack(hookUrl.subs, onlyPositiveMatchData, intervalSeconds)
         case StandingQueryResultOutputUserDef
-              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan) =>
+              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, executionGuarantee) =>
           StandingQueryResultOutputUserDef.CypherQuery(
             query.subs,
             parameter,
             parallelism,
             andThen.map(_.subs),
-            allowAllNodeScan
+            allowAllNodeScan,
+            executionGuarantee
           )
         case WriteToKinesis(
               credentials,

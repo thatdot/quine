@@ -23,8 +23,8 @@ import org.apache.kafka.common.TopicPartition
 import com.thatdot.quine.app.ingest.Kinesis.KinesisSourceDef
 import com.thatdot.quine.app.ingest.SQS.SqsStreamDef
 import com.thatdot.quine.app.ingest.serialization.ImportFormat
-import com.thatdot.quine.app.ingest.serialization.ImportFormat.RetriableIngestFailure
 import com.thatdot.quine.app.routes.IngestMeter
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}
 import com.thatdot.quine.graph.cypher.Value
@@ -348,37 +348,14 @@ package object ingest extends StrictLogging {
           |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
       )
     }
+    val retryingQuery = AtLeastOnceCypherQuery(compiled, cypherParameterName, "file ingest")
 
     deserializedSource
       .via(throttled)
       .via(graph.ingestThrottleFlow)
       .mapAsyncUnordered(parallelism) { (value: Value) =>
-        // this Source represents the work that would be needed to query over one specific `value`
-        // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
-        // If a recoverable error occurs, instead return a Source that will fail after a small delay
-        // so that recoverWithRetries (below) can retry the query
-        def cypherQuerySource: Source[Vector[Value], NotUsed] =
-          try compiled
-            .run(parameters = Map(cypherParameterName -> value))(graph)
-            .results
-          catch {
-            case RetriableIngestFailure(e) =>
-              // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above
-              Source.future(akka.pattern.after(100.millis)(Future.failed(e))(graph.system))
-          }
-
-        cypherQuerySource
-          .recoverWithRetries(
-            attempts = -1, // retry forever, relying on the relayAsk timer itself to slow down attempts
-            { case RetriableIngestFailure(e) =>
-              logger.info(
-                s"""Suppressed ${e.getClass.getSimpleName} during execution of file ingest query, retrying now.
-                   |Ingested item: $value. Query: "$cypherQuery. Suppressed exception:
-                   |${e.getMessage}"""".stripMargin.replace('\n', ' ')
-              )
-              cypherQuerySource
-            }
-          )
+        retryingQuery
+          .stream(value)
           .runWith(Sink.ignore)
           .map(_ => execToken)
       }

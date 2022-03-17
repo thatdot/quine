@@ -360,8 +360,24 @@ object StandingQueryResultOutputUserDef {
     @docs(
       "to prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true"
     )
-    allowAllNodeScan: Boolean = false
+    allowAllNodeScan: Boolean = false,
+    @docs("which execution guarantees should be used when running this query")
+    executionGuarantee: CypherQuery.ExecutionGuarantee = CypherQuery.ExecutionGuarantee.BestEffort
   ) extends StandingQueryResultOutputUserDef
+
+  object CypherQuery {
+
+    /** @see [[StandingQuerySchemas.cypherQueryExecutionGuaranteeSchema]]
+      */
+    @unnamed
+    sealed abstract class ExecutionGuarantee
+    object ExecutionGuarantee {
+      // Effectively "at most once"
+      case object BestEffort extends ExecutionGuarantee
+      case object AtLeastOnce extends ExecutionGuarantee
+      val options: Seq[ExecutionGuarantee] = Vector(BestEffort, AtLeastOnce)
+    }
+  }
 }
 
 @title("Standing Query Result Output Format")
@@ -409,6 +425,19 @@ trait StandingQuerySchemas
     stringEnumeration[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel](
       StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.levels
     )(_.toString)
+
+  implicit lazy val cypherQueryExecutionGuaranteeSchema: JsonSchema[CypherQuery.ExecutionGuarantee] =
+    stringEnumeration[CypherQuery.ExecutionGuarantee](CypherQuery.ExecutionGuarantee.options)(_.toString)
+      .withDescription(
+        """Which completion guarantee should be requested of the Cypher interpreter. `BestEffort` is the default
+          |and will ensure that each invocation of the query is only run once, meaning that changes to the graph are
+          |only applied once. In case of external system failure, for example, a temporarily-unreachable persistor,
+          |query executions will not be retried. `AtLeastOnce` ensures that a query will be re-tried until it succeeds,
+          |including in the case of external system failure, but if the query is not idempotent, side effects such as
+          |the creation of new nodes may happen multiple times. Additionally, some results may be duplicated in the case
+          |of external system failure. Query idempotency can be checked via the EXPLAIN keyword.""".stripMargin
+          .replace('\n', ' ')
+      )
 
   implicit lazy val standingQueryModeSchema: JsonSchema[StandingQueryMode] =
     stringEnumeration[StandingQueryMode](StandingQueryMode.values)(_.toString)

@@ -1,20 +1,17 @@
 package com.thatdot.quine.app.ingest.serialization
 
 import scala.concurrent.Future
-import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success, Try}
 
-import akka.stream.scaladsl.{Sink, Source}
-import akka.{Done, NotUsed}
+import akka.Done
+import akka.stream.scaladsl.Sink
 
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.ingest.serialization.ImportFormat.RetriableIngestFailure
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
-import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 
 /** Describes formats that Quine can import
   */
@@ -68,6 +65,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
 
   // TODO: think about error handling of failed compilation
   val compiled: cypher.CompiledQuery = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
+  lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "streamed ingest")
 
   if (!compiled.query.isIdempotent) {
     // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
@@ -80,65 +78,16 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   override def writeToGraph(
     graph: CypherOpsGraph,
     deserialized: cypher.Value
-  ): Future[Done] = {
-    // this Source represents the work that would be needed to query over one specific `value`
-    // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
-    // If a recoverable error occurs, instead return a Source that will fail after a small delay
-    // so that recoverWithRetries (below) can retry the query
-    def cypherQuerySource: Source[Vector[Value], NotUsed] =
-      try compiled
-        .run(parameters = Map(parameter -> deserialized))(graph)
-        .results
-      catch {
-        case RetriableIngestFailure(e) =>
-          // TODO arbitrary timeout delays repeated failing calls to clusterOp in implementation of .run above
-          Source.future(akka.pattern.after(100.millis)(Future.failed(e))(graph.system))
-      }
-
-    cypherQuerySource
-      .recoverWithRetries(
-        attempts = -1, // retry forever, relying on the relayAsk timer itself to slow down attempts
-        { case RetriableIngestFailure(e) =>
-          logger.info(
-            s"""Suppressed '$e' during execution of ingest query, retrying now.
-                   |Ingested item: $deserialized. Query: "$query. :
-                   """".stripMargin.replace('\n', ' ')
-          )
-          cypherQuerySource
-        }
-      )
+  ): Future[Done] =
+    atLeastOnceQuery
+      .stream(deserialized)(graph)
       .runWith(Sink.ignore)(graph.materializer)
-
-  }
 }
 
 object ImportFormat {
   // An estimated limit on record size (based on the akka remote frame size with 15kb of headspace)
   val akkaMessageSizeLimit: Long =
     ConfigFactory.load().getBytes("akka.remote.artery.advanced.maximum-frame-size") - 15 * 1024
-
-  /** Helper to recognize errors that can be caught and retried during ingest (for example, errors that could occur
-    * as a result of cluster topology changing, or GC pauses)
-    *
-    * These exceptions should include any that can occur as the result of cluster latency (eg temporary network
-    * failures), but should not include any exceptions that will always get thrown on subsequent retries (eg
-    * deserialization errors)
-    *
-    * Inspired by [[scala.util.control.NonFatal]]
-    */
-  object RetriableIngestFailure {
-    def unapply(e: Throwable): Option[Throwable] = e match {
-      // A relayAsk-based protocol timed out, but might succeed when retried
-      case _: ExactlyOnceTimeoutException => Some(e)
-      // Graph is not currently ready, but may be in the future
-      case _: GraphNotReadyException => Some(e)
-      // Retriable failures related to StreamRefs
-      case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
-      case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)
-      case _: akka.stream.InvalidSequenceNumberException => Some(e)
-      case _ => None
-    }
-  }
 
   class CypherJson(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
 

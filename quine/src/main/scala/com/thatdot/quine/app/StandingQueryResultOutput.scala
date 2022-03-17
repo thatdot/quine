@@ -34,11 +34,14 @@ import ujson.BytesRenderer
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.serialization.QuineValueToProtobuf
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
+import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
+import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.CypherQuery.ExecutionGuarantee
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
@@ -278,17 +281,25 @@ object StandingQueryResultOutput extends LazyLogging {
             }
           }
 
-      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan) =>
-        val cypher.CompiledQuery(_, compiledQuery, _, fixedParameters, _) = compiler.cypher.compile(
+      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, executionGuarantee) =>
+        val compiledQuery @ cypher.CompiledQuery(_, queryAst, _, _, _) = compiler.cypher.compile(
           query,
           unfixedParameters = Seq(parameter)
         )
 
-        // TODO: This should be tested (and the user warned) before results are produced!
-        if (compiledQuery.canContainAllNodeScan && !allowAllNodeScan) {
+        // TODO: When in the initial set of SQ outputs, these should be tested before the SQ is registered!
+        if (queryAst.canContainAllNodeScan && !allowAllNodeScan) {
           throw new RuntimeException(
             "Cypher query may contain full node scan; re-write without possible full node scan, or pass allowAllNodeScan true. " +
-            s"The provided query was:  $query"
+            s"The provided query was: $query"
+          )
+        }
+        if (!queryAst.isIdempotent && executionGuarantee != ExecutionGuarantee.BestEffort) {
+          logger.warn(
+            """Could not verify that the provided Cypher query is idempotent. If timeouts occur, query
+              |execution may be retried and duplicate data may be created. To avoid this,
+              |use the "Best Effort" Execution Guarantee.""".stripMargin
+              .replace('\n', ' ')
           )
         }
 
@@ -321,15 +332,24 @@ object StandingQueryResultOutput extends LazyLogging {
                 .via(resultHandlingFlow(name, thenOutput, graph))
           }
 
+        lazy val atLeastOnceCypherQuery =
+          AtLeastOnceCypherQuery(compiledQuery, parameter, "Standing Query output")
+
         Flow[StandingQueryResult]
           .flatMapMerge(
             breadth = parallelism,
             result => {
-              val param = cypher.Expr.fromQuineValue(result.toQuineValueMap())
-              val params = cypher.Parameters(param +: fixedParameters.params)
+              val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap())
 
-              graph.cypherOps
-                .query(compiledQuery, params)
+              val cypherResultRows = executionGuarantee match {
+                case ExecutionGuarantee.BestEffort => compiledQuery.run(Map(parameter -> value))(graph).results
+                case ExecutionGuarantee.AtLeastOnce => atLeastOnceCypherQuery.stream(value)(graph)
+              }
+
+              cypherResultRows
+                .map { resultRow =>
+                  QueryContext(compiledQuery.columns.zip(resultRow).toMap)
+                }
                 .map(data => (result.meta, data))
             }
           )
