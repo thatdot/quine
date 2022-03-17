@@ -34,7 +34,7 @@ object Dependencies {
   val mapDbV = "3.0.8"
   val memeIdV = "0.4.0"
   val metricsInfluxdbV = "1.1.0"
-  val msgPackV = "0.9.0"
+  val msgPackV = "0.9.1"
   val nettyNioClientV = "2.15.57" // scala-steward:off
   val openCypherV = "9.0.20190305"
   val parboiledV = "1.3.1"
