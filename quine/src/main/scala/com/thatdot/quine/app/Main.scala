@@ -4,10 +4,11 @@ import java.io.File
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 import akka.actor.{ActorSystem, Cancellable}
 import akka.util.Timeout
@@ -20,7 +21,7 @@ import com.thatdot.quine.app.config.PersistenceAgentType
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
-import com.thatdot.quine.persistor.PersistenceConfig
+import com.thatdot.quine.persistor.{ExceptionWrappingPersistenceAgent, PersistenceConfig}
 
 object Main extends App with LazyLogging {
 
@@ -117,54 +118,52 @@ object Main extends App with LazyLogging {
   config.metricsReporters.foreach(Metrics.addReporter(_, "quine"))
   Metrics.startReporters()
 
-  val graphTry: Try[GraphService] = {
-    implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.global
-    Await
-      .ready(
-        for {
-          graph <- GraphService(
-            persistor = config.store.persistor(config.persistence)(_),
-            idProvider = config.id.idProvider,
-            shardCount = config.shardCount,
-            inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
-            inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
-            declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
-            declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
-            labelsProperty = Symbol(config.labelsProperty),
-            edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
-            metricRegistry = Metrics
-          )
-          _ <- graph.persistor.syncVersion(
-            "Quine app state",
-            QuineApp.VersionKey,
-            QuineApp.CurrentPersistenceVersion,
-            () => QuineApp.quineAppIsEmpty(graph.persistor)
-          )
-        } yield graph,
-        timeout.duration
-      )
-      .value
-      .get
-  }
-
-  val graph: GraphService = graphTry.fold(
-    { err =>
-      statusLines.error("Unable to start graph", err)
-      sys.exit(1)
-    },
-    g => g
-  )
+  val graph: GraphService =
+    try {
+      implicit val ec: ExecutionContext = ExecutionContexts.parasitic
+      Await
+        .result(
+          for {
+            graph <- GraphService(
+              persistor = system =>
+                new ExceptionWrappingPersistenceAgent(config.store.persistor(config.persistence)(system))(
+                  system.dispatcher
+                ),
+              idProvider = config.id.idProvider,
+              shardCount = config.shardCount,
+              inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
+              inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
+              declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
+              declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
+              labelsProperty = Symbol(config.labelsProperty),
+              edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
+              metricRegistry = Metrics
+            )
+            _ <- graph.persistor.syncVersion(
+              "Quine app state",
+              QuineApp.VersionKey,
+              QuineApp.CurrentPersistenceVersion,
+              () => QuineApp.quineAppIsEmpty(graph.persistor)
+            )
+          } yield graph,
+          timeout.duration
+        )
+    } catch {
+      case NonFatal(err) =>
+        statusLines.error("Unable to start graph", err)
+        sys.exit(1)
+    }
 
   implicit val system: ActorSystem = graph.system
   val ec: ExecutionContext = graph.shardDispatcherEC
   val appState = new QuineApp(graph)
 
-  registerUserDefinedProcedure(new CypherStandingWiretap(appState.getStandingQueryId(_)))
+  registerUserDefinedProcedure(new CypherStandingWiretap(appState.getStandingQueryId))
 
   // Warn if character encoding is unexpected
-  if (Charset.defaultCharset() != StandardCharsets.UTF_8) {
+  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
     statusLines.warn(
-      s"System character encoding is ${Charset.defaultCharset()} - did you mean to specify -Dfile.encoding=UTF-8?"
+      s"System character encoding is ${Charset.defaultCharset} - did you mean to specify -Dfile.encoding=UTF-8?"
     )
   }
 
