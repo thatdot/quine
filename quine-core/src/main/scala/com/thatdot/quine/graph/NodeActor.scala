@@ -208,6 +208,10 @@ private[graph] class NodeActor(
         val len = edges.size
         if (len > 7 && isPowerOfTwo(len)) costToSleep.incrementAndGet()
 
+        val edgeCollectionSizeWarningInterval = 10000
+        if (log.isWarningEnabled && (len + 1) % edgeCollectionSizeWarningInterval == 0)
+          log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
+
         edges += edge
 
       case EdgeRemoved(edge) =>
