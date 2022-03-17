@@ -384,8 +384,21 @@ final private[quine] class GraphShardActor(
       * the persistor couldn't successfully persist the data. Try to wake the
       * node back up.
       */
-    case SleepOutcome.SleepFailed(id, snapshot, exception) =>
-      log.error(exception, "Failed to serialize data for {}. Restoring the node.", id)
+    case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception) =>
+      log.error(
+        exception,
+        "Failed to store {}'s {} bytes, composed of {} edges and {} properties. Restoring the node.",
+        id,
+        snapshot.length,
+        numEdges,
+        propertySizes.size
+      )
+      if (log.isWarningEnabled)
+        log.warning(
+          "Property sizes on failed store {}: {}",
+          id,
+          propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")
+        )
       nodes -= id
       inMemoryActorList.remove(id)
       nodesSleptFailureCounter.inc()
@@ -696,6 +709,8 @@ object SleepOutcome {
   final private[quine] case class SleepFailed(
     id: QuineIdAtTime,
     snapshotBytes: Array[Byte],
+    numEdges: Int,
+    propertySizes: Map[Symbol, Int],
     error: Throwable
   ) extends SleepOutcome
 }

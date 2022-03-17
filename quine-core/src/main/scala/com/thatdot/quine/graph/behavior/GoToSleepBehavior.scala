@@ -118,7 +118,14 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 // Schedule an update to the shard
                 sleepingPromise.future.onComplete {
                   case Success(_) => shardActor ! SleepOutcome.SleepSuccess(qidAtTime)
-                  case Failure(err) => shardActor ! SleepOutcome.SleepFailed(qidAtTime, snapshot, err)
+                  case Failure(err) =>
+                    shardActor ! SleepOutcome.SleepFailed(
+                      qidAtTime,
+                      snapshot,
+                      edges.size,
+                      properties.transform((_, v) => v.serialized.size),
+                      err
+                    )
                 }
 
                 // TODO: retry in persistors
