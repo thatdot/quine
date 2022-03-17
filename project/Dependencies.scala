@@ -29,7 +29,7 @@ object Dependencies {
   val jnrPosixV = "3.1.15"
   val jqueryV = "3.6.0"
   val logbackConfigV = "0.4.0"
-  val logbackV = "1.2.10"
+  val logbackV = "1.2.11"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.0.8"
   val memeIdV = "0.4.0"
