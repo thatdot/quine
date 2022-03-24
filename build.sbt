@@ -304,7 +304,8 @@ lazy val `quine-docs`: Project = {
         "material.social.type" -> "slack",
         "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
         "project.name" -> projectName.value,
-        "logo.link.title" -> "Quine"
+        "logo.link.title" -> "Quine",
+        "quine.jar" -> s"quine-${version.value}.jar"
       ),
       description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
       Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {

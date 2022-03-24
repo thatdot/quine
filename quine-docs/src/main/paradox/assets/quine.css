@@ -311,3 +311,6 @@
     grid-template-rows: auto;
 }
 
+.md-source__facts {
+    visibility: hidden;
+}

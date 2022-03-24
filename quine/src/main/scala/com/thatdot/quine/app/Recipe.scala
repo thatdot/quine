@@ -7,6 +7,8 @@ import java.net.{HttpURLConnection, MalformedURLException, URL, URLEncoder}
 import scala.util.Using
 import scala.util.control.Exception.catching
 
+import cats.data.{Validated, ValidatedNel}
+import cats.implicits._
 import endpoints4s.generic.docs
 
 import com.thatdot.quine.app.yaml.parseToJson
@@ -62,42 +64,76 @@ object Recipe {
     recipe <- recipeSchema.decoder.decode(jsonObj).toEither
   } yield recipe
 
-  /** Produces a copy of the Recipe with all tokens substituted with defined values. Only certain
-    * predetermined Recipe fields are processed in this way. If a token is undefined, it fails with an
-    * exception.
+  /** Indicates an error due to a missing recipe variable.
+    *
+    * TODO: consider adding information here about where the error occurred
+    *
+    * @param name name of the missing variable
     */
-  def applySubstitutions(recipe: Recipe, values: Map[String, String]): Recipe = {
+  final case class UnboundVariableError(name: String)
+
+  /** Produces a copy of the Recipe with all tokens substituted with defined values. Only certain
+    * predetermined Recipe fields are processed in this way.
+    *
+    * If a token is undefined, it will be added to the list of failures in the output.
+    *
+    * @param recipe parsed recipe AST
+    * @param values variables that may be substituted
+    * @return substituted recipe or all of the substitution errors
+    */
+  def applySubstitutions(recipe: Recipe, values: Map[String, String]): ValidatedNel[UnboundVariableError, Recipe] = {
     // Implicit classes so that .subs can be used below.
     implicit class Subs(s: String) {
-      def subs: String = applySubstitution(s, values)
+      def subs: ValidatedNel[UnboundVariableError, String] = applySubstitution(s, values)
     }
     implicit class SubCreds(c: AwsCredentials) {
-      def subs: AwsCredentials = AwsCredentials(
-        c.region.subs,
-        c.accessKeyId.subs,
-        c.secretAccessKey.subs
-      )
+      def subs: ValidatedNel[UnboundVariableError, AwsCredentials] =
+        (
+          c.region.subs,
+          c.accessKeyId.subs,
+          c.secretAccessKey.subs
+        ).mapN(AwsCredentials(_, _, _))
     }
     implicit class SubStandingQueryOutputSubs(soo: StandingQueryResultOutputUserDef) {
-      def subs: StandingQueryResultOutputUserDef = soo match {
+      def subs: ValidatedNel[UnboundVariableError, StandingQueryResultOutputUserDef] = soo match {
         case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
-          PostToEndpoint(url.subs, parallelism, onlyPositiveMatchData)
+          (
+            url.subs
+          ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData))
         case WriteToKafka(topic, bootstrapServers, format) =>
-          WriteToKafka(topic.subs, bootstrapServers.subs, format)
-        case WriteToSNS(credentials, topic) => WriteToSNS(credentials.map(_.subs), topic.subs)
-        case PrintToStandardOut(logLevel, logMode) => PrintToStandardOut(logLevel, logMode)
-        case WriteToFile(path) => WriteToFile(path.subs)
+          (
+            topic.subs,
+            bootstrapServers.subs
+          ).mapN(WriteToKafka(_, _, format))
+        case WriteToSNS(credentials, topic) =>
+          (
+            credentials.traverse(_.subs),
+            topic.subs
+          ).mapN(WriteToSNS(_, _))
+        case PrintToStandardOut(logLevel, logMode) =>
+          Validated.valid(PrintToStandardOut(logLevel, logMode))
+        case WriteToFile(path) =>
+          (
+            path.subs
+          ).map(WriteToFile(_))
         case PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
-          PostToSlack(hookUrl.subs, onlyPositiveMatchData, intervalSeconds)
+          (
+            hookUrl.subs
+          ).map(PostToSlack(_, onlyPositiveMatchData, intervalSeconds))
         case StandingQueryResultOutputUserDef
               .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, executionGuarantee) =>
-          StandingQueryResultOutputUserDef.CypherQuery(
+          (
             query.subs,
-            parameter,
-            parallelism,
-            andThen.map(_.subs),
-            allowAllNodeScan,
-            executionGuarantee
+            andThen.traverse(_.subs)
+          ).mapN(
+            StandingQueryResultOutputUserDef.CypherQuery(
+              _,
+              parameter,
+              parallelism,
+              _,
+              allowAllNodeScan,
+              executionGuarantee
+            )
           )
         case WriteToKinesis(
               credentials,
@@ -108,21 +144,24 @@ object Recipe {
               kinesisMaxRecordsPerSecond,
               kinesisMaxBytesPerSecond
             ) =>
-          WriteToKinesis(
-            credentials.map(_.subs),
-            streamName.subs,
-            format,
-            kinesisParallelism,
-            kinesisMaxBatchSize,
-            kinesisMaxRecordsPerSecond,
-            kinesisMaxBytesPerSecond
+          (
+            credentials.traverse(_.subs),
+            streamName.subs
+          ).mapN(
+            WriteToKinesis(
+              _,
+              _,
+              format,
+              kinesisParallelism,
+              kinesisMaxBatchSize,
+              kinesisMaxRecordsPerSecond,
+              kinesisMaxBytesPerSecond
+            )
           )
       }
     }
-    // Return a copy of the recipe.
-    // Selected fields are token substituted by invoking subs.
-    recipe.copy(
-      ingestStreams = recipe.ingestStreams map {
+    implicit class IngestStreamsConfigurationSubs(soo: IngestStreamConfiguration) {
+      def subs: ValidatedNel[UnboundVariableError, IngestStreamConfiguration] = soo match {
         case KafkaIngest(
               format,
               topics,
@@ -135,17 +174,21 @@ object Recipe {
               endingOffset,
               maximumPerSecond
             ) =>
-          KafkaIngest(
-            format,
-            topics,
-            parallelism,
-            bootstrapServers.subs,
-            groupId,
-            securityProtocol,
-            autoCommitIntervalMs,
-            autoOffsetReset,
-            endingOffset,
-            maximumPerSecond
+          (
+            bootstrapServers.subs
+          ).map(
+            KafkaIngest(
+              format,
+              topics,
+              parallelism,
+              _,
+              groupId,
+              securityProtocol,
+              autoCommitIntervalMs,
+              autoOffsetReset,
+              endingOffset,
+              maximumPerSecond
+            )
           )
         case KinesisIngest(
               format,
@@ -157,44 +200,61 @@ object Recipe {
               numRetries,
               maximumPerSecond
             ) =>
-          KinesisIngest(
-            format,
+          (
             streamName.subs,
-            shardIds,
-            parallelism,
-            credentials.map(_.subs),
-            iteratorType,
-            numRetries,
-            maximumPerSecond
+            credentials.traverse(_.subs)
+          ).mapN(
+            KinesisIngest(
+              format,
+              _,
+              shardIds,
+              parallelism,
+              _,
+              iteratorType,
+              numRetries,
+              maximumPerSecond
+            )
           )
         case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond) =>
-          ServerSentEventsIngest(format, url.subs, parallelism, maximumPerSecond)
+          (
+            url.subs
+          ).map(ServerSentEventsIngest(format, _, parallelism, maximumPerSecond))
         case SQSIngest(
               format,
-              queueURL,
+              queueUrl,
               readParallelism,
               writeParallelism,
               credentials,
               deleteReadMessages,
               maximumPerSecond
             ) =>
-          SQSIngest(
-            format,
-            applySubstitution(queueURL, values),
-            readParallelism,
-            writeParallelism,
-            credentials.map(_.subs),
-            deleteReadMessages,
-            maximumPerSecond
+          (
+            queueUrl.subs,
+            credentials.traverse(_.subs)
+          ).mapN(
+            SQSIngest(
+              format,
+              _,
+              readParallelism,
+              writeParallelism,
+              _,
+              deleteReadMessages,
+              maximumPerSecond
+            )
           )
         case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
-          WebsocketSimpleStartupIngest(
-            format,
-            applySubstitution(wsUrl, values),
-            initMessages.map(_.subs),
-            keepAliveProtocol,
-            parallelism,
-            encoding
+          (
+            wsUrl.subs,
+            initMessages.toList.traverse(_.subs)
+          ).mapN(
+            WebsocketSimpleStartupIngest(
+              format,
+              _,
+              _,
+              keepAliveProtocol,
+              parallelism,
+              encoding
+            )
           )
         case FileIngest(
               format,
@@ -207,16 +267,20 @@ object Recipe {
               maximumPerSecond,
               fileIngestMode
             ) =>
-          FileIngest(
-            format,
-            applySubstitution(path, values),
-            encoding,
-            parallelism,
-            maximumLineSize,
-            startAtOffset,
-            ingestLimit,
-            maximumPerSecond,
-            fileIngestMode
+          (
+            path.subs
+          ).map(
+            FileIngest(
+              format,
+              _,
+              encoding,
+              parallelism,
+              maximumLineSize,
+              startAtOffset,
+              ingestLimit,
+              maximumPerSecond,
+              fileIngestMode
+            )
           )
         case StandardInputIngest(
               format,
@@ -225,20 +289,30 @@ object Recipe {
               maximumLineSize,
               maximumPerSecond
             ) =>
-          StandardInputIngest(
-            format,
-            encoding,
-            parallelism,
-            maximumLineSize,
-            maximumPerSecond
+          Validated.valid(
+            StandardInputIngest(
+              format,
+              encoding,
+              parallelism,
+              maximumLineSize,
+              maximumPerSecond
+            )
           )
-      },
-      standingQueries = recipe.standingQueries.map(sq =>
-        sq.copy(
-          outputs = for { (k, v) <- sq.outputs } yield k -> v.subs // do not use mapValues! 💀
-        )
+      }
+    }
+
+    // Return a copy of the recipe.
+    // Selected fields are token substituted by invoking subs.
+    (
+      recipe.ingestStreams.traverse(_.subs),
+      recipe.standingQueries.traverse(sq =>
+        for {
+          outputsS <- sq.outputs.toList
+            .traverse { case (k, v) => v.subs.map(k -> _) }
+            .map(_.toMap)
+        } yield sq.copy(outputs = outputsS)
       )
-    )
+    ).mapN((iss, sqs) => recipe.copy(ingestStreams = iss, standingQueries = sqs))
   }
 
   /** Extremely simple token substitution language.
@@ -254,16 +328,19 @@ object Recipe {
     * Double leading '$' characters ("$$") escapes token substitution and is
     * interpreted as a single leading '$'.
     */
-  def applySubstitution(input: String, values: Map[String, String]): String =
+  def applySubstitution(input: String, values: Map[String, String]): ValidatedNel[UnboundVariableError, String] =
     if (input.startsWith("$")) {
       val key = input.slice(1, input.length)
       if (input.startsWith("$$")) {
-        key
+        Validated.valid(key)
       } else {
-        values.getOrElse(key, sys.error(s"Missing required parameter $key; use --recipe-value $key="))
+        values.get(key) match {
+          case None => Validated.invalid(UnboundVariableError(key)).toValidatedNel
+          case Some(value) => Validated.valid(value)
+        }
       }
     } else {
-      input
+      Validated.valid(input)
     }
 
   /** Synchronously maps a string that identifies a Recipe to the actual Recipe
@@ -316,6 +393,19 @@ object Recipe {
       validatedRecipe <- isCurrentVersion(recipe)
     } yield validatedRecipe
   }
+
+  /** Fetch the recipe using the identifying string and then apply substitutions
+    *
+    * @param recipeIdentifyingString URL, file path, or canonical name of recipe
+    * @param values variables for substitution
+    * @return either all of the errors, or the parsed and substituted recipe
+    */
+  def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
+    for {
+      recipe <- get(recipeIdentifyingString)
+      substitutedRecipe <- applySubstitutions(recipe, values).toEither.left
+        .map(_.toList.distinct.map(e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}="))
+    } yield substitutedRecipe
 
   private val version = 1
 

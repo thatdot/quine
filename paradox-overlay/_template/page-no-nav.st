@@ -121,6 +121,7 @@
     <script type="text/javascript" src="$page.base$lib/prettify/prettify.js"></script>
     <script type="text/javascript" src="$page.base$lib/prettify/lang-scala.js"></script>
     <script type="text/javascript" src="$page.base$assets/javascripts/lang-cypher.js"></script>
+    <script type="text/javascript" src="$page.base$assets/javascripts/lang-yaml.js"></script>
     $ if (page.properties.("material.custom.javascript")) $
       <script src="$page.base$$page.properties.("material.custom.javascript")$"></script>
     $ endif $

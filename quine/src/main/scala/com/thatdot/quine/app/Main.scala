@@ -38,21 +38,13 @@ object Main extends App with LazyLogging {
   }
 
   // If there's a recipe URL or file path, block and read it, apply substitutions, and fail fast.
-  val recipe: Option[Recipe] = {
-    val parsedRecipe: Option[Recipe] = for { r <- cmdArgs.recipe } yield Recipe.get(r) match {
+  val recipe: Option[Recipe] = cmdArgs.recipe.map { (recipeIdentifyingString: String) =>
+    Recipe.getAndSubstitute(recipeIdentifyingString, cmdArgs.recipeValues) match {
       case Left(messages) =>
         messages.foreach(l => Console.err.println(l))
         sys.exit(1)
       case Right(recipe) => recipe
     }
-    val substitutedRecipe =
-      for { r <- parsedRecipe } yield try Recipe.applySubstitutions(r, cmdArgs.recipeValues)
-      catch {
-        case NonFatal(e) =>
-          Console.err.println(e.getMessage)
-          sys.exit(1)
-      }
-    substitutedRecipe
   }
 
   // specifies that logback configuration will be loaded from the "logging.quine" Typesafe Config scope
