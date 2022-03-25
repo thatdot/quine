@@ -63,6 +63,7 @@ trait BaseGraph extends StrictLogging {
 
   // TODO: put this in some other class which is a field here
   val ingestValve: SharedValve = new SharedValve("ingest")
+  metrics.registerGaugeValve(ingestValve)
 
   val masterStream: MasterStream = new MasterStream(materializer)
 

@@ -32,7 +32,7 @@ class SharedValve(val name: String) {
     *
     * If this becomes a bottleneck, the reference could be replaced with a
     * single atomic long (even just a single volatile long, although the atomic
-    * update interface is different in JDK8 vs. JDK9+ - see `VarHandles`). Th
+    * update interface is different in JDK8 vs. JDK9+ - see `VarHandles`). The
     * long must track at least two bits of information though: one which is the
     * `closedCount` and another which is a sequence number. The purpose of the
     * sequence number is to avoid a race between `close` and `open` on an
