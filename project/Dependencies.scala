@@ -4,7 +4,7 @@ object Dependencies {
 
   val akkaHttpV = "10.2.8"
   val akkaStreamContribV = "0.11"
-  val akkaV = "2.6.18"
+  val akkaV = "2.6.19"
   val alpakkaCsvV = "3.0.4"
   val alpakkaKafkaV = "2.1.1"
   val alpakkaKinesisV = "3.0.4"
