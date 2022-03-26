@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.behavior
 import scala.annotation.nowarn
 import scala.collection.compat._
 import scala.collection.mutable
-import scala.compat._
 
 import akka.actor.{Actor, ActorLogging}
 import akka.event.LoggingAdapter
