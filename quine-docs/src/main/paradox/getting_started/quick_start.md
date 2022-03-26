@@ -8,14 +8,12 @@ Start Quine using the executable or source code (described below). With Quine ru
 
 - Download the executable.    TODO
 - `java -jar quine.jar`
-- If you're on an M1 Mac, you need an extra argument (until one of our dependencies deploys an update): `java -jar -Dquine.store.type=map-db quine.jar`
 
 ### From source code
 
 - Download the source code.
 - Install `sbt`
 - From the main directory of the repository on your machine: `sbt run`
-- If you're on an M1 Mac, you need an extra argument (until one of our dependencies deploys an update): `sbt -Dquine.store.type=map-db run`
 
 ## Minimum Possible Example
 

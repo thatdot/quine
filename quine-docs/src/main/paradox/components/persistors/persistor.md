@@ -22,9 +22,8 @@ Using RocksDB in Quine requires no special changes to use it, since it is the de
 
 @@@ warning
 
-RocksDB is distributed by its authors as a binary artifact built for specific architectures and used from JVM applications through the Java Native Interface (JNI). At the time of this writing, RocksDB does not yet support the `arm64` architecture needed by Apple's M1 CPUs. As a result, Quine cannot use the RocksDB persistor when running on an M1 Mac. The issue tracking support for an M1-compatible build of the `rocksdbjni` package is here: @link:[https://github.com/facebook/rocksdb/issues/7720](https://github.com/facebook/rocksdb/issues/7720){ open=new } While it appears that issue has been resolved, we are waiting for the merged code to be officially released.
-
-If you try to start Quine with the default settings on an M1 Mac, you will get an error suggesting that you run with the option to use MapDB instead: `-Dquine.store.type=map-db`
+RocksDB is distributed by its authors as a binary artifact built for specific architectures and used from JVM applications through the Java Native Interface (JNI).
+If you try to start Quine with the default settings on an unsupported platform, you will get an error suggesting that you run with the option to use MapDB instead: `-Dquine.store.type=map-db`.
 
 @@@
 

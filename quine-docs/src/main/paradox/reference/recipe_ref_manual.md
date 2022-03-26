@@ -92,7 +92,7 @@ When Quine is started without command line arguments, its default behavior is to
 Quine is configurable as described in @ref:[Configuration](configuration.md). Normally when running a Recipe, the configuration for `store` is overwritten with `PersistenceAgentType.RocksDb` and is configured to use a temporary file. This configuration is appropriate for most use cases of Recipes and can be changed with the following command line arguments:
 
 * `--force-config`: Quine will use the `store` that is configured via @ref:[Configuration](configuration.md) (instead of overwriting it as described above)
-* `--no-delete`: Quine will use `PersistenceAgentType.MapDb` but it will not delete the temporary file
+* `--no-delete`: Quine will not delete the DB file on exit and will print out that path to it
 
 Note `--force-config` and `--no-delete` are mutually exclusive (only one of the two is allowed at a time).
 
