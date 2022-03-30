@@ -1,12 +1,12 @@
 package com.thatdot.quine.persistor
 
-import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 
 import akka.actor.ActorSystem
 
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.funspec.AnyFunSpec
+import org.scalatest.funspec.AsyncFunSpec
+import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, QuineUUIDProvider}
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
@@ -18,7 +18,7 @@ import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
   *
   * TODO: add tests for snapshots, standing query states, and metadata
   */
-abstract class PersistenceAgentSpec extends AnyFunSpec with BeforeAndAfterAll {
+abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll {
 
   implicit val system: ActorSystem = ActorSystem()
 
@@ -44,153 +44,195 @@ abstract class PersistenceAgentSpec extends AnyFunSpec with BeforeAndAfterAll {
   val event3: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(3L)))
   val event4: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(4L)))
 
-  def persistEventSync(qid: QuineId, atTime: EventTime, event: NodeChangeEvent): Unit =
-    Await.result(persistor.persistEvent(qid, atTime, event), 10.seconds)
-
-  def getJournalSync(qid: QuineId, from: EventTime, to: EventTime): Seq[NodeChangeEvent] =
-    Await.result(persistor.getJournal(qid, from, to), 10.seconds)
+  /** Mash together a bunch of async actions into one assertion */
+  def allOfConcurrent[A](asyncTests: Future[A]*): Future[Assertion] = {
+    assume(runnable)
+    Future.sequence(asyncTests.toList).map(_ => succeed)
+  }
 
   describe("persistEvent") {
     it("can record events at various time") {
-      assume(runnable)
-
-      persistEventSync(qid1, EventTime.fromRaw(34L), event0)
-      persistEventSync(qid1, EventTime.fromRaw(36L), event1)
-      persistEventSync(qid1, EventTime.fromRaw(38L), event2)
-      persistEventSync(qid1, EventTime.fromRaw(40L), event3)
-      persistEventSync(qid1, EventTime.fromRaw(44L), event4)
+      allOfConcurrent(
+        persistor.persistEvent(qid1, EventTime.fromRaw(34L), event0),
+        persistor.persistEvent(qid1, EventTime.fromRaw(36L), event1),
+        persistor.persistEvent(qid1, EventTime.fromRaw(38L), event2),
+        persistor.persistEvent(qid1, EventTime.fromRaw(40L), event3),
+        persistor.persistEvent(qid1, EventTime.fromRaw(44L), event4)
+      )
     }
 
     it("supports EventTime.MaxValue and EventTime.MinValue") {
-      assume(runnable)
-
-      // "minimum qid" (all 0 bits)
-      persistEventSync(qid0, EventTime.MinValue, event0)
-      persistEventSync(qid0, EventTime.fromRaw(2394872938L), event1)
-      persistEventSync(qid0, EventTime.fromRaw(-129387432L), event2)
-      persistEventSync(qid0, EventTime.MaxValue, event3)
-
-      // in between qid
-      persistEventSync(qid2, EventTime.MinValue, event0)
-      persistEventSync(qid2, EventTime.fromRaw(2394872938L), event1)
-      persistEventSync(qid2, EventTime.fromRaw(-129387432L), event2)
-      persistEventSync(qid2, EventTime.MaxValue, event3)
-
-      // "maximum qid" (all 1 bits)
-      persistEventSync(qid4, EventTime.MinValue, event0)
-      persistEventSync(qid4, EventTime.fromRaw(2394872938L), event1)
-      persistEventSync(qid4, EventTime.fromRaw(-129387432L), event2)
-      persistEventSync(qid4, EventTime.MaxValue, event3)
+      allOfConcurrent(
+        // "minimum qid" (all 0 bits)
+        persistor.persistEvent(qid0, EventTime.MinValue, event0),
+        persistor.persistEvent(qid0, EventTime.fromRaw(2394872938L), event1),
+        persistor.persistEvent(qid0, EventTime.fromRaw(-129387432L), event2),
+        persistor.persistEvent(qid0, EventTime.MaxValue, event3),
+        // in between qid
+        persistor.persistEvent(qid2, EventTime.MinValue, event0),
+        persistor.persistEvent(qid2, EventTime.fromRaw(2394872938L), event1),
+        persistor.persistEvent(qid2, EventTime.fromRaw(-129387432L), event2),
+        persistor.persistEvent(qid2, EventTime.MaxValue, event3),
+        // "maximum qid" (all 1 bits)
+        persistor.persistEvent(qid4, EventTime.MinValue, event0),
+        persistor.persistEvent(qid4, EventTime.fromRaw(2394872938L), event1),
+        persistor.persistEvent(qid4, EventTime.fromRaw(-129387432L), event2),
+        persistor.persistEvent(qid4, EventTime.MaxValue, event3)
+      )
     }
   }
 
   describe("getJournal") {
 
     it("can query a full journal of a node") {
-      assume(runnable)
-      assert(getJournalSync(qid0, EventTime.MinValue, EventTime.MaxValue) === Seq(event0, event1, event2, event3))
-      assert(
-        getJournalSync(qid1, EventTime.MinValue, EventTime.MaxValue) === Seq(event0, event1, event2, event3, event4)
+      allOfConcurrent(
+        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3))
+        },
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3, event4))
+        },
+        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3))
+        },
+        persistor.getJournal(qid3, EventTime.MinValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq.empty)
+        },
+        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3))
+        }
       )
-      assert(getJournalSync(qid2, EventTime.MinValue, EventTime.MaxValue) === Seq(event0, event1, event2, event3))
-      assert(getJournalSync(qid3, EventTime.MinValue, EventTime.MaxValue) === Seq.empty)
-      assert(getJournalSync(qid4, EventTime.MinValue, EventTime.MaxValue) === Seq(event0, event1, event2, event3))
     }
 
     it("can query with EventTime.MinValue lower bound") {
-      assume(runnable)
-
-      // before anything
-      assert(getJournalSync(qid1, EventTime.MinValue, EventTime.fromRaw(2L)) === Seq.empty)
-
-      // right up to one event
-      assert(getJournalSync(qid1, EventTime.MinValue, EventTime.fromRaw(34L)) === Seq(event0))
-
-      // right after one event
-      assert(getJournalSync(qid1, EventTime.MinValue, EventTime.fromRaw(37L)) === Seq(event0, event1))
-
-      // after all events
-      assert(
-        getJournalSync(qid1, EventTime.MinValue, EventTime.fromRaw(48L)) === Seq(event0, event1, event2, event3, event4)
+      allOfConcurrent(
+        // before anything
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L)).map { journal =>
+          assert(journal === Seq.empty)
+        },
+        // right up to one event
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L)).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        // right after one event
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L)).map { journal =>
+          assert(journal === Seq(event0, event1))
+        },
+        // after all events
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L)).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3, event4))
+        },
+        // first event is the min value
+        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MinValue).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MinValue).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MinValue).map { journal =>
+          assert(journal === Seq(event0))
+        }
       )
-
-      // first event is the min value
-      assert(getJournalSync(qid0, EventTime.MinValue, EventTime.MinValue) === Seq(event0))
-      assert(getJournalSync(qid2, EventTime.MinValue, EventTime.MinValue) === Seq(event0))
-      assert(getJournalSync(qid4, EventTime.MinValue, EventTime.MinValue) === Seq(event0))
     }
 
     it("can query with EventTime.MaxValue upper bound") {
-      assume(runnable)
-
-      // before anything
-      assert(
-        getJournalSync(qid1, EventTime.fromRaw(2L), EventTime.MaxValue) === Seq(event0, event1, event2, event3, event4)
+      allOfConcurrent(
+        // before anything
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3, event4))
+        },
+        // before one event
+        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event4))
+        },
+        // starting exactly at one event
+        persistor.getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event4))
+        },
+        // starting exactly at the first event
+        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event0, event1, event2, event3, event4))
+        },
+        // after all events
+        persistor.getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue).map { journal =>
+          assert(journal === Seq.empty)
+        },
+        // first event is the min value
+        persistor.getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event3))
+        },
+        persistor.getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event3))
+        },
+        persistor.getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
+          assert(journal === Seq(event3))
+        }
       )
-
-      // before one event
-      assert(getJournalSync(qid1, EventTime.fromRaw(42L), EventTime.MaxValue) === Seq(event4))
-
-      // starting exactly at one event
-      assert(getJournalSync(qid1, EventTime.fromRaw(44L), EventTime.MaxValue) === Seq(event4))
-
-      // starting exactly at the first event
-      assert(
-        getJournalSync(qid1, EventTime.fromRaw(34L), EventTime.MaxValue) === Seq(event0, event1, event2, event3, event4)
-      )
-
-      // after all events
-      assert(getJournalSync(qid1, EventTime.fromRaw(48L), EventTime.MaxValue) === Seq.empty)
-
-      // first event is the min value
-      assert(getJournalSync(qid0, EventTime.MaxValue, EventTime.MaxValue) === Seq(event3))
-      assert(getJournalSync(qid2, EventTime.MaxValue, EventTime.MaxValue) === Seq(event3))
-      assert(getJournalSync(qid4, EventTime.MaxValue, EventTime.MaxValue) === Seq(event3))
     }
 
     it("can query with bounds that are not maximums") {
-      assume(runnable)
-
-      // start and end before any events
-      assert(getJournalSync(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L)) === Seq.empty)
-
-      // start and end between events
-      assert(getJournalSync(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L)) === Seq.empty)
-
-      // right up to one event
-      assert(getJournalSync(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L)) === Seq(event0))
-
-      // right after one event
-      assert(getJournalSync(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L)) === Seq(event0))
-
-      // starting exactly at one event
-      assert(getJournalSync(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L)) === Seq(event0))
-
-      // start and end on events
-      assert(getJournalSync(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L)) === Seq(event1, event2, event3))
-      assert(
-        getJournalSync(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L)) === Seq(
-          event0,
-          event1,
-          event2,
-          event3,
-          event4
-        )
+      allOfConcurrent(
+        // start and end before any events
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L)).map { journal =>
+          assert(journal === Seq.empty)
+        },
+        // start and end between events
+        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L)).map { journal =>
+          assert(journal === Seq.empty)
+        },
+        // right up to one event
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L)).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        // right after one event
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L)).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        // starting exactly at one event
+        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L)).map { journal =>
+          assert(journal === Seq(event0))
+        },
+        // start and end on events
+        persistor.getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L)).map { journal =>
+          assert(journal === Seq(event1, event2, event3))
+        },
+        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L)).map { journal =>
+          assert(
+            journal === Seq(
+              event0,
+              event1,
+              event2,
+              event3,
+              event4
+            )
+          )
+        }
       )
     }
 
     it("can handle unsigned EventTime") {
-      assume(runnable)
-
-      // event time needs to be treated as unsigned
-      assert(getJournalSync(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)) === Seq(event2))
-      assert(getJournalSync(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)) === Seq(event2))
-      assert(getJournalSync(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)) === Seq(event2))
-
-      // event time needs to be treated as unsigned
-      assert(getJournalSync(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)) === Seq(event1, event2))
-      assert(getJournalSync(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)) === Seq(event1, event2))
-      assert(getJournalSync(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)) === Seq(event1, event2))
+      allOfConcurrent(
+        // event time needs to be treated as unsigned
+        persistor.getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event2))
+        },
+        persistor.getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event2))
+        },
+        persistor.getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event2))
+        },
+        // event time needs to be treated as unsigned
+        persistor.getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event1, event2))
+        },
+        persistor.getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event1, event2))
+        },
+        persistor.getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
+          assert(journal === Seq(event1, event2))
+        }
+      )
     }
   }
 
