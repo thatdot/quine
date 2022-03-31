@@ -22,8 +22,10 @@ import com.thatdot.quine.graph.messaging.{
   QuineMessage,
   QuineRef,
   ResultHandler,
+  ShardRef,
   WrappedActorRef
 }
+import com.thatdot.quine.model.QuineId
 
 /** Graph implementation that assumes a basic static topology of shards. */
 trait StaticShardGraph extends BaseGraph {
@@ -179,4 +181,9 @@ trait StaticShardGraph extends BaseGraph {
   def isOnThisHost(quineRef: QuineRef): Boolean = true
 
   def isSingleHost = true
+
+  def shardFromNode(qid: QuineId): ShardRef = {
+    val shardIdx = idProvider.nodeLocation(qid).shardIdx
+    shards(Math.floorMod(shardIdx, shards.length))
+  }
 }

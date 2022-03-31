@@ -33,6 +33,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     livenessProbe,
     shutdown,
     shardSizes,
+    requestNodeSleep,
     literalGet,
     literalPost,
     literalDelete,

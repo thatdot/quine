@@ -43,7 +43,9 @@ object ShardMessage {
   final case class LocalPredicate(predicate: QuineIdAtTime => Boolean)
 
   /** Request the shard sleep a node. No guarantees. For testing. */
-  final case class RequestNodeSleep(idToSleep: QuineIdAtTime) extends ShardMessage
+  final case class RequestNodeSleep(idToSleep: QuineIdAtTime, replyTo: QuineRef)
+      extends ShardMessage
+      with AskableQuineMessage[BaseMessage.Done.type]
 
   /** Instruct the shard to snapshot all in-memory nodes and reply with how that
     * operation went

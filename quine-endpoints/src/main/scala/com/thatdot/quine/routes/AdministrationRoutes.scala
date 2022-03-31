@@ -244,4 +244,13 @@ trait AdministrationRoutes
         .withTags(List(adminTag))
     )
   }
+
+  final val requestNodeSleep: Endpoint[Id, Unit] =
+    endpoint(
+      request = post(admin / "request-node-sleep" / nodeIdSegment, emptyRequest),
+      response = accepted(emptyResponse),
+      docs = EndpointDocs()
+        .withSummary(Some("request node sleep"))
+        .withTags(List(adminTag))
+    )
 }

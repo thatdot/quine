@@ -12,6 +12,7 @@ import akka.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
+import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes._
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo}
@@ -143,6 +144,10 @@ trait AdministrationRoutesImpl
       })(ExecutionContexts.parasitic)
   }
 
+  private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { (quineId: QuineId) =>
+    graph.requestNodeSleep(quineId)
+  }
+
   final val administrationRoutes: Route =
     buildInfoRoute ~
     configRoute ~
@@ -151,5 +156,6 @@ trait AdministrationRoutesImpl
     metricsRoute ~
     shutdownRoute ~
     metaDataRoute ~
-    shardSizesRoute
+    shardSizesRoute ~
+    requestSleepNodeRoute
 }

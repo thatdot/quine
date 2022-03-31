@@ -14,8 +14,10 @@ import akka.util.Timeout
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
+import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
+  QuineIdAtTime,
   QuineMessage,
   QuineRef,
   ResultHandler,
@@ -299,4 +301,17 @@ trait BaseGraph extends StrictLogging {
         .map(_.toMap)
     }
   }
+
+  /** Request that a node go to sleep by sending a message to the node's shard.
+    */
+  def requestNodeSleep(quineId: QuineId)(implicit timeout: Timeout): Future[Unit] = {
+    requiredGraphIsReady()
+    val shard = shardFromNode(quineId)
+    relayAsk(shard.quineRef, RequestNodeSleep(QuineIdAtTime(quineId, None), _))
+      .map(_ => ())
+  }
+
+  /** Lookup the shard for a node ID.
+    */
+  def shardFromNode(node: QuineId): ShardRef
 }

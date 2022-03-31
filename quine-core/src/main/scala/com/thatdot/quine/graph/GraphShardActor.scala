@@ -527,8 +527,9 @@ final private[quine] class GraphShardActor(
       }
       msg ?! Done
 
-    case RequestNodeSleep(idToSleep) =>
+    case msg @ RequestNodeSleep(idToSleep, _) =>
       sleepActor(idToSleep)
+      msg ?! Done
 
     case msg @ InitiateShardShutdown(_) =>
       val remaining = requestShutdown() // Reports the count of live actors remaining
