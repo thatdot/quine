@@ -2,7 +2,7 @@ object Dependencies {
 
   val quineAppV = "1.1.2+n"
 
-  val akkaHttpV = "10.2.8"
+  val akkaHttpV = "10.2.9"
   val akkaStreamContribV = "0.11"
   val akkaV = "2.6.19"
   val alpakkaCsvV = "3.0.4"
