@@ -81,6 +81,7 @@ object Protocol extends LazyLogging {
             val resultAvailableAfter = 1L // milliseconds after which results may be requested
 
             if (explained) {
+              logger.debug(s"User requested EXPLAIN of query: ${queryResult.compiled.query}")
               // EXPLAIN'ed results do not get executed
               (
                 Success(

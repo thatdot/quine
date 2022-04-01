@@ -13,6 +13,8 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import akka.util.Timeout
 
+import com.typesafe.scalalogging.LazyLogging
+
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.{
   CypherException,
@@ -31,7 +33,8 @@ trait QueryUiRoutesImpl
     with endpoints4s.akkahttp.server.Endpoints
     with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints
-    with exts.ServerRequestTimeoutOps {
+    with exts.ServerRequestTimeoutOps
+    with LazyLogging {
 
   val gremlin: GremlinQueryRunner
 
@@ -304,6 +307,7 @@ trait QueryUiRoutesImpl
       val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
       (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
     } else {
+      logger.debug(s"User requested EXPLAIN of query: ${res.compiled.query}")
       val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
       (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
     }
