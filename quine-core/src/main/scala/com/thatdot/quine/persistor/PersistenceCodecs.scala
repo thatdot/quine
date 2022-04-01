@@ -166,7 +166,7 @@ object PersistenceCodecs extends LazyLogging {
 
   private[this] def writeCypherBytes(builder: FlatBufferBuilder, bytes: cypher.Expr.Bytes): Offset = {
     val bytesOff: Offset = persistence.CypherBytes.createBytesVector(builder, bytes.b)
-    persistence.CypherBytes.createCypherBytes(builder, bytesOff)
+    persistence.CypherBytes.createCypherBytes(builder, bytesOff, bytes.representsId)
   }
 
   private[this] def writeCypherNode(builder: FlatBufferBuilder, node: cypher.Expr.Node): Offset = {
@@ -916,7 +916,7 @@ object PersistenceCodecs extends LazyLogging {
 
       case persistence.CypherValue.CypherBytes =>
         val bytes = makeExpr(new persistence.CypherBytes()).asInstanceOf[persistence.CypherBytes]
-        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes)
+        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes, bytes.representsId)
 
       case persistence.CypherValue.CypherNode =>
         val node = makeExpr(new persistence.CypherNode()).asInstanceOf[persistence.CypherNode]
@@ -1184,7 +1184,7 @@ object PersistenceCodecs extends LazyLogging {
 
       case persistence.CypherExpr.CypherBytes =>
         val bytes = makeExpr(new persistence.CypherBytes()).asInstanceOf[persistence.CypherBytes]
-        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes)
+        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes, bytes.representsId)
 
       case persistence.CypherExpr.CypherNode =>
         val node = makeExpr(new persistence.CypherNode()).asInstanceOf[persistence.CypherNode]

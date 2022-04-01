@@ -488,7 +488,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
           Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(Symbol("__local_id")),
-              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get.array)
+              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get)
             )
           ),
           cypher.StandingQuery.LocalId(Symbol("__local_id"), false),
@@ -566,7 +566,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
                   Some(
                     cypher.Expr.Equal(
                       cypher.Expr.Variable(Symbol("__local_id")),
-                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get.array)
+                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get)
                     )
                   ),
                   cypher.StandingQuery.LocalId(Symbol("__local_id"), false),

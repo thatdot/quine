@@ -101,7 +101,8 @@ object ImportFormat {
 
   class CypherRaw(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
 
-    override def importBytes(arr: Array[Byte]): Try[cypher.Value] = Success(cypher.Expr.Bytes(arr))
+    override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
+      Success(cypher.Expr.Bytes(arr, representsId = false))
 
   }
 

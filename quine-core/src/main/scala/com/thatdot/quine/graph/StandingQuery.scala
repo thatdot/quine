@@ -36,28 +36,8 @@ final case class StandingQuery(
   query: StandingQueryPattern,
   queueBackpressureThreshold: Int,
   queueMaxSize: Int
-) {
+)
 
-  /** The Set of columns this SQ will extract as [[cypher.Expr.Bytes]] that should actually be [[QuineValue.Id]]
-    *
-    * Uses additional information (the pattern) to undo the lossy conversion from [[QuineValue]] to [[cypher.Value]]
-    * performed by the SQv4 matching runtime. Because the QuineIds can be represented by any runtime type (depending
-    * only on the idProvider), but the [open]Cypher compiler assumes IDs are Longs, [[QuineValue.Id]] is represented as
-    * [[cypher.Expr.Bytes]], rather than as a type like (a hypothetical) cypher.Expr.Id. However, if we know that a
-    * [[cypher.Expr.Bytes]] instance represents a [[QuineValue.Id]], we can convert back losslessly.
-    *
-    * @see [[messaging.QuineMessage.NewCypherResult.standingQueryResult]]
-    */
-  val rawIdReturnColumns: Set[Symbol] = (query.origin match {
-    case PatternOrigin.GraphPattern(pattern, _) =>
-      pattern.toExtract.collect { case GraphQueryPattern.ReturnColumn.Id(_, formatAsString @ false, aliasedAs) =>
-        aliasedAs
-      }
-    case PatternOrigin.DirectDgb | PatternOrigin.DirectSqV4 =>
-      Seq.empty
-  }).toSet
-
-}
 object StandingQuery {
 
   /** @see [[StandingQuery.queueMaxSize]]

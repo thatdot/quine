@@ -279,7 +279,7 @@ trait ArbitraryInstances {
           Gen.resultOf[String, CypherValue](CypherExpr.Str.apply),
           Gen.resultOf[Long, CypherValue](CypherExpr.Integer.apply),
           Gen.resultOf[Double, CypherValue](CypherExpr.Floating.apply),
-          Gen.resultOf[Array[Byte], CypherValue](CypherExpr.Bytes.apply),
+          Gen.resultOf[Array[Byte], Boolean, CypherValue](CypherExpr.Bytes.apply),
           arbNodeCypherValue.arbitrary,
           arbRelationshipCypherValue.arbitrary,
           GenApply.resultOf[Vector[CypherValue], CypherValue](CypherExpr.List.apply),

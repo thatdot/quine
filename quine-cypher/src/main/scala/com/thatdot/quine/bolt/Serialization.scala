@@ -267,7 +267,7 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
         writeValue(buf, v)
       }
 
-    case Expr.Bytes(b) =>
+    case Expr.Bytes(b, representsId @ _) =>
       val l = b.size
       if (l <= 255)               buf.putByte(BYTE8).putByte(l.toByte)
       else if (l <= 65535)        buf.putByte(BYTE16).putShort(l)

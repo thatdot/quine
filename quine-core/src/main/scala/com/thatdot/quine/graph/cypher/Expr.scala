@@ -86,7 +86,7 @@ object Expr {
     case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue(_)).toMap)
     case QuineValue.DateTime(instant) =>
       DateTime(JavaZonedDateTime.ofInstant(instant, ZoneOffset.UTC))
-    case QuineValue.Id(id) => Bytes(id.array)
+    case QuineValue.Id(id) => Bytes(id)
   }
 
   def toQuineValue(value: Value): QuineValue = value match {
@@ -96,7 +96,8 @@ object Expr {
     case True => QuineValue.True
     case False => QuineValue.False
     case Null => QuineValue.Null
-    case Bytes(arr) => QuineValue.Bytes(arr) // NB this may be an ID or bytes
+    case Bytes(arr, false) => QuineValue.Bytes(arr)
+    case Bytes(arr, true) => QuineValue.Id(QuineId(arr))
     case List(vec) => QuineValue.List(vec.map(toQuineValue(_)))
     case Map(map) => QuineValue.Map(map.view.mapValues(toQuineValue(_)).toMap)
     case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toInstant)
@@ -377,13 +378,15 @@ object Expr {
   /** A cypher value representing an array of bytes
     *
     * @note there is no way to directly write a literal for this in Cypher
+    * @param b array of bytes (do not mutate this!)
+    * @param representsId do these bytes represent an ID? (just a hint, not part of `hashCode` or `equals`)
     */
-  final case class Bytes(b: Array[Byte]) extends PropertyValue {
+  final case class Bytes(b: Array[Byte], representsId: Boolean = false) extends PropertyValue {
     override def hashCode: Int =
       MurmurHash3.bytesHash(b, 0x54321) // 12345 would make QuineValue.Bytes hash the same as
     override def equals(other: Any): Boolean =
       other match {
-        case Bytes(bytesOther) => b.toSeq == bytesOther.toSeq
+        case Bytes(bytesOther, _) => b.toSeq == bytesOther.toSeq
         case _ => false
       }
 
@@ -396,6 +399,9 @@ object Expr {
       hasher
         .putInt("Bytes".hashCode)
         .putBytes(b)
+  }
+  object Bytes {
+    def apply(qid: QuineId): Bytes = Bytes(qid.array, representsId = true)
   }
 
   /** A cypher value representing a node
@@ -984,7 +990,7 @@ object Expr {
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
         case Null => Null
-        case Relationship(start, _, _, _) => Bytes(start.array)
+        case Relationship(start, _, _, _) => Bytes(start)
 
         case other =>
           throw CypherException.TypeMismatch(
@@ -1009,7 +1015,7 @@ object Expr {
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
         case Null => Null
-        case Relationship(_, _, _, end) => Bytes(end.array)
+        case Relationship(_, _, _, end) => Bytes(end)
 
         case other =>
           throw CypherException.TypeMismatch(
@@ -2127,7 +2133,7 @@ sealed abstract class Value extends Expr {
     case Expr.True => true
     case Expr.False => false
     case Expr.Null => null
-    case Expr.Bytes(byteArray) => byteArray
+    case Expr.Bytes(byteArray, _) => byteArray
 
     case _: Expr.Node =>
       throw new IllegalArgumentException(
@@ -2162,7 +2168,9 @@ sealed abstract class Value extends Expr {
     case Expr.True => "true"
     case Expr.False => "false"
     case Expr.Null => "null"
-    case Expr.Bytes(b: Array[Byte]) => HexConversions.formatHexBinary(b)
+    case Expr.Bytes(b, representsId) =>
+      val prefix = if (representsId) "#" else "" // #-prefix matches [[qidToPrettyString]]
+      prefix + HexConversions.formatHexBinary(b)
 
     case Expr.Node(id, lbls, props) =>
       val propsStr = props
@@ -2386,7 +2394,7 @@ object Value {
 
       // Next byte strings
       // TODO: where do these actually go?
-      case (Expr.Bytes(b1), Expr.Bytes(b2)) =>
+      case (Expr.Bytes(b1, _), Expr.Bytes(b2, _)) =>
         TypeclassInstances.ByteArrOrdering.compare(b1, b2)
       case (_: Expr.Bytes, _) => 1
       case (_, _: Expr.Bytes) => 1
@@ -2444,7 +2452,7 @@ object Value {
     case (Expr.True, Expr.True) => Expr.True
     case (Expr.False, Expr.False) => Expr.True
     case (Expr.Str(s1), Expr.Str(s2)) => Expr.Bool.apply(s1 == s2)
-    case (Expr.Bytes(b1), Expr.Bytes(b2)) => Expr.Bool.apply(b1 sameElements b2)
+    case (Expr.Bytes(b1, _), Expr.Bytes(b2, _)) => Expr.Bool.apply(b1 sameElements b2)
 
     case (Expr.List(vs1), Expr.List(vs2)) if vs1.length == vs2.length =>
       vs1
@@ -2565,7 +2573,8 @@ object Value {
     case Expr.Floating(dbl) => ujson.Num(dbl)
     case Expr.List(vs) => ujson.Arr.from(vs.view.map(toJson))
     case Expr.Map(kvs) => ujson.Obj.from(kvs.view.map(kv => kv._1 -> toJson(kv._2)))
-    case Expr.Bytes(byteArray) => ujson.Arr.from(byteArray)
+    case Expr.Bytes(byteArray, false) => ujson.Arr.from(byteArray)
+    case Expr.Bytes(byteArray, true) => ujson.Str(QuineId(byteArray).pretty)
     case Expr.LocalDateTime(localDateTime) => ujson.Str(localDateTime.toString)
     case Expr.DateTime(zonedDateTime) => ujson.Str(zonedDateTime.toString)
     case Expr.Duration(duration) => ujson.Str(duration.toString)

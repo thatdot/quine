@@ -82,10 +82,8 @@ object StandingQueryMessage {
 
     def standingQueryResult(sq: StandingQuery, idProvider: QuineIdProvider): StandingQueryResult = {
       val qvResult: Map[String, QuineValue] =
-        result.environment.map {
-          case (col, cypher.Expr.Bytes(idBytes)) if sq.rawIdReturnColumns.contains(col) =>
-            col.name -> QuineValue.Id(QuineId(idBytes))
-          case (col, value) => col.name -> cypher.Expr.toQuineValue(value)
+        result.environment.map { case (col, value) =>
+          col.name -> cypher.Expr.toQuineValue(value)
         }.toMap
       StandingQueryResult(isPositiveMatch = isPositive, resultId = resultId, data = qvResult)
     }

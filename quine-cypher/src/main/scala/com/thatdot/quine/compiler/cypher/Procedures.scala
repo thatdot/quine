@@ -212,7 +212,7 @@ object MergeNodes extends UserDefinedProcedure {
   ): Source[Vector[Value], _] = {
     val idArgs = arguments.map {
       case Expr.Node(id, _, _) => id
-      case Expr.Bytes(bs) => QuineId(bs)
+      case Expr.Bytes(bs, _) => QuineId(bs)
       case Expr.Str(idStr) =>
         location.idProvider
           .qidFromPrettyString(idStr)
@@ -535,7 +535,7 @@ object CypherDebugNode extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(Expr.Node(qid, _, _)) => qid
-      case Seq(Expr.Bytes(id)) => QuineId(id)
+      case Seq(Expr.Bytes(id, _)) => QuineId(id)
       case Seq(ValueQid(qid)) => qid
       case Seq(StrQid(qid)) => qid
       case Seq(other) =>

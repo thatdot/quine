@@ -23,7 +23,7 @@ import PersistenceAgent.CurrentVersion
 object PersistenceAgent {
 
   /** persistence version implemented by the running persistor */
-  val CurrentVersion: Version = Version(11, 0, 0)
+  val CurrentVersion: Version = Version(11, 0, 1)
 
   /** key used to store [[Versions]] in persistence metadata */
   val VersionMetadataKey = "serialization_version"

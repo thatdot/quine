@@ -625,8 +625,8 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
     case Expr.Node(other, _, _) => Some(other)
     case ValueQid(qid) => Some(qid)
 
-    // TODO: are these honest?
-    case Expr.Bytes(id) => Some(QuineId(id)) // used by `FreshNodeId`
+    // TODO: are these honest? (they _are_ user visible - `MATCH (n) WHERE id(n) = bytes("CAFEBABE") RETURN n`)
+    case Expr.Bytes(id, representsId @ _) => Some(QuineId(id)) // used by `FreshNodeId`
 
     // TODO: find a more principled way to do this, see [[IdFunc]]
     case Expr.Str(strId) =>

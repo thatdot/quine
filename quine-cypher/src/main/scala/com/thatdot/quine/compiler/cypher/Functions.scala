@@ -183,7 +183,7 @@ object CypherQuineId extends UserDefinedFunction {
         idProvider
           .qidFromPrettyString(str)
           .toOption
-          .fold[Value](Expr.Null)((qid: QuineId) => Expr.Bytes(qid.array))
+          .fold[Value](Expr.Null)((qid: QuineId) => Expr.Bytes(qid))
       case other => throw wrongSignature(other)
     }
 }
@@ -397,7 +397,7 @@ object CypherGetHostFunction extends UserDefinedFunction {
             )
           }
           .get
-      case Vector(Expr.Bytes(bs)) =>
+      case Vector(Expr.Bytes(bs, _)) =>
         QuineId(bs)
       case _ => throw wrongSignature(arguments)
     }
@@ -455,7 +455,7 @@ object CypherUtf8Decode extends UserDefinedFunction {
   // NB this will "fix" incorrectly-serialized UTF-8 by replacing invalid portions of input with the UTF-8 replacement string "\uFFFD"
   // This is typical for such decoders
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
-    case Vector(Expr.Bytes(bytes)) =>
+    case Vector(Expr.Bytes(bytes, _), _) =>
       Expr.Str(new String(bytes, StandardCharsets.UTF_8))
     case Vector(_) =>
       Expr.Null
