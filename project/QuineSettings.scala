@@ -27,7 +27,9 @@ object QuineSettings {
       "utf8",
       "-feature",
       "-unchecked",
-      "-deprecation"
+      "-deprecation",
+      "-release",
+      "8"
     ),
     autoAPIMappings := true,
     scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
