@@ -45,6 +45,20 @@ trait LiteralOpsGraph extends BaseGraph {
         .map(_.properties)(ExecutionContexts.parasitic)
     }
 
+    /** Get all properties and labels of a node
+      *
+      * @param node which node to query
+      * @param atTime the historical moment to query, or None for the moving present
+      * @return map of all of the properties and set of all of the labels
+      */
+    def getPropsAndLabels(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
+      timeout: Timeout
+    ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
+      requiredGraphIsReady()
+      relayAsk(QuineIdAtTime(node, atTime), GetRawPropertiesCommand)
+        .map(res => (res.properties, res.labels))(ExecutionContexts.parasitic)
+    }
+
     /** Set a single property on a node
       *
       * @param node on which node the property should be set

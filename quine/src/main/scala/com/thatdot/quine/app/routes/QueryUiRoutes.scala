@@ -38,9 +38,6 @@ trait QueryUiRoutesImpl
 
   val gremlin: GremlinQueryRunner
 
-  /** prioritized properties used as fallbacks if the node is missing a label */
-  val nodeTitlePropKeys: List[Symbol] // = List(Symbol("name"))
-
   implicit def graph: LiteralOpsGraph with CypherOpsGraph
   implicit def idProvider: QuineIdProvider
   implicit def timeout: Timeout
@@ -116,9 +113,8 @@ trait QueryUiRoutesImpl
     id: QuineId,
     atTime: AtTime
   ): Future[UiNode[QuineId]] =
-    graph.literalOps.getProps(id, atTime).map { (props: Map[Symbol, PropertyValue]) =>
-      val gremlinLabel = graph.labelsProperty
-      val parsedProperties = (props - gremlinLabel).map { case (propKey, pickledValue) =>
+    graph.literalOps.getPropsAndLabels(id, atTime).map { case (props, labels) =>
+      val parsedProperties = props.map { case (propKey, pickledValue) =>
         val unpickledValue = pickledValue.deserialized.fold[Any](
           _ => pickledValue.serialized,
           _.underlyingJvmValue
@@ -126,14 +122,11 @@ trait QueryUiRoutesImpl
         propKey.name -> writeGremlinValue(unpickledValue)
       }
 
-      val nodeLabel = (Iterator(gremlinLabel) ++ nodeTitlePropKeys)
-        .flatMap[Try[QuineValue]](props.get(_).map(_.deserialized))
-        .collectFirst {
-          case Success(QuineValue.List(lst)) =>
-            lst.map(_.underlyingJvmValue).mkString(":")
-          case Success(QuineValue.Str(string)) => string
-        }
-        .getOrElse("ID: " + id.pretty)
+      val nodeLabel = if (labels.exists(_.nonEmpty)) {
+        labels.get.map(_.name).mkString(":")
+      } else {
+        "ID: " + id.pretty
+      }
 
       UiNode(
         id = id,
@@ -212,10 +205,7 @@ trait QueryUiRoutesImpl
           val nodeLabel = if (labels.nonEmpty) {
             labels.map(_.name).mkString(":")
           } else {
-            nodeTitlePropKeys.iterator
-              .flatMap(properties.get(_))
-              .collectFirst[String] { case CypherExpr.Str(str) => str }
-              .getOrElse("ID: " + qid.pretty)
+            "ID: " + qid.pretty
           }
 
           UiNode(

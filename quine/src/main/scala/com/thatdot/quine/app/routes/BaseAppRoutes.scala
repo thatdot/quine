@@ -34,7 +34,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
 
   def isLive = true
   def isReady = graph.isReady
-  val nodeTitlePropKeys = List.empty // TODO?
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */
   def staticFilesRoute: Route

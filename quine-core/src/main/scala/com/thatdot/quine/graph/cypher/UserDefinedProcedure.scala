@@ -7,7 +7,6 @@ import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.LiteralOpsGraph
-import com.thatdot.quine.graph.messaging.{LiteralMessage, QuineIdAtTime}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 /** Cypher user defined procedures (UDP) must extend this class
@@ -76,9 +75,9 @@ object UserDefinedProcedure {
     ec: ExecutionContext,
     timeout: Timeout
   ): Future[Expr.Node] =
-    graph
-      .relayAsk(QuineIdAtTime(qid, atTime), LiteralMessage.GetRawPropertiesCommand(_))
-      .map { case LiteralMessage.RawPropertiesMap(labels, props) =>
+    graph.literalOps
+      .getPropsAndLabels(qid, atTime)
+      .map { case (props, labels) =>
         Expr.Node(
           qid,
           labels.getOrElse(Set.empty),

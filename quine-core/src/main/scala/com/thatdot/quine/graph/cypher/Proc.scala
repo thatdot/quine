@@ -2,7 +2,6 @@ package com.thatdot.quine.graph.cypher
 
 import java.util.concurrent.ConcurrentHashMap
 
-import scala.collection.compat._
 import scala.collection.concurrent
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -10,9 +9,8 @@ import scala.jdk.CollectionConverters._
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
-import com.thatdot.quine.graph.messaging.{LiteralMessage, QuineIdAtTime}
-import com.thatdot.quine.graph.{BaseGraph, LiteralOpsGraph}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, QuineId}
+import com.thatdot.quine.graph.LiteralOpsGraph
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
 /** Cypher procedure
   *
@@ -69,23 +67,6 @@ object Proc {
     val retColumnPathName: Symbol = Symbol("path")
     val outputColumns: Columns.Specified = Columns.Specified(Vector(retColumnPathName))
 
-    // TODO: abstract this out into a config setting
-    val defaultMaxLength: Int = 10
-
-    private def getNode(qid: QuineId, graph: BaseGraph, atTime: Option[Milliseconds])(implicit
-      ec: ExecutionContext,
-      timeout: Timeout
-    ): Future[Expr.Node] =
-      graph
-        .relayAsk(QuineIdAtTime(qid, atTime), LiteralMessage.GetRawPropertiesCommand(_))
-        .map { case LiteralMessage.RawPropertiesMap(labels, props) =>
-          Expr.Node(
-            qid,
-            labels.getOrElse(Set.empty),
-            props.view.mapValues(pv => Expr.fromQuineValue(pv.deserialized.get)).toMap
-          )
-        }
-
     def call(
       context: QueryContext,
       arguments: Seq[Value],
@@ -106,7 +87,8 @@ object Proc {
             actualArguments = other
           )
       }
-      val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+      val literalGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+      val cypherGraph = location.graph
       val atTime = location.atTime
 
       // Get the valid edge directions in the path pattern
@@ -124,7 +106,7 @@ object Proc {
       val maxLength: Int = options
         .get("maxLength")
         .collect { case Expr.Integer(n) if n >= 0 => n.toInt }
-        .getOrElse(defaultMaxLength)
+        .getOrElse(cypherGraph.defaultMaxCypherShortestPathLength)
 
       // Get valid edge types to traverse
       val edgeTypes: Option[Set[Symbol]] = options
@@ -147,7 +129,7 @@ object Proc {
       ): Future[Map[QuineId, List[(QuineId, Expr.Relationship)]]] =
         Future
           .traverse(toExpand: Iterable[(QuineId, List[(QuineId, Expr.Relationship)])]) { case (qid, path) =>
-            graph.literalOps
+            literalGraph.literalOps
               .getHalfEdges(
                 qid,
                 // optimization: if we're only looking for the shortest path along a single edge
@@ -242,9 +224,9 @@ object Proc {
 
             // Fetch out all of the properties/labels of the nodes on the path
             for {
-              headPathNode <- getNode(headPath, graph, atTime)
+              headPathNode <- UserDefinedProcedure.getAsCypherNode(headPath, atTime, literalGraph)
               restPathNodes <- Future.traverse(restPath) { case (rel, qid) =>
-                getNode(qid, graph, atTime).map(rel -> _)
+                UserDefinedProcedure.getAsCypherNode(qid, atTime, literalGraph).map(rel -> _)
               }
             } yield Expr.Path(headPathNode, restPathNodes)
           }
