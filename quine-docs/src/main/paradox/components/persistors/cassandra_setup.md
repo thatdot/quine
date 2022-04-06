@@ -31,7 +31,7 @@ Configuration is in `/etc/cassandra` (or `/etc/cassandra/conf` on Amazon Linux 2
 
 The main config file is @link:[cassandra.yml](https://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html){ open=new }
 
-The minimum required changes to this file required to deploy a Cassandra cluster are: comment out the `rpc_address `and `listen_address` settings in this file, and set the seed address setting to the address of one or more hosts in the cluster. Start the seed node(s) first, and then bring up successive nodes one at a time.
+The minimum required changes to this file required to deploy a Cassandra cluster are: comment out the `rpc_address` and `listen_address` settings in this file, and set the seed address setting to the address of one or more hosts in the cluster. Start the seed node(s) first, and then bring up successive nodes one at a time.
 
 The default `cassandra.yml` has a couple addresses set to `localhost: rpc_address`, and `listen_address`.
 
@@ -75,7 +75,7 @@ See: @link:[https://aws.amazon.com/blogs/big-data/best-practices-for-running-apa
 To use Cassandra as the persistence backend for Quine, at a minimum, you’ll need to set in config:
 
 ```
-thatdot.quine.store {
+quine.store {
   type = cassandra
   endpoints = ["cassandraHostAddress"]
 }
@@ -147,7 +147,7 @@ persistence {
 
 ## Automatic Creation of Keyspace and Tables
 
-We have a couple settings in the Cassandra section of the config, `should-create-keyspace `and` should-create-tables`, that when enabled (they default to true), will have Quine automatically create the keyspace and/or tables at startup if they don’t already exist. However, in the clustered case, because Cassandra doesn’t currently support concurrent CREATE TABLE IF NOT EXISTS statements for the same table (see @link:[CASSANDRA-10699](https://issues.apache.org/jira/browse/CASSANDRA-10699){ open=new }), this can lead to exceptions being thrown on the client at startup of the form: `org.apache.cassandra.exceptions.ConfigurationException: Column family ID mismatch (found e9daecc0-15b7-11ec-a406-6d2c86545d91; expected e9d98d30-15b7-11ec-a406-6d2c86545d91)`
+We have a couple settings in the Cassandra section of the config, `should-create-keyspace` and `should-create-tables`, that when enabled (they default to true), will have Quine automatically create the keyspace and/or tables at startup if they don’t already exist. However, in the clustered case, because Cassandra doesn’t currently support concurrent CREATE TABLE IF NOT EXISTS statements for the same table (see @link:[CASSANDRA-10699](https://issues.apache.org/jira/browse/CASSANDRA-10699){ open=new }), this can lead to exceptions being thrown on the client at startup of the form: `org.apache.cassandra.exceptions.ConfigurationException: Column family ID mismatch (found e9daecc0-15b7-11ec-a406-6d2c86545d91; expected e9d98d30-15b7-11ec-a406-6d2c86545d91)`
 
 You can restart the Quine cluster if this happens. To forestall this, you could boot one node first and let it create those tables, and then have the rest of the cluster join.
 

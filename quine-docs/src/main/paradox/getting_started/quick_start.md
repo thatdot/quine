@@ -4,27 +4,36 @@
 
 Start Quine using the executable or source code (described below). With Quine running on your local system with the default settings, use the interactive API documentation at <http://localhost:8080/docs> for the example below.
 
+### From a Docker container
+
+- With Docker installed, run Quine from Docker Hub.
+- `docker run -p 8080:8080 thatdot/quine`
+
 ### From an executable
 
-- Download the executable.    TODO
-- `java -jar quine.jar`
+- [Download](https://quine.io/download) the executable `jar` file.
+- `java -jar quine-x.x.x.jar`
+
+@@@ note
+Quine releases names contain a version number by default. In our examples, we generically refer to Quine as `quine.jar` without the version number. When you see `quine.jar` in future examples, please update your command to include the version number in the filename.
+@@@
 
 ### From source code
 
-- Download the source code.
-- Install `sbt`
-- From the main directory of the repository on your machine: `sbt run`
+- Download the [source code](https://github.com/thatdot/quine) from GitHub.
+- With a recent version of the Java Development Kit (8 or newer) and `sbt` installed.
+- From the main directory of the repository on your machine: `sbt quine/run`
 
-## Minimum Possible Example
+## Initial Run
 
 Making use of Quine is a two-step process:
 
 1. Ingest a stream of data into the graph: event-driven data
 2. Monitor the graph for results that stream out: data-driven events
 
-### Simplest Ingest Stream
+### Connect an Ingest Stream
 
-Let's ingest the live stream of new pages created on Wikipedia. This requires only an API call to: `POST http://localhost:8080/api/v1/ingest/{name}` Expand that line in the intereactive documentation, click "Try it out", and fill in the `name` field with any name you choose to refer to the ingest stream. Pass in this JSON payload that defines the ingest stream:
+Let's ingest the live stream of new pages created on Wikipedia. This requires only an API call to: `POST http://localhost:8080/api/v1/ingest/{name}` Expand that line in the interactive documentation, click "Try it out", and fill in the `name` field with any name you choose to refer to the ingest stream. Pass in this JSON payload that defines the ingest stream:
 
 ```json
 {
@@ -35,9 +44,9 @@ Let's ingest the live stream of new pages created on Wikipedia. This requires on
 
 Click `Execute` and this API Call will start an ingest stream to consume data from the live stream of page creations from Wikimedia sites.
 
-### Simplest Standing Query
+### Create a Standing Query
 
-Creating a standing query is done with a single API call to: `POST http://localhost:8080/api/v1/query/standing/{standing-query-name}` Expand that line in the intereactive documentation, click "Try it out", and fill in the `standing-query-name` field with any name you choose to refer to this standing query. Pass in this JSON payload that defines the standing query:
+A Standing Query matches some graph structure incrementally while new data is written in. Creating a standing query is done with a single API call to: `POST http://localhost:8080/api/v1/query/standing/{standing-query-name}` Expand that line in the interactive documentation, click "Try it out", and fill in the `standing-query-name` field with any name you choose to refer to this standing query. Pass in this JSON payload that defines the standing query:
 
 ```json
 {
@@ -57,7 +66,7 @@ Click `Execute` and this API call will set a standing query to match every singl
 
 ### Done. Now what?
 
-Congratulations, you have successfully used Quine to accomplish… nothing useful! With this "simplest possible" example you should now see output like the following in the console every time an update is made on Wikipedia:
+Congratulations, you have successfully started to ingest Wikipedia updates to your graph! With this basic example you should now see output like the following in the console every time an update is made on Wikipedia:
 
 ```
 2022-02-03 00:10:02,329 Standing query `print-output` match: {"meta":{"isPositiveMatch":true,"resultId":"c71223f9-b927-4d58-cc90-422282f0192a"},"data":{"id(n)":"0aa51d39-2fbe-4ba6-bd74-6251891b9f3c"}}
@@ -67,7 +76,7 @@ All the data that streams in from Wikipedia is saved in the graph, but we didn't
 
 If you'd like to inspect the data in the graph, you can open a web browser pointed to <http://localhost:8080> and run a query like `CALL recentNodes(10)` in the @ref:[Exploration UI](exploration_ui.md). Quine will render a handful of disconnected nodes. The ingest query did nothing interesting, it only wrote each incoming event into a single disconnected node. <!-- A [richer ingest query](enriched_example.md) would make a much more interesting graph. -->
 
-Hopefully this "simplest possible example" is an end-to-end demonstration that you can build on top of to ingest and interpret your own streams of data. Next steps to experiment might be to change things like:
+This example is a foundation that you can build on top of to ingest and interpret your own streams of data. Next steps to experiment might be to change things like:
 
 - Which data source is streaming in
 - What graph structure is being built from each incoming record

@@ -40,8 +40,6 @@ All supported Gremlin queries begin in one of two ways:
 - `has`
 - `hasNot`
 - `hasLabel`
-- `has`
-- `has`
 - `hasId`
 - `eqToVar`
 - `out`

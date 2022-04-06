@@ -119,7 +119,7 @@ CREATE (peter)-[:friend]->(james)
 
 @@@
 
-There are pre-built output adapters for at least the following (this list is continually growing—refer to the Standing Query section of the @ref:[REST API](../reference/rest_api.md) for an exhaustiv list):
+There are pre-built output adapters for at least the following (this list is continually growing—refer to the Standing Query section of the @ref:[REST API](../reference/rest_api.md) for an exhaustive list):
 
   * publishing to a Kafka topic
   * publishing to an AWS Kinesis stream

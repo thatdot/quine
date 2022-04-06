@@ -18,7 +18,7 @@ The format of data saved on disk is conceptually a key-value pair, where the key
 
 Using RocksDB in Quine requires no special changes to use it, since it is the default. The setting that would choose RocksDB specifically is:
 
-`thatdot.quine.store.type=rocks-db`
+`quine.store.type=rocks-db`
 
 @@@ warning
 
@@ -35,7 +35,7 @@ MapDB does have some other limitations though. Memory mapped files are generally
 
 To use MapDB, set the following configuration setting:
 
-`thatdot.quine.store.type=map-db`
+`quine.store.type=map-db`
 
 <!--
 ### LMDB (Lightning database)
@@ -45,7 +45,7 @@ To use MapDB, set the following configuration setting:
 
 ### Cassandra
 
-@link:[Apache Cassandra](https://cassandra.apache.org/_/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an idea data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
+@link:[Apache Cassandra](https://cassandra.apache.org/_/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an ideal data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
 
 See the @ref:[Cassandra Setup](cassandra_setup.md) page for details on setting up and using Cassandra with Quine.
 

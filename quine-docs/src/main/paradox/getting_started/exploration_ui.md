@@ -111,6 +111,8 @@ The Exploration UI is an interface into the underlying graph data managed by Qui
 
 ![Historical query](historical_query.png)
 
+Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the Standing Query and if that second query modifies the data—for instance, adding an edge connected to the node.
+
 ## Reference: Key Combinations
 
 - **Enter**: when in the query bar, equivalent to clicking the "Query" button.
