@@ -49,7 +49,7 @@ import com.thatdot.{visnetwork => vis}
     showHostInTooltip: Boolean = true,
     initialAtTime: Option[Long] = None,
     initialLayout: NetworkLayout = NetworkLayout.Graph,
-    edgeQueryLanguage: QueryLanguage = QueryLanguage.Gremlin,
+    edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
     queryMethod: QueryMethod = QueryMethod.WebSocket
   )
 
