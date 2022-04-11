@@ -91,7 +91,7 @@ ingestStreams:
         ) AS r CREATE ({
           sourceIp: r[1],
           user: r[2],
-          time: r[3],
+          time: datetime(r[3], 'dd/MMM/yyyy:HH:mm:ss Z'),
           verb: r[4],
           path: r[5],
           httpVersion: r[6],
