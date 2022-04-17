@@ -175,21 +175,21 @@ private[graph] class NodeActor(
       case MergedHere(other) => !mergedIntoHere.contains(other)
     }
     if (hasEffect) {
+      applyEvent(event)
       // Pick the time at which this event occurred at
       val occurredAt = atTimeOverride.getOrElse(nextEventTime())
       latestUpdateAfterSnapshot = Some(occurredAt)
       lastWriteMillis = latestEventTime().millis
-      val persistFuture: Future[Unit] = if (persistenceConfig.journalEnabled) {
+      val journalFuture = if (persistenceConfig.journalEnabled) {
         metrics.persistorPersistEventTimer.time(persistor.persistEvent(occurredAt, event))
-      } else if (persistenceConfig.snapshotOnUpdate) {
+      } else Future.unit
+      val snapshotFuture = if (persistenceConfig.snapshotOnUpdate) {
         val snapshot = toSnapshotBytes()
         latestUpdateAfterSnapshot = None
         metrics.snapshotSize.update(snapshot.length)
         metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(occurredAt, snapshot))
-      } else {
-        Future.unit
-      }
-      applyEvent(event)
+      } else Future.unit
+      val persistFuture = journalFuture.zip(snapshotFuture)
       runPostActions(event)
       persistFuture.map(_ => Done)(ExecutionContexts.parasitic)
     } else Future.successful(Done)
