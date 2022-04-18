@@ -32,7 +32,7 @@ object Dependencies {
   val logbackV = "1.2.11"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.0.8"
-  val memeIdV = "0.4.0"
+  val memeIdV = "0.5.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.1"
   val nettyNioClientV = "2.15.57" // scala-steward:off
