@@ -1,10 +1,10 @@
 package com.thatdot.quine.graph.behavior
-
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Success
 
 import akka.actor.Actor
+import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.NodeChangeEvent._
@@ -31,7 +31,7 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
         case GetHalfEdgesCommand(Some(edgeType), None, Some(id), _, _) => edges.matching(edgeType, id)
         case GetHalfEdgesCommand(Some(edgeType), Some(dir), Some(id), _, _) => edges.matching(edgeType, dir, id)
       }
-      c ?! HalfEdgeSet(c.withLimit.fold(matchingEdges)(matchingEdges.take).toSet)
+      c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
 
     case a @ AddHalfEdgeCommand(he, _) => a ?! processEvent(EdgeAdded(he))
 

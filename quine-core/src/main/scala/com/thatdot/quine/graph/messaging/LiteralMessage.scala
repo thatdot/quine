@@ -2,6 +2,9 @@ package com.thatdot.quine.graph.messaging
 
 import scala.concurrent.Future
 
+import akka.NotUsed
+import akka.stream.scaladsl.Source
+
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Properties, PropertyValue, QuineId, QuineValue}
 
@@ -21,8 +24,8 @@ object LiteralMessage {
     withLimit: Option[Int],
     replyTo: QuineRef
   ) extends LiteralCommand
-      with AskableQuineMessage[HalfEdgeSet]
-  final case class HalfEdgeSet(halfEdges: Set[HalfEdge]) extends LiteralMessage
+      with AskableQuineMessage[Source[HalfEdgeMessage, NotUsed]]
+  final case class HalfEdgeMessage(halfEdge: HalfEdge) extends LiteralMessage
 
   final case class AddHalfEdgeCommand(
     halfEdge: HalfEdge,

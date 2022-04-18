@@ -3,6 +3,7 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
+import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.messaging.LiteralMessage._
@@ -99,8 +100,9 @@ trait LiteralOpsGraph extends BaseGraph {
       atTime: Option[Milliseconds] = None
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
-        .map(_.halfEdges)(ExecutionContexts.parasitic)
+      val halfEdgesSource =
+        relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
+      Source.futureSource(halfEdgesSource).map(_.halfEdge).runFold(Set.empty[HalfEdge])((a, v) => a + v)
     }
 
     // NB: Checks that the other half of the edge exists
