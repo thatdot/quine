@@ -247,11 +247,15 @@ object RecipeInterpreter {
       val valueStrings = resultRecord.map(Value.toJson(_).toString)
       val valueStringMaxLength = valueStrings.map(_.length).max
       val separator = " | "
+      val headerLengthMin = 40
       val headerLengthMax = 200
       val header =
         fixedLength(
           s"---[ Status Query result ${resultRecordIndex + 1} ]",
-          Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax),
+          Math.max(
+            headerLengthMin,
+            Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax)
+          ),
           '-'
         )
       val footer =
