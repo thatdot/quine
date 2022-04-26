@@ -77,7 +77,11 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       val shardActor: ActorRef = sender()
 
       // Transition out of a `ConsideringSleep` state (if it is still state)
-      val sleepingPromise = Promise[Unit]()
+
+      // promise tracking persistence updates (completed by the node)
+      val persistencePromise = Promise[Unit]()
+      // promise tracking updates to shard in-memory map of nodes (completed by the shard)
+      val shardPromise = Promise[Unit]()
       val newState: WakefulState = wakefulState.updateAndGet {
         case WakefulState.ConsideringSleep(deadline) =>
           val millisNow = latestEventTime().millis
@@ -86,7 +90,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           val tooRecentWrite = graph.declineSleepWhenWriteWithinMillis > 0 &&
             graph.declineSleepWhenWriteWithinMillis > millisNow - lastWriteMillis
           if (deadline.hasTimeLeft() && !tooRecentAccess && !tooRecentWrite) {
-            WakefulState.GoingToSleep(sleepingPromise.future)
+            WakefulState.GoingToSleep(persistencePromise.future, shardPromise)
           } else {
             WakefulState.Awake
           }
@@ -106,7 +110,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           }
 
           // Completion of the sleeping promise
-          sleepingPromise.completeWith {
+          persistencePromise.completeWith {
             latestUpdateAfterSnapshot match {
               case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
                 val snapshot: Array[Byte] = toSnapshotBytes()
@@ -116,15 +120,16 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 implicit val scheduler: Scheduler = context.system.scheduler
 
                 // Schedule an update to the shard
-                sleepingPromise.future.onComplete {
-                  case Success(_) => shardActor ! SleepOutcome.SleepSuccess(qidAtTime)
+                persistencePromise.future.onComplete {
+                  case Success(_) => shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
                   case Failure(err) =>
                     shardActor ! SleepOutcome.SleepFailed(
                       qidAtTime,
                       snapshot,
                       edges.size,
-                      properties.transform((_, v) => v.serialized.size),
-                      err
+                      properties.transform((_, v) => v.serialized.length), // this eagerly serializes; can be expensive
+                      err,
+                      shardPromise
                     )
                 }
 
@@ -167,7 +172,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 }
 
               case _ =>
-                shardActor ! SleepOutcome.SleepSuccess(qidAtTime)
+                shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
                 Future.unit
             }
           }
