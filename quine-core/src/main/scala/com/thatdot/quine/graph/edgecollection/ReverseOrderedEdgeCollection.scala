@@ -9,8 +9,8 @@ import com.thatdot.quine.util.ReversibleLinkedHashSet
   * Under the hood, it gets implemented with some auxiliary collections because we want to be able to
   * efficiently query for subsets which have some particular edge types, directions, or ids. For
   * more on that, see the various `matching` methods. Additionally, we want to maintain a consistent
-  * ordering over edges (the current implementation maintains the ordering according to
-  * order of creation).
+  * ordering over edges (the current implementation maintains the ordering according to reverse
+  * order of creation -- that is, newest to oldest).
   * Under the hood, it gets implemented with some maps and sets because we want to be able to
   * efficiently query for subsets which have some particular edge types, directions, or ids. For
   * more on that, see the various `matching` methods.
