@@ -192,7 +192,7 @@ Using the output above, it is possible to query the matching nodes directly with
 ```cypher
 // Query for children of nodes with IDs from the SSE endpoint above
 UNWIND [2756309260014435, 7945274922095468, 6994090876991233] AS personId
-MATCH (person)<-[:has_mother|:has_father]-(child) where id(person) = personId
+MATCH (person)<-[:has_mother|:has_father]-(child) WHERE id(person) = personId
 RETURN person.name, child.name, child.yearBorn
 ```
 

@@ -22,5 +22,5 @@ nodeAppearances: []
 quickQueries: []
 sampleQueries: []
 statusQuery:
-  cypherQuery: match (n) return count(n)
+  cypherQuery: MATCH (n) RETURN count(n)
 summary: summary

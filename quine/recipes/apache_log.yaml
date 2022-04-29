@@ -9,7 +9,7 @@ ingestStreams:
     format:
       type: CypherLine
       query: |-
-        WITH *, text.regexFirstMatch($that, '(\\S+)\\s+\\S+\\s+(\\S+)\\s+\\[(.+)\\]\\s+\"(.*)\\s+(.*)\\s+(.*)\"\\s+([0-9]+)\\s+(\\S+)\\s+\"(.*)\"\\s+\"(.*)\"')
+        WITH text.regexFirstMatch($that, '(\\S+)\\s+\\S+\\s+(\\S+)\\s+\\[(.+)\\]\\s+\"(.*)\\s+(.*)\\s+(.*)\"\\s+([0-9]+)\\s+(\\S+)\\s+\"(.*)\"\\s+\"(.*)\"')
         AS r
         CREATE ({
           sourceIp: r[1],
@@ -32,8 +32,8 @@ standingQueries:
           MATCH (l) WHERE id(l) = $that.data.id
           MATCH (v) WHERE id(v) = idFrom('verb', l.verb)
           CREATE (l)-[:verb]->(v)
-          SET v.type = 'verb'
-          SET v.verb = l.verb
+          SET v.type = 'verb',
+            v.verb = l.verb
           RETURN null
           SKIP 1
     pattern:

@@ -13,8 +13,8 @@ ingestStreams:
       type: CypherJson
       query: |-
         MATCH (p) WHERE id(p) = idFrom('name', $that.name)
-        SET p = { name: $that.name, gender: $that.gender, birth_year: $that.birth_year }
-        SET p: Person
+        SET p = { name: $that.name, gender: $that.gender, birth_year: $that.birth_year },
+          p: Person
         WITH $that.children AS childrenNames, p
         UNWIND childrenNames AS childName
         MATCH (c) WHERE id(c) = idFrom('name', childName)

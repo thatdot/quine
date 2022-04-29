@@ -12,42 +12,43 @@ ingestStreams:
     format:
       type: CypherJson
       query: |-
-        match (event) 
-        where id(event) = idFrom($that) 
-        set event = $that
-        set event._type = 'CDN_log_event', event:Request
+        MATCH (event) 
+        WHERE id(event) = idFrom($that) 
+        SET event = $that,
+          event._type = 'CDN_log_event',
+          event:Request
 standingQueries:
   # SQ1 - Transform the cache_status field (which contain several possible values) to a simplified "hit" or "miss" value.
   - pattern:
       type: Cypher
       query: |-
-        match (event)
-        where event._type = 'CDN_log_event' and event.hit_or_miss is null
-        return distinct id(event) as id
+        MATCH (event)
+        WHERE event._type = 'CDN_log_event' AND event.hit_or_miss is null
+        RETURN distinct id(event) as id
       mode: DistinctId
     outputs:
       Hit or Miss:
         type: CypherQuery
         query: |-
-          match (event)
-          where id(event) = $that.data.id
-          set event.hit_or_miss = case event.cache_status
-            when 'HIT' then 'hit'
-            when 'MISS' then 'miss'
-            when 'HIT-WAIT' then 'hit'
-            when 'MISS-WAIT' then 'miss'
-            when 'HIT-CLUSTER' then 'hit'
-            when 'MISS-CLUSTER' then 'miss'
-            when 'HIT-WAIT-CLUSTER' then 'hit'
-            when 'MISS-WAIT-CLUSTER' then 'miss'
-          else 'other' end
-          return null skip 1
+          MATCH (event)
+          WHERE id(event) = $that.data.id
+          SET event.hit_or_miss = CASE event.cache_status
+              WHEN 'HIT' THEN 'hit'
+              WHEN 'MISS' THEN 'miss'
+              WHEN 'HIT-WAIT' THEN 'hit'
+              WHEN 'MISS-WAIT' THEN 'miss'
+              WHEN 'HIT-CLUSTER' THEN 'hit'
+              WHEN 'MISS-CLUSTER' THEN 'miss'
+              WHEN 'HIT-WAIT-CLUSTER' THEN 'hit'
+              WHEN 'MISS-WAIT-CLUSTER' THEN 'miss'
+            ELSE 'other' END
+          RETURN null SKIP 1
   # SQ2 - PoP Node Creation
   - pattern:
       type: Cypher
       query: |-
         MATCH (event) 
-        WHERE exists(event.pop) and exists (event.hit_or_miss)
+        WHERE exists(event.pop) AND exists(event.hit_or_miss)
         RETURN DISTINCT id(event) AS id
     outputs:
       PoPs:
@@ -56,33 +57,32 @@ standingQueries:
           MATCH (event) 
             WHERE id(event) = $that.data.id 
           MATCH (p) 
-            WHERE id(p) =idFrom('PoP', event.pop) 
-          //set relationship between event and entity 'pop'//
+            WHERE id(p) = idFrom('PoP', event.pop) 
+          //set relationship between event and entity 'pop'
           CREATE (event)-[:requested_to]->(p) 
           SET p.source = event.pop, p.type = 'pop'
-          //Set counters for Hit, Miss, and Ratios//
+          //Set counters for Hit, Miss, and Ratios
           WITH * CALL incrementCounter(p, 'total')
-          WITH * CALL incrementCounter(p, event.hit_or_miss)
-          WITH * CALL incrementCounter(p, event.cache_status)
-          WITH * set p.Hit_Percent = coalesce((p.hit*1.0)/(p.total*1.0)*100.0, 0.0)
-          WITH * set p.Miss_Percent = coalesce((p.miss*1.0)/(p.total*1.0)*100.0, 0.0)
-          //Create 'state' parameter//
-          WITH * set p.state = case
-            //Set threshold ratios below for each of three cases// 
-            when p.Hit_Percent >= 15 then 'good'
-            when p.Hit_Percent >= 5 and p.Hit_Percent < 15 then 'warn'
-            when p.Hit_Percent < 5 then 'alarm'
-            else 'alarm'
-          end
-          //Create Node Label//
+          CALL incrementCounter(p, event.hit_or_miss)
+          CALL incrementCounter(p, event.cache_status)
+          SET p.Hit_Percent = COALESCE((p.hit*1.0)/(p.total*1.0)*100.0, 0.0),
+            p.Miss_Percent = COALESCE((p.miss*1.0)/(p.total*1.0)*100.0, 0.0),
+            p.state = CASE
+              //Set threshold ratios below for each of three cases
+              WHEN p.Hit_Percent >= 15 THEN 'good'
+              WHEN p.Hit_Percent >= 5 AND p.Hit_Percent < 15 THEN 'warn'
+              WHEN p.Hit_Percent < 5 THEN 'alarm'
+              ELSE 'alarm'
+            END
+          //Create Node Label
           WITH * CALL create.setLabels(p, [(event.pop), 'PoP']) 
-          Return null skip 1
+          RETURN null SKIP 1
   # SQ3 - ASN Node creation
   - pattern:
       type: Cypher
       query: |-
         MATCH (event) 
-          WHERE exists(event.client_asn) and exists (event.hit_or_miss)
+          WHERE exists(event.client_asn) AND exists(event.hit_or_miss)
         RETURN DISTINCT id(event) AS id
     outputs:
       ASNs:
@@ -95,25 +95,24 @@ standingQueries:
           CREATE (event)-[:requested_from]->(a) 
           SET a.asn_id = event.client_asn, a.type = 'ASN'
           WITH * CALL incrementCounter(a, 'total')
-          WITH * CALL incrementCounter(a, event.hit_or_miss)
-          WITH * set a.Hit_Percent = coalesce((a.hit*1.0)/(a.total*1.0)*100.0, 0.0)
-          WITH * set a.Miss_Percent = coalesce((a.miss*1.0)/(a.total*1.0)*100.0, 0.0)
-          //Create 'state' parameter//
-          WITH * set a.state = case
-            //Set threshold ratios below for each of three cases// 
-            when a.Hit_Percent >= 15 then 'good'
-            when a.Hit_Percent >= 5 and a.Hit_Percent < 15 then 'warn'
-            when a.Hit_Percent < 5 then 'alarm'
-            else 'alarm'
-          end 
+          CALL incrementCounter(a, event.hit_or_miss)
+          SET a.Hit_Percent = COALESCE((a.hit*1.0)/(a.total*1.0)*100.0, 0.0),
+            a.Miss_Percent = COALESCE((a.miss*1.0)/(a.total*1.0)*100.0, 0.0),
+            a.state = CASE
+              //Set threshold ratios below for each of three cases
+              WHEN a.Hit_Percent >= 15 THEN 'good'
+              WHEN a.Hit_Percent >= 5 AND a.Hit_Percent < 15 THEN 'warn'
+              WHEN a.Hit_Percent < 5 THEN 'alarm'
+              ELSE 'alarm'
+            END 
           WITH * CALL create.setLabels(a, [toString(event.client_asn), 'ASN_'])
-          Return null skip 1
+          RETURN null SKIP 1
   # SQ4 - Server Node Creation
   - pattern:
       type: Cypher
       query: |-
         MATCH (event) 
-        WHERE exists(event.server_id) and exists (event.hit_or_miss)
+        WHERE exists(event.server_id) AND exists(event.hit_or_miss)
         RETURN DISTINCT id(event) AS id
     outputs:
       Servers:
@@ -126,26 +125,25 @@ standingQueries:
           CREATE (event)-[:targeted_cache]->(s)
           SET s.id = event.server_id, s.Ip = event.server_ip, s.type = 'Server'
           WITH * CALL incrementCounter(s, 'total')
-          WITH * CALL incrementCounter(s, event.hit_or_miss)
-          WITH * set s.Hit_Percent = coalesce((s.hit*1.0)/(s.total*1.0)*100.0, 0.0)
-          WITH * set s.Miss_Percent = coalesce((s.miss*1.0)/(s.total*1.0)*100.0, 0.0)
-          //Create 'state' parameter//
-          WITH * set s.state = case
-            //Set threshold ratios below for each of three cases// 
-            when s.Hit_Percent >= 15 then 'good'
-            when s.Hit_Percent >= 5 and s.Hit_Percent < 15 then 'warn'
-            when s.Hit_Percent < 5 then 'alarm'
-            else 'alarm'
-          end
+          CALL incrementCounter(s, event.hit_or_miss)
+          SET s.Hit_Percent = COALESCE((s.hit*1.0)/(s.total*1.0)*100.0, 0.0),
+            s.Miss_Percent = COALESCE((s.miss*1.0)/(s.total*1.0)*100.0, 0.0),
+            s.state = CASE
+              //Set threshold ratios below for each of three cases
+              WHEN s.Hit_Percent >= 15 THEN 'good'
+              WHEN s.Hit_Percent >= 5 AND s.Hit_Percent < 15 THEN 'warn'
+              WHEN s.Hit_Percent < 5 THEN 'alarm'
+              ELSE 'alarm'
+            END
           WITH * CALL create.setLabels(s,[event.server_id])
-          Return null skip 1
+          RETURN null SKIP 1
   # SQ5 - Asset Node Creation
   - pattern:
       Assets:
       type: Cypher
       query: |-
         MATCH (event) 
-        WHERE exists(event.path) and exists (event.hit_or_miss)
+        WHERE exists(event.path) AND exists(event.hit_or_miss)
         RETURN DISTINCT id(event) AS id
     outputs:
       Assets:
@@ -158,24 +156,24 @@ standingQueries:
           CREATE (event)-[:req_asset]->(ast) 
           SET ast.id = event.path, ast.Name = event.path, ast.type = 'Asset'
           WITH * CALL incrementCounter(ast, 'total')
-          WITH * CALL incrementCounter(ast, event.hit_or_miss)
-          WITH * set ast.Hit_Percent = coalesce((ast.hit*1.0)/(ast.total*1.0)*100.0, 0.0)
-          WITH * set ast.Miss_Percent = coalesce((ast.miss*1.0)/(ast.total*1.0)*100.0, 0.0)
+          CALL incrementCounter(ast, event.hit_or_miss)
+          SET ast.Hit_Percent = COALESCE((ast.hit*1.0)/(ast.total*1.0)*100.0, 0.0),
+            ast.Miss_Percent = COALESCE((ast.miss*1.0)/(ast.total*1.0)*100.0, 0.0)
           WITH * CALL create.setLabels(ast,[event.path])
-          WITH * set ast.state = case
-            //Set threshold ratios below for each of three cases// 
-            when ast.Hit_Percent >= 15 then 'good'
-            when ast.Hit_Percent >= 5 and ast.Hit_Percent < 15 then 'warn'
-            when ast.Hit_Percent < 5 then 'alarm'
-            else 'alarm'
-          end
-          Return Null Skip 1
+          SET ast.state = CASE
+              //Set threshold ratios below for each of three cases
+              WHEN ast.Hit_Percent >= 15 THEN 'good'
+              WHEN ast.Hit_Percent >= 5 AND ast.Hit_Percent < 15 THEN 'warn'
+              WHEN ast.Hit_Percent < 5 THEN 'alarm'
+              ELSE 'alarm'
+            END
+          RETURN null SKIP 1
   # SQ6 - Relabel Request Nodes with Req-Hit (or -miss)
   - pattern:
       type: Cypher
       query: |-
         MATCH (event) 
-        WHERE exists (event.hit_or_miss)
+        WHERE exists(event.hit_or_miss)
         RETURN DISTINCT id(event) AS id
     outputs:
       assets:
@@ -183,8 +181,8 @@ standingQueries:
         query: |-
           MATCH (event) 
             WHERE id(event) = $that.data.id 
-          WITH * CALL create.setLabels(event, [(event.hit_or_miss), 'Request_'])
-          Return Null Skip 1
+          CALL create.setLabels(event, [(event.hit_or_miss), 'Request_'])
+          RETURN null SKIP 1
 nodeAppearances:
   #Pop Icon/color *******************
   - predicate:
@@ -335,10 +333,10 @@ quickQueries: [ ]
 sampleQueries:
   # provide easy access to node types in the exploration ui
   - name: PoP Node
-    query: match (p) where p.type = 'pop' return p
+    query: MATCH (p) WHERE p.type = 'pop' RETURN p
   - name: ASN Nodes
-    query: match (a) where a.type = 'ASN' return a
+    query: MATCH (a) WHERE a.type = 'ASN' RETURN a
   - name: Server Nodes
-    query: match (s) where s.type = 'Server' return s
+    query: MATCH (s) WHERE s.type = 'Server' RETURN s
   - name: Asset Nodes
-    query: match (ast) where ast.type = 'Asset' return ast
+    query: MATCH (ast) WHERE ast.type = 'Asset' RETURN ast

@@ -139,7 +139,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          statusQuery = Some(StatusQuery("match (n) return count(n)"))
+          statusQuery = Some(StatusQuery("MATCH (n) RETURN count(n)"))
         )
     )
   }
