@@ -168,7 +168,7 @@ standingQueries:
   - outputs:
       verb:
         type: CypherQuery
-        query: >-
+        query: |-
           MATCH (l) WHERE id(l) = $that.data.id
           MATCH (v) WHERE id(v) = idFrom('verb', l.verb)
           CREATE (l)-[:verb]->(v)

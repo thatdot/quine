@@ -8,7 +8,7 @@ ingestStreams:
     path: $in_file
     format:
       type: CypherLine
-      query: >-
+      query: |-
         WITH *, text.regexFirstMatch($that, '(\\S+)\\s+\\S+\\s+(\\S+)\\s+\\[(.+)\\]\\s+\"(.*)\\s+(.*)\\s+(.*)\"\\s+([0-9]+)\\s+(\\S+)\\s+\"(.*)\"\\s+\"(.*)\"')
         AS r
         CREATE ({
@@ -28,7 +28,7 @@ standingQueries:
   - outputs:
       verb:
         type: CypherQuery
-        query: >-
+        query: |-
           MATCH (l) WHERE id(l) = $that.data.id
           MATCH (v) WHERE id(v) = idFrom('verb', l.verb)
           CREATE (l)-[:verb]->(v)
@@ -44,7 +44,8 @@ nodeAppearances: [ ]
 quickQueries: [ ]
 sampleQueries:
   - name: Count HTTP GET Requests
-    query: MATCH (l)-[rel:verb]->(v)
+    query: >-
+      MATCH (l)-[rel:verb]->(v)
       WHERE l.type = 'log' AND v.type = 'verb' AND v.verb = 'GET'
       RETURN count(rel) AS get_count
 statusQuery:
