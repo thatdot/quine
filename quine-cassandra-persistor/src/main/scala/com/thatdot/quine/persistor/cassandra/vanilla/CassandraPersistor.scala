@@ -9,6 +9,7 @@ import scala.collection.immutable
 import scala.compat.ExecutionContexts
 import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
+import scala.compat.java8.OptionConverters._
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -876,7 +877,7 @@ class MetaData(
   *
   * @param keyspace The keyspace the quine tables should live in.
   * @param replicationFactor
-  * @param readConsitency
+  * @param readConsistency
   * @param writeConsistency
   * @param insertTimeout How long to wait for a response when running an INSERT statement.
   * @param selectTimeout How long to wait for a response when running a SELECT statement.
@@ -918,8 +919,22 @@ class CassandraPersistor(
     .build()
 
   private val session: CqlSession =
-    try createQualifiedSession
-    catch {
+    try {
+      val session = createQualifiedSession
+      // Log a warning if the Cassandra keyspace replication factor does not match Quine configuration
+      for { keyspaceMetadata <- session.getMetadata.getKeyspace(keyspace).asScala } {
+        val keyspaceReplicationConfig = keyspaceMetadata.getReplication.asScala.toMap
+        val clazz = keyspaceReplicationConfig.get("class")
+        val factor = keyspaceReplicationConfig.get("replication_factor")
+        if (
+          clazz.contains("org.apache.cassandra.locator.SimpleStrategy") && !factor.contains(replicationFactor.toString)
+        )
+          logger.warn(
+            s"Unexpected replication factor $factor (expected $replicationFactor) for Cassandra keyspace $keyspace"
+          )
+      }
+      session
+    } catch {
       case _: InvalidKeyspaceException if shouldCreateKeyspace =>
         val sess = sessionBuilder.build()
         // CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}
