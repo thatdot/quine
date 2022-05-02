@@ -42,8 +42,9 @@ trait LiteralOpsGraph extends BaseGraph {
       timeout: Timeout
     ): Future[Map[Symbol, PropertyValue]] = {
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), GetRawPropertiesCommand)
-        .map(_.properties)(ExecutionContexts.parasitic)
+      (getPropsAndLabels(node, atTime) map { case (x, _) =>
+        x // keeping only properties
+      })(ExecutionContexts.parasitic)
     }
 
     /** Get all properties and labels of a node
@@ -56,8 +57,17 @@ trait LiteralOpsGraph extends BaseGraph {
       timeout: Timeout
     ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), GetRawPropertiesCommand)
-        .map(res => (res.properties, res.labels))(ExecutionContexts.parasitic)
+      val futureSource = relayAsk(QuineIdAtTime(node, atTime), GetPropertiesCommand)
+      Source.futureSource(futureSource).runFold((Map.empty[Symbol, PropertyValue], Set.empty[Symbol])) {
+        case ((propertiesAccumulator, labelsAccumulator), message) =>
+          message match {
+            case PropertyMessage(Left((key, value))) => (propertiesAccumulator + (key -> value), labelsAccumulator)
+            case PropertyMessage(Right(value)) => (propertiesAccumulator, labelsAccumulator + value)
+          }
+      } map {
+        case (a, c) if c.isEmpty => (a, None)
+        case (a, c) => (a, Some(c))
+      }
     }
 
     /** Set a single property on a node

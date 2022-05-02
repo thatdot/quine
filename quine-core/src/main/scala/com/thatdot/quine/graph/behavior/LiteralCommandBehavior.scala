@@ -37,10 +37,20 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
 
     case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEvent(EdgeRemoved(he))
 
-    case g @ GetRawPropertiesCommand(_) => g ?! RawPropertiesMap(getLabels(), properties - graph.labelsProperty)
+    case g @ GetPropertiesCommand(_) =>
+      val a = Source((properties - graph.labelsProperty).map({ case (key, value) =>
+        PropertyMessage(Left((key, value)))
+      }))
+      val b = getLabels() match {
+        case Some(labels) => Source(labels.toList).map(l => PropertyMessage(Right(l)))
+        case None => Source.empty
+      }
+      g ?! (a concat b)
 
     case r @ GetPropertiesAndEdges(_) =>
-      r ?! PropertiesAndEdges(qid, properties, edges.toSet)
+      val a = Source(properties.toList).map(p => PropertyOrEdgeMessage(Left(p)))
+      val b = Source(edges.all.toList).map(e => PropertyOrEdgeMessage(Right(e)))
+      r ?! (a concat b)
 
     case s @ SetPropertyCommand(key, value, _) => s ?! processEvent(PropertySet(key, value))
 

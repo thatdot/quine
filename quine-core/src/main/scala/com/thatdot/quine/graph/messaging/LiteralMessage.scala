@@ -6,7 +6,7 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Properties, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
   *
@@ -39,22 +39,17 @@ object LiteralMessage {
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
-  final case class GetRawPropertiesCommand(replyTo: QuineRef)
+  final case class GetPropertiesCommand(replyTo: QuineRef)
       extends LiteralCommand
-      with AskableQuineMessage[RawPropertiesMap]
-  final case class RawPropertiesMap(
-    labels: Option[Set[Symbol]],
-    properties: Map[Symbol, PropertyValue]
-  ) extends LiteralMessage
+      with AskableQuineMessage[Source[PropertyMessage, NotUsed]]
+  case class PropertyMessage(value: Either[(Symbol, PropertyValue), Symbol]) extends LiteralMessage
 
   final case class GetPropertiesAndEdges(replyTo: QuineRef)
       extends LiteralCommand
-      with AskableQuineMessage[PropertiesAndEdges]
+      with AskableQuineMessage[Source[PropertyOrEdgeMessage, NotUsed]]
 
-  final case class PropertiesAndEdges(
-    id: QuineId,
-    properties: Properties,
-    edges: Set[HalfEdge]
+  final case class PropertyOrEdgeMessage(
+    value: Either[(Symbol, PropertyValue), HalfEdge]
   ) extends LiteralMessage
 
   final case class SetPropertyCommand(
