@@ -250,32 +250,43 @@ trait OnNodeInterpreter
       }
     }
 
-    /* Get edges matching the direction / name constraint.
-     *
-     * As tempting as this may be, this _cannot_ be an iterator, else we close
-     * over mutable node state (and multiple threads can concurrently access
-     * edges).
-     */
-    val halfEdges: Vector[HalfEdge] = (edgeName, direction, literalFarNodeId) match {
+    // Get edges matching the direction / name constraint.
+    val halfEdgesIterator: Iterator[HalfEdge] = (edgeName, direction, literalFarNodeId) match {
       case (None, None, None) =>
-        edges.all.toVector
+        edges.all
       case (None, None, Some(id)) =>
-        edges.matching(id).toVector
+        edges.matching(id)
       case (None, Some(dir), None) =>
-        edges.matching(dir).toVector
+        edges.matching(dir)
       case (None, Some(dir), Some(id)) =>
-        edges.matching(dir, id).toVector
+        edges.matching(dir, id)
       case (Some(names), None, None) =>
-        names.toVector.flatMap(edges.matching(_))
+        names.iterator.flatMap(edges.matching(_))
       case (Some(names), None, Some(id)) =>
-        names.toVector.flatMap(edges.matching(_, id))
+        names.iterator.flatMap(edges.matching(_, id))
       case (Some(names), Some(dir), None) =>
-        names.toVector.flatMap(edges.matching(_, dir))
+        names.iterator.flatMap(edges.matching(_, dir))
       case (Some(names), Some(dir), Some(id)) =>
-        names.toVector.flatMap(edges.matching(_, dir, id))
+        names.iterator.flatMap(edges.matching(_, dir, id))
+    }
+    val filteredHalfEdgesIterator = if (visited.isEmpty) {
+      halfEdgesIterator // Usual case, unless doing a variable-length match
+    } else {
+      halfEdgesIterator.filterNot(visited.contains(myQid, _))
     }
 
-    Source.fromIterator(() => halfEdges.iterator.filter(!visited.contains(myQid, _))).flatMapConcat {
+    /* As tempting as it may be to always use `Source.fromIterator`, we must not
+     * do this unless the node is historical (so the edge collection effectively
+     * immutable), else we would be closing over mutable node state (and
+     * multiple threads can concurrently access edges).
+     */
+    val halfEdgesSource = if (atTime.nonEmpty) {
+      Source.fromIterator(() => filteredHalfEdgesIterator)
+    } else {
+      Source(filteredHalfEdgesIterator.toVector)
+    }
+
+    halfEdgesSource.flatMapConcat {
       // Undirected edges don't exist for Cypher :)
       case HalfEdge(_, EdgeDirection.Undirected, _) => Source.empty
 
