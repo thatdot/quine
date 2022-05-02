@@ -449,7 +449,12 @@ private[graph] class NodeActor(
       .mkString("\n  ", "\n  ", "\n")
 
     persistor
-      .getJournal(qid, startingAt = EventTime.MinValue, endingAt = EventTime.MaxValue)
+      .getJournal(
+        qid,
+        startingAt = EventTime.MinValue,
+        endingAt =
+          atTime.map(EventTime.fromMillis).map(_.largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue)
+      )
       .recover { case err =>
         log.error(err, "failed to get journal for node {}", qid)
         Vector.empty

@@ -94,6 +94,20 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     }
   }
 
+  test("logState properties before any events or snapshots") {
+    assume(runnable)
+    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+      assert(s.properties.isEmpty)
+    }
+  }
+
+  test("logState journal before any events or snapshots") {
+    assume(runnable)
+    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+      assert(s.journal.isEmpty)
+    }
+  }
+
   test("query after first event") {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t1)).map { props =>

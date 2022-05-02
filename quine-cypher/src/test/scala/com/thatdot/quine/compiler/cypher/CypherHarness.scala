@@ -23,7 +23,7 @@ class CypherHarness(graphName: String) extends AsyncFunSpec with BeforeAndAfterA
   // Used for e.g. literal ops that insert data - they use this as the timeout on relayAsk invocations.
   implicit val relayAskTimeout: Timeout = Timeout(3.seconds)
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
-  val graph: GraphService = Await.result(
+  implicit val graph: GraphService = Await.result(
     GraphService(
       graphName,
       persistor = _ => InMemoryPersistor.empty,
