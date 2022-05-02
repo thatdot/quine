@@ -258,80 +258,9 @@ abstract class PersistenceAgent extends StrictLogging {
     */
   def shutdown(): Future[Unit]
 
-  /** Handle for customizing a node's view into the peristence layer.
-    *
-    * This can be used to dynamically override how certain nodes save (or don't)
-    * their data. For instance, one could use the reference to the node to look
-    * up a certain `dont_write` property and ignore calls to `persistEvent` or
-    * `persistSnapshot` if that property exists.
-    *
-    * @note reference to the node should not leak out of the `InNodePersistor`
-    * @return an inidivdual node's view of the persistence layer
-    */
-  def forNode(qid: QuineId): InNodePersistor = new NodePersistor(qid, this)
-
   /** Configuration that determines how the client of PersistenceAgent should use it.
     */
   def persistenceConfig: PersistenceConfig
-}
-
-/** Node-specific interface into a Quine storage layer
-  *
-  * @see [[PersistenceAgent#forNode]]
-  */
-trait InNodePersistor {
-
-  /** @see [[PersistenceAgent#persistEvent]] */
-  def persistEvent(atTime: EventTime, event: NodeChangeEvent): Future[Unit]
-
-  /** @see [[PersistenceAgent#getJournal]] */
-  def getJournal(startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]]
-
-  /** @see [[PersistenceAgent#persistSnapshot]] */
-  def persistSnapshot(atTime: EventTime, state: Array[Byte]): Future[Unit]
-
-  /** @see [[PersistenceAgent#getLatestSnapshot]] */
-  def getLatestSnapshot(upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]]
-
-  /** @see [[PersistenceAgent#getStandingQueryStates]] */
-  def getStandingQueryStates(): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]]
-
-  /** @see [[PersistenceAgent#setStandingQueryState]] */
-  def setStandingQueryState(
-    standingQuery: StandingQueryId,
-    standingQueryId: StandingQueryPartId,
-    state: Option[Array[Byte]]
-  ): Future[Unit]
-
-  def persistenceConfig: PersistenceConfig
-}
-
-class NodePersistor(qid: QuineId, persistorParent: PersistenceAgent) extends InNodePersistor {
-
-  def persistEvent(atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
-    persistorParent.persistEvent(qid, atTime, event)
-
-  def getJournal(startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
-    persistorParent.getJournal(qid, startingAt, endingAt)
-
-  def persistSnapshot(atTime: EventTime, state: Array[Byte]): Future[Unit] =
-    persistorParent.persistSnapshot(qid, atTime, state)
-
-  def getLatestSnapshot(
-    upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] =
-    persistorParent.getLatestSnapshot(qid, upToTime)
-
-  def getStandingQueryStates(): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    persistorParent.getStandingQueryStates(qid)
-
-  def setStandingQueryState(
-    standingQuery: StandingQueryId,
-    standingQueryId: StandingQueryPartId,
-    state: Option[Array[Byte]]
-  ): Future[Unit] = persistorParent.setStandingQueryState(standingQuery, qid, standingQueryId, state)
-
-  def persistenceConfig = persistorParent.persistenceConfig
 }
 
 /** Mix-in for persistors that don't save events (implements event related functions as no-ops) */

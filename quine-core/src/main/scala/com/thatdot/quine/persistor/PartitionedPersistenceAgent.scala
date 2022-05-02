@@ -78,6 +78,4 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     Future.traverse(getAgents.toSeq)(_.shutdown()).map(_ => ())
   }
 
-  override def forNode(qid: QuineId): InNodePersistor = new NodePersistor(qid, getAgent(qid))
-
 }

@@ -14,13 +14,13 @@ import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
-import com.thatdot.quine.persistor.{InNodePersistor, PersistenceConfig}
+import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def persistenceConfig: PersistenceConfig
 
-  protected def persistor: InNodePersistor
+  protected def persistor: PersistenceAgent
 
   protected def graph: BaseGraph
 
@@ -61,7 +61,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           akka.pattern.retry(
             () =>
               metrics.persistorPersistSnapshotTimer.time {
-                persistor.persistSnapshot(snapshotTime, snapshot)
+                persistor.persistSnapshot(qid, snapshotTime, snapshot)
               },
             attempts = 5,
             minBackoff = 100.millis,
@@ -147,6 +147,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 val snapshotSaved = retryPersistence(
                   metrics.persistorPersistSnapshotTimer,
                   persistor.persistSnapshot(
+                    qid,
                     if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
                     else latestUpdateTime,
                     snapshot
@@ -164,7 +165,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                     .traverse(pendingStatesSerialized) { case (globalId, localId, serialized) =>
                       retryPersistence(
                         metrics.persistorSetStandingQueryStateTimer,
-                        persistor.setStandingQueryState(globalId, localId, serialized)
+                        persistor.setStandingQueryState(globalId, qid, localId, serialized)
                       )
                     }
 

@@ -24,7 +24,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{InNodePersistor, PersistenceCodecs, PersistenceConfig}
+import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceCodecs, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
@@ -76,7 +76,7 @@ private[graph] class NodeActor(
   val qid: QuineId = qidAtTime.id
   val atTime: Option[Milliseconds] = qidAtTime.atTime
   implicit val idProvider: QuineIdProvider = graph.idProvider
-  protected val persistor: InNodePersistor = graph.persistor.forNode(qid)
+  protected val persistor: PersistenceAgent = graph.persistor
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
   protected var properties: Map[Symbol, PropertyValue] = Map.empty
@@ -181,13 +181,13 @@ private[graph] class NodeActor(
       latestUpdateAfterSnapshot = Some(occurredAt)
       lastWriteMillis = latestEventTime().millis
       val journalFuture = if (persistenceConfig.journalEnabled) {
-        metrics.persistorPersistEventTimer.time(persistor.persistEvent(occurredAt, event))
+        metrics.persistorPersistEventTimer.time(persistor.persistEvent(qid, occurredAt, event))
       } else Future.unit
       val snapshotFuture = if (persistenceConfig.snapshotOnUpdate) {
         val snapshot = toSnapshotBytes()
         latestUpdateAfterSnapshot = None
         metrics.snapshotSize.update(snapshot.length)
-        metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(occurredAt, snapshot))
+        metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, occurredAt, snapshot))
       } else Future.unit
       val persistFuture = journalFuture.zip(snapshotFuture)
       runPostActions(event)
@@ -283,7 +283,7 @@ private[graph] class NodeActor(
               EventTime.MaxValue
           }
           metrics.persistorGetLatestSnapshotTimer.time {
-            persistor.getLatestSnapshot(upToTime)
+            persistor.getLatestSnapshot(qid, upToTime)
           }
         } else
           Future.successful(None)
@@ -300,7 +300,7 @@ private[graph] class NodeActor(
             case None => EventTime.MaxValue
           }
           metrics.persistorGetJournalTimer.time {
-            persistor.getJournal(startingAt, endingAt)
+            persistor.getJournal(qid, startingAt, endingAt)
           }
           // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
           // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
@@ -312,7 +312,7 @@ private[graph] class NodeActor(
     val standingQueryStates: Future[StandingQueryStates] =
       if (untilOpt.isEmpty)
         metrics.persistorGetStandingQueryStatesTimer.time {
-          persistor.getStandingQueryStates()
+          persistor.getStandingQueryStates(qid)
         }
       else
         Future.successful(Map.empty)
@@ -449,7 +449,7 @@ private[graph] class NodeActor(
       .mkString("\n  ", "\n  ", "\n")
 
     persistor
-      .getJournal(startingAt = EventTime.MinValue, endingAt = EventTime.MaxValue)
+      .getJournal(qid, startingAt = EventTime.MinValue, endingAt = EventTime.MaxValue)
       .recover { case err =>
         log.error(err, "failed to get journal for node {}", qid)
         Vector.empty

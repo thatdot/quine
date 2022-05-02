@@ -34,7 +34,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
-import com.thatdot.quine.persistor.{InNodePersistor, PersistenceConfig, PersistenceSchedule}
+import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig, PersistenceSchedule}
 
 trait CypherStandingBehavior
     extends Actor
@@ -45,7 +45,7 @@ trait CypherStandingBehavior
 
   protected def syncStandingQueries(): Unit
 
-  protected def persistor: InNodePersistor
+  protected def persistor: PersistenceAgent
 
   protected def persistenceConfig: PersistenceConfig
 
@@ -277,6 +277,7 @@ trait CypherStandingBehavior
         new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
           persistor.setStandingQueryState(
             globalId,
+            qid,
             localId,
             serialized
           )
