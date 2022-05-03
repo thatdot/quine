@@ -310,8 +310,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       "MATCH (c)-->(p) WHERE c.first = 'Rose' RETURN p.first",
       expectedColumns = Vector("p.first"),
       expectedRows = Seq(
-        Vector(Expr.Str("Hermione")),
-        Vector(Expr.Str("Ron"))
+        Vector(Expr.Str("Ron")),
+        Vector(Expr.Str("Hermione"))
       ),
       expectedCanContainAllNodeScan = true
     )
@@ -691,6 +691,8 @@ object MyReverse extends UserDefinedFunction {
   val name = "myreverse"
 
   val isPure = true
+
+  val category = "List"
 
   val signatures: Vector[UserDefinedFunctionSignature] = Vector(
     UserDefinedFunctionSignature(

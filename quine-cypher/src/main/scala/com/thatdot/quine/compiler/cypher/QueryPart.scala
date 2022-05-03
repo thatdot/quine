@@ -2,7 +2,7 @@ package com.thatdot.quine.compiler.cypher
 
 import cats.implicits._
 import org.opencypher.v9_0.expressions.functions
-import org.opencypher.v9_0.{ast, expressions}
+import org.opencypher.v9_0.{ast, expressions, util}
 
 import com.thatdot.quine.graph.cypher
 
@@ -22,20 +22,59 @@ object QueryPart {
       case ast.SingleQuery(clauses) =>
         compileClauses(clauses, isEntireQuery)
 
-      case ast.UnionAll(part, ast.SingleQuery(clauses)) =>
+      case union: ast.ProjectingUnion =>
         for {
-          compiledPart <- compile(part, false)
-          compiledSingle <- CompM.withIsolatedContext(compileClauses(clauses, false))
-        } yield cypher.Query.Union(compiledPart, compiledSingle)
+          compiledPart <- CompM.withIsolatedContext {
+            for {
+              p <- compile(union.part, false)
+              mapping <- compileUnionMapping(isPart = true, union.unionMappings, union.part)
+            } yield cypher.Query.adjustContext(true, mapping, p)
+          }
+          compiledSingle <- CompM.withIsolatedContext {
+            for {
+              q <- compileClauses(union.query.clauses, false)
+              mapping <- compileUnionMapping(isPart = false, union.unionMappings, union.query)
+            } yield cypher.Query.adjustContext(true, mapping, q)
+          }
+          () <- union.unionMappings.traverse_(u => CompM.addColumn(u.unionVariable))
+          unioned = cypher.Query.Union(compiledPart, compiledSingle)
 
-      // "Distinct" with respect to all of the columns returned
-      case ast.UnionDistinct(part, ast.SingleQuery(clauses)) =>
-        for {
-          compiledPart <- compile(part, false)
-          compiledSingle <- CompM.withIsolatedContext(compileClauses(clauses, false))
-          distinctby = queryPart.returnColumns.map(lv => cypher.Expr.Variable(Symbol(lv)))
-        } yield cypher.Query.Distinct(distinctby, cypher.Query.Union(compiledPart, compiledSingle))
+          projectedUnion <-
+            if (union.isInstanceOf[ast.ProjectingUnionDistinct]) {
+              // "Distinct" with respect to all of the columns returned
+              queryPart.returnColumns
+                .traverse(CompM.getVariable(_, queryPart))
+                .map(distinctBy => cypher.Query.Distinct(distinctBy, unioned))
+            } else {
+              CompM.pure(unioned)
+            }
+        } yield projectedUnion
+
+      case u: ast.UnmappedUnion =>
+        CompM.raiseCompileError("Unmapped unions should have been transformed into projecting unions", u)
     }
+
+  /** Compile a union mapping into the new column mapping (as can be passed to `AdjustContext`)
+    *
+    * @param isPart do we want the mapping for the LHS part (if not, it is for the RHS query)
+    * @param unionMappings mappings of variables
+    * @param astNode
+    * @return variable mapping
+    */
+  private def compileUnionMapping(
+    isPart: Boolean,
+    unionMappings: List[ast.Union.UnionMapping],
+    astNode: util.ASTNode
+  ): CompM[Vector[(Symbol, cypher.Expr)]] = {
+    def getInVariable(v: ast.Union.UnionMapping): expressions.LogicalVariable =
+      if (isPart) v.variableInPart else v.variableInQuery
+    unionMappings.toVector
+      .traverse { (mapping: ast.Union.UnionMapping) =>
+        CompM
+          .getVariable(getInVariable(mapping), astNode)
+          .map(e => (mapping.unionVariable: Symbol) -> e)
+      }
+  }
 
   private def compileMatchClause(
     matchClause: ast.Match
@@ -320,7 +359,7 @@ object QueryPart {
     * @return items by which to group and aggregations for these groups
     */
   private def compileReturnItems(
-    items: ast.ReturnItemsDef
+    items: ast.ReturnItems
   ): CompM[WithQuery[(Vector[(Symbol, cypher.Expr)], Vector[(Symbol, cypher.Aggregator)])]] =
     items.items.toVector
       .traverse[WithQueryT[CompM, *], Either[(Symbol, cypher.Expr), (Symbol, cypher.Aggregator)]] {
@@ -442,6 +481,17 @@ object QueryPart {
 
       case (accQuery, f: ast.Foreach) =>
         compileForeach(f).map(cypher.Query.apply(accQuery, _))
+
+      case (accQuery, ast.SubQuery(part)) =>
+        for {
+          (subQuery, subOutput) <- CompM.withIsolatedContext(
+            for {
+              subQuery <- compile(part, isEntireQuery = false)
+              subOutput <- CompM.getColumns
+            } yield (subQuery, subOutput)
+          )
+          () <- subOutput.traverse_(CompM.addColumn)
+        } yield cypher.Query.apply(accQuery, cypher.Query.SubQuery(subQuery))
 
       case (accQuery, QuineProcedureCall(proc, unresolvedCall)) =>
         val callIsWholeQuery = clauses.length == 1 && isEntireQuery
@@ -673,13 +723,12 @@ object QueryPart {
           }
 
           // DISTINCT
-          deduped = isDistinct match {
-            case false => limited
+          deduped <- isDistinct match {
+            case false => CompM.pure[cypher.Query[cypher.Location.Anywhere]](limited)
             case true =>
-              cypher.Query.Distinct(
-                clause.returnColumns.map(v => cypher.Expr.Variable(Symbol(v))),
-                limited
-              )
+              clause.returnColumns
+                .traverse(CompM.getVariable(_, clause))
+                .map(distinctBy => cypher.Query.Distinct(distinctBy, limited))
           }
         } yield deduped
 

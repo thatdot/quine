@@ -1,5 +1,7 @@
 package com.thatdot.quine.compiler.cypher
 
+import org.opencypher.v9_0.util.helpers.NameDeduplicator
+
 import com.thatdot.quine.graph.cypher.{Columns, Expr, Location, Query}
 
 /* Fill in column-schema information in queries
@@ -15,7 +17,30 @@ object VariableRewriter {
   def convertAnyQuery(
     query: Query[Location.Anywhere],
     columnsIn: Columns
-  ): Query[Location.Anywhere] = AnywhereConverter.convertQuery(query, columnsIn)
+  ): Query[Location.Anywhere] = {
+    val converted = AnywhereConverter.convertQuery(query, columnsIn)
+    converted.columns match {
+      case Columns.Omitted => converted
+      case Columns.Specified(mangledCols) => // if columns are specified, de-mangle them
+
+        val demangledCols = mangledCols.map { case Symbol(mangledName) =>
+          val col = NameDeduplicator.removeGeneratedNamesAndParams(mangledName)
+          Symbol(col)
+        }
+
+        if (demangledCols == mangledCols) converted
+        else {
+          Query.AdjustContext(
+            dropExisting = true,
+            toAdd = demangledCols
+              .zip(mangledCols)
+              .map { case (demangled, mangled) => demangled -> Expr.Variable(mangled) },
+            adjustThis = converted,
+            columns = Columns.Specified(demangledCols)
+          )
+        }
+    }
+  }
 
   def convertNodeQuery(
     query: Query[Location.OnNode],
@@ -59,6 +84,7 @@ object VariableRewriter {
         convertEagerAggregation(query, columnsIn)
       case query: Delete => convertDelete(query, columnsIn)
       case query: ProcedureCall => convertProcedureCall(query, columnsIn)
+      case query: SubQuery[Location.OnNode @unchecked] => convertSubQuery(query, columnsIn)
     }
 
     protected def convertGetDegree(
@@ -154,6 +180,7 @@ object VariableRewriter {
         convertEagerAggregation(query, columnsIn)
       case query: Delete => convertDelete(query, columnsIn)
       case query: ProcedureCall => convertProcedureCall(query, columnsIn)
+      case query: SubQuery[Location.Anywhere @unchecked] => convertSubQuery(query, columnsIn)
     }
   }
 
@@ -397,6 +424,17 @@ trait VariableRewriter[Start <: Location] {
     }
     query.copy(
       columns = columnsIn ++ newCols
+    )
+  }
+
+  protected def convertSubQuery(
+    query: SubQuery[Start],
+    columnsIn: Columns
+  ): SubQuery[Start] = {
+    val subQuery = convertQuery(query.subQuery, columnsIn)
+    query.copy(
+      subQuery = subQuery,
+      columns = columnsIn ++ subQuery.columns
     )
   }
 }

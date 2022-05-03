@@ -238,12 +238,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Id(NodePatternId(2), false, Symbol("  UNNAMED50")),
+          ReturnColumn.Id(NodePatternId(2), false, Symbol("anon_49")),
           ReturnColumn.Id(NodePatternId(1), false, Symbol("id(m)")),
-          ReturnColumn.Id(NodePatternId(0), false, Symbol("  UNNAMED41"))
+          ReturnColumn.Id(NodePatternId(0), false, Symbol("anon_40"))
         ),
         Some(
-          Expr.Not(Expr.Equal(Expr.Variable(Symbol("  UNNAMED41")), Expr.Variable(Symbol("  UNNAMED50"))))
+          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_40")), Expr.Variable(Symbol("anon_49"))))
         ),
         Seq(Symbol("id(m)") -> Expr.Variable(Symbol("id(m)"))),
         distinct = false
@@ -280,26 +280,26 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("  UNNAMED72")),
-          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("  UNNAMED53")),
-          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("  UNNAMED91"))
+          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_71")),
+          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_52")),
+          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_90"))
         ),
         Some(
           Expr.Equal(
             Expr.Property(
               Expr.Function(
                 Func.UserDefined("parseJson"),
-                Vector(Expr.Variable(Symbol("  UNNAMED53")))
+                Vector(Expr.Variable(Symbol("anon_52")))
               ),
               Symbol("baz")
             ),
-            Expr.Variable(Symbol("  UNNAMED72"))
+            Expr.Variable(Symbol("anon_71"))
           )
         ),
         Seq(
           Symbol("bytes(m.qux)") -> Expr.Function(
             Func.UserDefined("bytes"),
-            Vector(Expr.Variable(Symbol("  UNNAMED91")))
+            Vector(Expr.Variable(Symbol("anon_90")))
           )
         ),
         distinct = false
@@ -578,7 +578,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Wrong format for a standing query (expected `MATCH ... WHERE ... RETURN ...`)",
-          Some(Position(1, 58, 57, SourceText(query)))
+          Some(Position(1, 1, 0, SourceText(query)))
         )
       )
     }

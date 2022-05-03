@@ -60,6 +60,7 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
         interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
+      case query: SubQuery[Location.Anywhere @unchecked] => interpretSubQuery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
     }
@@ -155,6 +156,7 @@ trait OnNodeInterpreter
         interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
+      case query: SubQuery[Location.OnNode @unchecked] => interpretSubQuery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
     }
@@ -1104,4 +1106,12 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
       .call(context, query.arguments.map(_.eval(context)), this)
       .map(makeResultRow)
   }
+
+  final private[quine] def interpretSubQuery(
+    query: SubQuery[Start],
+    context: QueryContext
+  )(implicit
+    parameters: Parameters
+  ): Source[QueryContext, _] =
+    interpret(query.subQuery, context).map(context ++ _)
 }

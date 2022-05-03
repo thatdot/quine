@@ -14,6 +14,9 @@ abstract class UserDefinedFunction {
   /** What is the name of the UDF */
   def name: String
 
+  /** Category of functionality this function falls under */
+  def category: String
+
   /** Is this a pure function? A pure function satisfies all of:
     *
     * - Returns a value that is fully computed from the function parameter

@@ -15,6 +15,7 @@ import akka.util.Timeout
 import com.typesafe.scalalogging.StrictLogging
 import org.opencypher.v9_0.ast
 import org.opencypher.v9_0.frontend.phases._
+import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewriter, bottomUp}
 
 import com.thatdot.quine.graph.cypher.{
@@ -59,8 +60,6 @@ final case class QuineProcedureCall(
   * global map of UDPs
   */
 case object resolveCalls extends StatementRewriter {
-
-  override def description: String = "resolve Quine user-defined procedures"
 
   val neo4jCompatibility: List[UserDefinedProcedure] = List(
     // Used by `neo4j-browser`:

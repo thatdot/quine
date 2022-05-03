@@ -4,6 +4,7 @@ import cats.implicits._
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.frontend.phases.StatementRewriter
+import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{NodeNameGenerator, UnNamedNameGenerator}
 
 import com.thatdot.quine.graph.cypher
@@ -273,7 +274,7 @@ object Expression {
 
         if (f.function == functions.StartNode) {
           require(args.length == 1, "`startNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.bumped())
+          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
           val nodeVariable = expressions.Variable(nodeName)(f.position)
 
           WithQueryT[CompM, cypher.Expr] {
@@ -302,7 +303,7 @@ object Expression {
           WithQueryT.pure[CompM, cypher.Expr](cypher.Expr.IsNotNull(args.head))
         } else if (f.function == functions.EndNode) {
           require(args.length == 1, "`endNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.bumped())
+          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
           val nodeVariable = expressions.Variable(nodeName)(f.position)
 
           WithQueryT[CompM, cypher.Expr] {
@@ -330,7 +331,7 @@ object Expression {
       }
 
     case e @ expressions.GetDegree(node, relType, dir) =>
-      val bindName = UnNamedNameGenerator.name(e.position.bumped())
+      val bindName = UnNamedNameGenerator.name(e.position.newUniquePos())
       val bindVariable = expressions.Variable(bindName)(e.position)
 
       WithQueryT[CompM, cypher.Expr] {
@@ -377,7 +378,7 @@ object Expression {
 
       // Put the pattern into a form
       val pat = expressions.Pattern(Seq(expressions.EveryPath(rel.element)))(e.position)
-      val pathName = UnNamedNameGenerator.name(e.position.bumped())
+      val pathName = UnNamedNameGenerator.name(e.position.newUniquePos())
       val pathVariable = expressions.Variable(pathName)(e.position)
 
       WithQueryT {
@@ -496,7 +497,7 @@ object Expression {
               Map("types" -> cypher.Expr.List(edgesStrVect))
           }
 
-          val shortestPathName = UnNamedNameGenerator.name(e.position.bumped())
+          val shortestPathName = UnNamedNameGenerator.name(e.position.newUniquePos())
           val shortestPathVariable = expressions.Variable(shortestPathName)(e.position)
 
           WithQueryT {
@@ -609,7 +610,7 @@ object Expression {
           astNode = callExpr
         )
 
-      case functions.Filename | functions.Linenumber | functions.Point | functions.Distance | functions.Reduce | _ =>
+      case functions.File | functions.Linenumber | functions.Point | functions.Distance | functions.Reduce | _ =>
         CompM.raiseCompileError(
           message = s"Failed to resolve function `${callExpr.name}`",
           astNode = callExpr
@@ -632,8 +633,6 @@ case object patternExpressionAsComprehension extends StatementRewriter {
 
   import org.opencypher.v9_0.frontend.phases._
   import org.opencypher.v9_0.util.{bottomUp, Rewriter}
-
-  override def description: String = "turns pattern expressions into comprehensions"
 
   override def instance(ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift {
     case e: expressions.PatternExpression =>
@@ -659,7 +658,7 @@ case object patternExpressionAsComprehension extends StatementRewriter {
   def patternExpr2Comp(e: expressions.PatternExpression): expressions.PatternComprehension = {
     val expressions.PatternExpression(relsPat) = e
 
-    val freshName = UnNamedNameGenerator.name(e.position.bumped())
+    val freshName = UnNamedNameGenerator.name(e.position.newUniquePos())
     val freshVariable = expressions.Variable(freshName)(e.position)
 
     expressions.PatternComprehension(

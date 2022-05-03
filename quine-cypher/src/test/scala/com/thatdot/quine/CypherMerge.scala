@@ -56,7 +56,7 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
   testQuery(
     "merge (n5: Foo)-[:REL]->(m { bar: 'baz' }) return m",
     expectedColumns = Vector("m"),
-    expectedRows = Seq(Vector(Expr.Node(2L, Set(), Map(Symbol("bar") -> Expr.Str("baz"))))),
+    expectedRows = Seq(Vector(Expr.Node(3L, Set(), Map(Symbol("bar") -> Expr.Str("baz"))))),
     expectedIsReadOnly = false,
     expectedIsIdempotent = false,
     expectedCanContainAllNodeScan = true
@@ -65,7 +65,7 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
   testQuery(
     "merge (n6: Foo)-[:REL]->(m { bar: 'baz' }) return m",
     expectedColumns = Vector("m"),
-    expectedRows = Seq(Vector(Expr.Node(2L, Set(), Map(Symbol("bar") -> Expr.Str("baz"))))),
+    expectedRows = Seq(Vector(Expr.Node(3L, Set(), Map(Symbol("bar") -> Expr.Str("baz"))))),
     expectedIsReadOnly = false,
     expectedIsIdempotent = false,
     expectedCanContainAllNodeScan = true
@@ -76,8 +76,8 @@ class CypherMerge extends CypherHarness("cypher-merge-tests") {
     expectedColumns = Vector("n7"),
     expectedRows = Seq(
       Vector(Expr.Node(0L, Set(Symbol("Foo")), Map(Symbol("prop1") -> Expr.Str("val1")))),
-      Vector(Expr.Node(2L, Set(), Map(Symbol("bar") -> Expr.Str("baz")))),
-      Vector(Expr.Node(3L, Set(Symbol("Foo")), Map()))
+      Vector(Expr.Node(2L, Set(Symbol("Foo")), Map())),
+      Vector(Expr.Node(3L, Set(), Map(Symbol("bar") -> Expr.Str("baz"))))
     ),
     ordered = false,
     expectedCannotFail = true,

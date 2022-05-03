@@ -741,4 +741,20 @@ object Query {
 
     def canContainAllNodeScan: Boolean = procedure.canContainAllNodeScan
   }
+
+  /** Sub query context, which allows for running a subquery and then stitching
+    * the initial input columns back to the subquery outputs.
+    *
+    * @param subQuery inner query
+    */
+  final case class SubQuery[+Start <: Location](
+    subQuery: Query[Start],
+    columns: Columns = Columns.Omitted
+  ) extends Query[Start] {
+    def isReadOnly: Boolean = subQuery.isReadOnly
+    def cannotFail: Boolean = subQuery.cannotFail
+    def canDirectlyTouchNode: Boolean = false
+    def isIdempotent: Boolean = subQuery.isIdempotent
+    def canContainAllNodeScan: Boolean = subQuery.canContainAllNodeScan
+  }
 }

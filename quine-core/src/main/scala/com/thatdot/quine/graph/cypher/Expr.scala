@@ -2502,6 +2502,7 @@ object Value {
     case bytes: Array[Byte] => Expr.Bytes(bytes)
 
     case vector: Vector[Any] => Expr.List(vector.map(fromAny))
+    case list: List[Any] => Expr.List(list.view.map(fromAny).toVector)
     case map: Map[_, _] =>
       val builder = Map.newBuilder[String, Value]
       for ((keyAny, elem) <- map)
