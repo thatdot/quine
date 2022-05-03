@@ -1,0 +1,68 @@
+version: 1
+title: Ingest Wikipedia page create stream
+contributor: https://github.com/landon9720
+summary: Consume events about new Wikipedia pages to build a timeseries reified graph
+description: |-
+  Wikipedia page creation events are instantiated in the graph with relationships to a refied time model.
+  Additionally, page creation event comments are echoed to standard output.
+  Data source documentation: https://stream.wikimedia.org/?doc#/streams/get_v2_stream_page_create
+ingestStreams:
+  - type: ServerSentEventsIngest
+    url: https://stream.wikimedia.org/v2/stream/page-create
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (revNode) WHERE id(revNode) = idFrom("revision", $that.rev_id)
+        MATCH (dbNode) WHERE id(dbNode) = idFrom("db", $that.database)
+        MATCH (userNode) WHERE id(userNode) = idFrom("id", $that.performer.user_id)
+        SET revNode = $that, revNode.type = "rev"
+        SET dbNode.database = $that.database, dbNode.type = "db"
+        SET userNode = $that.performer, userNode.type = "user"
+        WITH *, datetime($that.rev_timestamp) AS d
+        CALL create.setLabels(revNode, ["rev:" + $that.page_title])
+        CALL create.setLabels(dbNode, ["db:" + $that.database])
+        CALL create.setLabels(userNode, ["user:" + $that.performer.user_text])
+        CALL reify.time(d, ["year", "month", "day", "hour", "minute"]) YIELD node AS timeNode
+        CALL incrementCounter(timeNode, "count")
+        CREATE (revNode)-[:at]->(timeNode)
+        CREATE (revNode)-[:db]->(dbNode)
+        CREATE (revNode)-[:by]->(userNode)
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (n)
+        WHERE EXISTS(n.comment)
+        RETURN DISTINCT id(n) AS id
+    outputs:
+      output-1:
+        type: CypherQuery
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          RETURN n.comment AS line
+        andThen:
+          type: PrintToStandardOut
+nodeAppearances: []
+quickQueries: []
+sampleQueries:
+  - name: time nodes
+    query: >
+      MATCH (n)
+      WHERE EXISTS(n.period)
+      RETURN n
+  - name: revision nodes
+    query: >
+      MATCH (n)
+      WHERE n.type = "rev"
+      RETURN n
+  - name: database nodes
+    query: >
+      MATCH (n)
+      WHERE n.type = "db"
+      RETURN n
+  - name: user nodes
+    query: >
+      MATCH (n)
+      WHERE n.type = "user"
+      RETURN n

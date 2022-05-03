@@ -70,6 +70,28 @@ trait LiteralOpsGraph extends BaseGraph {
       }
     }
 
+    /** Set node label to multiple values
+      *
+      * @param node on which node the label should be set
+      * @param labels labels to set
+      */
+    def setLabels(node: QuineId, labels: Set[String])(implicit
+      timeout: Timeout
+    ): Future[Unit] = {
+      requiredGraphIsReady()
+      relayAsk(QuineIdAtTime(node, None), SetLabels(labels.map(Symbol(_)), _)).flatten
+        .map(_ => ())(ExecutionContexts.parasitic)
+    }
+
+    /** Set node label to a single value
+      *
+      * @param node on which node the label should be set
+      * @param label label to set
+      */
+    def setLabel(node: QuineId, label: String)(implicit
+      timeout: Timeout
+    ): Future[Unit] = setLabels(node, Set(label))
+
     /** Set a single property on a node
       *
       * @param node on which node the property should be set

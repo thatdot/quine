@@ -86,7 +86,8 @@ case object resolveCalls extends StatementRewriter {
     JsonLoad,
     IncrementCounter,
     CypherLogging,
-    CypherDebugNode
+    CypherDebugNode,
+    ReifyTime
   )
 
   /** This map is only meant to maintain backward compatibility for a short time. */
