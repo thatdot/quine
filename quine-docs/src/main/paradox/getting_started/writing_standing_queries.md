@@ -49,7 +49,7 @@ Standing queries must only contain a `MATCH` and a `RETURN`, with an optional `W
      * `NOT exists(nodeName.property)` - the property must not exist
      * `nodeName.property =~ "regex"` - the property must be a string matching the regex
 
-  7. Exactly one value may be returned, and it must be either the (`DISTINCT`) `id` or `strId` of a node bound in the `MATCH`. For example, `RETURN DISTINCT strId(n)` or `RETURN DISTINCT id(n) as nId` are OK, but not `RETURN n.name` or `RETURN id(n) AS nId`. The node whose id is returned is the "root" node - the location where the pattern starts being incrementally matched. (Historically, `DistinctId` queries did not require a `DISTINCT` keyword, but `DistinctId` patterns without `DISTINCT` are deprecated and will be removed in a future version).
+  7. Exactly one value may be returned, and it must be either the (`DISTINCT`) `id` or `strId` of a node bound in the `MATCH`. For example, `RETURN DISTINCT strId(n)` or `RETURN DISTINCT id(n) as nId` are OK, but not `RETURN n.name` or `RETURN id(n) AS nId`. The node whose id is returned is the "root" node - the location where the pattern starts being incrementally matched.
 
 @@@ note
 

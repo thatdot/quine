@@ -18,7 +18,7 @@
   "standingQueries": [
     {
       "pattern": {
-        "query": "MATCH (n) RETURN id(n)",
+        "query": "MATCH (n) RETURN DISTINCT id(n)",
         "type": "Cypher"
       },
       "outputs": {

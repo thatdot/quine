@@ -114,18 +114,7 @@ object StandingQueryPattern extends LazyLogging {
     val origin = PatternOrigin.GraphPattern(pattern, cypherOriginal)
     if (useDomainGraphBranch) {
       if (!pattern.distinct) {
-        logger.warn(
-          cypherOriginal match {
-            case Some(cypherQuery) =>
-              s"""DistinctId Standing Queries that do not specify a `DISTINCT` clause are deprecated.
-                  |DistinctId queries without `DISTINCT` are deprecated and will be removed in the future.
-                  |Query was: '$cypherQuery'""".stripMargin.replace('\n', ' ')
-            case None =>
-              s"""DistinctId Standing Queries that do not specify `distinct` are deprecated and a future release will
-                  |require that DistinctId Standing Queries use patterns with `distinct`.
-                  |Query pattern was: $pattern""".stripMargin.replace('\n', ' ')
-          }
-        )
+        throw InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
       }
       val (branch, returnColumn) = pattern.compiledDomainGraphBranch(labelsProperty)
       Branch(branch, returnColumn.formatAsString, returnColumn.aliasedAs, includeCancellations, origin)

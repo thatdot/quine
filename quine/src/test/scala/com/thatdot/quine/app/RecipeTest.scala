@@ -126,7 +126,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           ),
           standingQueries = List(
             StandingQueryDefinition(
-              pattern = StandingQueryPattern.Cypher(query = "MATCH (n) RETURN id(n)"),
+              pattern = StandingQueryPattern.Cypher(query = "MATCH (n) RETURN DISTINCT id(n)"),
               outputs = Map(
                 "output-1" -> StandingQueryResultOutputUserDef.CypherQuery(
                   query = "X",

@@ -265,7 +265,7 @@ package object cypher {
     }
   }
 
-  /** Try to compile queries of the form `MATCH <pattern> WHERE <condition> RETURN <columns>`
+  /** Try to compile queries of the form `MATCH <pattern> WHERE <condition> RETURN [DISTINCT] <columns>`
     * into a pattern that can be used to construct a standing query.
     *
     * @param queryText the Cypher query
