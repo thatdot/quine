@@ -340,7 +340,8 @@ final class RocksDbPersistor(
               sqId == sqId2 && {
                 (qid == id) || {
                   incrementKey(sqIdPrefixKey(sqId)) match {
-                    case Some(nextSqId) => it.seek(nextSqId)
+                    case Some(nextSqId) =>
+                      it.seek(nextSqId)
 
                     // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
                     case None => noMoreSqs = true
@@ -349,8 +350,10 @@ final class RocksDbPersistor(
                 }
               }
             }
-          )
+          ) {
             mb += (sqId -> sqPartId) -> it.value()
+            it.next()
+          }
         }
       } finally it.close()
       mb.result()
@@ -441,10 +444,9 @@ final class RocksDbPersistor(
       try {
         val startKey = qidAndTime2Key(id, upToTime)
         it.seekForPrev(startKey)
-        if (it.isValid && java.util.Arrays.equals(id.array, key2QidBytes(it.key()))) {
-          val bb = ByteBuffer.wrap(it.key())
-          val time = bb.getLong
-          Some(EventTime(time) -> it.value())
+        if (it.isValid) {
+          val (foundId, time) = key2QidAndTime(it.key())
+          if (foundId == id) Some(time -> it.value()) else None
         } else {
           None
         }
@@ -718,6 +720,7 @@ object RocksDbPersistor {
       .allocate(16 + 2 + qidLen)
       .putLong(sqIdUuid.getMostSignificantBits)
       .putLong(sqIdUuid.getLeastSignificantBits)
+      .putShort((qidLen & 0xFFFF).asInstanceOf[Short])
       .put(qidBytes)
       .array
   }
