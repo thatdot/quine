@@ -1,7 +1,7 @@
 // resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
 val scalajsBundlerVersion = "0.20.0"
 // addDependencyTreePlugin
-addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.9.0")
+addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.10.0")
 addSbtPlugin("ch.epfl.scala" % "sbt-scalajs-bundler" % scalajsBundlerVersion)
 addSbtPlugin("ch.epfl.scala" % "sbt-web-scalajs-bundler" % scalajsBundlerVersion)
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.10.0")
