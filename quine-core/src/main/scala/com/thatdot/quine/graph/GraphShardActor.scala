@@ -172,7 +172,7 @@ final private[quine] class GraphShardActor(
 
         newState match {
           // Keep track of the side effects as a result of shutting down the node
-          case WakefulState.GoingToSleep(persistenceFut @ _, shardPromise) =>
+          case WakefulState.GoingToSleep(shardPromise) =>
             unlikelyIncompleteShdnCounter.inc()
             WakeUpOutcome.IncompleteActorShutdown(shardPromise.future)
 
@@ -679,7 +679,7 @@ object InMemoryNodeLimit {
  *
  *  - whenever the node goes through [2], it sends the shard a [[StillAwake]] message
  *
- *  - when the persistor future in [[GoingToSleep]] completes, a [[SleepOutcome]] message is sent to the shard carrying
+ *  - when the shard Promise in [[GoingToSleep]] completes, a [[SleepOutcome]] message is sent to the shard carrying
  *    the shard promise
  *
  *  - when the shard receives a [[SleepOutcome]] message, it will complete the included Promise
@@ -692,7 +692,7 @@ sealed abstract private[quine] class WakefulState
 private[quine] object WakefulState {
   case object Awake extends WakefulState
   final case class ConsideringSleep(deadline: Deadline) extends WakefulState
-  final case class GoingToSleep(persistor: Future[Unit], shard: Promise[Unit]) extends WakefulState
+  final case class GoingToSleep(shard: Promise[Unit]) extends WakefulState
 }
 
 sealed abstract class ControlMessages

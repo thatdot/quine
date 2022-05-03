@@ -90,7 +90,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           val tooRecentWrite = graph.declineSleepWhenWriteWithinMillis > 0 &&
             graph.declineSleepWhenWriteWithinMillis > millisNow - lastWriteMillis
           if (deadline.hasTimeLeft() && !tooRecentAccess && !tooRecentWrite) {
-            WakefulState.GoingToSleep(persistencePromise.future, shardPromise)
+            WakefulState.GoingToSleep(shardPromise)
           } else {
             WakefulState.Awake
           }
