@@ -89,15 +89,16 @@ lazy val `quine-rocksdb-persistor`: Project = project
 lazy val `quine-cassandra-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(`quine-core`)
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV,
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
     )
   )
 
-// Parser and interepreter foor a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
+// Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)

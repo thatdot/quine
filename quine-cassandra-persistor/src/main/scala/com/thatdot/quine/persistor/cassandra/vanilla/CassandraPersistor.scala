@@ -37,7 +37,7 @@ import com.datastax.oss.driver.api.core.cql.{
   SimpleStatement,
   Statement
 }
-import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
+import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.{ASC, DESC}
 import com.datastax.oss.driver.api.core.{
   ConsistencyLevel,
   CqlIdentifier,
@@ -101,8 +101,21 @@ object CassandraCodecs {
   implicit val standingQueryIdCodec: TypeCodec[StandingQueryId] = TypeCodecs.UUID.xmap(StandingQueryId(_), _.uuid)
   implicit val standingQueryPartIdCodec: TypeCodec[StandingQueryPartId] =
     TypeCodecs.UUID.xmap(StandingQueryPartId(_), _.uuid)
+
+  /** [[EventTime]] is represented using Cassandra's 64-bit `bigint`
+    *
+    * Since event time ordering is unsigned, we need to shift over the raw
+    * underlying long by [[Long.MinValue]] in order to ensure that ordering
+    * gets mapped over properly to the signed `bigint` ordering.
+    *
+    * {{{
+    * EventTime.MinValue -> 0L + Long.MaxValue + 1L = Long.MinValue   // smallest event time
+    * EventTime.MaxValue -> -1L + Long.MaxValue + 1L = Long.MaxValue  // largest event time
+    * }}}
+    */
   implicit val eventTimeCodec: TypeCodec[EventTime] =
-    TypeCodecs.BIGINT.xmap(EventTime.fromRaw, _.eventTime)
+    TypeCodecs.BIGINT.xmap(x => EventTime.fromRaw(x - Long.MaxValue - 1L), x => x.eventTime + Long.MaxValue + 1L)
+
   implicit val nodeChangeEventCodec: TypeCodec[NodeChangeEvent] = BLOB_TO_ARRAY.xmap(
     PersistenceCodecs.eventFormat.read(_).get,
     PersistenceCodecs.eventFormat.write
@@ -329,7 +342,7 @@ object Journals extends TableDefinition with JournalColumnNames {
 
   private val createTableStatement: SimpleStatement =
     makeCreateTableStatement
-      .withClusteringOrder(timestampColumn.name, DESC)
+      .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
       .build
       .setTimeout(createTableTimeout)
