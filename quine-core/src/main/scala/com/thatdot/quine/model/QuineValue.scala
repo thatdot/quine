@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.time.Instant
 
 import scala.collection.compat._
-import scala.collection.immutable.{Map => ScalaMap}
+import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
 import org.msgpack.core.{MessagePack, MessagePacker, MessageUnpacker}
@@ -55,7 +55,7 @@ object QuineValue {
   object Integer {
 
     /* Cache of small integers from -128 to 127 inclusive, to share references
-     * whenever possible (less allocations + faster comparisions)
+     * whenever possible (less allocations + faster comparisons)
      */
     private val integerCacheMin = -128L
     private val integerCacheMax = 127L
@@ -121,11 +121,14 @@ object QuineValue {
     def underlyingJvmValue: JvmType = list.map(_.underlyingJvmValue)
   }
 
-  final case class Map(map: ScalaMap[String, QuineValue]) extends QuineValue {
-    type JvmType = ScalaMap[String, Any]
+  final case class Map private (map: SortedMap[String, QuineValue]) extends QuineValue {
+    type JvmType = SortedMap[String, Any]
 
     def quineType = QuineType.Map
-    def underlyingJvmValue: ScalaMap[String, Any] = map.view.mapValues(_.underlyingJvmValue).toMap
+    def underlyingJvmValue: SortedMap[String, Any] = SortedMap.from(map.view.mapValues(_.underlyingJvmValue))
+  }
+  object Map {
+    def apply(entries: IterableOnce[(String, QuineValue)]): Map = new Map(SortedMap.from(entries))
   }
 
   final case class DateTime(time: Instant) extends QuineValue {

@@ -11,7 +11,7 @@ import java.time.{
 }
 
 import scala.collection.compat._
-import scala.collection.immutable.{Map => ScalaMap}
+import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
 import com.google.common.hash.{HashCode, Hasher, Hashing}
@@ -205,7 +205,7 @@ object Expr {
   object Integer {
 
     /* Cache of small integers from -128 to 127 inclusive, to share references
-     * whenever possible (less allocations + faster comparisions)
+     * whenever possible (less allocations + faster comparisons)
      */
     private val integerCacheMin = -128L
     private val integerCacheMax = 127L
@@ -488,15 +488,13 @@ object Expr {
     *
     * @param map underlying Scala map of values
     */
-  final case class Map(map: ScalaMap[String, Value]) extends PropertyValue {
-
+  final case class Map private (map: SortedMap[String, Value]) extends PropertyValue {
     def typ = Type.Map
 
     def addToHasher(hasher: Hasher): Hasher = {
       hasher
         .putInt("Map".hashCode)
         .putInt(map.size)
-      // TODO: ensure iteration order is reliable (see QU-654)
       for ((key, value) <- map) {
         hasher.putString(key, StandardCharsets.UTF_8)
         value.addToHasher(hasher)
@@ -505,7 +503,9 @@ object Expr {
     }
   }
   object Map {
-    val empty: Map = Map(ScalaMap.empty)
+    def apply(entries: IterableOnce[(String, Value)]): Map = new Map(SortedMap.from(entries))
+
+    val empty: Map = new Map(SortedMap.empty)
   }
 
   /** A cypher path - a linear sequence of alternating nodes and edges
@@ -2202,25 +2202,30 @@ sealed abstract class Value extends Expr {
   }
 }
 object Value {
+  // utility for comparing maps' (already key-sorted) entries
+  private val sortedMapEntryOrdering = Ordering.Tuple2(Ordering.String, ordering)
 
   /** Compare two property values in a strict homogeneous fashion (ex: `x < y`)
     *
-    * This form of comparision fails if given a non-property type (such as a
+    * This order implements the conceptual model of "comparability"
+    * outlined in the OpenCypher 9 spec.
+    *
+    * This form of comparison fails if given a non-property type (such as a
     * list or a node) or if given operands of different types.
     *
     * @see [[https://neo4j.com/docs/cypher-manual/current/syntax/operators/#cypher-comparison]]
     * @note the docs are stricter than Neo4j. I've followed in Neo4j's steps.
     *
-    * @param lhs the left-hand side of the comparision
-    * @param rhs the right-hand side of the comparision
+    * @param lhs the left-hand side of the comparison
+    * @param rhs the right-hand side of the comparison
     * @return a negative integer, zero, or a positive integer if the LHS is less than, equal to, or
-    *         greater than the RHS (or [[scala.None]] if the comparision fails)
+    *         greater than the RHS (or [[scala.None]] if the comparison fails)
     */
   object partialOrder {
     @inline
     @throws[CypherException]
     def tryCompare(lhs: Value, rhs: Value): Option[Int] = (lhs, rhs) match {
-      // `null` taints the whole comparision
+      // `null` taints the whole comparison
       case (_, Expr.Null) | (Expr.Null, _) => None
 
       // Strings: lexicographic
@@ -2229,7 +2234,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Booleans: `false < true`
@@ -2241,7 +2246,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Bool),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Numbers: `NaN` is larger than all others
@@ -2257,7 +2262,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Number),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Dates
@@ -2266,14 +2271,14 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.LocalDateTime),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
       case (Expr.DateTime(i1), Expr.DateTime(i2)) => Some(i1.compareTo(i2))
       case (_: Expr.DateTime, other) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.DateTime),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Duration
@@ -2282,22 +2287,45 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Duration),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
+        )
+      case (Expr.Map(m1), Expr.Map(m2)) =>
+        if (m1.valuesIterator.contains(Expr.Null) || m2.valuesIterator.contains(Expr.Null)) {
+          // Null makes maps incomparable
+          None
+        } else {
+          // Otherwise match ORDER BY because the semantics are at our discretion
+          Some(
+            ((m1.view) zip (m2.view))
+              .map { case (entry1, entry2) => sortedMapEntryOrdering.compare(entry1, entry2) }
+              .dropWhile(_ == 0)
+              .headOption
+              .getOrElse(JavaInteger.compare(m1.size, m2.size))
+          )
+        }
+      case (_: Expr.Map, other) =>
+        throw CypherException.TypeMismatch(
+          expected = Seq(Type.Map),
+          actualValue = other,
+          context = "right-hand side of a comparison"
         )
 
-      // TODO: Compare lists, maps, possibly more
+      // TODO: Compare lists, possibly more
 
       // Not comparable
       case (other, _) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str, Type.Bool, Type.Number, Type.Duration, Type.LocalDateTime, Type.DateTime),
           actualValue = other,
-          context = "left-hand side of a comparision"
+          context = "left-hand side of a comparison"
         )
     }
   }
 
   /** A reflexive, transitive, symmetric ordering of all values (for `ORDER BY`)
+    *
+    * This order implements the conceptual model of "orderability and equivalence"
+    * outlined in the OpenCypher 9 spec.
     *
     * IMPORTANT: do not use this ordering in evaluating cypher expressions. In
     * expressions, you probably need [[partialOrder]]. This order explicitly
@@ -2384,11 +2412,14 @@ object Value {
       case (_, _: Expr.List) => -1
 
       // Maps comes next...
-      // TODO: we should be comparing keys in ascending order
       case (Expr.Map(m1), Expr.Map(m2)) =>
-        val comp = JavaInteger.compare(m1.size, m2.size)
-        if (comp != 0) comp
-        else JavaInteger.compare(m1.hashCode, m2.hashCode)
+        // Map orderability written to be consistent with other cypher systems, though underspecified in openCypher.
+        // See [[CypherEquality]] test suite for some examples
+        ((m1.view) zip (m2.view))
+          .map { case (entry1, entry2) => sortedMapEntryOrdering.compare(entry1, entry2) }
+          .dropWhile(_ == 0)
+          .headOption
+          .getOrElse(JavaInteger.compare(m1.size, m2.size))
       case (_: Expr.Map, _) => 1
       case (_, _: Expr.Map) => 1
 
@@ -2413,7 +2444,11 @@ object Value {
     }
   }
 
-  /** Ternary comparision
+  /** Ternary comparison
+    *
+    * This comparison implements the conceptual model of "equality"  outlined in
+    * the OpenCypher 9 spec. This is consistent with comparability (ie [[partialOrder]])
+    * but not necessarily with orderability or equivalence (ie [[ordering]])
     *
     * [[Expr.Null]] represents some undetermined value. This leads to a handful of
     * surprising identities:

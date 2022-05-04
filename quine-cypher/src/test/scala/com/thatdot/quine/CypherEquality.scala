@@ -1,8 +1,20 @@
 package com.thatdot.quine.compiler.cypher
 
-import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.graph.cypher.{Expr, Parameters, QueryContext, Value}
 
 class CypherEquality extends CypherHarness("cypher-equality-tests") {
+
+  /** Assert that a list of values (passed as a list literal) will ORDER BY into the
+    * [ascending] order given in expectedValues
+    */
+  def testOrdering(listLiteral: String, expectedValues: Seq[Value]): Unit =
+    testQuery(
+      s"UNWIND $listLiteral AS datum RETURN datum ORDER BY datum",
+      Vector("datum"),
+      expectedValues.map(Vector(_)),
+      expectedCannotFail = true,
+      ordered = true
+    )
 
   describe("`IN` list operator") {
     testExpression("1 IN null", Expr.Null)
@@ -134,10 +146,77 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression("n <> n", Expr.Null, expectedIsIdempotent = true, queryPreamble = "WITH null AS n RETURN ")
   }
 
-  describe("Lexicographic tring ordering") {
+  describe("Lexicographic string comparison") {
     testExpression("'hi' < 'hello'", Expr.False)
     testExpression("'ha' < 'hello'", Expr.True)
     testExpression("'he' < 'hello'", Expr.True)
     testExpression("'hellooooo' < 'hello'", Expr.False)
+  }
+
+  describe("Map comparison") {
+    testOrdering(
+      "[{a: 7}, {b: 1}, {a: 2}, {b: 1, c: 3}, {b: 'cello'}]",
+      Seq(
+        Expr.Map(Map("a" -> Expr.Integer(2))),
+        Expr.Map(Map("a" -> Expr.Integer(7))),
+        Expr.Map(Map("b" -> Expr.Str("cello"))),
+        Expr.Map(Map("b" -> Expr.Integer(1))),
+        Expr.Map(Map("b" -> Expr.Integer(1), "c" -> Expr.Integer(3)))
+      )
+    )
+
+    /** comparison with <, >, <=, >= on maps doesn't compile, but it can still come up when cypher's static analysis
+      * pass falls short -- and it's well (enough) defined, so let's test it!
+      */
+
+    it("{a: 7} > {a: 6, b: 7}") {
+      val gt = Expr.Greater(
+        Expr.Map(
+          Map(
+            "a" -> Expr.Integer(7)
+          )
+        ),
+        Expr.Map(
+          Map(
+            "a" -> Expr.Integer(6),
+            "b" -> Expr.Integer(7)
+          )
+        )
+      )
+      assert(gt.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.True)
+    }
+
+    it("{a: 'six'} < {a: 6}") {
+      val lt = Expr.Less(
+        Expr.Map(
+          Map(
+            "a" -> Expr.Str("six")
+          )
+        ),
+        Expr.Map(
+          Map(
+            "a" -> Expr.Integer(6)
+          )
+        )
+      )
+      assert(lt.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.True)
+    }
+
+    it("{a: 1} <= {a: 1, b: null} should return null") {
+      val lte = Expr.LessEqual(
+        Expr.Map(
+          Map(
+            "a" -> Expr.Integer(1)
+          )
+        ),
+        Expr.Map(
+          Map(
+            "a" -> Expr.Integer(1),
+            "b" -> Expr.Null
+          )
+        )
+      )
+      assert(lte.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.Null)
+    }
   }
 }

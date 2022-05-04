@@ -112,7 +112,7 @@ class CypherDates extends CypherHarness("cypher-dates-tests") {
     )
   }
 
-  describe("comparision") {
+  describe("comparison") {
     testExpression(
       "datetime({ epochSeconds: 798652800 }) = datetime({ epochSeconds: 798652800 })",
       Expr.True,
