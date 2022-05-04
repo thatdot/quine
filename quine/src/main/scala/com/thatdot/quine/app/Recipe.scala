@@ -121,7 +121,7 @@ object Recipe {
             hookUrl.subs
           ).map(PostToSlack(_, onlyPositiveMatchData, intervalSeconds))
         case StandingQueryResultOutputUserDef
-              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, executionGuarantee) =>
+              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
           (
             query.subs,
             andThen.traverse(_.subs)
@@ -132,7 +132,7 @@ object Recipe {
               parallelism,
               _,
               allowAllNodeScan,
-              executionGuarantee
+              shouldRetry
             )
           )
         case WriteToKinesis(

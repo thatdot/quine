@@ -41,7 +41,6 @@ import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
-import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.CypherQuery.ExecutionGuarantee
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
@@ -281,7 +280,7 @@ object StandingQueryResultOutput extends LazyLogging {
             }
           }
 
-      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, executionGuarantee) =>
+      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
         val compiledQuery @ cypher.CompiledQuery(_, queryAst, _, _, _) = compiler.cypher.compile(
           query,
           unfixedParameters = Seq(parameter)
@@ -294,11 +293,11 @@ object StandingQueryResultOutput extends LazyLogging {
             s"The provided query was: $query"
           )
         }
-        if (!queryAst.isIdempotent && executionGuarantee != ExecutionGuarantee.BestEffort) {
+        if (!queryAst.isIdempotent && shouldRetry) {
           logger.warn(
-            """Could not verify that the provided Cypher query is idempotent. If timeouts occur, query
-              |execution may be retried and duplicate data may be created. To avoid this,
-              |use the "Best Effort" Execution Guarantee.""".stripMargin
+            """Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
+              |occur, query execution may be retried and duplicate data may be created. To avoid this,
+              |set shouldRetry = false in the Standing Query output""".stripMargin
               .replace('\n', ' ')
           )
         }
@@ -341,10 +340,9 @@ object StandingQueryResultOutput extends LazyLogging {
             result => {
               val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap())
 
-              val cypherResultRows = executionGuarantee match {
-                case ExecutionGuarantee.BestEffort => compiledQuery.run(Map(parameter -> value))(graph).results
-                case ExecutionGuarantee.AtLeastOnce => atLeastOnceCypherQuery.stream(value)(graph)
-              }
+              val cypherResultRows =
+                if (shouldRetry) atLeastOnceCypherQuery.stream(value)(graph)
+                else compiledQuery.run(Map(parameter -> value))(graph).results
 
               cypherResultRows
                 .map { resultRow =>
