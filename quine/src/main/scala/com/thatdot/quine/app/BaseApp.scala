@@ -143,12 +143,13 @@ object BaseApp {
 
   /** Codec for UTF-8 strings */
   private val utf8Codec = new Codec[Array[Byte], String] {
-    private[this] val decoder = UTF_8.newDecoder()
-
     def encode(str: String): Array[Byte] = str.getBytes(UTF_8)
     def decode(bytes: Array[Byte]): Validated[String] = Validated.fromTry(Try {
-      val result = decoder.decode(ByteBuffer.wrap(bytes))
-      result.toString
+
+      /** Use a decoder object so that invalid data will result in a [caught] exception rather than silently being
+        * converted to replacement characters
+        */
+      UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString
     })
   }
 }
