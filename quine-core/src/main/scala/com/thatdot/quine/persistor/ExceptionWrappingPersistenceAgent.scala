@@ -34,7 +34,7 @@ case object GetAllMetaData extends PersistorCall
 class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
 class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(implicit ec: ExecutionContext)
-    extends PersistenceAgent {
+    extends WrappedPersistenceAgent(persistenceAgent) {
 
   protected def leftMap[A](f: Throwable => WrappedPersistorException, future: Future[A]): Future[A] = future.transform {
     case Success(value) => Success(value)
