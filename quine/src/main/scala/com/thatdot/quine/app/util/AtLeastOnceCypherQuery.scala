@@ -11,6 +11,7 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, ShardNotAvailableException, cypher}
+import com.thatdot.quine.persistor.WrappedPersistorException
 
 /** A Cypher query that will be retried until the entire query succeeds
   *
@@ -81,11 +82,15 @@ object AtLeastOnceCypherQuery {
     * Inspired by [[scala.util.control.NonFatal]]
     */
   object RetriableQueryFailure {
-    // A relayAsk-based protocol timed out, but might succeed when retried
     def unapply(e: Throwable): Option[Throwable] = e match {
+      // A relayAsk-based protocol timed out, but might succeed when retried
       case _: ExactlyOnceTimeoutException => Some(e)
-      case _: GraphNotReadyException => Some(e) // Graph is not currently ready, but may be in the future
-      case _: ShardNotAvailableException => Some(e) // Shard has dropped out (unavailable) but might be replaced
+      // Graph is not currently ready, but may be in the future
+      case _: GraphNotReadyException => Some(e)
+      // Shard has dropped out (unavailable) but might be replaced
+      case _: ShardNotAvailableException => Some(e)
+      // Some problem from the persistor. This can include ephemeral errors like timeouts, so conservatively retry
+      case _: WrappedPersistorException => Some(e)
       // Retriable failures related to StreamRefs:
       case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
       case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)
