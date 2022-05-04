@@ -11,7 +11,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AsyncFunSuite
 
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineValue}
-import com.thatdot.quine.persistor.{InMemoryPersistor, PersistenceAgent}
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor, PersistenceAgent}
 
 class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
@@ -25,6 +25,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
   implicit val graph: LiteralOpsGraph = Await.result(
     GraphService(
       "historical-query-tests",
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = makePersistor,
       idProvider = idProvider
     ),

@@ -124,10 +124,10 @@ abstract class PersistenceAgent extends StrictLogging {
     *
     * @param id    affected node
     * @param atTime when the event occurs
-    * @param event state change
+    * @param events event records to write
     * @return something that completes 'after' the write finishes
     */
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit]
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit]
 
   /** Fetch a time-ordered list of events affecting a node's state
     *
@@ -266,7 +266,7 @@ abstract class PersistenceAgent extends StrictLogging {
 /** Mix-in for persistors that don't save events (implements event related functions as no-ops) */
 trait NoJournalPersistenceAgent extends PersistenceAgent {
 
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future.unit
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future.unit
 
   override def getJournal(
     id: QuineId,

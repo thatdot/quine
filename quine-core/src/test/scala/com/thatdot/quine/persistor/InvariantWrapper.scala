@@ -24,15 +24,17 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
     if (events.isEmpty && snapshots.isEmpty) wrapped.emptyOfQuineData()
     else Future.successful(false)
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = {
-    val previous = events
-      .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeChangeEvent]())
-      .put(atTime, event)
-    assert(
-      (previous eq null) || (previous eq event),
-      s"Duplicate events at node id $id and time $atTime: $event & $previous"
-    )
-    wrapped.persistEvent(id, atTime, event)
+  def persistEvents(id: QuineId, eventsWithTime: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
+    for { NodeChangeEvent.WithTime(event, atTime) <- eventsWithTime } {
+      val previous = events
+        .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeChangeEvent]())
+        .put(atTime, event)
+      assert(
+        (previous eq null) || (previous eq event),
+        s"Duplicate events at node id $id and time $atTime: $event & $previous"
+      )
+    }
+    wrapped.persistEvents(id, eventsWithTime)
   }
 
   def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =

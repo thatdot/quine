@@ -17,7 +17,7 @@ import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection}
 import com.thatdot.quine.model._
-import com.thatdot.quine.persistor.PersistenceAgent
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent}
 
 class GraphService(
   val system: ActorSystem,
@@ -26,6 +26,7 @@ class GraphService(
   val shardCount: Int,
   val inMemorySoftNodeLimit: Option[Int],
   val inMemoryHardNodeLimit: Option[Int],
+  val effectOrder: EventEffectOrder,
   val declineSleepWhenWriteWithinMillis: Long,
   val declineSleepWhenAccessWithinMillis: Long,
   val labelsProperty: Symbol,
@@ -85,6 +86,7 @@ object GraphService {
     persistor: ActorSystem => PersistenceAgent,
     idProvider: QuineIdProvider,
     shardCount: Int = 4,
+    effectOrder: EventEffectOrder,
     inMemorySoftNodeLimit: Option[Int] = Some(50000),
     inMemoryHardNodeLimit: Option[Int] = Some(75000),
     declineSleepWhenWriteWithinMillis: Long = 100L,
@@ -124,6 +126,7 @@ object GraphService {
         shardCount,
         inMemorySoftNodeLimit,
         inMemoryHardNodeLimit,
+        effectOrder,
         declineSleepWhenWriteWithinMillis,
         declineSleepWhenAccessWithinMillis,
         labelsProperty,

@@ -125,6 +125,7 @@ object Main extends App with LazyLogging {
               shardCount = config.shardCount,
               inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
               inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
+              effectOrder = config.persistence.effectOrder,
               declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
               declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
               labelsProperty = Symbol(config.labelsProperty),

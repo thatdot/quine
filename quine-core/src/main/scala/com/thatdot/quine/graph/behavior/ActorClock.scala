@@ -65,7 +65,7 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
         )(context.system.dispatcher)
 
       // Pause message processing until system time has likely caught up to local actor millis
-      pauseMessageProcessingUntil(timeHasProbablyCaughtUp.future)
+      val _ = pauseMessageProcessingUntil(timeHasProbablyCaughtUp.future)
     } else {
       currentTime = currentTime.tick(
         mustAdvanceLogicalTime = eventOccurred,

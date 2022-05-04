@@ -29,8 +29,8 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         .traverse(getAgents)(_.emptyOfQuineData())
         .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))
 
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
-    getAgent(id).persistEvent(id, atTime, event)
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+    getAgent(id).persistEvents(id, events)
 
   override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
     getAgent(id).getJournal(id, startingAt, endingAt)

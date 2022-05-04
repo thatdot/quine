@@ -25,7 +25,7 @@ import com.thatdot.quine.graph.messaging.{
   ShardRef
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{EmptyPersistor, PersistenceAgent}
+import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PersistenceAgent}
 import com.thatdot.quine.util.{SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictLogging {
@@ -70,6 +70,11 @@ trait BaseGraph extends StrictLogging {
   val masterStream: MasterStream = new MasterStream(materializer)
 
   def ingestThrottleFlow[A]: Flow[A, A, NotUsed] = Flow.fromGraph(new ValveFlow[A](ingestValve))
+
+  /** Strategy for choosing whether to apply effects in memory before confirming write to persistence, or to write to
+    * persistence first, and then apply in-memory effects after on-disk storage succeeds.
+    */
+  def effectOrder: EventEffectOrder
 
   /** Nodes will decline sleep if the last write to the node occurred less than
     * this many milliseconds ago (according to the actor's clock).

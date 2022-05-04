@@ -42,8 +42,7 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
       case query: LoadCSV => interpretLoadCSV(query, context)
       case query: Union[Location.Anywhere @unchecked] => interpretUnion(query, context)
       case query: Or[Location.Anywhere @unchecked] => interpretOr(query, context)
-      case query: ValueHashJoin[Location.Anywhere @unchecked] =>
-        interpretValueHashJoin(query, context)
+      case query: ValueHashJoin[Location.Anywhere @unchecked] => interpretValueHashJoin(query, context)
       case query: SemiApply[Location.Anywhere @unchecked] => interpretSemiApply(query, context)
       case query: Apply[Location.Anywhere @unchecked] => interpretApply(query, context)
       case query: Optional[Location.Anywhere @unchecked] => interpretOptional(query, context)
@@ -54,10 +53,8 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
       case query: Top[Location.Anywhere @unchecked] => interpretTop(query, context)
       case query: Distinct[Location.Anywhere @unchecked] => interpretDistinct(query, context)
       case query: Unwind[Location.Anywhere @unchecked] => interpretUnwind(query, context)
-      case query: AdjustContext[Location.Anywhere @unchecked] =>
-        interpretAdjustContext(query, context)
-      case query: EagerAggregation[Location.Anywhere @unchecked] =>
-        interpretEagerAggregation(query, context)
+      case query: AdjustContext[Location.Anywhere @unchecked] => interpretAdjustContext(query, context)
+      case query: EagerAggregation[Location.Anywhere @unchecked] => interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
       case query: SubQuery[Location.Anywhere @unchecked] => interpretSubQuery(query, context)
@@ -134,8 +131,7 @@ trait OnNodeInterpreter
       case query: LoadCSV => interpretLoadCSV(query, context)
       case query: Union[Location.OnNode @unchecked] => interpretUnion(query, context)
       case query: Or[Location.OnNode @unchecked] => interpretOr(query, context)
-      case query: ValueHashJoin[Location.OnNode @unchecked] =>
-        interpretValueHashJoin(query, context)
+      case query: ValueHashJoin[Location.OnNode @unchecked] => interpretValueHashJoin(query, context)
       case query: SemiApply[Location.OnNode @unchecked] => interpretSemiApply(query, context)
       case query: Apply[Location.OnNode @unchecked] => interpretApply(query, context)
       case query: Optional[Location.OnNode @unchecked] => interpretOptional(query, context)
@@ -146,14 +142,12 @@ trait OnNodeInterpreter
       case query: Top[Location.OnNode @unchecked] => interpretTop(query, context)
       case query: Distinct[Location.OnNode @unchecked] => interpretDistinct(query, context)
       case query: Unwind[Location.OnNode @unchecked] => interpretUnwind(query, context)
-      case query: AdjustContext[Location.OnNode @unchecked] =>
-        interpretAdjustContext(query, context)
+      case query: AdjustContext[Location.OnNode @unchecked] => interpretAdjustContext(query, context)
       case query: SetProperty => interpretSetProperty(query, context)
       case query: SetProperties => interpretSetProperties(query, context)
       case query: SetEdge => interpretSetEdge(query, context)
       case query: SetLabels => interpretSetLabels(query, context)
-      case query: EagerAggregation[Location.OnNode @unchecked] =>
-        interpretEagerAggregation(query, context)
+      case query: EagerAggregation[Location.OnNode @unchecked] => interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
       case query: SubQuery[Location.OnNode @unchecked] => interpretSubQuery(query, context)
@@ -176,15 +170,13 @@ trait OnNodeInterpreter
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] =
-    if (query.canDirectlyTouchNode) {
-      Source
-        .lazyFutureSource[QueryContextResult, akka.NotUsed] { () =>
-          qidAtTime ? (QueryPackage(query, parameters, context, _))
-        }
-        .map(_.result)
-    } else {
-      interpret(query, context)
-    }
+    // TODO: This can be optimized by calling `interpret` here directly `if (!query.canDirectlyTouchNode)`, except
+    //       that it must be guaranteed to be run single-threaded on an actor while a message is being processed.
+    Source
+      .lazyFutureSource[QueryContextResult, akka.NotUsed] { () =>
+        qidAtTime ? (QueryPackage(query, parameters, context, _))
+      }
+      .map(_.result)
 
   final private[cypher] def interpretAnchoredEntry(
     query: AnchoredEntry,
@@ -449,7 +441,7 @@ trait OnNodeInterpreter
       case Some(expr) => PropertySet(query.key, PropertyValue(Expr.toQuineValue(expr.eval(context))))
     }
     Source
-      .future(processEvent(event))
+      .future(processEvents(event :: Nil))
       .map(_ => context)
   }
 
@@ -486,7 +478,7 @@ trait OnNodeInterpreter
     for ((key, value) <- map)
       eventsToProcess += PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
 
-    Source.future(Future.traverse(eventsToProcess.result())(processEvent(_)).map(_ => context))
+    Source.future(processEvents(eventsToProcess.result()).map(_ => context))
   }
 
   final private[quine] def interpretSetEdge(
@@ -508,7 +500,7 @@ trait OnNodeInterpreter
     // Add the half-edge locally
     val edge: HalfEdge = HalfEdge(query.label, query.direction, other)
     val event = if (query.add) EdgeAdded(edge) else EdgeRemoved(edge)
-    val setThisHalf = processEvent(event)
+    val setThisHalf = processEvents(event :: Nil)
 
     val newContext = query.bindRelation match {
       case None => context

@@ -11,7 +11,7 @@ import com.thatdot.quine.model.QuineId
 /** Reified version of persistor call for logging purposes
   */
 sealed abstract class PersistorCall
-case class PersistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent) extends PersistorCall
+case class PersistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]) extends PersistorCall
 case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
@@ -44,9 +44,9 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(impl
       Failure(wrapped)
   }
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = leftMap(
-    new WrappedPersistorException(PersistEvent(id, atTime, event), _),
-    persistenceAgent.persistEvent(id, atTime, event)
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = leftMap(
+    new WrappedPersistorException(PersistEvents(id, events), _),
+    persistenceAgent.persistEvents(id, events)
   )
 
   def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] = leftMap(

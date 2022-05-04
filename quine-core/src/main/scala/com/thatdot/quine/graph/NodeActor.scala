@@ -1,12 +1,13 @@
 package com.thatdot.quine.graph
 
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
 import scala.collection.compat._
 import scala.collection.mutable.{Map => MutableMap}
-import scala.compat.ExecutionContexts
 import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging}
@@ -23,8 +24,8 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
-import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceCodecs, PersistenceConfig}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceCodecs, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
@@ -32,7 +33,7 @@ import com.thatdot.quine.util.HexConversions
   * At most one [[NodeActor]] exists in the actor system ([[graph.system]]) per node per moment in
   * time (see [[atTime]]).
   *
-  * @param qid the ID that comprises this node's notion of nominal identity -- analogous to akka's ActorRef
+  * @param qidAtTime the ID that comprises this node's notion of nominal identity -- analogous to akka's ActorRef
   * @param graph a reference to the graph in which this node exists
   * @param costToSleep @see [[CostToSleep]]
   * @param wakefulState an atomic reference used like a variable to track the current lifecycle state of this node.
@@ -40,7 +41,9 @@ import com.thatdot.quine.util.HexConversions
   * @param actorRefLock a lock on this node's [[ActorRef]] used to hard-stop messages when sleeping the node (relayTell uses
   *                     tryReadLock during its tell, so if a write lock is held for a node's actor, no messages can be
   *                     sent to it)
-  * @param restoreAfterFailureSnapshotOpt
+  * @param restoreAfterFailureSnapshotOpt If a node snapshot failed to save when going to sleep, it is delivered back to
+  *                                       the node and used to restore the node in a wakeful state. This is defined as a
+  *                                       `var` so that it can be reassigned/released for garbage collection after use.
   */
 private[graph] class NodeActor(
   val qidAtTime: QuineIdAtTime,
@@ -126,82 +129,146 @@ private[graph] class NodeActor(
       updateUniversalCypherQueriesOnWake()
     }
 
-  protected def processEvent(
-    event: NodeChangeEvent,
-    atTimeOverride: Option[EventTime] = None
-  ): Future[Done.type] = {
-
-    // Prevent updates to historical times states
-    atTime match {
-      case None =>
-      case Some(t) => return Future.failed(IllegalHistoricalUpdate(event, qid, t))
-    }
-
-    // Does this event change anything in node state
-    val hasEffect = event match {
-      case PropertySet(propKey, propValue) =>
-        properties.get(propKey) match {
-          case None =>
-            metrics.nodePropertyCounter.increment(properties.size)
-            true
-          case Some(fp) => !fp.equals(propValue)
-        }
-
-      case PropertyRemoved(propKey, _) =>
-        if (properties.contains(propKey)) {
-          metrics.nodePropertyCounter.decrement(properties.size)
-          true
-        } else {
-          false
-        }
-
-      case EdgeAdded(edge) =>
-        if (!edges.contains(edge)) {
-          metrics.nodeEdgesCounter.increment(edges.size)
-          true
-        } else {
-          false
-        }
-
-      case EdgeRemoved(edge) =>
-        if (edges.contains(edge)) {
-          metrics.nodeEdgesCounter.decrement(edges.size)
-          true
-        } else {
-          false
-        }
-
-      case MergedIntoOther(_) => forwardTo.isEmpty
-      case MergedHere(other) => !mergedIntoHere.contains(other)
-    }
-    if (hasEffect) {
-      applyEvent(event)
-      // Pick the time at which this event occurred at
-      val occurredAt = atTimeOverride.getOrElse(nextEventTime())
-      latestUpdateAfterSnapshot = Some(occurredAt)
-      lastWriteMillis = latestEventTime().millis
-      val journalFuture = if (persistenceConfig.journalEnabled) {
-        metrics.persistorPersistEventTimer.time(persistor.persistEvent(qid, occurredAt, event))
-      } else Future.unit
-      val snapshotFuture = if (persistenceConfig.snapshotOnUpdate) {
-        val snapshot = toSnapshotBytes()
-        latestUpdateAfterSnapshot = None
-        metrics.snapshotSize.update(snapshot.length)
-        metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, occurredAt, snapshot))
-      } else Future.unit
-      val persistFuture = journalFuture.zip(snapshotFuture)
-      runPostActions(event)
-      persistFuture.map(_ => Done)(ExecutionContexts.parasitic)
-    } else Future.successful(Done)
+  /* Determine if this event causes a change to the respective state (defaults to this node's state) */
+  protected def hasEffect(event: NodeChangeEvent): Boolean = event match {
+    case PropertySet(key, value) => !properties.get(key).contains(value)
+    case PropertyRemoved(key, _) => properties.contains(key)
+    case EdgeAdded(edge) => !edges.contains(edge)
+    case EdgeRemoved(edge) => edges.contains(edge)
+    case MergedIntoOther(_) => forwardTo.isEmpty
+    case MergedHere(other) => !mergedIntoHere.contains(other)
   }
 
-  private[this] def applyEvent(event: NodeChangeEvent): Unit = {
-    event match {
+  /** Process multiple node events as a single unit, so their effects are applied in memory together, and also persisted
+    * together. Will check the incoming sequence for conflicting events (modifying the same value more than once), and
+    * keep only the last event, ensuring the provided collection is internally coherent.
+    */
+  protected def processEvents(
+    events: Seq[NodeChangeEvent],
+    atTimeOverride: Option[EventTime] = None
+  ): Future[Done.type] =
+    if (atTime.isDefined) Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
+    else if (atTimeOverride.isDefined && events.size > 1)
+      Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
+    else {
+      val dedupedEffectingEvents: Seq[NodeChangeEvent.WithTime] = {
+        if (events.size <= 1) events.map(NodeChangeEvent.WithTime(_, atTimeOverride.getOrElse(nextEventTime())))
+        else {
+          /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
+           * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
+           * but would result in no change when applied in order, then no change at all will be applied. e.g. if a
+           * property exists, and these events would remove it and set it back to its same value, then no change to the
+           * property will be recorded at all. Original event order is maintained. */
+          var es: Set[HalfEdge] = Set.empty
+          var ps: Set[Symbol] = Set.empty
+          var ft: Option[QuineId] = None
+          var mih: Set[QuineId] = Set.empty
+          events.reverse
+            .filter {
+              case e @ EdgeAdded(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
+              case e @ EdgeRemoved(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
+              case e @ PropertySet(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
+              case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
+              case e @ MergedIntoOther(id) => if (ft.isDefined) false else { ft = Some(id); hasEffect(e) }
+              case e @ MergedHere(o) => if (mih.contains(o)) false else { mih += o; hasEffect(e) }
+            }
+            .reverse
+            .map(e => WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
+          // TODO: It should be possible to do all this in only two passes over the collection with no reverses.
+        }
+      }
+
+      val persistAttempts = new AtomicInteger(1)
+      def persistEventsToJournal(): Future[Done.type] =
+        if (persistenceConfig.journalEnabled) {
+          metrics.persistorPersistEventTimer
+            .time(persistor.persistEvents(qid, dedupedEffectingEvents))
+            .transform(
+              _ =>
+                // TODO: add a metric to count `persistAttempts`
+                Done,
+              (e: Throwable) => {
+                val attemptCount = persistAttempts.getAndIncrement()
+                log.info(
+                  s"Retrying persistence from node: ${qid.pretty} with events: $dedupedEffectingEvents after: " +
+                  s"$attemptCount attempts, with error: $e"
+                )
+                e
+              }
+            )
+        } else Future.successful(Done)
+
+      (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
+        case (false, _) => Future.successful(Done)
+        case (true, EventEffectOrder.MemoryFirst) =>
+          applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event))
+          akka.pattern.retry(
+            () => persistEventsToJournal(),
+            Int.MaxValue,
+            1.millisecond,
+            10.seconds,
+            randomFactor = 0.1d
+          )(implicitly, context.system.scheduler)
+        case (true, EventEffectOrder.PersistorFirst) =>
+          pauseMessageProcessingUntil[Done.type](
+            persistEventsToJournal(),
+            {
+              case Success(_) =>
+                // Executed by this actor (which is not slept), in order before any other messages are processed.
+                applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event))
+              case Failure(e) =>
+                log.info(
+                  s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
+                  s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
+                )
+            }
+          ).map(_ => Done)
+      }
+    }
+
+  private[this] def snapshotOnUpdate(): Unit = if (persistenceConfig.snapshotOnUpdate) {
+    val snapshot = toSnapshotBytes()
+    val occurredAt: EventTime = nextEventTime()
+    metrics.snapshotSize.update(snapshot.length)
+    def persistSnapshot(): Future[Unit] =
+      metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, occurredAt, snapshot))
+    def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Done.type] =
+      f.recoverWith { case NonFatal(e) =>
+        logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
+        infinitePersisting(logFunc, persistSnapshot())
+      }.map(_ => Done)
+    graph.effectOrder match {
+      case EventEffectOrder.MemoryFirst =>
+        infinitePersisting(log.info)
+      case EventEffectOrder.PersistorFirst =>
+        // There's nothing sane to do if this fails; there's no query result to fail. Just retry forever and deadlock.
+        // The important intention here is to disallow any subsequent message (e.g. query) until the persist succeeds,
+        // and to disallow `runPostActions` until persistence succeeds.
+        val _ = pauseMessageProcessingUntil(infinitePersisting(log.warning))
+    }
+    latestUpdateAfterSnapshot = None
+  }
+
+  /** Apply the in-memory effects of the provided events.
+    *
+    * @param events a sequence of already-deduplicated events to apply in order
+    * @param shouldCauseSideEffects whether the application of these effects should cause additional side effects, such
+    *                               as Standing Query results and creation of a new snapshot (if applicable based on
+    *                               `quine.persistence` configuration). This value should be false when restoring
+    *                               events from a journal.
+    */
+  private[this] def applyEventsEffectsInMemory(
+    events: Seq[NodeChangeEvent],
+    shouldCauseSideEffects: Boolean = true
+  ): Unit = {
+    events.foreach {
       case PropertySet(propKey, propValue) =>
         properties = properties + (propKey -> propValue)
+        metrics.nodePropertyCounter.increment(properties.size)
 
       case PropertyRemoved(propKey, _) =>
         properties = properties - propKey
+        metrics.nodePropertyCounter.decrement(properties.size)
 
       case EdgeAdded(edge) =>
         // The more edges you get, the worse it is to sleep
@@ -213,37 +280,45 @@ private[graph] class NodeActor(
           log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
 
         edges += edge
+        metrics.nodeEdgesCounter.increment(edges.size)
 
       case EdgeRemoved(edge) =>
         edges -= edge
+        metrics.nodeEdgesCounter.decrement(edges.size)
 
       case MergedIntoOther(otherNode) =>
         forwardTo = Some(otherNode)
         edges.clear()
         properties = Map.empty
-        context.become(MergeNodeBehavior.mergedMessageHandling(this, graph, otherNode), discardOld = false)
+        context.become(
+          MergeNodeBehavior.mergedMessageHandling(this, graph, otherNode),
+          discardOld = false
+        )
 
       case MergedHere(otherNode) =>
         mergedIntoHere = mergedIntoHere + otherNode
     }
-    ()
-  }
 
-  /** Fast check for if a number is a power of 2 */
-  private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
+    if (shouldCauseSideEffects) { // `false` when restoring from journals
+      latestUpdateAfterSnapshot = Some(latestEventTime())
+      lastWriteMillis = latestEventTime().millis
+      snapshotOnUpdate()
+      runPostActions(events)
+    }
+  }
 
   /** Hook for registering some arbitrary action after processing a node event. Right now, all this
     * does is advance standing queries
     *
-    * @param event node event
+    * @param events ordered sequence of node events produced from a single message.
     */
-  private[this] def runPostActions(event: NodeChangeEvent): Unit =
-    event match {
+  private[this] def runPostActions(events: Seq[NodeChangeEvent]): Unit = events foreach { e =>
+    e match {
       case _: EdgeAdded | _: EdgeRemoved | _: PropertySet | _: PropertyRemoved =>
         // update standing queries
-        localEventIndex.standingQueriesWatchingNodeEvent(event).foreach {
+        localEventIndex.standingQueriesWatchingNodeEvent(e).foreach {
           case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
-            updateCypherSq(event, cypherSubscriber)
+            updateCypherSq(e, cypherSubscriber)
           case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, assumedEdge) =>
             // ensure that this node is subscribed to all other necessary nodes to continue processing the DGB
             ensureSubscriptionToDomainEdges(branch, assumedEdge, subscribers.getRelatedQueries(branch, assumedEdge))
@@ -251,8 +326,12 @@ private[graph] class NodeActor(
             // event
             subscribers.updateAnswerAndNotifySubscribers(branch, assumedEdge)
         }
-      case _ =>
+      case _ => ()
     }
+  }
+
+  /** Fast check for if a number is a power of 2 */
+  private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
 
   /** Load into the actor the state of the node at the specified time
     *
@@ -318,7 +397,9 @@ private[graph] class NodeActor(
         Future.successful(Map.empty)
 
     // Will defer all other message processing until the future is complete
-    pauseMessageProcessingUntil[((Snapshot, Journal), StandingQueryStates)](
+    // It is OK to ignore the returned future from `pauseMessageProcessingUntil` because nothing else happens during
+    // initialization of this actor. Future processing is deferred by `pauseMessageProcessingUntil`'s message stashing.
+    val _ = pauseMessageProcessingUntil[((Snapshot, Journal), StandingQueryStates)](
       snapshotAndJournal.zip(standingQueryStates),
       {
         case Success(
@@ -336,7 +417,7 @@ private[graph] class NodeActor(
             case Some(snapshotBytes) =>
               restoreFromSnapshotBytes(snapshotBytes)
           }
-          journalAfterSnapshot.foreach(applyEvent)
+          applyEventsEffectsInMemory(journalAfterSnapshot, shouldCauseSideEffects = false)
 
           // Update standing query state
           standingQueries = MutableMap.empty

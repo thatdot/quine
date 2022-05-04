@@ -78,33 +78,53 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   describe("persistEvent") {
     it("can record events at various time") {
       allOfConcurrent(
-        persistor.persistEvent(qid1, EventTime.fromRaw(34L), event0),
-        persistor.persistEvent(qid1, EventTime.fromRaw(36L), event1),
-        persistor.persistEvent(qid1, EventTime.fromRaw(38L), event2),
-        persistor.persistEvent(qid1, EventTime.fromRaw(40L), event3),
-        persistor.persistEvent(qid1, EventTime.fromRaw(44L), event4)
+        persistor.persistEvents(
+          qid1,
+          Seq(
+            NodeChangeEvent.WithTime(event0, EventTime.fromRaw(34L)),
+            NodeChangeEvent.WithTime(event1, EventTime.fromRaw(36L)),
+            NodeChangeEvent.WithTime(event2, EventTime.fromRaw(38L)),
+            NodeChangeEvent.WithTime(event3, EventTime.fromRaw(40L)),
+            NodeChangeEvent.WithTime(event4, EventTime.fromRaw(44L))
+          )
+        )
       )
     }
+  }
 
-    it("supports EventTime.MaxValue and EventTime.MinValue") {
-      allOfConcurrent(
-        // "minimum qid" (all 0 bits)
-        persistor.persistEvent(qid0, EventTime.MinValue, event0),
-        persistor.persistEvent(qid0, EventTime.fromRaw(2394872938L), event1),
-        persistor.persistEvent(qid0, EventTime.fromRaw(-129387432L), event2),
-        persistor.persistEvent(qid0, EventTime.MaxValue, event3),
-        // in between qid
-        persistor.persistEvent(qid2, EventTime.MinValue, event0),
-        persistor.persistEvent(qid2, EventTime.fromRaw(2394872938L), event1),
-        persistor.persistEvent(qid2, EventTime.fromRaw(-129387432L), event2),
-        persistor.persistEvent(qid2, EventTime.MaxValue, event3),
-        // "maximum qid" (all 1 bits)
-        persistor.persistEvent(qid4, EventTime.MinValue, event0),
-        persistor.persistEvent(qid4, EventTime.fromRaw(2394872938L), event1),
-        persistor.persistEvent(qid4, EventTime.fromRaw(-129387432L), event2),
-        persistor.persistEvent(qid4, EventTime.MaxValue, event3)
+  it("supports EventTime.MaxValue and EventTime.MinValue") {
+    allOfConcurrent(
+      // "minimum qid" (all 0 bits)
+      persistor.persistEvents(
+        qid0,
+        Seq(
+          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
+          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+        )
+      ),
+      // in between qid
+      persistor.persistEvents(
+        qid2,
+        Seq(
+          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
+          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+        )
+      ),
+      // "maximum qid" (all 1 bits)
+      persistor.persistEvents(
+        qid4,
+        Seq(
+          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
+          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+        )
       )
-    }
+    )
   }
 
   describe("getJournal") {

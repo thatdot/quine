@@ -40,8 +40,8 @@ class InMemoryPersistor(
       journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
     )
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = {
-    journals
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
+    for { NodeChangeEvent.WithTime(event, atTime) <- events } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit

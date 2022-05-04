@@ -26,7 +26,7 @@ import com.thatdot.quine.app.config.{
   PersistenceAgentType,
   WebServerConfig
 }
-import com.thatdot.quine.persistor.{PersistenceConfig, PersistenceSchedule}
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceConfig, PersistenceSchedule}
 
 object Config extends BaseConfig {
 
@@ -58,6 +58,9 @@ object Config extends BaseConfig {
 
   implicit val persistenceScheduleConvert: ConfigConvert[PersistenceSchedule] =
     deriveEnumerationConvert[PersistenceSchedule]
+
+  implicit val effectOrderConvert: ConfigConvert[EventEffectOrder] =
+    deriveEnumerationConvert[EventEffectOrder]
 
   // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
   implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =

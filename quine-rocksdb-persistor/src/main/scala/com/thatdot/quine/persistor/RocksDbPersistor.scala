@@ -204,6 +204,21 @@ final class RocksDbPersistor(
     finally dbLock.unlockRead(stamp)
   }
 
+  /** Write (synchronously) a key value pair into the column family
+    *
+    * @param columnFamily column family into which to write
+    * @param keyValues data yo
+    */
+  private[this] def putKeyValues(
+    columnFamily: ColumnFamilyHandle,
+    keyValues: Map[Array[Byte], Array[Byte]]
+  ): Unit = {
+    val stamp = dbLock.tryReadLock()
+    if (stamp == 0) throw new RocksDBUnavailableException()
+    try for { (key, value) <- keyValues } db.put(columnFamily, writeOpts, key, value)
+    finally dbLock.unlockRead(stamp)
+  }
+
   /** Remove (synchronously) a key from the column family
     *
     * @param columnFamily column family from which to remove
@@ -255,9 +270,13 @@ final class RocksDbPersistor(
     }(ioDispatcher)
   }
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future {
-    val eventBytes = PersistenceCodecs.eventFormat.write(event)
-    putKeyValue(journalsCF, qidAndTime2Key(id, atTime), eventBytes)
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
+    val serializedEvents =
+      for { NodeChangeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
+        id,
+        atTime
+      ) -> PersistenceCodecs.eventFormat.write(event)
+    putKeyValues(journalsCF, serializedEvents toMap)
   }
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] = Future {

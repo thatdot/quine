@@ -13,7 +13,7 @@ import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, QuineUUIDProvider}
 import com.thatdot.quine.model.QuineValue
-import com.thatdot.quine.persistor.InMemoryPersistor
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
 class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfterAll {
 
@@ -22,6 +22,7 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
   implicit val graph: LiteralOpsGraph = Await.result(
     GraphService(
       graphName,
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = _ => InMemoryPersistor.empty,
       idProvider = idProv
     ),

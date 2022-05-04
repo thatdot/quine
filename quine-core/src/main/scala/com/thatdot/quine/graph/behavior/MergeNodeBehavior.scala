@@ -28,22 +28,22 @@ trait MergeNodeBehavior extends Actor with BaseNodeActor with QuineIdOps with Qu
         val edgeSet = edges.toSet
         otherNode ! MergeAdd(properties, edgeSet, MergeAddContext(qid, otherNode))
         edgeSet.foreach(e => e.other ! RedirectEdges(qid, otherNode))
-        processEvent(MergedIntoOther(otherNode))
-      }
-      msg ?! Future.successful(Done)
+        // Todo: make both of those ^^ asks
+        msg ?! processEvents(MergedIntoOther(otherNode) :: Nil)
+      } else msg ?! Future.successful(Done)
 
     case MergeAdd(ps, es, cntxt) =>
-      processEvent(MergedHere(cntxt.mergedFrom))
-      ps.foreach { case (k, v) => processEvent(PropertySet(k, v)) }
-      es.foreach(e => processEvent(EdgeAdded(e)))
-    // TODO: Consider whether these events should be processed in bulk. See old `MergeAdd` for example.
+      val _ = processEvents(
+        ps.map { case (k, v) => PropertySet(k, v) }.toList ++
+        es.map(e => EdgeAdded(e)).toList :+
+        MergedHere(cntxt.mergedFrom)
+      )
 
     case RedirectEdges(from, to) =>
       val oldEdges = edges.matching(from).toVector
       val newEdges = oldEdges.map(_.copy(other = to))
       val eventList = oldEdges.map(e => EdgeRemoved(e)) ++ newEdges.map(e => EdgeAdded(e))
-      eventList.foreach(processEvent(_))
-    // TODO: Consider whether these events should be processed in bulk. See old `RedirectEdges` for example.
+      val _ = processEvents(eventList)
   }
 }
 
@@ -54,7 +54,7 @@ object MergeNodeBehavior extends LazyLogging {
     thisNodeActor: BaseNodeActor,
     graph: BaseGraph,
     mergedIntoOther: QuineId
-  ) = {
+  ): Unit = {
     thisNodeActor.context.unbecome()
     thisNodeActor.receive(msg)
     thisNodeActor.context.become(this.mergedMessageHandling(thisNodeActor, graph, mergedIntoOther), discardOld = false)

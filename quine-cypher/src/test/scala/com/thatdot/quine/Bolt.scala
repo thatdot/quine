@@ -15,7 +15,7 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.bolt.Protocol
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, QuineIdLongProvider}
-import com.thatdot.quine.persistor.InMemoryPersistor
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 import com.thatdot.quine.util.HexConversions
 
 class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
@@ -25,6 +25,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   implicit val graph: CypherOpsGraph = Await.result(
     GraphService(
       "bolt-protocol-test-system",
+      effectOrder = EventEffectOrder.MemoryFirst,
       persistor = _ => InMemoryPersistor.empty,
       idProvider = QuineIdLongProvider()
     ),

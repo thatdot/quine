@@ -33,9 +33,9 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
       }
       c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
 
-    case a @ AddHalfEdgeCommand(he, _) => a ?! processEvent(EdgeAdded(he))
+    case a @ AddHalfEdgeCommand(he, _) => a ?! processEvents(EdgeAdded(he) :: Nil)
 
-    case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEvent(EdgeRemoved(he))
+    case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEvents(EdgeRemoved(he) :: Nil)
 
     case g @ GetPropertiesCommand(_) =>
       val a = Source((properties - graph.labelsProperty).map({ case (key, value) =>
@@ -52,33 +52,29 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
       val b = Source(edges.all.toList).map(e => PropertyOrEdgeMessage(Right(e)))
       r ?! (a concat b)
 
-    case s @ SetPropertyCommand(key, value, _) => s ?! processEvent(PropertySet(key, value))
+    case s @ SetPropertyCommand(key, value, _) => s ?! processEvents(PropertySet(key, value) :: Nil)
 
     case r @ RemovePropertyCommand(key, _) =>
       r ?! properties.get(key).fold(Future.successful(Done)) { value =>
-        processEvent(PropertyRemoved(key, value))
+        processEvents(PropertyRemoved(key, value) :: Nil)
       }
 
-    case d @ DeleteNodeCommand(deleteEdges, _) =>
+    case d @ DeleteNodeCommand(shouldDeleteEdges, _) =>
       implicit val ec = context.dispatcher
       implicit val timeout = Timeout(5 seconds)
 
-      if (!deleteEdges && edges.nonEmpty) {
+      if (!shouldDeleteEdges && edges.nonEmpty) {
         d ?! Future.successful(DeleteNodeCommand.Failed(edges.size))
       } else {
-
-        // Clear edges, properties, and property collections
-        val edgesRemoved = Future.traverse(edges.all) { (halfEdge: HalfEdge) =>
-          val thisHalfRemoved = processEvent(EdgeRemoved(halfEdge))
-          val otherHalfRemoved = halfEdge.other ? (RemoveHalfEdgeCommand(halfEdge.reflect(qid), _))
-          thisHalfRemoved.zip(otherHalfRemoved)
-        }
-        val propertiesRemoved = Future.traverse(properties.toSeq) { case (key, value) =>
-          processEvent(PropertyRemoved(key, value))
-        }
-
+        // Clear properties, half edges, and request removal of the reciprocal half edges.
+        val propertyRemovalEvents = properties.map { case (k, v) => PropertyRemoved(k, v) }
+        val edgeRemovalEvents = edges.all.map(EdgeRemoved).toSeq
+        val otherSidesRemoved =
+          edgeRemovalEvents.map(ev => ev.edge.other.?(RemoveHalfEdgeCommand(ev.edge.reflect(qid), _)).flatten)
         // Confirmation future completes when every bit of the removal is done
-        d ?! (edgesRemoved zip propertiesRemoved).map(_ => DeleteNodeCommand.Success)
+        d ?! processEvents(edgeRemovalEvents ++ propertyRemovalEvents).flatMap(_ =>
+          Future.sequence(otherSidesRemoved).map(_ => DeleteNodeCommand.Success)
+        )
       }
 
     case MergeIntoNodeCommand(other, replyTo) => self ! MergeIntoNode(other, replyTo)
@@ -89,11 +85,11 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
       i ?! (properties.get(propKey).map(_.deserialized) match {
         case None =>
           val newValue = PropertyValue(QuineValue.Integer(incAmount))
-          processEvent(PropertySet(propKey, newValue))
+          processEvents(PropertySet(propKey, newValue) :: Nil)
           IncrementProperty.Success(incAmount)
         case Some(Success(QuineValue.Integer(i))) =>
           val newValue = PropertyValue(QuineValue.Integer(i + incAmount))
-          processEvent(PropertySet(propKey, newValue))
+          processEvents(PropertySet(propKey, newValue) :: Nil)
           IncrementProperty.Success(i + incAmount)
         case Some(Success(other)) => IncrementProperty.Failed(other)
         case _ => IncrementProperty.Failed(QuineValue.Null)

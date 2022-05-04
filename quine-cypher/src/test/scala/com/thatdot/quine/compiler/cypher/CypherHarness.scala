@@ -15,7 +15,7 @@ import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.CompiledQuery
-import com.thatdot.quine.persistor.InMemoryPersistor
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
 class CypherHarness(graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
 
@@ -26,6 +26,7 @@ class CypherHarness(graphName: String) extends AsyncFunSpec with BeforeAndAfterA
   implicit val graph: GraphService = Await.result(
     GraphService(
       graphName,
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = _ => InMemoryPersistor.empty,
       idProvider = QuineIdLongProvider()
     ),

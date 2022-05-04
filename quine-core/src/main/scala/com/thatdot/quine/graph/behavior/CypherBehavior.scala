@@ -21,7 +21,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
     case qp @ QueryPackage(query, parameters, qc, _) =>
       qp ?! interpret(query, qc)(parameters)
         .mapMaterializedValue(_ => NotUsed)
-        .map(QueryContextResult(_))
+        .map(QueryContextResult)
     case ce @ CheckOtherHalfEdge(halfEdge, action, query, parameters, qc, _) =>
       action match {
         // Check for edge
@@ -29,20 +29,20 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         case None => ce ?! Source.empty
         // Add edge
         case Some(true) =>
-          val edgeAdded = processEvent(EdgeAdded(halfEdge))
+          val edgeAdded = processEvents(EdgeAdded(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
             .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContexts.parasitic))
-            .map(QueryContextResult(_))
+            .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
 
         // Remove edge
         case Some(false) =>
-          val edgeRemoved = processEvent(EdgeRemoved(halfEdge))
+          val edgeRemoved = processEvents(EdgeRemoved(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
             .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContexts.parasitic))
-            .map(QueryContextResult(_))
+            .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
       }
   }

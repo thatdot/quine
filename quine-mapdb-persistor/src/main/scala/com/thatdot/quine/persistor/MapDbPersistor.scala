@@ -140,14 +140,14 @@ final class MapDbPersistor(
       journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
     )(ioDispatcher)
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future {
-    val serializedEvent = PersistenceCodecs.eventFormat.write(event)
-    nodeEventSize.update(serializedEvent.size)
-    nodeEventTotalSize.inc(serializedEvent.size.toLong)
-    val _ = journals.put(
-      Array[AnyRef](id.array, Long.box(atTime.eventTime)),
-      serializedEvent
-    )
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
+    val eventsMap = for { NodeChangeEvent.WithTime(event, atTime) <- events } yield {
+      val serializedEvent = PersistenceCodecs.eventFormat.write(event)
+      nodeEventSize.update(serializedEvent.size)
+      nodeEventTotalSize.inc(serializedEvent.size.toLong)
+      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+    }
+    val _ = journals.putAll((eventsMap toMap).asJava)
   }.recoverWith { case e =>
     logger.error("persistEvent failed.", e); Future.failed(e)
   }

@@ -92,9 +92,9 @@ class BloomFilteredPersistor(
     noBloomFilter.zipWith(noOtherData)(_ && _)(ec)
   }
 
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = {
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
     bloomFilter.put(id)
-    wrappedPersistor.persistEvent(id, atTime, event)
+    wrappedPersistor.persistEvents(id, events)
   }
 
   override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =

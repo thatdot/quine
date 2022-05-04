@@ -30,8 +30,10 @@ import com.datastax.oss.driver.api.core.`type`.codec.ExtraTypeCodecs.BLOB_TO_ARR
 import com.datastax.oss.driver.api.core.`type`.codec.{MappingCodec, PrimitiveLongCodec, TypeCodec, TypeCodecs}
 import com.datastax.oss.driver.api.core.`type`.reflect.GenericType
 import com.datastax.oss.driver.api.core.cql.{
+  BatchStatement,
   BoundStatement,
   BoundStatementBuilder,
+  DefaultBatchType,
   PreparedStatement,
   Row,
   SimpleStatement,
@@ -293,12 +295,17 @@ class Journals(
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get)
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     executeFuture(
-      insert.bindColumns(
-        quineIdColumn.set(id),
-        timestampColumn.set(atTime),
-        dataColumn.set(event)
+      BatchStatement.newInstance(
+        DefaultBatchType.UNLOGGED,
+        events map { case NodeChangeEvent.WithTime(event, atTime) =>
+          insert.bindColumns(
+            quineIdColumn.set(id),
+            timestampColumn.set(atTime),
+            dataColumn.set(event)
+          )
+        }: _*
       )
     )
 
@@ -993,8 +1000,8 @@ class CassandraPersistor(
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = snapshots.enumerateAllNodeIds()
 
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
-    journals.persistEvent(id, atTime, event)
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+    journals.persistEvents(id, events)
 
   override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
     journals.getJournal(id, startingAt, endingAt)
