@@ -187,7 +187,7 @@ object Main extends App with LazyLogging {
           )
         case Failure(cause) =>
           statusLines.warn(
-            "Failed to load application state. This is most likely due to a failure" +
+            "Failed to load application state. This is most likely due to a failure " +
             "in the persistence backend",
             cause
           )
