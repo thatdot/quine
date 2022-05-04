@@ -263,6 +263,78 @@ abstract class PersistenceAgent extends StrictLogging {
   def persistenceConfig: PersistenceConfig
 }
 
+object MultipartSnapshotPersistenceAgent {
+  case class MultipartSnapshot(time: EventTime, parts: Seq[MultipartSnapshotPart])
+  case class MultipartSnapshotPart(partBytes: Array[Byte], multipartIndex: Int, multipartCount: Int)
+}
+
+/** Mixin for [[PersistenceAgent]] that stores snapshot blobs as smaller multi-part blobs.
+  * Because this makes snapshot writes non-atomic, it is possible only part of a snapshot will be
+  * successfully written. Therefore, when a snapshot is read, the snapshot's integrity is checked.
+  */
+trait MultipartSnapshotPersistenceAgent {
+  this: PersistenceAgent =>
+
+  import MultipartSnapshotPersistenceAgent._
+
+  val multipartSnapshotExecutionContext: ExecutionContext
+  val snapshotPartMaxSizeBytes: Int
+
+  def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = {
+    val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
+    val partCount = parts.length
+    if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node $id with $partCount parts")
+    implicit val ec = multipartSnapshotExecutionContext
+    (Future sequence {
+      for {
+        (partBytes, partIndex) <- parts.zipWithIndex
+        multipartSnapshotPart = MultipartSnapshotPart(partBytes, partIndex, partCount)
+      } yield persistSnapshotPart(id, atTime, multipartSnapshotPart)
+    }).map(_ => ())(ExecutionContexts.parasitic)
+  }
+
+  def getLatestSnapshot(
+    id: QuineId,
+    upToTime: EventTime
+  ): Future[Option[(EventTime, Array[Byte])]] = {
+    implicit val ec = multipartSnapshotExecutionContext
+    getLatestMultipartSnapshot(id, upToTime) flatMap {
+      case Some(MultipartSnapshot(time, parts)) =>
+        if (validateSnapshotParts(parts))
+          Future.successful(Some((time, parts.flatMap(_.partBytes).toArray)))
+        else {
+          logger.warn(s"Failed reading multipart snapshot for id $id upToTime: $upToTime; retrying with time: $time")
+          getLatestSnapshot(id, time)
+        }
+      case None =>
+        Future.successful(None)
+    }
+  }
+
+  private def validateSnapshotParts(parts: Seq[MultipartSnapshotPart]): Boolean = {
+    val partsLength = parts.length
+    var result = true
+    for { (part @ MultipartSnapshotPart(_, multipartIndex, multipartCount), partIndex) <- parts.zipWithIndex } {
+      if (multipartIndex != partIndex) {
+        logger.warn(s"Snapshot part $part has unexpected index $multipartIndex (expected $partIndex)")
+        result = false
+      }
+      if (multipartCount != partsLength) {
+        logger.warn(s"Snapshot part $part has unexpected count $multipartCount (expected $partsLength)")
+        result = false
+      }
+    }
+    result
+  }
+
+  def persistSnapshotPart(id: QuineId, atTime: EventTime, part: MultipartSnapshotPart): Future[Unit]
+
+  def getLatestMultipartSnapshot(
+    id: QuineId,
+    upToTime: EventTime
+  ): Future[Option[MultipartSnapshot]]
+}
+
 /** Mix-in for persistors that don't save events (implements event related functions as no-ops) */
 trait NoJournalPersistenceAgent extends PersistenceAgent {
 

@@ -144,7 +144,8 @@ object PersistenceAgentType {
     selectTimeout: FiniteDuration = 10.seconds,
     shouldCreateTables: Boolean = true,
     shouldCreateKeyspace: Boolean = true,
-    bloomFilterSize: Option[Long] = None
+    bloomFilterSize: Option[Long] = None,
+    snapshotPartMaxSizeBytes: Int = 1000000
   ) extends PersistenceAgentType {
     def isLocal: Boolean = false
 
@@ -161,7 +162,8 @@ object PersistenceAgentType {
         selectTimeout,
         shouldCreateTables,
         shouldCreateKeyspace,
-        Some(Metrics)
+        Some(Metrics),
+        snapshotPartMaxSizeBytes
       )
       BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, db, persistenceConfig)
     }

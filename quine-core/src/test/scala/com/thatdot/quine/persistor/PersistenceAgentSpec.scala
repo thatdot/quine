@@ -47,7 +47,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   val event4: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(4L)))
 
   // arbitary byte arrays
-  val snapshot0: Array[Byte] = Array[Byte]()
+  val snapshot0: Array[Byte] = Array[Byte](1)
   val snapshot1: Array[Byte] = Array[Byte](-87, 60, 83, 99)
   val snapshot2: Array[Byte] = Array[Byte](11)
   val snapshot3: Array[Byte] = Array[Byte](89, -71, 2)

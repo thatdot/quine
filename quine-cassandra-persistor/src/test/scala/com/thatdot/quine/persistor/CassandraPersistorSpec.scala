@@ -64,7 +64,8 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
         selectTimeout = 10.seconds,
         shouldCreateTables = true,
         shouldCreateKeyspace = true,
-        metricRegistry = None
+        metricRegistry = None,
+        snapshotPartMaxSizeBytes = 1000
       )
     } else {
       EmptyPersistor
