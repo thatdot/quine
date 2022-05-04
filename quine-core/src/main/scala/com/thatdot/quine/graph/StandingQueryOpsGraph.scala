@@ -132,6 +132,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
     rsqAndOutputs
   }
 
+  /** Start a standing query that will be registered on all nodes awoken in the graph
+    *
+    * INV: This will never throw [[GraphNotReadyException]], because it is used as part of readying a graph
+    */
   protected def startStandingQuery(
     sqId: StandingQueryId,
     name: String,

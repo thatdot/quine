@@ -4,7 +4,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 
 import scala.collection.concurrent
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
@@ -45,6 +46,23 @@ class GraphService(
 
   val runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
     new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
+
+  /** asynchronous construction effect: load Standing Queries from the persistor
+    */
+  Await.result(
+    persistor.getStandingQueries.map(_.foreach { (sq: StandingQuery) =>
+      startStandingQuery(
+        sqId = sq.id,
+        name = sq.name,
+        pattern = sq.query,
+        outputs = Map.empty,
+        queueBackpressureThreshold = sq.queueBackpressureThreshold,
+        queueMaxSize = sq.queueMaxSize
+      )
+      logger.info(s"Restored standing query: ${sq.name}")
+    }),
+    10 seconds
+  )
 
   /* By initializing this last, it will be `false` during the construction and only true
    * once object construction finishes
