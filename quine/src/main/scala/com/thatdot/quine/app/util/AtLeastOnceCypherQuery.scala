@@ -10,7 +10,7 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, ShardNotAvailableException, cypher}
 
 /** A Cypher query that will be retried until the entire query succeeds
   *
@@ -59,7 +59,7 @@ final case class AtLeastOnceCypherQuery(
       .recoverWithRetries(
         attempts = -1, // retry forever, relying on the relayAsk (used in the Cypher interpreter) to slow down attempts
         { case RetriableQueryFailure(e) =>
-          logger.info(
+          logger.debug(
             s"""Suppressed ${e.getClass.getSimpleName} during execution of $queryKind query, retrying now.
                |Ingested item: $value. Query: "${query.queryText}". Suppressed exception:
                |${e.getMessage}"""".stripMargin.replace('\n', ' ')
@@ -72,21 +72,21 @@ final case class AtLeastOnceCypherQuery(
 object AtLeastOnceCypherQuery {
 
   /** Helper to recognize errors that can be caught and retried during query execution (for example, errors that could
-    * occur as a result of cluster topology changing, or GC pauses)
+    * occur as a result of graph topology changing, or GC pauses)
     *
-    * These exceptions should include any that can occur as the result of cluster latency (eg temporary network
-    * failures), but should not include any exceptions that will always get thrown on subsequent retries (eg
+    * These exceptions should include any that can occur as the result of network latency or temporary network
+    * failures, but should not include any exceptions that will always get thrown on subsequent retries (e.g.
     * deserialization errors)
     *
     * Inspired by [[scala.util.control.NonFatal]]
     */
   object RetriableQueryFailure {
+    // A relayAsk-based protocol timed out, but might succeed when retried
     def unapply(e: Throwable): Option[Throwable] = e match {
-      // A relayAsk-based protocol timed out, but might succeed when retried
       case _: ExactlyOnceTimeoutException => Some(e)
-      // Graph is not currently ready, but may be in the future
-      case _: GraphNotReadyException => Some(e)
-      // Retriable failures related to StreamRefs
+      case _: GraphNotReadyException => Some(e) // Graph is not currently ready, but may be in the future
+      case _: ShardNotAvailableException => Some(e) // Shard has dropped out (unavailable) but might be replaced
+      // Retriable failures related to StreamRefs:
       case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
       case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)
       case _: akka.stream.InvalidSequenceNumberException => Some(e)

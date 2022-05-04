@@ -225,6 +225,21 @@ package object ingest extends StrictLogging {
           meter,
           IngestSrcExecToken("STDIN")
         )
+      case NumberIteratorIngest(format, startAt, ingestLimit, throttlePerSecond, parallelism) =>
+        val charSet = StandardCharsets.UTF_8
+        ingestFromSource(
+          initialSwitchMode,
+          format,
+          Source.unfold(startAt)(l => Some(l + 1 -> ByteString(l.toString + "\n"))),
+          charSet.name(),
+          parallelism,
+          1000,
+          0,
+          ingestLimit,
+          throttlePerSecond,
+          meter,
+          IngestSrcExecToken("NumberIterator")
+        )
     }
 
   /* Identify by name the character set that should be assumed, along with a possible

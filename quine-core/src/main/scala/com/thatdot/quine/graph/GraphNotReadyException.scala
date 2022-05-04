@@ -12,3 +12,5 @@ class GraphNotReadyException extends IllegalStateException() {
   override def getMessage: String =
     s"Graph not ready at time $atTime"
 }
+
+class ShardNotAvailableException(msg: String) extends NoSuchElementException(msg)

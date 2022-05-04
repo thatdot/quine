@@ -282,22 +282,8 @@ object Recipe {
               fileIngestMode
             )
           )
-        case StandardInputIngest(
-              format,
-              encoding,
-              parallelism,
-              maximumLineSize,
-              maximumPerSecond
-            ) =>
-          Validated.valid(
-            StandardInputIngest(
-              format,
-              encoding,
-              parallelism,
-              maximumLineSize,
-              maximumPerSecond
-            )
-          )
+        case i: StandardInputIngest => Validated.valid(i)
+        case i: NumberIteratorIngest => Validated.valid(i)
       }
     }
 
