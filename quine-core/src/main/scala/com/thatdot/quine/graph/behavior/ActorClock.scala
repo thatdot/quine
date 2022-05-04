@@ -23,7 +23,7 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
   final protected def nextEventTime(): EventTime = {
     eventOccurred = true
     val current = currentTime
-    currentTime = currentTime.nextEventTime
+    currentTime = currentTime.nextEventTime(Some(log))
     current
   }
 
@@ -43,7 +43,10 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
 
     // Time has gone backwards! Pause message processing until it is caught up
     if (systemMillis < previousMillis) {
-      log.warning(
+      // Some systems will frequently report a clock going back several milliseconds, and Quine can handle this without
+      // intervention, so log only at INFO level. If this message was due to an overflow, a warning will have already
+      // been logged by EventTime
+      log.info(
         "No more operations are available on node: {} during the millisecond: {}  This can occur because of high traffic to a single node (which will slow the stream slightly), or because the system clock has moved backwards. Previous time record was: {}",
         idProvider.customIdFromQid(qid).getOrElse(qid),
         systemMillis,

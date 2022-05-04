@@ -292,7 +292,7 @@ private[graph] class NodeActor(
       journalAfterSnapshot <-
         if (persistenceConfig.journalEnabled) {
           val startingAt = latestSnapshotOpt match {
-            case Some((snapshotTime, _)) => snapshotTime.nextEventTime
+            case Some((snapshotTime, _)) => snapshotTime.nextEventTime(Some(log))
             case None => EventTime.MinValue
           }
           val endingAt = untilOpt match {
