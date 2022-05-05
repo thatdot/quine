@@ -60,8 +60,8 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
           List(new InetSocketAddress(settings.getAddress, settings.getPort))
         },
         localDatacenter = "datacenter1",
-        insertTimeout = 10.seconds,
-        selectTimeout = 10.seconds,
+        writeTimeout = 10.seconds,
+        readTimeout = 10.seconds,
         shouldCreateTables = true,
         shouldCreateKeyspace = true,
         metricRegistry = None,

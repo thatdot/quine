@@ -937,8 +937,8 @@ class MetaData(
   * @param replicationFactor
   * @param readConsistency
   * @param writeConsistency
-  * @param insertTimeout How long to wait for a response when running an INSERT statement.
-  * @param selectTimeout How long to wait for a response when running a SELECT statement.
+  * @param writeTimeout How long to wait for a response when running an INSERT statement.
+  * @param readTimeout How long to wait for a response when running a SELECT statement.
   * @param endpoints address(s) (host and port) of the Cassandra cluster to connect to.
   * @param localDatacenter If endpoints are specified, this argument is required. Default value on a new Cassandra install is 'datacenter1'.
   * @param shouldCreateTables Whether or not to create the required tables if they don't already exist.
@@ -952,8 +952,8 @@ class CassandraPersistor(
   writeConsistency: ConsistencyLevel,
   endpoints: List[InetSocketAddress],
   localDatacenter: String,
-  insertTimeout: FiniteDuration,
-  selectTimeout: FiniteDuration,
+  writeTimeout: FiniteDuration,
+  readTimeout: FiniteDuration,
   shouldCreateTables: Boolean,
   shouldCreateKeyspace: Boolean,
   metricRegistry: Option[MetricRegistry],
@@ -1009,25 +1009,25 @@ class CassandraPersistor(
 
   private val (journals, snapshots, standingQueries, standingQueryStates, metaData) = Await.result(
     (
-      Journals.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables),
-      Snapshots.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables),
+      Journals.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
+      Snapshots.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
       StandingQueries.create(
         session,
         readConsistency,
         writeConsistency,
-        insertTimeout,
-        selectTimeout,
+        writeTimeout,
+        readTimeout,
         shouldCreateTables
       ),
       StandingQueryStates.create(
         session,
         readConsistency,
         writeConsistency,
-        insertTimeout,
-        selectTimeout,
+        writeTimeout,
+        readTimeout,
         shouldCreateTables
       ),
-      MetaData.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables)
+      MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables)
     ).tupled,
     5.seconds
   )
