@@ -29,7 +29,7 @@ object QuineSettings {
       "-unchecked",
       "-deprecation",
       "-release",
-      "8"
+      "11"
     ),
     autoAPIMappings := true,
     scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
@@ -54,7 +54,7 @@ object QuineSettings {
       case _ =>
         Seq.empty
     }),
-    javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+    javacOptions ++= Seq("--release", "11")
   )
 
   /* Settings for building a Scala.js/React webapp using Slinky
