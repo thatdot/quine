@@ -6,7 +6,7 @@ import java.util.concurrent.TimeoutException
 import scala.collection.concurrent
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.DurationLong
-import scala.util.{Failure, Try}
+import scala.util.Failure
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
@@ -87,6 +87,7 @@ case object resolveCalls extends StatementRewriter {
     IncrementCounter,
     CypherLogging,
     CypherDebugNode,
+    CypherDebugSleep,
     ReifyTime
   )
 
@@ -518,28 +519,16 @@ object CypherDebugNode extends UserDefinedProcedure {
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
-
     implicit val idProv: QuineIdProvider = graph.idProvider
-    object ValueQid {
-      def unapply(value: Value): Option[QuineId] = for {
-        quineValue <- Try(Expr.toQuineValue(value)).toOption
-        quineId <- idProv.valueToQid(quineValue)
-      } yield quineId
-    }
-    object StrQid {
-      def unapply(value: Value): Option[QuineId] = value match {
-        case Expr.Str(strId) => idProv.qidFromPrettyString(strId).toOption
-        case _ => None
-      }
-    }
 
     val node: QuineId = arguments match {
-      case Seq(Expr.Node(qid, _, _)) => qid
-      case Seq(Expr.Bytes(id, _)) => QuineId(id)
-      case Seq(ValueQid(qid)) => qid
-      case Seq(StrQid(qid)) => qid
-      case Seq(other) =>
-        throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $other")
+      case Seq(nodeLike) =>
+        UserDefinedProcedure.extractQuineId(nodeLike) match {
+          case None =>
+            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
+          case Some(qid) =>
+            qid
+        }
       case other =>
         throw wrongSignature(other)
     }
@@ -561,6 +550,48 @@ object CypherDebugNode extends UserDefinedProcedure {
             Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)))
           )
         }
+    }
+  }
+}
+
+object CypherDebugSleep extends UserDefinedProcedure {
+  val name = "debug.sleep"
+  val canContainUpdates = false
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Anything),
+    outputs = Vector.empty,
+    description = "Request a node sleep"
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    ec: ExecutionContext,
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+
+    val graph = location.graph
+    implicit val idProv: QuineIdProvider = graph.idProvider
+
+    val node: QuineId = arguments match {
+      case Seq(nodeLike) =>
+        UserDefinedProcedure.extractQuineId(nodeLike) match {
+          case None =>
+            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
+          case Some(qid) =>
+            qid
+        }
+      case other =>
+        throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      graph.requestNodeSleep(node).map(_ => Vector.empty)
     }
   }
 }

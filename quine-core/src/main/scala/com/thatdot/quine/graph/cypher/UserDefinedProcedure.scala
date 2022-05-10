@@ -2,12 +2,13 @@ package com.thatdot.quine.graph.cypher
 
 import scala.collection.compat._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.LiteralOpsGraph
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 
 /** Cypher user defined procedures (UDP) must extend this class
   *
@@ -84,6 +85,36 @@ object UserDefinedProcedure {
           props.view.mapValues(pv => Expr.fromQuineValue(pv.deserialized.get)).toMap
         )
       }
+
+  /** Extract from the Cypher value an ID
+    *
+    * @param value value from which to get ID
+    * @param idProvider how IDs are encoded
+    * @return ID if it could be extracted
+    */
+  def extractQuineId(value: Value)(implicit idProvider: QuineIdProvider): Option[QuineId] = {
+
+    object ValueQid {
+      def unapply(value: Value): Option[QuineId] = for {
+        quineValue <- Try(Expr.toQuineValue(value)).toOption
+        quineId <- idProvider.valueToQid(quineValue)
+      } yield quineId
+    }
+    object StrQid {
+      def unapply(value: Value): Option[QuineId] = value match {
+        case Expr.Str(strId) => idProvider.qidFromPrettyString(strId).toOption
+        case _ => None
+      }
+    }
+
+    value match {
+      case Expr.Node(qid, _, _) => Some(qid)
+      case Expr.Bytes(id, _) => Some(QuineId(id))
+      case ValueQid(qid) => Some(qid)
+      case StrQid(qid) => Some(qid)
+      case _ => None
+    }
+  }
 }
 
 /** Representation of a valid type for the procedure

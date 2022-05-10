@@ -18,7 +18,7 @@ import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
   * abstract `Spec` and quickly be able to check that the expected persistor
   * properties hold
   *
-  * TODO: add tests for snapshots, standing query states, and metadata
+  * TODO: add tests for metadata
   */
 abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll {
 
