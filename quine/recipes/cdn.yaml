@@ -17,6 +17,12 @@ ingestStreams:
         SET event = $that,
           event._type = 'CDN_log_event',
           event:Request
+        // Create hour/minute buckets per event
+        WITH * CALL reify.time(datetime({date: localdatetime($that.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS")}), ["hour","minute"]) YIELD node AS timeNode
+        // Count events in buckets
+        CALL incrementCounter(timeNode, "count")
+        // Create edges for time Nodes
+        CREATE (event)-[:at]->(timeNode)
 standingQueries:
   # SQ1 - Transform the cache_status field (which contain several possible values) to a simplified "hit" or "miss" value.
   - pattern:
@@ -65,8 +71,8 @@ standingQueries:
           WITH * CALL incrementCounter(p, 'total')
           CALL incrementCounter(p, event.hit_or_miss)
           CALL incrementCounter(p, event.cache_status)
-          SET p.Hit_Percent = COALESCE((p.hit*1.0)/(p.total*1.0)*100.0, 0.0),
-            p.Miss_Percent = COALESCE((p.miss*1.0)/(p.total*1.0)*100.0, 0.0),
+          SET p.Hit_Percent = coalesce((p.hit*1.0)/(p.total*1.0)*100.0, 0.0),
+            p.Miss_Percent = coalesce((p.miss*1.0)/(p.total*1.0)*100.0, 0.0),
             p.state = CASE
               //Set threshold ratios below for each of three cases
               WHEN p.Hit_Percent >= 15 THEN 'good'
@@ -96,8 +102,8 @@ standingQueries:
           SET a.asn_id = event.client_asn, a.type = 'ASN'
           WITH * CALL incrementCounter(a, 'total')
           CALL incrementCounter(a, event.hit_or_miss)
-          SET a.Hit_Percent = COALESCE((a.hit*1.0)/(a.total*1.0)*100.0, 0.0),
-            a.Miss_Percent = COALESCE((a.miss*1.0)/(a.total*1.0)*100.0, 0.0),
+          SET a.Hit_Percent = coalesce((a.hit*1.0)/(a.total*1.0)*100.0, 0.0),
+            a.Miss_Percent = coalesce((a.miss*1.0)/(a.total*1.0)*100.0, 0.0),
             a.state = CASE
               //Set threshold ratios below for each of three cases
               WHEN a.Hit_Percent >= 15 THEN 'good'
@@ -126,8 +132,8 @@ standingQueries:
           SET s.id = event.server_id, s.Ip = event.server_ip, s.type = 'Server'
           WITH * CALL incrementCounter(s, 'total')
           CALL incrementCounter(s, event.hit_or_miss)
-          SET s.Hit_Percent = COALESCE((s.hit*1.0)/(s.total*1.0)*100.0, 0.0),
-            s.Miss_Percent = COALESCE((s.miss*1.0)/(s.total*1.0)*100.0, 0.0),
+          SET s.Hit_Percent = coalesce((s.hit*1.0)/(s.total*1.0)*100.0, 0.0),
+            s.Miss_Percent = coalesce((s.miss*1.0)/(s.total*1.0)*100.0, 0.0),
             s.state = CASE
               //Set threshold ratios below for each of three cases
               WHEN s.Hit_Percent >= 15 THEN 'good'
@@ -157,8 +163,8 @@ standingQueries:
           SET ast.id = event.path, ast.Name = event.path, ast.type = 'Asset'
           WITH * CALL incrementCounter(ast, 'total')
           CALL incrementCounter(ast, event.hit_or_miss)
-          SET ast.Hit_Percent = COALESCE((ast.hit*1.0)/(ast.total*1.0)*100.0, 0.0),
-            ast.Miss_Percent = COALESCE((ast.miss*1.0)/(ast.total*1.0)*100.0, 0.0)
+          SET ast.Hit_Percent = coalesce((ast.hit*1.0)/(ast.total*1.0)*100.0, 0.0),
+            ast.Miss_Percent = coalesce((ast.miss*1.0)/(ast.total*1.0)*100.0, 0.0)
           WITH * CALL create.setLabels(ast,[event.path])
           SET ast.state = CASE
               //Set threshold ratios below for each of three cases
@@ -182,6 +188,35 @@ standingQueries:
           MATCH (event) 
             WHERE id(event) = $that.data.id 
           CALL create.setLabels(event, [(event.hit_or_miss), 'Request_'])
+          RETURN null SKIP 1
+  # SQ7 - Client Node Creation
+  - pattern:
+      Clients:
+      type: Cypher
+      query: |-
+        MATCH (event) 
+        WHERE exists(event.path) and exists (event.hit_or_miss)
+        RETURN DISTINCT id(event) AS id
+    outputs:
+      Clients:
+        type: CypherQuery
+        query: |-
+          MATCH (event)
+            WHERE id(event) = $that.data.id 
+          MATCH (cli) 
+            WHERE id(cli) = idFrom('Client', event.client_ip) 
+          //set relationship between event and entity 'client'
+          CREATE (event)-[:req_from]->(cli) 
+          SET cli.id = event.client_ip, cli.Name = event.client_ip,
+            cli.user_agent = event.user_agent, cli.type = 'Client'
+          //Set counters for Hit, Miss, and Ratios
+          WITH * CALL incrementCounter(cli, 'total')
+          CALL incrementCounter(cli, event.hit_or_miss)
+          CALL incrementCounter(cli, event.cache_status)
+          SET cli.Hit_Percent = coalesce((cli.hit*1.0)/(cli.total*1.0)*100.0, 0.0),
+            cli.Miss_Percent = coalesce((cli.miss*1.0)/(cli.total*1.0)*100.0, 0.0)
+          //Create Node Label
+          WITH * CALL create.setLabels(cli, [toString(event.client_ip), 'Client'])
           RETURN null SKIP 1
 nodeAppearances:
   #Pop Icon/color *******************
@@ -285,7 +320,7 @@ nodeAppearances:
       knownValues:
         state: "good"
         type: "Asset"
-    icon: document-text
+    icon: ion-android-film
     color: "#32a852"
     size: 40.00
   - predicate:
@@ -295,7 +330,7 @@ nodeAppearances:
       knownValues:
         state: "warn"
         type: "Asset"
-    icon: document-text
+    icon: ion-android-film
     color: "#d68400"
     size: 40.00
   - predicate:
@@ -305,7 +340,7 @@ nodeAppearances:
       knownValues:
         state: "alarm"
         type: "Asset"
-    icon: document-text
+    icon: ion-android-film
     color: "#cf151e"
     size: 40.00
   #Event Icon/color *********************
@@ -329,9 +364,37 @@ nodeAppearances:
     icon: close-circled
     color: "#cf151e"
     size: 30.00
+  #Client Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - type
+      knownValues:
+        type: "Client"
+    icon: ion-ios-contact-outline
+    color: "#32a852"
+    size: 30.00
+  # Hours and Minutes
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "hour"
+    icon: ion-clock
+    color: "#32a852"
+    size: 40.00
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "minute"
+    icon: ion-clock
+    color: "#32a852"
+    size: 20.00  
 quickQueries: [ ]
 sampleQueries:
   # provide easy access to node types in the exploration ui
+  - name: Last 10 Nodes
+    query: CALL recentNodes(10)
   - name: PoP Node
     query: MATCH (p) WHERE p.type = 'pop' RETURN p
   - name: ASN Nodes
