@@ -737,15 +737,39 @@ object QueryPart {
         CompM.raiseCompileError(s"Compiler internal error: unknown clause type", other)
     }
     .map { (query: cypher.Query[cypher.Location.Anywhere]) =>
-      // TODO: this is a hack to make sure a `CREATE`-only query returns no rows
+      /** Determine which output context to use. Usually, this will just be the output columns of the query, but
+        * some queries return no rows when used as a top-level query, yet return something when used as part of
+        * another query. For example:
+        *
+        * The `SET` subqueries of `MATCH (n) SET n:Node SET n.kind = 'node' RETURN n`.
+        *   - The first SET clause should run once for each `n` -- so the MATCH should return one row per valid `n`
+        *   - The second SET clause should run once for each `n` -- so the first SET should return one row per valid `n`
+        * This establishes that a SET clause should return one row per invocation. However, a query like the following
+        * should return no rows: `MATCH (n) SET n:Node SET n.kind = 'node'`
+        * To account for the different behavior of SET when used "inside" a query versus SET when used "at the end of"
+        * a query, we wrap any final-clause-SET with a `cypher.Query.Empty()`, so the overall query returns no rows,
+        * as expected.
+        *
+        * The same trick applies to other clauses, such as VOID procedures.
+        *
+        * TODO: handle unions and subqueries of these special cases
+        * NB: Neo4j Console throws a NPE on a union of VOID procedures, so it's unlikely users will try such a thing
+        */
       clauses.lastOption match {
+        // When the final clause is a CREATE/SET/DELETE/etc, return no rows
         case Some(_: ast.UpdateClause) =>
           cypher.Query.adjustContext(
             dropExisting = true,
             Vector.empty,
             cypher.Query.apply(query, cypher.Query.Empty())
           )
-
+        // When the final clause is a CALL clause on a VOID procedure, return no rows
+        case Some(cc: QuineProcedureCall) if cc.resolvedProcedure.signature.outputs.isEmpty =>
+          cypher.Query.adjustContext(
+            dropExisting = true,
+            Vector.empty,
+            cypher.Query.apply(query, cypher.Query.Empty())
+          )
         case _ => query
       }
     }

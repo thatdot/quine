@@ -598,45 +598,6 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     ordered = false
   )
 
-  describe("`FOREACH`, `SET`, `REMOVE` should always return exactly one row") {
-
-    /* `OPTIONAL MATCH (n) WHERE id(n) = null` ensures we have `n` of type node
-     * in context, but it will be null and all of the `SET`/`REMOVE`/`DELETE`
-     * won't have anything to do. They should still return exactly 1 row.
-     */
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null SET n.foo = 1 RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null REMOVE n.foo RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null DELETE n RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [] | DELETE n) RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [1,2,3] | DELETE n) RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-  }
-
   describe("Exceptions") {
     describe("TypeMismatch") {
       assertQueryExecutionFailure(
@@ -680,6 +641,86 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           wrapping = "long overflow",
           operands = Seq(Expr.Integer(1949L), Expr.Integer(9223372036854775800L))
         )
+      )
+    }
+  }
+  describe("Updates and void procedures' return behavior") {
+
+    describe("Used as a mid-query clause: SET/REMOVE et al should return 1 row") {
+
+      /* `OPTIONAL MATCH (n) WHERE id(n) = null` ensures we have `n` of type node
+       * in context, but it will be null and all of the `SET`/`REMOVE`/`DELETE`
+       * won't have anything to do. They should still return exactly 1 row.
+       */
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null SET n.foo = 1 RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null CALL util.sleep(1) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = true
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null REMOVE n.foo RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null DELETE n RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [] | DELETE n) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [1,2,3] | DELETE n) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+    }
+    describe("Used as the final clause: SET/REMOVE et al should return 0 rows") {
+      testQuery(
+        "CREATE ({foo: 1234})",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false,
+        expectedIsIdempotent = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) SET n.name = 'Jenny', n.number = '8675309'",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) REMOVE n.name",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) DELETE n",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "CALL debug.sleep(idFrom(8675309))",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = true
       )
     }
   }

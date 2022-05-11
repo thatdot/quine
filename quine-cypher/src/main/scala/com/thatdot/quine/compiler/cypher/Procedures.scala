@@ -41,6 +41,8 @@ import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId, QuineIdProvide
   *
   * @param resolvedProcedure the procedure that will get called
   * @param unresolvedCall the original call (contains arguments, returns, etc.)
+  * INV: All [[ast.CallClause]]s are either [[ast.UnresolvedCall]] or [[QuineProcedureCall]], and in a fully
+  * compiled query, all [[ast.CallClause]] are [[QuineProcedureCall]]
   */
 final case class QuineProcedureCall(
   resolvedProcedure: UserDefinedProcedure,
@@ -61,9 +63,10 @@ final case class QuineProcedureCall(
   */
 case object resolveCalls extends StatementRewriter {
 
-  val neo4jCompatibility: List[UserDefinedProcedure] = List(
-    // Used by `neo4j-browser`:
-    // TODO: these are stubbed out. They need to be properly handled!!!
+  /** Procedures known at Quine compile-time
+    * NB some of these are only stubs -- see [[StubbedUserDefinedProcedure]]
+    */
+  val builtInProcedures: List[UserDefinedProcedure] = List(
     CypherIndexes,
     CypherRelationshipTypes,
     CypherFunctions,
@@ -76,13 +79,9 @@ case object resolveCalls extends StatementRewriter {
     CypherRunTimeboxed,
     CypherSleep,
     CypherCreateRelationship,
-    CypherCreateSetLabels
-  )
-
-  val additionalFeatures: List[UserDefinedProcedure] = List(
+    CypherCreateSetLabels,
     RecentNodes,
     RecentNodeIds,
-    // MergeNodes,  // QU-353
     JsonLoad,
     IncrementCounter,
     CypherLogging,
@@ -95,8 +94,7 @@ case object resolveCalls extends StatementRewriter {
   val deprecatedNames: Map[String, UserDefinedProcedure] = Map.empty
 
   private val procedures: concurrent.Map[String, UserDefinedProcedure] = Proc.userDefinedProcedures
-  neo4jCompatibility.foreach(registerUserDefinedProcedure)
-  additionalFeatures.foreach(registerUserDefinedProcedure)
+  builtInProcedures.foreach(registerUserDefinedProcedure)
   procedures ++= deprecatedNames.map { case (rename, p) => rename.toLowerCase -> p }
 
   val rewriteCall: PartialFunction[AnyRef, AnyRef] = { case uc: ast.UnresolvedCall =>
