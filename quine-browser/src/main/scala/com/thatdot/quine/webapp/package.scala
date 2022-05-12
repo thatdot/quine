@@ -66,7 +66,7 @@ package object webapp {
     } else {
       PageWithSideBar(
         Tab(ExplorerIcon, "Graph Explorer", "/", makeQueryUi(options, clientRoutes)),
-        Tab(DocumentationIcon, "Interactive Docs", "/docs", SwaggerUi(options.documentationUrl)),
+        Tab(DocumentationIcon, "Interactive Docs", "/docs", StoplightElements(options.documentationUrl)),
         Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes))
       )
     }

@@ -193,7 +193,7 @@ lazy val `quine-browser`: Project = project
     ),
     Compile / npmDependencies ++= Seq(
       "react-plotly.js" -> reactPlotlyV,
-      "swagger-ui-react" -> swaggerUiV
+      "@stoplight/elements" -> stoplightElementsV
     ),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
