@@ -1,7 +1,7 @@
 # Persistors
 
 @@@index
-* @ref:[Cassandra Setup](cassandra_setup.md)
+* @ref:[Cassandra Setup](cassandra-setup.md)
 @@@
 
 The graph operates in memory, but saves its data to disk. Because data is durably stored, Quine does not need to define any time-windows for matching up data in memory. This data is managed automatically so that it is transparent to the operation of the graph, and saved in a way that is fast for streaming data.
@@ -45,9 +45,9 @@ To use MapDB, set the following configuration setting:
 
 ### Cassandra
 
-@link:[Apache Cassandra](https://cassandra.apache.org/_/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an ideal data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
+@link:[Apache Cassandra](https://cassandra.apache.org/-/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an ideal data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
 
-See the @ref:[Cassandra Setup](cassandra_setup.md) page for details on setting up and using Cassandra with Quine.
+See the @ref:[Cassandra Setup](cassandra-setup.md) page for details on setting up and using Cassandra with Quine.
 
 ### AWS S3
 

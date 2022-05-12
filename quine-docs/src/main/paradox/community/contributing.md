@@ -4,7 +4,7 @@ The community is the heart of all open-source projects. We welcome contributions
 
 ## Code of Conduct
 
-All community members must be good citizens; be sure to read the @ref:[Code of Conduct](code_of_conduct.md) page to understand what this means.
+All community members must be good citizens; be sure to read the @ref:[Code of Conduct](code-of-conduct.md) page to understand what this means.
 
 ## Contributing Code
 

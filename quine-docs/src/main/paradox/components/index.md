@@ -1,9 +1,9 @@
 # Components
 
 @@@index
-* @ref:[ID Provider](id_provider.md)
-* @ref:[Ingest Sources](ingest_sources/ingest_sources.md)
-* @ref:[Standing Query Outputs](standing_query_outputs.md)
+* @ref:[ID Provider](id-provider.md)
+* @ref:[Data Ingest](ingest-sources/ingest-sources.md)
+* @ref:[Standing Queries](writing-standing-queries.md)
 * @ref:[Persistors](persistors/persistor.md)
 @@@
 

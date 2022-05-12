@@ -36,3 +36,123 @@ button[data-md-color-accent="quine-blue"],
   background-color: rgba(121, 128, 137, 0.1);
 }
 
+.footer {
+  overflow: hidden;
+  padding: 20px 5% 40px;
+  background-image: -webkit-gradient(linear, left top, left bottom, from(#1e609d), to(#003b94));
+  background-image: linear-gradient(180deg, #1e609d, #003b94);
+}
+
+.footer-columns {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  margin-right: auto;
+  margin-bottom: 40px;
+  margin-left: auto;
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  justify-items: center;
+  -ms-grid-columns: 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+  -ms-grid-rows: auto;
+  grid-template-rows: auto;
+}
+
+.footer-list {
+  margin-right: 20px;
+  margin-left: 20px;
+  padding-left: 0px;
+  -webkit-box-flex: 0;
+  -webkit-flex: 0 0 auto;
+  -ms-flex: 0 0 auto;
+  flex: 0 0 auto;
+  color: #fff;
+}
+
+.footer-list-item {
+  margin-bottom: 5px;
+  color: #fff;
+}
+
+.h3-footer {
+  color: #fff;
+  font-size: 20px;
+}
+
+.footer-link {
+  -webkit-transition: all 350ms ease;
+  transition: all 350ms ease;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.footer-link:hover {
+  color: #6ed4ec;
+}
+
+.footer-link.margin-right-20px {
+  margin-right: 20px;
+}
+
+.footer-social-links {
+  display: none;
+  margin-top: 60px;
+  margin-bottom: 60px;
+  -webkit-box-pack: end;
+  -webkit-justify-content: flex-end;
+  -ms-flex-pack: end;
+  justify-content: flex-end;
+}
+
+.footer-social-link {
+  margin-right: 16px;
+  -webkit-transition: all 350ms ease;
+  transition: all 350ms ease;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.footer-social-link:hover {
+  color: #6ed4ec;
+}
+
+.footer-legal-grid {
+  justify-items: center;
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
+  grid-column-gap: 60px;
+  grid-row-gap: 0px;
+  -ms-grid-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
+  -ms-grid-rows: auto;
+  grid-template-rows: auto;
+}
+
+.copyright-text {
+  color: rgba(253, 254, 254, 0.5);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.footer-logo-link {
+  max-width: 160px;
+}
+
+.footer-logo-link.w--current {
+  -webkit-transition: all 350ms ease;
+  transition: all 350ms ease;
+}
+
+.footer-logo-link.w--current:hover {
+  opacity: 0.6;
+}

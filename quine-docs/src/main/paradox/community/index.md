@@ -1,9 +1,9 @@
 # Community
 
 @@@index
-* @ref:[Code of Conduct](code_of_conduct.md)
+* @ref:[Code of Conduct](code-of-conduct.md)
 * @ref:[Contributing](contributing.md)
-* @ref:[Writing a Recipe](writing_a_recipe.md)
+* @ref:[Writing a Recipe](writing-a-recipe.md)
 @@@
 
 @@toc { depth=1 }

@@ -271,11 +271,11 @@ lazy val `quine`: Project = project
 
 lazy val `quine-docs`: Project = {
   val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
-  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_builtin_functions.md")
+  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
   val cypherTable2 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_functions.md")
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
   val cypherTable3 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_procedures.md")
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-procedures.md")
   val recipesFolder =
     Def.task((Compile / paradox / sourceManaged).value / "recipes")
   Project("quine-docs", file("quine-docs"))
@@ -318,13 +318,17 @@ lazy val `quine-docs`: Project = {
       Compile / paradox / mappings ++= List(
         docJson.value -> "reference/openapi.json"
       ),
-      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
-        val inDir: File = (quine / baseDirectory).value / "recipes"
-        val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
-        (Compile / runMain)
-          .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
-          .map(_ => (outDir * "*.md").get)
-      },
+      // ---
+      // Uncomment to build the recipe template pages
+      // then add * @ref:[Recipes](recipes/index.md) into docs.md
+      // ---
+      //Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
+      //  val inDir: File = (quine / baseDirectory).value / "recipes"
+      //  val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
+      //  (Compile / runMain)
+      //    .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
+      //    .map(_ => (outDir * "*.md").get)
+      //},
       Compile / paradoxNavigationDepth := 3,
       Compile / paradoxNavigationExpandDepth := Some(3),
       paradoxRoots := List("index.html", "docs.html", "about.html", "download.html"),

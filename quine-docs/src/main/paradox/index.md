@@ -1,16 +1,20 @@
 ---
-layout: page-no-nav
-page.title: Quine2
+layout: redirect
+page.title: Quine Docs
 ---
 
 # Quine
 
-Hero landing page @ref:[my link](components/standing_query_outputs.md#run-cypher-query)
+Quine is a streaming graph interpreter. It's a server-side program which consumes data, builds it into a graph structure, and runs live computation on that graph to answer questions or compute results, and then stream them out. 
 
-@@include[use cases](includes/index/use_cases.md)
+The main idea is two-sided: event-driven data <==> data-driven events
 
-@@include[integrations](includes/index/integrations.md)
+@@@index
+* @ref:[Main Concepts](core-concepts/index.md)
+* @ref:[Getting Started](getting-started/index.md)
+* @ref:[Components](components/index.md)
+* @ref:[Reference](reference/index.md)
+* @ref:[Community](community/index.md)
+@@@
 
-@@include[testimonials](includes/index/testimonials.md)
-
-@@include[see for yourself](includes/index/see_for_yourself.md)
+@@toc { depth=1 }

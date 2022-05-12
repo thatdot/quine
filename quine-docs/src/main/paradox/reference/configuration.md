@@ -22,7 +22,7 @@ java \
 Uncommented values are the defaults, unless otherwise noted. Unexpected configuration keys or
 values in the `quine` block will report an error at startup.
 
-An individual underscore `_` is used to indicate a required property with no default value. There are none of
+An individual underscore `-` is used to indicate a required property with no default value. There are none of
 these in the default configuration.
 
 @@snip [reference.conf]($quine$/src/test/resources/documented_config.conf)
