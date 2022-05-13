@@ -3,12 +3,16 @@ package com.thatdot.quine.app.config
 import java.io.File
 import java.net.InetSocketAddress
 
+import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import akka.actor.ActorSystem
 
 import com.datastax.oss.driver.api.core.DefaultConsistencyLevel
 import com.typesafe.scalalogging.LazyLogging
+import pureconfig.ConfigConvert
+import pureconfig.generic.auto._
+import pureconfig.generic.semiauto.deriveConvert
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.persistor._
@@ -167,5 +171,18 @@ object PersistenceAgentType {
       )
       BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, db, persistenceConfig)
     }
+  }
+
+  implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
+    import Implicits._
+
+    // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
+    @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
+      ConfigConvert.viaNonEmptyString[InetSocketAddress](
+        s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
+        addr => addr.getHostString + ':' + addr.getPort
+      )
+
+    deriveConvert[PersistenceAgentType]
   }
 }

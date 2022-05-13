@@ -16,14 +16,26 @@ import akka.util.Timeout
 import ch.qos.logback.classic.LoggerContext
 import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.slf4j.LoggerFactory
+import pureconfig.ConfigSource
+import pureconfig.error.ConfigReaderException
 
-import com.thatdot.quine.app.config.PersistenceAgentType
+import com.thatdot.quine.app.config.{PersistenceAgentType, QuineConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.persistor.{ExceptionWrappingPersistenceAgent, PersistenceConfig}
 
 object Main extends App with LazyLogging {
+
+  // specifies that logback configuration will be loaded from the "logging.quine" Typesafe Config scope
+  sys.props("logback-root") = "logging.quine"
+
+  private val statusLines =
+    new StatusLines(
+      // This name comes from quine's logging.conf
+      Logger("thatdot.Interactive"),
+      System.err
+    )
 
   // Parse command line arguments.
   // On any failure, print messages and terminate process.
@@ -47,15 +59,47 @@ object Main extends App with LazyLogging {
     }
   }
 
-  // specifies that logback configuration will be loaded from the "logging.quine" Typesafe Config scope
-  sys.props("logback-root") = "logging.quine"
+  // Parse config for Quine and apply command line overrides.
+  val config: QuineConfig = {
+    // Regular HOCON loading of options (from java properties and `conf` files)
+    val withoutOverrides = ConfigSource.default.load[QuineConfig] match {
+      case Right(config) => config
+      case Left(failures) =>
+        Console.err.println(new ConfigReaderException[QuineConfig](failures).getMessage())
+        Console.err.println("Did you forget to pass in a config file?")
+        Console.err.println("  $ java -Dconfig.file=your-conf-file.conf -jar quine.jar")
+        sys.exit(1)
+    }
 
-  private val statusLines =
-    new StatusLines(
-      // This name comes from quine's logging.conf
-      Logger("thatdot.Interactive"),
-      System.err
+    // Override webserver options
+    val withWebserverOverrides = withoutOverrides.copy(
+      webserver = withoutOverrides.webserver.copy(
+        port = cmdArgs.port.getOrElse(withoutOverrides.webserver.port),
+        enabled = !cmdArgs.disableWebservice && withoutOverrides.webserver.enabled
+      )
     )
+
+    // Recipe overrides (unless --force-config command line flag is used)
+    if (recipe.isDefined && !cmdArgs.forceConfig) {
+      val tempDataFile: File = File.createTempFile("quine-", ".db")
+      tempDataFile.delete()
+      if (cmdArgs.deleteDataFile) {
+        tempDataFile.deleteOnExit()
+      } else {
+        // Only print the data file name when NOT DELETING the temporary file
+        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
+      }
+      withWebserverOverrides.copy(
+        store = PersistenceAgentType.RocksDb(
+          filepath = tempDataFile
+        ),
+        persistence = PersistenceConfig(
+          journalEnabled = false,
+          snapshotSingleton = true
+        )
+      )
+    } else withWebserverOverrides
+  }
 
   // Optionally print a message on startup
   if (BuildInfo.startupMessage.nonEmpty) {
@@ -73,36 +117,8 @@ object Main extends App with LazyLogging {
     s"Running ${BuildInfo.version} with $numCores available cores and $maxHeapSize."
   }
 
-  // When running a recipe, overwrite some configuration values
-  // (unless --force-config command line flag is used)
-  private val config: Config.QuineConfig = {
-    val rawConfig = Config.config
-    if (recipe.isDefined && !cmdArgs.forceConfig) {
-      val tempDataFile: File = File.createTempFile("quine-", ".db")
-      tempDataFile.delete()
-      if (cmdArgs.deleteDataFile) {
-        tempDataFile.deleteOnExit()
-      } else {
-        // Only print the data file name when NOT DELETING the temporary file
-        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
-      }
-      rawConfig.copy(
-        webserver = rawConfig.webserver.copy(
-          port = cmdArgs.port.getOrElse(rawConfig.webserver.port)
-        ),
-        store = PersistenceAgentType.RocksDb(
-          filepath = tempDataFile
-        ),
-        persistence = PersistenceConfig(
-          journalEnabled = false,
-          snapshotSingleton = true
-        )
-      )
-    } else rawConfig
-  }
-
   if (config.dumpConfig) {
-    statusLines.info(Config.loadedConfigHocon)
+    statusLines.info(config.loadedConfigHocon)
   }
 
   val timeout: Timeout = config.timeout
@@ -163,9 +179,8 @@ object Main extends App with LazyLogging {
   // Inform when the graph is ready
   statusLines.info("Graph is ready!")
 
-  // The web service is started when asked for by command line arguments,
-  // or when no command arguments are specified.
-  val quineWebserverUrl: Option[String] = if (!cmdArgs.disableWebservice) {
+  // The web service is started unless it was disabled.
+  val quineWebserverUrl: Option[String] = if (config.webserver.enabled) {
     Some(s"http://${config.webserver.address}:${config.webserver.port}")
   } else {
     None
@@ -198,7 +213,7 @@ object Main extends App with LazyLogging {
   attemptAppLoad()
 
   quineWebserverUrl foreach { url =>
-    new QuineAppRoutes(graph, appState, ec, timeout)
+    new QuineAppRoutes(graph, appState, config.loadedConfigJson, ec, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
         case Success(_) => statusLines.info(s"Quine app web server available at $url")

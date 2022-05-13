@@ -1,19 +1,16 @@
-package com.thatdot.quine.app
+package com.thatdot.quine.app.config
 
 import org.scalatest.funsuite.AnyFunSuite
-import pureconfig._
-import pureconfig.error._
+import pureconfig.error.{ConfigReaderException, ConvertFailure, UnknownKey}
+import pureconfig.{ConfigSource, ConfigWriter}
 
-import com.thatdot.quine.app.config.PersistenceAgentType
-
-class ConfigTest extends AnyFunSuite {
-  import Config._
+class QuineConfigTest extends AnyFunSuite {
 
   def readConfig(config: String): QuineConfig =
-    ConfigSource.string(config).loadOrThrow[QuineConfig](implicitly, quineReader)
+    ConfigSource.string(config).loadOrThrow[QuineConfig]
 
   def writeConfig(config: QuineConfig): String =
-    quineWriter.to(config).render()
+    ConfigWriter[QuineConfig].to(config).render()
 
   test("Empty config") {
     val empty1 = readConfig("quine {}")
