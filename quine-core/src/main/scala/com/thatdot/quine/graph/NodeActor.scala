@@ -152,7 +152,9 @@ private[graph] class NodeActor(
       Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
     else {
       val dedupedEffectingEvents: Seq[NodeChangeEvent.WithTime] = {
-        if (events.size <= 1) events.map(NodeChangeEvent.WithTime(_, atTimeOverride.getOrElse(nextEventTime())))
+        if (events.isEmpty) Seq.empty
+        else if (events.size == 1 && hasEffect(events.head))
+          Seq(NodeChangeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
         else {
           /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
            * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
