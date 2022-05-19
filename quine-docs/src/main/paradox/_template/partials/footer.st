@@ -52,16 +52,16 @@
             <h3 class="h3-footer"><strong>Docs</strong></h3>
           </li>
           <li class="footer-list-item">
-            <a href="core-concepts/architecture.html" class="footer-link">Architecture</a>
+            <a href="/core-concepts/architecture.html" class="footer-link">Architecture</a>
           </li>
           <li class="footer-list-item">
-            <a href="components/standing-query-outputs.html" class="footer-link">Standing Query Outputs</a>
+            <a href="/components/standing-query-outputs.html" class="footer-link">Standing Query Outputs</a>
           </li>
           <li class="footer-list-item">
-            <a href="getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
+            <a href="/getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
           </li>
           <li class="footer-list-item">
-            <a href="components/writing-standing-queries.html" class="footer-link">Writing Standing Queries</a>
+            <a href="/components/writing-standing-queries.html" class="footer-link">Writing Standing Queries</a>
           </li>
         </ul>
         <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec2f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
@@ -72,7 +72,7 @@
             <a href="https://quine.io/download" class="footer-link">Download</a>
           </li>
           <li class="footer-list-item">
-            <a href="getting-started/quick-start.html" class="footer-link">Getting Started</a>
+            <a href="/getting-started/quick-start.html" class="footer-link">Getting Started</a>
           </li>
         </ul>
         <div id="w-node-_972d8002-2611-e260-929c-6645d914b4d5-8e70ec0c" class="div-block-22"></div>
@@ -90,7 +90,7 @@
             <a href="https://quine.io/recipes/apache-log-analytics" class="footer-link">Apache Log Analytics</a>
           </li>
           <li class="footer-list-item">
-            <a href="reference/recipe-ref-manual.html" class="footer-link">Writing a Recipe</a>
+            <a href="/reference/recipe-ref-manual.html" class="footer-link">Writing a Recipe</a>
           </li>
         </ul>
         <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec4f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
@@ -109,8 +109,8 @@
         </ul>
       </div>
       <div class="w-layout-grid footer-legal-grid">
-        <div class="copyright-text">$page.properties.("material.copyright")$</div>
-        <a href="https://quine.io/" aria-current="page" class="w-inline-block w--current"><img src="assets/images/Quine-Logo-White.svg" loading="lazy" width="257.5" alt=""></a>
+        <div class="copyright-text"></div>
+        <a href="https://quine.io/" aria-current="page" class="w-inline-block w--current"><img src="/assets/images/Quine-Logo-White.svg" loading="lazy" width="257.5" alt=""></a>
       </div>
     </div>
 </div>

@@ -28,6 +28,6 @@ This page is an alphabetical list of technical terms which have a particular mea
 - **Property** - a key-value pair stored on a node. They key of a property is a string, the value is any one of the supported types in Quine.
 - **Quick Query** - a query defined in the Exploration UI which enables easy graph exploration by right-clicking a node and selecting the quick queries enabled on that node. Quick queries are user customizable through the REST API or recipes.
 - **QuineId** - the ID of a single node in the graph. See also: "ID Provider"
-- **Recipe** - a set of configuration used to execute end-to-end functionality for a specific purpose. Recipes are contributed by community users and listed on the [[Recipes]] page.
+- **Recipe** - a set of configuration used to execute end-to-end functionality for a specific purpose. Recipes are contributed by community users and listed on the [Recipes](https://quine.io/recipes) page.
 - **Shard** - a logical division of the graph, responsible for managing a subset of nodes.
 - **Standing Query** - a query set on the graph, which lives inside the graph, efficiently propagates, and produces results immediately.

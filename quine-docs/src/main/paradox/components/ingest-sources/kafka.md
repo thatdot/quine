@@ -55,4 +55,4 @@ Quine has downloaded the Recipe and begun execution. As shown above, use `kafka-
 | => INGEST-1 status is running and ingested 1
 ```
 
-Results should already be available in the web UI at [localhost:8080](localhost:8080]).
+Results should already be available in the web UI at `https://<hostname>:8080`.

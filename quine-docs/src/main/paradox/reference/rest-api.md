@@ -7,7 +7,7 @@ page.title: Quine2
   router="hash" 
   layout="sidebar" 
   hideTryIt="true"
-  apiDescriptionUrl="https://docs.thatdot.com/reference/openapi-quine-1.2.0.json"
+  apiDescriptionUrl="/reference/openapi.json"
 />
 
 <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
