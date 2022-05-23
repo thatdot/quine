@@ -708,11 +708,20 @@ object QueryPart {
               } yield ordered
             }
 
+          // DISTINCT
+          deduped <- isDistinct match {
+            case false => CompM.pure[cypher.Query[cypher.Location.Anywhere]](grouped)
+            case true =>
+              clause.returnColumns
+                .traverse(CompM.getVariable(_, clause))
+                .map(distinctBy => cypher.Query.Distinct(distinctBy, grouped))
+          }
+
           // SKIP
           skipped <- skipOpt match {
-            case None => CompM.pure[cypher.Query[cypher.Location.Anywhere]](grouped)
+            case None => CompM.pure[cypher.Query[cypher.Location.Anywhere]](deduped)
             case Some(ast.Skip(expr)) =>
-              Expression.compileM(expr).map(_.toQuery(cypher.Query.Skip(_, grouped)))
+              Expression.compileM(expr).map(_.toQuery(cypher.Query.Skip(_, deduped)))
           }
 
           // LIMIT
@@ -721,16 +730,7 @@ object QueryPart {
             case Some(ast.Limit(expr)) =>
               Expression.compileM(expr).map(_.toQuery(cypher.Query.Limit(_, skipped)))
           }
-
-          // DISTINCT
-          deduped <- isDistinct match {
-            case false => CompM.pure[cypher.Query[cypher.Location.Anywhere]](limited)
-            case true =>
-              clause.returnColumns
-                .traverse(CompM.getVariable(_, clause))
-                .map(distinctBy => cypher.Query.Distinct(distinctBy, limited))
-          }
-        } yield deduped
+        } yield limited
 
       // TODO: what can go here?
       case (_, other) =>

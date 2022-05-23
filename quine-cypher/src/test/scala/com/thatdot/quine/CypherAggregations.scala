@@ -642,5 +642,41 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
     )
 
   }
+  describe("DISTINCT projections") {
+    testQuery(
+      "UNWIND [1, 1, 2, 2, 3, 3, 4, 4, 5, 5] AS x RETURN DISTINCT x",
+      expectedColumns = Vector("x"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1)),
+        Vector(Expr.Integer(2)),
+        Vector(Expr.Integer(3)),
+        Vector(Expr.Integer(4)),
+        Vector(Expr.Integer(5))
+      ),
+      expectedCannotFail = true
+    )
+
+    /** the following 2 queries can't fail, but query compilation loses proof that the SKIP and LIMIT are constant ints
+      * so we're forced to set `expectedCannotFail = false`
+      */
+    testQuery(
+      "UNWIND [1, 1, 2, 2, 3, 3, 4, 4, 5, 5] AS x RETURN DISTINCT x SKIP 2 LIMIT 2",
+      expectedColumns = Vector("x"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(3)),
+        Vector(Expr.Integer(4))
+      ),
+      expectedCannotFail = false
+    )
+    testQuery(
+      "UNWIND [1, 1, 2, 2, 3, 3, 4, 4, 5, 5] AS x RETURN DISTINCT x ORDER BY x DESC SKIP 2 LIMIT 2",
+      expectedColumns = Vector("x"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(3)),
+        Vector(Expr.Integer(2))
+      ),
+      expectedCannotFail = false
+    )
+  }
 
 }
