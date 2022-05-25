@@ -7,5 +7,4 @@ Integrations
   <img src="assets/kinesis.png" style="display:inline-block;max-width:100px">
   <img src="assets/cassandra.png" style="display:inline-block;max-width:100px">
   <img src="assets/rocksdb.png" style="display:inline-block;max-width:100px">
-  <img src="assets/hydrolix.png" style="display:inline-block;max-width:100px">
 </div>
