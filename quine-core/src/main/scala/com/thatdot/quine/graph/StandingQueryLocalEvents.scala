@@ -6,7 +6,7 @@ import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.StandingQueryState
 import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, PropertyValue, SingleBranch, Test}
+import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, PropertyValue, SingleBranch}
 
 /** Local events a standing query may want to watch
   *
@@ -32,7 +32,7 @@ object StandingQueryLocalEvents {
     *          - StandingQueryLocalEvents.Edge("not_in_pattern") will _not_ be extracted -- that edge is not relevant to
     *            the branch provided
     */
-  def extractWatchableEvents(branch: DomainGraphBranch[Test]): Set[StandingQueryLocalEvents] = {
+  def extractWatchableEvents(branch: DomainGraphBranch): Set[StandingQueryLocalEvents] = {
 
     /** Recursive helper to extract the StandingQueryLocalEvents as described.
       *
@@ -41,7 +41,7 @@ object StandingQueryLocalEvents {
       * `map` and `++`)
       */
     def extractWatchables(
-      branch: DomainGraphBranch[model.Test],
+      branch: DomainGraphBranch,
       acc: Seq[StandingQueryLocalEvents] = Nil
     ): Seq[StandingQueryLocalEvents] = branch match {
       case SingleBranch(
@@ -188,7 +188,7 @@ object StandingQueryLocalEventIndex {
     def apply(sqIdTuple: (StandingQueryId, StandingQueryPartId)): StandingQueryWithId =
       StandingQueryWithId(sqIdTuple._1, sqIdTuple._2)
     def apply(
-      branchSubscriptionTuple: (DomainGraphBranch[model.Test], AssumedDomainEdge)
+      branchSubscriptionTuple: (DomainGraphBranch, AssumedDomainEdge)
     ): DomainNodeIndexSubscription =
       DomainNodeIndexSubscription(branchSubscriptionTuple._1, branchSubscriptionTuple._2)
   }
@@ -207,7 +207,7 @@ object StandingQueryLocalEventIndex {
     * @see [[behavior.DomainNodeIndexBehavior.subscribers]]
     * @see [[behavior.DomainNodeIndexBehavior.SubscribersToThisNode.updateAnswerAndNotifySubscribers]]
     */
-  final case class DomainNodeIndexSubscription(branch: DomainGraphBranch[model.Test], assumedEdge: AssumedDomainEdge)
+  final case class DomainNodeIndexSubscription(branch: DomainGraphBranch, assumedEdge: AssumedDomainEdge)
       extends EventSubscriber
 
   def empty: StandingQueryLocalEventIndex = StandingQueryLocalEventIndex(
@@ -223,7 +223,7 @@ object StandingQueryLocalEventIndex {
     * @return rebuilt index
     */
   def from(
-    dgbSubscribers: Iterator[(DomainGraphBranch[model.Test], AssumedDomainEdge)],
+    dgbSubscribers: Iterator[(DomainGraphBranch, AssumedDomainEdge)],
     standingQueryStates: Iterator[((StandingQueryId, StandingQueryPartId), StandingQueryState)]
   ): StandingQueryLocalEventIndex = {
     val toReturn = StandingQueryLocalEventIndex.empty

@@ -31,7 +31,6 @@ import com.thatdot.quine.graph.cypher.{
   Value => CypherValue
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CypherSubscriber, ResultId}
-import com.thatdot.quine.model
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.PersistenceCodecs
 
@@ -421,37 +420,21 @@ trait ArbitraryInstances {
     ](DomainNodeEquiv.apply)
   }
 
-  implicit val arbConstraintsCreate: Arbitrary[EdgeMatchConstraints[Create]] =
-    Arbitrary(MandatoryConstraint)
-
-  implicit val arbDgbCreate: Arbitrary[DomainGraphBranch[Create]] = Arbitrary {
-    Gen.lzy(
-      GenApply.resultOf(
-        SingleBranch[Create](
-          _: DomainNodeEquiv,
-          _: Option[QuineId],
-          _: List[DomainEdge[Create]],
-          _: NodeLocalComparisonFunc
-        )
-      )
-    )
-  }
-
-  implicit val arbDomainEdgeCreate: Arbitrary[DomainEdge[Create]] = Arbitrary {
+  implicit val arbDomainEdge: Arbitrary[DomainEdge] = Arbitrary {
     GenApply.resultOf[
       GenericEdge,
       DependencyDirection,
-      DomainGraphBranch[Create],
+      DomainGraphBranch,
       Boolean,
-      EdgeMatchConstraints[Create],
-      DomainEdge[Create]
+      EdgeMatchConstraints,
+      DomainEdge
     ](DomainEdge.apply)
   }
 
-  implicit val arbConstraintsFetch: Arbitrary[EdgeMatchConstraints[model.Test]] = Arbitrary {
+  implicit val arbConstraintsFetch: Arbitrary[EdgeMatchConstraints] = Arbitrary {
     Gen.oneOf(
       Gen.const(MandatoryConstraint),
-      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints[model.Test]](FetchConstraint.apply)
+      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints](FetchConstraint.apply)
     )
   }
 
@@ -459,50 +442,31 @@ trait ArbitraryInstances {
     Gen.resultOf[String, MuVariableName](MuVariableName.apply)
   }
 
-  implicit val arbDgbTest: Arbitrary[DomainGraphBranch[model.Test]] = Arbitrary {
+  implicit val arbDgb: Arbitrary[DomainGraphBranch] = Arbitrary {
     Gen.lzy(
       sizedOneOf(
-        small = List(Gen.resultOf(MuVar[model.Test](_: MuVariableName))),
+        small = List(Gen.resultOf(MuVar(_: MuVariableName))),
         other = List(
           GenApply.resultOf(
-            SingleBranch[model.Test](
+            SingleBranch(
               _: DomainNodeEquiv,
               _: Option[QuineId],
-              _: List[DomainEdge[model.Test]],
+              _: List[DomainEdge],
               _: NodeLocalComparisonFunc
             )
           ),
-          GenApply.resultOf(And[model.Test](_: List[DomainGraphBranch[model.Test]])),
-          GenApply.resultOf(Or[model.Test](_: List[DomainGraphBranch[model.Test]])),
-          GenApply.resultOf(Not[model.Test](_: DomainGraphBranch[model.Test])),
-          GenApply.resultOf(Mu[model.Test](_: MuVariableName, _: DomainGraphBranch[model.Test]))
+          GenApply.resultOf(And(_: List[DomainGraphBranch])),
+          GenApply.resultOf(Or(_: List[DomainGraphBranch])),
+          GenApply.resultOf(Not(_: DomainGraphBranch)),
+          GenApply.resultOf(Mu(_: MuVariableName, _: DomainGraphBranch))
         )
       )
     )
   }
 
-  implicit val arbDomainEdgeTest: Arbitrary[DomainEdge[model.Test]] = Arbitrary {
-    GenApply.resultOf[
-      GenericEdge,
-      DependencyDirection,
-      DomainGraphBranch[model.Test],
-      Boolean,
-      EdgeMatchConstraints[model.Test],
-      DomainEdge[model.Test]
-    ](DomainEdge.apply)
-  }
-
   implicit val arbEdgeCollection: Arbitrary[Iterator[HalfEdge]] = Arbitrary(
     Gen.resultOf[Seq[HalfEdge], Iterator[HalfEdge]](_.iterator)
   )
-  /*
-    arbitrary[List[HalfEdge]].map { (hes: List[HalfEdge]) =>
-      val col = new ReverseOrderedEdgeCollection
-      hes.foreach(col +=)
-      col
-    }
-  }
-   */
 
   implicit val arbProperties: Arbitrary[Properties] = cachedImplicit
 
@@ -516,7 +480,7 @@ trait ArbitraryInstances {
   }
 
   type IndexSubscribers = MutableMap[
-    (DomainGraphBranch[Test], AssumedDomainEdge),
+    (DomainGraphBranch, AssumedDomainEdge),
     SubscribersToThisNodeUtil.Subscription
   ]
   implicit val arbIndexSubscribers: Arbitrary[IndexSubscribers] = cachedImplicit
@@ -524,7 +488,7 @@ trait ArbitraryInstances {
   type DomainNodeIndex = MutableMap[
     QuineId,
     MutableMap[
-      (DomainGraphBranch[Test], AssumedDomainEdge),
+      (DomainGraphBranch, AssumedDomainEdge),
       Option[IsDirected]
     ]
   ]
@@ -655,7 +619,7 @@ trait ArbitraryInstances {
   implicit val arbStandingQueryPattern: Arbitrary[StandingQueryPattern] = Arbitrary {
     Gen.oneOf[StandingQueryPattern](
       Gen.resultOf[
-        DomainGraphBranch[Create],
+        DomainGraphBranch,
         Boolean,
         Symbol,
         Boolean,
@@ -767,7 +731,7 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
   }
 
   it should "roundtrip DomainGraphBranch" in {
-    forAll { (dgb: DomainGraphBranch[model.Test]) =>
+    forAll { (dgb: DomainGraphBranch) =>
       dgbFormat.read(dgbFormat.write(dgb)).get == dgb
     }
   }

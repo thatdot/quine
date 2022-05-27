@@ -137,7 +137,7 @@ object StandingQueryPattern extends LazyLogging {
     * @param origin how did the user specify this query?
     */
   final case class Branch(
-    branch: DomainGraphBranch[Test],
+    branch: DomainGraphBranch,
     formatReturnAsStr: Boolean,
     aliasReturnAs: Symbol,
     includeCancellation: Boolean,

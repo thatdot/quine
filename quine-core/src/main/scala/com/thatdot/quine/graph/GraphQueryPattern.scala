@@ -7,7 +7,7 @@ import scala.collection.compat.immutable._
 import scala.collection.mutable
 
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{Create, EdgeDirection, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, QuineId, QuineIdProvider, QuineValue}
 
 final case class InvalidQueryPattern(message: String) extends RuntimeException(message)
 
@@ -53,7 +53,7 @@ final case class GraphQueryPattern(
   @throws[InvalidQueryPattern]
   def compiledDomainGraphBranch(
     labelsProperty: Symbol
-  ): (model.SingleBranch[Create], ReturnColumn.Id) = {
+  ): (model.SingleBranch, ReturnColumn.Id) = {
 
     if (nodes.isEmpty) {
       throw InvalidQueryPattern("Pattern must be non-empty")
@@ -73,7 +73,7 @@ final case class GraphQueryPattern(
     var remainingEdges = edges
 
     // Extract a DGB rooted at the given pattern
-    def synthesizeBranch(id: NodePatternId): model.SingleBranch[Create] = {
+    def synthesizeBranch(id: NodePatternId): model.SingleBranch = {
 
       val NodePattern(_, labels, qidOpt, props) = remainingNodes.remove(id).getOrElse {
         throw InvalidQueryPattern("Pattern has a cycle")
@@ -82,7 +82,7 @@ final case class GraphQueryPattern(
       val (connectedEdges, otherEdges) = remainingEdges.partition(e => e.from == id || e.to == id)
       remainingEdges = otherEdges
 
-      val domainEdges = List.newBuilder[model.DomainEdge[Create]]
+      val domainEdges = List.newBuilder[model.DomainEdge]
       val circularEdges = Set.newBuilder[model.CircularEdge]
 
       for (EdgePattern(from, to, isDirected, label) <- connectedEdges)
@@ -90,7 +90,7 @@ final case class GraphQueryPattern(
           circularEdges += (label -> isDirected)
         } else if (from == id) {
           val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
-          domainEdges += model.DomainEdge[Create](
+          domainEdges += model.DomainEdge(
             edge = model.GenericEdge(label, edgeDir),
             depDirection = model.DependsUpon, // really anything will do
             branch = synthesizeBranch(to)
@@ -98,7 +98,7 @@ final case class GraphQueryPattern(
         } else
           /* if (to == id) */ {
             val edgeDir = if (isDirected) EdgeDirection.Incoming else EdgeDirection.Undirected
-            domainEdges += model.DomainEdge[Create](
+            domainEdges += model.DomainEdge(
               edge = model.GenericEdge(label, edgeDir),
               depDirection = model.DependsUpon, // really anything will do
               branch = synthesizeBranch(from)

@@ -10,7 +10,6 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   cypher
 }
-import com.thatdot.quine.model
 import com.thatdot.quine.model.{DomainGraphBranch, GenericEdge, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Hashable
 
@@ -112,16 +111,16 @@ object StandingQueryMessage {
   sealed abstract class DomainNodeSubscriptionCommand extends StandingQueryMessage
 
   final case class CreateDomainNodeSubscription(
-    testBranch: DomainGraphBranch[model.Test],
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch[model.Test])],
+    testBranch: DomainGraphBranch,
+    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
     replyTo: Either[QuineId, StandingQueryId],
     relatedQueries: Set[StandingQueryId]
   ) extends DomainNodeSubscriptionCommand
 
   final case class DomainNodeSubscriptionResult(
     from: QuineId,
-    testBranch: DomainGraphBranch[model.Test],
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch[model.Test])],
+    testBranch: DomainGraphBranch,
+    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
     result: Boolean
   ) extends DomainNodeSubscriptionCommand
       with SqResultLike {
@@ -139,8 +138,8 @@ object StandingQueryMessage {
   }
 
   final case class CancelDomainNodeSubscription(
-    testBranch: DomainGraphBranch[model.Test],
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch[model.Test])],
+    testBranch: DomainGraphBranch,
+    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
     alreadyCancelledSubscriber: QuineId
   ) extends DomainNodeSubscriptionCommand
 

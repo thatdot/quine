@@ -131,7 +131,7 @@ final class UnorderedEdgeCollection extends EdgeCollection {
     .contains(edge.other)
 
   // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
-  def hasUniqueGenEdges(requiredEdges: Set[DomainEdge[Test]], thisQid: QuineId): Boolean = {
+  def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean = {
     val circAllowed = collection.mutable.Map.empty[GenericEdge, Int]
     val circDisallowed = collection.mutable.Map.empty[GenericEdge, Int]
     requiredEdges.foreach { e =>
