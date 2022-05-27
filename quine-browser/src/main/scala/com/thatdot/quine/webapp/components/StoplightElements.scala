@@ -15,7 +15,8 @@ import js.annotation._
     layout: String = "sidebar",
     basePath: String = "/docs",
     router: String = "memory", // TODO switching this to history or hash would allow deep-linking
-    logo: String = "/favicon.svg"
+    logo: String = "/favicon.svg",
+    tryItCredentialsPolicy: String = "same-origin" // alternatives: "include" (for cross-origin REST API access), "omit"
   )
 
   @js.native
