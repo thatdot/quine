@@ -35,20 +35,15 @@ sealed abstract class PropertyValue extends Equals {
 
   override def canEqual(other: Any): Boolean = other.isInstanceOf[PropertyValue]
 
-  override def equals(other: Any): Boolean = {
-    val otherVal = if (!canEqual(other)) {
-      return false
-    } else {
-      other.asInstanceOf[PropertyValue]
-    }
-
-    if (this eq otherVal) {
-      return true
-    } else if (deserializedReady && otherVal.deserializedReady) {
-      deserialized == otherVal.deserialized
-    }
-
-    serialized.sameElements(otherVal.serialized)
+  override def equals(other: Any): Boolean = other match {
+    case otherVal: PropertyValue =>
+      (this eq otherVal) || (
+        if (deserializedReady && otherVal.deserializedReady)
+          deserialized == otherVal.deserialized
+        else
+          serialized.sameElements(otherVal.serialized)
+      )
+    case _ => false
   }
 
   // TODO: optimize this, or ensure it isn't used
