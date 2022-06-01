@@ -31,6 +31,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     config,
     readinessProbe,
     livenessProbe,
+    metrics,
     shutdown,
     shardSizes,
     requestNodeSleep,
