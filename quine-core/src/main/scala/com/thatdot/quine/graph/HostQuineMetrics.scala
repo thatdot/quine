@@ -64,7 +64,7 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
 
   /** Histogram of size (in bytes) of persisted node snapshots */
   val snapshotSize: Histogram =
-    metricRegistry.histogram(MetricRegistry.name("persistors", "snapshot-sizes"))
+    metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
 
   /** Register a gauge tracking how many times a shared valve has been closed.
     *
