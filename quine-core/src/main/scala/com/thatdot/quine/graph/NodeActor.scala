@@ -2,31 +2,26 @@ package com.thatdot.quine.graph
 
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import java.util.concurrent.locks.StampedLock
-
 import scala.collection.compat._
-import scala.collection.mutable.{Map => MutableMap}
+import scala.collection.mutable.{ArrayBuffer, Map => MutableMap}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
-
 import akka.actor.{Actor, ActorLogging}
-
 import com.thatdot.quine.graph.NodeChangeEvent._
 import com.thatdot.quine.graph.behavior._
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
-import com.thatdot.quine.graph.messaging.LiteralMessage.{
-  LiteralCommand,
-  LocallyRegisteredStandingQuery,
-  NodeInternalState
-}
+import com.thatdot.quine.graph.messaging.LiteralMessage.{LiteralCommand, LocallyRegisteredStandingQuery, NodeInternalState}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
-import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceCodecs, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
+
+import scala.annotation.tailrec
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
   * computation (as an Akka actor).
@@ -125,7 +120,7 @@ private[graph] class NodeActor(
     */
   protected def syncStandingQueries(): Unit =
     if (atTime.isEmpty) {
-      updateUniversalQueriesOnWake()
+      `updateUniversalQueriesOnWake`()
       updateUniversalCypherQueriesOnWake()
     }
 
@@ -139,6 +134,54 @@ private[graph] class NodeActor(
     case MergedHere(other) => !mergedIntoHere.contains(other)
   }
 
+  /**
+    * Drop duplicate events, and wrap the Events being kept in an `EventTime`.
+    *
+    * An event is considered a duplicate (and is dropped) if:
+    *  - the same event appears later in the sequence of events, or
+    *  - the event would have no effect when applied to this node.
+    *
+    * This implementation prioritizes avoiding heap allocations.
+    * Since it does a linear search of the later events,
+    * this could be less efficient for very large sequences of events.
+    *
+    * @param events An ordered sequence of events to be de-duplicated.
+    * @param atTimeOverride If defined, the `EventTime` that should be combined with the single event;
+    *                       If empty, the an `EventTime` is obtained using `nextEventTime()`.
+    * @return a sequence of de-duplicated events wrapped in a `WithTime`.
+    *         This result is mutable, so it should not be allowed to escape this context.
+    */
+  def deduplicateEvents(events: Seq[NodeChangeEvent],
+                        atTimeOverride: Option[EventTime]
+                       ): Seq[WithTime] = {
+    require(atTimeOverride.isEmpty || events.length == 1, "Can only override EventTime for a single Event")
+
+    val r: ArrayBuffer[WithTime] = new ArrayBuffer[WithTime](events.length)
+
+    @tailrec
+    def accumulate(events: Seq[NodeChangeEvent] = events): Seq[WithTime] =
+      events match {
+        case event +: laterEvents =>
+
+          val eventIsDuplicatedLater = event match {
+            case _: MergedIntoOther =>
+              laterEvents.exists(_.isInstanceOf[MergedIntoOther])
+            case event =>
+              laterEvents.contains(event)
+          }
+
+          if (!eventIsDuplicatedLater && hasEffect(event))
+            r += WithTime(event, atTimeOverride.getOrElse(nextEventTime()))
+
+          accumulate(laterEvents)
+
+        case _ =>
+          r
+      }
+
+      accumulate()
+  }
+
   /** Process multiple node events as a single unit, so their effects are applied in memory together, and also persisted
     * together. Will check the incoming sequence for conflicting events (modifying the same value more than once), and
     * keep only the last event, ensuring the provided collection is internally coherent.
@@ -147,38 +190,12 @@ private[graph] class NodeActor(
     events: Seq[NodeChangeEvent],
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type] =
-    if (atTime.isDefined) Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
+    if (atTime.isDefined)
+      Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
     else if (atTimeOverride.isDefined && events.size > 1)
       Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
     else {
-      val dedupedEffectingEvents: Seq[NodeChangeEvent.WithTime] = {
-        if (events.isEmpty) Seq.empty
-        else if (events.size == 1 && hasEffect(events.head))
-          Seq(NodeChangeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
-        else {
-          /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
-           * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
-           * but would result in no change when applied in order, then no change at all will be applied. e.g. if a
-           * property exists, and these events would remove it and set it back to its same value, then no change to the
-           * property will be recorded at all. Original event order is maintained. */
-          var es: Set[HalfEdge] = Set.empty
-          var ps: Set[Symbol] = Set.empty
-          var ft: Option[QuineId] = None
-          var mih: Set[QuineId] = Set.empty
-          events.reverse
-            .filter {
-              case e @ EdgeAdded(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
-              case e @ EdgeRemoved(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
-              case e @ PropertySet(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
-              case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
-              case e @ MergedIntoOther(id) => if (ft.isDefined) false else { ft = Some(id); hasEffect(e) }
-              case e @ MergedHere(o) => if (mih.contains(o)) false else { mih += o; hasEffect(e) }
-            }
-            .reverse
-            .map(e => WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
-          // TODO: It should be possible to do all this in only two passes over the collection with no reverses.
-        }
-      }
+      val dedupedEffectingEvents = deduplicateEvents(events, atTimeOverride)
 
       val persistAttempts = new AtomicInteger(1)
       def persistEventsToJournal(): Future[Done.type] =
