@@ -215,20 +215,24 @@ private[graph] class NodeActor(
                 e
               }
             )
-        } else Future.successful(Done)
+        } else
+          Future.successful(Done)
 
-      (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
-        case (false, _) => Future.successful(Done)
-        case (true, EventEffectOrder.MemoryFirst) =>
+      if (dedupedEffectingEvents.isEmpty)
+        Future.successful(Done)
+      else graph.effectOrder match {
+
+        case EventEffectOrder.MemoryFirst =>
           applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event))
           akka.pattern.retry(
-            () => persistEventsToJournal(),
-            Int.MaxValue,
-            1.millisecond,
-            10.seconds,
+            attempt = () => persistEventsToJournal(),
+            attempts = Int.MaxValue,
+            minBackoff = 1.millisecond,
+            maxBackoff = 10.seconds,
             randomFactor = 0.1d
           )(implicitly, context.system.scheduler)
-        case (true, EventEffectOrder.PersistorFirst) =>
+
+        case EventEffectOrder.PersistorFirst =>
           pauseMessageProcessingUntil[Done.type](
             persistEventsToJournal(),
             {
