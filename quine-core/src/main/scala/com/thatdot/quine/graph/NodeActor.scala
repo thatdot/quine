@@ -120,7 +120,7 @@ private[graph] class NodeActor(
     */
   protected def syncStandingQueries(): Unit =
     if (atTime.isEmpty) {
-      `updateUniversalQueriesOnWake`()
+      updateUniversalQueriesOnWake()
       updateUniversalCypherQueriesOnWake()
     }
 
