@@ -17,7 +17,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{LiteralCommand, LocallyRegisteredStandingQuery, NodeInternalState}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
-import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceCodecs, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
@@ -163,11 +163,30 @@ private[graph] class NodeActor(
       events match {
         case event +: laterEvents =>
 
+          def laterEdgeEventExists(edge: HalfEdge): Boolean = laterEvents.exists {
+            case laterEvent: EdgeAdded => laterEvent.edge == edge
+            case laterEvent: EdgeRemoved => laterEvent.edge == edge
+            case _ => false
+          }
+
+          def laterPropertyEventExists(key: Symbol): Boolean = laterEvents.exists {
+            case laterEvent: PropertySet => laterEvent.key == key
+            case laterEvent: PropertyRemoved => laterEvent.key == key
+            case _ => false
+          }
+
+          def laterMergedHereExists(from: QuineId): Boolean = laterEvents.exists {
+            case laterEvent: MergedHere => laterEvent.from == from
+            case _ => false
+          }
+
           val eventIsDuplicatedLater = event match {
-            case _: MergedIntoOther =>
-              laterEvents.exists(_.isInstanceOf[MergedIntoOther])
-            case event =>
-              laterEvents.contains(event)
+            case EdgeAdded(edge) => laterEdgeEventExists(edge)
+            case EdgeRemoved(edge) => laterEdgeEventExists(edge)
+            case PropertySet(key, _) => laterPropertyEventExists(key)
+            case PropertyRemoved(key, _) => laterPropertyEventExists(key)
+            case MergedIntoOther(_) => laterEvents.exists(_.isInstanceOf[MergedIntoOther])
+            case MergedHere(from) => laterMergedHereExists(from)
           }
 
           if (!eventIsDuplicatedLater && hasEffect(event))
