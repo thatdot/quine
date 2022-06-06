@@ -48,7 +48,7 @@ object Dependencies {
   val rocksdbV = "7.2.2"
   val scalaCheckV = "1.16.0"
   val scalaCollectionCompatV = "2.7.0"
-  val scalaJavaTimeV = "2.3.0"
+  val scalaJavaTimeV = "2.4.0"
   val scalaLoggingV = "3.9.5"
   val scalaParserCombinatorsV = "1.1.2"
   val scalaTestScalaCheckV = "3.2.11.0"
