@@ -76,7 +76,7 @@ trait AdministrationRoutesImpl
 
     val counters = graph.metrics.metricRegistry.getCounters.asScala.map { case (name, counter) =>
       Counter(name, counter.getCount)
-    }.toVector
+    }
     val timers = graph.metrics.metricRegistry.getTimers.asScala.map { case (name, timer) =>
       val NANOS_IN_MILLI = 1e6
       val snap = timer.getSnapshot
@@ -95,7 +95,7 @@ trait AdministrationRoutesImpl
         `20` = snap.getValue(0.20) / NANOS_IN_MILLI,
         `10` = snap.getValue(0.10) / NANOS_IN_MILLI
       )
-    }.toVector
+    }
 
     val gauges: Seq[NumericGauge] = {
       def coerceDouble[T](value: T): Option[Double] = value match {
@@ -116,13 +116,13 @@ trait AdministrationRoutesImpl
       (for {
         (name, g) <- graph.metrics.metricRegistry.getGauges.asScala
         v <- coerceDouble(g.getValue)
-      } yield NumericGauge(name, v)).toVector
+      } yield NumericGauge(name, v)).toSeq
     }
 
     MetricsReport(
       Instant.now(),
-      counters,
-      timers,
+      counters.toSeq,
+      timers.toSeq,
       gauges
     )
   }
