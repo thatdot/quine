@@ -1,9 +1,7 @@
 package com.thatdot.quine.graph
 
-import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 
-import scala.collection.concurrent
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
@@ -44,9 +42,6 @@ class GraphService(
 
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit] =
     InMemoryNodeLimit.fromOptions(inMemorySoftNodeLimit, inMemoryHardNodeLimit)
-
-  val runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
-    new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
 
   /** asynchronous construction effect: load Standing Queries from the persistor
     */

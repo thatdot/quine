@@ -1,8 +1,8 @@
 package com.thatdot.quine.graph
 
 import java.time.Instant
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{ConcurrentHashMap, ExecutionException}
 import java.{lang, util}
 
 import scala.collection.compat._
@@ -26,9 +26,14 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 /** Functionality for standing queries. */
 trait StandingQueryOpsGraph extends BaseGraph {
 
-  /** Map of all currently live standing queries.
+  /** Map of all currently live standing queries
     */
-  def runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery]
+  private val standingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
+    new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
+
+  def runningStandingQueries: scala.collection.Map[StandingQueryId, RunningStandingQuery] = standingQueries.toMap
+
+  def clearStandingQueries(): Unit = standingQueries.clear()
 
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.CypherStandingBehavior])
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.DomainNodeIndexBehavior])
@@ -146,7 +151,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
     val sq = StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize)
     val (runningSq, killSwitches) = runStandingQuery(sq, outputs)
-    runningStandingQueries.put(sqId, runningSq)
+    standingQueries.put(sqId, runningSq)
 
     // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
     pattern match {
@@ -174,7 +179,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     skipPersistor: Boolean = false
   ): Option[Future[(StandingQuery, Instant, Int)]] = {
     requiredGraphIsReady()
-    runningStandingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
+    standingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
       val persistence = if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)
       val cancellation = sq.cancel()
       persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))
