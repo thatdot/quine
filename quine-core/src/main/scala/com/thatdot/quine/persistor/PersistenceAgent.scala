@@ -335,18 +335,4 @@ trait MultipartSnapshotPersistenceAgent {
   ): Future[Option[MultipartSnapshot]]
 }
 
-/** Mix-in for persistors that don't save events (implements event related functions as no-ops) */
-trait NoJournalPersistenceAgent extends PersistenceAgent {
-
-  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future.unit
-
-  override def getJournal(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
-
-  override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = Source.empty
-}
-
 final case class PersistorTerminatedException(msg: String) extends RuntimeException(msg)
