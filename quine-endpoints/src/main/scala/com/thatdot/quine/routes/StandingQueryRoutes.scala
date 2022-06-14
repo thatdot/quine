@@ -44,19 +44,6 @@ final case class RegisteredStandingQuery(
 @docs("A declarative structural graph pattern.")
 sealed abstract class StandingQueryPattern
 object StandingQueryPattern {
-  @title("Graph")
-  @unnamed()
-  final case class Graph(
-    @docs("nodes inside the graph pattern")
-    nodes: Seq[NodePattern],
-    @docs("edges inside the graph pattern")
-    edges: Seq[EdgePattern],
-    @docs("pattern ID of the standing node (must be the ID of a node in `nodes`)")
-    startingPoint: Int,
-    @docs("values to extract from the graph pattern")
-    toExtract: Seq[ReturnColumn],
-    mode: StandingQueryMode = StandingQueryMode.DistinctId
-  ) extends StandingQueryPattern
 
   @title("Cypher")
   @unnamed()
@@ -76,89 +63,6 @@ object StandingQueryPattern {
     case object MultipleValues extends StandingQueryMode
 
     val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues)
-  }
-
-  @title("Node Pattern")
-  @unnamed()
-  final case class NodePattern(
-    @docs("pattern ID for a node (must be unique in the set of pattern IDs in the pattern's `nodes`)")
-    patternId: Int,
-    @docs("labels that should be on the node for it to match")
-    labels: Set[String],
-    @docs("properties that should be on the node for it to match")
-    properties: Map[String, PropertyValuePattern]
-  )
-
-  @title("Property Value Pattern")
-  @unnamed()
-  sealed abstract class PropertyValuePattern
-  object PropertyValuePattern {
-
-    @unnamed()
-    @title("Value")
-    @docs("match the property if it has exactly this value")
-    final case class Value(value: ujson.Value) extends PropertyValuePattern
-
-    @title("Any Value Except")
-    @docs("match the property if it has any value except this one")
-    @unnamed()
-    final case class AnyValueExcept(value: ujson.Value) extends PropertyValuePattern
-
-    @title("Any Value")
-    @docs("match the property no matter what value it has (provided it has _some_ value)")
-    @unnamed()
-    case object AnyValue extends PropertyValuePattern
-
-    @title("No Value")
-    @docs("match the property only if the property does not exist")
-    @unnamed()
-    case object NoValue extends PropertyValuePattern
-
-    @title("String Value Matching Regex")
-    @docs("match the property only if the property exists and is a string matching the provided (Java) Regex pattern")
-    @unnamed()
-    final case class RegexMatch(pattern: String) extends PropertyValuePattern
-  }
-
-  @title("Edge Pattern")
-  @unnamed()
-  final case class EdgePattern(
-    @docs("pattern ID for the start vertex of the edge (must be the ID of a node in the pattern's `nodes`)")
-    from: Int,
-    @docs("pattern ID for the end vertex of the edge (must be the ID of a node in the pattern's `nodes`)")
-    to: Int,
-    @docs("whether the edge is directed")
-    isDirected: Boolean,
-    @docs("label on the edge")
-    label: String
-  )
-
-  @title("Return Column")
-  @unnamed()
-  sealed abstract class ReturnColumn
-  object ReturnColumn {
-
-    @title("Id")
-    @unnamed()
-    final case class Id(
-      @docs("pattern ID of the node whose actual ID is extracted")
-      nodePatternId: Int,
-      @docs("whether the ID should be formatted as with `strId` or with `id`")
-      formatAsString: Boolean,
-      @docs("name with which to associated the extracted ID")
-      aliasedAs: String
-    ) extends ReturnColumn
-
-    @title("Property")
-    @unnamed()
-    final case class Property(
-      @docs("pattern ID of the node on which to extract a property value")
-      nodePatternId: Int,
-      @docs("property key whose value is extracted")
-      propertyKey: String,
-      @docs("name with which to associated the extracted property value")
-      aliasedAs: String
-    ) extends ReturnColumn
   }
 }
 
@@ -478,17 +382,6 @@ trait StandingQuerySchemas
   val additionalSqOutput: PrintToStandardOut = StandingQueryResultOutputUserDef.PrintToStandardOut(logMode =
     StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling
   )
-
-  implicit lazy val propertyValuePatternSchema: JsonSchema[PropertyValuePattern] = {
-    implicit val anyJson: JsonSchema[ujson.Value] = anySchema(None)
-    genericJsonSchema[PropertyValuePattern]
-  }
-  implicit lazy val nodePatternSchema: JsonSchema[NodePattern] =
-    genericJsonSchema[NodePattern]
-  implicit lazy val edgePatternSchema: JsonSchema[EdgePattern] =
-    genericJsonSchema[EdgePattern]
-  implicit lazy val returnColumnSchema: JsonSchema[ReturnColumn] =
-    genericJsonSchema[ReturnColumn]
 
   implicit lazy val standingQueryPatternSchema: JsonSchema[StandingQueryPattern] =
     genericJsonSchema[StandingQueryPattern].withExample(sqExample.pattern)

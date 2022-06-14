@@ -27,8 +27,9 @@ import com.thatdot.quine.app.routes.{
   QueryUiConfigurationState,
   StandingQueryStore
 }
+import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
-import com.thatdot.quine.graph.{GraphQueryPattern, GraphService, HostQuineMetrics, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, StandingQuery, StandingQueryId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -64,7 +65,6 @@ final class QuineApp(graph: GraphService)
     with com.thatdot.quine.routes.exts.UjsonAnySchema
     with LazyLogging {
 
-  import ApiConverters._
   import QuineApp._
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
@@ -162,7 +162,17 @@ final class QuineApp(graph: GraphService)
         }
         val (sq, killSwitches) = graph.createStandingQuery(
           queryName,
-          pattern = compileToInternalSqPattern(query, graph),
+          pattern = query.pattern match {
+            case StandingQueryPattern.Cypher(cypherQuery, mode) =>
+              com.thatdot.quine.graph.StandingQueryPattern.fromGraphPattern(
+                cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider),
+                Some(cypherQuery),
+                query.includeCancellations,
+                mode == StandingQueryMode.DistinctId,
+                graph.labelsProperty,
+                graph.idProvider
+              )
+          },
           outputs = sqResultsConsumers,
           queueBackpressureThreshold = query.inputBufferSize
         )
@@ -462,8 +472,6 @@ final class QuineApp(graph: GraphService)
 
 object QuineApp {
 
-  import ApiConverters._
-
   final val VersionKey = "quine_app_state_version"
   final val SampleQueriesKey = "sample_queries"
   final val QuickQueriesKey = "quick_queries"
@@ -531,22 +539,6 @@ object QuineApp {
     val pattern = internal.query.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>
         Some(StandingQueryPattern.Cypher(cypherQuery, mode))
-
-      case graph.PatternOrigin.GraphPattern(
-            GraphQueryPattern(nodes, edges, startingPoint, toExtract, None, Nil, distinct @ _),
-            None
-          ) =>
-        // TODO add `distinct` to StandingQueryPattern.Graph when MultipleValues mode supports it
-        Some(
-          StandingQueryPattern.Graph(
-            nodes.map(nodePattern),
-            edges.map(edgePattern),
-            startingPoint.id,
-            toExtract.map(returnColumn),
-            mode
-          )
-        )
-
       case _ =>
         None
     }
