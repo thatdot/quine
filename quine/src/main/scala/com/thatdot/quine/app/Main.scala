@@ -23,7 +23,7 @@ import com.thatdot.quine.app.config.{PersistenceAgentType, QuineConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
-import com.thatdot.quine.persistor.{ExceptionWrappingPersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
 
 object Main extends App with LazyLogging {
 
@@ -92,10 +92,6 @@ object Main extends App with LazyLogging {
       withWebserverOverrides.copy(
         store = PersistenceAgentType.RocksDb(
           filepath = tempDataFile
-        ),
-        persistence = PersistenceConfig(
-          journalEnabled = false,
-          snapshotSingleton = true
         )
       )
     } else withWebserverOverrides
