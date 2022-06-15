@@ -301,7 +301,7 @@ lazy val `quine-docs`: Project = {
         "snip.quine.base_dir" -> (`quine` / baseDirectory).value.getAbsolutePath,
         "material.repo" -> "https://github.com/thatdot/quine",
         "material.repo.type" -> "github",
-        "material.social" -> "https://quine-io.slack.com",
+        "material.social" -> "https://that.re/quine-slack",
         "material.social.type" -> "slack",
         "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
         "project.name" -> projectName.value,
