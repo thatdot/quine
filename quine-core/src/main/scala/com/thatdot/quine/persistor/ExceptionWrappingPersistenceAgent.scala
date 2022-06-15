@@ -49,9 +49,22 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(impl
     persistenceAgent.persistEvents(id, events)
   )
 
-  def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] = leftMap(
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] = leftMap(
     new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
     persistenceAgent.getJournal(id, startingAt, endingAt)
+  )
+
+  override def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = leftMap(
+    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
+    persistenceAgent.getJournalWithTime(id, startingAt, endingAt)
   )
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateJournalNodeIds()

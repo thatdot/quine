@@ -47,17 +47,22 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] = {
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = {
     val eventsMap = journals.get(id)
     Future.successful(
-      if (eventsMap == null) Vector.empty
+      if (eventsMap == null) Iterable.empty
       else
         eventsMap
           .subMap(startingAt, true, endingAt, true)
-          .values()
+          .entrySet()
           .iterator
           .asScala
-          .toVector
+          .map(a => NodeChangeEvent.WithTime(a.getValue, a.getKey))
+          .toSeq
     )
   }
 

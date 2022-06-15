@@ -305,6 +305,10 @@ class Journals(
   selectByQuineIdSinceTimestamp: PreparedStatement,
   selectByQuineIdUntilTimestamp: PreparedStatement,
   selectByQuineIdSinceUntilTimestamp: PreparedStatement,
+  selectWithTimeByQuineId: PreparedStatement,
+  selectWithTimeByQuineIdSinceTimestamp: PreparedStatement,
+  selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
+  selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
   insert: PreparedStatement
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
@@ -330,11 +334,41 @@ class Journals(
       )
     )
 
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = executeSelect(
+    (startingAt, endingAt) match {
+      case (EventTime.MinValue, EventTime.MaxValue) =>
+        selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
+
+      case (EventTime.MinValue, _) =>
+        selectWithTimeByQuineIdUntilTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setLt(endingAt)
+        )
+
+      case (_, EventTime.MaxValue) =>
+        selectWithTimeByQuineIdSinceTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setGt(startingAt)
+        )
+
+      case _ =>
+        selectWithTimeByQuineIdSinceUntilTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setGt(startingAt),
+          timestampColumn.setLt(endingAt)
+        )
+    }
+  )(row => NodeChangeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
+
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = selectColumn(
+  ): Future[Iterable[NodeChangeEvent]] = selectColumn(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectByQuineId.bindColumns(quineIdColumn.set(id))
@@ -402,6 +436,28 @@ object Journals extends TableDefinition with JournalColumnNames {
       )
       .build()
 
+  private val selectWithTimeByQuineIdQuery: Select =
+    selectByQuineIdQuery
+      .column(timestampColumn.name)
+
+  private val selectWithTimeByQuineIdSinceTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
+      .where(timestampColumn.is.gte)
+      .build()
+
+  private val selectWithTimeByQuineIdUntilTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
+      .where(timestampColumn.is.lte)
+      .build()
+
+  private val selectWithTimeByQuineIdSinceUntilTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
+      .where(
+        timestampColumn.is.gte,
+        timestampColumn.is.lte
+      )
+      .build()
+
   def create(
     session: CqlSession,
     readConsistency: ConsistencyLevel,
@@ -439,8 +495,26 @@ object Journals extends TableDefinition with JournalColumnNames {
         prepare(
           selectByQuineIdSinceUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
         ),
+        prepare(
+          selectWithTimeByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdSinceTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdUntilTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdSinceUntilTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new Journals(session, _, _, _, _, _, _))
+      ).mapN(new Journals(session, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }
@@ -1045,8 +1119,21 @@ class CassandraPersistor(
   override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     journals.persistEvents(id, events)
 
-  override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
-    journals.getJournal(id, startingAt, endingAt)
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] =
+    journals
+      .getJournal(id, startingAt, endingAt)
+
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    journals
+      .getJournalWithTime(id, startingAt, endingAt)
 
   override def persistSnapshotPart(
     id: QuineId,

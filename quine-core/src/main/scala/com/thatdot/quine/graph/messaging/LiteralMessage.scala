@@ -119,7 +119,7 @@ object LiteralMessage {
     subscribers: Option[String], // TODO make this string more informative
     subscriptions: Option[String], // TODO: make this string more informative
     cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
-    journal: Vector[NodeChangeEvent]
+    journal: Set[NodeChangeEvent.WithTime]
   ) extends LiteralMessage
 
   final case class LocallyRegisteredStandingQuery(

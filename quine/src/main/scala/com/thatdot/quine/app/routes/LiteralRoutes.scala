@@ -47,6 +47,7 @@ trait LiteralRoutesImpl
     implicit val eventTimeSchema: JsonSchema[EventTime] =
       longJsonSchema.xmap(EventTime.fromRaw)(_.eventTime)
     implicit val nchSchema: JsonSchema[NodeChangeEvent] = genericJsonSchema[NodeChangeEvent]
+    implicit val nchwtSchema: JsonSchema[NodeChangeEvent.WithTime] = genericJsonSchema[NodeChangeEvent.WithTime]
     genericJsonSchema[NodeInternalState]
   }
 

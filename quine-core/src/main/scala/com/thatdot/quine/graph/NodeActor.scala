@@ -151,7 +151,7 @@ private[graph] class NodeActor(
     else if (atTimeOverride.isDefined && events.size > 1)
       Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
     else {
-      val dedupedEffectingEvents: Seq[NodeChangeEvent.WithTime] = {
+      val dedupedEffectingEvents = {
         if (events.isEmpty) Seq.empty
         else if (events.size == 1 && hasEffect(events.head))
           Seq(NodeChangeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
@@ -260,7 +260,7 @@ private[graph] class NodeActor(
     *                               events from a journal.
     */
   private[this] def applyEventsEffectsInMemory(
-    events: Seq[NodeChangeEvent],
+    events: Iterable[NodeChangeEvent],
     shouldCauseSideEffects: Boolean = true
   ): Unit = {
     events.foreach {
@@ -314,7 +314,7 @@ private[graph] class NodeActor(
     *
     * @param events ordered sequence of node events produced from a single message.
     */
-  private[this] def runPostActions(events: Seq[NodeChangeEvent]): Unit = events foreach { e =>
+  private[this] def runPostActions(events: Iterable[NodeChangeEvent]): Unit = events foreach { e =>
     e match {
       case _: EdgeAdded | _: EdgeRemoved | _: PropertySet | _: PropertyRemoved =>
         // update standing queries
@@ -345,10 +345,9 @@ private[graph] class NodeActor(
     */
   @throws[NodeWakeupFailedException]("When node wakeup fails irrecoverably")
   private[this] def restoreFromSnapshotAndJournal(untilOpt: Option[Milliseconds]): Unit = {
-    import context.dispatcher
 
     type Snapshot = Option[Array[Byte]]
-    type Journal = Vector[NodeChangeEvent]
+    type Journal = Iterable[NodeChangeEvent]
     type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
 
     // Get the snapshot and journal events
@@ -404,12 +403,7 @@ private[graph] class NodeActor(
     val _ = pauseMessageProcessingUntil[((Snapshot, Journal), StandingQueryStates)](
       snapshotAndJournal.zip(standingQueryStates),
       {
-        case Success(
-              (
-                (latestSnapshotOpt: Snapshot, journalAfterSnapshot: Journal),
-                standingQueryStates: StandingQueryStates
-              )
-            ) =>
+        case Success(((latestSnapshotOpt, journalAfterSnapshot), standingQueryStates)) =>
           // Update node state
           latestSnapshotOpt match {
             case None =>
@@ -532,7 +526,7 @@ private[graph] class NodeActor(
       .mkString("\n  ", "\n  ", "\n")
 
     persistor
-      .getJournal(
+      .getJournalWithTime(
         qid,
         startingAt = EventTime.MinValue,
         endingAt =
@@ -542,7 +536,7 @@ private[graph] class NodeActor(
         log.error(err, "failed to get journal for node {}", qid)
         Vector.empty
       }
-      .map { (journal: Vector[NodeChangeEvent]) =>
+      .map { journal =>
         NodeInternalState(
           properties.view.mapValues(propertyValue2String).toMap,
           edges.toSet,
@@ -559,7 +553,7 @@ private[graph] class NodeActor(
               st.toString
             )
           }.toVector,
-          journal
+          journal.toSet
         )
       }
   }

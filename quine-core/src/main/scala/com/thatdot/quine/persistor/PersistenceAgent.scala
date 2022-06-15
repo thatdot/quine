@@ -129,21 +129,33 @@ abstract class PersistenceAgent extends StrictLogging {
     */
   def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit]
 
-  /** Fetch a time-ordered list of events affecting a node's state
-    *
-    * TODO: for debug purposes, consider adding a version of this function that returns events
-    *       along with the time at which they occur
+  /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
     * @param id         affected node
-    * @param startingAt only get events that occured 'at' or 'after' this moment
-    * @param endingAt   only get events that occured 'at' or 'before' this moment
-    * @return node events, ordered by ascending timestamp
+    * @param startingAt only get events that occurred 'at' or 'after' this moment
+    * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @return node events without timestamps, ordered by ascending timestamp
     */
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]]
+  ): Future[Iterable[NodeChangeEvent]] =
+    getJournalWithTime(id, startingAt, endingAt).map(_.map(_.event))(ExecutionContexts.parasitic)
+
+  /** Fetch a time-ordered list of events with timestamps affecting a node's state,
+    * discarding timestamps.
+    *
+    * @param id         affected node
+    * @param startingAt only get events that occurred 'at' or 'after' this moment
+    * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @return node events with timestamps, ordered by ascending timestamp
+    */
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]]
 
   /** Get a source of every node in the graph which has been written to the
     * journal store.

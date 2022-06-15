@@ -32,8 +32,19 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     getAgent(id).persistEvents(id, events)
 
-  override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] =
     getAgent(id).getJournal(id, startingAt, endingAt)
+
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    getAgent(id).getJournalWithTime(id, startingAt, endingAt)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     getAgents.foldLeft(Source.empty[QuineId])(_ ++ _.enumerateJournalNodeIds())

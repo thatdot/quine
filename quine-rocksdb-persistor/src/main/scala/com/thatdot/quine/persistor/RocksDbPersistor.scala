@@ -383,15 +383,15 @@ final class RocksDbPersistor(
     getKey(metaDataCF, key.getBytes(UTF_8))
   }
 
-  def getJournal(
+  def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future {
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
     val stamp = dbLock.tryReadLock()
     if (stamp == 0) throw new RocksDBUnavailableException()
     try {
-      val vb = Vector.newBuilder[NodeChangeEvent]
+      val vb = Iterable.newBuilder[NodeChangeEvent.WithTime]
 
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
@@ -407,7 +407,9 @@ final class RocksDbPersistor(
       try {
         it.seek(startKey)
         while (it.isValid) {
-          vb += PersistenceCodecs.eventFormat.read(it.value()).get
+          val (_, eventTime) = key2QidAndTime(it.key())
+          val event = PersistenceCodecs.eventFormat.read(it.value()).get
+          vb += NodeChangeEvent.WithTime(event, eventTime)
           it.next()
         }
       } finally {

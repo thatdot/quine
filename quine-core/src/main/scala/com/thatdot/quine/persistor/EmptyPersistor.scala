@@ -38,6 +38,12 @@ class EmptyPersistor(
     endingAt: EventTime
   ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
 
+  override def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Vector[NodeChangeEvent.WithTime]] = Future.successful(Vector.empty)
+
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =
     Future.successful(None)

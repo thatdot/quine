@@ -97,11 +97,25 @@ class BloomFilteredPersistor(
     wrappedPersistor.persistEvents(id, events)
   }
 
-  override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] =
     if (bloomFilter.mightContain(id))
       wrappedPersistor.getJournal(id, startingAt, endingAt)
     else
-      Future.successful(Vector.empty)
+      Future.successful(Iterable.empty)
+
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    if (bloomFilter.mightContain(id))
+      wrappedPersistor.getJournalWithTime(id, startingAt, endingAt)
+    else
+      Future.successful(Iterable.empty)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrappedPersistor.enumerateJournalNodeIds()
 

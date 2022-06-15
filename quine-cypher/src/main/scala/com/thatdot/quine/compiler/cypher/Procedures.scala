@@ -545,7 +545,7 @@ object CypherDebugNode extends UserDefinedProcedure {
             nodeState.subscribers.fold[Value](Expr.Null)(Expr.Str(_)),
             nodeState.subscriptions.fold[Value](Expr.Null)(Expr.Str(_)),
             Expr.List(nodeState.cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
-            Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)))
+            Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)).toVector)
           )
         }
     }

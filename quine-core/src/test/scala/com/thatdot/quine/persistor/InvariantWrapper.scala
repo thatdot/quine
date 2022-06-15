@@ -37,8 +37,19 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
     wrapped.persistEvents(id, eventsWithTime)
   }
 
-  def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] =
     wrapped.getJournal(id, startingAt, endingAt)
+
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    wrapped.getJournalWithTime(id, startingAt, endingAt)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrapped.enumerateJournalNodeIds()
 

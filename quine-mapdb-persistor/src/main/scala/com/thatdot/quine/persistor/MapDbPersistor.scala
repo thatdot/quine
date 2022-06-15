@@ -152,11 +152,11 @@ final class MapDbPersistor(
     logger.error("persistEvent failed.", e); Future.failed(e)
   }
 
-  def getJournal(
+  def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future {
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -172,11 +172,15 @@ final class MapDbPersistor(
 
     journals
       .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
-      .values()
+      .entrySet()
       .iterator()
       .asScala
-      .map((bytes: Array[Byte]) => PersistenceCodecs.eventFormat.read(bytes).get)
-      .toVector
+      .map { entry =>
+        val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[Long])
+        val event = PersistenceCodecs.eventFormat.read(entry.getValue).get
+        NodeChangeEvent.WithTime(event, eventTime)
+      }
+      .toSeq
   }.recoverWith { case e => logger.error("getJournal failed", e); Future.failed(e) }
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
