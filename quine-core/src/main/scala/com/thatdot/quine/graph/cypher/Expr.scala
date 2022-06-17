@@ -61,7 +61,7 @@ sealed abstract class Expr {
     * INV: If all parameters used by [[Expr.Parameter]] AST nodes are provided, the returned
     * expression will have no [[Expr.Parameter]] AST nodes remaining in the tree
     */
-  def substitute(parameters: Parameters): Expr
+  def substitute(parameters: ScalaMap[Expr.Parameter, Value]): Expr
 }
 
 /** TODO: missing values supported by Neo4j (but not required by openCypher)
@@ -681,7 +681,7 @@ object Expr {
 
     def cannotFail: Boolean = true
 
-    def substitute(parameters: Parameters): Variable = this
+    def substitute(parameters: ScalaMap[Parameter, Value]): Variable = this
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       qc.getOrElse(id, Null)
@@ -705,7 +705,7 @@ object Expr {
     // Argument is not map-like
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Property = copy(expr = expr.substitute(parameters))
+    def substitute(parameters: ScalaMap[Parameter, Value]): Property = copy(expr = expr.substitute(parameters))
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       expr.eval(qc) match {
@@ -764,7 +764,7 @@ object Expr {
     // Key is not string or object is not map-like
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): DynamicProperty = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): DynamicProperty = copy(
       expr = expr.substitute(parameters),
       keyExpr = keyExpr.substitute(parameters)
     )
@@ -837,7 +837,7 @@ object Expr {
     // Non-list argument
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): ListSlice = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListSlice = copy(
       list = list.substitute(parameters),
       from = from.map(_.substitute(parameters)),
       to = to.map(_.substitute(parameters))
@@ -887,7 +887,7 @@ object Expr {
 
     def cannotFail: Boolean = true
 
-    def substitute(parameters: Parameters): Value = parameters.params.apply(name)
+    def substitute(parameters: ScalaMap[Parameter, Value]): Expr = parameters.getOrElse(this, this)
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       p.params.apply(name)
@@ -907,7 +907,8 @@ object Expr {
 
     def cannotFail: Boolean = expressions.forall(_.cannotFail)
 
-    def substitute(parameters: Parameters): ListLiteral = copy(expressions = expressions.map(_.substitute(parameters)))
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListLiteral =
+      copy(expressions = expressions.map(_.substitute(parameters)))
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       List(expressions.map(_.eval(qc)))
@@ -927,7 +928,7 @@ object Expr {
 
     def cannotFail: Boolean = entries.values.forall(_.cannotFail)
 
-    def substitute(parameters: Parameters): MapLiteral = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): MapLiteral = copy(
       entries = entries.view.mapValues(_.substitute(parameters)).toMap
     )
 
@@ -957,7 +958,7 @@ object Expr {
     // Original value is not map-like
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): MapProjection = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): MapProjection = copy(
       original = original.substitute(parameters),
       items = items.map { case (str, expr) => str -> expr.substitute(parameters) }
     )
@@ -997,7 +998,7 @@ object Expr {
     // Argument is not alternating node/relationship values
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): PathExpression = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): PathExpression = copy(
       nodeEdges = nodeEdges.map(_.substitute(parameters))
     )
 
@@ -1026,7 +1027,7 @@ object Expr {
     // Argument is not a relationship
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): RelationshipStart = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipStart = copy(
       relationship = relationship.substitute(parameters)
     )
 
@@ -1055,7 +1056,7 @@ object Expr {
     // Argument is not a relationship
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): RelationshipEnd = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipEnd = copy(
       relationship = relationship.substitute(parameters)
     )
 
@@ -1089,7 +1090,7 @@ object Expr {
 
     def cannotFail: Boolean = lhs.cannotFail && rhs.cannotFail
 
-    def substitute(parameters: Parameters): Equal = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Equal = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1156,7 +1157,7 @@ object Expr {
     // incompatible argument types
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Subtract = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Subtract = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1221,7 +1222,7 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
-    def substitute(parameters: Parameters): Multiply = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Multiply = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1247,7 +1248,7 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
-    def substitute(parameters: Parameters): Divide = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Divide = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1271,7 +1272,7 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
-    def substitute(parameters: Parameters): Modulo = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Modulo = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1296,7 +1297,7 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
-    def substitute(parameters: Parameters): Exponentiate = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Exponentiate = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1328,7 +1329,7 @@ object Expr {
     // Incompatible argument types
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Add = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Add = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1417,7 +1418,7 @@ object Expr {
     // Non-number argument
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): UnaryAdd = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): UnaryAdd = copy(
       argument = argument.substitute(parameters)
     )
 
@@ -1449,7 +1450,7 @@ object Expr {
     // Non-number argument
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): UnarySubtract = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): UnarySubtract = copy(
       argument = argument.substitute(parameters)
     )
 
@@ -1491,7 +1492,7 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): GreaterEqual = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): GreaterEqual = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1520,7 +1521,7 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): LessEqual = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): LessEqual = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1549,7 +1550,7 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Greater = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Greater = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1578,7 +1579,7 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Less = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Less = copy(
       lhs = lhs.substitute(parameters),
       rhs = rhs.substitute(parameters)
     )
@@ -1609,7 +1610,7 @@ object Expr {
     // Non-list RHS
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): InList = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): InList = copy(
       element = element.substitute(parameters),
       list = list.substitute(parameters)
     )
@@ -1645,7 +1646,7 @@ object Expr {
 
     def cannotFail: Boolean = scrutinee.cannotFail && startsWith.cannotFail
 
-    def substitute(parameters: Parameters): StartsWith = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): StartsWith = copy(
       scrutinee = scrutinee.substitute(parameters),
       startsWith = startsWith.substitute(parameters)
     )
@@ -1672,7 +1673,7 @@ object Expr {
 
     def cannotFail: Boolean = scrutinee.cannotFail && endsWith.cannotFail
 
-    def substitute(parameters: Parameters): EndsWith = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): EndsWith = copy(
       scrutinee = scrutinee.substitute(parameters),
       endsWith = endsWith.substitute(parameters)
     )
@@ -1699,7 +1700,7 @@ object Expr {
 
     def cannotFail: Boolean = scrutinee.cannotFail && contained.cannotFail
 
-    def substitute(parameters: Parameters): Contains = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Contains = copy(
       scrutinee = scrutinee.substitute(parameters),
       contained = contained.substitute(parameters)
     )
@@ -1732,7 +1733,7 @@ object Expr {
     // Regex pattern can be invalid
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Regex = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Regex = copy(
       scrutinee = scrutinee.substitute(parameters),
       regex = regex.substitute(parameters)
     )
@@ -1758,7 +1759,7 @@ object Expr {
 
     def cannotFail: Boolean = notNull.cannotFail
 
-    def substitute(parameters: Parameters): IsNotNull = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): IsNotNull = copy(
       notNull = notNull.substitute(parameters)
     )
 
@@ -1783,7 +1784,7 @@ object Expr {
 
     def cannotFail: Boolean = isNull.cannotFail
 
-    def substitute(parameters: Parameters): IsNull = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): IsNull = copy(
       isNull = isNull.substitute(parameters)
     )
 
@@ -1810,7 +1811,7 @@ object Expr {
     // Non boolean argument
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Not = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Not = copy(
       negated = negated.substitute(parameters)
     )
 
@@ -1843,7 +1844,7 @@ object Expr {
     // Non boolean arguments
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): And = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): And = copy(
       conjuncts = conjuncts.map(_.substitute(parameters))
     )
 
@@ -1878,7 +1879,7 @@ object Expr {
     // Non boolean arguments
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Or = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Or = copy(
       disjuncts = disjuncts.map(_.substitute(parameters))
     )
 
@@ -1919,7 +1920,7 @@ object Expr {
     def cannotFail: Boolean = scrutinee.forall(_.cannotFail) &&
       branches.forall(t => t._1.cannotFail && t._2.cannotFail) && default.forall(_.cannotFail)
 
-    def substitute(parameters: Parameters): Case = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): Case = copy(
       scrutinee = scrutinee.map(_.substitute(parameters)),
       branches = branches.map { case (l, r) => l.substitute(parameters) -> r.substitute(parameters) },
       default = default.map(_.substitute(parameters))
@@ -1955,7 +1956,8 @@ object Expr {
     // TODO: consider tracking which _functions_ cannot fail
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): Function = copy(arguments = arguments.map(_.substitute(parameters)))
+    def substitute(parameters: ScalaMap[Parameter, Value]): Function =
+      copy(arguments = arguments.map(_.substitute(parameters)))
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val argVals = arguments.map(_.eval(qc))
@@ -1990,7 +1992,7 @@ object Expr {
 
     def cannotFail: Boolean = list.cannotFail && filterPredicate.cannotFail && extract.cannotFail
 
-    def substitute(parameters: Parameters): ListComprehension = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListComprehension = copy(
       list = list.substitute(parameters),
       filterPredicate = filterPredicate.substitute(parameters),
       extract = extract.substitute(parameters)
@@ -2037,7 +2039,7 @@ object Expr {
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): AllInList = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): AllInList = copy(
       list = list.substitute(parameters),
       filterPredicate = filterPredicate.substitute(parameters)
     )
@@ -2083,7 +2085,7 @@ object Expr {
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): AnyInList = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): AnyInList = copy(
       list = list.substitute(parameters),
       filterPredicate = filterPredicate.substitute(parameters)
     )
@@ -2129,7 +2131,7 @@ object Expr {
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): SingleInList = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): SingleInList = copy(
       list = list.substitute(parameters),
       filterPredicate = filterPredicate.substitute(parameters)
     )
@@ -2191,7 +2193,7 @@ object Expr {
     // Can fail when `list` returns a non-list
     def cannotFail: Boolean = false
 
-    def substitute(parameters: Parameters): ReduceList = copy(
+    def substitute(parameters: ScalaMap[Parameter, Value]): ReduceList = copy(
       initial = initial.substitute(parameters),
       list = list.substitute(parameters),
       reducer = reducer.substitute(parameters)
@@ -2216,7 +2218,7 @@ object Expr {
 
     def cannotFail: Boolean = true
 
-    def substitute(parameters: Parameters): FreshNodeId.type = this
+    def substitute(parameters: ScalaMap[Parameter, Value]): FreshNodeId.type = this
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Expr.fromQuineValue(idp.qidToValue(idp.newQid()))
@@ -2240,7 +2242,7 @@ sealed abstract class Value extends Expr {
 
   def cannotFail: Boolean = true
 
-  def substitute(parameters: Parameters): Value = this
+  def substitute(parameters: ScalaMap[Expr.Parameter, Value]): Value = this
 
   @throws[CypherException.TypeMismatch]("if the value is not an integer")
   def asLong(context: String): Long = this match {

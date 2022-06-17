@@ -50,7 +50,7 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
       case query: Skip[Location.Anywhere @unchecked] => interpretSkip(query, context)
       case query: Limit[Location.Anywhere @unchecked] => interpretLimit(query, context)
       case query: Sort[Location.Anywhere @unchecked] => interpretSort(query, context)
-      case query: Top[Location.Anywhere @unchecked] => interpretTop(query, context)
+      case query: Return[Location.Anywhere @unchecked] => interpretReturn(query, context)
       case query: Distinct[Location.Anywhere @unchecked] => interpretDistinct(query, context)
       case query: Unwind[Location.Anywhere @unchecked] => interpretUnwind(query, context)
       case query: AdjustContext[Location.Anywhere @unchecked] => interpretAdjustContext(query, context)
@@ -139,7 +139,7 @@ trait OnNodeInterpreter
       case query: Skip[Location.OnNode @unchecked] => interpretSkip(query, context)
       case query: Limit[Location.OnNode @unchecked] => interpretLimit(query, context)
       case query: Sort[Location.OnNode @unchecked] => interpretSort(query, context)
-      case query: Top[Location.OnNode @unchecked] => interpretTop(query, context)
+      case query: Return[Location.OnNode @unchecked] => interpretReturn(query, context)
       case query: Distinct[Location.OnNode @unchecked] => interpretDistinct(query, context)
       case query: Unwind[Location.OnNode @unchecked] => interpretUnwind(query, context)
       case query: AdjustContext[Location.OnNode @unchecked] => interpretAdjustContext(query, context)
@@ -865,38 +865,43 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
     }
   }
 
-  final private[quine] def interpretTop(
-    query: Top[Start],
+  final private[quine] def interpretReturn(
+    query: Return[Start],
     context: QueryContext
   )(implicit
     parameters: Parameters
-  ): Source[QueryContext, _] = {
-    val capacity = query.limit.eval(context).asLong("TOP clause")
-    val sourceToTop = interpret(query.toTop, context)
+  ): Source[QueryContext, _] =
+    query match {
+      case Return(toReturn, Some(orderBy), None, None, Some(take), columns @ _) =>
+        // TODO this code can handle Some(drop) too with only very minor modification
+        val capacity = take.eval(context).asLong("RETURN clause's LIMIT")
+        val sourceToTop = interpret(toReturn, context)
 
-    // We need lazily to ensure that we don't re-use `priorityQueue` across materializations
-    Source.lazySource { () =>
-      // The `maximumSize` evicts the largest element whenever the queue gets too big
-      // The ordering is inverted so smaller elements appear larger (and get evicted first)
-      val priorityQueue: MinMaxPriorityQueue[QueryContext] = MinMaxPriorityQueue
-        .orderedBy(QueryContext.orderingBy(query.by).reversed)
-        .maximumSize(capacity.toInt)
-        .create()
+        // We need lazily to ensure that we don't re-use `priorityQueue` across materializations
+        Source.lazySource { () =>
+          // The `maximumSize` evicts the largest element whenever the queue gets too big
+          // The ordering is inverted so smaller elements appear larger (and get evicted first)
+          val priorityQueue: MinMaxPriorityQueue[QueryContext] = MinMaxPriorityQueue
+            .orderedBy(QueryContext.orderingBy(orderBy).reversed)
+            .maximumSize(capacity.toInt)
+            .create()
 
-      sourceToTop
-        .fold(priorityQueue) { (queue, elem) => queue.add(elem); queue }
-        .flatMapConcat { queue =>
-          Source
-            .fromIterator(() =>
-              new Iterator[QueryContext] {
-                def hasNext = !queue.isEmpty
-                def next = queue.removeFirst
-              }
-            )
-            .take(capacity)
+          sourceToTop
+            .fold(priorityQueue) { (queue, elem) => queue.add(elem); queue }
+            .flatMapConcat { queue =>
+              Source
+                .fromIterator(() =>
+                  new Iterator[QueryContext] {
+                    def hasNext = !queue.isEmpty
+                    def next = queue.removeFirst
+                  }
+                )
+                .take(capacity)
+            }
         }
+      case fallback @ Return(_, _, _, _, _, _) =>
+        interpret(fallback.delegates.naiveStack, context)(parameters)
     }
-  }
 
   final private[quine] def interpretDistinct(
     query: Distinct[Start],

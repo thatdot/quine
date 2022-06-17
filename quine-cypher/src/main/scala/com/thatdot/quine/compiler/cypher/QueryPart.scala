@@ -5,6 +5,7 @@ import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.{ast, expressions, util}
 
 import com.thatdot.quine.graph.cypher
+import com.thatdot.quine.graph.cypher.{Location, Query}
 
 object QueryPart {
 
@@ -353,6 +354,123 @@ object QueryPart {
     }
   }
 
+  /** Compile a potentially-aggregating projection.
+    *
+    * NB because WHERE and ORDER BY can use both agregated and non-aggregated values, if aggregation is present,
+    * the ORDER BY clause must be compiled alongside the aggregation.
+    *
+    * @param projection
+    */
+  private def compileSortFilterAndAggregate(
+    querySoFar: Query[cypher.Location.Anywhere],
+    returnItems: ast.ReturnItems,
+    orderByOpt: Option[ast.OrderBy],
+    whereOpt: Option[ast.Where]
+  ): CompM[Query[Location.Anywhere]] = {
+    for {
+      compiledReturnItems <- compileReturnItems(returnItems)
+      WithQuery((groupers, aggregators), setupQuery) = compiledReturnItems
+      grouped <-
+        if (aggregators.isEmpty) {
+          for {
+            // RETURN
+            _ <- groupers.traverse_ { (col: (Symbol, cypher.Expr)) =>
+              CompM.hasColumn(col._1).flatMap {
+                case true => CompM.pure(())
+                case false => CompM.addColumn(col._1).map(_ => ())
+              }
+            }
+            adjusted = cypher.Query.adjustContext(
+              dropExisting = false,
+              groupers,
+              cypher.Query.apply(querySoFar, setupQuery)
+            )
+
+            // WHERE
+            filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
+              case None => CompM.pure(adjusted)
+              case Some(ast.Where(expr)) =>
+                Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, adjusted)))
+            }
+
+            // ORDER BY
+            ordered: cypher.Query[cypher.Location.Anywhere] <- orderByOpt match {
+              case None => CompM.pure(filtered)
+              case Some(ast.OrderBy(sortItems)) =>
+                sortItems.toVector
+                  .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
+                    case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
+                    case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
+                  }
+                  .map(_.sequence)
+                  .map { case WithQuery(sortBy, setupSort) =>
+                    cypher.Query.Sort(sortBy, cypher.Query.apply(filtered, setupSort))
+                  }
+            }
+
+            // We need to adjust the context both before
+            // and after the context because ORDER BY might be using one of the
+            // newly created variables, or it might be using one of the newly
+            // deleted variables.
+            toReturn: cypher.Query[cypher.Location.Anywhere] <-
+              if (!returnItems.includeExisting) {
+                for {
+                  () <- CompM.clearColumns
+                  () <- groupers.traverse_ { case (colName, _) => CompM.addColumn(colName) }
+                } yield cypher.Query.adjustContext(
+                  dropExisting = true,
+                  toAdd = groupers,
+                  adjustThis = ordered
+                )
+              } else {
+                CompM.pure(ordered)
+              }
+          } yield toReturn
+        } else {
+
+          for {
+            // Aggregate columns
+            () <- CompM.clearColumns
+            totalCols: Vector[(Symbol, cypher.Expr.Variable)] <- returnItems.items.toVector
+              .traverse { (retItem: ast.ReturnItem) =>
+                val colName = Symbol(retItem.name)
+                CompM.addColumn(colName).map(colName -> _)
+              }
+
+            aggregated = cypher.Query.adjustContext(
+              dropExisting = true,
+              toAdd = totalCols,
+              adjustThis = cypher.Query.EagerAggregation(
+                groupers,
+                aggregators,
+                cypher.Query.apply(querySoFar, setupQuery),
+                keepExisting = false
+              )
+            )
+
+            // Where
+            filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
+              case None => CompM.pure(aggregated)
+              case Some(ast.Where(expr)) =>
+                Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, aggregated)))
+            }
+
+            // ORDER BY
+            ordered: cypher.Query[cypher.Location.Anywhere] <- orderByOpt match {
+              case None => CompM.pure(filtered)
+              case Some(ast.OrderBy(sortItems)) =>
+                sortItems.toVector
+                  .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
+                    case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
+                    case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
+                  }
+                  .map(_.sequence.toQuery(cypher.Query.Sort(_, filtered)))
+            }
+          } yield ordered
+        }
+    } yield grouped
+  }
+
   /** Compile return items into non-aggregates and aggregates
     *
     * @param items return items
@@ -598,115 +716,10 @@ object QueryPart {
               limitOpt,
               whereOpt
             )
-          ) =>
+          ) if !clause.isReturn =>
         for {
-          // Detect aggregation if there is any
-          returnItems <- compileReturnItems(items)
-          WithQuery((groupers, aggregators), setupQuery) = returnItems
-          grouped <-
-            if (aggregators.isEmpty) {
-              for {
-                // RETURN
-                _ <- groupers.traverse_ { (col: (Symbol, cypher.Expr)) =>
-                  CompM.hasColumn(col._1).flatMap {
-                    case true => CompM.pure(())
-                    case false => CompM.addColumn(col._1).map(_ => ())
-                  }
-                }
-                adjusted = cypher.Query.adjustContext(
-                  dropExisting = false,
-                  groupers,
-                  cypher.Query.apply(accQuery, setupQuery)
-                )
-
-                // WHERE
-                filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
-                  case None => CompM.pure(adjusted)
-                  case Some(ast.Where(expr)) =>
-                    Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, adjusted)))
-                }
-
-                // ORDER BY
-                //
-                // TODO: combine ORDER BY and LIMIT into TOP
-                ordered: cypher.Query[cypher.Location.Anywhere] <- orderByOpt match {
-                  case None => CompM.pure(filtered)
-                  case Some(ast.OrderBy(sortItems)) =>
-                    sortItems.toVector
-                      .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
-                        case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
-                        case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
-                      }
-                      .map(_.sequence)
-                      .map { case WithQuery(sortBy, setupSort) =>
-                        cypher.Query.Sort(sortBy, cypher.Query.apply(filtered, setupSort))
-                      }
-                }
-
-                // TODO: make this nice.
-                //
-                // We need to adjust the context both before
-                // and after the context because ORDER BY might be using one of the
-                // newly created variables, or it might be using one of the newly
-                // deleted variables.
-                toReturn: cypher.Query[cypher.Location.Anywhere] <-
-                  if (!items.includeExisting) {
-                    for {
-                      () <- CompM.clearColumns
-                      () <- groupers.traverse_ { case (colName, _) => CompM.addColumn(colName) }
-                    } yield cypher.Query.adjustContext(
-                      dropExisting = true,
-                      toAdd = groupers,
-                      adjustThis = ordered
-                    )
-                  } else {
-                    CompM.pure(ordered)
-                  }
-              } yield toReturn
-            } else {
-
-              for {
-                // Aggregate columns
-                () <- CompM.clearColumns
-                totalCols: Vector[(Symbol, cypher.Expr.Variable)] <- items.items.toVector
-                  .traverse { (retItem: ast.ReturnItem) =>
-                    val colName = Symbol(retItem.name)
-                    CompM.addColumn(colName).map(colName -> _)
-                  }
-
-                aggregated = cypher.Query.adjustContext(
-                  dropExisting = true,
-                  toAdd = totalCols,
-                  adjustThis = cypher.Query.EagerAggregation(
-                    groupers,
-                    aggregators,
-                    cypher.Query.apply(accQuery, setupQuery),
-                    keepExisting = false
-                  )
-                )
-
-                // Where
-                filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
-                  case None => CompM.pure(aggregated)
-                  case Some(ast.Where(expr)) =>
-                    Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, aggregated)))
-                }
-
-                // ORDER BY
-                //
-                // TODO: combine ORDER BY and LIMIT into TOP
-                ordered: cypher.Query[cypher.Location.Anywhere] <- orderByOpt match {
-                  case None => CompM.pure(filtered)
-                  case Some(ast.OrderBy(sortItems)) =>
-                    sortItems.toVector
-                      .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
-                        case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
-                        case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
-                      }
-                      .map(_.sequence.toQuery(cypher.Query.Sort(_, filtered)))
-                }
-              } yield ordered
-            }
+          // Handle aggregations, ORDER BY, and grouping, if any
+          grouped: Query[Location.Anywhere] <- compileSortFilterAndAggregate(accQuery, items, orderByOpt, whereOpt)
 
           // DISTINCT
           deduped <- isDistinct match {
@@ -731,6 +744,141 @@ object QueryPart {
               Expression.compileM(expr).map(_.toQuery(cypher.Query.Limit(_, skipped)))
           }
         } yield limited
+      case (
+            accQuery,
+            clause @ ast.Return(
+              isDistinct,
+              items,
+              orderByOpt,
+              skipOpt,
+              limitOpt,
+              excludedNames @ _
+            )
+          ) =>
+        compileReturnItems(items).flatMap {
+          case WithQuery((groupers, aggregators), setupQuery) if aggregators.isEmpty =>
+            /** non-aggregating RETURN: We can compile directly to a single fused [[cypher.Query.Return]]
+              */
+            for {
+              _ <- groupers.traverse_ { (col: (Symbol, cypher.Expr)) =>
+                CompM.hasColumn(col._1).flatMap {
+                  case true => CompM.pure(())
+                  case false => CompM.addColumn(col._1).map(_ => ())
+                }
+              }
+              adjusted = cypher.Query.adjustContext(
+                dropExisting = false,
+                groupers,
+                cypher.Query.apply(accQuery, setupQuery)
+              )
+              orderedWQ: WithQuery[Option[cypher.Query.Sort.SortBy]] <- orderByOpt match {
+                case None => CompM.pure(WithQuery(None))
+                case Some(ast.OrderBy(sortItems)) =>
+                  sortItems.toVector
+                    .traverse[WithQueryT[CompM, *], (cypher.Expr, Boolean)] {
+                      case ast.AscSortItem(e) => Expression.compile(e).map(_ -> true)
+                      case ast.DescSortItem(e) => Expression.compile(e).map(_ -> false)
+                    }
+                    .map(Some(_))
+                    .runWithQuery
+              }
+              WithQuery(orderingRule, orderingQueryPart) = orderedWQ
+              dedupeRule: Option[cypher.Query.Distinct.DistinctBy] <- isDistinct match {
+                case false => CompM.pure(None)
+                case true =>
+                  // NB because interpreting variables is independent of graph state, this doesn't need a WithQuery closure
+                  clause.returnColumns
+                    .traverse(CompM.getVariable(_, clause))
+                    .map(Some(_))
+              }
+              dropWQ: WithQuery[Option[cypher.Expr]] <- skipOpt match {
+                case None => CompM.pure(WithQuery(None))
+                case Some(ast.Skip(expr)) =>
+                  Expression.compile(expr).map(Some(_)).runWithQuery
+              }
+              WithQuery(dropRule, dropQueryPart) = dropWQ
+              limitWQ: WithQuery[Option[cypher.Expr]] <- limitOpt match {
+                case None => CompM.pure(WithQuery(None))
+                case Some(ast.Limit(expr)) =>
+                  Expression.compile(expr).map(Some(_)).runWithQuery
+              }
+              WithQuery(takeRule, takeQueryPart) = limitWQ
+              // unprojected query (plus setup for ordering and (implicitly) deduplication)
+              unprojectedQuery = Query.apply(adjusted, orderingQueryPart)
+              // ORDER BY can use values from the main query, so we need to ensure that clause's related query is
+              // fully interpreted before the `RETURN` evaluates the ORDER BY clause
+              toReturn = Query.Return(
+                toReturn = unprojectedQuery,
+                orderBy = orderingRule, // `grouped` is already ordered
+                distinctBy = dedupeRule,
+                drop = dropRule,
+                take = takeRule
+              )
+              // We need to adjust the context both before
+              // and after the context because ORDER BY might be using one of the
+              // newly created variables, or it might be using one of the newly
+              // deleted variables.
+              returnQueryWithDedupeAndOrdering: cypher.Query[cypher.Location.Anywhere] <-
+                if (!items.includeExisting) {
+                  for {
+                    () <- CompM.clearColumns
+                    () <- groupers.traverse_ { case (colName, _) => CompM.addColumn(colName) }
+                  } yield cypher.Query.adjustContext(
+                    dropExisting = true,
+                    toAdd = groupers,
+                    adjustThis = toReturn
+                  )
+                } else {
+                  CompM.pure(toReturn)
+                }
+              // DROP/SKIP Exprs need to be evaluated before the query they are windowing, so the related queries for
+              // those clauses need to be fully interpreted before the RETURN evaluates its main query
+              returnQueryWithDrop = Query.apply(returnQueryWithDedupeAndOrdering, dropQueryPart)
+              returnQueryWithTake = Query.apply(returnQueryWithDrop, takeQueryPart)
+            } yield returnQueryWithTake
+          case _ =>
+            /** aggregating RETURN: We need to compile the aggregation (and therefore the [[orderByOpt]]) separately,
+              * but we can still fuse the LIMIT/SKIP/DISTINCT to leverage some optimizations
+              */
+            for {
+              // Handle aggregations, ORDER BY, and grouping, if any
+              grouped: Query[Location.Anywhere] <- compileSortFilterAndAggregate(
+                accQuery,
+                items,
+                orderByOpt,
+                whereOpt = None
+              )
+              dedupeRule: Option[cypher.Query.Distinct.DistinctBy] <- isDistinct match {
+                case false => CompM.pure(None)
+                case true =>
+                  // NB because interpreting variables is independent of graph state, this doesn't need a WithQuery closure
+                  clause.returnColumns
+                    .traverse(CompM.getVariable(_, clause))
+                    .map(Some(_))
+              }
+              dropWQ: WithQuery[Option[cypher.Expr]] <- skipOpt match {
+                case None => CompM.pure(WithQuery(None))
+                case Some(ast.Skip(expr)) =>
+                  Expression.compile(expr).map(Some(_)).runWithQuery
+              }
+              WithQuery(dropRule, dropQueryPart) = dropWQ
+              limitWQ: WithQuery[Option[cypher.Expr]] <- limitOpt match {
+                case None => CompM.pure(WithQuery(None))
+                case Some(ast.Limit(expr)) =>
+                  Expression.compile(expr).map(Some(_)).runWithQuery
+              }
+              WithQuery(takeRule, takeQueryPart) = limitWQ
+              returnQueryWithDedupe = Query.Return(
+                toReturn = grouped,
+                orderBy = None, // `grouped` is already ordered
+                distinctBy = dedupeRule,
+                drop = dropRule,
+                take = takeRule
+              )
+              returnQueryWithDrop = Query.apply(returnQueryWithDedupe, dropQueryPart)
+              returnQueryWithTake = Query.apply(returnQueryWithDrop, takeQueryPart)
+            } yield returnQueryWithTake
+        }
 
       // TODO: what can go here?
       case (_, other) =>

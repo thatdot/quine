@@ -71,7 +71,7 @@ object VariableRewriter {
       case query: Skip[Location.OnNode @unchecked] => convertSkip(query, columnsIn)
       case query: Limit[Location.OnNode @unchecked] => convertLimit(query, columnsIn)
       case query: Sort[Location.OnNode @unchecked] => convertSort(query, columnsIn)
-      case query: Top[Location.OnNode @unchecked] => convertTop(query, columnsIn)
+      case query: Return[Location.OnNode @unchecked] => convertReturn(query, columnsIn)
       case query: Distinct[Location.OnNode @unchecked] => convertDistinct(query, columnsIn)
       case query: Unwind[Location.OnNode @unchecked] => convertUnwind(query, columnsIn)
       case query: AdjustContext[Location.OnNode @unchecked] =>
@@ -171,7 +171,7 @@ object VariableRewriter {
       case query: Skip[Location.Anywhere @unchecked] => convertSkip(query, columnsIn)
       case query: Limit[Location.Anywhere @unchecked] => convertLimit(query, columnsIn)
       case query: Sort[Location.Anywhere @unchecked] => convertSort(query, columnsIn)
-      case query: Top[Location.Anywhere @unchecked] => convertTop(query, columnsIn)
+      case query: Return[Location.Anywhere @unchecked] => convertReturn(query, columnsIn)
       case query: Distinct[Location.Anywhere @unchecked] => convertDistinct(query, columnsIn)
       case query: Unwind[Location.Anywhere @unchecked] => convertUnwind(query, columnsIn)
       case query: AdjustContext[Location.Anywhere @unchecked] =>
@@ -351,12 +351,12 @@ trait VariableRewriter[Start <: Location] {
     query.copy(toSort = toSort, columns = toSort.columns)
   }
 
-  protected def convertTop(
-    query: Top[Start],
+  protected def convertReturn(
+    query: Return[Start],
     columnsIn: Columns
-  ): Top[Start] = {
-    val toTop = convertQuery(query.toTop, columnsIn)
-    query.copy(toTop = toTop, columns = toTop.columns)
+  ): Return[Start] = {
+    val toReturn = convertQuery(query.toReturn, columnsIn)
+    query.copy(toReturn = toReturn, columns = toReturn.columns)
   }
 
   protected def convertDistinct(
