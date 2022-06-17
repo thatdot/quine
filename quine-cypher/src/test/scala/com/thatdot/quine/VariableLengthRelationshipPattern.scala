@@ -438,4 +438,25 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
       expectedCanContainAllNodeScan = true
     )
   }
+
+  describe("variable length relationships with constraints") {
+    testQuery(
+      "MATCH (a)-[*1]->(b)-->(c) RETURN a.name, c.name",
+      expectedColumns = Vector("a.name", "c.name"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Morpheus"), Expr.Str("Agent Smith")),
+        Vector(Expr.Str("Neo"), Expr.Str("Cypher")),
+        Vector(Expr.Str("Neo"), Expr.Str("Trinity")),
+        Vector(Expr.Str("Cypher"), Expr.Str("The Architect"))
+      ),
+      expectedCanContainAllNodeScan = true
+    )
+
+    testQuery(
+      "MATCH (a)-[:foo|:bar]->(b)-[:bar*]->(c) RETURN null",
+      expectedColumns = Vector("null"),
+      expectedRows = Seq.empty,
+      expectedCanContainAllNodeScan = true
+    )
+  }
 }

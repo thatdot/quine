@@ -118,6 +118,7 @@ lazy val `quine-cypher`: Project = project
   .settings(`scala 2.12`)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
+    scalacOptions += "-language:reflectiveCalls",
     libraryDependencies ++= Seq(
       "org.opencypher" % "expressions-9.0" % openCypherV,
       "org.opencypher" % "front-end-9.0" % openCypherV,
