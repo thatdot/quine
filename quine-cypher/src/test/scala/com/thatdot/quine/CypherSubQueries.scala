@@ -68,4 +68,76 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
       )
     )
   }
+
+  describe("subquery scoping") {
+    testQuery(
+      "WITH 2 AS y CALL { RETURN 1 AS x } RETURN y",
+      expectedColumns = Vector("y"),
+      expectedRows = Seq(Vector(Expr.Integer(2L))),
+      expectedCannotFail = true
+    )
+
+    testQuery(
+      "WITH 2 AS y CALL { RETURN 1 AS x UNION ALL RETURN 2 AS x UNION ALL RETURN 3 AS x } RETURN *",
+      expectedColumns = Vector("x", "y"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L)),
+        Vector(Expr.Integer(3L), Expr.Integer(2L))
+      ),
+      expectedCannotFail = true
+    )
+
+    testQuery(
+      """unwind range(1,2) as x
+        |unwind range(1,2) as y
+        |unwind range(1,2) as z
+        |call {
+        |  with y, x
+        |  return y * x as w
+        |}
+        |return *
+        |""".stripMargin,
+      expectedColumns = Vector("w", "x", "y", "z"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L)),
+        Vector(Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(1L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L))
+      )
+    )
+
+    testQuery(
+      """unwind range(1,2) as x
+        |unwind range(1,2) as y
+        |unwind range(1,2) as z
+        |call {
+        |  with y, x
+        |  return y * x as w
+        |  union
+        |  with x, z
+        |  return x * z as w
+        |} return *
+        |""".stripMargin,
+      expectedColumns = Vector("w", "x", "y", "z"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L)),
+        Vector(Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(1L), Expr.Integer(1L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L), Expr.Integer(2L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(1L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L)),
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L))
+      )
+    )
+  }
 }

@@ -1105,5 +1105,12 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] =
-    interpret(query.subQuery, context).map(context ++ _)
+    /* Variable scoping here is tricky:
+     *
+     *   - subquery runs against only the imported subcontext
+     *   - subquery output columns get _prepended_ to existing columns (unlike `with` or `unwind`)
+     *
+     * Collisions between subquery column outputs and existing columns are ruled out statically.
+     */
+    interpret(query.subQuery, context.subcontext(query.importedVariables)).map(_ ++ context)
 }

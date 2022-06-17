@@ -746,9 +746,11 @@ object Query {
     * the initial input columns back to the subquery outputs.
     *
     * @param subQuery inner query
+    * @param importvariables which variables to import into the subquery
     */
   final case class SubQuery[+Start <: Location](
     subQuery: Query[Start],
+    importedVariables: Vector[Symbol],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
     def isReadOnly: Boolean = subQuery.isReadOnly

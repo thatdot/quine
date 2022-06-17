@@ -12,29 +12,54 @@ object QueryPart {
     *
     * @param queryPart query to compiler
     * @param isEntireQuery this query part is the whole query
+    * @param isSubQuery is this inside a `CALL { .. }`?
     * @return execution instructions for Quine
     */
   def compile(
     queryPart: ast.QueryPart,
-    isEntireQuery: Boolean = true
+    isEntireQuery: Boolean = true,
+    isSubQuery: Boolean = false
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     queryPart match {
-      case ast.SingleQuery(clauses) =>
-        compileClauses(clauses, isEntireQuery)
+      case sq: ast.SingleQuery =>
+        if (!isSubQuery) {
+          compileClauses(sq.clauses, isEntireQuery)
+        } else {
+          for {
+            // Prepare for the subquery to run by setting the imported columns
+            initialColumns: Vector[Symbol] <- CompM.getColumns
+            importedVariables =
+              if (sq.isCorrelated) {
+                sq.importColumns.view.map(Symbol.apply).toVector
+              } else {
+                initialColumns
+              }
+            () <- CompM.clearColumns
+            () <- importedVariables.traverse_(CompM.addColumn)
+
+            // Compile the subquery
+            subQuery <- compileClauses(sq.clausesExceptImportWith, isEntireQuery)
+
+            // Update the columns by appending back all of the initial columns
+            () <- initialColumns.traverse_(CompM.addColumn)
+          } yield cypher.Query.SubQuery(subQuery, importedVariables)
+        }
 
       case union: ast.ProjectingUnion =>
         for {
+          identityMapping: Vector[(Symbol, cypher.Expr)] <- CompM.getColumns
+            .flatMap(_.traverse((col: Symbol) => CompM.getVariable(col, union).map(col -> _)))
           compiledPart <- CompM.withIsolatedContext {
             for {
-              p <- compile(union.part, false)
+              p <- compile(union.part, false, isSubQuery)
               mapping <- compileUnionMapping(isPart = true, union.unionMappings, union.part)
-            } yield cypher.Query.adjustContext(true, mapping, p)
+            } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, p)
           }
           compiledSingle <- CompM.withIsolatedContext {
             for {
-              q <- compileClauses(union.query.clauses, false)
+              q <- compile(union.query, false, isSubQuery)
               mapping <- compileUnionMapping(isPart = false, union.unionMappings, union.query)
-            } yield cypher.Query.adjustContext(true, mapping, q)
+            } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, q)
           }
           () <- union.unionMappings.traverse_(u => CompM.addColumn(u.unionVariable))
           unioned = cypher.Query.Union(compiledPart, compiledSingle)
@@ -484,14 +509,8 @@ object QueryPart {
 
       case (accQuery, ast.SubQuery(part)) =>
         for {
-          (subQuery, subOutput) <- CompM.withIsolatedContext(
-            for {
-              subQuery <- compile(part, isEntireQuery = false)
-              subOutput <- CompM.getColumns
-            } yield (subQuery, subOutput)
-          )
-          () <- subOutput.traverse_(CompM.addColumn)
-        } yield cypher.Query.apply(accQuery, cypher.Query.SubQuery(subQuery))
+          subQuery <- compile(part, isEntireQuery = false, isSubQuery = true)
+        } yield cypher.Query.apply(accQuery, subQuery)
 
       case (accQuery, QuineProcedureCall(proc, unresolvedCall)) =>
         val callIsWholeQuery = clauses.length == 1 && isEntireQuery
