@@ -1,0 +1,91 @@
+<configuration>
+
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+             %date defaults to RFC 3339 datetime, which is almost the same as ISO 8601 except that the latter uses "T" to
+             separate the date and time, while RFC3339 allows any separator - Logback uses a single space ' '
+            -->
+            <pattern>%date %level [%mdc{akkaSource:-NotFromActor}] [%thread] %logger - %msg%n%ex</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!--
+    Default appender: safe to use from anywhere, drops TRACE/INFO/DEBUG level messages if nearing capacity,
+    and will drop all new events if at capacity. Contains a good amount of debug info. Logs to STDOUT via the
+    `console` appender. Suitable for most service logs.
+    See http://logback.qos.ch/manual/appenders.html#AsyncAppender
+    -->
+    <appender name="asyncConsole" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="console"/>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <!-- Appender suitable for interactive output, lacking debug information -->
+    <appender name="consoleSimple" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%msg%n%ex</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <target>System.err</target>
+    </appender>
+
+    <appender name="consoleTimestamped" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%date %msg%n%ex</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!--
+      Appender suitable for user-facing output, lacking debug information but including timestamps. This appender will
+      ensure everything enqueued to it is eventually logged
+    -->
+    <appender name="asyncTimestampedNoDrop" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="consoleTimestamped"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+    </appender>
+
+    <!--
+      Appender suitable for user-facing output, lacking debug information but including timestamps. This appender will
+      drop messages, regardless of log level, if there are too many to keep up with
+      See http://logback.qos.ch/manual/appenders.html#AsyncAppender
+    -->
+    <appender name="asyncTimestamped" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="consoleTimestamped"/>
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+
+    <!--  A logger for StandingQueryResults used for PrintToStandardOut SQs in "Complete" mode -->
+    <logger name="thatdot.StandingQueryResults" level="DEBUG" additivity="false">
+        <appender-ref ref="asyncTimestampedNoDrop"/>
+    </logger>
+
+    <!-- A logger for StandingQueryResults used for PrintToStandardOut SQs in "FastSampling" mode -->
+    <logger name="thatdot.StandingQueryResultsSampled" level="DEBUG" additivity="false">
+        <appender-ref ref="asyncTimestamped"/>
+    </logger>
+    <!--
+     An "interactive" logger - a heuristic for when to use this is to imagine a user who can only see the most recent
+     log line. For example, "Graph is ready!", "Quine is shutting down..." might be
+     useful logs for such a user, thus would be logged via this logger.
+
+     By default, lines logged via thatdot.Interactive will also get logged by the root logger. Setting
+     additivity = false means we avoid duplicated log lines in standard out, at the cost of less consistent log
+     formatting. In a production deployment, this should be set to "true" (or commented out).
+     -->
+    <logger name="thatdot.Interactive" level="INFO" additivity="false">
+        <appender-ref ref="consoleSimple"/>
+    </logger>
+    <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
+    <root level="${root.loglevel:-WARN}">
+        <appender-ref ref="asyncConsole"/>
+    </root>
+
+</configuration>

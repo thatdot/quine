@@ -27,9 +27,6 @@ import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
 
 object Main extends App with LazyLogging {
 
-  // specifies that logback configuration will be loaded from the "logging.quine" Typesafe Config scope
-  sys.props("logback-root") = "logging.quine"
-
   private val statusLines =
     new StatusLines(
       // This name comes from quine's logging.conf

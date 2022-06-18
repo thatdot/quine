@@ -217,7 +217,6 @@ lazy val `quine`: Project = project
   .settings(
     version := quineAppV,
     libraryDependencies ++= Seq(
-      "org.gnieh" % "logback-config" % logbackConfigV,
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
