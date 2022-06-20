@@ -139,7 +139,7 @@ object DomainNodeIndexBehavior {
       if (index contains fromOther) index(fromOther)(testBranch -> assumedEdge) = Some(result)
       else {
         // if at least one related query is still active in the graph
-        if (relatedQueries.exists(graph.getStandingQuery(_).nonEmpty)) {
+        if (relatedQueries.exists(graph.runningStandingQuery(_).nonEmpty)) {
           index += (fromOther -> mutable.Map(testBranch -> assumedEdge -> Some(result)))
         } else {
           // intentionally ignore because this update is about [a] SQ[s] we know to be deleted
@@ -338,8 +338,7 @@ trait DomainNodeIndexBehavior
     // NOTE: we cannot use `+=` because if already registered we want to avoid
     //       duplicating the result
     for {
-      universalSqId <- graph.runningStandingQueries.keys
-      universalSq <- graph.getStandingQuery(universalSqId)
+      (universalSqId, universalSq) <- graph.runningStandingQueries
       query <- universalSq.query.query match {
         case branchQuery: StandingQueryPattern.Branch => Some(branchQuery.branch)
         case _ => None
@@ -357,7 +356,7 @@ trait DomainNodeIndexBehavior
     for {
       ((query, assumedEdge), SubscribersToThisNodeUtil.Subscription(subscribers, _, sqIds)) <-
         subscribers.subscribersToThisNode
-      if sqIds.forall(graph.getStandingQuery(_).isEmpty)
+      if sqIds.forall(graph.runningStandingQuery(_).isEmpty)
       subscriber <- subscribers
     } cancelSubscription(query, assumedEdge, subscriber)
   }

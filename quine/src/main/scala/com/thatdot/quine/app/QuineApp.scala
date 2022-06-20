@@ -395,7 +395,7 @@ final class QuineApp(graph: GraphService)
     val nodeAppearancesFut = getOrDefaultGlobalMetaData(NodeAppearancesKey, UiNodeAppearance.defaults)
     val standingQueriesFut = getOrDefaultGlobalMetaData(
       StandingQueryOutputsKey,
-      graph.runningStandingQueries.view.map { case (sqId, runningSq) =>
+      graph.runningStandingQueries.map { case (sqId, runningSq) =>
         runningSq.query.name -> (sqId -> Map.empty[String, StandingQueryResultOutputUserDef])
       }.toMap
     )

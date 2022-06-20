@@ -33,6 +33,9 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   def runningStandingQueries: scala.collection.Map[StandingQueryId, RunningStandingQuery] = standingQueries.toMap
 
+  def runningStandingQuery(standingQueryId: StandingQueryId): Option[RunningStandingQuery] =
+    standingQueries.get(standingQueryId)
+
   def clearStandingQueries(): Unit = standingQueries.clear()
 
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.CypherStandingBehavior])
@@ -51,7 +54,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         logger.info(
           s"Performing a full update of the standingQueryPartIndex because of query for part IDs ${keys.asScala.toList}"
         )
-        val runningSqs = runningStandingQueries.values.view
+        val runningSqs = runningStandingQueries.values
           .map(_.query.query)
           .collect { case StandingQueryPattern.SqV4(sq, _, _) => sq }
           .toVector
@@ -66,9 +69,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
       def load(k: StandingQueryPartId): cypher.StandingQuery = loadAll(Seq(k).asJava).get(k)
     })
 
-  def getStandingQuery(sqId: StandingQueryId): Option[RunningStandingQuery] =
-    runningStandingQueries.get(sqId)
-
   /** Report a new result for the specified standing query to this host's results queue for that query
     *
     * @note if the result is not positive and the query ignores cancellations, this is a no-op
@@ -77,7 +77,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     * @return if the result was successfully enqueued
     */
   def reportStandingResult(sqId: StandingQueryId, sqResult: SqResultLike): Boolean =
-    getStandingQuery(sqId).exists { standingQuery =>
+    runningStandingQuery(sqId) exists { standingQuery =>
       if (sqResult.isPositive || standingQuery.query.query.includeCancellation) {
         standingQuery.resultMeter.mark()
         standingQuery.resultsQueue.offer(sqResult.standingQueryResult(standingQuery.query, idProvider)) match {
@@ -204,7 +204,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     */
   def wireTapStandingQuery(ref: StandingQueryId): Option[Source[StandingQueryResult, NotUsed]] = {
     requiredGraphIsReady()
-    runningStandingQueries.get(ref).map(_.resultsHub)
+    runningStandingQuery(ref).map(_.resultsHub)
   }
 
   /** Ensure universal standing queries have been propagated out to all the

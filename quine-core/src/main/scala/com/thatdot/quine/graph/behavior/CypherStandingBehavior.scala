@@ -55,17 +55,18 @@ trait CypherStandingBehavior
     */
   def updateUniversalCypherQueriesOnWake(): Unit = {
 
+    val runningStandingQueries = graph.runningStandingQueries
+
     // Remove old SQs no longer in graph state
     for {
       ((sqId, partId), (sqSubscribers, _)) <- standingQueries
-      if !graph.runningStandingQueries.contains(sqId)
+      if !runningStandingQueries.contains(sqId)
       subscriber <- sqSubscribers.subscribers
     } self ! CancelCypherSubscription(subscriber, partId)
 
     // Register new universal SQs in graph state
     for {
-      universalSqId <- graph.runningStandingQueries.keys
-      universalSq <- graph.getStandingQuery(universalSqId)
+      (universalSqId, universalSq) <- runningStandingQueries
       query <- universalSq.query.query match {
         case query: StandingQueryPattern.SqV4 => Some(query.compiledQuery)
         case _ => None
@@ -91,7 +92,7 @@ trait CypherStandingBehavior
     def cancelSubscription(onNode: QuineId, queryId: StandingQueryPartId): Unit = {
       val subscriber = CypherSubscriber.QuerySubscriber(node, subs.globalId, subs.forQuery)
       // optimization: only perform cancellations for running top-level queries (or to clear out local state)
-      if (qid == onNode || graph.getStandingQuery(subs.globalId).nonEmpty) {
+      if (qid == onNode || graph.runningStandingQuery(subs.globalId).nonEmpty) {
         onNode ! CancelCypherSubscription(subscriber, queryId)
       } else {
         logger.info(
