@@ -15,7 +15,7 @@ object Dependencies {
   val alpakkaTextV = "3.0.4"
   val bootstrapV = "5.1.3"
   val cassandraClientV = "4.13.0"
-  val catsV = "2.7.0"
+  val catsV = "2.8.0"
   val commonsCodecV = "1.15"
   val commonsTextV = "1.9"
   val dropwizardMetricsV = "4.2.10"
