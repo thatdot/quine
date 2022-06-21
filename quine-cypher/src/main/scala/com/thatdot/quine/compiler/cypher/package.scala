@@ -484,7 +484,7 @@ package object cypher {
     val output = try pipeline.transform(initial, baseContext)
     catch {
       case error: SyntaxException =>
-        throw new CypherException.Syntax(
+        throw CypherException.Syntax(
           wrapping = error.getMessage(),
           position = Some(position(error.pos))
         )
@@ -492,8 +492,8 @@ package object cypher {
       // TODO: can something better than this be done? What sorts of errors
       // can these be?
       case error: Throwable =>
-        throw new CypherException.Compile(
-          wrapping = error.toString(),
+        throw CypherException.Compile(
+          wrapping = error.toString,
           position = None
         )
     }

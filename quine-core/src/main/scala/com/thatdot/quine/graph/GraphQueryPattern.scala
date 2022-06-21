@@ -58,14 +58,14 @@ final case class GraphQueryPattern(
     if (nodes.isEmpty) {
       throw InvalidQueryPattern("Pattern must be non-empty")
     } else if (filterCond.nonEmpty) {
-      throw InvalidQueryPattern("Branch-style queries cannot filter")
+      throw InvalidQueryPattern("DistinctId queries cannot filter")
     } else if (toReturn.nonEmpty) {
-      throw InvalidQueryPattern("Branch-style queries cannot map")
+      throw InvalidQueryPattern("DistinctId queries cannot map")
     }
 
     val returnColumn = toExtract match {
       case Seq(returnCol @ ReturnColumn.Id(returnNodeId, _, _)) if returnNodeId == startingPoint => returnCol
-      case _ => throw InvalidQueryPattern("Branch-style queries must return exactly the `id` of the root node")
+      case _ => throw InvalidQueryPattern("DistinctId queries must return exactly the `id` of the root node")
     }
 
     // Keep track of which bits of the pattern are still unexplored
