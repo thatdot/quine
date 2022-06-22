@@ -67,7 +67,7 @@ Publishes a record for each `StandingQueryResult` to the provided Apache Kafka t
 
 ### Publish to Kinesis Stream
 
-Publishes a record for each `StandingQueryResult` to the provided Kinesis stream. Records can be serialized as JSON or Protocol Buffers before being published to Kafka.
+Publishes a record for each `StandingQueryResult` to the provided Kinesis stream. Records can be serialized as JSON or Protocol Buffers before being published to Kinesis.
 
 ### Publish to SNS Topic
 
