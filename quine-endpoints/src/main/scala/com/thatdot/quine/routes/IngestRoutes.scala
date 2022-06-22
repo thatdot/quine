@@ -632,7 +632,7 @@ object IngestRoutes {
   val defaultStreamedRecordFormat: StreamedRecordFormat.CypherJson = StreamedRecordFormat.CypherJson("CREATE ($that)")
   val defaultFileRecordFormat: FileIngestFormat.CypherJson = FileIngestFormat.CypherJson("CREATE ($that)", "that")
   val defaultNumberFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
-    "MATCH (x) WHERE id(x) = idFrom($that) SET x.i = toInteger($that)"
+    "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)"
   )
 }
 trait IngestRoutes

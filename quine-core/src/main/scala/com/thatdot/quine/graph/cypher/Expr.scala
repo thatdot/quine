@@ -511,7 +511,7 @@ object Expr {
   }
   object Map {
     def apply(entries: IterableOnce[(String, Value)]): Map = new Map(SortedMap.from(entries))
-
+    def apply(entries: (String, Value)*): Map = new Map(SortedMap.from(entries))
     val empty: Map = new Map(SortedMap.empty)
   }
 

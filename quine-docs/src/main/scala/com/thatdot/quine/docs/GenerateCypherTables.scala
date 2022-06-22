@@ -129,9 +129,9 @@ object GenerateCypherTables extends App {
   com.thatdot.quine.compiler.cypher.resolveFunctions
 
   val paths: List[(Path, String)] = List(
-    builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions),
-    userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values),
-    userDefinedProcsPath -> userDefinedProcedureTable(Proc.userDefinedProcedures.values)
+    builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions.sortBy(_.name)),
+    userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values.toList.sortBy(_.name)),
+    userDefinedProcsPath -> userDefinedProcedureTable(Proc.userDefinedProcedures.values.toList.sortBy(_.name))
   )
 
   for ((outputPath, outputString) <- paths) {

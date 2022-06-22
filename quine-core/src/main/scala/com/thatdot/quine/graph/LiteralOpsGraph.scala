@@ -32,6 +32,11 @@ trait LiteralOpsGraph extends BaseGraph {
       relayAsk(QuineIdAtTime(node, atTime), LogInternalState).flatten
     }
 
+    def getSqResults(node: QuineId)(implicit timeout: Timeout): Future[SqStateResults] = {
+      requiredGraphIsReady()
+      relayAsk(QuineIdAtTime(node, None), GetSqState)
+    }
+
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), DeleteNodeCommand(true, _)).flatten

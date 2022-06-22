@@ -274,6 +274,8 @@ object StandingQueryResultOutputUserDef {
     )
     shouldRetry: Boolean = true
   ) extends StandingQueryResultOutputUserDef
+
+  final case object Drop extends StandingQueryResultOutputUserDef
 }
 
 @title("Standing Query Result Output Format")

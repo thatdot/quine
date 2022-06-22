@@ -18,9 +18,12 @@ import com.thatdot.quine.graph.edgecollection.EdgeCollection
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
+  DgbLocalEventIndexSummary,
   LiteralCommand,
   LocallyRegisteredStandingQuery,
-  NodeInternalState
+  NodeInternalState,
+  SqStateResult,
+  SqStateResults
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
@@ -517,13 +520,41 @@ private[graph] class NodeActor(
         _.toString
       )
 
-    val subscribersString = subscribers.subscribersToThisNode
-      .map { case ((a, b), c) => a -> b -> c }
-      .mkString("\n  ", "\n  ", "\n")
+    val subscribersStrings = subscribers.subscribersToThisNode.toList
+      .map { case ((a, _), c) =>
+        a -> c.subscribers.map {
+          case Left(q) => q.pretty
+          case Right(x) => x
+        } -> c.lastNotification -> c.relatedQueries
+      }
+      .map(_.toString)
 
-    val domainNodeIndexString = domainNodeIndex.index
-      .map(t => t._1 -> t._2.map { case ((a, b), c) => a -> b -> c })
-      .mkString("\n  ", "\n  ", "\n")
+    val domainNodeIndexStrings = domainNodeIndex.index.toList
+      .map(t => t._1.pretty -> t._2.map { case ((a, _), c) => a -> c })
+      .map(_.toString)
+
+    val dgbLocalEventIndexSummary = {
+      val propsIdx = localEventIndex.watchingForProperty.toList.flatMap { case (k, v) =>
+        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
+          k.name -> branch.hashCode()
+        }
+      }
+      val edgesIdx = localEventIndex.watchingForEdge.toList.flatMap { case (k, v) =>
+        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
+          k.name -> branch.hashCode()
+        }
+      }
+      val anyEdgesIdx = localEventIndex.watchingForAnyEdge.toList.collect {
+        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
+          branch.hashCode()
+      }
+
+      DgbLocalEventIndexSummary(
+        propsIdx.toMap,
+        edgesIdx.toMap,
+        anyEdgesIdx.distinct
+      )
+    }
 
     persistor
       .getJournalWithTime(
@@ -543,8 +574,10 @@ private[graph] class NodeActor(
           forwardTo,
           mergedIntoHere,
           latestUpdateAfterSnapshot,
-          if (subscribers.subscribersToThisNode.nonEmpty) Some(subscribersString) else None,
-          if (domainNodeIndex.index.nonEmpty) Some(domainNodeIndexString) else None,
+          subscribersStrings,
+          domainNodeIndexStrings,
+          getSqState(),
+          dgbLocalEventIndexSummary,
           standingQueries.view.map { case ((globalId, sqId), (StandingQuerySubscribers(_, _, subs), st)) =>
             LocallyRegisteredStandingQuery(
               sqId.toString,
@@ -557,4 +590,18 @@ private[graph] class NodeActor(
         )
       }
   }
+
+  def getSqState(): SqStateResults =
+    SqStateResults(
+      subscribers.subscribersToThisNode.toList.flatMap { case ((dgb, _), subs) =>
+        subs.subscribers.toList.collect { case Left(q) => // filters out receivers outside the graph
+          SqStateResult(dgb.hashCode, dgb.size, q, subs.lastNotification)
+        }
+      },
+      domainNodeIndex.index.toList.flatMap { case (q, m) =>
+        m.toList.map { case ((dgb, _), lastN) =>
+          SqStateResult(dgb.hashCode, dgb.size, q, lastN)
+        }
+      }
+    )
 }

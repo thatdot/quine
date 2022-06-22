@@ -86,6 +86,8 @@ case object resolveCalls extends StatementRewriter {
     IncrementCounter,
     CypherLogging,
     CypherDebugNode,
+    CypherGetDistinctIDSqSubscriberResults,
+    CypherGetDistinctIdSqSubscriptionResults,
     CypherDebugSleep,
     ReifyTime
   )
@@ -189,18 +191,18 @@ object RecentNodes extends UserDefinedProcedure {
 }
 
 object MergeNodes extends UserDefinedProcedure {
-  override def name: String = "mergeNodes"
-  override def canContainUpdates: Boolean = true
-  override def isIdempotent: Boolean = true
-  override def canContainAllNodeScan: Boolean = false
+  def name: String = "mergeNodes"
+  def canContainUpdates: Boolean = true
+  def isIdempotent: Boolean = true
+  def canContainAllNodeScan: Boolean = false
 
-  override def signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+  def signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("fromThat" -> Type.Node, "intoThis" -> Type.Node),
     outputs = Vector("mergedId" -> Type.Anything),
     description = "Merge the first node into the second. Returns the ID of the node receiving the final merged results."
   )
 
-  override def call(
+  def call(
     context: QueryContext,
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
@@ -317,16 +319,16 @@ abstract class StubbedUserDefinedProcedure(
   outputColumnNames: Vector[String]
 ) extends UserDefinedProcedure {
   // Stubbed procedures are used for compatibility with other systems, therefore we avoid any Quine-specific semantic analysis
-  override val canContainUpdates = false
-  override val isIdempotent = true
-  override val canContainAllNodeScan = false
-  override val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+  val canContainUpdates = false
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector.empty,
     outputs = outputColumnNames.map(_ -> Type.Anything),
     description = ""
   )
 
-  override def call(
+  def call(
     context: QueryContext,
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
@@ -542,12 +544,124 @@ object CypherDebugNode extends UserDefinedProcedure {
               case None => Expr.Null
               case Some(eventTime) => Expr.Integer(eventTime.millis)
             },
-            nodeState.subscribers.fold[Value](Expr.Null)(Expr.Str(_)),
-            nodeState.subscriptions.fold[Value](Expr.Null)(Expr.Str(_)),
+            Expr.Str(nodeState.subscribers.mkString(",")),
+            Expr.Str(nodeState.subscriptions.mkString(",")),
             Expr.List(nodeState.cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
             Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)).toVector)
           )
         }
+    }
+  }
+}
+
+object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
+  def name: String = "subscribers"
+  def canContainUpdates: Boolean = false
+  def isIdempotent: Boolean = true
+  def canContainAllNodeScan: Boolean = false
+
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Anything),
+    outputs = Vector(
+      "queryId" -> Type.Integer,
+      "queryDepth" -> Type.Integer,
+      "receiverId" -> Type.Str,
+      "lastResult" -> Type.Anything
+    ),
+    description = "Return the current state of the standing query subscribers."
+  )
+
+  def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
+    ec: ExecutionContext,
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], _] = {
+    val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+    implicit val idProv: QuineIdProvider = location.graph.idProvider
+
+    val node: QuineId = arguments match {
+      case Seq(nodeLike) =>
+        UserDefinedProcedure.extractQuineId(nodeLike) match {
+          case None =>
+            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
+          case Some(qid) =>
+            qid
+        }
+      case other =>
+        throw wrongSignature(other)
+    }
+
+    Source.lazyFutureSource { () =>
+      graph.literalOps
+        .getSqResults(node)
+        .map(sqr =>
+          Source.fromIterator { () =>
+            sqr.subscribers.map { s =>
+              Vector(
+                Expr.Integer(s.queryId.toLong),
+                Expr.Integer(s.depth.toLong),
+                Expr.Str(s.qid.pretty),
+                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
+              )
+            }.toIterator
+          }
+        )
+    }
+  }
+}
+
+object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
+  def name: String = "subscriptions"
+  def canContainUpdates: Boolean = false
+  def isIdempotent: Boolean = true
+  def canContainAllNodeScan: Boolean = false
+
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Anything),
+    outputs = Vector(
+      "queryId" -> Type.Integer,
+      "queryDepth" -> Type.Integer,
+      "receiverId" -> Type.Str,
+      "lastResult" -> Type.Anything
+    ),
+    description = "Return the current state of the standing query subscriptions."
+  )
+
+  def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
+    ec: ExecutionContext,
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], _] = {
+    val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+    implicit val idProv: QuineIdProvider = location.graph.idProvider
+
+    val node: QuineId = arguments match {
+      case Seq(nodeLike) =>
+        UserDefinedProcedure.extractQuineId(nodeLike) match {
+          case None =>
+            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
+          case Some(qid) =>
+            qid
+        }
+      case other =>
+        throw wrongSignature(other)
+    }
+
+    Source.lazyFutureSource { () =>
+      graph.literalOps
+        .getSqResults(node)
+        .map(sqr =>
+          Source.fromIterator { () =>
+            sqr.subscriptions.map { s =>
+              Vector(
+                Expr.Integer(s.queryId.toLong),
+                Expr.Integer(s.depth.toLong),
+                Expr.Str(s.qid.pretty),
+                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
+              )
+            }.toIterator
+          }
+        )
     }
   }
 }
@@ -595,7 +709,7 @@ object CypherDebugSleep extends UserDefinedProcedure {
 }
 
 object CypherBuiltinFunctions extends UserDefinedProcedure {
-  val name = "dbms.builtins"
+  val name = "help.builtins"
   val canContainUpdates = false
   val isIdempotent = true
   val canContainAllNodeScan = false
@@ -621,13 +735,13 @@ object CypherBuiltinFunctions extends UserDefinedProcedure {
     }
 
     Source
-      .fromIterator(() => Func.builtinFunctions.iterator)
+      .fromIterator(() => Func.builtinFunctions.sortBy(_.name).iterator)
       .map(bfc => Vector(Expr.Str(bfc.name), Expr.Str(bfc.signature), Expr.Str(bfc.description)))
   }
 }
 
 object CypherFunctions extends UserDefinedProcedure {
-  val name = "dbms.functions"
+  val name = "help.functions"
   val canContainUpdates = false
   val isIdempotent = true
   val canContainAllNodeScan = false
@@ -652,25 +766,27 @@ object CypherFunctions extends UserDefinedProcedure {
       case other => throw wrongSignature(other)
     }
 
-    val builtins = Source
-      .fromIterator(() => Func.builtinFunctions.iterator)
-      .map(bfc => Vector(Expr.Str(bfc.name), Expr.Str(bfc.signature), Expr.Str(bfc.description)))
+    val builtins =
+      Func.builtinFunctions
+        .sortBy(_.name)
+        .map(bfc => Vector(Expr.Str(bfc.name), Expr.Str(bfc.signature), Expr.Str(bfc.description)))
 
-    val userDefined = Source
-      .fromIterator(() => Func.userDefinedFunctions.values.iterator)
-      .mapConcat { (udf: UserDefinedFunction) =>
-        val name = udf.name
-        udf.signatures.toVector.map { (udfSig: UserDefinedFunctionSignature) =>
-          Vector(Expr.Str(name), Expr.Str(udfSig.pretty(name)), Expr.Str(udfSig.description))
+    val userDefined =
+      Func.userDefinedFunctions.values.toList
+        .sortBy(_.name)
+        .flatMap { (udf: UserDefinedFunction) =>
+          val name = udf.name
+          udf.signatures.toVector.map { (udfSig: UserDefinedFunctionSignature) =>
+            Vector(Expr.Str(name), Expr.Str(udfSig.pretty(name)), Expr.Str(udfSig.description))
+          }
         }
-      }
 
-    builtins ++ userDefined
+    Source((builtins ++ userDefined).sortBy(_.head.string))
   }
 }
 
 object CypherProcedures extends UserDefinedProcedure {
-  val name = "dbms.procedures"
+  val name = "help.procedures"
   val canContainUpdates = false
   val isIdempotent = true
   val canContainAllNodeScan = false
@@ -701,7 +817,7 @@ object CypherProcedures extends UserDefinedProcedure {
     }
 
     Source
-      .fromIterator(() => Proc.userDefinedProcedures.values.iterator)
+      .fromIterator(() => Proc.userDefinedProcedures.values.toList.sortBy(_.name).iterator)
       .map { (udp: UserDefinedProcedure) =>
         val name = udp.name
         val sig = udp.signature.pretty(udp.name)

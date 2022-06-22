@@ -12,7 +12,7 @@ import java.time.{
 import java.util.{Locale, TimeZone}
 
 import scala.collection.concurrent
-import scala.util.Failure
+import scala.util.{Failure, Random, Try}
 
 import com.google.common.hash.Hashing
 import org.opencypher.v9_0.expressions._
@@ -142,7 +142,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherCollMax,
     CypherCollMin,
     CypherMetaType
-  )
+  ) ++ CypherGenFroms.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
   val deprecatedNames: Map[String, UserDefinedFunction] = Map.empty
@@ -1055,4 +1055,94 @@ object CypherMetaType extends UserDefinedFunction {
       case Vector(v) => Expr.Str(v.typ.pretty)
       case other => throw wrongSignature(other)
     }
+}
+
+class CypherValueGen(outputType: Type, defaultSize: Long, randGen: (Long) => Value) extends UserDefinedFunction {
+  val name: String = s"gen.${outputType.pretty.toLowerCase}"
+  val category: String = Category.SCALAR
+  val isPure: Boolean = false
+
+  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+    val size = arguments match {
+      case Seq() => defaultSize
+      case Seq(Expr.Integer(i)) => i
+      case args => throw wrongSignature(args)
+    }
+    randGen(size)
+  }
+
+  val signatures: Seq[UserDefinedFunctionSignature] = {
+    val sig = UserDefinedFunctionSignature(
+      arguments = Vector("size" -> Type.Integer),
+      output = outputType,
+      description = s"Randomly generate a ${outputType.pretty.toLowerCase}."
+    )
+    Seq(sig.copy(arguments = Vector.empty), sig)
+  }
+}
+
+class CypherValueGenFrom(outputType: Type, defaultSize: Long, randGen: (Long, Long) => Value)
+    extends UserDefinedFunction {
+  override val name: String = s"gen.${outputType.pretty.toLowerCase}.from"
+  val category: String = Category.SCALAR
+  override val isPure: Boolean = true
+
+  override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+    val (hash, size) = arguments match {
+      case Seq(v) => v.hash.asLong() -> defaultSize
+      case Seq(v, Expr.Integer(i)) => v.hash.asLong() -> i
+      case args => throw wrongSignature(args)
+    }
+    randGen(hash, size)
+  }
+
+  override val signatures: Seq[UserDefinedFunctionSignature] = {
+    val sig = UserDefinedFunctionSignature(
+      arguments = Vector("fromValue" -> Type.Anything, "withSize" -> Type.Integer),
+      output = outputType,
+      description = s"Deterministically generate a random ${outputType.pretty.toLowerCase} from the provided input."
+    )
+    Seq(sig.copy(arguments = sig.arguments.dropRight(1)), sig)
+  }
+}
+
+object CypherGenFroms {
+  private def bytes(hash: Long, size: Int): Array[Byte] = {
+    val b = Array.ofDim[Byte](size)
+    new Random(hash).nextBytes(b)
+    b
+  }
+  val all: List[CypherValueGenFrom] = List(
+    new CypherValueGenFrom(
+      Type.Str,
+      8L,
+      (hash: Long, size: Long) => Expr.Str(new Random(hash).alphanumeric.take(size.toInt).mkString)
+    ),
+    new CypherValueGenFrom(
+      Type.Integer,
+      Int.MaxValue,
+      (hash: Long, size: Long) => Expr.Integer(new Random(hash).nextLong() % size) // Tolerating mod bias.
+    ),
+    new CypherValueGenFrom(
+      Type.Floating,
+      1L,
+      (hash: Long, size: Long) => Expr.Floating(new Random(hash).nextDouble() * size)
+    ),
+    new CypherValueGenFrom(Type.Bool, 1L, (hash: Long, size: Long) => Expr.Bool(new Random(hash).nextBoolean())),
+    new CypherValueGenFrom(Type.Bytes, 12L, (hash: Long, size: Long) => Expr.Bytes(bytes(hash, size.toInt))),
+    new CypherValueGenFrom(
+      Type.Node,
+      0L,
+      (hash: Long, size: Long) => Expr.Node(QuineId(Array.emptyByteArray), Set.empty, Map.empty)
+    ) {
+      override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+        val size = Try(arguments(1).asLong("").toInt).getOrElse(4)
+        val rand = new Random(arguments.head.hash.asLong())
+        val props = (0 until size)
+          .map(i => Symbol(i.toString) -> Expr.Str(rand.alphanumeric.take(size * 2).mkString))
+          .toMap
+        Expr.Node(idFrom(arguments.head), Set.empty, props)
+      }
+    }
+  )
 }

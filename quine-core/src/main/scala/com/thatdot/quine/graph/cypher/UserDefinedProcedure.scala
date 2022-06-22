@@ -23,7 +23,7 @@ trait UserDefinedProcedure {
   /** Can this mutate the graph (or will it just be reading data) */
   def canContainUpdates: Boolean
 
-  /** Is the procedure idempotent? See {Query} for full comment. */
+  /** Is the procedure idempotent? See [[Query]] for full comment. */
   def isIdempotent: Boolean
 
   /** Can the procedure cause a full node scan? */
@@ -33,7 +33,7 @@ trait UserDefinedProcedure {
     *
     * @note each vector in the output must have the size equal to `outputColumns`
     *
-    * @param context variables at the point the UDF is called
+    * @param context variables at the point the UDP is called
     * @param arguments arguments passed into the UDP (after they've been evaluated)
     * @param location where is the query at when the procedure is invoked?
     * @return output rows of the UDP

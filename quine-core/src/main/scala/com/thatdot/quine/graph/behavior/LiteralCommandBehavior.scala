@@ -19,6 +19,8 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
 
   def debugNodeInternalState(): Future[NodeInternalState]
 
+  def getSqState(): SqStateResults
+
   protected def literalCommandBehavior(command: LiteralCommand): Unit = command match {
     case c: GetHalfEdgesCommand =>
       val matchingEdges: Iterator[HalfEdge] = c match {
@@ -95,10 +97,10 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
         case _ => IncrementProperty.Failed(QuineValue.Null)
       })
 
-    case s @ SetLabels(labels, _) =>
-      s ?! setLabels(labels)
+    case s @ SetLabels(labels, _) => s ?! setLabels(labels)
 
-    case l: LogInternalState =>
-      l ?! debugNodeInternalState()
+    case l: LogInternalState => l ?! debugNodeInternalState()
+
+    case m @ GetSqState(_) => m ?! getSqState()
   }
 }

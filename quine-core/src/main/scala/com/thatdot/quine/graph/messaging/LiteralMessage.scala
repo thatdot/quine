@@ -91,6 +91,16 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[NodeInternalState]]
 
+  /** Request the current results of the standing query matches on this node. */
+  final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]
+
+  /** A single result. Could be for an incoming subscriber or an outgoing subscription. */
+  final case class SqStateResult(queryId: Int, depth: Int, qid: QuineId, lastResult: Option[Boolean])
+
+  /** Payload to report on the current results of the standing query matches on this node. */
+  final case class SqStateResults(subscribers: List[SqStateResult], subscriptions: List[SqStateResult])
+      extends QuineMessage
+
   /** IncrementCounter Procedure */
   final case class IncrementProperty(propertyKey: Symbol, incrementAmount: Long, replyTo: QuineRef)
       extends LiteralCommand
@@ -107,6 +117,12 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
+  final case class DgbLocalEventIndexSummary(
+    propIdx: Map[String, Int],
+    edgeIdx: Map[String, Int],
+    anyEdgeIdx: List[Int]
+  ) extends QuineMessage
+
   /** Relays a complete, non-authoritative snapshot of node-internal state, eg, for logging.
     * ONLY FOR DEBUGGING!
     */
@@ -116,8 +132,10 @@ object LiteralMessage {
     forwardTo: Option[QuineId],
     mergedIntoHere: Set[QuineId],
     latestUpdateMillisAfterSnapshot: Option[EventTime],
-    subscribers: Option[String], // TODO make this string more informative
-    subscriptions: Option[String], // TODO: make this string more informative
+    subscribers: List[String], // TODO make this string more informative
+    subscriptions: List[String], // TODO: make this string more informative
+    sqStateResults: SqStateResults,
+    dgbLocalEventIndex: DgbLocalEventIndexSummary,
     cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
     journal: Set[NodeChangeEvent.WithTime]
   ) extends LiteralMessage

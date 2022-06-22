@@ -65,6 +65,7 @@ object StandingQueryResultOutput extends LazyLogging {
   ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
     val execToken = SqResultsExecToken(s"SQ: $name")
     output match {
+      case Drop => Flow[StandingQueryResult].map(_ => execToken)
       case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
         // TODO: use a host connection pool
 

@@ -284,6 +284,7 @@ import com.thatdot.{visnetwork => vis}
     override val to = edge.to
     override val label = if (props.showEdgeLabels) edge.edgeType else js.undefined
     override val arrows = if (edge.isDirected) "to" else ""
+    override val smooth = isSynEdge
     override val uiEdge = edge
     override val isSyntheticEdge = isSynEdge
     override val color = if (isSynEdge) "purple" else js.undefined

@@ -239,7 +239,7 @@ object StandingQueryLocalEventIndex {
       event <- queryState.relevantEvents
     } yield event -> EventSubscriber(handler)
 
-    (dgbEvents ++ sqStateEvents).map { case (event, handler) =>
+    (dgbEvents ++ sqStateEvents).foreach { case (event, handler) =>
       event match {
         case StandingQueryLocalEvents.Property(key) =>
           toReturn.watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler

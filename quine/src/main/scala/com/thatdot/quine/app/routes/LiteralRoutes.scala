@@ -7,7 +7,13 @@ import akka.http.scaladsl.server.Route
 import akka.util.{ByteString, Timeout}
 
 import com.thatdot.quine.graph._
-import com.thatdot.quine.graph.messaging.LiteralMessage.{LocallyRegisteredStandingQuery, NodeInternalState}
+import com.thatdot.quine.graph.messaging.LiteralMessage.{
+  DgbLocalEventIndexSummary,
+  LocallyRegisteredStandingQuery,
+  NodeInternalState,
+  SqStateResult,
+  SqStateResults
+}
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
@@ -46,8 +52,12 @@ trait LiteralRoutesImpl
       genericJsonSchema[LocallyRegisteredStandingQuery]
     implicit val eventTimeSchema: JsonSchema[EventTime] =
       longJsonSchema.xmap(EventTime.fromRaw)(_.eventTime)
+    implicit val dgbLocalEventIndexSummarySchema: JsonSchema[DgbLocalEventIndexSummary] =
+      genericJsonSchema[DgbLocalEventIndexSummary]
     implicit val nchSchema: JsonSchema[NodeChangeEvent] = genericJsonSchema[NodeChangeEvent]
     implicit val nchwtSchema: JsonSchema[NodeChangeEvent.WithTime] = genericJsonSchema[NodeChangeEvent.WithTime]
+    implicit val sqResult: JsonSchema[SqStateResult] = genericJsonSchema[SqStateResult]
+    implicit val sqResults: JsonSchema[SqStateResults] = genericJsonSchema[SqStateResults]
     genericJsonSchema[NodeInternalState]
   }
 

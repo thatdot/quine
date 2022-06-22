@@ -1,0 +1,159 @@
+version: 1
+title: Standing Query Test Recipe
+contributor: https://github.com/rrwright
+summary: Create a mathematically defined graph and count the number of SQ results.
+description: 
+iconImage: 
+ingestStreams:
+  - format:
+      query: |-
+        WITH gen.node.from(toInteger($that), 4) AS n 
+        MATCH (a), (b), (x) 
+        WHERE id(a) = id(n) 
+          AND id(b) = idFrom(toInteger($that) + 1) 
+          AND id(x) = idFrom(toInteger($that) / 10) 
+        SET a = n, 
+            a.id = toInteger($that) 
+        CREATE (a)-[:next]->(b), 
+               (a)-[:div_by_ten]->(x)
+      type: CypherLine
+    type: NumberIteratorIngest
+    ingestLimit: 100000
+standingQueries:
+  - pattern:
+      query: |-
+        MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+        WHERE exists(c.`3`)
+        RETURN DISTINCT id(c) as id
+      type: Cypher
+    outputs:
+      expect-1000-results:
+        type: Drop
+      # inspect-1000-results:
+      #   type: CypherQuery
+      #   query: |-
+      #     MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+      #     WHERE id(c) = $that.data.id
+      #     RETURN a.id, b.id, c.id
+      #   andThen:
+      #     type: PrintToStandardOut
+  - pattern:
+      query: |-
+        MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+        WHERE exists(c.`3`)
+        RETURN DISTINCT id(a) as id
+      type: Cypher
+    outputs:
+      expect-99990-results:
+        type: Drop
+      # inspect-99990-results:
+      #   type: CypherQuery
+      #   query: |-
+      #     MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+      #     WHERE id(a) = $that.data.id
+      #     RETURN a.id, b.id, c.id
+      #   andThen:
+      #     type: PrintToStandardOut
+nodeAppearances:
+  - predicate:
+      propertyKeys:
+        - id
+      knownValues: {}
+    label:
+      prefix: ''
+      key: id
+      type: Property
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Multiply by 10
+      querySuffix: MATCH (n)<-[:div_by_ten]-(m) RETURN m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Divide by 10
+      querySuffix: MATCH (n)-[:div_by_ten]->(m) RETURN m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Subscriber Results
+      querySuffix: CALL subscribers(n) yield queryId, queryDepth, receiverId, lastResult RETURN queryId, queryDepth, receiverId, lastResult
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Subscription Results
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult RETURN queryId, queryDepth, receiverId, lastResult
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: True Subscriptions (Depth=2)
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult WHERE lastResult = true AND queryDepth = 2 MATCH (a) WHERE id(a) = receiverId RETURN a
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: "Subscription: TRUE (Depth=2)"
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: False Subscriptions (Depth=2)
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult WHERE lastResult = false AND queryDepth = 2 MATCH (a) WHERE id(a) = receiverId RETURN a
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: "Subscription: FALSE (Depth=2)"
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: True Subscriptions (Depth=1)
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult WHERE lastResult = true AND queryDepth = 1 MATCH (a) WHERE id(a) = receiverId RETURN a
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: "Subscription: TRUE (Depth=1)"
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: False Subscriptions (Depth=1)
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult WHERE lastResult = false AND queryDepth = 1 MATCH (a) WHERE id(a) = receiverId RETURN a
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: "Subscription: FALSE (Depth=1)"
+sampleQueries: []

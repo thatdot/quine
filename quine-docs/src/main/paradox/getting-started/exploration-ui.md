@@ -83,7 +83,7 @@ One query is -issued- at a time, but any number of queries can be executing simu
 
 In addition to node-centric queries, queries can return textual or tabular results. These results are not rendered on the canvas directly but into a text area that appears at the bottom of the canvas. By default, all queries entered into the query bar are expected to return nodes or an error will be thrown. To deliberately run a query that is expected to return text, hold the Shift key while executing the query. Query and system errors are also reported in the text area. Results can continue to stream through the text area in perpetuity, so the right side also includes a button to scroll to the very top or bottom of the results. The text area can be resized by dragging its top border, or closed manually by the clicking the "X".
 
-Quine includes many utility functions built in, and the ability to add in custom user-defined queries. To list all available functions which can be included in queries, you can execute the text query `CALL dbms.functions()` or `CALL dbms.procedures()` to print out the name, signature, and documentation for all currently supported functions and procedures.
+Quine includes many utility functions built in, and the ability to add in custom user-defined queries. To list all available functions which can be included in queries, you can execute the text query `CALL help.functions()` or `CALL help.procedures()` to print out the name, signature, and documentation for all currently supported functions and procedures.
 
 ![Functions](text-functions.png)
 
