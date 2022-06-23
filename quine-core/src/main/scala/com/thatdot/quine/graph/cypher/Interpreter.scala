@@ -7,22 +7,33 @@ import scala.util.{Failure, Success, Try}
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorRef}
+import akka.pattern.extended.ask
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.google.common.collect.MinMaxPriorityQueue
+import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.Query._
+import com.thatdot.quine.graph.cypher.SkipOptimizingActor._
 import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, QueryContextResult, QueryPackage}
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NodeChangeEvent}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{
+  EdgeDirection,
+  HalfEdge,
+  Milliseconds,
+  PropertyValue,
+  QuineId,
+  QuineIdProvider,
+  QuineValue
+}
 
 // Knows what to do with index anchored queries
 // INV: Thread-safe
-trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
+trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] with LazyLogging {
 
   def node: Option[BaseNodeActor] = None
 
@@ -60,6 +71,53 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
       case query: SubQuery[Location.Anywhere @unchecked] => interpretSubQuery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
+    }
+
+  override private[quine] def interpretReturn(query: Return[Location.Anywhere], context: QueryContext)(implicit
+    parameters: Parameters
+  ): Source[QueryContext, _] =
+    query match {
+      /** This query is potentially suitable for drop-based optimizations: It has either:
+        * a LIMIT (which may imply it will be one of a batch of queries)
+        * a SKIP (which may imply SKIP queries issued as part of a batch )
+        *
+        * And this query does *not* have any ORDER BY or DISTINCT to postprocess the results through
+        * TODO the normalization step could handle ORDER BY / DISTINCT to enable those query forms, if their structures
+        * were made deterministic (eg, ensuring there are no randomly-generated variable names)
+        */
+      case Return(toReturn @ _, None, None, drop, take, columns @ _)
+          if !bypassSkipOptimization
+            && (drop.isDefined || take.isDefined)
+            && query.toReturn.isReadOnly =>
+        /** as this is executed at query runtime, all parameters should be in scope: In particular, [[queryNormalized]]
+          * will have no [[Expr.Parameter]]s remaining, making it a valid [[SkipOptimizingActor]] `queryFamily`
+          */
+        val parameterSubstitutions = parameters.params.zipWithIndex.map { case (paramValue, index) =>
+          Expr.Parameter(index) -> paramValue
+        }.toMap
+        val queryNormalized = query.substitute(parameterSubstitutions)
+        val toReturnNormalized = queryNormalized.toReturn
+        val skipOptimizerActor = graph.cypherOps.skipOptimizerCache.get(toReturnNormalized -> atTime)
+        val requestedSource =
+          (skipOptimizerActor ? (ResumeQuery(
+            queryNormalized,
+            context,
+            parameters,
+            restartIfAppropriate = true,
+            _
+          ))).mapTo[Either[SkipOptimizationError, Source[QueryContext, NotUsed]]]
+
+        Source.futureSource(requestedSource.map(_.left.map { err =>
+          // Expected for, eg, subqueries. Otherwise, probably indicates end user behavior that isn't compatible with current pagination impl
+          logger.info(
+            s"QueryManagerActor refused to process query. Falling back to naive interpreter. Re-running the same query " +
+            (if (err.retriable) "may not" else "will") + " " +
+            s"have the same result. Cause: ${err.msg}"
+          )
+          interpretRecursive(query.delegates.naiveStack, context)(parameters)
+        }.merge)(cypherEc))
+      case _ =>
+        super.interpretReturn(query, context)
     }
 
   final private[cypher] def interpretAnchoredEntry(
@@ -100,6 +158,32 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] {
   }
 }
 
+/** an interpreter that runs over a particular timestamp "off the graph" (ie, an [[AnchoredInterpreter]]
+  */
+class AtTimeInterpreter(
+  val graph: CypherOpsGraph,
+  val atTime: Option[Milliseconds],
+  val bypassSkipOptimization: Boolean
+) extends AnchoredInterpreter {
+  def this(graph: CypherOpsGraph, atTime: Milliseconds, bypassSkipOptimization: Boolean) =
+    this(graph, Some(atTime), bypassSkipOptimization)
+
+  protected val cypherEc: ExecutionContext =
+    graph.system.dispatchers.lookup("akka.quine.node-dispatcher")
+
+  protected val cypherProcessTimeout: Timeout = graph.cypherQueryProgressTimeout
+
+  implicit val idProvider: QuineIdProvider = graph.idProvider
+}
+
+/** A specific [[AtTimeInterpreter]] for the thoroughgoing present. Logically, there is one of these per graph.
+  *
+  * @see [[graph.cypherOps.currentMomentInterpreter]]
+  * @param graph
+  */
+class ThoroughgoingInterpreter(graph: CypherOpsGraph)
+    extends AtTimeInterpreter(graph, None, bypassSkipOptimization = true)
+
 // Knows what to do with in-node queries
 trait OnNodeInterpreter
     extends CypherInterpreter[Location.OnNode]
@@ -113,6 +197,9 @@ trait OnNodeInterpreter
   implicit protected val cypherEc: ExecutionContext = context.dispatcher
 
   implicit protected def cypherProcessTimeout: Timeout = graph.cypherQueryProgressTimeout
+
+  // opt out of reusing SKIP-ed over queries when interpreting the thoroughgoing present
+  def bypassSkipOptimization: Boolean = atTime.isEmpty
 
   final def interpret(
     query: Query[Location.OnNode],
@@ -560,6 +647,8 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
 
   implicit protected def cypherProcessTimeout: Timeout
 
+  protected def bypassSkipOptimization: Boolean
+
   /** Interpret a Cypher query into a [[Source]] of query results
     *
     * @note a [[Source]] can be run many times (possible 0 times), so this method is really just
@@ -865,7 +954,7 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
     }
   }
 
-  final private[quine] def interpretReturn(
+  private[quine] def interpretReturn(
     query: Return[Start],
     context: QueryContext
   )(implicit

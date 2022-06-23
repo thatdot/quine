@@ -663,7 +663,7 @@ object Query {
     def canDirectlyTouchNode: Boolean = delegates.naiveStack.canDirectlyTouchNode
     def isIdempotent: Boolean = delegates.naiveStack.isIdempotent
     def canContainAllNodeScan: Boolean = delegates.naiveStack.canContainAllNodeScan
-    def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start] = copy(
+    def substitute(parameters: Map[Expr.Parameter, Value]): Return[Start] = copy(
       toReturn = toReturn.substitute(parameters),
       orderBy = orderBy.map(_.map { case (expr, bool) => expr.substitute(parameters) -> bool }),
       distinctBy = distinctBy.map(_.map(_.substitute(parameters))),
