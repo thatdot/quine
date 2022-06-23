@@ -5,6 +5,7 @@ import akka.http.scaladsl.server.Route
 import endpoints4s.openapi.model._
 
 import com.thatdot.quine.app.BuildInfo
+import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes._
@@ -106,7 +107,7 @@ final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph)
   final val route: Route = {
     val docEndpoint = endpoint(
       get(path / "docs" / "openapi.json"),
-      ok(jsonResponse[endpoints4s.openapi.model.OpenApi])
+      ok(jsonResponse[endpoints4s.openapi.model.OpenApi](OpenApiRenderer.stringEncoder))
     )
 
     docEndpoint.implementedBy(_ => doc.api)
