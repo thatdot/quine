@@ -137,6 +137,7 @@ object Main extends App with LazyLogging {
               effectOrder = config.persistence.effectOrder,
               declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
               declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
+              maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
               labelsProperty = Symbol(config.labelsProperty),
               edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
               metricRegistry = Metrics

@@ -5,7 +5,7 @@ import scala.concurrent.duration.DurationLong
 
 import akka.actor.ActorLogging
 
-import com.thatdot.quine.graph.EventTime
+import com.thatdot.quine.graph.{BaseNodeActorView, EventTime}
 import com.thatdot.quine.model.Milliseconds
 
 /** Mix this in last to build in a monotonic [[EventTime]] clock to the actor.
@@ -14,6 +14,8 @@ import com.thatdot.quine.model.Milliseconds
   * While processing of a message, [[nextEventTime]] can be used to generate a fresh event time.
   */
 trait ActorClock extends ActorLogging with PriorityStashingBehavior {
+
+  this: BaseNodeActorView =>
 
   private var currentTime: EventTime = EventTime.fromMillis(Milliseconds.currentTime())
   private var previousMillis: Long = 0
@@ -40,6 +42,7 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
   protected def actorClockBehavior(inner: Receive): Receive = { case message: Any =>
     previousMillis = currentTime.millis
     val systemMillis = System.currentTimeMillis()
+    val atSysDiff = atTime.map(systemMillis - _.millis)
 
     // Time has gone backwards! Pause message processing until it is caught up
     if (systemMillis < previousMillis) {
@@ -67,12 +70,28 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
       // Pause message processing until system time has likely caught up to local actor millis
       val _ = pauseMessageProcessingUntil(timeHasProbablyCaughtUp.future)
     } else {
-      currentTime = currentTime.tick(
-        mustAdvanceLogicalTime = eventOccurred,
-        newMillis = systemMillis
-      )
-      eventOccurred = false
-      inner(message)
+      atSysDiff match {
+        // Clock skew: if at-time is too far in the future, drop the message
+        case Some(diff) if -diff > graph.maxCatchUpSleepMillis =>
+          log.error("Dropping message because node at-time is {} ms in future", -diff)
+        // Clock skew: if at-time is in the near future, resend the message when the
+        // time difference has elapsed
+        case Some(diff) if diff < 0 =>
+          log.warning("Resending message with delay because node at-time is {} ms in future", -diff)
+          context.system.scheduler
+            .scheduleOnce(
+              delay = (diff + 1).millis,
+              runnable = (() => self.tell(StashedMessage(message), sender())): Runnable
+            )(context.system.dispatcher)
+          ()
+        case _ =>
+          currentTime = currentTime.tick(
+            mustAdvanceLogicalTime = eventOccurred,
+            newMillis = systemMillis
+          )
+          eventOccurred = false
+          inner(message)
+      }
     }
   }
 }

@@ -26,6 +26,7 @@ final case class QuineConfig(
   inMemoryHardNodeLimit: Option[Int] = Some(75000),
   declineSleepWhenWriteWithin: FiniteDuration = 100.millis,
   declineSleepWhenAccessWithin: FiniteDuration = Duration.Zero,
+  maxCatchUpSleep: FiniteDuration = 2000.millis,
   webserver: WebServerConfig = WebServerConfig("0.0.0.0", 8080),
   shouldResumeIngest: Boolean = false,
   shardCount: Int = 4,

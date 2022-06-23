@@ -27,6 +27,7 @@ class GraphService(
   val effectOrder: EventEffectOrder,
   val declineSleepWhenWriteWithinMillis: Long,
   val declineSleepWhenAccessWithinMillis: Long,
+  val maxCatchUpSleepMillis: Long,
   val labelsProperty: Symbol,
   val edgeCollectionFactory: Supplier[EdgeCollection],
   val metrics: HostQuineMetrics
@@ -86,6 +87,7 @@ object GraphService {
     inMemoryHardNodeLimit: Option[Int] = Some(75000),
     declineSleepWhenWriteWithinMillis: Long = 100L,
     declineSleepWhenAccessWithinMillis: Long = 0L,
+    maxCatchUpSleepMillis: Long = 2000L,
     labelsProperty: Symbol = Symbol("__LABEL"),
     edgeCollectionFactory: Supplier[EdgeCollection] = () => new ReverseOrderedEdgeCollection,
     metricRegistry: MetricRegistry = new MetricRegistry
@@ -124,6 +126,7 @@ object GraphService {
         effectOrder,
         declineSleepWhenWriteWithinMillis,
         declineSleepWhenAccessWithinMillis,
+        maxCatchUpSleepMillis,
         labelsProperty,
         edgeCollectionFactory,
         HostQuineMetrics(metricRegistry)
