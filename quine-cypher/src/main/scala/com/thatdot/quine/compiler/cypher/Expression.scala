@@ -148,7 +148,7 @@ object Expression {
 
     case expressions.ReduceExpression(expressions.ReduceScope(acc, variable, expr), init, list) =>
       val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshAcc = variable.renameId(UnNamedNameGenerator.name(acc.position.newUniquePos()))
+      val freshAcc = acc.renameId(UnNamedNameGenerator.name(acc.position.newUniquePos()))
       val freshExpr = expr
         .copyAndReplace(variable)
         .by(freshVar)
