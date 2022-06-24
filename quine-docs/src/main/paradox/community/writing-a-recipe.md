@@ -113,8 +113,7 @@ This simple Recipe just ingests data to graph nodes (so far), but it is able to 
 
 ```
 ❯ java -jar quine.jar -r recipe.yaml
-Graph is ready!
-Application state loaded.
+Graph is ready
 Running Recipe Apache Log Analytics
 Running Ingest Stream INGEST-1
 Quine web server available at http://0.0.0.0:8080
@@ -148,8 +147,7 @@ Now when the Recipe is run, the output includes additional information (a link t
 
 ```
 ❯ java -jar quine.jar -r recipe.yaml
-Graph is ready!
-Application state loaded.
+Graph is ready
 Running Recipe Apache Log Analytics
 Running Ingest Stream INGEST-1
 Status query URL is http://0.0.0.0:8080#MATCH%20%28v%29%20RETURN%20v%20LIMIT%201
@@ -202,8 +200,7 @@ The Recipe is ready to run:
 
 ```
 ❯ java -jar quine.jar -r recipe.yaml
-Graph is ready!
-Application state loaded.
+Graph is ready
 Running Recipe Apache Log Analytics
 Running Standing Query STANDING-1
 Running Ingest Stream INGEST-1

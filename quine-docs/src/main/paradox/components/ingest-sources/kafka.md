@@ -40,8 +40,7 @@ To run this Recipe, run Quine as follows:
 
 ```
 java -jar quine.jar -r kafka-ingest
-Graph is ready!
-Application state loaded.
+Graph is ready
 Running Recipe Kafka Ingest
 Running Ingest Stream INGEST-1
 Quine app web server available at http://0.0.0.0:8080

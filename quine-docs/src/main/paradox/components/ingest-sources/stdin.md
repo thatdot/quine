@@ -10,8 +10,7 @@ To run this Recipe, pipe data from other program into Quine. This example uses t
 
 ```
 ❯ find /dev | java -jar quine.jar -r pipe
-Graph is ready!
-Application state loaded.
+Graph is ready
 Running Recipe Pipe
 Running Standing Query STANDING-1
 Running Ingest Stream INGEST-1

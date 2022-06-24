@@ -170,8 +170,7 @@ object Main extends App with LazyLogging {
     )
   }
 
-  // Inform when the graph is ready
-  statusLines.info("Graph is ready!")
+  statusLines.info("Graph is ready")
 
   // The web service is started unless it was disabled.
   val quineWebserverUrl: Option[String] = if (config.webserver.enabled) {
@@ -188,7 +187,6 @@ object Main extends App with LazyLogging {
       .load(timeout, config.shouldResumeIngest)
       .onComplete {
         case Success(()) =>
-          statusLines.info("Application state loaded.")
           recipeInterpreterTask = recipe.map(r =>
             RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(
               system.dispatcher,
@@ -210,7 +208,7 @@ object Main extends App with LazyLogging {
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, ec, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
-        case Success(_) => statusLines.info(s"Quine app web server available at $url")
+        case Success(_) => statusLines.info(s"Quine web server available at $url")
         case Failure(_) => // akka will have logged a stacktrace to the debug logger
       }(ec)
   }
@@ -234,7 +232,7 @@ object Main extends App with LazyLogging {
       case NonFatal(e) =>
         statusLines.error(s"Graceful shutdown of Quine encountered an error", e)
     }
-    statusLines.info("Shutdown complete.")
+    statusLines.info("Shutdown complete")
     LoggerFactory.getILoggerFactory match {
       case context: LoggerContext => context.stop()
       case _ => ()
