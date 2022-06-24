@@ -1,5 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
+import scala.collection.compat._
+
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Container for query results
@@ -29,6 +31,19 @@ final case class QueryContext(
   def apply(k: Symbol): Value = environment(k)
   def get(k: Symbol): Option[Value] = environment.get(k)
   def getOrElse(k: Symbol, v: => Value): Value = environment.getOrElse(k, v)
+
+  /** Extract and re-order a subset of the context (eg. when importing into a subquery
+    *
+    * @param importedColumns columns to extract
+    * @return subcontext containing only the specified imported columns
+    */
+  def subcontext(importedColumns: Seq[Symbol]): QueryContext =
+    // TODO: if `QueryContext` was ordered, re-order it according to `importedColumns`
+    QueryContext(
+      environment.view
+        .filterKeys(importedColumns.contains)
+        .toMap
+    )
 
   def pretty: String = environment
     .map { case (k, v) => s"${k.name}: ${v.pretty}" }

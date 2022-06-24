@@ -431,10 +431,10 @@ trait VariableRewriter[Start <: Location] {
     query: SubQuery[Start],
     columnsIn: Columns
   ): SubQuery[Start] = {
-    val subQuery = convertQuery(query.subQuery, columnsIn)
+    val subQuery = convertQuery(query.subQuery, Columns.Specified(query.importedVariables))
     query.copy(
       subQuery = subQuery,
-      columns = columnsIn ++ subQuery.columns
+      columns = subQuery.columns ++ columnsIn
     )
   }
 }

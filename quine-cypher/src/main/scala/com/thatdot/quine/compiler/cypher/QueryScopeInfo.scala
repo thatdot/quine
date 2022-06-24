@@ -66,7 +66,7 @@ final case class QueryScopeInfo(
     * @return context with the variable and expression for reading the variable
     */
   def addColumn(variable: Symbol): (QueryScopeInfo, Expr.Variable) = {
-    require(!columnIdx.contains(variable), "variable is already in context")
+    require(!columnIdx.contains(variable), s"variable $variable is already in context")
     val scope = QueryScopeInfo(
       anchoredNodes = anchoredNodes - variable,
       columnIdx = columnIdx + (variable -> columnIdx.size),
