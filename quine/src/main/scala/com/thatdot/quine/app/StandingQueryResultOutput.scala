@@ -339,7 +339,7 @@ object StandingQueryResultOutput extends LazyLogging {
           .flatMapMerge(
             breadth = parallelism,
             result => {
-              val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap())
+              val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap)
 
               val cypherResultRows =
                 if (shouldRetry) atLeastOnceCypherQuery.stream(value)(graph)

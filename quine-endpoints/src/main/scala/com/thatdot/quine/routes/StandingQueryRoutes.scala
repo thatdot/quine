@@ -16,6 +16,7 @@ composite structure exists.
 """)
 final case class StandingQueryDefinition(
   pattern: StandingQueryPattern,
+  @docs(s"a map of named standing query outs - see ${StandingQueryResultOutputUserDef.title} schema for the values")
   outputs: Map[String, StandingQueryResultOutputUserDef],
   @docs("whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean = false,
@@ -31,12 +32,14 @@ final case class RegisteredStandingQuery(
   internalId: UUID,
   @docs("query or pattern to answer in a standing fashion")
   pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
-  @docs("output sinks into which all new standing query results should be enqueued")
+  @docs(
+    s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}"
+  )
   outputs: Map[String, StandingQueryResultOutputUserDef],
   includeCancellations: Boolean,
   @docs("how many standing query results to buffer on each host before backpressuring")
   inputBufferSize: Int,
-  @docs("statistics on progress of running the standing query, per host")
+  @docs(s"statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
   stats: Map[String, StandingQueryStats]
 )
 
@@ -66,7 +69,7 @@ object StandingQueryPattern {
   }
 }
 
-@title("Statistics About a Running Standing Query")
+@title(StandingQueryStats.title)
 final case class StandingQueryStats(
   @docs("results per second over different time periods")
   rates: RatesSummary,
@@ -77,6 +80,10 @@ final case class StandingQueryStats(
   @docs("how many standing query results are buffered and waiting to be emitted")
   bufferSize: Int
 )
+
+object StandingQueryStats {
+  val title: String = "Statistics About a Running Standing Query"
+}
 
 /** Confirmation of a standing query being registered
   *
@@ -99,7 +106,7 @@ final case class StandingQueryCancelled(
 )
 
 /** Output sink for processing standing query results */
-@title("Standing Query Result Output")
+@title(StandingQueryResultOutputUserDef.title)
 @docs(
   """A destination to which StandingQueryResults should be routed.
     |
@@ -125,6 +132,7 @@ final case class StandingQueryCancelled(
 sealed abstract class StandingQueryResultOutputUserDef
 
 object StandingQueryResultOutputUserDef {
+  val title = "Standing Query Result Output"
 
   @unnamed
   @title("POST to HTTP[S] Webhook")
@@ -275,6 +283,8 @@ object StandingQueryResultOutputUserDef {
     shouldRetry: Boolean = true
   ) extends StandingQueryResultOutputUserDef
 
+  @unnamed
+  @title("Drop")
   final case object Drop extends StandingQueryResultOutputUserDef
 }
 

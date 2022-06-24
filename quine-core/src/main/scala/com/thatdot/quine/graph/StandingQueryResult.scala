@@ -17,7 +17,7 @@ final case class StandingQueryResult(
 
   /** Return this result as a single `QuineValue` (use sparingly, this effectively throws away type safety!)
     */
-  def toQuineValueMap(): QuineValue.Map = QuineValue.Map(
+  def toQuineValueMap: QuineValue.Map = QuineValue.Map(
     Map(
       "meta" -> QuineValue(meta.toMap),
       "data" -> QuineValue(data)
