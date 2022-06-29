@@ -77,13 +77,16 @@ class StatusLines(
     blocking(messages.synchronized {
       messages -= statusLine
     })
-    refreshStatusLines(extraSpace = true)
+    refreshStatusLines(clearExtraLine = true)
   }
 
   /** Prints status lines as follows: an empty line, then the status lines, then
     * the cursor is moved to the leftmost column of the blank line.
+    *
+    * @param clearExtraLine set to true after removing a status line, to account for
+    *                       the line that needs to be cleared
     */
-  private def refreshStatusLines(extraSpace: Boolean = false): Unit = {
+  private def refreshStatusLines(clearExtraLine: Boolean = false): Unit = this.synchronized {
     val up1 = "\u001b[1A"
     val erase = "\u001b[K"
     val home = "\r"
@@ -91,8 +94,7 @@ class StatusLines(
     realtimeOutput.println(homeErase)
     val stati = messages.values.toSeq.filter(_.trim != "")
     for { status <- stati } realtimeOutput.println(s"$homeErase | => $status")
-    if (extraSpace) realtimeOutput.println(homeErase)
+    if (clearExtraLine) realtimeOutput.print(homeErase)
     for { _ <- 1 to stati.length + 1 } realtimeOutput.print(up1)
-    if (extraSpace) realtimeOutput.print(up1)
   }
 }
