@@ -246,14 +246,14 @@ final private[quine] class GraphShardActor(
 
         // If the node was not already considering sleep, tell it to
         if (previous == WakefulState.Awake) {
-          log.debug("sleepActor: sent GoToSleep request to {}", target)
+          log.debug("sleepActor: sent GoToSleep request to: {}", target)
           actorRef ! GoToSleep
         } else {
-          log.debug("sleepActor: {} is already {}", target, previous)
+          log.debug("sleepActor: {} is already: {}", target, previous)
         }
 
       case None =>
-        log.warning("sleepActor: cannot find actor for {}", target)
+        log.warning("sleepActor: cannot find actor for: {}", target)
     }
 
   /** Basic LRU cache of the dedup IDs of the last 10000 delivery relays
@@ -371,7 +371,7 @@ final private[quine] class GraphShardActor(
 
     // Actor shut down completely
     case SleepOutcome.SleepSuccess(id, shardPromise) =>
-      log.debug("Sleep succeeded for {}", id)
+      log.debug("Sleep succeeded for {}", id.debug)
       nodes -= id
       inMemoryActorList.remove(id)
       nodesSleptSuccessCounter.inc()
@@ -379,11 +379,11 @@ final private[quine] class GraphShardActor(
       if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
         shardPromise.future.value.get match {
           case Success(_) =>
-            log.info("Received redundant notification about successfully slept node: {}", id.id)
+            log.info("Received redundant notification about successfully slept node: {}", id.debug)
           case Failure(_) =>
             log.error(
               """Received notification that node: {} slept, but that node already reported a failure for the same sleep request""",
-              id.id
+              id.debug
             )
         }
       }
@@ -399,16 +399,16 @@ final private[quine] class GraphShardActor(
     case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
       log.error(
         exception,
-        "Failed to store {}'s {} bytes, composed of {} edges and {} properties. Restoring the node.",
-        id,
+        "Failed to store: {} bytes on: {}, composed of: {} edges and: {} properties. Restoring the node.",
         snapshot.length,
+        id.debug,
         numEdges,
         propertySizes.size
       )
-      if (log.isWarningEnabled)
-        log.warning(
-          "Property sizes on failed store {}: {}",
-          id,
+      if (log.isInfoEnabled)
+        log.info(
+          "Property sizes on failed store: {}: {}",
+          id.debug,
           propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")
         )
       nodes -= id
@@ -420,12 +420,12 @@ final private[quine] class GraphShardActor(
           case Success(_) =>
             log.error(
               """A node failed to sleep: {}, but that node already reported a success for the same sleep request""",
-              id.id
+              id.debug
             )
           case Failure(e) =>
             log.warning(
-              s"A node failed to sleep, and reported that failure multiple times: {}. Latest error was {}",
-              id.id,
+              s"A node failed to sleep, and reported that failure multiple times: {}. Latest error was: {}",
+              id.debug,
               e
             )
         }
@@ -448,8 +448,8 @@ final private[quine] class GraphShardActor(
           val stats = shardStats()
           if (log.isWarningEnabled) {
             log.warning(
-              s"No more retries waking up $id " +
-              s"with sleep status ${nodes.get(id)} " +
+              s"No more retries waking up: ${id.debug} " +
+              s"with sleep status: ${nodes.get(id)} " +
               s"with nodes-on-shard: ${stats.awake} awake, ${stats.goingToSleep} going to sleep " +
               s"Outcome: $badOutcome " +
               s"Errors: " + errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", ")
@@ -502,7 +502,7 @@ final private[quine] class GraphShardActor(
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           // TODO: don't hardcode the time until retry
-          log.warning("Failed to wake up {} due to hard in-memory limit {} (retrying)", id, inMemoryLimit)
+          log.warning("Failed to wake up: {} due to hard in-memory limit: {} (retrying)", id.debug, inMemoryLimit)
           context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)
           // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
           ()

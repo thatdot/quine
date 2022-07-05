@@ -1068,7 +1068,7 @@ class CassandraPersistor(
           clazz.contains("org.apache.cassandra.locator.SimpleStrategy") && !factor.contains(replicationFactor.toString)
         )
           logger.warn(
-            s"Unexpected replication factor $factor (expected $replicationFactor) for Cassandra keyspace $keyspace"
+            s"Unexpected replication factor: $factor (expected: $replicationFactor) for Cassandra keyspace: $keyspace"
           )
       }
       session

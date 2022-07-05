@@ -60,8 +60,11 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     pendingCallbacks.indexWhere(_.id == findId) match {
       case -1 =>
         log.warning(
-          s"On node: ${qid.pretty} received a result: $result for a callback with unknown ID: $findId in pendingCallbacks"
+          "Received a result on node: {} (logged at INFO level) for a callback with unknown ID: {} in pendingCallbacks",
+          qid.debug,
+          findId
         )
+        log.info("Received a result on node: {} for unknown callback ID: {}. Result was {}", qid.debug, findId, result)
       case i =>
         pendingCallbacks(i) match {
           case cb: PausedMessageCallback[A @unchecked] =>

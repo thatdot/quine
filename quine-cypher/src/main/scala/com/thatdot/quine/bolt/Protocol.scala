@@ -358,7 +358,12 @@ object Protocol extends LazyLogging {
               case (Reset(), _) =>
                 State.HandlerResult(State.Ready, Success(), Source.empty)
               case _ =>
-                logger.warn(s"Received message that is invalid for state $connectionState: $msg")
+                logger.warn(
+                  s"Received message that is invalid for current BOLT protocol state: $connectionState (logged at INFO level)."
+                )
+                logger.info(
+                  s"Received message that is invalid for current BOLT protocol state $connectionState. Message: $msg"
+                )
                 State.HandlerResult(State.Defunct)
             }
           )

@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.ingest
 
 import java.net.URL
+import java.nio.charset.StandardCharsets
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
@@ -52,7 +53,13 @@ sealed trait KafkaImportFormat extends ImportFormat with LazyLogging {
       importMessageSafeBytes(data, isSingleHost) match {
         case Success(a) => Some(a)
         case Failure(err) =>
-          logger.warn(s"Deserialization error while reading from Kafka topic $topic", err)
+          logger.warn(s"Failed to deserialize a record from Kafka topic: $topic. Skipping record.")
+          logger.info(
+            s"""Failed to deserialize a record from Kafka topic: $topic. Data (as UTF-8)
+               |was: ${new String(data, StandardCharsets.UTF_8)}""".stripMargin.replace('\n', ' '),
+            err
+          )
+
           None
       }
   }

@@ -77,8 +77,9 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         case Result(u, _, _) if !warned =>
           warned = true
           logger.warn(
-            s"The `$stepName` step discarded the following input: $u (additional discards won't be logged)"
+            s"Gremlin query step: `$stepName` discarded a result (logged at INFO level) additional discards will not be logged."
           )
+          logger.info(s"Gremlin query step: `$stepName` step discarded a result: $u")
           List.empty
         case _ => List.empty
       }

@@ -54,7 +54,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
   /** Construct a destination to which results are output
     *
-    * @param name name of the result handler
+    * @param name name of the Standing Query Output
     * @param output configuration for handling the results
     * @param graph reference to the graph
     */
@@ -298,8 +298,7 @@ object StandingQueryResultOutput extends LazyLogging {
           logger.warn(
             """Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
               |occur, query execution may be retried and duplicate data may be created. To avoid this,
-              |set shouldRetry = false in the Standing Query output""".stripMargin
-              .replace('\n', ' ')
+              |set shouldRetry = false in the Standing Query output""".stripMargin.replace('\n', ' ')
           )
         }
 
@@ -307,12 +306,22 @@ object StandingQueryResultOutput extends LazyLogging {
           andThen match {
             case None =>
               Flow[(StandingQueryResult.Meta, cypher.QueryContext)]
-                .map { case (_, qc) =>
-                  logger.warn(
-                    s"Unused cypher standing query output for $name: ${qc.pretty}." +
-                    " Did you mean to specify `andThen`?"
-                  )
-                  execToken
+                .statefulMapConcat { () =>
+                  var warned = false
+
+                  tup => {
+                    logger.whenWarnEnabled {
+                      if (!warned) {
+                        warned = true
+                        logger.warn(
+                          s"""Unused Cypher Standing Query output for Standing Query output: $name with:
+                             |${tup._2.environment.size} columns. Did you mean to specify `andThen`?""".stripMargin
+                            .replace('\n', ' ')
+                        )
+                      }
+                    }
+                    List(execToken)
+                  }
                 }
 
             case Some(thenOutput) =>
@@ -321,8 +330,12 @@ object StandingQueryResultOutput extends LazyLogging {
                   val newData = qc.environment.map { case (keySym, cypherVal) =>
                     keySym.name -> Try(cypher.Expr.toQuineValue(cypherVal)).getOrElse {
                       logger.warn(
-                        s"Cypher standing query output for $name included cypher value not " +
-                        s"representable as a quine value: $cypherVal (using `null` instead)."
+                        s"""Cypher Standing Query output: $name included cypher value not representable as a
+                           |Quine value (logged at INFO level). Using `null` instead.""".stripMargin.replace('\n', ' ')
+                      )
+                      logger.info(
+                        s"""Cypher Value: $cypherVal could not be represented as a Quine value in Standing
+                           |Query output: $name""".stripMargin.replace('\n', ' ')
                       )
                       QuineValue.Null
                     }
@@ -371,15 +384,16 @@ object StandingQueryResultOutput extends LazyLogging {
           .map(result =>
             serializer
               .toProtobufBytes(result.data)
-              .leftMap(err =>
+              .leftMap { err =>
                 logger.warn(
-                  "On standing query {}, can't serialize {} to protobuf type {}: {}",
-                  name,
-                  result.data,
-                  typeName,
+                  s"""On Standing Query output: $name, can't serialize provided datum (logged at INFO level)
+                     |to protobuf type: $typeName. Skipping datum.""".stripMargin.replace('\n', ' ')
+                )
+                logger.info(
+                  s"Standing Query output: $name failed to serialize Standing Query result as Protobuf: $result",
                   err
                 )
-              )
+              }
           )
           .collect { case Right(value) => value }
     }

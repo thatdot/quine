@@ -393,7 +393,7 @@ object MapDbPersistor {
       if (createParentDir) {
         val parentDir = path.getAbsoluteFile.getParentFile
         if (parentDir.mkdirs())
-          logger.warn("{} did not exist; created.", parentDir)
+          logger.warn("Parent directory: {} of requested persistence location did not exist; created.", parentDir)
       }
       PersistedDb(path)
     }

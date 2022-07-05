@@ -68,23 +68,23 @@ abstract class PersistenceAgent extends StrictLogging {
     implicit val ec = ExecutionContexts.parasitic
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
-        logger.info(s"No version was set in the persistence backend for $context, initializing to $currentVersion")
+        logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
         setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
 
       case Some(persistedVBytes) =>
         Version.fromBytes(persistedVBytes) match {
           case None =>
-            val msg = s"Persistence backend cannot parse version for $context at $versionMetaDataKey"
+            val msg = s"Persistence backend cannot parse version for: $context at: $versionMetaDataKey"
             Future.failed(new IllegalStateException(msg))
           case Some(compatibleV) if currentVersion.canReadFrom(compatibleV) =>
             if (currentVersion <= compatibleV) {
               logger.info(
-                s"Persistence backend for $context is at $compatibleV, this is usable as-is by $currentVersion"
+                s"Persistence backend for: $context is at: $compatibleV, this is usable as-is by: $currentVersion"
               )
               Future.successful(compatibleV)
             } else {
               logger.info(
-                s"Persistence backend for $context was at $compatibleV, upgrading to compatible $currentVersion"
+                s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
               )
               setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
             }
@@ -92,7 +92,7 @@ abstract class PersistenceAgent extends StrictLogging {
             isDataEmpty().flatMap {
               case true =>
                 logger.warn(
-                  s"Persistor reported that the last run used an incompatible $incompatibleV for $context, but no data was saved, so setting version to $currentVersion and continuing"
+                  s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
                 )
                 setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
               case false =>
@@ -295,7 +295,7 @@ trait MultipartSnapshotPersistenceAgent {
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = {
     val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
     val partCount = parts.length
-    if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node $id with $partCount parts")
+    if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node: $id with part count: $partCount")
     implicit val ec = multipartSnapshotExecutionContext
     (Future sequence {
       for {
@@ -315,7 +315,7 @@ trait MultipartSnapshotPersistenceAgent {
         if (validateSnapshotParts(parts))
           Future.successful(Some((time, parts.flatMap(_.partBytes).toArray)))
         else {
-          logger.warn(s"Failed reading multipart snapshot for id $id upToTime: $upToTime; retrying with time: $time")
+          logger.warn(s"Failed reading multipart snapshot for id: $id upToTime: $upToTime; retrying with time: $time")
           getLatestSnapshot(id, time)
         }
       case None =>
@@ -326,13 +326,13 @@ trait MultipartSnapshotPersistenceAgent {
   private def validateSnapshotParts(parts: Seq[MultipartSnapshotPart]): Boolean = {
     val partsLength = parts.length
     var result = true
-    for { (part @ MultipartSnapshotPart(_, multipartIndex, multipartCount), partIndex) <- parts.zipWithIndex } {
+    for { (MultipartSnapshotPart(_, multipartIndex, multipartCount), partIndex) <- parts.zipWithIndex } {
       if (multipartIndex != partIndex) {
-        logger.warn(s"Snapshot part $part has unexpected index $multipartIndex (expected $partIndex)")
+        logger.warn(s"Snapshot part has unexpected index: $multipartIndex (expected: $partIndex)")
         result = false
       }
       if (multipartCount != partsLength) {
-        logger.warn(s"Snapshot part $part has unexpected count $multipartCount (expected $partsLength)")
+        logger.warn(s"Snapshot part has unexpected count: $multipartCount (expected: $partsLength)")
         result = false
       }
     }

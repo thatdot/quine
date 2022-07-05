@@ -64,7 +64,7 @@ object PersistenceAgentType {
       if (createParentDir) {
         val parentDir = filepath.getAbsoluteFile.getParentFile
         if (parentDir.mkdirs())
-          logger.warn("{} did not exist; created.", parentDir)
+          logger.warn(s"Configured persistence directory: $parentDir did not exist; created.")
       }
       val db =
         try new RocksDbPersistor(

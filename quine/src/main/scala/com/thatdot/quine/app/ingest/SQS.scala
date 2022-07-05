@@ -90,15 +90,12 @@ case object SQS extends LazyLogging {
             .importMessageSafeBytes(bytes, isSingleHost)
             .fold(
               { err =>
-                logger
-                  .warn(
-                    s"""Received record with ID ${message.messageId()} in queue $queueURL that
-                        |${format.getClass.getSimpleName} could not decode (receipt 
-                        |"${message.receiptHandle()}").""".stripMargin
-                      .replace('\n', ' '),
-                    err
-                  )
-                logger.debug(err.getStackTrace.mkString("", "\n", "\n"))
+                logger.warn(
+                  s"""Failed to deserialize SQS message with ID: ${message.messageId()} with
+                     |in queue: $queueURL using format: ${format.getClass.getSimpleName} (Receipt:
+                     |"${message.receiptHandle()}"). Skipping and ignoring record.""".stripMargin.replace('\n', ' ')
+                )
+                logger.info(s"""Failed to decode SQS message: $message""", err)
                 (None, MessageAction.Ignore(message))
               },
               deserialized => (Some(deserialized), MessageAction.Delete(message))

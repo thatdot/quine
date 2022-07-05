@@ -40,7 +40,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(impl
     case Success(value) => Success(value)
     case Failure(exception) =>
       val wrapped = f(exception)
-      logger.warn("Persistor error", wrapped)
+      logger.warn("Intercepted persistor error", wrapped)
       Failure(wrapped)
   }
 

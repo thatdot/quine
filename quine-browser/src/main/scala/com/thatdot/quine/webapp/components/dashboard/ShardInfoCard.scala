@@ -66,7 +66,7 @@ object ShardInfoCard {
         alertCounters
       )).orElse {
         org.scalajs.dom.console.warn(
-          s"Unable to find all necessary information to populate card for shard $shardId. Logging sourceCounters and shard limit",
+          s"Unable to find all necessary information to populate card for shard: $shardId. Logging sourceCounters and shard limit",
           sourceCounters,
           limits
         )

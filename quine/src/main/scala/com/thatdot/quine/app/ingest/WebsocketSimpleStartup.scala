@@ -110,7 +110,14 @@ final case class WebsocketSimpleStartup(
                     .importMessageSafeBytes(bytes.toArray, graph.isSingleHost)
                     .fold(
                       { err =>
-                        logger.warn(s"Error decoding event data for event $msg", err)
+
+                        logger.warn(
+                          s"Failed to deserialize a Websockets message (logged at INFO level). Skipping this message."
+                        )
+                        logger.info(
+                          s"Failed to deserialize Websockets message UTF-8 representation: ${bytes.utf8String}",
+                          err
+                        )
                         List.empty
                       },
                       List(_)

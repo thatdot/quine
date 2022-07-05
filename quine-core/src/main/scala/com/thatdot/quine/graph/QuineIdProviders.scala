@@ -275,8 +275,8 @@ final case class WithPartitioning private (underlying: QuineIdProvider) extends 
   override def nodeLocation(qid: QuineId): QuineGraphLocation = customIdFromBytes(qid.array) match {
     case Failure(exception) =>
       logger.warn(
-        s"Couldn't parse out a partitioned quine id from provided id ${qidToPrettyString(qid)}. " +
-        "Falling back to the underlying node location algorithm",
+        s"""Couldn't parse out a partitioned Quine Id from provided id ${qid.pretty(this)}.
+            |Falling back to the underlying node location algorithm""".stripMargin.replace('\n', ' '),
         exception
       )
       underlying.nodeLocation(qid)

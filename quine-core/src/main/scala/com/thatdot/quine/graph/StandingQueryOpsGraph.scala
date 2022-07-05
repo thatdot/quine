@@ -62,8 +62,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
           .foldLeft(Set.empty[cypher.StandingQuery])((acc, sq) => cypher.StandingQuery.indexableSubqueries(sq, acc))
           .map(sq => sq.id -> sq)
           .toMap
-        if (keys.asScala.exists(!runningSqParts.keySet.contains(_)))
-          logger.warn("Unable to find running StandingQuery part")
+        val runningPartsKeys = runningSqParts.keySet
+        keys.asScala.collectFirst {
+          case part if !runningPartsKeys.contains(part) =>
+            logger.warn(s"Unable to find running Standing Query part: $part")
+        }
         runningSqParts.asJava
       }
       def load(k: StandingQueryPartId): cypher.StandingQuery = loadAll(Seq(k).asJava).get(k)
@@ -85,12 +88,28 @@ trait StandingQueryOpsGraph extends BaseGraph {
             true
           case QueueOfferResult.Failure(err) =>
             standingQuery.droppedCounter.inc()
-            logger.warn(s"onResult: failed to enqueue standing query ${standingQuery.query.name} result $sqResult", err)
-            false
-          case other =>
-            standingQuery.droppedCounter.inc()
             logger.warn(
-              s"onResult: failed to enqueue standing query ${standingQuery.query.name} result $sqResult ($other)"
+              s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name} due to error: ${err.getMessage}"
+            )
+            logger.info(
+              s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}",
+              err
+            )
+            false
+          case QueueOfferResult.QueueClosed =>
+            logger.warn(
+              s"onResult: Standing Query Result arrived but result queue already closed for: ${standingQuery.query.name}"
+            )
+            logger.info(
+              s"onResult: Standing Query result queue already closed for: ${standingQuery.query.name}. Dropped result: ${sqResult}"
+            )
+            false
+          case QueueOfferResult.Dropped =>
+            logger.warn(
+              s"onResult: dropped Standing Query result for: ${standingQuery.query.name}"
+            )
+            logger.info(
+              s"onResult: dropped Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}"
             )
             false
         }

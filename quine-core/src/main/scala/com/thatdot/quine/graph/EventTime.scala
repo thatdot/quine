@@ -145,13 +145,13 @@ object EventTime extends LazyLogging {
 
     // Warn on various overflows
     if (milliseconds < 0L || MillisMax <= milliseconds) {
-      logger.error(s"Milliseconds $milliseconds in $time needs to be between 0 and $MillisMax")
+      logger.error(s"Milliseconds: $milliseconds in: $time needs to be between 0 and $MillisMax")
     }
     if (timestampSequence < 0L || TimestampSequenceMax <= timestampSequence) {
-      logger.warn(s"Timestamp sequence number $timestampSequence in $time overflowed")
+      logger.warn(s"Timestamp sequence number: $timestampSequence in: $time overflowed")
     }
     if (eventSequence < 0L || EventSequenceMax <= eventSequence) {
-      logger.warn(s"Event sequence number $eventSequence in $time overflowed")
+      logger.warn(s"Event sequence number: $eventSequence in: $time overflowed")
     }
 
     time

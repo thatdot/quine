@@ -145,14 +145,13 @@ case object Kinesis extends LazyLogging {
             .importMessageSafeBytes(bytes, isSingleHost)
             .fold(
               { err =>
+                // TODO should partition key be treated as PII?
                 logger.warn(
-                  s"""Received record with sequence number ${record.sequenceNumber()} with
-                         |partition key ${record.partitionKey()} on stream $streamName that
-                         |${format.getClass.getSimpleName} could not decode.""".stripMargin
-                    .replace('\n', ' '),
-                  err
+                  s"""Failed to deserialize Kinesis record with sequence number: ${record.sequenceNumber} with
+                     |partition key: ${record.partitionKey} on stream: $streamName using format:
+                     |${format.getClass.getSimpleName}. Skipping record.""".stripMargin.replace('\n', ' ')
                 )
-                logger.debug(err.getStackTrace.mkString("", "\n", "\n"))
+                logger.info(s"""Failed to decode Kinesis record: $record""", err)
                 List.empty
               },
               List(_)
