@@ -55,7 +55,7 @@ object Dependencies {
   val scalaTestV = "3.2.12"
   val scalajsDomV = "2.1.0"
   val scalajsMacroTaskExecutorV = "1.0.0"
-  val scoptV = "4.0.1"
+  val scoptV = "4.1.0"
   val shapelessV = "2.3.9"
   val slinkyV = "0.7.2"
   val snakeYamlV = "1.30"
