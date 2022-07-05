@@ -584,7 +584,9 @@ object GraphShardActor {
     */
   def name(shardId: Int): String = s"shard-$shardId"
 
-  /** How long is the delay before a node accepts sleep? */
+  /** How long the node has to process the GoToSleep message before it refuses sleep
+    * (starting from when that message was sent).
+    */
   val SleepDeadlineDelay: FiniteDuration = 3.seconds
 
   /** Possible outcomes when trying to wake up a node */
