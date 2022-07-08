@@ -9,7 +9,7 @@ Documentation: <https://quine.io>
 
 In order to build, you'll need to have the following installed:
 
-  * A recent version of the Java Development Kit (8 or newer)
+  * A recent version of the Java Development Kit (11 or newer)
   * The [`sbt` build tool](https://www.scala-sbt.org/download.html)
 
 Then:
