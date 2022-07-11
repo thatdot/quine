@@ -3,6 +3,9 @@ package com.thatdot.quine.compiler.cypher
 import scala.annotation.nowarn
 import scala.util.Try
 
+import akka.stream.scaladsl.Sink
+
+import org.opencypher.v9_0.expressions.functions.Category
 import org.scalatest.AppendedClues
 import org.scalatest.Inside.inside
 import org.scalatest.matchers.should.Matchers
@@ -18,8 +21,12 @@ import com.thatdot.quine.graph.cypher.{
   Location,
   Parameters,
   Query,
+  Type,
+  UserDefinedFunction,
+  UserDefinedFunctionSignature,
   Value
 }
+import com.thatdot.quine.model.QuineIdProvider
 
 // disable warnings raised by giving names to parts of pattern matches to make the large pattern matches more readable
 @nowarn(
@@ -717,4 +724,44 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
     )
   }
 
+  registerUserDefinedFunction(SnitchFunction)
+  it("only evaluates projected expressions once") {
+    SnitchFunction.reset()
+    val theQuery = queryCypherValues("RETURN snitch(rand())")(graph)
+    assert(theQuery.columns === Vector(Symbol("snitch(rand())")))
+    theQuery.results.runWith(Sink.seq).map { results =>
+      assert(results.length === 1, "query only requests 1 row")
+      val row = results.head
+      assert(row.length === 1, "query only requests 1 value")
+      val returnedResult = row.head
+      assert(SnitchFunction.snitched.size() === 1, "the RETURNed expression should be computed only once")
+      val snitchedResult = SnitchFunction.snitched.poll()
+      assert(returnedResult === snitchedResult, "the RETURNed value should match the value extracted via side-channel")
+    }
+  }
+}
+// Test function to "snitch" (ie, side-channel out) all values passed through it
+object SnitchFunction extends UserDefinedFunction {
+  val snitched = new java.util.concurrent.ConcurrentLinkedQueue[Value]()
+
+  def reset(): Unit = snitched.clear()
+
+  val name = "snitch"
+
+  val isPure = false
+
+  val category = Category.SCALAR
+
+  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector("input" -> Type.Anything),
+      output = Type.Anything,
+      description = "Returns the value provided after snitching it"
+    )
+  )
+
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    args match {
+      case Vector(x) => snitched.add(x); x
+    }
 }

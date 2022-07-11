@@ -164,8 +164,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     )
 
     testQuery(
-      "UNWIND [] AS empty RETURN empty, 'literal_that_is_not_returned'",
-      expectedColumns = Vector("empty", "'literal_that_is_not_returned'"),
+      "UNWIND [] AS empty RETURN empty, 'literal_returned_0_times'",
+      expectedColumns = Vector("empty", "'literal_returned_0_times'"),
       expectedRows = Seq.empty,
       expectedCannotFail = true
     )

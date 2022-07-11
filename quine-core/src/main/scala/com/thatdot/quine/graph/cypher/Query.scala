@@ -159,22 +159,36 @@ object Query {
     dropExisting: Boolean,
     toAdd: Vector[(Symbol, Expr)],
     adjustThis: Query[Start]
-  ): Query[Start] = adjustThis match {
-    // Nested AdjustContext
-    case AdjustContext(dropExisting2, toAdd2, inner, _) if toAdd == toAdd2 =>
-      val newDrop = dropExisting || dropExisting2
-      AdjustContext(newDrop, toAdd, inner)
+  ): Query[Start] =
+    adjustThis match {
+      // Nested AdjustContext
+      case AdjustContext(dropExisting2, toAdd2, inner, _) if toAdd == toAdd2 =>
+        val newDrop = dropExisting || dropExisting2
+        AdjustContext(newDrop, toAdd, inner)
 
-    case _ =>
-      val toAdd2 = toAdd.filter {
-        case (sym, Expr.Variable(sym2)) if !dropExisting => sym != sym2
-        case _ => true
-      }
-      if (toAdd2.isEmpty && !dropExisting)
-        adjustThis // Nothing changes!
-      else
-        AdjustContext(dropExisting, toAdd2, adjustThis)
-  }
+      case _ =>
+        // Are all existing column names preserved? if !dropExisting, then trivially true
+        val allExistingColumnsRemain = !dropExisting
+        // column information is not yet calculated, but if it were, this would also have allExistingColumnsRemain:
+        /*(adjustThis.columns match {
+          case Columns.Omitted => false
+          case Columns.Specified(colNames) =>
+            // NB this check is NOT order-preserving, so if the order of `toAdd` differs from `adjustThis.columns`,
+            // the ordering of `adjustThis.columns` will be used for the query at runtime
+            colNames.toSet == toAdd.map(_._1).toSet
+        })*/
+
+        // additions that actually do something w.r.t existing columns: add a new column, rename something, etc
+        // put another way: rule out any entries in `toAdd` that are no-ops when allExistingColumnsRemain
+        lazy val additionsGivenExistingColumns = toAdd.filterNot {
+          case (newVariable, Expr.Variable(oldVariable)) if newVariable == oldVariable => true
+          case _ => false
+        }
+
+        if (allExistingColumnsRemain && additionsGivenExistingColumns.isEmpty) adjustThis
+        else if (allExistingColumnsRemain) AdjustContext(dropExisting, additionsGivenExistingColumns, adjustThis)
+        else AdjustContext(dropExisting, toAdd, adjustThis)
+    }
 
   /** Like [[Filter]], but applies from peephole optimizations */
   def filter[Start <: Location](

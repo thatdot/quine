@@ -440,11 +440,16 @@ object QueryPart {
             toReturn: cypher.Query[cypher.Location.Anywhere] <-
               if (!returnItems.includeExisting) {
                 for {
+                  // values for `groupers` in original context
+                  boundGroupers <- groupers.traverse { case (colName, _) =>
+                    CompM.getVariable(colName, returnItems).map(colName -> _)
+                  }
+                  // allocate a new set of columns to hold the `groupers` values
                   () <- CompM.clearColumns
                   () <- groupers.traverse_ { case (colName, _) => CompM.addColumn(colName) }
                 } yield cypher.Query.adjustContext(
                   dropExisting = true,
-                  toAdd = groupers,
+                  toAdd = boundGroupers,
                   adjustThis = ordered
                 )
               } else {
@@ -779,6 +784,7 @@ object QueryPart {
             /** non-aggregating RETURN: We can compile directly to a single fused [[cypher.Query.Return]]
               */
             for {
+              // add directly-returned columns (ie `groupers`) to context
               _ <- groupers.traverse_ { (col: (Symbol, cypher.Expr)) =>
                 CompM.hasColumn(col._1).flatMap {
                   case true => CompM.pure(())
@@ -790,6 +796,7 @@ object QueryPart {
                 groupers,
                 cypher.Query.apply(accQuery, setupQuery)
               )
+              // compile the ORDER BY rule and any query necessary to set up an environment to run the sorting
               orderedWQ: WithQuery[Option[cypher.Query.Sort.SortBy]] <- orderByOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.OrderBy(sortItems)) =>
@@ -802,6 +809,7 @@ object QueryPart {
                     .runWithQuery
               }
               WithQuery(orderingRule, orderingQueryPart) = orderedWQ
+              // compile the DISTINCT rule
               dedupeRule: Option[cypher.Query.Distinct.DistinctBy] <- isDistinct match {
                 case false => CompM.pure(None)
                 case true =>
@@ -810,13 +818,15 @@ object QueryPart {
                     .traverse(CompM.getVariable(_, clause))
                     .map(Some(_))
               }
-              dropWQ: WithQuery[Option[cypher.Expr]] <- skipOpt match {
+              // compile the SKIP rule and any query necessary to set up an environment to run the rule
+              dropWQ: WithQuery[Option[cypher.Query.Skip.Drop]] <- skipOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Skip(expr)) =>
                   Expression.compile(expr).map(Some(_)).runWithQuery
               }
               WithQuery(dropRule, dropQueryPart) = dropWQ
-              limitWQ: WithQuery[Option[cypher.Expr]] <- limitOpt match {
+              // compile the LIMIT rule and any query necessary to set up an environment to run the rule
+              limitWQ: WithQuery[Option[cypher.Query.Limit.Take]] <- limitOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Limit(expr)) =>
                   Expression.compile(expr).map(Some(_)).runWithQuery
@@ -826,9 +836,9 @@ object QueryPart {
               unprojectedQuery = Query.apply(adjusted, orderingQueryPart)
               // ORDER BY can use values from the main query, so we need to ensure that clause's related query is
               // fully interpreted before the `RETURN` evaluates the ORDER BY clause
-              toReturn = Query.Return(
+              returnQueryWithDedupe = Query.Return(
                 toReturn = unprojectedQuery,
-                orderBy = orderingRule, // `grouped` is already ordered
+                orderBy = orderingRule,
                 distinctBy = dedupeRule,
                 drop = dropRule,
                 take = takeRule
@@ -840,15 +850,20 @@ object QueryPart {
               returnQueryWithDedupeAndOrdering: cypher.Query[cypher.Location.Anywhere] <-
                 if (!items.includeExisting) {
                   for {
+                    // values for `groupers` in original context
+                    boundGroupers <- groupers.traverse { case (colName, _) =>
+                      CompM.getVariable(colName, items).map(colName -> _)
+                    }
+                    // allocate a new set of columns to hold the `groupers` values
                     () <- CompM.clearColumns
                     () <- groupers.traverse_ { case (colName, _) => CompM.addColumn(colName) }
                   } yield cypher.Query.adjustContext(
                     dropExisting = true,
-                    toAdd = groupers,
-                    adjustThis = toReturn
+                    toAdd = boundGroupers,
+                    adjustThis = returnQueryWithDedupe
                   )
                 } else {
-                  CompM.pure(toReturn)
+                  CompM.pure(returnQueryWithDedupe)
                 }
               // DROP/SKIP Exprs need to be evaluated before the query they are windowing, so the related queries for
               // those clauses need to be fully interpreted before the RETURN evaluates its main query
@@ -875,13 +890,15 @@ object QueryPart {
                     .traverse(CompM.getVariable(_, clause))
                     .map(Some(_))
               }
-              dropWQ: WithQuery[Option[cypher.Expr]] <- skipOpt match {
+              // compile the SKIP rule and any query necessary to set up an environment to run the rule
+              dropWQ: WithQuery[Option[cypher.Query.Skip.Drop]] <- skipOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Skip(expr)) =>
                   Expression.compile(expr).map(Some(_)).runWithQuery
               }
               WithQuery(dropRule, dropQueryPart) = dropWQ
-              limitWQ: WithQuery[Option[cypher.Expr]] <- limitOpt match {
+              // compile the LIMIT rule and any query necessary to set up an environment to run the rule
+              limitWQ: WithQuery[Option[cypher.Query.Limit.Take]] <- limitOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Limit(expr)) =>
                   Expression.compile(expr).map(Some(_)).runWithQuery
