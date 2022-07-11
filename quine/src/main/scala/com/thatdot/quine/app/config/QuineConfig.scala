@@ -1,7 +1,5 @@
 package com.thatdot.quine.app.config
 
-import java.io.File
-
 import scala.annotation.nowarn
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
@@ -32,7 +30,7 @@ final case class QuineConfig(
   shardCount: Int = 4,
   id: IdProviderType = IdProviderType.UUID(),
   edgeIteration: EdgeIteration = EdgeIteration.ReverseInsertion,
-  store: PersistenceAgentType = PersistenceAgentType.RocksDb(new File("quine.db")),
+  store: PersistenceAgentType = PersistenceAgentType.RocksDb(),
   persistence: PersistenceConfig = PersistenceConfig(),
   labelsProperty: String = "__LABEL",
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx)

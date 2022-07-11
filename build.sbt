@@ -262,7 +262,7 @@ lazy val `quine`: Project = project
     scalaJSProjects := Seq(`quine-browser`),
     Assets / pipelineStages := Seq(scalaJSPipeline)
   )
-  .enablePlugins(BuildInfoPlugin, Packaging)
+  .enablePlugins(BuildInfoPlugin, Packaging, Docker)
   .settings(
     startupMessage := "",
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),

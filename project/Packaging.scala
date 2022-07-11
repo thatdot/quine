@@ -1,17 +1,12 @@
-import sbt.Keys._
-import sbtassembly._
+import sbtassembly.{Assembly, AssemblyPlugin, MergeStrategy, PathList}
+import sbtassembly.AssemblyKeys.{assembly, assemblyMergeStrategy}
 import sbt._
-
-import scala.concurrent.duration._
-import scala.util.Properties
 
 /* Plugin for building a fat JAR */
 object Packaging extends AutoPlugin {
 
   override def requires = AssemblyPlugin
   override def trigger = noTrigger
-
-  import AssemblyPlugin.autoImport.{assembly, assemblyMergeStrategy}
 
   // Assembly merge strategy
   private val reverseConcat: MergeStrategy = new MergeStrategy {

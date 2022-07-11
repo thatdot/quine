@@ -51,7 +51,7 @@ object PersistenceAgentType {
   }
 
   final case class RocksDb(
-    filepath: File,
+    filepath: File = new File(sys.env.getOrElse("QUINE_DATA", "quine.db")),
     writeAheadLog: Boolean = true,
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
