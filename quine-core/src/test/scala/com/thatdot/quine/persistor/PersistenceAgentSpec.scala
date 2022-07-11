@@ -8,7 +8,7 @@ import scala.concurrent.{Await, Future}
 import akka.actor.ActorSystem
 
 import org.scalatest.funspec.AsyncFunSpec
-import org.scalatest.{Assertion, BeforeAndAfterAll}
+import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, QuineUUIDProvider, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
@@ -18,9 +18,9 @@ import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
   * abstract `Spec` and quickly be able to check that the expected persistor
   * properties hold
   *
-  * TODO: add tests for metadata
+  * TODO: add tests for standing queries
   */
-abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll {
+abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll with OptionValues {
 
   implicit val system: ActorSystem = ActorSystem()
 
@@ -51,7 +51,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   val snapshot1: Array[Byte] = Array[Byte](-87, 60, 83, 99)
   val snapshot2: Array[Byte] = Array[Byte](11)
   val snapshot3: Array[Byte] = Array[Byte](89, -71, 2)
-  val snapshot4: Array[Byte] = Array[Byte](123, 41, -57)
+  val snapshot4: Array[Byte] = Array.tabulate(200 * 1000)(i => i % 256 - 127).map(_.toByte)
 
   val sqId1: StandingQueryId = StandingQueryId(new UUID(0L, 0L)) // min unsigned representation
   val sqId2: StandingQueryId = StandingQueryId(new UUID(256389790107965554L, 7806099684324575116L))
@@ -68,6 +68,13 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   val sqState2: Array[Byte] = Array[Byte](0)
   val sqState3: Array[Byte] = Array[Byte](-98, 123, 5, 78)
   val sqState4: Array[Byte] = Array[Byte](34, 92, -1, 20)
+
+  // arbitrary metadata keys
+  val metadata0 = "foo"
+  val metadata1 = "bar"
+  val metadata2 = "123"
+  val metadata3: String = Seq.tabulate(1024)(i => ('a' + i % 26).toChar).mkString
+  val metadata4 = "weird characters {&*@(} spooky"
 
   /** Mash together a bunch of async actions into one assertion */
   def allOfConcurrent[A](asyncTests: Future[A]*): Future[Assertion] = {
@@ -320,17 +327,17 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MaxValue)
-          assert(snapshot sameElements snapshot3)
+          assert(snapshot === snapshot3)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(44L))
-          assert(snapshot sameElements snapshot4)
+          assert(snapshot === snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MaxValue)
-          assert(snapshot sameElements snapshot3)
+          assert(snapshot === snapshot3)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
@@ -338,7 +345,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MaxValue)
-          assert(snapshot sameElements snapshot3)
+          assert(snapshot === snapshot3)
         }
       )
     }
@@ -348,7 +355,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MinValue)
-          assert(snapshot sameElements snapshot0)
+          assert(snapshot === snapshot0)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
@@ -356,7 +363,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MinValue)
-          assert(snapshot sameElements snapshot0)
+          assert(snapshot === snapshot0)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
@@ -364,7 +371,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.MinValue)
-          assert(snapshot sameElements snapshot0)
+          assert(snapshot === snapshot0)
         }
       )
     }
@@ -379,29 +386,29 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(34L))
-          assert(snapshot sameElements snapshot0)
+          assert(snapshot === snapshot0)
         },
         // right after one snapshot
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(34L))
-          assert(snapshot sameElements snapshot0)
+          assert(snapshot === snapshot0)
         },
         // after some snapshots, before others
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(36L))
-          assert(snapshot sameElements snapshot1)
+          assert(snapshot === snapshot1)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(38L))
-          assert(snapshot sameElements snapshot2)
+          assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(44L))
-          assert(snapshot sameElements snapshot4)
+          assert(snapshot === snapshot4)
         }
       )
     }
@@ -411,17 +418,17 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(-129387432L))
-          assert(snapshot sameElements snapshot2)
+          assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(44L))
-          assert(snapshot sameElements snapshot4)
+          assert(snapshot === snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(-129387432L))
-          assert(snapshot sameElements snapshot2)
+          assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
@@ -429,7 +436,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val (atTime, snapshot) = snapshotOpt.get
           assert(atTime === EventTime.fromRaw(-129387432L))
-          assert(snapshot sameElements snapshot2)
+          assert(snapshot === snapshot2)
         }
       )
     }
@@ -484,7 +491,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
       allOfConcurrent(
         persistor.getStandingQueryStates(qid2).map { sqStates =>
           assert(sqStates.size === 1)
-          assert(sqStates(sqId1 -> sqPartId1) sameElements sqState1)
+          assert(sqStates(sqId1 -> sqPartId1) === sqState1)
         }
       )
     }
@@ -493,23 +500,147 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
       allOfConcurrent(
         persistor.getStandingQueryStates(qid1).map { sqStates =>
           assert(sqStates.size === 5)
-          assert(sqStates(sqId1 -> sqPartId1) sameElements sqState1)
-          assert(sqStates(sqId1 -> sqPartId2) sameElements sqState2)
-          assert(sqStates(sqId1 -> sqPartId3) sameElements sqState3)
-          assert(sqStates(sqId2 -> sqPartId4) sameElements sqState3)
-          assert(sqStates(sqId1 -> sqPartId4) sameElements sqState4)
+          assert(sqStates(sqId1 -> sqPartId1) === sqState1)
+          assert(sqStates(sqId1 -> sqPartId2) === sqState2)
+          assert(sqStates(sqId1 -> sqPartId3) === sqState3)
+          assert(sqStates(sqId2 -> sqPartId4) === sqState3)
+          assert(sqStates(sqId1 -> sqPartId4) === sqState4)
         },
         persistor.getStandingQueryStates(qid3).map { sqStates =>
           assert(sqStates.size === 2)
-          assert(sqStates(sqId1 -> sqPartId1) sameElements sqState2)
-          assert(sqStates(sqId4 -> sqPartId1) sameElements sqState3)
+          assert(sqStates(sqId1 -> sqPartId1) === sqState2)
+          assert(sqStates(sqId4 -> sqPartId1) === sqState3)
         },
         persistor.getStandingQueryStates(qid4).map { sqStates =>
           assert(sqStates.size === 3)
-          assert(sqStates(sqId1 -> sqPartId1) sameElements sqState3)
-          assert(sqStates(sqId2 -> sqPartId4) sameElements sqState1)
-          assert(sqStates(sqId3 -> sqPartId3) sameElements sqState1)
+          assert(sqStates(sqId1 -> sqPartId1) === sqState3)
+          assert(sqStates(sqId2 -> sqPartId4) === sqState1)
+          assert(sqStates(sqId3 -> sqPartId3) === sqState1)
         }
+      )
+    }
+  }
+
+  describe("metadata") {
+    it("can set multiple metadata keys") {
+      allOfConcurrent(
+        persistor.setMetaData(metadata0, Some(snapshot0)),
+        persistor.setMetaData(metadata1, Some(snapshot1)),
+        persistor.setMetaData(metadata2, Some(snapshot2)),
+        persistor.setMetaData(metadata3, Some(snapshot3)),
+        persistor.setMetaData(metadata4, Some(snapshot4))
+      )
+    }
+    it("can set metadata without polluting local metadata") {
+      allOfConcurrent(
+        persistor.getLocalMetaData(metadata0, 0).map(opt => assert(opt.isEmpty)),
+        persistor.getLocalMetaData(metadata1, -1).map(opt => assert(opt.isEmpty)),
+        persistor.getLocalMetaData(metadata2, 100).map(opt => assert(opt.isEmpty)),
+        persistor.getLocalMetaData(metadata3, 12).map(opt => assert(opt.isEmpty)),
+        persistor.getLocalMetaData(metadata4, 1).map(opt => assert(opt.isEmpty))
+      )
+    }
+    it("can get all metadata") {
+      persistor.getAllMetaData().map { metadata =>
+        assert(metadata.keySet === Set(metadata0, metadata1, metadata2, metadata3, metadata4))
+        assert(metadata(metadata0) === snapshot0)
+        assert(metadata(metadata1) === snapshot1)
+        assert(metadata(metadata2) === snapshot2)
+        assert(metadata(metadata3) === snapshot3)
+        assert(metadata(metadata4) === snapshot4)
+      }
+    }
+    it("can get metadata by key") {
+      allOfConcurrent(
+        persistor.getMetaData(metadata0).map(datum => assert(datum.value === snapshot0)),
+        persistor.getMetaData(metadata1).map(datum => assert(datum.value === snapshot1)),
+        persistor.getMetaData(metadata2).map(datum => assert(datum.value === snapshot2)),
+        persistor.getMetaData(metadata3).map(datum => assert(datum.value === snapshot3)),
+        persistor.getMetaData(metadata4).map(datum => assert(datum.value === snapshot4))
+      )
+    }
+    it("can set local metadata") {
+      allOfConcurrent(
+        persistor.setLocalMetaData(metadata0, 0, Some(snapshot0)),
+        persistor.setLocalMetaData(metadata1, 1, Some(snapshot1)),
+        persistor.setLocalMetaData(metadata2, 2, Some(snapshot2)),
+        persistor.setLocalMetaData(metadata3, 3, Some(snapshot3)),
+        persistor.setLocalMetaData(metadata4, 4, Some(snapshot4))
+      )
+    }
+    it("can get local metadata") {
+      allOfConcurrent(
+        persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.value === snapshot0)),
+        persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.value === snapshot1)),
+        persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.value === snapshot2)),
+        persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.value === snapshot3)),
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.value === snapshot4))
+      )
+    }
+    it("can set local metadata without polluting global metadata") {
+      // same assertion as "can get metadata by key"
+      allOfConcurrent(
+        persistor.getMetaData(metadata0).map(datum => assert(datum.value === snapshot0)),
+        persistor.getMetaData(metadata1).map(datum => assert(datum.value === snapshot1)),
+        persistor.getMetaData(metadata2).map(datum => assert(datum.value === snapshot2)),
+        persistor.getMetaData(metadata3).map(datum => assert(datum.value === snapshot3)),
+        persistor.getMetaData(metadata4).map(datum => assert(datum.value === snapshot4))
+      )
+    }
+    it("can remove metadata by key") {
+      allOfConcurrent(
+        persistor.setMetaData(metadata0, None),
+        persistor.setMetaData(metadata1, None),
+        persistor.setMetaData(metadata2, None),
+        persistor.setMetaData(metadata3, None),
+        persistor.setMetaData(metadata4, None)
+      )
+    }
+    it("can remove metadata without removing local metadata") {
+      allOfConcurrent(
+        // metadata is really removed
+        persistor.getMetaData(metadata0).map(datum => assert(datum.isEmpty)),
+        persistor.getMetaData(metadata1).map(datum => assert(datum.isEmpty)),
+        persistor.getMetaData(metadata2).map(datum => assert(datum.isEmpty)),
+        persistor.getMetaData(metadata3).map(datum => assert(datum.isEmpty)),
+        persistor.getMetaData(metadata4).map(datum => assert(datum.isEmpty)),
+        // local metadata is still present
+        persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.value === snapshot0)),
+        persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.value === snapshot1)),
+        persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.value === snapshot2)),
+        persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.value === snapshot3)),
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.value === snapshot4))
+      )
+    }
+    it("can get local metadata with getAllMetadata") {
+      persistor.getAllMetaData().map[Assertion] { metadata =>
+        // all local metadata keys are represented [indirectly]
+        for {
+          expectedKeySubstring <- Set(metadata0, metadata1, metadata2, metadata3, metadata4)
+        } assert(metadata.keySet.exists(_.contains(expectedKeySubstring)))
+        // all local metadata values are represented
+        for {
+          expectedValue <- Set(snapshot0, snapshot1, snapshot2, snapshot3, snapshot4)
+        } assert(metadata.values.exists(_ === expectedValue))
+
+        succeed
+      }
+    }
+    it("can remove local metadata") {
+      allOfConcurrent(
+        persistor.setLocalMetaData(metadata0, 0, None),
+        persistor.setLocalMetaData(metadata1, 1, None),
+        persistor.setLocalMetaData(metadata2, 2, None),
+        persistor.setLocalMetaData(metadata3, 3, None),
+        persistor.setLocalMetaData(metadata4, 4, None)
+      ).flatMap(_ =>
+        allOfConcurrent(
+          persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.isEmpty)),
+          persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.isEmpty)),
+          persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.isEmpty)),
+          persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.isEmpty)),
+          persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty))
+        )
       )
     }
   }

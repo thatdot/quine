@@ -244,7 +244,7 @@ abstract class PersistenceAgent extends StrictLogging {
 
   /** Update (or remove) a given metadata key
     *
-    * @param key      name of the metadata
+    * @param key      name of the metadata - must be nonempty
     * @param newValue what to store ([[None]] corresponds to clearing out the value)
     */
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
@@ -252,7 +252,7 @@ abstract class PersistenceAgent extends StrictLogging {
   /** Update (or remove) a local metadata key.
     * For a local persistor, this is the same as setMetaData.
     *
-    * @param key           name of the metadata
+    * @param key           name of the metadata - must be nonempty
     * @param localMemberId Identifier for this member's position in the cluster.
     * @param newValue      what to store ([[None]] corresponds to clearing out the value)
     */

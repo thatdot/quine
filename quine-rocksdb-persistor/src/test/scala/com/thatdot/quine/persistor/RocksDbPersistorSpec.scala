@@ -12,8 +12,8 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
 
   lazy val persistor: PersistenceAgent =
     if (RocksDbPersistor.loadRocksDbLibrary()) {
-      // TODO: delete on exit
       val f = Files.createTempDirectory("rocks.db")
+      f.toFile.deleteOnExit()
       new RocksDbPersistor(
         filePath = f.toString,
         writeAheadLog = true,
