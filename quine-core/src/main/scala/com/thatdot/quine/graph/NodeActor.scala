@@ -5,8 +5,8 @@ import java.util.concurrent.locks.StampedLock
 
 import scala.collection.compat._
 import scala.collection.mutable.{Map => MutableMap}
-import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -200,7 +200,7 @@ private[graph] class NodeActor(
                 )
                 e
               }
-            )
+            )(cypherEc)
         } else Future.successful(Done)
 
       (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
@@ -213,7 +213,7 @@ private[graph] class NodeActor(
             1.millisecond,
             10.seconds,
             randomFactor = 0.1d
-          )(implicitly, context.system.scheduler)
+          )(cypherEc, context.system.scheduler)
         case (true, EventEffectOrder.PersistorFirst) =>
           pauseMessageProcessingUntil[Done.type](
             persistEventsToJournal(),
@@ -227,7 +227,7 @@ private[graph] class NodeActor(
                   s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
                 )
             }
-          ).map(_ => Done)
+          ).map(_ => Done)(cypherEc)
       }
     }
 
@@ -241,7 +241,8 @@ private[graph] class NodeActor(
       f.recoverWith { case NonFatal(e) =>
         logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
         infinitePersisting(logFunc, persistSnapshot())
-      }.map(_ => Done)
+      }(cypherEc)
+        .map(_ => Done)(cypherEc)
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
         infinitePersisting(log.info)
@@ -354,42 +355,45 @@ private[graph] class NodeActor(
     type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
 
     // Get the snapshot and journal events
-    val snapshotAndJournal: Future[(Snapshot, Journal)] = for {
-      // Find the snapshot
-      latestSnapshotOpt <-
-        if (persistenceConfig.snapshotEnabled) {
-          // TODO: should we warn about snapshot singleton with a historical time?
-          val upToTime = atTime match {
-            case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
-              EventTime.fromMillis(historicalTime)
-            case _ =>
-              EventTime.MaxValue
-          }
-          metrics.persistorGetLatestSnapshotTimer.time {
-            persistor.getLatestSnapshot(qid, upToTime)
-          }
-        } else
-          Future.successful(None)
+    val snapshotAndJournal: Future[(Snapshot, Journal)] = {
+      implicit val ec: ExecutionContext = cypherEc
+      for {
+        // Find the snapshot
+        latestSnapshotOpt <-
+          if (persistenceConfig.snapshotEnabled) {
+            // TODO: should we warn about snapshot singleton with a historical time?
+            val upToTime = atTime match {
+              case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
+                EventTime.fromMillis(historicalTime)
+              case _ =>
+                EventTime.MaxValue
+            }
+            metrics.persistorGetLatestSnapshotTimer.time {
+              persistor.getLatestSnapshot(qid, upToTime)
+            }
+          } else
+            Future.successful(None)
 
-      // Query the journal for any events that come after the snapshot
-      journalAfterSnapshot <-
-        if (persistenceConfig.journalEnabled) {
-          val startingAt = latestSnapshotOpt match {
-            case Some((snapshotTime, _)) => snapshotTime.nextEventTime(Some(log))
-            case None => EventTime.MinValue
-          }
-          val endingAt = untilOpt match {
-            case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
-            case None => EventTime.MaxValue
-          }
-          metrics.persistorGetJournalTimer.time {
-            persistor.getJournal(qid, startingAt, endingAt)
-          }
-          // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
-          // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
-        } else
-          Future.successful(Vector.empty)
-    } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
+        // Query the journal for any events that come after the snapshot
+        journalAfterSnapshot <-
+          if (persistenceConfig.journalEnabled) {
+            val startingAt = latestSnapshotOpt match {
+              case Some((snapshotTime, _)) => snapshotTime.nextEventTime(Some(log))
+              case None => EventTime.MinValue
+            }
+            val endingAt = untilOpt match {
+              case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
+              case None => EventTime.MaxValue
+            }
+            metrics.persistorGetJournalTimer.time {
+              persistor.getJournal(qid, startingAt, endingAt)
+            }
+            // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
+            // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
+          } else
+            Future.successful(Vector.empty)
+      } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
+    }
 
     // Get the standing query states
     val standingQueryStates: Future[StandingQueryStates] =
@@ -511,8 +515,6 @@ private[graph] class NodeActor(
   }
 
   def debugNodeInternalState(): Future[NodeInternalState] = {
-    implicit val ec = context.dispatcher
-
     // Return a string that (if possible) shows the deserialized representation
     def propertyValue2String(propertyValue: PropertyValue): String =
       propertyValue.deserialized.fold(
@@ -566,7 +568,7 @@ private[graph] class NodeActor(
       .recover { case err =>
         log.error(err, "failed to get journal for node {}", qid)
         Vector.empty
-      }
+      }(context.dispatcher)
       .map { journal =>
         NodeInternalState(
           properties.view.mapValues(propertyValue2String).toMap,
@@ -588,7 +590,7 @@ private[graph] class NodeActor(
           }.toVector,
           journal.toSet
         )
-      }
+      }(context.dispatcher)
   }
 
   def getSqState(): SqStateResults =

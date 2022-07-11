@@ -168,8 +168,7 @@ class AtTimeInterpreter(
   def this(graph: CypherOpsGraph, atTime: Milliseconds, bypassSkipOptimization: Boolean) =
     this(graph, Some(atTime), bypassSkipOptimization)
 
-  protected val cypherEc: ExecutionContext =
-    graph.system.dispatchers.lookup("akka.quine.node-dispatcher")
+  protected val cypherEc: ExecutionContext = graph.nodeDispatcherEC
 
   protected val cypherProcessTimeout: Timeout = graph.cypherQueryProgressTimeout
 
@@ -194,7 +193,7 @@ trait OnNodeInterpreter
 
   def node: Option[BaseNodeActor] = Some(this)
 
-  implicit protected val cypherEc: ExecutionContext = context.dispatcher
+  protected val cypherEc: ExecutionContext = context.dispatcher
 
   implicit protected def cypherProcessTimeout: Timeout = graph.cypherQueryProgressTimeout
 
@@ -565,7 +564,7 @@ trait OnNodeInterpreter
     for ((key, value) <- map)
       eventsToProcess += PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
 
-    Source.future(processEvents(eventsToProcess.result()).map(_ => context))
+    Source.future(processEvents(eventsToProcess.result()).map(_ => context)(cypherEc))
   }
 
   final private[quine] def interpretSetEdge(
@@ -610,7 +609,7 @@ trait OnNodeInterpreter
     ))
 
     Source
-      .futureSource(setThisHalf.flatMap(_ => setOtherHalf))
+      .futureSource(setThisHalf.flatMap(_ => setOtherHalf)(cypherEc))
       .map(_.result)
   }
 
@@ -635,7 +634,7 @@ trait OnNodeInterpreter
 
     // Set new label value
     val setLabelsFut = setLabels(newLabelValue)
-    Source.future(setLabelsFut.map(_ => context))
+    Source.future(setLabelsFut.map(_ => context)(cypherEc))
   }
 }
 
@@ -643,7 +642,7 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
 
   import Query._
 
-  implicit protected def cypherEc: ExecutionContext
+  protected def cypherEc: ExecutionContext
 
   implicit protected def cypherProcessTimeout: Timeout
 
@@ -1150,7 +1149,7 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
                   s"Node $qid cannot be deleted since it still has $n relationships."
                 )
               )
-          }
+          }(cypherEc)
         Source.future(completed).map(_ => context)
 
       case Expr.Relationship(from, name, _, to) =>
@@ -1189,7 +1188,7 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
     }
 
     query.procedure
-      .call(context, query.arguments.map(_.eval(context)), this)
+      .call(context, query.arguments.map(_.eval(context)), this)(parameters, cypherProcessTimeout)
       .map(makeResultRow)
   }
 

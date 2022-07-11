@@ -3,7 +3,7 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -30,7 +30,6 @@ trait AdministrationRoutesImpl
 
   def graph: BaseGraph
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
 
   /** Current product version */
   val version: String
@@ -129,11 +128,15 @@ trait AdministrationRoutesImpl
 
   // Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
   private val shutdownRoute = shutdown.implementedBy { _ =>
-    ec.execute(() => Runtime.getRuntime().exit(0)) // `ec.execute` ensures the shutdown request is answered
+    graph.shardDispatcherEC.execute(() =>
+      Runtime.getRuntime().exit(0)
+    ) // `ec.execute` ensures the shutdown request is answered
   }
 
   private val metaDataRoute = metaData.implementedByAsync { _ =>
-    graph.persistor.getAllMetaData().map(_.view.map { case (k, v) => k -> ByteString(v) }.toMap)
+    graph.persistor
+      .getAllMetaData()
+      .map(_.view.map { case (k, v) => k -> ByteString(v) }.toMap)(graph.shardDispatcherEC)
   }
 
   private val shardSizesRoute = shardSizes.implementedByAsync { resizes =>

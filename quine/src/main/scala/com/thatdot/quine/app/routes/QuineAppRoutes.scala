@@ -1,6 +1,5 @@
 package com.thatdot.quine.app.routes
 
-import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
 
 import akka.http.scaladsl.server.Directives._
@@ -32,7 +31,6 @@ class QuineAppRoutes(
     with StandingQueryStore
     with IngestStreamState,
   val currentConfig: ujson.Value,
-  val ec: ExecutionContext,
   val timeout: Timeout
 ) extends BaseAppRoutes
     with QueryUiRoutesImpl

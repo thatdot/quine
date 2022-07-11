@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import java.util.function.Supplier
 
+import scala.collection.compat.immutable.ArraySeq
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
@@ -14,8 +15,10 @@ import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection}
+import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent}
+import com.thatdot.quine.util.QuineDispatchers
 
 class GraphService(
   val system: ActorSystem,
@@ -39,10 +42,14 @@ class GraphService(
 
   initializeNestedObjects()
 
+  val dispatchers = new QuineDispatchers(system)
+
   def nodeClass: Class[NodeActor] = classOf[NodeActor]
 
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit] =
     InMemoryNodeLimit.fromOptions(inMemorySoftNodeLimit, inMemoryHardNodeLimit)
+
+  val shards: ArraySeq[LocalShardRef] = initializeShards()
 
   /** asynchronous construction effect: load Standing Queries from the persistor
     */
@@ -57,7 +64,7 @@ class GraphService(
         queueMaxSize = sq.queueMaxSize
       )
       logger.info(s"Restored standing query: ${sq.name}")
-    }),
+    })(shardDispatcherEC),
     10 seconds
   )
 
@@ -68,10 +75,8 @@ class GraphService(
 
   override def shutdown(): Future[Unit] = {
     isReady = false
-    for {
-      _ <- shutdownStandingQueries()
-      _ <- super.shutdown()
-    } yield ()
+    shutdownStandingQueries()
+      .flatMap(_ => super.shutdown())(shardDispatcherEC)
   }
 }
 

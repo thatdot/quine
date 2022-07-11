@@ -120,8 +120,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   /** Complete all standing query streams (since the graph is shutting down */
   def shutdownStandingQueries(): Future[Unit] = Future
-    .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.cancel())
-    .map(_ => ())
+    .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.cancel())(
+      implicitly,
+      shardDispatcherEC
+    )
+    .map(_ => ())(shardDispatcherEC)
 
   /** Register a new standing query
     *
@@ -201,7 +204,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     standingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
       val persistence = if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)
       val cancellation = sq.cancel()
-      persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))
+      persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))(shardDispatcherEC)
     }
   }
 
@@ -282,8 +285,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
           if (sq.queueBackpressureThreshold <= inBuffer.getAndSet(0)) {
             ingestValve.open()
           }
-        }
-        (mat, done)
+        }(shardDispatcherEC)
+        mat -> done
       }
       .map { (x: StandingQueryResult) =>
         if (sq.queueBackpressureThreshold == inBuffer.getAndDecrement()) {
@@ -301,7 +304,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         logSqOutputFailure(sq.name, err)
         cancelStandingQuery(sq.id)
       case Success(_) => // Do nothing. This is the shutdown case.
-    }
+    }(shardDispatcherEC)
 
     val killSwitches = outputs.map { case (name, o) =>
       val killer = o.viaMat(KillSwitches.single)(Keep.right)

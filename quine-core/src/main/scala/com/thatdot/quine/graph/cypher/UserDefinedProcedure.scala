@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
 import scala.collection.compat._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import scala.util.Try
 
 import akka.stream.scaladsl.Source
@@ -43,7 +43,6 @@ trait UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _]
@@ -73,7 +72,6 @@ object UserDefinedProcedure {
     * @return Cypher-compatible representation of the node
     */
   def getAsCypherNode(qid: QuineId, atTime: Option[Milliseconds], graph: LiteralOpsGraph)(implicit
-    ec: ExecutionContext,
     timeout: Timeout
   ): Future[Expr.Node] =
     graph.literalOps
@@ -84,7 +82,7 @@ object UserDefinedProcedure {
           labels.getOrElse(Set.empty),
           props.view.mapValues(pv => Expr.fromQuineValue(pv.deserialized.get)).toMap
         )
-      }
+      }(graph.nodeDispatcherEC)
 
   /** Extract from the Cypher value an ID
     *

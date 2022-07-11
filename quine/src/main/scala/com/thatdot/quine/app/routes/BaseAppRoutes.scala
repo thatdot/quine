@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.StatusCodes
@@ -19,8 +19,6 @@ import com.thatdot.quine.model.QuineIdProvider
 trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoints {
 
   val graph: BaseGraph
-
-  val ec: ExecutionContext
 
   val timeout: Timeout
 

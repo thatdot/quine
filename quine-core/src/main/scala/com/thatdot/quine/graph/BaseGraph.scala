@@ -2,11 +2,12 @@ package com.thatdot.quine.graph
 
 import java.util.function.Supplier
 
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
+import akka.dispatch.MessageDispatcher
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.util.Timeout
@@ -26,14 +27,17 @@ import com.thatdot.quine.graph.messaging.{
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PersistenceAgent}
-import com.thatdot.quine.util.{SharedValve, ValveFlow}
+import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictLogging {
 
   def system: ActorSystem
 
-  implicit val shardDispatcherEC: ExecutionContext =
-    system.dispatchers.lookup("akka.quine.graph-shard-dispatcher")
+  def dispatchers: QuineDispatchers
+
+  def shardDispatcherEC: MessageDispatcher = dispatchers.shardDispatcherEC
+  def nodeDispatcherEC: MessageDispatcher = dispatchers.nodeDispatcherEC
+  def blockingDispatcherEC: MessageDispatcher = dispatchers.blockingDispatcherEC
 
   implicit val materializer: Materializer =
     Materializer.matFromSystem(system)
@@ -207,8 +211,8 @@ trait BaseGraph extends StrictLogging {
             .futureSource(awakeNodes)
             .map(_.quineId)
             .runWith(Sink.collection[QuineId, Set[QuineId]])
-        }
-        .map(_.foldLeft(Set.empty[QuineId])(_ union _))
+        }(implicitly, shardDispatcherEC)
+        .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
 
       // Return those nodes, plus the ones the persistor produces
       val combinedSource = Source.futureSource {
@@ -216,7 +220,7 @@ trait BaseGraph extends StrictLogging {
           val persistorNodes =
             persistor.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains)
           Source(inMemoryNodes) ++ persistorNodes
-        }
+        }(shardDispatcherEC)
       }
 
       combinedSource.mapMaterializedValue(_ => NotUsed)
@@ -251,8 +255,8 @@ trait BaseGraph extends StrictLogging {
           .futureSource(relayAsk(shard.quineRef, ShardMessage.SampleAwakeNodes(Some(lim), atTime, _)))
           .map(_.quineId)
           .runWith(Sink.collection[QuineId, Set[QuineId]])
-      }
-      .map(_.foldLeft(Set.empty[QuineId])(_ union _))
+      }(implicitly, shardDispatcherEC)
+      .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
   }
 
   /** Snapshot nodes that are currently awake
@@ -262,7 +266,7 @@ trait BaseGraph extends StrictLogging {
     Future
       .traverse(shards) { (shard: ShardRef) =>
         relayAsk(shard.quineRef, ShardMessage.SnapshotInMemoryNodes)
-      }
+      }(implicitly, shardDispatcherEC)
       .map(_.foreach {
         case ShardMessage.SnapshotFailed(shardId, msg) =>
           logger.error(s"Shard: $shardId failed to snapshot nodes: $msg")
@@ -270,7 +274,7 @@ trait BaseGraph extends StrictLogging {
         case ShardMessage.SnapshotSucceeded(idFailures) =>
           for ((id, msg) <- idFailures)
             logger.error(s"Node ${id.debug(idProvider)} failed to snapshot: $msg")
-      })
+      })(shardDispatcherEC)
   }
 
   /** Get the in-memory limits for all the shards of this graph, possibly
@@ -307,9 +311,11 @@ trait BaseGraph extends StrictLogging {
     } else {
       Future
         .traverse(messages) { case (shardId, sendMessageToShard) =>
-          sendMessageToShard().map { case ShardMessage.CurrentInMemoryLimits(limits) => shardId -> limits }
-        }
-        .map(_.toMap)
+          sendMessageToShard().map { case ShardMessage.CurrentInMemoryLimits(limits) => shardId -> limits }(
+            shardDispatcherEC
+          )
+        }(implicitly, shardDispatcherEC)
+        .map(_.toMap)(shardDispatcherEC)
     }
   }
 
@@ -319,7 +325,7 @@ trait BaseGraph extends StrictLogging {
     requiredGraphIsReady()
     val shard = shardFromNode(quineId)
     relayAsk(shard.quineRef, RequestNodeSleep(QuineIdAtTime(quineId, None), _))
-      .map(_ => ())
+      .map(_ => ())(shardDispatcherEC)
   }
 
   /** Lookup the shard for a node ID.

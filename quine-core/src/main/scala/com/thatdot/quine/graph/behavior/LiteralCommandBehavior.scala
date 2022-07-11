@@ -1,4 +1,6 @@
 package com.thatdot.quine.graph.behavior
+
+import scala.compat.CompatBuildFrom.implicitlyBF
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Success
@@ -62,7 +64,6 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
       }
 
     case d @ DeleteNodeCommand(shouldDeleteEdges, _) =>
-      implicit val ec = context.dispatcher
       implicit val timeout = Timeout(5 seconds)
 
       if (!shouldDeleteEdges && edges.nonEmpty) {
@@ -75,8 +76,10 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
           edgeRemovalEvents.map(ev => ev.edge.other.?(RemoveHalfEdgeCommand(ev.edge.reflect(qid), _)).flatten)
         // Confirmation future completes when every bit of the removal is done
         d ?! processEvents(edgeRemovalEvents ++ propertyRemovalEvents).flatMap(_ =>
-          Future.sequence(otherSidesRemoved).map(_ => DeleteNodeCommand.Success)
-        )
+          Future
+            .sequence(otherSidesRemoved)(implicitlyBF, context.dispatcher)
+            .map(_ => DeleteNodeCommand.Success)(context.dispatcher)
+        )(context.dispatcher)
       }
 
     case MergeIntoNodeCommand(other, replyTo) => self ! MergeIntoNode(other, replyTo)

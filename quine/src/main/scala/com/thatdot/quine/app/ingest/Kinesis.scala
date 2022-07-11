@@ -2,8 +2,8 @@ package com.thatdot.quine.app.ingest
 
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 import akka.stream.alpakka.kinesis.KinesisErrors.KinesisSourceError
@@ -54,7 +54,7 @@ case object Kinesis extends LazyLogging {
     shardIterator: ShardIterator,
     numRetries: Int,
     maxPerSecond: Option[Int]
-  )(implicit ec: ExecutionContext) {
+  ) {
 
     /** Start polling for and importing records from the configured shard
       * @param graph
@@ -109,7 +109,7 @@ case object Kinesis extends LazyLogging {
                 .asScala
                 .map(_.shardId())
                 .toSet
-            )
+            )(graph.system.dispatcher)
         case atLeastOneId => Future.successful(atLeastOneId)
       }
       // a source to yielding a single List of shard settings
@@ -159,8 +159,8 @@ case object Kinesis extends LazyLogging {
         }
         .via(throttled)
         .via(graph.ingestThrottleFlow)
-        .mapAsyncUnordered(parallelism)(format.writeToGraph(graph, _).map(_ => ingestToken))
-        .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c)) }
+        .mapAsyncUnordered(parallelism)(format.writeToGraph(graph, _).map(_ => ingestToken)(graph.system.dispatcher))
+        .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c))(graph.system.dispatcher) }
     }
   }
 }

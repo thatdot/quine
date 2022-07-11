@@ -36,7 +36,7 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
 }
 import com.thatdot.quine.graph.messaging.{NodeActorMailboxExtension, QuineIdAtTime, QuineMessage, QuineRefOps}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.ExpiringLruSet
+import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 
 /** Shard in the Quine graph
   *
@@ -65,8 +65,9 @@ final private[quine] class GraphShardActor(
     with QuineRefOps
     with Timers {
 
-  import GraphShardActor.{NodeState, WakeUpOutcome}
   import context.system
+
+  import GraphShardActor.{NodeState, WakeUpOutcome}
 
   implicit def idProvider: QuineIdProvider = graph.idProvider
 
@@ -202,7 +203,7 @@ final private[quine] class GraphShardActor(
           actorRefLock,
           snapshotBytesOpt
         ).withMailbox("akka.quine.node-mailbox")
-          .withDispatcher("akka.quine.node-dispatcher")
+          .withDispatcher(QuineDispatchers.nodeDispatcherName)
 
         // Must be in a try because Akka may not have finished freeing the name even if the actor is shut down.
         try {
@@ -459,58 +460,53 @@ final private[quine] class GraphShardActor(
 
         // Retry because the actor name should (hopefully) be freed by then.
         case _: WakeUpOutcome.ActorNameStillReserved =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.ActorNameStillReserved
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           LocalMessageDelivery.slidingDelay(remaining) match {
             case None => self ! msgToDeliver
             case Some(delay) =>
-              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)
+              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
               ()
           }
 
         // Retry because the actor name should (hopefully) be freed by then.
         case _: WakeUpOutcome.UnexpectedWakeUpError =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.UnexpectedWakeUpError
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           LocalMessageDelivery.slidingDelay(remaining) match {
             case None => self ! msgToDeliver
             case Some(delay) =>
-              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)
+              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
               ()
           }
 
         // Wait until the node is done shutting down before we retry
         case WakeUpOutcome.IncompleteActorShutdown(nodeRemovedFromMaps) =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.IncompleteActorShutdown
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
 
           nodeRemovedFromMaps.onComplete { _ =>
             self ! msgToDeliver
-          }
+          }(context.dispatcher)
           ()
 
         // Retry in some fixed time
         case WakeUpOutcome.InMemoryNodeCountHardLimitReached =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.InMemoryNodeCountHardLimitReached
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           // TODO: don't hardcode the time until retry
           log.warning("Failed to wake up: {} due to hard in-memory limit: {} (retrying)", id.debug, inMemoryLimit)
-          context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)
+          context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)(context.dispatcher)
           // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
           ()
       }
 
     case s @ SnapshotInMemoryNodes(_) =>
       implicit val timeout = Timeout(10 minutes)
-      implicit val ec = context.dispatcher
 
       /* TODO: Since `SaveSnapshot` is one of the message types we discard when
        * cleaning up a node mailbox, we can't differentiate an ask timeout (due
@@ -523,12 +519,12 @@ final private[quine] class GraphShardActor(
             .mapTo[Future[Unit]]
             .recover { case _: AskTimeoutException =>
               Future.unit
-            } // this timeout is most likel the node going to sleep
+            }(context.dispatcher) // this timeout is most likely the node going to sleep
             .flatten
             .transform {
               case Success(()) => Success(None)
               case Failure(err) => Success(Some(id -> err))
-            }
+            }(context.dispatcher)
         }
         .toVector
 
@@ -538,14 +534,14 @@ final private[quine] class GraphShardActor(
             case None => map
             case Some((id, err)) => map + (id -> err)
           }
-        }
+        }(context.dispatcher)
         .onComplete {
           case Success(failureMap) =>
             s ?! SnapshotSucceeded(failureMap)
 
           case Failure(err) =>
             s ?! SnapshotFailed(shardId, err)
-        }
+        }(context.dispatcher)
 
     case msg @ RemoveNodesIf(LocalPredicate(predicate), _) =>
       for ((nodeId, nodeState) <- nodes; if predicate(nodeId)) {

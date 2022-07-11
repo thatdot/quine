@@ -22,7 +22,7 @@ import com.thatdot.quine.model.{Milliseconds, QuineValue}
   *     persistor = EmptyPersistor()(_),
   *     idProvider = QuineUUIDProvider,
   *   )
-  *   implicit val ec = graph.system.dispatcher
+  *   val ec = graph.system.dispatcher
   *   implicit val timeout = Timeout(10 seconds)
   *
   *   // Setup the Gremlin client

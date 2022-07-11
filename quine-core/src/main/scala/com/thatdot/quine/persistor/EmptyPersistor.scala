@@ -1,6 +1,6 @@
 package com.thatdot.quine.persistor
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
@@ -18,7 +18,7 @@ class EmptyPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
 ) extends PersistenceAgent {
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(true)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = {

@@ -4,7 +4,6 @@ import java.util.UUID
 import java.util.concurrent.TimeoutException
 
 import scala.collection.concurrent
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.DurationLong
 import scala.util.Failure
 
@@ -130,7 +129,6 @@ object RecentNodeIds extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -141,11 +139,13 @@ object RecentNodeIds extends UserDefinedProcedure {
     }
 
     Source.lazyFutureSource { () =>
-      location.graph.recentNodes(limit, location.atTime).map { (nodes: Set[QuineId]) =>
-        Source
-          .fromIterator(() => nodes.iterator)
-          .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
-      }
+      location.graph
+        .recentNodes(limit, location.atTime)
+        .map { (nodes: Set[QuineId]) =>
+          Source
+            .fromIterator(() => nodes.iterator)
+            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
+        }(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -167,7 +167,6 @@ object RecentNodes extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -180,12 +179,14 @@ object RecentNodes extends UserDefinedProcedure {
     val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
 
     Source.lazyFutureSource { () =>
-      graph.recentNodes(limit, atTime).map { (nodes: Set[QuineId]) =>
-        Source
-          .fromIterator(() => nodes.iterator)
-          .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
-          .map(Vector(_))
-      }
+      graph
+        .recentNodes(limit, atTime)
+        .map { (nodes: Set[QuineId]) =>
+          Source
+            .fromIterator(() => nodes.iterator)
+            .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
+            .map(Vector(_))
+        }(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -207,7 +208,6 @@ object MergeNodes extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -233,7 +233,7 @@ object MergeNodes extends UserDefinedProcedure {
         Source.future(
           graph.literalOps
             .mergeNode(node, into)
-            .map(id => Vector(Expr.fromQuineValue(location.idProvider.qidToValue(id))))
+            .map(id => Vector(Expr.fromQuineValue(location.idProvider.qidToValue(id))))(location.graph.nodeDispatcherEC)
         )
       case _ => throw wrongSignature(arguments)
     }
@@ -258,7 +258,6 @@ final case class CypherGetRoutingTable(addresses: Seq[String]) extends UserDefin
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] =
@@ -293,7 +292,6 @@ object JsonLoad extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -333,7 +331,6 @@ abstract class StubbedUserDefinedProcedure(
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = Source.empty
@@ -393,7 +390,6 @@ object IncrementCounter extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -417,7 +413,7 @@ object IncrementCounter extends UserDefinedProcedure {
               actualValue = Expr.fromQuineValue(valueFound),
               context = "`incrementCounter` procedure"
             )
-        }
+        }(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -438,7 +434,6 @@ object CypherLogging extends UserDefinedProcedure with StrictLogging {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -513,7 +508,6 @@ object CypherDebugNode extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -549,7 +543,7 @@ object CypherDebugNode extends UserDefinedProcedure {
             Expr.List(nodeState.cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
             Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)).toVector)
           )
-        }
+        }(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -572,7 +566,6 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -605,7 +598,7 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
               )
             }.toIterator
           }
-        )
+        )(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -628,7 +621,6 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -661,7 +653,7 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
               )
             }.toIterator
           }
-        )
+        )(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -682,7 +674,6 @@ object CypherDebugSleep extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -703,7 +694,7 @@ object CypherDebugSleep extends UserDefinedProcedure {
     }
 
     Source.lazyFuture { () =>
-      graph.requestNodeSleep(node).map(_ => Vector.empty)
+      graph.requestNodeSleep(node).map(_ => Vector.empty)(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -724,7 +715,6 @@ object CypherBuiltinFunctions extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -756,7 +746,6 @@ object CypherFunctions extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -806,7 +795,6 @@ object CypherProcedures extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -849,7 +837,6 @@ object CypherDoWhen extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -898,7 +885,6 @@ object CypherDoIt extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -940,7 +926,6 @@ object CypherDoCase extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -1006,7 +991,6 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -1050,7 +1034,6 @@ object CypherSleep extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -1082,7 +1065,6 @@ object CypherCreateRelationship extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -1096,7 +1078,7 @@ object CypherCreateRelationship extends UserDefinedProcedure {
     Source.lazyFuture { () =>
       val one = from ? (AddHalfEdgeCommand(HalfEdge(label, EdgeDirection.Outgoing, to), _))
       val two = to ? (AddHalfEdgeCommand(HalfEdge(label, EdgeDirection.Incoming, from), _))
-      one.zipWith(two)((_, _) => Vector(Expr.Relationship(from, label, Map.empty, to)))
+      one.zipWith(two)((_, _) => Vector(Expr.Relationship(from, label, Map.empty, to)))(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -1117,7 +1099,6 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
@@ -1157,7 +1138,6 @@ class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) ext
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {

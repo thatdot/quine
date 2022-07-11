@@ -120,38 +120,38 @@ object Main extends App with LazyLogging {
   Metrics.startReporters()
 
   val graph: GraphService =
-    try {
-      implicit val ec: ExecutionContext = ExecutionContexts.parasitic
-      Await
-        .result(
-          for {
-            graph <- GraphService(
-              persistor = system =>
-                new ExceptionWrappingPersistenceAgent(config.store.persistor(config.persistence)(system))(
-                  system.dispatcher
-                ),
-              idProvider = config.id.idProvider,
-              shardCount = config.shardCount,
-              inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
-              inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
-              effectOrder = config.persistence.effectOrder,
-              declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
-              declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
-              maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
-              labelsProperty = Symbol(config.labelsProperty),
-              edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
-              metricRegistry = Metrics
-            )
-            _ <- graph.persistor.syncVersion(
+    try Await
+      .result(
+        GraphService(
+          persistor = system =>
+            new ExceptionWrappingPersistenceAgent(
+              config.store.persistor(config.persistence)(system),
+              system.dispatcher
+            ),
+          idProvider = config.id.idProvider,
+          shardCount = config.shardCount,
+          inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
+          inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
+          effectOrder = config.persistence.effectOrder,
+          declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
+          declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
+          maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
+          labelsProperty = Symbol(config.labelsProperty),
+          edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
+          metricRegistry = Metrics
+        ).flatMap(graph =>
+          graph.persistor
+            .syncVersion(
               "Quine app state",
               QuineApp.VersionKey,
               QuineApp.CurrentPersistenceVersion,
               () => QuineApp.quineAppIsEmpty(graph.persistor)
             )
-          } yield graph,
-          timeout.duration
-        )
-    } catch {
+            .map(_ => graph)(ExecutionContexts.parasitic)
+        )(ExecutionContexts.parasitic),
+        atMost = timeout.duration
+      )
+    catch {
       case NonFatal(err) =>
         statusLines.error("Unable to start graph", err)
         sys.exit(1)
@@ -189,7 +189,6 @@ object Main extends App with LazyLogging {
         case Success(()) =>
           recipeInterpreterTask = recipe.map(r =>
             RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(
-              system.dispatcher,
               graph.idProvider
             )
           )
@@ -205,7 +204,7 @@ object Main extends App with LazyLogging {
   attemptAppLoad()
 
   quineWebserverUrl foreach { url =>
-    new QuineAppRoutes(graph, appState, config.loadedConfigJson, ec, timeout)
+    new QuineAppRoutes(graph, appState, config.loadedConfigJson, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
         case Success(_) => statusLines.info(s"Quine web server available at $url")

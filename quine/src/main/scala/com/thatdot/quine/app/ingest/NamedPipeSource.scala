@@ -9,7 +9,6 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.util.{Failure, Success, Try}
 
 import akka.NotUsed
-import akka.stream.ActorAttributes.IODispatcher
 import akka.stream.scaladsl.{FileIO, Source}
 import akka.stream.stage._
 import akka.stream.{Attributes, Outlet, SourceShape}
@@ -20,6 +19,7 @@ import jnr.posix.POSIXFactory
 
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.routes.FileIngestMode.NamedPipe
+import com.thatdot.quine.util.QuineDispatchers
 
 object NamedPipeSource extends LazyLogging {
   def fromPath(
@@ -126,7 +126,7 @@ class NamedPipeSource(path: Path, chunkSize: Int, pollInterval: FiniteDuration)
         if (!Files.exists(path)) throw new NoSuchFileException(path.toString)
         require(!Files.isDirectory(path), s"Path '$path' is a directory")
         require(Files.isReadable(path), s"Missing read permission for '$path'")
-        dispatcher = materializer.system.dispatchers.lookup(IODispatcher.dispatcher)
+        dispatcher = new QuineDispatchers(materializer.system).blockingDispatcherEC
       }
 
       override def onPull(): Unit = channel match {

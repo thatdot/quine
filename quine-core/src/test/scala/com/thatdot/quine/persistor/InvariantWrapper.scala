@@ -2,7 +2,7 @@ package com.thatdot.quine.persistor
 
 import java.util.concurrent.ConcurrentHashMap
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
@@ -20,7 +20,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
   private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeChangeEvent]]
   private val snapshots = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, Array[Byte]]]
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     if (events.isEmpty && snapshots.isEmpty) wrapped.emptyOfQuineData()
     else Future.successful(false)
 

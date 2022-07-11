@@ -3,7 +3,7 @@ package com.thatdot.quine.compiler.cypher
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
@@ -33,7 +33,6 @@ object ReifyTime extends UserDefinedProcedure {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _] = {
@@ -122,8 +121,8 @@ object ReifyTime extends UserDefinedProcedure {
               List(graph.literalOps.addEdge(pid, nodeId, period.name))
             case None => List.empty
           })
-        )
-        .map(_ => ())
+        )(implicitly, location.graph.nodeDispatcherEC)
+        .map(_ => ())(location.graph.nodeDispatcherEC)
       (nodeId, effects)
     }
 
@@ -142,7 +141,7 @@ object ReifyTime extends UserDefinedProcedure {
 
     // Return a source that blocks until graph node commands have been responded to
     Source
-      .future(Future.sequence(generateTimeNodeResult.map(_._2)))
+      .future(Future.sequence(generateTimeNodeResult.map(_._2))(implicitly, location.graph.nodeDispatcherEC))
       .map(_ => Left(()))
       .concat(timeNodeSource.map(Right(_)))
       .dropWhile(_.isLeft)

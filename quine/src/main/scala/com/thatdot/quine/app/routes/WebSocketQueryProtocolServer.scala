@@ -264,7 +264,7 @@ trait WebSocketQueryProtocolServer
               .runWith(sink)
 
             // Schedule its removal from the map
-            termination.onComplete(_ => queries.remove(run.queryId))
+            termination.onComplete(_ => queries.remove(run.queryId))(graph.shardDispatcherEC)
 
             QueryStarted(run.queryId, isReadOnly, canContainAllNodeScan, columns)
 

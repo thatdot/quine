@@ -1,6 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import cats.implicits._
 
@@ -770,7 +770,6 @@ object MyUnwind extends UserDefinedProcedure {
     arguments: Seq[cypher.Value],
     location: cypher.ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: cypher.Parameters,
     timeout: akka.util.Timeout
   ): akka.stream.scaladsl.Source[Vector[cypher.Value], _] =

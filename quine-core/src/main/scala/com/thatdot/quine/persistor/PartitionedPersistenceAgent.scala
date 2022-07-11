@@ -1,7 +1,7 @@
 package com.thatdot.quine.persistor
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
@@ -22,12 +22,12 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
 
   def rootAgent: PersistenceAgent
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     if (getAgents.isEmpty) Future.successful(true)
     else
       Future
-        .traverse(getAgents)(_.emptyOfQuineData())
-        .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))
+        .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
+        .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
 
   override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     getAgent(id).persistEvents(id, events)
@@ -84,9 +84,9 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     rootAgent.setMetaData(key, newValue)
 
-  override def shutdown(): Future[Unit] = {
-    implicit val context: ExecutionContext = ExecutionContexts.parasitic
-    Future.traverse(getAgents.toSeq)(_.shutdown()).map(_ => ())
-  }
+  override def shutdown(): Future[Unit] =
+    Future
+      .traverse(getAgents.toSeq)(_.shutdown())(implicitly, ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContexts.parasitic)
 
 }

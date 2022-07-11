@@ -4,8 +4,9 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
 import scala.collection.compat._
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, ExecutionContext, Future, blocking}
+import scala.concurrent.{Await, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
@@ -181,24 +182,28 @@ final class QuineApp(graph: GraphService)
           name -> (out -> killSwitches(name))
         }
         standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
-        storeStandingQueries().map(_ => true)
+        storeStandingQueries().map(_ => true)(graph.system.dispatcher)
       }
     }
 
   def cancelStandingQuery(
     queryName: String
   ): Future[Option[RegisteredStandingQuery]] = synchronizedFakeFuture(standingQueryOutputTargetsLock) {
-    val optionResult: Option[Future[RegisteredStandingQuery]] = for {
+    val cancelledSqState: Option[Future[RegisteredStandingQuery]] = for {
       (sqId, outputs) <- standingQueryOutputTargets.get(queryName)
-      futSq <- graph.cancelStandingQuery(sqId)
+      cancelledSq <- graph.cancelStandingQuery(sqId)
     } yield {
       standingQueryOutputTargets -= queryName
-      futSq.map { case (internalSq, startTime, bufferSize) =>
+      cancelledSq.map { case (internalSq, startTime, bufferSize) =>
         makeRegisteredStandingQuery(internalSq, outputs.mapValues(_._1), startTime, bufferSize, graph.metrics)
-      }
+      }(graph.system.dispatcher)
     }
 
-    optionResult.sequence.zipWith(storeStandingQueries())((toReturn, _) => toReturn)
+    // must be implicit for cats sequence
+    implicit val applicative: cats.Applicative[Future] = catsStdInstancesForFuture(graph.system.dispatcher)
+
+    cancelledSqState.sequence
+      .zipWith(storeStandingQueries())((toReturn, _) => toReturn)(graph.system.dispatcher)
   }
 
   def addStandingQueryOutput(
@@ -218,12 +223,12 @@ final class QuineApp(graph: GraphService)
           .via(StandingQueryResultOutput.resultHandlingFlow(outputName, sqResultOutput, graph))
         val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
         standingQueryOutputTargets += queryName -> (sqId -> (outputs + (outputName -> (sqResultOutput -> killSwitch))))
-        storeStandingQueries().map(_ => true)
+        storeStandingQueries().map(_ => true)(graph.system.dispatcher)
       }
 
     optionFut match {
       case None => Future.successful(None)
-      case Some(fut) => fut.map(Some(_))
+      case Some(fut) => fut.map(Some(_))(graph.system.dispatcher)
     }
   }
 
@@ -240,14 +245,14 @@ final class QuineApp(graph: GraphService)
       output
     }
 
-    storeStandingQueries().map(_ => outputOpt)
+    storeStandingQueries().map(_ => outputOpt)(graph.system.dispatcher)
   }
 
   def getStandingQueries(): Future[List[RegisteredStandingQuery]] =
     getStandingQueriesWithNames(Nil)
 
   def getStandingQuery(queryName: String): Future[Option[RegisteredStandingQuery]] =
-    getStandingQueriesWithNames(List(queryName)).map(_.headOption)
+    getStandingQueriesWithNames(List(queryName)).map(_.headOption)(graph.system.dispatcher)
 
   /** Get standing queries live on the graph with the specified names
     *
@@ -294,7 +299,7 @@ final class QuineApp(graph: GraphService)
             settings,
             meter,
             if (wasRestoredFromStorage) SwitchMode.Close else SwitchMode.Open
-          )(graph, implicitly, implicitly)
+          )(graph, implicitly)
 
           val controlFuture = graph.masterStream.addIngestSrc(ingestSrc)
           val ingestControl = Await.result(controlFuture, timeout.duration)
@@ -310,7 +315,7 @@ final class QuineApp(graph: GraphService)
             ()
           }
           streamDefWithControl.terminated = ingestControl.termSignal
-          streamDefWithControl.registerTerminationHooks(name, logger)
+          streamDefWithControl.registerTerminationHooks(name, logger)(graph.system.dispatcher)
           ingestStreams += name -> streamDefWithControl
 
           val thisMemberId = 0
@@ -363,7 +368,7 @@ final class QuineApp(graph: GraphService)
           // In Quine App, this future is always created with `Future.success(…)`. This is ugly.
           v.flip(SwitchMode.Open)
           streamWithControl.restored = false // NB: this is not actually done in a separate thread. see previous comment
-        }
+        }(graph.system.dispatcher)
       case _ => ()
     }
 
@@ -373,9 +378,9 @@ final class QuineApp(graph: GraphService)
         case (name, ingest) =>
           IngestMetered.removeIngestMeter(name)
           ingest.close()
-          ingest.terminated.recover { case _ => () }
-      }
-      .map(_ => ())
+          ingest.terminated.recover { case _ => () }(graph.system.dispatcher)
+      }(implicitly, graph.system.dispatcher)
+      .map(_ => ())(graph.system.dispatcher)
 
   /** Prepare for a shutdown */
   def shutdown(): Future[Unit] =
@@ -402,13 +407,16 @@ final class QuineApp(graph: GraphService)
     val ingestStreamFut =
       getOrDefaultLocalMetaData(IngestStreamsKey, 0, Map.empty[String, IngestStreamConfiguration])
 
-    for {
-      sq <- sampleQueriesFut
-      qq <- quickQueriesFut
-      na <- nodeAppearancesFut
-      st <- standingQueriesFut
-      is <- ingestStreamFut
-    } yield {
+    {
+      implicit val ec = graph.system.dispatcher
+      for {
+        sq <- sampleQueriesFut
+        qq <- quickQueriesFut
+        na <- nodeAppearancesFut
+        st <- standingQueriesFut
+        is <- ingestStreamFut
+      } yield (sq, qq, na, st, is)
+    }.map { case (sq, qq, na, st, is) =>
       sampleQueries = sq
       quickQueries = qq
       nodeAppearances = na
@@ -448,7 +456,7 @@ final class QuineApp(graph: GraphService)
       if (shouldResumeIngest) {
         startRestoredIngests()
       }
-    }
+    }(graph.system.dispatcher)
   }
 
   type FriendlySQName = String
@@ -506,10 +514,12 @@ object QuineApp {
     */
   final val CurrentPersistenceVersion: Version = Version(1, 1, 0)
 
-  def quineAppIsEmpty(persistenceAgent: PersistenceAgent)(implicit ec: ExecutionContext): Future[Boolean] = {
+  def quineAppIsEmpty(persistenceAgent: PersistenceAgent): Future[Boolean] = {
     val metaDataKeys =
       List(SampleQueriesKey, QuickQueriesKey, NodeAppearancesKey, StandingQueryOutputsKey, IngestStreamsKey)
-    Future.foldLeft(metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)))(true)(_ && _)
+    Future.foldLeft(
+      metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)(ExecutionContexts.parasitic))
+    )(true)(_ && _)(ExecutionContexts.parasitic)
   }
 
   import com.thatdot.quine._

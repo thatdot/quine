@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.messaging
 
+import scala.concurrent.Promise
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
-import scala.concurrent.{ExecutionContextExecutor, Promise}
 import scala.util.Random
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
@@ -45,8 +45,6 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
 ) extends Actor
     with ActorLogging
     with Timers {
-
-  implicit private val ec: ExecutionContextExecutor = context.dispatcher
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
 
   private val retryTimeout: Cancellable = remoteShardTarget match {
@@ -70,7 +68,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
       context.system.scheduler.scheduleAtFixedRate(
         initialDelay = Duration.Zero,
         interval = retryInterval
-      )(() => shardTarget.!(toSendFunc())(self))
+      )(() => shardTarget.!(toSendFunc())(self))(context.dispatcher)
   }
 
   // Schedule a timeout

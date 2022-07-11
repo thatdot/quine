@@ -28,6 +28,7 @@ import org.rocksdb.{
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
   *
@@ -62,8 +63,8 @@ final class RocksDbPersistor(
 
   import RocksDbPersistor._
 
-  implicit val ioDispatcher: ExecutionContext =
-    actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
+  val ioDispatcher: ExecutionContext =
+    new QuineDispatchers(actorSystem).blockingDispatcherEC
 
   /* All mutable fields below are mutated only when this lock is held exclusively
    *
@@ -249,7 +250,7 @@ final class RocksDbPersistor(
     finally dbLock.unlockRead(stamp)
   }
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = {
+  override def emptyOfQuineData(): Future[Boolean] = {
     def columnFamilyIsEmpty(cf: ColumnFamilyHandle): Boolean = {
       val it = db.newIterator(cf)
       try {
@@ -277,16 +278,16 @@ final class RocksDbPersistor(
         atTime
       ) -> PersistenceCodecs.eventFormat.write(event)
     putKeyValues(journalsCF, serializedEvents toMap)
-  }
+  }(ioDispatcher)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] = Future {
     putKeyValue(snapshotsCF, qidAndTime2Key(id, atTime), snapshotBytes)
-  }
+  }(ioDispatcher)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val sqBytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
     putKeyValue(standingQueriesCF, standingQuery.name.getBytes(UTF_8), sqBytes)
-  }
+  }(ioDispatcher)
 
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = Future {
     val keyBytes = key.getBytes(UTF_8)
@@ -294,7 +295,7 @@ final class RocksDbPersistor(
       case None => removeKey(metaDataCF, keyBytes)
       case Some(valBytes) => putKeyValue(metaDataCF, keyBytes, valBytes)
     }
-  }
+  }(ioDispatcher)
 
   def setStandingQueryState(
     sqId: StandingQueryId,
@@ -307,7 +308,7 @@ final class RocksDbPersistor(
       case None => removeKey(standingQueryStatesCF, keyBytes)
       case Some(stateBytes) => putKeyValue(standingQueryStatesCF, keyBytes, stateBytes)
     }
-  }
+  }(ioDispatcher)
 
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val beginKey = sqIdPrefixKey(standingQuery.id)
@@ -330,7 +331,7 @@ final class RocksDbPersistor(
       }
       db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -377,11 +378,11 @@ final class RocksDbPersistor(
       } finally it.close()
       mb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))
-  }
+  }(ioDispatcher)
 
   def getJournalWithTime(
     id: QuineId,
@@ -418,7 +419,7 @@ final class RocksDbPersistor(
       }
       vb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getStandingQueries: Future[List[StandingQuery]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -435,7 +436,7 @@ final class RocksDbPersistor(
       } finally it.close()
       lb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -452,7 +453,7 @@ final class RocksDbPersistor(
       } finally it.close()
       mb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getLatestSnapshot(
     id: QuineId,
@@ -473,7 +474,7 @@ final class RocksDbPersistor(
         }
       } finally it.close()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     enumerateIds(snapshotsCF)
@@ -525,7 +526,7 @@ final class RocksDbPersistor(
     // Intentionally leave the lock permanently exclusively acquired!
   }
 
-  def shutdown(): Future[Unit] = Future(shutdownSync())
+  def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)
 
   def delete(): Unit = {
     shutdownSync()

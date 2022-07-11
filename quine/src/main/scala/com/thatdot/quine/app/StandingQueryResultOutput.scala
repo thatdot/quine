@@ -2,7 +2,6 @@ package com.thatdot.quine.app
 
 import java.nio.file.{Paths, StandardOpenOption}
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.util.{Failure, Random, Success, Try}
 
@@ -70,7 +69,6 @@ object StandingQueryResultOutput extends LazyLogging {
         // TODO: use a host connection pool
 
         implicit val system: ActorSystem = graph.system
-        implicit val ec: ExecutionContext = system.dispatcher
         implicit val idProvider: QuineIdProvider = graph.idProvider
         val http = Http()
 
@@ -87,38 +85,39 @@ object StandingQueryResultOutput extends LazyLogging {
               )
             )
 
-            val posted = for {
-              response <- http.singleRequest(request)
-              _ <- {
-                if (response.status.isSuccess()) {
-                  response.entity
-                    .discardBytes()
-                    .future()
-                } else {
-                  Unmarshal(response)
-                    .to[String]
-                    .andThen {
-                      case Failure(err) =>
-                        logger.error(
-                          s"Failed to deserialize error response from POST $result to $url. " +
-                          s"Response status was ${response.status}",
-                          err
-                        )
-                      case Success(responseBody) =>
-                        logger.error(
-                          s"Failed to POST $result to $url. " +
-                          s"Response was ${response.status} (body: $responseBody)"
-                        )
-                    }
-                }
-              }
-            } yield execToken
+            val posted =
+              http
+                .singleRequest(request)
+                .flatMap(response =>
+                  if (response.status.isSuccess()) {
+                    response.entity
+                      .discardBytes()
+                      .future()
+                  } else {
+                    Unmarshal(response)
+                      .to[String]
+                      .andThen {
+                        case Failure(err) =>
+                          logger.error(
+                            s"Failed to deserialize error response from POST $result to $url. " +
+                            s"Response status was ${response.status}",
+                            err
+                          )
+                        case Success(responseBody) =>
+                          logger.error(
+                            s"Failed to POST $result to $url. " +
+                            s"Response was ${response.status} (body: $responseBody)"
+                          )
+                      }(system.dispatcher)
+                  }
+                )(system.dispatcher)
+                .map(_ => execToken)(system.dispatcher)
 
             // TODO: principled error handling
             posted.recover { case err =>
               logger.error("Failed to POST standing query result", err)
               execToken
-            }
+            }(system.dispatcher)
           }
 
       case WriteToKafka(topic, bootstrapServers, format) =>
@@ -230,7 +229,6 @@ object StandingQueryResultOutput extends LazyLogging {
       case PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
         implicit val system: ActorSystem = graph.system
         implicit val idProvider: QuineIdProvider = graph.idProvider
-        implicit val ec: ExecutionContext = system.dispatcher
         val http = Http()
 
         // how often to send notifications (notifications will be batched by [[PostToSlack.SlackSerializable.apply]]
@@ -247,9 +245,9 @@ object StandingQueryResultOutput extends LazyLogging {
               uri = hookUrl,
               entity = HttpEntity.apply(contentType = `application/json`, result.slackJson)
             )
-            val posted = for {
-              response <- http.singleRequest(request)
-              _ <- {
+            val posted = http
+              .singleRequest(request)
+              .flatMap { response =>
                 if (response.status.isSuccess()) {
                   response.entity
                     .discardBytes()
@@ -269,16 +267,16 @@ object StandingQueryResultOutput extends LazyLogging {
                           s"Failed to POST ${result.slackJson} to slack webhook. " +
                           s"Response status was ${response.status}. Body was $responseBody"
                         )
-                    }
+                    }(system.dispatcher)
                 }
-              }
-            } yield execToken
+              }(system.dispatcher)
+              .map(_ => execToken)(system.dispatcher)
 
             // TODO: principled error handling
             posted.recover { case err =>
               logger.error("Failed to POST standing query result", err)
               execToken
-            }
+            }(system.dispatcher)
           }
 
       case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>

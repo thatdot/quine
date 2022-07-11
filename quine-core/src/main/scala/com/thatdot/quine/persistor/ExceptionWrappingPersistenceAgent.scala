@@ -33,7 +33,10 @@ case object GetAllMetaData extends PersistorCall
 
 class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
-class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(implicit ec: ExecutionContext)
+
+/** @param ec EC on which to schedule error-wrapping logic (low CPU, nonblocking workload)
+  */
+class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: ExecutionContext)
     extends WrappedPersistenceAgent(persistenceAgent) {
 
   protected def leftMap[A](f: Throwable => WrappedPersistorException, future: Future[A]): Future[A] = future.transform {
@@ -42,7 +45,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent)(impl
       val wrapped = f(exception)
       logger.warn("Intercepted persistor error", wrapped)
       Failure(wrapped)
-  }
+  }(ec)
 
   def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = leftMap(
     new WrappedPersistorException(PersistEvents(id, events), _),

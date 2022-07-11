@@ -2,7 +2,7 @@ package com.thatdot.quine.persistor
 
 import java.util.concurrent._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
 import akka.NotUsed
@@ -35,7 +35,7 @@ class InMemoryPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
 ) extends PersistenceAgent {
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
       journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
     )

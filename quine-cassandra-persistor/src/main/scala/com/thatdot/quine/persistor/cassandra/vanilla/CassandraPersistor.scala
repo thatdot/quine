@@ -1106,10 +1106,12 @@ class CassandraPersistor(
     5.seconds
   )
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = {
+  override def emptyOfQuineData(): Future[Boolean] = {
     val dataTables = Seq(journals, snapshots, standingQueries, standingQueryStates)
     // then combine them -- if any have results, then the system is not empty of quine data
-    Future.traverse(dataTables)(_.nonEmpty()).map(_.exists(identity))
+    Future
+      .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
+      .map(_.exists(identity))(ExecutionContexts.parasitic)
   }
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = journals.enumerateAllNodeIds()

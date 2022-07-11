@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
-import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -41,7 +41,6 @@ trait QueryUiRoutesImpl
   implicit def graph: LiteralOpsGraph with CypherOpsGraph
   implicit def idProvider: QuineIdProvider
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
   implicit def materializer: Materializer
 
   private[this] lazy val idProv = idProvider
@@ -113,28 +112,30 @@ trait QueryUiRoutesImpl
     id: QuineId,
     atTime: AtTime
   ): Future[UiNode[QuineId]] =
-    graph.literalOps.getPropsAndLabels(id, atTime).map { case (props, labels) =>
-      val parsedProperties = props.map { case (propKey, pickledValue) =>
-        val unpickledValue = pickledValue.deserialized.fold[Any](
-          _ => pickledValue.serialized,
-          _.underlyingJvmValue
+    graph.literalOps
+      .getPropsAndLabels(id, atTime)
+      .map { case (props, labels) =>
+        val parsedProperties = props.map { case (propKey, pickledValue) =>
+          val unpickledValue = pickledValue.deserialized.fold[Any](
+            _ => pickledValue.serialized,
+            _.underlyingJvmValue
+          )
+          propKey.name -> writeGremlinValue(unpickledValue)
+        }
+
+        val nodeLabel = if (labels.exists(_.nonEmpty)) {
+          labels.get.map(_.name).mkString(":")
+        } else {
+          "ID: " + id.pretty
+        }
+
+        UiNode(
+          id = id,
+          hostIndex = hostIndex(id),
+          label = nodeLabel,
+          properties = parsedProperties
         )
-        propKey.name -> writeGremlinValue(unpickledValue)
-      }
-
-      val nodeLabel = if (labels.exists(_.nonEmpty)) {
-        labels.get.map(_.name).mkString(":")
-      } else {
-        "ID: " + id.pretty
-      }
-
-      UiNode(
-        id = id,
-        hostIndex = hostIndex(id),
-        label = nodeLabel,
-        properties = parsedProperties
-      )
-    }
+      }(graph.shardDispatcherEC)
 
   /** Post-process UI nodes. This serves as a hook for last minute modifications to the nodes sen
     * out to the UI.
@@ -306,11 +307,14 @@ trait QueryUiRoutesImpl
   // The Query UI relies heavily on a couple Gremlin endpoints for making queries.
   final val gremlinApiRoute: Route = {
     def catchGremlinException[A](futA: => Future[A]): Future[Either[ClientErrors, A]] =
-      Future.fromTry(Try(futA)).flatten.transform {
-        case Success(a) => Success(Right(a))
-        case Failure(qge: QuineGremlinException) => Success(Left(endpoints4s.Invalid(qge.toString)))
-        case Failure(err) => Failure(err)
-      }
+      Future
+        .fromTry(Try(futA))
+        .flatten
+        .transform {
+          case Success(a) => Success(Right(a))
+          case Failure(qge: QuineGremlinException) => Success(Left(endpoints4s.Invalid(qge.toString)))
+          case Failure(err) => Failure(err)
+        }(graph.shardDispatcherEC)
 
     gremlinPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
       catchGremlinException {
@@ -338,11 +342,14 @@ trait QueryUiRoutesImpl
   // The Query UI relies heavily on a couple Cypher endpoints for making queries.
   final val cypherApiRoute: Route = {
     def catchCypherException[A](futA: => Future[A]): Future[Either[ClientErrors, A]] =
-      Future.fromTry(Try(futA)).flatten.transform {
-        case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
-        case Failure(err) => Failure(err)
-      }
+      Future
+        .fromTry(Try(futA))
+        .flatten
+        .transform {
+          case Success(a) => Success(Right(a))
+          case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
+          case Failure(err) => Failure(err)
+        }(graph.shardDispatcherEC)
 
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
       catchCypherException {
@@ -350,7 +357,7 @@ trait QueryUiRoutesImpl
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .runWith(Sink.seq)
-          .map(CypherQueryResult(columns, _))
+          .map(CypherQueryResult(columns, _))(graph.shardDispatcherEC)
       }
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>

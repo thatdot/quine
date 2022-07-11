@@ -4,8 +4,8 @@ import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 import java.time.Instant
 
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 
 import akka.NotUsed
 import akka.kafka.{Subscriptions => KafkaSubscriptions}
@@ -52,7 +52,6 @@ package object ingest extends StrictLogging {
     initialSwitchMode: SwitchMode
   )(implicit
     graph: CypherOpsGraph,
-    executionContext: ExecutionContext,
     materializer: Materializer
   ): IngestSrcType[QuineAppIngestControl] =
     settings match {
@@ -280,7 +279,6 @@ package object ingest extends StrictLogging {
     execToken: IngestSrcExecToken
   )(implicit
     graph: CypherOpsGraph,
-    executionContext: ExecutionContext,
     materializer: Materializer
   ): Source[IngestSrcExecToken, Future[ControlSwitches]] = {
     def throttled[A] = maxPerSecond match {
@@ -372,9 +370,9 @@ package object ingest extends StrictLogging {
         retryingQuery
           .stream(value)
           .runWith(Sink.ignore)
-          .map(_ => execToken)
+          .map(_ => execToken)(graph.system.dispatcher)
       }
-      .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c)) }
+      .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c))(graph.system.dispatcher) }
   }
 
   private[this] def importFormatFor(label: StreamedRecordFormat): ImportFormat with KafkaImportFormat =

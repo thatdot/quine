@@ -40,8 +40,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
   protected def lastWriteMillis: Long
 
   // TODO: retry in persistors
-  private def retryPersistence[T](timer: Timer, op: => Future[T])(implicit
-    ec: ExecutionContext,
+  private def retryPersistence[T](timer: Timer, op: => Future[T], ec: ExecutionContext)(implicit
     scheduler: Scheduler
   ): Future[T] =
     akka.pattern.retry(
@@ -50,7 +49,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       minBackoff = 100.millis,
       maxBackoff = 5.seconds,
       randomFactor = 0.5
-    )
+    )(ec, scheduler)
 
   /* NB: all of the messages being sent/received in `goToSleep` are to/from the
    *     shard actor. Consequently, it is safe (and more efficient) to use
@@ -73,8 +72,9 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           metrics.snapshotSize.update(snapshot.length)
           retryPersistence(
             metrics.persistorPersistSnapshotTimer,
-            persistor.persistSnapshot(qid, snapshotTime, snapshot)
-          )(context.dispatcher, context.system.scheduler)
+            persistor.persistSnapshot(qid, snapshotTime, snapshot),
+            context.dispatcher
+          )(context.system.scheduler)
 
         case _ => Future.unit
       }
@@ -122,7 +122,6 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
               val snapshot: Array[Byte] = toSnapshotBytes()
               metrics.snapshotSize.update(snapshot.length)
 
-              implicit val ec: ExecutionContext = context.dispatcher
               implicit val scheduler: Scheduler = context.system.scheduler
 
               // Save all persistor data
@@ -133,7 +132,8 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                   if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
                   else latestUpdateTime,
                   snapshot
-                )
+                ),
+                context.dispatcher
               )
               val standingQueryStatesSaved = Future.traverse(pendingStandingQueryWrites) {
                 case key @ (globalId, localId) =>
@@ -141,14 +141,15 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                   serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
                   retryPersistence(
                     metrics.persistorSetStandingQueryStateTimer,
-                    persistor.setStandingQueryState(globalId, qid, localId, serialized)
+                    persistor.setStandingQueryState(globalId, qid, localId, serialized),
+                    context.dispatcher
                   )
-              }
+              }(implicitly, context.dispatcher)
 
               val persistenceFuture = snapshotSaved zip standingQueryStatesSaved
 
               // Schedule an update to the shard
-              persistenceFuture onComplete {
+              persistenceFuture.onComplete {
                 case Success(_) => reportSleepSuccess(qidAtTime)
                 case Failure(err) =>
                   shardActor ! SleepOutcome.SleepFailed(
@@ -159,7 +160,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                     err,
                     shardPromise
                   )
-              }
+              }(context.dispatcher)
 
             case _ =>
               reportSleepSuccess(qidAtTime)

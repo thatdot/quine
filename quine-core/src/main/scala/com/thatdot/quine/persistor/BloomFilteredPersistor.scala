@@ -2,8 +2,9 @@ package com.thatdot.quine.persistor
 
 import java.io.ByteArrayInputStream
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 
 import akka.NotUsed
 import akka.stream.Materializer
@@ -85,11 +86,11 @@ class BloomFilteredPersistor(
     )
   }
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = {
+  override def emptyOfQuineData(): Future[Boolean] = {
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
-    val noBloomFilter = getMetaData(BloomFilteredPersistor.storageKey).map(_.isEmpty)
+    val noBloomFilter = getMetaData(BloomFilteredPersistor.storageKey).map(_.isEmpty)(ExecutionContexts.parasitic)
     val noOtherData = wrappedPersistor.emptyOfQuineData()
-    noBloomFilter.zipWith(noOtherData)(_ && _)(ec)
+    noBloomFilter.zipWith(noOtherData)(_ && _)(ExecutionContexts.parasitic)
   }
 
   override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {

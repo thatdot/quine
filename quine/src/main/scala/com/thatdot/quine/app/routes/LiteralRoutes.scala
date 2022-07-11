@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.routes
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -63,18 +63,18 @@ trait LiteralRoutesImpl
 
   implicit def graph: LiteralOpsGraph
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
 
   private val literalGetRoute = literalGet.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
     val propsF = graph.literalOps.getProps(qid, atTime = atTime)
     val edgesF = graph.literalOps.getEdges(qid, atTime = atTime)
-    for {
-      props <- propsF
-      edges <- edgesF
-    } yield LiteralNode(
-      props.map { case (k, v) => k.name -> ByteString(v.serialized) },
-      edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) }
-    )
+    propsF
+      .zip(edgesF)
+      .map { case (props, edges) =>
+        LiteralNode(
+          props.map { case (k, v) => k.name -> ByteString(v.serialized) },
+          edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) }
+        )
+      }(graph.shardDispatcherEC)
   }
 
   private val literalMergeNodesRoute = literalMergeNodes.implementedByAsync {
@@ -85,16 +85,13 @@ trait LiteralRoutesImpl
     case (qid: QuineId, node: LiteralNode[QuineId, ByteString]) =>
       val propsF = Future.traverse(node.properties: TraversableOnce[(String, BStr)]) { case (typ, value) =>
         graph.literalOps.setPropBytes(qid, typ, value.toArray)
-      }
+      }(implicitly, graph.shardDispatcherEC)
       val edgesF = Future.traverse(node.edges) {
         case RestHalfEdge(typ, Outgoing, to) => graph.literalOps.addEdge(qid, to, typ, true)
         case RestHalfEdge(typ, Incoming, to) => graph.literalOps.addEdge(to, qid, typ, true)
         case RestHalfEdge(typ, Undirected, to) => graph.literalOps.addEdge(qid, to, typ, false)
-      }
-      for {
-        props <- propsF
-        edges <- edgesF
-      } yield ()
+      }(implicitly, graph.shardDispatcherEC)
+      propsF.flatMap(_ => edgesF)(graph.shardDispatcherEC).map(_ => ())(graph.shardDispatcherEC)
   }
 
   private val literalDeleteRoute = literalDelete.implementedByAsync { (qid: QuineId) =>
@@ -102,7 +99,7 @@ trait LiteralRoutesImpl
   }
 
   protected val literalDebugRoute: Route = literalDebug.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
-    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder.encode)
+    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder.encode)(graph.shardDispatcherEC)
   }
 
   private val literalEdgesGetRoute = literalEdgesGet.implementedByAsync {
@@ -110,7 +107,7 @@ trait LiteralRoutesImpl
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })
+        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })(graph.shardDispatcherEC)
   }
 
   private val literalEdgePutRoute = literalEdgePut.implementedByAsync { case (qid, edges) =>
@@ -121,8 +118,8 @@ trait LiteralRoutesImpl
           case Outgoing => graph.literalOps.addEdge(qid, other, edgeType, isDirected = true)
           case Incoming => graph.literalOps.addEdge(other, qid, edgeType, isDirected = true)
         }
-      }
-      .map(_ => ())
+      }(implicitly, graph.shardDispatcherEC)
+      .map(_ => ())(graph.shardDispatcherEC)
   }
 
   private val literalEdgeDeleteRoute = literalEdgeDelete.implementedByAsync { case (qid, edges) =>
@@ -134,8 +131,8 @@ trait LiteralRoutesImpl
           case Outgoing => graph.literalOps.removeEdge(qid, other, edgeType, isDirected = true)
           case Incoming => graph.literalOps.removeEdge(other, qid, edgeType, isDirected = true)
         }
-      }
-      .map(_ => ())
+      }(implicitly, graph.shardDispatcherEC)
+      .map(_ => ())(graph.shardDispatcherEC)
   }
 
   private val literalHalfEdgesGetRoute = literalHalfEdgesGet.implementedByAsync {
@@ -143,13 +140,13 @@ trait LiteralRoutesImpl
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })
+        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })(graph.shardDispatcherEC)
   }
 
   private val literalPropertyGetRoute = literalPropertyGet.implementedByAsync { case (qid, propKey, atTime) =>
     graph.literalOps
       .getProps(qid, atTime)
-      .map(m => m.get(Symbol(propKey)).map(_.serialized).map(ByteString(_)))
+      .map(m => m.get(Symbol(propKey)).map(_.serialized).map(ByteString(_)))(graph.shardDispatcherEC)
   }
 
   private val literalPropertyPutRoute = literalPropertyPut.implementedByAsync { case (qid, propKey, value) =>

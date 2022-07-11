@@ -26,6 +26,7 @@ import com.thatdot.quine.graph.messaging.{
   WrappedActorRef
 }
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.QuineDispatchers
 
 /** Graph implementation that assumes a basic static topology of shards. */
 trait StaticShardGraph extends BaseGraph {
@@ -45,7 +46,13 @@ trait StaticShardGraph extends BaseGraph {
     */
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit]
 
-  val shards: ArraySeq[LocalShardRef] =
+  // refine [[shards]] to a Seq
+  def shards: Seq[LocalShardRef]
+
+  /** Creates an actor for each of the configured static shards, returning the array of shards.
+    * This is a function rather than inlined in the `val shards = ...` to resolve an initialization order issue
+    */
+  protected[this] def initializeShards(): ArraySeq[LocalShardRef] =
     ArraySeq.unsafeWrapArray(Array.tabulate(shardCount) { (shardId: Int) =>
       logger.info(s"Adding a new local shard at idx: $shardId")
 
@@ -55,7 +62,7 @@ trait StaticShardGraph extends BaseGraph {
       val localRef: ActorRef = system.actorOf(
         Props(new GraphShardActor(this, shardId, shardMap, initialShardInMemoryLimit))
           .withMailbox("akka.quine.shard-mailbox")
-          .withDispatcher("akka.quine.graph-shard-dispatcher"),
+          .withDispatcher(QuineDispatchers.shardDispatcherName),
         name = GraphShardActor.name(shardId)
       )
 
@@ -112,7 +119,7 @@ trait StaticShardGraph extends BaseGraph {
               timeout.duration,
               resultHandler
             )
-          ).withDispatcher("akka.quine.node-dispatcher")
+          ).withDispatcher(QuineDispatchers.nodeDispatcherName)
         )
         val askQuineRef = WrappedActorRef(askActorRef)
         val message = unattributedMessage(askQuineRef)
@@ -140,7 +147,7 @@ trait StaticShardGraph extends BaseGraph {
               timeout.duration,
               resultHandler
             )
-          ).withDispatcher("akka.quine.node-dispatcher")
+          ).withDispatcher(QuineDispatchers.nodeDispatcherName)
         )
 
         // Send the message directly
@@ -159,23 +166,23 @@ trait StaticShardGraph extends BaseGraph {
       Future
         .traverse(shards) { (shard: LocalShardRef) =>
           relayAsk(shard.quineRef, InitiateShardShutdown(_))(5.seconds, implicitly)
-        }
-        .map(_.view.map(_.remainingNodeActorCount).sum)
-        .filter(_ == 0)
-        .map(_ => ())
+        }(implicitly, shardDispatcherEC)
+        .map(_.view.map(_.remainingNodeActorCount).sum)(shardDispatcherEC)
+        .filter(_ == 0)(shardDispatcherEC)
+        .map(_ => ())(shardDispatcherEC)
     }
-    for {
-      _ <- Patterns.retry(
+    Patterns
+      .retry(
         pollShutdownProgress,
         MaxPollAttemps,
         DelayBetweenPollAttempts,
         system.scheduler,
         system.dispatcher
       )
-      _ <- persistor.syncVersion()
-      _ <- persistor.shutdown()
-      _ <- system.terminate()
-    } yield ()
+      .flatMap(_ => persistor.syncVersion())(shardDispatcherEC)
+      .flatMap(_ => persistor.shutdown())(shardDispatcherEC)
+      .flatMap(_ => system.terminate())(shardDispatcherEC)
+      .map(_ => ())(shardDispatcherEC)
   }
 
   def isOnThisHost(quineRef: QuineRef): Boolean = true

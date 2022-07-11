@@ -1,5 +1,6 @@
 package com.thatdot.quine.persistor
 
+import scala.compat.CompatBuildFrom.implicitlyBF
 import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -17,8 +18,7 @@ import com.thatdot.quine.graph.{
   StandingQueryPartId
 }
 import com.thatdot.quine.model.QuineId
-
-import PersistenceAgent.CurrentVersion
+import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
 
 object PersistenceAgent {
 
@@ -42,12 +42,8 @@ abstract class PersistenceAgent extends StrictLogging {
     * are considered Quine-core data.
     *
     * This is used to determine when an existing persistor's data may be safely used by any Quine version.
-    *
-    * @param ec This operation queries several different kinds of data (journals, snapshots, etc). `ec` acts
-    *           as a suggestion for which execution context to use while combining these data sources. Implementations
-    *           may ignore this parameter.
     */
-  def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(false)
+  def emptyOfQuineData(): Future[Boolean] = Future.successful(false)
 
   /** Get the version that will be used for a certain subset of data
     *
@@ -64,12 +60,12 @@ abstract class PersistenceAgent extends StrictLogging {
     versionMetaDataKey: String,
     currentVersion: Version,
     isDataEmpty: () => Future[Boolean]
-  ): Future[Version] = {
-    implicit val ec = ExecutionContexts.parasitic
+  ): Future[Version] =
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
         logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
-        setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+        setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+          .map(_ => currentVersion)(ExecutionContexts.parasitic)
 
       case Some(persistedVBytes) =>
         Version.fromBytes(persistedVBytes) match {
@@ -86,7 +82,8 @@ abstract class PersistenceAgent extends StrictLogging {
               logger.info(
                 s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
               )
-              setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+              setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+                .map(_ => currentVersion)(ExecutionContexts.parasitic)
             }
           case Some(incompatibleV) =>
             isDataEmpty().flatMap {
@@ -94,13 +91,13 @@ abstract class PersistenceAgent extends StrictLogging {
                 logger.warn(
                   s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
                 )
-                setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+                setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+                  .map(_ => currentVersion)(ExecutionContexts.parasitic)
               case false =>
                 Future.failed(new IncompatibleVersion(context, incompatibleV, currentVersion))
-            }
+            }(ExecutionContexts.parasitic)
         }
-    }
-  }
+    }(ExecutionContexts.parasitic)
 
   /** Gets the version of data last stored by this persistor, or PersistenceAgent.CurrentVersion
     *
@@ -117,7 +114,7 @@ abstract class PersistenceAgent extends StrictLogging {
       "core quine data",
       PersistenceAgent.VersionMetadataKey,
       CurrentVersion,
-      () => emptyOfQuineData()(ExecutionContexts.parasitic)
+      () => emptyOfQuineData()
     )
 
   /** Persist an individual event affecting a node's state
@@ -296,21 +293,21 @@ trait MultipartSnapshotPersistenceAgent {
     val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
     val partCount = parts.length
     if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node: $id with part count: $partCount")
-    implicit val ec = multipartSnapshotExecutionContext
-    (Future sequence {
-      for {
-        (partBytes, partIndex) <- parts.zipWithIndex
-        multipartSnapshotPart = MultipartSnapshotPart(partBytes, partIndex, partCount)
-      } yield persistSnapshotPart(id, atTime, multipartSnapshotPart)
-    }).map(_ => ())(ExecutionContexts.parasitic)
+    Future
+      .sequence {
+        for {
+          (partBytes, partIndex) <- parts.zipWithIndex
+          multipartSnapshotPart = MultipartSnapshotPart(partBytes, partIndex, partCount)
+        } yield persistSnapshotPart(id, atTime, multipartSnapshotPart)
+      }(implicitlyBF, multipartSnapshotExecutionContext)
+      .map(_ => ())(ExecutionContexts.parasitic)
   }
 
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] = {
-    implicit val ec = multipartSnapshotExecutionContext
-    getLatestMultipartSnapshot(id, upToTime) flatMap {
+  ): Future[Option[(EventTime, Array[Byte])]] =
+    getLatestMultipartSnapshot(id, upToTime).flatMap {
       case Some(MultipartSnapshot(time, parts)) =>
         if (validateSnapshotParts(parts))
           Future.successful(Some((time, parts.flatMap(_.partBytes).toArray)))
@@ -320,8 +317,7 @@ trait MultipartSnapshotPersistenceAgent {
         }
       case None =>
         Future.successful(None)
-    }
-  }
+    }(multipartSnapshotExecutionContext)
 
   private def validateSnapshotParts(parts: Seq[MultipartSnapshotPart]): Boolean = {
     val partsLength = parts.length

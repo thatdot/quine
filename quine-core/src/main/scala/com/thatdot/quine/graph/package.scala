@@ -72,12 +72,12 @@ package object graph {
     /* NB: it is important that the message be call by name, since we want to avoid actually
      *     computing the message until we are sure there is actually a failure to report
      */
-    def recoveryMessage[U >: T](message: => String)(implicit ec: ExecutionContext): Future[U] =
+    def recoveryMessage[U >: T](message: => String, ec: ExecutionContext): Future[U] =
       f.recoverWith {
         case e: QuineRuntimeFutureException => Future.failed(e)
         case e: Throwable =>
           Future.failed(new QuineRuntimeFutureException(message, e))
-      }
+      }(ec)
   }
 
   implicit class ByteBufferOps(private val bb: ByteBuffer) extends AnyVal {
