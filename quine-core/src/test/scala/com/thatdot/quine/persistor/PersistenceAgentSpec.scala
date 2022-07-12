@@ -32,6 +32,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   override def afterAll(): Unit = {
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)
+    ()
   }
 
   val idProvider = QuineUUIDProvider
