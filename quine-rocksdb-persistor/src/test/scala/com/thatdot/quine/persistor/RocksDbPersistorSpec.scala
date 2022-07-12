@@ -1,5 +1,8 @@
 package com.thatdot.quine.persistor
 
+import akka.actor.CoordinatedShutdown
+import org.apache.commons.io.FileUtils
+
 import java.nio.file.Files
 import java.util.Properties
 
@@ -13,7 +16,7 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
   lazy val persistor: PersistenceAgent =
     if (RocksDbPersistor.loadRocksDbLibrary()) {
       val f = Files.createTempDirectory("rocks.db")
-      f.toFile.deleteOnExit()
+      CoordinatedShutdown(system).addJvmShutdownHook(() => FileUtils.forceDelete(f.toFile))
       new RocksDbPersistor(
         filePath = f.toString,
         writeAheadLog = true,
