@@ -29,7 +29,8 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
-      "org.gnieh" % "logback-config" % logbackConfigV % Test
+      "org.gnieh" % "logback-config" % logbackConfigV % Test,
+      "commons-io" % "commons-io" % commonsIoV % Test
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {

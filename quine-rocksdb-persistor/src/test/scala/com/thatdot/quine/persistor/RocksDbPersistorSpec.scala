@@ -3,6 +3,10 @@ package com.thatdot.quine.persistor
 import java.nio.file.Files
 import java.util.Properties
 
+import akka.actor.CoordinatedShutdown
+
+import org.apache.commons.io.FileUtils
+
 class RocksDbPersistorSpec extends PersistenceAgentSpec {
 
   /** Tests should run if RocksDB could be started or if in CI (in CI, we want
@@ -13,7 +17,7 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
   lazy val persistor: PersistenceAgent =
     if (RocksDbPersistor.loadRocksDbLibrary()) {
       val f = Files.createTempDirectory("rocks.db")
-      f.toFile.deleteOnExit()
+      CoordinatedShutdown(system).addJvmShutdownHook(() => FileUtils.forceDelete(f.toFile))
       new RocksDbPersistor(
         filePath = f.toString,
         writeAheadLog = true,
