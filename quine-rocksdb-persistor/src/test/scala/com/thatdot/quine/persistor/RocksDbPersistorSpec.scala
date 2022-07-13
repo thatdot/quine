@@ -1,10 +1,11 @@
 package com.thatdot.quine.persistor
 
-import akka.actor.CoordinatedShutdown
-import org.apache.commons.io.FileUtils
-
 import java.nio.file.Files
 import java.util.Properties
+
+import akka.actor.CoordinatedShutdown
+
+import org.apache.commons.io.FileUtils
 
 class RocksDbPersistorSpec extends PersistenceAgentSpec {
 

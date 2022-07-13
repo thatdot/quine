@@ -2,9 +2,12 @@ package com.thatdot.quine.persistor
 
 import java.nio.file.Files
 import java.util.Properties
+
 import akka.actor.{ActorSystem, CoordinatedShutdown}
-import com.thatdot.quine.graph.HistoricalQueryTests
+
 import org.apache.commons.io.FileUtils
+
+import com.thatdot.quine.graph.HistoricalQueryTests
 
 class RocksDbPersistorTests extends HistoricalQueryTests {
 
