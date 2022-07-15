@@ -188,4 +188,44 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
     testExpression("toFloat(' 123 ')", Expr.Floating(123.0)) // yes, I know this doesn't match `toInteger`
   }
 
+  describe("`text.utf8Decode` function") {
+    testExpression(
+      "text.utf8Decode(bytes('6162206364'))",
+      Expr.Str("ab cd")
+    )
+    testExpression(
+      "text.utf8Decode(bytes('5765204469646E2774205374617274207468652046697265'))",
+      Expr.Str("We Didn't Start the Fire")
+    )
+    testExpression(
+      "text.utf8Decode(bytes('F09F8C88'))",
+      Expr.Str("\uD83C\uDF08") // 🌈
+    )
+    testExpression(
+      "text.utf8Decode(bytes('E4BDA0E5A5BDE4B896E7958C'))",
+      Expr.Str("你好世界")
+    )
+  }
+
+  describe("`text.utf8Encode` function") {
+    testExpression(
+      """text.utf8Encode("ab cd")""",
+      Expr.Bytes(Array(0x61, 0x62, 0x20, 0x63, 0x64).map(_.toByte))
+    )
+    testExpression(
+      """text.utf8Encode("We Didn't Start the Fire")""",
+      Expr.Bytes(
+        Array(0x57, 0x65, 0x20, 0x44, 0x69, 0x64, 0x6E, 0x27, 0x74, 0x20, 0x53, 0x74, 0x61, 0x72, 0x74, 0x20, 0x74,
+          0x68, 0x65, 0x20, 0x46, 0x69, 0x72, 0x65).map(_.toByte)
+      )
+    )
+    testExpression(
+      """text.utf8Encode("\uD83C\uDF08")""", // 🌈
+      Expr.Bytes(Array(0xF0, 0x9F, 0x8C, 0x88).map(_.toByte))
+    )
+    testExpression(
+      """text.utf8Encode("你好世界")""",
+      Expr.Bytes(Array(0xE4, 0xBD, 0xA0, 0xE5, 0xA5, 0xBD, 0xE4, 0xB8, 0x96, 0xE7, 0x95, 0x8C).map(_.toByte))
+    )
+  }
 }
