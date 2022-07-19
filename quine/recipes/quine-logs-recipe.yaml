@@ -1,6 +1,6 @@
 version: 1
 title: Quine Log Reader
-contributor: michael@thatdot.com
+contributor: https://github.com/maglietti
 summary: "Ingest Quine Log Lines"
 description: |-
   "This recipe processes Quine log lines using a regular expression. 

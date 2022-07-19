@@ -1,6 +1,6 @@
 version: 1
 title: Pi
-contributor: ethan@thatdot.com
+contributor: https://github.com/emanb29
 summary: Incrementally approximates pi using Leibniz' formula
 description: |-
   Incrementally approximates pi using Leibniz' formula -- the arctangent function is incrementally

@@ -5,7 +5,7 @@ version: 1
 title: Ingesting CSV Files
 
 # URL to social profile of the person or organization responsible for this Recipe
-contributor: michael@thatdot.com
+contributor: https://github.com/maglietti
 
 # Brief copy about this Recipe
 summary: |-
