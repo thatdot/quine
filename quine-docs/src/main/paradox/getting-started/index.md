@@ -1,5 +1,9 @@
 # Getting Started
 
+The articles in this section walk you through how to install Quine, connect an ingest stream to your pipeline, inspect your data using the exploration UI, and develop business logic using a standing query. 
+
+Testing out an idea? A recipe helps you to quickly iterate through the code, launch, test, and refine development cycle. 
+
 @@@index
 * @ref:[Quick Start](quick-start.md)
 * @ref:[Exploration UI](exploration-ui.md)
