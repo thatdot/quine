@@ -94,6 +94,7 @@ trait CypherOpsGraph extends BaseGraph {
       interpreter
         .interpret(query, context)(parameters)
         .mapMaterializedValue(_ => NotUsed)
+        .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
     }
   }
 }

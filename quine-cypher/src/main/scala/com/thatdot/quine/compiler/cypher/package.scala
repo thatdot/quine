@@ -64,6 +64,7 @@ package object cypher {
       }
       .flatMapConcat(queryCypherValues(_).results)
       .to(Sink.ignore)
+      .named("cypher-script")
       .run()(graph.materializer)
 
   /** Compile a Cypher statement

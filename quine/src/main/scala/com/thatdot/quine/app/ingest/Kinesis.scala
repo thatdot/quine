@@ -125,7 +125,9 @@ case object Kinesis extends LazyLogging {
       // there is an alternate KCL source we could use (https://doc.akka.io/docs/alpakka/current/kinesis.html) but
       // it requires more configuration, as well as dynamoDB and cloudwatch access
       val kinesisSource: Source[kinesisModel.Record, UniqueKillSwitch] = shardSettingsSource
-        .flatMapConcat(shardSettings => KinesisSource.basicMerge(shardSettings, kinesisClient))
+        .flatMapConcat(shardSettings =>
+          KinesisSource.basicMerge(shardSettings, kinesisClient).named(s"kinesis-ingest-source-for-$streamName")
+        )
         .viaMat(KillSwitches.single)(Keep.right)
 
       val isSingleHost = graph.isSingleHost
@@ -161,6 +163,7 @@ case object Kinesis extends LazyLogging {
         .via(graph.ingestThrottleFlow)
         .mapAsyncUnordered(parallelism)(format.writeToGraph(graph, _).map(_ => ingestToken)(graph.system.dispatcher))
         .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c))(graph.system.dispatcher) }
+        .named(s"kinesis-ingest-for-$streamName")
     }
   }
 }

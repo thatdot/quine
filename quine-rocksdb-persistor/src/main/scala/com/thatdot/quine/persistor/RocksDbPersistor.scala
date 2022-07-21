@@ -477,10 +477,10 @@ final class RocksDbPersistor(
   }(ioDispatcher)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
-    enumerateIds(snapshotsCF)
+    enumerateIds(snapshotsCF).named("rocksdb-all-node-scan-via-snapshots")
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
-    enumerateIds(journalsCF)
+    enumerateIds(journalsCF).named("rocksdb-all-node-scan-via-journals")
 
   /** Iterate (asynchronously) through the ID part of keys in a column family
     *

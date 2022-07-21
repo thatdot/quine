@@ -361,7 +361,7 @@ package object ingest extends StrictLogging {
           |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
       )
     }
-    val retryingQuery = AtLeastOnceCypherQuery(compiled, cypherParameterName, "file ingest")
+    val retryingQuery = AtLeastOnceCypherQuery(compiled, cypherParameterName, "file-ingest-query")
 
     deserializedSource
       .via(throttled)
@@ -373,6 +373,7 @@ package object ingest extends StrictLogging {
           .map(_ => execToken)(graph.system.dispatcher)
       }
       .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c))(graph.system.dispatcher) }
+      .named("file-ingest-stream")
   }
 
   private[this] def importFormatFor(label: StreamedRecordFormat): ImportFormat with KafkaImportFormat =

@@ -209,6 +209,7 @@ object RecipeInterpreter {
             queryResults.results
               .take(printQueryMaxResults)
               .toMat(Sink.seq)(Keep.right)
+              .named("recipe-status-query")
               .run()(graphService.materializer),
             5 seconds
           )

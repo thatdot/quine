@@ -125,7 +125,7 @@ sealed trait KafkaImportFormat extends ImportFormat with LazyLogging {
 
     val ingestToken = IngestSrcExecToken(label)
 
-    def nonCommitingFlow(
+    def nonCommittingFlow(
       source: Source[ConsumerRecord[K, V], (KafkaConsumer.Control, Future[ValveSwitch])]
     ): Source[IngestSrcExecToken, (KafkaConsumer.Control, Future[ValveSwitch])] =
       source.mapAsyncUnordered(parallelism)(record =>
@@ -145,7 +145,7 @@ sealed trait KafkaImportFormat extends ImportFormat with LazyLogging {
             ),
             subscription
           )
-          nonCommitingFlow(streamSource(kafkaConsumer)(identity))
+          nonCommittingFlow(streamSource(kafkaConsumer)(identity)).named("kafka-ingest-source-autocommittable")
         case Some(
               KafkaOffsetCommitting.ExplicitCommit(
                 maxBatch,
@@ -162,22 +162,25 @@ sealed trait KafkaImportFormat extends ImportFormat with LazyLogging {
                 case None => Future.successful(record.committableOffset)
               }
             )
+            .named("kafka-ingest-source-committable")
             .via(
-              Committer.batchFlow(
-                CommitterSettings(system)
-                  .withMaxBatch(maxBatch)
-                  .withMaxInterval(FiniteDuration(maxIntervalMillis.toLong, MILLISECONDS))
-                  .withParallelism(commitParallelism)
-                  .withDelivery(
-                    if (waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget
-                  )
-              )
+              Committer
+                .batchFlow(
+                  CommitterSettings(system)
+                    .withMaxBatch(maxBatch)
+                    .withMaxInterval(FiniteDuration(maxIntervalMillis.toLong, MILLISECONDS))
+                    .withParallelism(commitParallelism)
+                    .withDelivery(
+                      if (waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget
+                    )
+                )
+                .named("kafka-ingest-batch-committer")
             )
             // Emits one ingest token per batch committed
             .map(_ => ingestToken)
         case None =>
           val kafkaConsumer = KafkaConsumer.plainSource(consumerSettings, subscription)
-          nonCommitingFlow(streamSource(kafkaConsumer)(identity))
+          nonCommittingFlow(streamSource(kafkaConsumer)(identity)).named("kafka-ingest-source-noncommitting")
       }
 
     ingestStream

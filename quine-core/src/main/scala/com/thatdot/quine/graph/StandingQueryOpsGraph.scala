@@ -294,7 +294,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
         }
         x
       }
-      .toMat(BroadcastHub.sink[StandingQueryResult](bufferSize = 8))(Keep.both)
+      .named(s"sq-results-for-${sq.name}")
+      .toMat(
+        BroadcastHub.sink[StandingQueryResult](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}")
+      )(Keep.both)
       // bufferSize = 8 ensures all consumers attached to the hub are kept within 8 elements of each other
       .run()
 

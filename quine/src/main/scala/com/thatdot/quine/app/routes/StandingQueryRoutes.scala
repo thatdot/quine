@@ -94,12 +94,14 @@ trait StandingQueryRoutesImpl
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
             handleWebSocketMessages(
-              Flow.fromSinkAndSource(
-                Sink.ignore,
-                source
-                  .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
-                  .map((r: StandingQueryResult) => ws.TextMessage(ujson.write(r.toJson)))
-              )
+              Flow
+                .fromSinkAndSource(
+                  Sink.ignore,
+                  source
+                    .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
+                    .map((r: StandingQueryResult) => ws.TextMessage(ujson.write(r.toJson)))
+                )
+                .named(s"sq-results-websocket-for-$name")
             )
 
         }

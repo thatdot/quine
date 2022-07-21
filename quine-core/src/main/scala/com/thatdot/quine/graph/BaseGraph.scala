@@ -210,6 +210,7 @@ trait BaseGraph extends StrictLogging {
           Source
             .futureSource(awakeNodes)
             .map(_.quineId)
+            .named(s"all-recent-node-scan-shard-${shardRef.shardId}")
             .runWith(Sink.collection[QuineId, Set[QuineId]])
         }(implicitly, shardDispatcherEC)
         .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
@@ -223,9 +224,9 @@ trait BaseGraph extends StrictLogging {
         }(shardDispatcherEC)
       }
 
-      combinedSource.mapMaterializedValue(_ => NotUsed)
+      combinedSource.mapMaterializedValue(_ => NotUsed).named("all-node-scan-snapshot-based")
     } else {
-      persistor.enumerateJournalNodeIds()
+      persistor.enumerateJournalNodeIds().named("all-node-scan-journal-based")
     }
   }
 
@@ -254,6 +255,7 @@ trait BaseGraph extends StrictLogging {
         Source
           .futureSource(relayAsk(shard.quineRef, ShardMessage.SampleAwakeNodes(Some(lim), atTime, _)))
           .map(_.quineId)
+          .named(s"recent-node-sampler-shard-${shard.shardId}")
           .runWith(Sink.collection[QuineId, Set[QuineId]])
       }(implicitly, shardDispatcherEC)
       .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)

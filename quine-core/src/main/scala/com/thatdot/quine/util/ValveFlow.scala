@@ -92,7 +92,7 @@ class SharedValve(val name: String) {
   }
 
   /** @return a flow of the requested type, linked to this valve instance */
-  def flow[A]: Graph[FlowShape[A, A], NotUsed] = new ValveFlow[A](this)
+  def flow[A]: Graph[FlowShape[A, A], NotUsed] = new ValveFlow[A](this).named(s"shared-valve-$name")
 }
 object SharedValve {
 

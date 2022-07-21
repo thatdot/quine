@@ -71,6 +71,7 @@ class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.Any
       .runWith(BroadcastHub.sink(bufferSize = 1))(
         graph.materializer
       )
+      .named("skip-optimizing-query-hub")
   }
   private var queryHub: Source[QueryContext, NotUsed] = startQuery()
 

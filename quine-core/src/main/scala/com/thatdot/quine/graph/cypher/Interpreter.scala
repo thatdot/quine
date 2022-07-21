@@ -1189,6 +1189,7 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
 
     query.procedure
       .call(context, query.arguments.map(_.eval(context)), this)(parameters, cypherProcessTimeout)
+      .named(s"cypher-procedure-${query.procedure.name}")
       .map(makeResultRow)
   }
 

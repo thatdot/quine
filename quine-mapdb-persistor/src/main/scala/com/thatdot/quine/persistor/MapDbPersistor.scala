@@ -197,6 +197,7 @@ final class MapDbPersistor(
             List(qid)
           }
       }
+      .named("mapdb-all-node-scan-via-journals")
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
@@ -211,6 +212,7 @@ final class MapDbPersistor(
             List(qid)
           }
       }
+      .named("mapdb-all-node-scan-via-snapshots")
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] =
     Future {

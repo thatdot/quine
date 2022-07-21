@@ -17,15 +17,15 @@ import com.thatdot.quine.persistor.WrappedPersistorException
   *
   * @param query               the compiled Cypher query to run at least once
   * @param cypherParameterName the name of the Cypher parameter left free for values in [[query]]
-  * @param queryKind           hint about what kind of query is being executed -- used for error messages. For example,
-  *                            "streamed ingest", or, "Standing Query output"
+  * @param debugName           a name attributed to this specific AtLeastOnceCypherQuery for use in debug logging.
+  *                            For example, "ingest-stream-wikipediaAuthorsIngest"
   * @param startupRetryDelay   how long to wait before retrying a failed query when the failure occurred before the
   *                            query interpreter started
   */
 final case class AtLeastOnceCypherQuery(
   query: cypher.CompiledQuery,
   cypherParameterName: String,
-  queryKind: String = "",
+  debugName: String = "unnamed",
   startupRetryDelay: FiniteDuration = 100.millis
 ) extends LazyLogging {
 
@@ -61,14 +61,14 @@ final case class AtLeastOnceCypherQuery(
         attempts = -1, // retry forever, relying on the relayAsk (used in the Cypher interpreter) to slow down attempts
         { case RetriableQueryFailure(e) =>
           logger.debug(
-            s"""Suppressed ${e.getClass.getSimpleName} during execution of $queryKind query, retrying now.
+            s"""Suppressed ${e.getClass.getSimpleName} during execution of query: $debugName, retrying now.
                |Ingested item: $value. Query: "${query.queryText}". Suppressed exception:
                |${e.getMessage}"""".stripMargin.replace('\n', ' ')
           )
           bestEffortSource
         }
       )
-  }
+  }.named(s"at-least-once-cypher-query-$debugName")
 }
 object AtLeastOnceCypherQuery {
 

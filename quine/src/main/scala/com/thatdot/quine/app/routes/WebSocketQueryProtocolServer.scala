@@ -285,5 +285,6 @@ trait WebSocketQueryProtocolServer
         }
     }
 
-  final val queryProtocolWS: Route = query.directive(_ => handleWebSocketMessages(queryProtocol))
+  final val queryProtocolWS: Route =
+    query.directive(_ => handleWebSocketMessages(queryProtocol.named("ui-query-protocol-websocket")))
 }

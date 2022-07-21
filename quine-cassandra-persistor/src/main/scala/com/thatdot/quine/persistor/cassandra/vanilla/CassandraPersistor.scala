@@ -238,7 +238,7 @@ abstract class CassandraTable(session: CqlSession) {
     materializer: Materializer,
     cbf: Factory[A, C with immutable.Iterable[_]]
   ): Future[C] =
-    executeSource(statement).map(rowFn).runWith(Sink.collection)
+    executeSource(statement).map(rowFn).named("cassandra-select-query").runWith(Sink.collection)
 
   /** Same as {{{executeSelect}}}, just with a {{{CassandraColumn.get}}} as the {{{rowFn}}}
     *
@@ -318,7 +318,7 @@ class Journals(
   def nonEmpty(): Future[Boolean] = yieldsResults(Journals.arbitraryRowStatement)
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
-    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get)
+    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 
   def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     executeFuture(
@@ -656,7 +656,7 @@ class Snapshots(
     )
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
-    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get)
+    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 }
 
 trait StandingQueriesColumnNames {
@@ -896,14 +896,17 @@ class StandingQueryStates(
 
   def removeStandingQuery(standingQuery: StandingQueryId): Future[Unit] =
     executeSource(getIdsForStandingQueryStatement.bindColumns(standingQueryIdColumn.set(standingQuery)))
+      .named("cassandra-get-standing-query-ids")
       .runWith(
-        Sink.foreachAsync(16) { row =>
-          val deleteStatement = removeStandingQueryStatement.bindColumns(
-            quineIdColumn.set(quineIdColumn.get(row)),
-            standingQueryIdColumn.set(standingQuery)
-          )
-          executeFuture(deleteStatement)
-        }
+        Sink
+          .foreachAsync[ReactiveRow](16) { row =>
+            val deleteStatement = removeStandingQueryStatement.bindColumns(
+              quineIdColumn.set(quineIdColumn.get(row)),
+              standingQueryIdColumn.set(standingQuery)
+            )
+            executeFuture(deleteStatement)
+          }
+          .named("cassandra-remove-standing-queries")
       )
       .map(_ => ())(ExecutionContexts.parasitic)
 }
@@ -989,6 +992,7 @@ class MetaData(
   def getMetaData(key: String): Future[Option[Array[Byte]]] =
     executeSource(selectSingleStatement.bindColumns(keyColumn.set(key)))
       .map(row => valueColumn.get(row))
+      .named(s"cassandra-get-metadata-$key")
       .runWith(Sink.headOption)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] =

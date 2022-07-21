@@ -17,13 +17,26 @@ class MasterStream(mat: Materializer) extends LazyLogging {
   def addNodeSleepSrc(src: NodeSleepSrcType): UniqueKillSwitch = nodeSleepHub.runWith(src)(mat)
   def addPersistorSrc(src: PersistorSrcType): UniqueKillSwitch = persistorHub.runWith(src)(mat)
 
-  private val (ingestHub, ingestSource) = MergeHub.source[IngestSrcExecToken].preMaterialize()(mat)
-  private val (sqResultsHub, sqResultsSource) = MergeHub.source[SqResultsExecToken].preMaterialize()(mat)
-  private val (nodeSleepHub, nodeSleepSource) = MergeHub.source[NodeSleepExecToken].preMaterialize()(mat)
-  private val (persistorHub, persistorSource) = MergeHub.source[PersistorExecToken].preMaterialize()(mat)
+  private val (ingestHub, ingestSource) = MergeHub
+    .source[IngestSrcExecToken]
+    .mapMaterializedValue(_.named("master-stream-ingest-mergehub"))
+    .preMaterialize()(mat)
+  private val (sqResultsHub, sqResultsSource) = MergeHub
+    .source[SqResultsExecToken]
+    .mapMaterializedValue(_.named("master-stream-sq-results-mergehub"))
+    .preMaterialize()(mat)
+  private val (nodeSleepHub, nodeSleepSource) = MergeHub
+    .source[NodeSleepExecToken]
+    .mapMaterializedValue(_.named("master-stream-node-sleeps-mergehub"))
+    .preMaterialize()(mat)
+  private val (persistorHub, persistorSource) = MergeHub
+    .source[PersistorExecToken]
+    .mapMaterializedValue(_.named("master-stream-persistor-mergehub"))
+    .preMaterialize()(mat)
   private val preferNewHubOverUpstream = false // Akka docs are misleading. `false` gives the desired merge preference.
 
-  val loggingSink: Sink[ExecutionToken, Future[Done]] = Sink.foreach[ExecutionToken](x => logger.trace(x.name))
+  val loggingSink: Sink[ExecutionToken, Future[Done]] =
+    Sink.foreach[ExecutionToken](x => logger.trace(x.name)).named("master-stream-logging-sink")
 
   Source
     .repeat(IdleToken)

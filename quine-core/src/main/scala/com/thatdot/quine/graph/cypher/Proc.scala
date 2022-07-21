@@ -18,6 +18,8 @@ import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
   */
 sealed abstract class Proc {
 
+  def name: String
+
   /** Output columns of the procedure */
   def outputColumns: Columns.Specified
 

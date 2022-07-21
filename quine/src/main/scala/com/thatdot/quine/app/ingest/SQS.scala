@@ -56,7 +56,11 @@ case object SQS extends LazyLogging {
     ): Flow[(Option[format.Deserialized], MessageAction), format.Deserialized, NotUsed] =
       if (deleteReadMessages)
         Flow[(Option[format.Deserialized], MessageAction)]
-          .alsoTo(SqsAckSink(queueURL).contramap(_._2))
+          .alsoTo(
+            SqsAckSink(queueURL)
+              .contramap[(Option[format.Deserialized], MessageAction)](_._2)
+              .named("sqs-ack-sink")
+          )
           .collect { case (Some(deserialized), _) => deserialized }
       else
         Flow[(Option[format.Deserialized], MessageAction)]

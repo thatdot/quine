@@ -65,7 +65,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
 
   // TODO: think about error handling of failed compilation
   val compiled: cypher.CompiledQuery = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
-  lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "streamed ingest")
+  lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "ingest-query")
 
   if (!compiled.query.isIdempotent) {
     // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted

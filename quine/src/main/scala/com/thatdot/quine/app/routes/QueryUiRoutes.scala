@@ -320,6 +320,7 @@ trait QueryUiRoutesImpl
       catchGremlinException {
         queryGremlinGeneric(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -327,6 +328,7 @@ trait QueryUiRoutesImpl
       catchGremlinException {
         queryGremlinNodes(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-node-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -334,6 +336,7 @@ trait QueryUiRoutesImpl
       catchGremlinException {
         queryGremlinEdges(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-edge-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     }
@@ -356,6 +359,7 @@ trait QueryUiRoutesImpl
         val (columns, results, isReadOnly, _) = queryCypherGeneric(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
           .map(CypherQueryResult(columns, _))(graph.shardDispatcherEC)
       }
@@ -365,6 +369,7 @@ trait QueryUiRoutesImpl
         val (results, isReadOnly, _) = queryCypherNodes(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -373,6 +378,7 @@ trait QueryUiRoutesImpl
         val (results, isReadOnly, _) = queryCypherEdges(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     }

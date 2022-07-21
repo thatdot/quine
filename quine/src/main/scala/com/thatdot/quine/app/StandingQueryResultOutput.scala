@@ -129,7 +129,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
         serialized(name, format, graph)
           .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
-          .via(KafkaProducer.flexiFlow(settings))
+          .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))
           .map(_ => execToken)
 
       case WriteToKinesis(
@@ -171,7 +171,7 @@ object StandingQueryResultOutput extends LazyLogging {
             KinesisFlow(
               streamName,
               settings
-            )(kinesisAsyncClient)
+            )(kinesisAsyncClient).named(s"sq-output-kinesis-producer-for-$name")
           )
           .map(_ => execToken)
 
@@ -192,7 +192,7 @@ object StandingQueryResultOutput extends LazyLogging {
         // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
         Flow[StandingQueryResult]
           .map(result => result.toJson(graph.idProvider).toString + "\n")
-          .viaMat(SnsPublisher.flow(topic)(awsSnsClient))(Keep.right)
+          .viaMat(SnsPublisher.flow(topic)(awsSnsClient).named(s"sq-output-sns-producer-for-$name"))(Keep.right)
           .map(_ => execToken)
 
       case PrintToStandardOut(logLevel, logMode) =>
@@ -219,10 +219,12 @@ object StandingQueryResultOutput extends LazyLogging {
         Flow[StandingQueryResult]
           .map(result => ByteString(result.toJson(graph.idProvider).toString + "\n"))
           .alsoTo(
-            FileIO.toPath(
-              Paths.get(path),
-              Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-            )
+            FileIO
+              .toPath(
+                Paths.get(path),
+                Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              )
+              .named(s"sq-output-file-writer-for-$name")
           )
           .map(_ => execToken)
 
@@ -301,7 +303,7 @@ object StandingQueryResultOutput extends LazyLogging {
         }
 
         val andThenFlow: Flow[(StandingQueryResult.Meta, cypher.QueryContext), SqResultsExecToken, NotUsed] =
-          andThen match {
+          (andThen match {
             case None =>
               Flow[(StandingQueryResult.Meta, cypher.QueryContext)]
                 .statefulMapConcat { () =>
@@ -341,10 +343,10 @@ object StandingQueryResultOutput extends LazyLogging {
                   StandingQueryResult(meta, newData)
                 }
                 .via(resultHandlingFlow(name, thenOutput, graph))
-          }
+          }).named(s"sq-output-andthen-for-$name")
 
         lazy val atLeastOnceCypherQuery =
-          AtLeastOnceCypherQuery(compiledQuery, parameter, "Standing Query output")
+          AtLeastOnceCypherQuery(compiledQuery, parameter, s"sq-output-action-query-for-$name")
 
         Flow[StandingQueryResult]
           .flatMapMerge(
@@ -365,9 +367,9 @@ object StandingQueryResultOutput extends LazyLogging {
           )
           .via(andThenFlow)
     }
-  }
+  }.named(s"sq-output-${name}")
 
-  private def serialized[IdType](
+  private def serialized(
     name: String,
     format: OutputFormat,
     graph: BaseGraph

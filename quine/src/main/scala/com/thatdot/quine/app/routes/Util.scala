@@ -32,6 +32,7 @@ object Util {
           // akka defaults to 20sec, firefox's default http request timeout is 15sec
           // most importantly, this keeps reverse proxies from dropping the keepalive connection over http/1.1
           .keepAlive(10.seconds, () => ServerSentEvent.heartbeat)
+          .named("sse-server-flow")
       }
     }
 
