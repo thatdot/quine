@@ -48,7 +48,3 @@ To use MapDB, set the following configuration setting:
 @link:[Apache Cassandra](https://cassandra.apache.org/-/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an ideal data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
 
 See the @ref:[Cassandra Setup](cassandra-setup.md) page for details on setting up and using Cassandra with Quine.
-
-### AWS S3
-
-@link:[AWS S3](https://aws.amazon.com/s3/){ open=new } is a cloud object store. Is it possible to use S3 as a persistor for some configurations of Quine. S3 has some particular limitations in speed, latency, and object structure which do not make it suitable to store data with the traditional event-sourcing strategy. However, Quine can be configured to operate the graph with a strategy to save only complete snapshots to the persistor. This "snapshot-only" mode works with S3, but carries the risk that data is not stored durably until a node is expired out the in-memory cache (which depends on many internal factors). Because of these limitations, S3 support is considered experimental at this time.
