@@ -16,6 +16,7 @@ PROJECT_LEVEL_INCLUDE = [
     "plugins.sbt",
     "QuineSettings.scala",
     "ScalaFix.scala",
+    "Ecr.scala"
 ]
 
 PUSH_INCLUDE = [
