@@ -10,15 +10,17 @@ import scala.concurrent.duration._
 object Docker extends AutoPlugin {
 
   override def requires = AssemblyPlugin && DockerPlugin
-  override def trigger = noTrigger
+  override def trigger = allRequirements
 
   object autoImport {
     // See https://github.com/marcuslonnberg/sbt-docker#pushing-an-image
     val dockerTags = SettingKey[Seq[String]]("docker-tags", "The tag names to push the docker image under")
+    val dockerVolume = SettingKey[File]("docker-volume", "Path to where the app should save its data")
   }
-  import autoImport.dockerTags
+  import autoImport._
   override lazy val projectSettings = Seq(
-    dockerTags := Seq(version.value, "latest"),
+    dockerVolume := file("/var/quine"),
+    dockerTags := sys.props.get("docker.tag").fold(Seq(version.value.replace("+", "-"), "latest"))(Seq(_)),
     docker / imageNames := dockerTags.value.map(t =>
       ImageName(namespace = Some("thatdot"), repository = name.value, tag = Some(t))
     ),
@@ -28,14 +30,16 @@ object Docker extends AutoPlugin {
       new Dockerfile {
         /* Our public mirror of this docker image from docker hub to avoid:
          * "toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit"
-         * To update this copy:
-             docker pull adoptopenjdk:16-jre-openj9-focal
-             aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/p0a2o6c9
-             docker tag adoptopenjdk:16-jre-openj9-focal public.ecr.aws/p0a2o6c9/adoptopenjdk:16-jre-openj9-focal
-             docker push public.ecr.aws/p0a2o6c9/adoptopenjdk:16-jre-openj9-focal
+         * Published by docker/alpine_jvm/publish.sh in our opstools repo to https://us-west-2.console.aws.amazon.com/ecr/repositories/public/507566592123/eclipse-temurin
          */
-        from("public.ecr.aws/p0a2o6c9/adoptopenjdk:16.0.1_9-jre-hotspot-focal")
-
+        from(
+          ImageName(
+            registry = Some("public.ecr.aws"),
+            namespace = Some("p0a2o6c9"),
+            repository = "eclipse-temurin",
+            tag = Some("18.0.1_10-jre-alpine-curl-libstdcpp")
+          )
+        )
         expose(8080)
         healthCheckShell(
           "curl --silent --fail http://localhost:8080/api/v1/admin/liveness || exit 1".split(' '),
@@ -43,8 +47,8 @@ object Docker extends AutoPlugin {
           timeout = Some(2.seconds),
           startPeriod = Some(5.seconds)
         )
-        env("DATA_DIR", "/var/thatdot")
-        volume("$DATA_DIR")
+        env("QUINE_DATA", dockerVolume.value.getPath)
+        volume("$QUINE_DATA")
         entryPoint(
           "java",
           "-XX:+AlwaysPreTouch",
@@ -54,7 +58,7 @@ object Docker extends AutoPlugin {
           "-jar",
           jarPath
         )
-        add(jar, jarPath)
+        copy(jar, jarPath)
       }
     }
   )
