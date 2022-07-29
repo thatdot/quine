@@ -81,9 +81,9 @@ Quine recipes are a great way to get started developing with Quine. A recipe is 
 
 Recipes are built from components including:
 
-* [Ingest Streams](../components/ingest-sources/ingest-sources.md) to read streaming data from sources and update graph data
-* [Standing Queries](../components/standing-query-outputs.md) to transform graph data, and to produce aggregates and other outputs
-* [Cypher expressions](../reference/cypher/cypher-language.md) to implement graph operations such as querying and updating data
+* [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html) to read streaming data from sources and update graph data
+* [Standing Queries](https://docs.quine.io/components/standing-query-outputs.html) to transform graph data, and to produce aggregates and other outputs
+* [Cypher expressions](https://docs.quine.io/reference/cypher/cypher-language.html) to implement graph operations such as querying and updating data
 * UI configuration to specialize the web user interface for the use-case that is the subject of the Recipe
 
 Please see [Quine’s Recipe repository](https://quine.io/recipes) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
