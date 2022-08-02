@@ -3,17 +3,20 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/thatdot/quine)](https://hub.docker.com/r/thatdot/quine)
 [![slack](https://img.shields.io/badge/slack-Quine-brightgreen.svg?logo=slack)](https://that.re/quine-slack)
 
-
 <div style="padding-top: 10px;">
   <div style="vertical-align:middle;">
-    <img width="200" align="left" src="https://docs.quine.io/assets/images/quine_logo.svg">
+    <img width="200" height="100%" align="right" src="https://docs.quine.io/assets/images/quine_logo.svg">
   </div>
   <div style="vertical-align:middle;">
     <p>Quine is a streaming graph interpreter, a server-side program that consumes data, builds it into a graph structure, and runs live computation on that graph to answer questions or compute results, and then stream them out.
   </div>
 </div>
 
-Three design choices define Quine, setting it apart from all event stream processing systems: a graph-structured data model, an asynchronous actor-based graph computational model, and standing queries.
+Three design choices define Quine, setting it apart from all event stream processing systems:
+
+1. A graph-structured data model
+2. An asynchronous actor-based graph computational model
+3. Standing queries
 
 Standing queries live inside the graph and automatically propagate the incremental results computed from both historical data and new streaming data. Once matches are found, standing queries trigger actions using those results (e.g., execute code, transform other data in the graph, publish data to another system like Apache Kafka or Kinesis).
 
@@ -27,6 +30,8 @@ All together, Quine can:
 * Trigger arbitrary computation on the event of each match
 
 This collection of capabilities is profoundly powerful! It represents a complete system for stateful event-driven arbitrary computation in a platform scalable to any size of data or desired throughput.
+
+Read the docs at [docs.quine.io](https://docs.quine.io) to learn more.  
 
 ## Building from source
 
@@ -67,24 +72,32 @@ Usage: quine [options]
   -v, --version            print Quine program version
 ```
 
-Or via docker:
+For example, to run the [Wikipedia page ingest](https://quine.io/recipes/wikipedia-page-ingest) getting started recipe:
+
+```shell
+❯ java -jar quine-x.x.x.jar -r wikipedia
+ ```
 
 With Docker installed, run Quine from Docker Hub.
 ```shell
 ❯ docker run -p 8080:8080 thatdot/quine
 ```
-
+The [quick start](https://docs.quine.io/getting-started/quick-start.html) guide will get you up and running the first time, ingesting data, and submitting your first query.
 
 ## Quine Recipes
 
-Quine recipes are a great way to get started developing with Quine. A recipe is a document that contains all the information necessary for Quine to execute any batch or streaming data processing task. 
+Quine recipes are a great way to get started developing with Quine. A recipe is a document that contains all the information necessary for Quine to execute any data processing task. Ingest data from batch sources like `.json` or `.csv` files hosted locally, or connect streaming data from Kafka or Kinesis. 
 
-Recipes are built from components including:
+[Recipes](https://docs.quine.io/core-concepts/about-recipes.html) are `yaml` documents containing components including:
 
 * [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html) to read streaming data from sources and update graph data
 * [Standing Queries](https://docs.quine.io/components/standing-query-outputs.html) to transform graph data, and to produce aggregates and other outputs
-* [Cypher expressions](https://docs.quine.io/reference/cypher/cypher-language.html) to implement graph operations such as querying and updating data
 * UI configuration to specialize the web user interface for the use-case that is the subject of the Recipe
 
 Please see [Quine’s Recipe repository](https://quine.io/recipes) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
 
+## Contributing to Quine
+
+The community is the heart of all open-source projects. We welcome contributions from all people and strive to build a welcoming and open community of contributors, users, participants, speakers, and lurkers. Everyone is welcome.
+
+More information is included in our [contribution](https://github.com/thatdot/quine/blob/main/CONTRIBUTING.md) guidelines. 
