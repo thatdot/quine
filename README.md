@@ -39,6 +39,7 @@ In order to build Quine locally, you'll need to have the following installed:
 
   * A recent version of the Java Development Kit (11 or newer)
   * The [`sbt` build tool](https://www.scala-sbt.org/download.html)
+  * Yarn 0.22.0+ (for frontend components of `quine-browser` subproject)
 
 Then:
 
