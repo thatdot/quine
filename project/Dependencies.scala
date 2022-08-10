@@ -1,6 +1,6 @@
 object Dependencies {
 
-  val quineAppV = "1.3.1+n"
+  val quineAppV = "1.3.2"
 
   val akkaHttpV = "10.2.9"
   val akkaStreamContribV = "0.11"
