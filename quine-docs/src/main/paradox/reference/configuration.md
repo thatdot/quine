@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph configuration documentation
+---
 # Configuration
 
 Configuration is supported by @link:[Typesafe Config](https://github.com/lightbend/config){ open=new }, enabling

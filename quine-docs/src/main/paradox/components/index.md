@@ -1,3 +1,6 @@
+---
+description: General Quine streaming graph component information
+---
 # Components
 
 Once that you feel comfortable with the basics of Quine, these articles will deepen your understanding of how to take advantage of a streaming graph inside your streaming system. 

@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph Cypher functions list
+---
 # Cypher Functions
 
 ## Built-In Cypher Functions

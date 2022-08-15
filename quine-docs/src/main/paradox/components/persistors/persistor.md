@@ -1,3 +1,6 @@
+---
+description: Quine leverages a persistent data store to offload inactive graph nodes for performance
+---
 # Persistors
 
 @@@index

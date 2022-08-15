@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph ingest events from a Kinesis source
+---
 # AWS Kinesis Support
 
 ## Reading Records from Kinesis

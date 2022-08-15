@@ -1,3 +1,6 @@
+---
+description: Quine's built in Cypher procedure to facilitate the instantiation (reification) of a graph of nodes representing time
+---
 # Time Reification
 
 `reify.time` is a Cypher procedure included with Quine. Its purpose is to facilitate the instantiation (reification) of a graph of nodes representing time. `reify.time` is provided with a timestamp (current wall clock time as the default), and it returns the nodes that represent the passed-in time. `reify.time` does this by determining which nodes must exist, and either reading them from the graph or creating them as necessary. Additionally, `reify.time` relates the nodes it makes to each other and other nodes previously created by this function.

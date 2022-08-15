@@ -1,3 +1,6 @@
+---
+description: Learn how to write a Quine streaming graph recipe
+---
 # Writing a Recipe
 
 In this walk-through we build a simple Recipe to analyze Apache web server logs.

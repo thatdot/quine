@@ -1,5 +1,6 @@
 ---
 layout: page-no-nav
+description: Learn the origins of the Quine streaming graph project and its nod to namesake, philosopher and logician W.V.O. Quine
 ---
 
 # About Quine

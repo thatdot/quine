@@ -1,3 +1,6 @@
+---
+description: A standing query matches some graph structure incrementally while new data is written in to the graph
+---
 # Standing Queries
 
 @@@ index

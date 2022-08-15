@@ -1,3 +1,6 @@
+---
+description: Cypher language list for Quine streaming graph
+---
 # Cypher Language
 
 @@@index

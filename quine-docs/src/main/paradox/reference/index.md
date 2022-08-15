@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph technical reference documentation
+---
 # Reference
 
 This section contains the reference documentation for Quine. These documents are written in a direct style intended for developers that already have a good grasp on how Quine works.

@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph Glossary of key terms and concepts
+---
 # Glossary
 
 <!--

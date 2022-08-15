@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph ingest events from a Kafka source
+---
 # Apache Kafka
 
 ## Reading Records from Kafka

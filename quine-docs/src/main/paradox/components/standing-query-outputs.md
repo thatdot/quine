@@ -1,3 +1,6 @@
+---
+description: Each Quine standing query can emit events to any number of destinations
+---
 # Standing Query Outputs
 
 Each standing query can have any number of destinations to which `StandingQueryResults` will be routed. 

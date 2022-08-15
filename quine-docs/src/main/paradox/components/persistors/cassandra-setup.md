@@ -1,3 +1,6 @@
+---
+description: How to configure Cassandra as a persistent data store for Quine
+---
 # Cassandra Persistor Deployment
 
 ## Introduction

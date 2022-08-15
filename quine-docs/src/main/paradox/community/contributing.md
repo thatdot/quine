@@ -1,3 +1,6 @@
+---
+description: Requirements and suggestions for contributing to the Quine open source project
+---
 # Contributing
 
 The community is the heart of all open-source projects. We welcome contributions from all people and strive to build a welcoming and open community of contributors, users, participants, speakers, lurkers, and anyone else who comes by.

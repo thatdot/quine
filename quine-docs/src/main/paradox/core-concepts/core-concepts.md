@@ -1,3 +1,6 @@
+---
+description: Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data
+---
 # Main Concepts
 
 ## Graph Model for Data and Computation

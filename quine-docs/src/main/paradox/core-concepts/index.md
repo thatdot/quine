@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph core concepts
+---
 # Concepts
 
 Welcome. If you're new to Quine, or just want a refresher on the fundamentals, you've come to the right place. These docs introduce you to the concepts behind Quine's and its architecture. 

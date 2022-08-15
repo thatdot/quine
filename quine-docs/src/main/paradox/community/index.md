@@ -1,3 +1,6 @@
+---
+description: Welcome to the Quine streaming graph Community
+---
 # Community
 
 Quine is open source and is better because of contributions from developers like you. The articles in this section describe how you can join the community and participate in building something new and unique.

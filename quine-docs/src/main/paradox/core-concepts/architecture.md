@@ -1,3 +1,6 @@
+---
+description: Quine’s unique design combines the graph data model of a property graph with a graph computational model implemented with actors
+---
 # Architecture
 
 ## System Components

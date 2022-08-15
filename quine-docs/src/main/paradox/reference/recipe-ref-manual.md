@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph recipe definition reference
+---
 # Recipe Reference
 
 A Recipe is a document that contains all the information necessary for Quine to execute any batch or streaming data processing task.

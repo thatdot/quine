@@ -1,3 +1,6 @@
+---
+description: Quine is built for real-time operations on infinite datasets
+---
 # Querying Infinite Data
 
 How do you query an infinite amount of data? Quine is built for real-time operations on infinite datasets. That calls for a slightly different approach to data analysis.

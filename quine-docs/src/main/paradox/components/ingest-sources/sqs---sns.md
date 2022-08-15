@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph ingest events from Amazon SNS and SQS
+---
 # AWS SNS and SQS Support
 
 AWS SNS (Simple Notification Service) acts as a broadcast hub for notifications that can be delivered over multiple channels such as texting (SMS), email, or programmatic queues. AWS SQS (Simple Queue Service) is one such programmatic queue, which can act as a recipient for SNS messages or be used as a standalone message queuing service. Quine can interact with SNS and SQS by publishing Standing Query results to an SNS topic, or by reading messages (records) from an SQS queue.

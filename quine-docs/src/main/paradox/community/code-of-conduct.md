@@ -1,3 +1,6 @@
+---
+description: The code of conduct and expectations for developers interacting within the Quine Community
+---
 # Code of Conduct
 
 ## Code of Conduct for the Quine Community

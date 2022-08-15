@@ -1,3 +1,6 @@
+---
+description: Quine streaming graph ingest events from files and named pipes
+---
 # Files and Named Pipes
 
 Files are a stream of data. It's easy to think of a file as a singular chunk, but on disk it is a linear sequence of bits. Reading data from a file is the process of starting at the beginning, and reading each bit in sequence, until you reach the end. Programs usually do this under the hood and deliver a single result when finished, but that data can be handled by a program before the end of file is reached. Reading a file until a particular sequence is found (the "delimiter") will yield a sequence of bytes which can be handled as a single event. This is how data is streamed into Quine from a file—making it a very natural and convenient way to load data into Quine.

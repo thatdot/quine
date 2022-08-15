@@ -1,3 +1,7 @@
+---
+title: Quine Docs Portal
+description: Quine transforms high volume generic event streams into actionable real-time priority events 
+---
 # Quine
 
 Quine is a streaming graph interpreter. It's a server-side program which consumes data, builds it into a graph structure, and runs live computation on that graph to answer questions or compute results, and then stream them out. 

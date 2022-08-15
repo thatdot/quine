@@ -1,3 +1,6 @@
+---
+description: A recipe is a document that contains all the information necessary for Quine to execute any streaming task
+---
 # Recipes
 
 ## What is a Recipe

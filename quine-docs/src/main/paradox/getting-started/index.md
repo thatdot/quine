@@ -1,3 +1,6 @@
+---
+description: Get started using Quine streaming graph
+---
 # Getting Started
 
 The articles in this section walk you through how to install Quine, connect an ingest stream to your pipeline, inspect your data using the exploration UI, and develop business logic using a standing query. 

@@ -1,3 +1,6 @@
+---
+description: Quine has special considerations when an ingest query returns multiple values
+---
 # Experimental `MultipleValues` mode
 
 @@@ warning

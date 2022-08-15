@@ -1,3 +1,6 @@
+---
+description: Quine can ingest events from multiple streaming sources and data providers
+---
 # Data Ingest
 
 @@@index

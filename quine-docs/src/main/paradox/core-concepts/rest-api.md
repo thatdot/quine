@@ -1,3 +1,6 @@
+---
+description: How to interact with the REST API documentation built into Quine
+---
 # REST API
 
 The REST API documentation is served by the Quine web server at `/docs` and lists out all of the endpoints, how to call them, and some inline descriptions of what they do. The UI even makes it possible to interactively try out endpoints by filling in text fields and clicking buttons.

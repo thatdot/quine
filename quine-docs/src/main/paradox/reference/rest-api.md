@@ -1,6 +1,7 @@
 ---
 layout: page-no-nav
 page.title: Quine2
+description: Quine interactive built in REST API documentation
 ---
 <!-- # REST API -->
 <elements-api 

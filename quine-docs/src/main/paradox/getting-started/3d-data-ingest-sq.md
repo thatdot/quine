@@ -1,3 +1,6 @@
+---
+description: Learn to draw connections, define new levels, and drill down for answers in an event stream
+---
 # 3D Data Ingest Tutorial
 
 Finding complex patterns in streaming data requires creating new data elements to represent new types, composite values, judgements, or metrics. As new data streams in, these patterns are recognized immediately by Standing Queries and used to create more meaningful data elements tied to their underlying original data. The result is:

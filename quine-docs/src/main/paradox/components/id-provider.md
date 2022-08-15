@@ -1,3 +1,6 @@
+---
+description: Quine supports many ID providers but prefers the built in idFrom() that assumes all nodes exist
+---
 # ID Providers
 
 Each node in Quine's graph is defined by its ID—referred to internally as `QuineId`. The ID itself is fundamentally an uninterpreted sequence of bytes, but using each ID is mediated by a class of objects referred to as `IdProviders`. ID providers make working with IDs more convenient and allow for multiple types to be used or migration from one type to another.
