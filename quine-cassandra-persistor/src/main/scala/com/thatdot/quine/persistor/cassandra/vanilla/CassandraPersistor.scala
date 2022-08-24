@@ -300,6 +300,8 @@ trait JournalColumnNames {
 
 class Journals(
   session: CqlSession,
+  insertTimeout: FiniteDuration,
+  writeConsistency: ConsistencyLevel,
   selectAllQuineIds: PreparedStatement,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
@@ -322,16 +324,19 @@ class Journals(
 
   def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     executeFuture(
-      BatchStatement.newInstance(
-        DefaultBatchType.UNLOGGED,
-        events map { case NodeChangeEvent.WithTime(event, atTime) =>
-          insert.bindColumns(
-            quineIdColumn.set(id),
-            timestampColumn.set(atTime),
-            dataColumn.set(event)
-          )
-        }: _*
-      )
+      BatchStatement
+        .newInstance(
+          DefaultBatchType.UNLOGGED,
+          events map { case NodeChangeEvent.WithTime(event, atTime) =>
+            insert.bindColumns(
+              quineIdColumn.set(id),
+              timestampColumn.set(atTime),
+              dataColumn.set(event)
+            )
+          }: _*
+        )
+        .setTimeout(insertTimeout.toJava)
+        .setConsistencyLevel(writeConsistency)
     )
 
   def getJournalWithTime(
@@ -514,7 +519,7 @@ object Journals extends TableDefinition with JournalColumnNames {
             .setConsistencyLevel(readConsistency)
         ),
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new Journals(session, _, _, _, _, _, _, _, _, _, _))
+      ).mapN(new Journals(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }
