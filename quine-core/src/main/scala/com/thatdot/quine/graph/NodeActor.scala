@@ -593,6 +593,9 @@ private[graph] class NodeActor(
       }(context.dispatcher)
   }
 
+  def getNodeHashCode(): GraphNodeHashCode =
+    GraphNodeHashCode(qid, properties, edges.toSet)
+
   def getSqState(): SqStateResults =
     SqStateResults(
       subscribers.subscribersToThisNode.toList.flatMap { case ((dgb, _), subs) =>

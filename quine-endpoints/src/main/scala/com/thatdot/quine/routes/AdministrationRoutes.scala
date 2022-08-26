@@ -68,6 +68,13 @@ final case class ShardInMemoryLimit(
   @docs("number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int
 )
 
+@title("Graph hash code")
+@unnamed
+final case class GraphHashCode(
+  @docs("Hash value derived from the state of the graph (nodes, properties, and edges)") value: Long,
+  @docs("Time value used to derive the graph hash code") atTime: Long
+)
+
 trait AdministrationRoutes
     extends endpoints4s.algebra.Endpoints
     with endpoints4s.algebra.JsonEntitiesFromSchemas
@@ -96,6 +103,9 @@ trait AdministrationRoutes
 
   implicit final lazy val shardInMemoryLimitSchema: JsonSchema[ShardInMemoryLimit] =
     genericRecord[ShardInMemoryLimit]
+
+  implicit final lazy val graphHashCodeSchema: JsonSchema[GraphHashCode] =
+    genericJsonSchema[GraphHashCode]
 
   private val api = path / "api" / "v1"
   protected val admin: Path[Unit] = api / "admin"
@@ -251,6 +261,15 @@ trait AdministrationRoutes
       response = accepted(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("request node sleep"))
+        .withTags(List(adminTag))
+    )
+
+  final val graphHashCode: Endpoint[AtTime, GraphHashCode] =
+    endpoint(
+      request = get(admin / "graph-hash-code" /? atTime),
+      response = ok(jsonResponse[GraphHashCode]),
+      docs = EndpointDocs()
+        .withSummary(Some("request graph hash code"))
         .withTags(List(adminTag))
     )
 }

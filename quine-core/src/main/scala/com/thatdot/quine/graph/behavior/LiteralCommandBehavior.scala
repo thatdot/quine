@@ -21,6 +21,8 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
 
   def debugNodeInternalState(): Future[NodeInternalState]
 
+  def getNodeHashCode(): GraphNodeHashCode
+
   def getSqState(): SqStateResults
 
   protected def literalCommandBehavior(command: LiteralCommand): Unit = command match {
@@ -103,6 +105,8 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
     case s @ SetLabels(labels, _) => s ?! setLabels(labels)
 
     case l: LogInternalState => l ?! debugNodeInternalState()
+
+    case h: GetNodeHashCode => h ?! getNodeHashCode()
 
     case m @ GetSqState(_) => m ?! getSqState()
   }

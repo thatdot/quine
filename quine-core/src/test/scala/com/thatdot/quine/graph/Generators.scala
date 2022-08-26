@@ -33,4 +33,6 @@ object Generators {
     output
   }
 
+  def generate1[A](size: Int, seed: Seed)(implicit arb: Arbitrary[A], ct: ClassTag[A]): A =
+    generateN(n = 1, size = size, seed = seed).apply(0)
 }

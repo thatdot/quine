@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent}
+import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeChangeEvent}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
@@ -90,6 +90,8 @@ object LiteralMessage {
   final case class LogInternalState(replyTo: QuineRef)
       extends LiteralCommand
       with AskableQuineMessage[Future[NodeInternalState]]
+
+  final case class GetNodeHashCode(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[GraphNodeHashCode]
 
   /** Request the current results of the standing query matches on this node. */
   final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]

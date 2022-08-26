@@ -36,6 +36,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     shutdown,
     shardSizes,
     requestNodeSleep,
+    graphHashCode,
     literalGet,
     literalPost,
     literalDelete,

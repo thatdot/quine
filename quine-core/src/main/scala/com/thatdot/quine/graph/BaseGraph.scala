@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import java.util.function.Supplier
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 
@@ -15,6 +16,7 @@ import akka.util.Timeout
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
+import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
 import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
@@ -300,7 +302,7 @@ trait BaseGraph extends StrictLogging {
         val shardId = shardRef.shardId
         val sendMessageToShard = () =>
           updates.get(shardId) match {
-            case None => relayAsk(shardRef.quineRef, ShardMessage.GetInMemoryLimits(_))
+            case None => relayAsk(shardRef.quineRef, ShardMessage.GetInMemoryLimits)
             case Some(newLimit) => relayAsk(shardRef.quineRef, ShardMessage.UpdateInMemoryLimits(newLimit, _))
           }
         remainingAdjustments -= shardId
@@ -333,4 +335,18 @@ trait BaseGraph extends StrictLogging {
   /** Lookup the shard for a node ID.
     */
   def shardFromNode(node: QuineId): ShardRef
+
+  /** Asynchronously compute a hash of the state of all nodes in the graph
+    * at the optionally specified time. Caller should ensure the graph is
+    * sufficiently stable and consistent before calling this function.
+    */
+  def getGraphHashCode(atTime: Option[Milliseconds] = None): Future[Long] =
+    enumerateAllNodeIds()
+      .mapAsyncUnordered(parallelism = 16) { qid =>
+        val timeout = 1 second
+        val resultHandler = implicitly[ResultHandler[GraphNodeHashCode]]
+        val ec = ExecutionContexts.parasitic
+        relayAsk(QuineIdAtTime(qid, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)
+      }
+      .runFold(zero = 0L)((e, f) => e + f)
 }
