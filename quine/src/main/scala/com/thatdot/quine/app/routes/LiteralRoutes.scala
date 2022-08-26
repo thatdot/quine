@@ -43,6 +43,8 @@ trait LiteralRoutesImpl
    * intentional, so as to discourage users from using this outside of debugging)
    */
   lazy val nodeInternalStateSchema: JsonSchema[NodeInternalState] = {
+    implicit val msSchema: JsonSchema[Milliseconds] =
+      genericJsonSchema[Milliseconds]
     implicit val quineValueSchema: JsonSchema[QuineValue] =
       anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toJson)
     implicit val propertyValueSchema: JsonSchema[PropertyValue] =

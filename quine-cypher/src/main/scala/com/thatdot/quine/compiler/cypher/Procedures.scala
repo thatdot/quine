@@ -1,5 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
+import java.time.{Instant, ZoneId, ZonedDateTime}
 import java.util.UUID
 import java.util.concurrent.TimeoutException
 
@@ -473,13 +474,15 @@ object CypherDebugNode extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Anything),
     outputs = Vector(
+      "atTime" -> Type.LocalDateTime,
       "properties" -> Type.Map,
       "edges" -> Type.ListOfAnything,
       "latestUpdateMillisAfterSnapshot" -> Type.Integer,
       "subscribers" -> Type.Str,
       "subscriptions" -> Type.Str,
       "cypherStandingQueryStates" -> Type.ListOfAnything,
-      "journal" -> Type.ListOfAnything
+      "journal" -> Type.ListOfAnything,
+      "graphNodeHashCode" -> Type.Integer
     ),
     description = "Log the internal state of a node"
   )
@@ -530,19 +533,40 @@ object CypherDebugNode extends UserDefinedProcedure {
     Source.lazyFuture { () =>
       graph.literalOps
         .logState(node, location.atTime)
-        .map { (nodeState: NodeInternalState) =>
-          Vector(
-            Expr.Map(nodeState.properties.view.map(kv => kv._1.name -> Expr.Str(kv._2)).toMap),
-            Expr.List(nodeState.edges.view.map(halfEdge2Value).toVector),
-            nodeState.latestUpdateMillisAfterSnapshot match {
-              case None => Expr.Null
-              case Some(eventTime) => Expr.Integer(eventTime.millis)
-            },
-            Expr.Str(nodeState.subscribers.mkString(",")),
-            Expr.Str(nodeState.subscriptions.mkString(",")),
-            Expr.List(nodeState.cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
-            Expr.List(nodeState.journal.map(e => Expr.Str(e.toString)).toVector)
-          )
+        .map {
+          case NodeInternalState(
+                atTime,
+                properties,
+                edges,
+                _,
+                _,
+                latestUpdateMillisAfterSnapshot,
+                subscribers,
+                subscriptions,
+                _,
+                _,
+                cypherStandingQueryStates,
+                journal,
+                graphNodeHashCode
+              ) =>
+            Vector(
+              atTime
+                .map(t =>
+                  Expr.DateTime(ZonedDateTime.ofInstant(Instant.ofEpochMilli(t.millis), ZoneId.systemDefault()))
+                )
+                .getOrElse(Expr.Null),
+              Expr.Map(properties.view.map(kv => kv._1.name -> Expr.Str(kv._2)).toMap),
+              Expr.List(edges.view.map(halfEdge2Value).toVector),
+              latestUpdateMillisAfterSnapshot match {
+                case None => Expr.Null
+                case Some(eventTime) => Expr.Integer(eventTime.millis)
+              },
+              Expr.Str(subscribers.mkString(",")),
+              Expr.Str(subscriptions.mkString(",")),
+              Expr.List(cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
+              Expr.List(journal.map(e => Expr.Str(e.toString)).toVector),
+              Expr.Integer(graphNodeHashCode)
+            )
         }(location.graph.nodeDispatcherEC)
     }
   }

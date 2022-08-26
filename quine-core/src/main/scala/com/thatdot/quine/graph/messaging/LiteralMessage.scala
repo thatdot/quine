@@ -6,7 +6,7 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeChangeEvent}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
   *
@@ -129,6 +129,7 @@ object LiteralMessage {
     * ONLY FOR DEBUGGING!
     */
   final case class NodeInternalState(
+    atTime: Option[Milliseconds],
     properties: Map[Symbol, String],
     edges: Set[HalfEdge],
     forwardTo: Option[QuineId],
@@ -139,7 +140,8 @@ object LiteralMessage {
     sqStateResults: SqStateResults,
     dgbLocalEventIndex: DgbLocalEventIndexSummary,
     cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
-    journal: Set[NodeChangeEvent.WithTime]
+    journal: Set[NodeChangeEvent.WithTime],
+    graphNodeHashCode: Long
   ) extends LiteralMessage
 
   final case class LocallyRegisteredStandingQuery(

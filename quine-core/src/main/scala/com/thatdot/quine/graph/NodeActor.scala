@@ -571,6 +571,7 @@ private[graph] class NodeActor(
       }(context.dispatcher)
       .map { journal =>
         NodeInternalState(
+          atTime,
           properties.view.mapValues(propertyValue2String).toMap,
           edges.toSet,
           forwardTo,
@@ -588,7 +589,8 @@ private[graph] class NodeActor(
               st.toString
             )
           }.toVector,
-          journal.toSet
+          journal.toSet,
+          getNodeHashCode().value
         )
       }(context.dispatcher)
   }
