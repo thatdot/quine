@@ -61,7 +61,8 @@ class GraphService(
         pattern = sq.query,
         outputs = Map.empty,
         queueBackpressureThreshold = sq.queueBackpressureThreshold,
-        queueMaxSize = sq.queueMaxSize
+        queueMaxSize = sq.queueMaxSize,
+        shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode
       )
       logger.info(s"Restored standing query: ${sq.name}")
     })(shardDispatcherEC),

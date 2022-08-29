@@ -30,7 +30,7 @@ import com.thatdot.quine.app.routes.{
 }
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
-import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, RunningStandingQuery, StandingQuery, StandingQueryId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -161,7 +161,7 @@ final class QuineApp(graph: GraphService)
         val sqResultsConsumers = query.outputs.map { case (k, v) =>
           k -> StandingQueryResultOutput.resultHandlingFlow(k, v, graph)
         }
-        val (sq, killSwitches) = graph.createStandingQuery(
+        val (sq: RunningStandingQuery, killSwitches) = graph.createStandingQuery(
           queryName,
           pattern = query.pattern match {
             case StandingQueryPattern.Cypher(cypherQuery, mode) =>
@@ -175,7 +175,8 @@ final class QuineApp(graph: GraphService)
               )
           },
           outputs = sqResultsConsumers,
-          queueBackpressureThreshold = query.inputBufferSize
+          queueBackpressureThreshold = query.inputBufferSize,
+          shouldCalculateResultHashCode = query.shouldCalculateResultHashCode
         )
 
         val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
@@ -554,6 +555,7 @@ object QuineApp {
     }
 
     val meter = metrics.standingQueryResultMeter(internal.name)
+    val outputHashCode = metrics.standingQueryResultHashCode(internal.id)
 
     RegisteredStandingQuery(
       internal.name,
@@ -573,7 +575,8 @@ object QuineApp {
           ),
           startTime,
           MILLIS.between(startTime, Instant.now()),
-          bufferSize
+          bufferSize,
+          outputHashCode.sum
         )
       )
     )

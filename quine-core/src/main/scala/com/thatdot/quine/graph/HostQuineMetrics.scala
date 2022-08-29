@@ -1,5 +1,11 @@
 package com.thatdot.quine.graph
 
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.LongAdder
+
+import scala.collection.concurrent
+import scala.jdk.CollectionConverters._
+
 import com.codahale.metrics.{Counter, Gauge, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
 
 import com.thatdot.quine.util.SharedValve
@@ -61,6 +67,12 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   /** Histogram of size (in bytes) of persisted standing query states */
   def standingQueryStateSize(sqId: StandingQueryId): Histogram =
     metricRegistry.histogram(MetricRegistry.name("standing-queries", "states", sqId.uuid.toString))
+
+  private val standingQueryResultHashCodeRegistry: concurrent.Map[StandingQueryId, LongAdder] =
+    new ConcurrentHashMap[StandingQueryId, LongAdder]().asScala
+
+  def standingQueryResultHashCode(standingQueryId: StandingQueryId): LongAdder =
+    standingQueryResultHashCodeRegistry.getOrElseUpdate(standingQueryId, new LongAdder)
 
   /** Histogram of size (in bytes) of persisted node snapshots */
   val snapshotSize: Histogram =

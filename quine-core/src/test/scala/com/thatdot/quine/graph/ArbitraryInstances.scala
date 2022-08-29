@@ -639,7 +639,7 @@ trait ArbitraryInstances {
   }
 
   implicit val arbStandingQuery: Arbitrary[StandingQuery] = Arbitrary {
-    Gen.resultOf[String, StandingQueryId, StandingQueryPattern, Int, Int, StandingQuery](StandingQuery.apply)
+    Gen.resultOf[String, StandingQueryId, StandingQueryPattern, Int, Int, Boolean, StandingQuery](StandingQuery.apply)
   }
 
   implicit val arbQueryContext: Arbitrary[QueryContext] = Arbitrary {
@@ -698,4 +698,19 @@ trait ArbitraryInstances {
     ](NodeSnapshot.apply)
   }
 
+  implicit val arbStandingQueryResultMeta: Arbitrary[StandingQueryResult.Meta] = Arbitrary {
+    Gen.resultOf[
+      Boolean,
+      ResultId,
+      StandingQueryResult.Meta
+    ](StandingQueryResult.Meta.apply)
+  }
+
+  implicit val arbStandingQueryResult: Arbitrary[StandingQueryResult] = Arbitrary {
+    Gen.resultOf[
+      StandingQueryResult.Meta,
+      Map[String, QuineValue],
+      StandingQueryResult
+    ](StandingQueryResult.apply)
+  }
 }

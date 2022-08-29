@@ -3161,7 +3161,10 @@ object PersistenceCodecs extends LazyLogging {
       id,
       query,
       standingQuery.queueBackpressureThreshold,
-      standingQuery.queueMaxSize
+      standingQuery.queueMaxSize,
+      // do not support hash code on restored standing query,
+      // because the hash code is calculated per-host and is not stored
+      shouldCalculateResultHashCode = false
     )
   }
 

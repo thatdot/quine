@@ -147,12 +147,21 @@ trait StandingQueryOpsGraph extends BaseGraph {
     outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
     queueBackpressureThreshold: Int = StandingQuery.DefaultQueueBackpressureThreshold,
     queueMaxSize: Int = StandingQuery.DefaultQueueMaxSize,
+    shouldCalculateResultHashCode: Boolean = false,
     skipPersistor: Boolean = false,
     sqId: StandingQueryId = StandingQueryId.fresh() // fresh ID if none is provided
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
     requiredGraphIsReady()
     val rsqAndOutputs =
-      startStandingQuery(sqId = sqId, name, pattern, outputs, queueBackpressureThreshold, queueMaxSize)
+      startStandingQuery(
+        sqId = sqId,
+        name,
+        pattern,
+        outputs,
+        queueBackpressureThreshold,
+        queueMaxSize,
+        shouldCalculateResultHashCode
+      )
     if (!skipPersistor) {
       persistor.persistStandingQuery(rsqAndOutputs._1.query)
     }
@@ -169,9 +178,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
     pattern: StandingQueryPattern,
     outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
     queueBackpressureThreshold: Int,
-    queueMaxSize: Int
+    queueMaxSize: Int,
+    shouldCalculateResultHashCode: Boolean
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
-    val sq = StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize)
+    val sq = StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
     val (runningSq, killSwitches) = runStandingQuery(sq, outputs)
     standingQueries.put(sqId, runningSq)
 
@@ -323,13 +333,15 @@ trait StandingQueryOpsGraph extends BaseGraph {
         def offer(r: StandingQueryResult) = {
           val res = queue.offer(r)
           if (res == QueueOfferResult.Enqueued) {
-            if (sq.queueBackpressureThreshold == inBuffer.incrementAndGet()) {
+            if (sq.queueBackpressureThreshold == inBuffer.incrementAndGet())
               ingestValve.close()
-            }
+            if (sq.shouldCalculateResultHashCode)
+              // Integrate each standing query result hash code using `add`
+              // so the result is order agnostic
+              metrics.standingQueryResultHashCode(sq.id).add(r.dataHashCode)
           }
           res
         }
-
       },
       query = sq,
       resultsHub = resultsHub,

@@ -21,7 +21,9 @@ final case class StandingQueryDefinition(
   @docs("whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean = false,
   @docs("how many standing query results to buffer before backpressuring")
-  inputBufferSize: Int = 32 // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
+  inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
+  @docs("for debug and test only")
+  shouldCalculateResultHashCode: Boolean = false
 )
 
 @title("Registered Standing Query")
@@ -78,7 +80,9 @@ final case class StandingQueryStats(
   @docs("time (in milliseconds) that that the standing query has been running")
   totalRuntime: Long,
   @docs("how many standing query results are buffered and waiting to be emitted")
-  bufferSize: Int
+  bufferSize: Int,
+  @docs("accumulated output hash code")
+  outputHashCode: Long
 )
 
 object StandingQueryStats {
@@ -386,7 +390,8 @@ trait StandingQuerySchemas
         ),
         startTime = Instant.parse("2020-06-05T18:02:42.907Z"),
         totalRuntime = 60000L,
-        bufferSize = 20
+        bufferSize = 20,
+        outputHashCode = 14344L
       )
     )
   )

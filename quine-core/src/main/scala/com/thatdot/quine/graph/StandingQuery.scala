@@ -35,7 +35,8 @@ final case class StandingQuery(
   id: StandingQueryId,
   query: StandingQueryPattern,
   queueBackpressureThreshold: Int,
-  queueMaxSize: Int
+  queueMaxSize: Int,
+  shouldCalculateResultHashCode: Boolean
 )
 
 object StandingQuery {
