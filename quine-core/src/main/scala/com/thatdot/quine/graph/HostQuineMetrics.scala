@@ -31,9 +31,6 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   val persistorGetStandingQueryStatesTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
 
-  def shardMessagesDeduplicatedCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-deduplicated"))
-
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard
   def shardNodesWokenUpCounter(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "woken"))

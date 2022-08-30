@@ -18,13 +18,13 @@ To run a Recipe, use the Quine command line argument `-r`, followed by the name 
 
 For example use the following command to run [the Ethereum Recipe](https://quine.io/recipes/ethereum-tag-propagation):
 
-```shell
+```
 ❯ java -jar quine.jar -r ethereum
 ```
 
 Or to run a Recipe contained in a local file:
 
-```shell
+```
 ❯ java -jar quine.jar -r your-file.yaml
 ```
 

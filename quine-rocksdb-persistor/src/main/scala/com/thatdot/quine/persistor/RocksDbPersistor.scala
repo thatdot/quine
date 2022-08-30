@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.StampedLock
-import java.util.{Arrays, UUID}
+import java.util.{Arrays, ConcurrentModificationException, UUID}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -91,6 +91,9 @@ final class RocksDbPersistor(
   private[this] var dbOpts: DBOptions = _
   private[this] var columnFamilyOpts: ColumnFamilyOptions = _
   private[this] var writeOpts: WriteOptions = _
+
+  // How many times have we reset? This lets us detect when an iterator is invalidated by a reset.
+  private[this] var dbResetCount: Int = 0
 
   // Column families
   private[this] var journalsCF: ColumnFamilyHandle = _
@@ -483,12 +486,15 @@ final class RocksDbPersistor(
     *
     * @param columnFamily column family through which to iterate
     */
-  private[this] def enumerateIds(columnFamily: ColumnFamilyHandle): Source[QuineId, NotUsed] =
+  private[this] def enumerateIds(columnFamily: ColumnFamilyHandle): Source[QuineId, NotUsed] = {
+    val resetCnt = dbResetCount
+
     Source
       .unfoldResource[QuineId, RocksIterator](
         create = { () =>
           val stamp = dbLock.tryReadLock()
           if (stamp == 0) throw new RocksDBUnavailableException()
+          if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
           try {
             val it = db.newIterator(columnFamily)
             it.seekToFirst()
@@ -498,6 +504,7 @@ final class RocksDbPersistor(
         read = { (it: RocksIterator) =>
           val stamp = dbLock.tryReadLock()
           if (stamp == 0) throw new RocksDBUnavailableException()
+          if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
           try if (!it.isValid) None
           else {
             val qidBytes = key2QidBytes(it.key())
@@ -507,6 +514,7 @@ final class RocksDbPersistor(
         },
         close = _.close()
       )
+  }
 
   private[this] def shutdownSync(): Unit = {
     val stamp = dbLock.tryWriteLock(1, TimeUnit.MINUTES)

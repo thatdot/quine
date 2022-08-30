@@ -3,77 +3,13 @@ description: Quine streaming graph recipe definition reference
 ---
 # Recipe Reference
 
-## What is a Quine Recipe
+A Recipe is a document that contains all the information necessary for Quine to execute any batch or streaming data processing task.
 
-For Quine, a recipe is a document that contains all of the information necessary for Quine to execute any batch or streaming data process. Quine recipes are written in `yaml` and built from components including:
+# Running a Recipe
 
-* @ref:[**Ingest Streams**](../components/ingest-sources/ingest-sources.md) to read streaming data from sources and update graph data
-* @ref:[**Standing Queries**](../components/standing-query-outputs.md) to transform graph data, and to produce aggregates and other outputs
-* @ref:[**Cypher expressions**](../reference/cypher/cypher-language.md) to implement graph operations such as querying and updating data
-* @ref:[**Exploration UI**](../getting-started/exploration-ui.md) configuration to customize the web user interface for the use-case that is the subject of the recipe
+Recipes are interpreted by `quine.jar` using command line arguments. For help on `quine.jar` command line arguments, use the following command:
 
-> You can learn how to write a recipe in the @ref:[recipes tutorial](../getting-started/recipes-tutorial.md) section in the @ref:[getting started guide](../getting-started/index.md).
-
-## When to use a Recipe
-
-Recipes enable you to quickly iterate in Quine and to share what you've built with others so they can reproduce, explore and expand upon a solution.
-
-**Consider writing a recipe:**
-
-* When you are actively developing an event streaming solution
-* To preserve a solution whenever a development milestone is achieved
-* To configure the visual aspects of the Quine Exploration UI
-* To store `quick queries` and `sample queries` that aide in graph analysis
-* To share your solution with collaborators or the open source community
-* When interacting with Quine support
-
-## Recipe Structure
-
-A recipe is stored in a single `YAML` text file. The file contains a single object with the following attributes:
-
-```yaml
-version: 1
-title: recipe Title
-contributor: https://github.com/example-user
-summary: ""
-description: ""
-ingestStreams: []
-standingQueries: []
-nodeAppearances: []
-quickQueries: []
-sampleQueries: []
-statusQuery: null
 ```
-
-Each configuration object is defined by its corresponding API entity in the @ref:[REST API](rest-api.md). Follow the links in the table below for details regarding each attribute.
-
-| Attribute       | Type                              | Description                                                                                |
-| --------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `version`         | Integer                           | The recipe schema version, right now the only supported value is 1                                               |
-| `title`           | String                            | Identifies the recipe                                                                      |
-| `contributor`     | String                            | URL to social profile of the person or organization responsible for this recipe            |
-| `summary`         | String                            | Brief information about this recipe                                                        |
-| `description`     | Text Block                        | Long form description about this recipe                                                    |
-| `ingestStreams`   | Array of [IngestStream](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.IngestStreamConfiguration) objects   | Define how data is read from data sources, transformed, and loaded into the graph           |
-| `standingQueries` | Array of [StandingQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.StandingQueryDefinition) objects  | Define both sub-graph patterns for Quine to match and subsequent output actions             |
-| `nodeAppearances` | Array of [NodeAppearance](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeAppearance) objects | Customize node appearance in the exploration UI                                             |
-| `quickQueries`    | Array of [QuickQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeQuickQuery) objects     | Add queries to node context menus in the exploration UI                                     |
-| `sampleQueries`   | Array of [SampleQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.SampleQuery) objects    | Customize sample queries listed in the exploration UI                                       |
-| `statusQuery`     | A [CypherQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.CypherQuery) object            | OPTIONAL Cypher query that is executed and reported to the terminal window during execution |
-
-## Differences Between Recipes and the REST API
-
-Recipes package together Quine config, graph logic/structure, and exploration UI customizations that are run automatically when Quine starts. A recipe file can define the graph and exploration UI configuration directly however, when a recipe is run, it infers a Quine configuration. There are a couple of operational differences that you need to keep in mind when launching Quine along with a recipe.
-
-* **API calls allow naming** - When you create an ingest stream or a standing query using the API, you choose the name for the object in the URL. The corresponding recipe object uses standardized names in the form of `INGEST-#` and `STANDING-#`.
-
-* **Persistent storage** - Starting the Quine application `jar` *without* providing a configuration file, Quine creates a RocksDB-based persistent data store in the local directory. That persistor retains the previous graph state and is appended to each time Quine starts. Alternatively, when Quine launches a recipe, a temporary persistent data store is created in the system `tmp` directory. Each subsequent launch of the recipe will replace the data store, discarding the graph from the previous run.
-
-## Running a Recipe
-
-recipes are interpreted by `quine.jar` using command line arguments. For help on `quine.jar` command line arguments, use the following command:
-
-```shell
 ❯ java -jar quine.jar -h
 Quine universal program
 Usage: quine [options]
@@ -91,53 +27,87 @@ Usage: quine [options]
   -v, --version            print Quine program version
 ```
 
-To run a recipe, use `-r`, followed by the name of the recipe (from @link[https://quine.io/recipes](https://quine.io/recipes)), or a local file (ending in `.yaml`), or a URL. recipes can expect input parameters and the parameter values must be specified using command line arguments with `--recipe-value`.
+To run a Recipe, use `-r`, followed by the name of the Recipe (from @link[https://quine.io/recipes](https://quine.io/recipes)), or a local file (ending in `.json` or `.yaml`), or a URL. Many Recipes are parameterized and the parameter values must be specified using command line arguments with `--recipe-value`. For example, to run @link:[`ping` from Quine's Recipe repository](https://quine.io/recipes/ping.html):
 
-## Recipe Parameters
+```
+❯ java -jar quine.jar \
+  -r ping \
+  --recipe-value in-file=input-filename \
+  --recipe-value out-file=output-filename
+```
 
-A recipe may contain parameters that are used to pass information to the recipe. To use a parameter in a recipe file, a value in a recipe must start with the `$` character. The following example demonstrates a recipe with a parameter called `in-file`:
+The above example assumes the file `input-filename` is available in the local working directory, and that it contains line-separated text data. Backslash (`\`) is used to continue the command on the next line without invoking the command prematurely. `ping` is a reference to the canonical name of the @link:[recipe on quine.io](https://quine.io/recipes).
+
+# Recipe Repository
+
+Please see @link:[Quine's Recipe repository](https://quine.io/recipes) for other available Recipes. Or create your own and contribute it back to the community for others to use.
+
+# Recipe File
+
+A Recipe is represented by a text file containing either JSON or YAML structured data. The file must contain a single object with the following values:
+
+* `version`: Schema versioning; only supported value is 1 (number)
+* `title`: Identifies the Recipe but is not necessarily unique or immutable (string)
+* `contributor` URL to social profile of the person or organization responsible for this Recipe
+* `summary`: Brief copy about this Recipe (string)
+* `description` Longer form copy about this Recipe (string)
+* `ingestStreams`: Define how data is read from data sources (array of `IngestStream` API objects¹)
+* `standingQueries`: Define how data is transformed and output (array of `StandingQuery` API objects¹)
+* `nodeAppearances`: Customize node appearance in web UI (array of `NodeAppearance` API objects¹)
+* `quickQueries`: Add queries to node context menus in web UI (array of `QuickQuery` API objects¹)
+* `sampleQueries`: Customize sample queries listed in web UI (array of `SampleQuery` API objects¹)
+* `statusQuery` Cypher query that is executed and reported to the Recipe user (an object that defines `cypherQuery`)
+
+¹: For more information on API entities see @ref:[REST API](rest-api.md).
+
+The following is a template Recipe YAML file that can be used to start building a new Recipe:
+
+@@snip [template-recipe.yaml]($quine$/recipes/template-recipe.yaml)
+
+# Recipe Parameters
+
+A Recipe may contain parameters. To use a parameter in a Recipe file, a value in a Recipe must start with the `$` character. The following example demonstrates a Recipe with a parameter called `in-file`:
 
 @@snip [template-recipe.yaml]($quine$/recipes/ingest.yaml)
 
 Running the above example (without specifying the parameter value) causes an error:
 
-```shell
+```
 ❯ java -jar quine.jar -r ingest
 Missing required parameter in-file; use --recipe-value in-file=
 ```
 
 The error message indicates the command must be run with an additional command line argument that specifies the required parameter:
 
-```shell
+```
 ❯ java -jar quine.jar -r ingest --recipe-value in-file=my-file.txt
 ```
 
-The parameter value is substituted into the recipe at runtime. Common examples for recipe parameters include file names, URLs, and host names.
+The parameter value is substituted into the Recipe at runtime. Common examples for Recipe parameters include file names, URLs, and host names.
 
-## Additional Command Line Arguments
+# Additional Command Line Arguments
 
 When Quine is started without command line arguments, its default behavior is to start the web service on port 8080. The following options are available to change this behavior:
 
 * `-W, --disable-web-service`: Disables the web service
 * `-p, --port`: Specify the TCP port of the web service
 
-Quine is configurable as described in @ref:[Configuration](configuration.md). Normally when running a recipe, the configuration for `store` is overwritten with `PersistenceAgentType.RocksDb` and is configured to use a temporary file. This configuration is appropriate for most use cases of recipes and can be changed with the following command line arguments:
+Quine is configurable as described in @ref:[Configuration](configuration.md). Normally when running a Recipe, the configuration for `store` is overwritten with `PersistenceAgentType.RocksDb` and is configured to use a temporary file. This configuration is appropriate for most use cases of Recipes and can be changed with the following command line arguments:
 
 * `--force-config`: Quine will use the `store` that is configured via @ref:[Configuration](configuration.md) (instead of overwriting it as described above)
 * `--no-delete`: Quine will not delete the DB file on exit and will print out that path to it
 
-> **Note**: The `--force-config` and `--no-delete` options are mutually exclusive (only one of the two is allowed at a time).
+Note `--force-config` and `--no-delete` are mutually exclusive (only one of the two is allowed at a time).
 
-RocksDB may not function on some platforms and you need to use MapDB instead by starting Quine using parameters as follows:
+RocksDB is not compatible on some platforms. To use MapDB instead, run with additional parameters as follows:
 
-```shell
+```
 java -Dquine.store.type=map-db -jar quine.jar --force-config
 ```
 
-## Recipe Repository
+# Summary
 
-Complete recipes are useful as reference applications for use cases. @link:[Quine's recipe repository](https://quine.io/recipes) highlights recipes shared by our community members. Additionally, you can view all of the shared recipes directory in the @link:[Quine Github repository.](https://github.com/thatdot/quine/tree/main/quine/recipes)
-
-## Contribute
-
-If you make a recipe and think others might find it useful, please consider contributing it back to the repository on Github so that others can use it. They could use it on their own data, or even just use it as a starting point for customization and remixing for other goals. To share with the community, @link:[open a pull request on Github](https://github.com/thatdot/quine/pulls).
+* A Recipe is a document that contains all the information necessary for Quine to execute any data processing task.
+* A Recipe contains several types of entities, including Ingest Streams, Standing Queries, and Cypher queries.
+* Recipes are run using `quine.jar` with command line arguments.
+* There is a public @link:[repository](https://quine.io/recipes) with many existing Recipes.

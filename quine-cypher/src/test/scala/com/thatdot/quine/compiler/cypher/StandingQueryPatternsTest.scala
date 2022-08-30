@@ -4,17 +4,9 @@ import org.scalactic.source
 import org.scalatest.Assertion
 import org.scalatest.funspec.AnyFunSpec
 
-import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Func, Position, SourceText}
-import com.thatdot.quine.graph.{
-  GraphQueryPattern,
-  InvalidQueryPattern,
-  QuineIdRandomLongProvider,
-  StandingQueryPattern,
-  WithPartitioning,
-  idFrom
-}
-import com.thatdot.quine.model.{NamespacedIdProvider, QuineValue}
+import com.thatdot.quine.graph.{GraphQueryPattern, InvalidQueryPattern, QuineIdRandomLongProvider, StandingQueryPattern}
+import com.thatdot.quine.model.QuineValue
 
 class StandingQueryPatternsTest extends AnyFunSpec {
   import GraphQueryPattern._
@@ -190,88 +182,6 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         None,
         Nil,
         distinct = true
-      )
-    )
-
-    // idFrom-based id constraint
-    testQuery(
-      "MATCH (n) WHERE id(n) = idFrom(-1) RETURN DISTINCT id(n)",
-      GraphQueryPattern(
-        List(
-          NodePattern(
-            NodePatternId(0),
-            Set(),
-            Some(idFrom(Expr.Integer(-1))),
-            Map.empty
-          )
-        ),
-        List(),
-        NodePatternId(0),
-        Seq(ReturnColumn.Id(NodePatternId(0), false, Symbol("id(n)"))),
-        None,
-        Nil,
-        distinct = true
-      )
-    )
-
-    // idFrom-based strid constraint
-    testQuery(
-      "MATCH (n) WHERE strId(n) = idFrom('hello', 'world') RETURN DISTINCT strId(n)",
-      GraphQueryPattern(
-        List(
-          NodePattern(
-            NodePatternId(0),
-            Set(),
-            Some(idFrom(Expr.Str("hello"), Expr.Str("world"))),
-            Map.empty
-          )
-        ),
-        List(),
-        NodePatternId(0),
-        Seq(ReturnColumn.Id(NodePatternId(0), true, Symbol("strId(n)"))),
-        None,
-        Nil,
-        distinct = true
-      )
-    )
-
-    // locIdFrom-based strid constraint
-    it("can use locIdFrom in an id constraint given a NamespacedIdProvider") {
-      val namespacedIdProvider: NamespacedIdProvider = WithPartitioning(idProvider)
-      val customId =
-        namespacedIdProvider.hashedCustomIdInNamespace("partitioned", graph.hashOfCypherValues(Seq(Expr.Integer(101))))
-      val id = namespacedIdProvider.customIdToQid(customId.get)
-
-      val compiled = compileStandingQueryGraphPattern(
-        "MATCH (n) WHERE strId(n) = locIdFrom('partitioned', 101) RETURN DISTINCT strId(n)"
-      )(namespacedIdProvider)
-      assert(
-        compiled ===
-          GraphQueryPattern(
-            List(
-              NodePattern(
-                NodePatternId(0),
-                Set(),
-                Some(id),
-                Map.empty
-              )
-            ),
-            List(),
-            NodePatternId(0),
-            Seq(ReturnColumn.Id(NodePatternId(0), true, Symbol("strId(n)"))),
-            None,
-            Nil,
-            distinct = true
-          )
-      )
-    }
-
-    // locId without an appropriate idProvider
-    interceptQuery(
-      "MATCH (n) WHERE strId(n) = locIdFrom('partitioned', '0118 999 881 999 119 7253') RETURN DISTINCT strId(n)",
-      CypherException.ConstraintViolation(
-        s"Unable to use a non-namespaced ID provider ($idProvider) with a namespace-dependent function locIdFrom",
-        None
       )
     )
   }

@@ -257,7 +257,7 @@ lazy val `quine`: Project = project
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
       "com.github.scopt" %% "scopt" % scoptV,
-      "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV
+      "org.yaml" % "snakeyaml" % snakeYamlV
     )
   )
   .enablePlugins(WebScalaJSBundlerPlugin)

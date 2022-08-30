@@ -31,10 +31,9 @@ ingestStreams:
     format:
       type: CypherJson
       query: |-
-        MATCH (review), (product), (user) 
-        WHERE id(review) = idFrom("Review", $that.reviewerID, $that.asin, $that.reviewTime)
-          AND id(product) = idFrom("Product", $that.asin)
-          AND id(user) = idFrom("User", $that.reviewerID)
+        MATCH (review) WHERE id(review) = idFrom("Review", $that.reviewerID, $that.asin, $that.reviewTime)
+        MATCH (product) WHERE id(product) = idFrom("Product", $that.asin)
+        MATCH (user) WHERE id(user) = idFrom("User", $that.reviewerID)
         SET review = $that, review:Review,
             product.id = $that.asin, product:Product,
             user.name = $that.reviewerName, user:User,

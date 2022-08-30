@@ -163,10 +163,10 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     }
 
     // Schedule the message which will restore the previous actor behavior after the future completes.
-    until.onComplete { (done: Try[_]) =>
-      done.toEither.left.foreach(err =>
+    until.onComplete { (done: Try[A]) =>
+      done.recover { case err =>
         log.error(err, s"pauseMessageProcessingUntil: future failed on node ${qid.debug(idProvider)}")
-      )
+      }
       self ! StashedResultDelivery(thisFutureId, done)
     }(context.dispatcher)
 

@@ -76,7 +76,7 @@ import com.thatdot.quine.Util.toJsObject
         "median" -> median,
         "q3" -> q3,
         "upperfence" -> max
-      ) ++ mean.map(x => "mean" -> x))
+      ) ++ mean.map[(String, js.Any)](x => "mean" -> x))
         .map { case (k, v) => k -> js.Array(v) } // make into unary arrays
 
     def asPlotlyData(): js.Object =

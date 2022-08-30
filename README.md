@@ -5,14 +5,12 @@
 
 <div style="padding-top: 10px;">
   <div style="vertical-align:middle;">
-    <img width="400" height="100%" src="https://docs.quine.io/assets/images/quine_logo.svg">
+    <img width="200" height="100%" align="right" src="https://docs.quine.io/assets/images/quine_logo.svg">
   </div>
   <div style="vertical-align:middle;">
-    <p>Quine is a streaming graph interpreter; a server-side program that consumes data, builds it into a stateful graph structure, and runs live computation on that graph to answer questions or compute results. Those results stream out in real-time.
+    <p>Quine is a streaming graph interpreter, a server-side program that consumes data, builds it into a graph structure, and runs live computation on that graph to answer questions or compute results, and then stream them out.
   </div>
 </div>
-
-You interact with Quine by connecting it to a data source (Kafka, Kinesis, SQS, files, API calls, etc.) and using regular database queries to stream that data in, build the graph structure, and find important patterns.
 
 Three design choices define Quine, setting it apart from all event stream processing systems:
 
@@ -103,4 +101,4 @@ Please see [Quine’s Recipe repository](https://quine.io/recipes) for a list of
 
 The community is the heart of all open-source projects. We welcome contributions from all people and strive to build a welcoming and open community of contributors, users, participants, speakers, and lurkers. Everyone is welcome.
 
-More information is included in our [contribution](https://github.com/thatdot/quine/blob/main/CONTRIBUTING.md) guidelines.
+More information is included in our [contribution](https://github.com/thatdot/quine/blob/main/CONTRIBUTING.md) guidelines. 

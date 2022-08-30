@@ -457,7 +457,6 @@ object StandingQueryResultOutput extends LazyLogging {
 
     override def slackJson: String = ujson
       .Obj(
-        "text" -> "New Standing Query Result",
         "blocks" -> ujson.Arr.from(
           ujson.Obj(
             "type" -> "header",
@@ -485,7 +484,6 @@ object StandingQueryResultOutput extends LazyLogging {
     )
     override def slackJson: String = ujson
       .Obj(
-        "text" -> "Standing Query Result Cancelled",
         "blocks" -> ujson.Arr.from(
           ujson.Obj(
             "type" -> "header",
@@ -591,7 +589,6 @@ object StandingQueryResultOutput extends LazyLogging {
 
     override def slackJson: String = ujson
       .Obj(
-        "text" -> "New Standing Query Updates",
         "blocks" -> ujson.Arr.from(newResultsBlocks ++ cancellationBlocks)
       )
       .render()

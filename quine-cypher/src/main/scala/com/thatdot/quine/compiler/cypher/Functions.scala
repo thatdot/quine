@@ -15,9 +15,6 @@ import scala.collection.concurrent
 import scala.util.{Failure, Random, Try}
 
 import com.google.common.hash.Hashing
-import com.typesafe.scalalogging.LazyLogging
-import org.apache.commons.codec.DecoderException
-import org.apache.commons.codec.net.PercentCodec
 import org.opencypher.v9_0.expressions._
 import org.opencypher.v9_0.expressions.functions.{Category, Function, FunctionWithName}
 import org.opencypher.v9_0.frontend.phases._
@@ -138,8 +135,6 @@ case object resolveFunctions extends StatementRewriter {
     CypherMapDropNullValues,
     CypherTextSplit,
     CypherTextRegexFirstMatch,
-    CypherTextUrlEncode,
-    CypherTextUrlDecode,
     CypherDateTime,
     CypherLocalDateTime,
     CypherDuration,
@@ -330,7 +325,7 @@ trait PartitionSensitiveFunction extends UserDefinedFunction {
 
 object CypherLocIdFrom extends UserDefinedFunction with PartitionSensitiveFunction {
   val name = "locIdFrom"
-  val isPure = true // TODO this is only pure when called with 2 or more arguments
+  val isPure = true
   // as with [[CypherIdFrom]], we emulate a variadic argument, this time in the second position
   val signatures: Vector[UserDefinedFunctionSignature] = Vector.tabulate(15) { (i: Int) =>
     UserDefinedFunctionSignature(
@@ -658,92 +653,6 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
         )
       case other => throw wrongSignature(other)
     }
-}
-
-object CypherTextUrlEncode extends UserDefinedFunction {
-  val name = "text.urlencode"
-  val isPure = true
-  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
-    UserDefinedFunctionSignature(
-      arguments = Vector("text" -> Type.Str),
-      output = Type.List(Type.Str),
-      description = "URL-encodes (RFC 3986) the provided string, "
-    ),
-    UserDefinedFunctionSignature(
-      arguments = Vector("text" -> Type.Str, "usePlusForSpace" -> Type.Bool),
-      output = Type.List(Type.Str),
-      description = "URL-encodes (RFC 3986) the provided string, optionally using `+` for spaces instead"
-    )
-  )
-  val category = Category.STRING
-
-  /** @see <https://datatracker.ietf.org/doc/html/rfc3986#section-2.2>
-    */
-  private val rfcReservedChars: Array[Byte] =
-    Array(':', '/', '?', '#', '[', ']', '@', '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=').map(_.toByte)
-
-  def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
-    val (str, usePlus) = args match {
-      case Vector(Expr.Str(str)) => str -> false
-      case Vector(Expr.Str(str), Expr.Bool(usePlus)) => str -> usePlus
-      case other =>
-        throw wrongSignature(other)
-    }
-
-    if (usePlus) {
-      val encodedBytes = new PercentCodec(rfcReservedChars, true).encode(str.getBytes(StandardCharsets.UTF_8))
-      Expr.Str(new String(encodedBytes, StandardCharsets.US_ASCII))
-    } else {
-      val encodedBytes =
-        new PercentCodec(rfcReservedChars :+ ' '.toByte, false).encode(str.getBytes(StandardCharsets.UTF_8))
-      Expr.Str(new String(encodedBytes, StandardCharsets.US_ASCII))
-    }
-
-  }
-}
-
-object CypherTextUrlDecode extends UserDefinedFunction with LazyLogging {
-  val name = "text.urldecode"
-  val isPure = true
-  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
-    UserDefinedFunctionSignature(
-      arguments = Vector("text" -> Type.Str),
-      output = Type.List(Type.Str),
-      description = "URL-decodes (x-www-form-urlencoded) the provided string"
-    ),
-    UserDefinedFunctionSignature(
-      arguments = Vector("text" -> Type.Str, "decodePlusAsSpace" -> Type.Bool),
-      output = Type.List(Type.Str),
-      description = "URL-decodes the provided string, using RFC3986 if decodePlusAsSpace = false"
-    )
-  )
-  val category = Category.STRING
-
-  def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
-    val (str, strictRfc3986) = args match {
-      case Vector(Expr.Str(str)) => str -> false
-      case Vector(Expr.Str(str), Expr.Bool(shouldDecodePlus)) => str -> !shouldDecodePlus
-      case other =>
-        throw wrongSignature(other)
-    }
-    if (strictRfc3986) {
-      try {
-        val decodedBytes = new PercentCodec().decode(str.getBytes(StandardCharsets.UTF_8))
-        Expr.Str(new String(decodedBytes, StandardCharsets.UTF_8))
-      } catch {
-        case err: DecoderException =>
-          logger.info(s"""$name unable to URL-decode provided string: "$str"""", err)
-          Expr.Null
-      }
-    } else {
-      try Expr.Str(java.net.URLDecoder.decode(str, StandardCharsets.UTF_8))
-      catch {
-        case err: IllegalArgumentException =>
-          logger.info(s"""$name unable to URL-decode provided string: "$str"""", err)
-          Expr.Null
-      }
-    }
-  }
 }
 
 object CypherDateTime extends UserDefinedFunction {

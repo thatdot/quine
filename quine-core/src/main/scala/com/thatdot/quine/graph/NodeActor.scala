@@ -5,7 +5,6 @@ import java.util.concurrent.locks.StampedLock
 
 import scala.collection.compat._
 import scala.collection.mutable.{Map => MutableMap}
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
@@ -228,7 +227,7 @@ private[graph] class NodeActor(
                   s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
                 )
             }
-          ).map(_ => Done)(ExecutionContexts.parasitic)
+          ).map(_ => Done)(cypherEc)
       }
     }
 
@@ -238,11 +237,12 @@ private[graph] class NodeActor(
     metrics.snapshotSize.update(snapshot.length)
     def persistSnapshot(): Future[Unit] =
       metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, occurredAt, snapshot))
-    def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Unit] =
+    def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Done.type] =
       f.recoverWith { case NonFatal(e) =>
         logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
         infinitePersisting(logFunc, persistSnapshot())
       }(cypherEc)
+        .map(_ => Done)(cypherEc)
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
         infinitePersisting(log.info)

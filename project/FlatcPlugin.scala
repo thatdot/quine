@@ -9,7 +9,6 @@ import java.nio.file._
 import java.util.zip._
 
 object FlatcPlugin extends AutoPlugin {
-  import Dependencies.flatbuffersV
 
   object autoImport {
     val flatcOptions = SettingKey[Seq[String]]("flatc-options", "Additional options to be passed to flatc")
@@ -32,16 +31,15 @@ object FlatcPlugin extends AutoPlugin {
   override def buildSettings: Seq[Def.Setting[_]] =
     Seq(
       flatcDependency := {
-        val prefix = s"https://github.com/google/flatbuffers/releases/download/v$flatbuffersV/"
+        val prefix = "https://github.com/google/flatbuffers/releases/download/v2.0.0/"
         val suffixOpt =
           if (Properties.isMac) Some("Mac.flatc.binary.zip")
           else if (Properties.isWin) Some("Windows.flatc.binary.zip")
-          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-12.zip")
+          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-9.zip")
           else None
 
         suffixOpt.map(suffix => new URL(prefix + suffix))
       },
-      // This must match the version of the jar we download from Maven
       flatcExecutable := {
         val outputDirectory = (ThisBuild / baseDirectory).value / BuildPaths.DefaultTargetName / "flatc"
         val url: URL = flatcDependency.value.getOrElse {
@@ -110,7 +108,7 @@ object FlatcPlugin extends AutoPlugin {
 
         cachedGen(flatcSources.value.toSet).toSeq
       },
-      libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % flatbuffersV
+      libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % Dependencies.flatbuffersV
     )
 
 }

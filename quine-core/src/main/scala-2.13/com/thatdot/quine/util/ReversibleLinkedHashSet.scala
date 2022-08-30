@@ -1,7 +1,12 @@
 package com.thatdot.quine.util
 
 import scala.collection.generic.DefaultSerializable
-import scala.collection.{Iterator, IterableFactory, IterableFactoryDefaults, StrictOptimizedIterableOps}
+import scala.collection.{
+  Iterator,
+  IterableFactory,
+  IterableFactoryDefaults,
+  StrictOptimizedIterableOps
+}
 import scala.collection.mutable.{LinkedHashSet, SetOps, Growable, GrowableBuilder}
 
 /** Subclass LinkedHashSet to be able to iterate in reverse order.

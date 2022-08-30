@@ -235,43 +235,6 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     )
   }
 
-  describe("url decoding") {
-    // RFC3986
-    testExpression("""text.urldecode("foo", false)""", Expr.Str("foo"))
-    testExpression("""text.urldecode("%2F%20%5e", false)""", Expr.Str("/ ^"))
-    testExpression("""text.urldecode("hello%2C%20world", false)""", Expr.Str("hello, world"))
-    testExpression("""text.urldecode("%68%65%6C%6C%6F, %77%6F%72%6C%64", false)""", Expr.Str("hello, world"))
-    testExpression("""text.urldecode("+", false)""", Expr.Str("+"))
-    testExpression("""text.urldecode("%25", false)""", Expr.Str("%"))
-    testExpression("""text.urldecode("%%", false)""", Expr.Null) // malformed under RFC3986
-    // x-www-form-urlencoded
-    testExpression("""text.urldecode("foo")""", Expr.Str("foo"))
-    testExpression("""text.urldecode("%2F%20%5e")""", Expr.Str("/ ^")) // %20 still works
-    testExpression("""text.urldecode("hello%2C+world")""", Expr.Str("hello, world")) // but + can be used too
-    testExpression("""text.urldecode("%68%65%6C%6C%6F, %77%6F%72%6C%64")""", Expr.Str("hello, world"))
-    testExpression("""text.urldecode("+")""", Expr.Str(" "))
-    testExpression("""text.urldecode("%25")""", Expr.Str("%"))
-    testExpression("""text.urldecode("%%")""", Expr.Null) // malformed under x-www-form-urlencoded
-  }
-
-  describe("url encoding") {
-    // RFC3986
-    testExpression("""text.urlencode("hello, world")""", Expr.Str("hello%2C%20world"))
-    testExpression(
-      """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle")""",
-      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2712345678%2F54321%27%20RETURN%20n.foo%20AS%20fiddle")
-    )
-    testExpression("""text.urlencode("%")""", Expr.Str("%25"))
-
-    // x-www-form-urlencoded
-    testExpression("""text.urlencode("hello, world", true)""", Expr.Str("hello%2C+world"))
-    testExpression(
-      """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle", true)""",
-      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2712345678%2F54321%27+RETURN+n.foo+AS+fiddle")
-    )
-    testExpression("""text.urlencode("%", true)""", Expr.Str("%25"))
-  }
-
   describe("map projections") {
 
     testQuery(

@@ -29,11 +29,11 @@ class RecipeTest extends AnyFunSuite with EitherValues {
   test("invalid syntax") {
     val expectedParseError =
       """while scanning a simple key
-        | in reader, line 2, column 1:
+        | in 'reader', line 2, column 1:
         |    baz
         |    ^
         |could not find expected ':'
-        | in reader, line 3, column 1:
+        | in 'reader', line 3, column 1:
         |    blah
         |    ^
         |""".stripMargin
