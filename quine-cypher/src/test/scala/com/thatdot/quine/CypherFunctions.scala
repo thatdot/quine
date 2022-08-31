@@ -228,4 +228,8 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       Expr.Bytes(Array(0xE4, 0xBD, 0xA0, 0xE5, 0xA5, 0xBD, 0xE4, 0xB8, 0x96, 0xE7, 0x95, 0x8C).map(_.toByte))
     )
   }
+  describe("getHost function") {
+    // [[CypherHarness]] uses a non-namespaced ID provider, so all IDs will be assigned position index "None" aka null
+    testExpression("getHost(idFrom(-1))", Expr.Null, expectedIsIdempotent = false)
+  }
 }

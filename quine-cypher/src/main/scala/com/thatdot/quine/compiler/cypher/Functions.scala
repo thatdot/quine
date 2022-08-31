@@ -23,6 +23,7 @@ import org.opencypher.v9_0.util.Rewritable.IteratorEq
 import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
 
+import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
 import com.thatdot.quine.model.{NamespacedIdProvider, QuineId, QuineIdProvider}
@@ -396,19 +397,7 @@ object CypherGetHostFunction extends UserDefinedFunction {
 
   def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
     val id: QuineId = arguments match {
-      case Vector(Expr.Node(id, _, _)) =>
-        id
-      case Vector(Expr.Str(idStr)) =>
-        idProvider
-          .qidFromPrettyString(idStr)
-          .recoverWith { case err =>
-            Failure(
-              CypherException.ConstraintViolation(s"The provided string could not be interpreted as a QuineId. $err")
-            )
-          }
-          .get
-      case Vector(Expr.Bytes(bs, _)) =>
-        QuineId(bs)
+      case Vector(oneArg) => extractQuineId(oneArg)(idProvider).getOrElse(throw wrongSignature(arguments))
       case _ => throw wrongSignature(arguments)
     }
 

@@ -1146,6 +1146,10 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
   }
 }
 
+/** Lookup a standing query by user-facing name, yielding its [[StandingQueryResults]] as they are produced
+  * Registered by registerUserDefinedProcedure at runtime by product entrypoint and in docs' GenerateCypherTables
+  * NB despite the name including `wiretap`, this is implemented as an akka-streams map
+  */
 class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) extends UserDefinedProcedure {
   val name = "standing.wiretap"
   val canContainUpdates = false

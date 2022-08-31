@@ -69,7 +69,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     val queryResults = queryCypherValues(
       getNodeCypherQuery,
       atTime = Some(time)
-    )
+    )(graph)
     queryResults.results
       .toMat(Sink.seq)(Keep.right)
       .run()
