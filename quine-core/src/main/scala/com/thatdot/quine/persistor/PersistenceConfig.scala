@@ -9,7 +9,7 @@ package com.thatdot.quine.persistor
   */
 final case class PersistenceConfig(
   journalEnabled: Boolean = true,
-  effectOrder: EventEffectOrder = EventEffectOrder.MemoryFirst,
+  effectOrder: EventEffectOrder = EventEffectOrder.PersistorFirst,
   snapshotSchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep,
   snapshotSingleton: Boolean = false,
   standingQuerySchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep
