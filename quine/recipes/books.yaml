@@ -46,7 +46,25 @@ ingestStreams:
         WITH $that.asin AS asin
         MATCH (p) WHERE id(p) = idFrom("Product", asin)
         SET p.avg = tofloat(p.total_score) / tofloat(p.reviews)
-standingQueries: []
+standingQueries:        
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (r:Review) RETURN DISTINCT id(r) AS id
+    outputs:
+      trending-products:
+        type: CypherQuery
+        query: |-
+          MATCH (p:Product)<-[:REVIEWED]-(r:Review)
+          WHERE strId(r) = $that.data.id
+          MATCH (p2:Product)<-[:REVIEWED]-(r2:Review)
+          WHERE id(p2) = id(p)
+          WITH p2, count(r2) as ct, abs(r2.unixReviewTime - r.unixReviewTime) as diff, r.unixReviewTime as timestamp, r.reviewTime as date
+          WHERE ct > 5 AND diff <= 86400000
+          RETURN p2.id as product_id, ct, timestamp, date
+        andThen:
+          type: PrintToStandardOut
+          
 sampleQueries:
   - name: Most Active User
     query: |-
