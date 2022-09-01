@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph
 
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 
 /** Event which affects the local node state (properties or edges)
   *
@@ -22,8 +22,6 @@ object NodeChangeEvent {
   final case class EdgeRemoved(edge: HalfEdge) extends NodeChangeEvent
   final case class PropertySet(key: Symbol, value: PropertyValue) extends NodeChangeEvent
   final case class PropertyRemoved(key: Symbol, value: PropertyValue) extends NodeChangeEvent
-  final case class MergedIntoOther(into: QuineId) extends NodeChangeEvent
-  final case class MergedHere(from: QuineId) extends NodeChangeEvent
 
   /** Event along with the time it occurs at
     *

@@ -87,10 +87,6 @@ private[graph] class NodeActor(
   protected val metrics: HostQuineMetrics = graph.metrics
   protected var properties: Map[Symbol, PropertyValue] = Map.empty
   protected val edges: EdgeCollection = graph.edgeCollectionFactory.get()
-
-  private var forwardTo: Option[QuineId] = None
-  private var mergedIntoHere: Set[QuineId] = Set.empty[QuineId]
-
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
 
@@ -138,8 +134,6 @@ private[graph] class NodeActor(
     case PropertyRemoved(key, _) => properties.contains(key)
     case EdgeAdded(edge) => !edges.contains(edge)
     case EdgeRemoved(edge) => edges.contains(edge)
-    case MergedIntoOther(_) => forwardTo.isEmpty
-    case MergedHere(other) => !mergedIntoHere.contains(other)
   }
 
   /** Process multiple node events as a single unit, so their effects are applied in memory together, and also persisted
@@ -166,16 +160,12 @@ private[graph] class NodeActor(
            * property will be recorded at all. Original event order is maintained. */
           var es: Set[HalfEdge] = Set.empty
           var ps: Set[Symbol] = Set.empty
-          var ft: Option[QuineId] = None
-          var mih: Set[QuineId] = Set.empty
           events.reverse
             .filter {
               case e @ EdgeAdded(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
               case e @ EdgeRemoved(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
               case e @ PropertySet(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
               case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
-              case e @ MergedIntoOther(id) => if (ft.isDefined) false else { ft = Some(id); hasEffect(e) }
-              case e @ MergedHere(o) => if (mih.contains(o)) false else { mih += o; hasEffect(e) }
             }
             .reverse
             .map(e => WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
@@ -291,18 +281,6 @@ private[graph] class NodeActor(
       case EdgeRemoved(edge) =>
         edges -= edge
         metrics.nodeEdgesCounter.decrement(edges.size)
-
-      case MergedIntoOther(otherNode) =>
-        forwardTo = Some(otherNode)
-        edges.clear()
-        properties = Map.empty
-        context.become(
-          MergeNodeBehavior.mergedMessageHandling(this, graph, otherNode),
-          discardOld = false
-        )
-
-      case MergedHere(otherNode) =>
-        mergedIntoHere = mergedIntoHere + otherNode
     }
 
     if (shouldCauseSideEffects) { // `false` when restoring from journals
@@ -474,8 +452,6 @@ private[graph] class NodeActor(
       NodeSnapshot(
         properties,
         edges.toSerialize,
-        forwardTo,
-        mergedIntoHere,
         subscribers.subscribersToThisNode,
         domainNodeIndex.index
       )
@@ -502,16 +478,10 @@ private[graph] class NodeActor(
         )
     properties = restored.properties
     restored.edges.foreach(edges +=)
-    forwardTo = restored.forwardTo
-    mergedIntoHere = restored.mergedIntoHere
     subscribers = SubscribersToThisNode(restored.subscribersToThisNode)
     domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(restored.domainNodeIndex)
     branchParentIndex =
       DomainNodeIndexBehavior.BranchParentIndex.reconstruct(domainNodeIndex, subscribers.subscribersToThisNode.keys)
-
-    forwardTo.foreach(other =>
-      context.become(MergeNodeBehavior.mergedMessageHandling(this, graph, other), discardOld = false)
-    )
   }
 
   def debugNodeInternalState(): Future[NodeInternalState] = {
@@ -574,8 +544,6 @@ private[graph] class NodeActor(
           atTime,
           properties.view.mapValues(propertyValue2String).toMap,
           edges.toSet,
-          forwardTo,
-          mergedIntoHere,
           latestUpdateAfterSnapshot,
           subscribersStrings,
           domainNodeIndexStrings,

@@ -368,9 +368,7 @@ trait ArbitraryInstances {
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeAdded.apply),
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeRemoved.apply),
       Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertySet.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply),
-      Gen.resultOf[QuineId, NodeChangeEvent](MergedIntoOther.apply),
-      Gen.resultOf[QuineId, NodeChangeEvent](MergedHere.apply)
+      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply)
     )
   }
 
@@ -690,8 +688,6 @@ trait ArbitraryInstances {
     Gen.resultOf[
       Map[Symbol, PropertyValue], // properties
       Iterable[HalfEdge], // edges
-      Option[QuineId], // forwardTo
-      Set[QuineId], // mergedIntoHere
       IndexSubscribers, // subscribersToThisNode
       DomainNodeIndex, // domainNodeIndex
       NodeSnapshot

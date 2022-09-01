@@ -203,18 +203,6 @@ trait LiteralOpsGraph extends BaseGraph {
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)
     }
-
-    def mergeNode(fromThat: QuineId, intoThis: QuineId)(implicit timeout: Timeout): Future[QuineId] = {
-      requiredGraphIsReady()
-      relayAsk(
-        QuineIdAtTime(intoThis, None),
-        GetNodeId
-      )
-        .flatMap(id =>
-          relayAsk(QuineIdAtTime(fromThat, None), MergeIntoNodeCommand(id.qid, _))
-            .map(_ => id.qid)(shardDispatcherEC)
-        )(shardDispatcherEC)
-    }
   }
 }
 

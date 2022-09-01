@@ -79,10 +79,6 @@ trait LiteralRoutesImpl
       }(graph.shardDispatcherEC)
   }
 
-  private val literalMergeNodesRoute = literalMergeNodes.implementedByAsync {
-    case (intoThis: QuineId, fromThat: QuineId) => graph.literalOps.mergeNode(fromThat, intoThis)
-  }
-
   private val literalPostRoute = literalPost.implementedByAsync {
     case (qid: QuineId, node: LiteralNode[QuineId, ByteString]) =>
       val propsF = Future.traverse(node.properties: TraversableOnce[(String, BStr)]) { case (typ, value) =>
@@ -163,7 +159,6 @@ trait LiteralRoutesImpl
 
   final val literalRoutes: Route = {
     literalGetRoute ~
-    literalMergeNodesRoute ~ // QU-353
     literalDeleteRoute ~
     literalPostRoute ~
     literalDebugRoute ~

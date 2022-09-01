@@ -6,7 +6,6 @@ import java.util.concurrent.TimeoutException
 
 import scala.collection.concurrent
 import scala.concurrent.duration.DurationLong
-import scala.util.Failure
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
@@ -188,55 +187,6 @@ object RecentNodes extends UserDefinedProcedure {
             .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
             .map(Vector(_))
         }(location.graph.nodeDispatcherEC)
-    }
-  }
-}
-
-object MergeNodes extends UserDefinedProcedure {
-  def name: String = "mergeNodes"
-  def canContainUpdates: Boolean = true
-  def isIdempotent: Boolean = true
-  def canContainAllNodeScan: Boolean = false
-
-  def signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
-    arguments = Vector("fromThat" -> Type.Node, "intoThis" -> Type.Node),
-    outputs = Vector("mergedId" -> Type.Anything),
-    description = "Merge the first node into the second. Returns the ID of the node receiving the final merged results."
-  )
-
-  def call(
-    context: QueryContext,
-    arguments: Seq[Value],
-    location: ProcedureExecutionLocation
-  )(implicit
-    parameters: Parameters,
-    timeout: Timeout
-  ): Source[Vector[Value], _] = {
-    val idArgs = arguments.map {
-      case Expr.Node(id, _, _) => id
-      case Expr.Bytes(bs, _) => QuineId(bs)
-      case Expr.Str(idStr) =>
-        location.idProvider
-          .qidFromPrettyString(idStr)
-          .recoverWith { case err =>
-            Failure(
-              CypherException.ConstraintViolation(s"The provided string could not be interpreted as a QuineId. $err")
-            )
-          }
-          .get
-      case _ => throw wrongSignature(arguments)
-    }
-
-    val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
-
-    idArgs match {
-      case Seq(node, into) =>
-        Source.future(
-          graph.literalOps
-            .mergeNode(node, into)
-            .map(id => Vector(Expr.fromQuineValue(location.idProvider.qidToValue(id))))(location.graph.nodeDispatcherEC)
-        )
-      case _ => throw wrongSignature(arguments)
     }
   }
 }
@@ -538,8 +488,6 @@ object CypherDebugNode extends UserDefinedProcedure {
                 atTime,
                 properties,
                 edges,
-                _,
-                _,
                 latestUpdateMillisAfterSnapshot,
                 subscribers,
                 subscriptions,

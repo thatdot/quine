@@ -13,7 +13,6 @@ import com.thatdot.quine.graph.NodeChangeEvent._
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage._
-import com.thatdot.quine.graph.messaging.MergeMessage.MergeIntoNode
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineValue}
 
@@ -83,10 +82,6 @@ trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps wi
             .map(_ => DeleteNodeCommand.Success)(context.dispatcher)
         )(context.dispatcher)
       }
-
-    case MergeIntoNodeCommand(other, replyTo) => self ! MergeIntoNode(other, replyTo)
-
-    case m: GetNodeId => m ?! QuineIdResponse(qid)
 
     case i @ IncrementProperty(propKey, incAmount, _) =>
       i ?! (properties.get(propKey).map(_.deserialized) match {

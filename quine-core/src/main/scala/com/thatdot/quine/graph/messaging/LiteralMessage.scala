@@ -76,15 +76,6 @@ object LiteralMessage {
     case object Success extends Result
   }
 
-  final case class MergeIntoNodeCommand(
-    otherQid: QuineId,
-    replyTo: QuineRef
-  ) extends LiteralCommand
-      with AskableQuineMessage[Future[BaseMessage.Done.type]]
-
-  /** Return the ID of the node queried. Used to resolve merged nodes. */
-  final case class GetNodeId(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[QuineIdResponse]
-
   final case class QuineIdResponse(qid: QuineId) extends LiteralMessage
 
   final case class LogInternalState(replyTo: QuineRef)
@@ -132,8 +123,6 @@ object LiteralMessage {
     atTime: Option[Milliseconds],
     properties: Map[Symbol, String],
     edges: Set[HalfEdge],
-    forwardTo: Option[QuineId],
-    mergedIntoHere: Set[QuineId],
     latestUpdateMillisAfterSnapshot: Option[EventTime],
     subscribers: List[String], // TODO make this string more informative
     subscriptions: List[String], // TODO: make this string more informative

@@ -122,29 +122,6 @@ trait LiteralRoutes
         .withTags(List(literalTag))
     )
 
-  final val literalMergeNodes: Endpoint[(Id, Id), Id] = {
-    val intoThisNode = segment[Id]("into-this-node", docs = Some("node that receives the merged content"))
-    val fromThatNode = segment[Id]("from-that-node", docs = Some("node with contents to be merged into the other"))
-    endpoint(
-      request = request(Patch, literalPrefix / intoThisNode / fromThatNode),
-      response = ok(jsonResponse[Id]),
-      docs = EndpointDocs()
-        .withSummary(Some("merge that node into this node"))
-        .withDescription(
-          Some(
-            """Merge the contents of that node into this node and redirect all future messages. Properties from that
-              |node will be added to the properties on this node, overwriting any which have the same key. Edges from
-              |that node will be repointed to this node. Future messages sent to that node will automatically be
-              |rerouted to this node. The end result is a behavior like this node having two IDs—the IDs from this
-              |and that node. Note: Merging nodes can cause duplicate results in some queries because there becomes two
-              |ways to find exactly the same content—from two IDs. Singular results can be returned by using the
-              |'distinct' keyword when returning query results.""".stripMargin
-          )
-        )
-        .withTags(List(literalTag))
-    )
-  }
-
   final val literalPost: Endpoint[(Id, LiteralNode[Id, BStr]), Unit] =
     endpoint(
       request = post(

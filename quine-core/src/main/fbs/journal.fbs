@@ -8,8 +8,6 @@ union NodeChangeEventUnion {
   RemoveEdge,
   AddProperty,
   RemoveProperty,
-  MergeIntoOther,
-  MergeIntoHere,
 }
 
 // See [[com.thatdot.quine.graph.EdgeAdded]]
@@ -36,16 +34,6 @@ table AddProperty {
 table RemoveProperty {
   key: string (required);
   value: [byte] (required); // MessagePack-serialized `QuineValue`
-}
-
-// See [[com.thatdot.quine.graph.MergedIntoOther]]
-table MergeIntoOther {
-  into_id: [byte] (required); // raw bytes of a `QuineId`
-}
-
-// See [[com.thatdot.quine.graph.MergedHere]]
-table MergeIntoHere {
-  from_id: [byte] (required); // raw bytes of a `QuineId`
 }
 
 // Also see [[com.thatdot.quine.graph.NodeChangeEvent.WithTime]]

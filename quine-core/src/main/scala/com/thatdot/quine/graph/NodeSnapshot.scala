@@ -10,8 +10,6 @@ import com.thatdot.quine.model.{DomainGraphBranch, HalfEdge, PropertyValue, Quin
 final case class NodeSnapshot(
   properties: Map[Symbol, PropertyValue],
   edges: Iterable[HalfEdge],
-  forwardTo: Option[QuineId],
-  mergedIntoHere: Set[QuineId],
   subscribersToThisNode: MutableMap[
     (DomainGraphBranch, AssumedDomainEdge),
     DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription

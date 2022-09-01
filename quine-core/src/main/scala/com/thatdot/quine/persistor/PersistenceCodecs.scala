@@ -1789,20 +1789,6 @@ object PersistenceCodecs extends LazyLogging {
           builder.createByteVector(value.serialized)
         )
         TypeAndOffset(persistence.NodeChangeEventUnion.RemoveProperty, event)
-
-      case NodeChangeEvent.MergedIntoOther(into) =>
-        val event = persistence.MergeIntoOther.createMergeIntoOther(
-          builder,
-          builder.createByteVector(into.array)
-        )
-        TypeAndOffset(persistence.NodeChangeEventUnion.MergeIntoOther, event)
-
-      case NodeChangeEvent.MergedHere(from) =>
-        val event = persistence.MergeIntoHere.createMergeIntoHere(
-          builder,
-          builder.createByteVector(from.array)
-        )
-        TypeAndOffset(persistence.NodeChangeEventUnion.MergeIntoHere, event)
     }
 
   private[this] def readNodeChangeEventUnion(
@@ -1839,16 +1825,6 @@ object PersistenceCodecs extends LazyLogging {
         val propertyKey = Symbol(event.key)
         val propertyValue = PropertyValue.fromBytes(event.valueAsByteBuffer.remainingBytes)
         NodeChangeEvent.PropertyRemoved(propertyKey, propertyValue)
-
-      case persistence.NodeChangeEventUnion.MergeIntoOther =>
-        val event = makeEvent(new persistence.MergeIntoOther()).asInstanceOf[persistence.MergeIntoOther]
-        val other = new QuineId(event.intoIdAsByteBuffer.remainingBytes)
-        NodeChangeEvent.MergedIntoOther(other)
-
-      case persistence.NodeChangeEventUnion.MergeIntoHere =>
-        val event = makeEvent(new persistence.MergeIntoHere()).asInstanceOf[persistence.MergeIntoHere]
-        val other = new QuineId(event.fromIdAsByteBuffer.remainingBytes)
-        NodeChangeEvent.MergedHere(other)
 
       case other =>
         throw new InvalidUnionType(other, persistence.NodeChangeEventUnion.names)
@@ -1933,20 +1909,6 @@ object PersistenceCodecs extends LazyLogging {
       val edgesArray = snapshot.edges.map(writeHalfEdge(builder, _)).toArray
       persistence.NodeSnapshot.createEdgesVector(builder, edgesArray)
     }
-
-    val forwardTo: Offset = snapshot.forwardTo match {
-      case None => NoOffset
-      case Some(forwardTo) => writeQuineId(builder, forwardTo)
-    }
-
-    val mergedIntoHere: Offset =
-      if (snapshot.mergedIntoHere.isEmpty) NoOffset
-      else {
-        val mergedIntoHereOffs: Array[Offset] = new Array[Offset](snapshot.mergedIntoHere.size)
-        for ((mergedIntoHere, i) <- snapshot.mergedIntoHere.zipWithIndex)
-          mergedIntoHereOffs(i) = writeQuineId(builder, mergedIntoHere)
-        persistence.NodeSnapshot.createMergedIntoHereVector(builder, mergedIntoHereOffs)
-      }
 
     val subscribers: Offset =
       if (snapshot.subscribersToThisNode.isEmpty) NoOffset
@@ -2050,8 +2012,6 @@ object PersistenceCodecs extends LazyLogging {
       builder,
       properties,
       edges,
-      forwardTo,
-      mergedIntoHere,
       subscribers,
       domainNodeIndex
     )
@@ -2072,19 +2032,6 @@ object PersistenceCodecs extends LazyLogging {
 
     val edges: Iterable[HalfEdge] = new AbstractIterable[HalfEdge] {
       def iterator: Iterator[HalfEdge] = Iterator.tabulate(snapshot.edgesLength)(i => readHalfEdge(snapshot.edges(i)))
-    }
-
-    val forwardTo: Option[QuineId] = Option(snapshot.forwardTo).map(readQuineId)
-
-    val mergedIntoHere: Set[QuineId] = {
-      val builder = Set.newBuilder[QuineId]
-      var i: Int = 0
-      val mergedIntoHereLength: Int = snapshot.mergedIntoHereLength
-      while (i < mergedIntoHereLength) {
-        builder += readQuineId(snapshot.mergedIntoHere(i))
-        i += 1
-      }
-      builder.result()
     }
 
     val subscribersToThisNode = {
@@ -2186,8 +2133,6 @@ object PersistenceCodecs extends LazyLogging {
     NodeSnapshot(
       properties,
       edges,
-      forwardTo,
-      mergedIntoHere,
       subscribersToThisNode,
       domainNodeIndex
     )

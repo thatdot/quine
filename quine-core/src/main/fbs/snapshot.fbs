@@ -5,8 +5,6 @@ namespace com.thatdot.quine.persistence;
 table NodeSnapshot {
   properties: [Property];
   edges: [HalfEdge];
-  forward_to: QuineId;
-  merged_into_here: [QuineId];
   subscribers: [Subscriber];
   domain_node_index: [NodeIndex];
 }
