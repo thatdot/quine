@@ -3,16 +3,14 @@ description: Get started using Quine streaming graph
 ---
 # Getting Started
 
-The articles in this section walk you through how to install Quine, connect an ingest stream to your pipeline, inspect your data using the exploration UI, and develop business logic using a standing query. 
-
-Testing out an idea? A recipe helps you to quickly iterate through the code, launch, test, and refine development cycle. 
+The tutorials in this section will teach you to install Quine, connect an ingest stream to an event source in your data pipeline, shape events into a graph, inspect your data, and develop business logic using a standing query.
 
 @@@index
 * @ref:[Quick Start](quick-start.md)
-* @ref:[Exploration UI](exploration-ui.md)
-* @ref:[Writing a Recipe](../community/writing-a-recipe.md)
-* @ref:[Querying 3D Data Tutorial](3d-data-ingest-sq.md)
-* @ref:[Operational Considerations](operational-considerations.md)
+* @ref:[Installing Quine](installing-quine-tutorial.md)
+* @ref:[Ingest Streams](ingest-streams-tutorial.md)
+* @ref:[Standing Queries](standing-queries-tutorial.md)
+* @ref:[Recipes](recipes-tutorial.md)
 @@@
 
 @@toc { depth=1 }

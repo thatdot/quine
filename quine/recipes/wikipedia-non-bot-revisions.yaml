@@ -1,0 +1,54 @@
+version: 1
+title: Wikipedia non-bot page update event stream
+contributor: https://github.com/maglietti
+summary: Stream page-update events that were not created by bots
+description: |-
+  This recipe will separate human generated events from bot generated
+  events in the english wikipedia database page-update event stream
+  and store them in for additional processing.
+  API Reference: https://stream.wikimedia.org/?doc#/streams/get_v2_stream_mediawiki_revision_create
+ingestStreams:
+  - type: ServerSentEventsIngest
+    url: https://stream.wikimedia.org/v2/stream/mediawiki.revision-create
+    format:
+      type: CypherJson
+      parameter: that
+      query: |-
+        MATCH (revNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) 
+        MATCH (pageNode) WHERE id(pageNode) = idFrom('page', $that.page_id) 
+        MATCH (dbNode) WHERE id(dbNode) = idFrom('db', $that.database) 
+        MATCH (userNode) WHERE id(userNode) = idFrom('id', $that.performer.user_id) 
+        MATCH (parentNode) WHERE id(parentNode) = idFrom('revision', $that.rev_parent_id) 
+        SET revNode = $that, revNode:rev:revCreate 
+        SET pageNode.id = $that.page_id, 
+          pageNode.namespace = $that.page_namespace, 
+          pageNode.title = $that.page_title, 
+          pageNode.comment = $that.comment, 
+          pageNode.is_redirect = $that.is_redirect, 
+          pageNode:page 
+        SET dbNode.database = $that.database, 
+          dbNode:db SET userNode = $that.performer, 
+          userNode.Name = $that.performer.user_text, 
+          userNode:user 
+        CREATE (revNode)-[:page]->(pageNode) 
+        CREATE (revNode)-[:db]->(dbNode) 
+        CREATE (revNode)-[:by]->(userNode) 
+        CREATE (revNode)-[:parent]->(parentNode)
+standingQueries:
+  - pattern:
+      query: |-
+        MATCH (n:rev:revCreate) 
+        WHERE n.performer.user_is_bot = false 
+          AND n.database = 'enwiki' 
+        RETURN id(n) as id
+      type: Cypher
+      mode: MultipleValues
+    outputs:
+      print-output:
+        type: CypherQuery
+        query: MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)
+        andThen:
+          type: PrintToStandardOut
+nodeAppearances: [ ]
+quickQueries: [ ]
+sampleQueries: [ ]

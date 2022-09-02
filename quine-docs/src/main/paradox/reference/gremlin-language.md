@@ -5,7 +5,7 @@ description: Quine streaming graph Gremlin language reference
 
 @link:[Gremlin](https://tinkerpop.apache.org/gremlin.html){ open=new } is a graph query language, but one that is less declarative than @ref:[Cypher Language](cypher/cypher-language.md) and more focused on letting users specify exactly the traversal they want. The main strength that Gremlin has is that one of its focuses is traversals: instructions for how to walk the graph structure given some starting points.
 
-In the @ref:[Exploration UI](../getting-started/exploration-ui.md), nodes from the graph can be queried using Gremlin or Cypher interchangeably. Quick queries can also be defined in Gremlin. This is effective because those queries usually take only a couple simple steps from their starting point.
+In the @ref:[Exploration UI](../core-concepts/exploration-ui.md), nodes from the graph can be queried using Gremlin or Cypher interchangeably. Quick queries can also be defined in Gremlin. This is effective because those queries usually take only a couple simple steps from their starting point.
 
 @@@ note
 
