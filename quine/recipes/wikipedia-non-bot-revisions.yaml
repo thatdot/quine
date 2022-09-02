@@ -1,6 +1,6 @@
 version: 1
 title: Wikipedia non-bot page update event stream
-contributor: https://github.com/maglietti
+contributor: https://github.com/thatdot
 summary: Stream page-update events that were not created by bots
 description: |-
   This recipe will separate human generated events from bot generated

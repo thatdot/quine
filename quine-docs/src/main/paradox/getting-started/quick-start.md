@@ -28,7 +28,7 @@ Concepts that you should already be familiar with:
 * Cypher graph query language
 * Interacting with REST API endpoints
 
-If you are unsure of any of these concepts, please consider going through the more in depth @ref:[installing quine](installing-quine-tutorial.md) materials as your introduction to Quine.
+If you are unsure of any of these concepts, please consider going through the more in depth @ref:[installing Quine](installing-quine-tutorial.md) materials as your introduction to Quine.
 
 ## Install Quine
 
