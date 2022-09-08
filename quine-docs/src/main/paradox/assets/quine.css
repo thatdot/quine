@@ -1,3 +1,17 @@
+.md-typeset h1 {
+    font-weight: 500 !important;
+    color: #003b94 !important;
+}
+
+.md-typeset h2 {
+    font-weight: 400 !important;
+    color: #003b94 !important;
+}
+
+.md-typeset a {
+    color: #003b94 !important; 
+}
+
 .features-grid {
     margin-top: 60px;
     margin-bottom: 40px;

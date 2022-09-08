@@ -54,7 +54,7 @@ object Dependencies {
   val scalaParserCombinatorsV = "1.1.2"
   val scalaTestScalaCheckV = "3.2.11.0"
   val scalaTestV = "3.2.13"
-  val scalajsDomV = "2.1.0"
+  val scalajsDomV = "2.3.0"
   val scalajsMacroTaskExecutorV = "1.1.0"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.9"

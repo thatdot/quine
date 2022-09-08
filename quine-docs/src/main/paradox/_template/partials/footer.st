@@ -58,7 +58,7 @@
             <a href="/components/standing-query-outputs.html" class="footer-link">Standing Query Outputs</a>
           </li>
           <li class="footer-list-item">
-            <a href="/getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
+            <a href="/core-concepts/exploration-ui.html" class="footer-link">Exploration UI</a>
           </li>
           <li class="footer-list-item">
             <a href="/components/writing-standing-queries.html" class="footer-link">Writing Standing Queries</a>
@@ -72,7 +72,7 @@
             <a href="https://quine.io/download" class="footer-link">Download</a>
           </li>
           <li class="footer-list-item">
-            <a href="/getting-started/quick-start.html" class="footer-link">Getting Started</a>
+            <a href="/getting-started/index.html" class="footer-link">Getting Started</a>
           </li>
         </ul>
         <div id="w-node-_972d8002-2611-e260-929c-6645d914b4d5-8e70ec0c" class="div-block-22"></div>
