@@ -20,7 +20,7 @@ This page is an alphabetical list of technical terms which have a particular mea
 - **Cypher** - a graph query language. It is used by Quine for ingesting data, running ad hoc queries, and setting standing queries. See: "@ref:[Cypher Language](cypher/cypher-language.md)"
 - **Edge** - a relationship between exactly two nodes in a graph.
 - **Event Sourcing** - the practice of saving -updates- to state instead of the total current state. @link:[Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html){ open=new } adds data to an append-only log.
-- **Exploration UI** - an interactive user interface served by the Quine web server. See: "@ref:[Exploration UI](../core-concepts/exploration-ui.md)"
+- **Exploration UI** - an interactive user interface served by the Quine web server. See: "@ref:[Exploration UI](../getting-started/exploration-ui.md)"
 - **Graph** - a logical data structure composed of Nodes and Edges.
 - **Gremlin** - a graph traversal language. It is used by Quine for ad hoc queries and quick queries in the Exploration UI. See: "@ref:[Gremlin Language](gremlin-language.md)"
 - **ID Provider** - a user-configurable component of Quine which determines the type of ID used by each node in the graph. See: "@ref:[ID Provider](../components/id-provider.md)"

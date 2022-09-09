@@ -13,11 +13,11 @@ The Exploration UI is fully supported in Chrome. Other browsers are likely to wo
 
 The Exploration UI is composed of a toolbar along the top and a main canvas in white taking of most of the page. Data represented as nodes and edges will be rendered on the canvas in response to queries issued in the toolbar. A navigation bar along the left side will take you away from the Exploration UI to other views of the system.
 
-![Components of the Exploration UI](components.png)
+![Components of the Exploration UI](./ex-ui/components.png)
 
 ### Toolbar
 
-![Components of the Toolbar](toolbar.png)
+![Components of the Toolbar](./ex-ui/toolbar.png)
 
 - **Query Bar**: Type in a query here to render data into the canvas. A drop-down arrow appears here if starting queries are defined.
 - **Previous Checkpoint**: Click to restore the canvas contents to the previous saved checkpoint.
@@ -40,19 +40,19 @@ Query results are rendered onto the shared space of the canvas. New results are 
 
 Nodes often contain properties, which can be viewed by hovering the mouse over particular nodes. The popup box shown on hover also displays associated metadata like the node's ID. Queries in progress that have not yet returned results cause a spinner to display in the upper-right corner of the canvas. Nodes rendered in the UI represent the data on each node -at the time it was returned-. Updating the state of a node is accomplished by returning that node again (or using the "Refresh" quick query).
 
-![A node with properties](node-properties.png)
+![A node with properties](./ex-ui/node-properties.png)
 
 ----------------------
 
 When new results are returned to the canvas, the canvas animates briefly to layout all results. Nodes can be selected and moved around the canvas, or pinned so that they do not move when the canvas is animated. Additional, contextually relevant queries can be easily initiated by right-clicking a node and choosing the appropriate query.
 
-![Quick Queries shown when right-clicking a node](quick-queries.png)
+![Quick Queries shown when right-clicking a node](./ex-ui/quick-queries.png)
 
 ----------------------
 
 When a query is issued that is not expected to return nodes, a text area with green background appears at the bottom of the canvas to show the results. Error messages are also returned in this text area, with a pale red background. Textual results can be dismissed with the "X" in the corner of the text area.
 
-![Textual results](text-results.png)
+![Textual results](./ex-ui/text-results.png)
 
 ----------------------
 
@@ -76,7 +76,7 @@ The Exploration UI in Quine can make it feel like a database, but it is a stream
 
 Queries are written in either @ref:[Cypher](../reference/cypher/cypher-language.md) or @ref:[Gremlin](../reference/gremlin-language.md). While virtually all of the Cypher syntax is available, Gremlin support is limited to only a subset of the language. The Gremlin language embeds other languages (like Groovy) inside of it, and is therefore not suitable in its entirety for use in Quine. Either language can be entered into the query bar and the system will detect it automatically.
 
-![Starting Queries](starting-queries.png)
+![Starting Queries](./ex-ui/starting-queries.png)
 
 The Exploration UI can be configured with any set of queries pre-programmed and available via a drop-down menu from the query bar. These starting queries can be configured through the REST API. Starting queries can be parameterized with easily completed values to make pulling out complex patterns very easy when the proper starting value is identified.
 
@@ -88,7 +88,7 @@ In addition to node-centric queries, queries can return textual or tabular resul
 
 Quine includes many utility functions built in, and the ability to add in custom user-defined queries. To list all available functions which can be included in queries, you can execute the text query `CALL help.functions()` or `CALL help.procedures()` to print out the name, signature, and documentation for all currently supported functions and procedures.
 
-![Functions](text-functions.png)
+![Functions](./ex-ui/text-functions.png)
 
 ### Interacting With Data
 
@@ -96,7 +96,7 @@ A quick query is a pre-programmed query that is made available for execution by 
 
 Quick queries that are configured with an `edgeLabel` will produce a "synthetic edge" in the Exploration UI. A synthetic edge is rendered as a purple dotted edge in the Exploration UI. A synthetic edge does not directly exist in the underlying data; it exists only in the canvas. A synthetic edge connects the starting node from a quick query with all the results returned from that quick query. Synthetic edges enable displaying a complex result (e.g. the result of a complex graph traversal) as a simple single edge.
 
-![Synthetic Edges](synthetic-edge.png)
+![Synthetic Edges](./ex-ui/synthetic-edge.png)
 
 Nodes rendered on the canvas represent the state of the node at the moment it was retrieved by Quine. To update the rendered node on the canvas with new properties, the node simply needs to be returned again. This is done with another query, or by right-clicking a node and choosing the built-in Quick Query to "Refresh" a node. If multiple nodes are selected (e.g. by pressing Ctrl-A, or holding shift to draw a box or multi-select), clicking the "Refresh" quick query for one will refresh all selected nodes.
 
@@ -112,7 +112,7 @@ Clicking the download button will download a JSON representation of the explorat
 
 The Exploration UI is an interface into the underlying graph data managed by Quine. The underlying graph data is fully versioned, making it possible to run queries at past moments to see what the results would have been at previous points in time. Unlike the timeline used to undo and redo exploration history, historical queries are a feature of the underlying graph interpreter, and not the Exploration UI. The Exploration UI does provide an interface to querying past historical moments, however. A user can set the Exploration UI to query past moments by clicking the History button and following the prompt to choose a single historical moment to begin a new exploration session. Choosing a new historical moment to query with the history button will clear anything rendered on the canvas and in the Exploration UI timeline.
 
-![Historical query](historical-query.png)
+![Historical query](./ex-ui/historical-query.png)
 
 Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the Standing Query and if that second query modifies the data—for instance, adding an edge connected to the node.
 
