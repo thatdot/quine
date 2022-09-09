@@ -5,7 +5,14 @@ import scala.util.{Failure, Success}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  NodeChangeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
 import com.thatdot.quine.model.QuineId
 
 /** Reified version of persistor call for logging purposes
@@ -128,6 +135,8 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     new WrappedPersistorException(SetMetaData(key, newValue.map(_.length)), _),
     persistenceAgent.setMetaData(key, newValue)
   )
+
+  override def ready(graph: BaseGraph): Unit = persistenceAgent.ready(graph)
 
   def shutdown(): Future[Unit] = persistenceAgent.shutdown()
 

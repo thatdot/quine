@@ -69,6 +69,9 @@ class GraphService(
     10 seconds
   )
 
+  // Provide the [[PersistenceAgent]] with the ready-to-use graph
+  persistor.ready(this)
+
   /* By initializing this last, it will be `false` during the construction and only true
    * once object construction finishes
    */

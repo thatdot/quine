@@ -7,7 +7,14 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  NodeChangeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
 import com.thatdot.quine.model.QuineId
 
 /** Wrapper for a persistor that checks that some invariants are upheld:
@@ -89,6 +96,8 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
     standingQueryId: StandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = wrapped.setStandingQueryState(standingQuery, id, standingQueryId, state)
+
+  override def ready(graph: BaseGraph): Unit = wrapped.ready(graph)
 
   def shutdown(): Future[Unit] = wrapped.shutdown()
 

@@ -6,7 +6,14 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  NodeChangeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
 import com.thatdot.quine.model.QuineId
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents
@@ -84,9 +91,11 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     rootAgent.setMetaData(key, newValue)
 
+  override def ready(graph: BaseGraph): Unit =
+    getAgents.foreach(_.ready(graph))
+
   override def shutdown(): Future[Unit] =
     Future
       .traverse(getAgents.toSeq)(_.shutdown())(implicitly, ExecutionContexts.parasitic)
       .map(_ => ())(ExecutionContexts.parasitic)
-
 }

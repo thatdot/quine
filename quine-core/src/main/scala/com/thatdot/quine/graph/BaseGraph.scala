@@ -232,6 +232,12 @@ trait BaseGraph extends StrictLogging {
     }
   }
 
+  /** Determines if the node by its [[QuineId]] belongs to this [[BaseGraph]].
+    *
+    * @note except in a clustered setting, all nodes are local
+    */
+  def isLocalGraphNode(qid: QuineId): Boolean = true
+
   /** Convenience method for getting some [[com.thatdot.quine.model.QuineId]]'s corresponding
     * to nodes that were recently touched (since they are not yet sleeping). (best effort)
     *

@@ -10,6 +10,7 @@ import akka.stream.scaladsl.Source
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
+  BaseGraph,
   EventTime,
   MemberIdx,
   NodeChangeEvent,
@@ -258,6 +259,12 @@ abstract class PersistenceAgent extends StrictLogging {
     */
   def setLocalMetaData(key: String, localMemberId: MemberIdx, newValue: Option[Array[Byte]]): Future[Unit] =
     setMetaData(s"$localMemberId-$key", newValue)
+
+  /** Provides the [[BaseGraph]] instance to the [[PersistenceAgent]] when the [[BaseGraph]] is ready for use.
+    * Used to trigger initialization behaviors that depend on [[BaseGraph]].
+    * Default implementation is a no op.
+    */
+  def ready(graph: BaseGraph): Unit = ()
 
   /** Close this persistence agent
     *
