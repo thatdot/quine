@@ -29,8 +29,8 @@ Cypher queries are used in Quine for several purposes:
 
   * Used to ingest events and create the graph
   * Set as standing queries to find live matches from the dynamically changing graph
-  * Entered in the query bar of the @ref:[Exploration UI](../../core-concepts/exploration-ui.md)
-  * Set as "quick queries" in the @ref:[Exploration UI](../../core-concepts/exploration-ui.md)
+  * Entered in the query bar of the @ref:[Exploration UI](../../getting-started/exploration-ui.md)
+  * Set as "quick queries" in the @ref:[Exploration UI](../../getting-started/exploration-ui.md)
   * Sent directly through the @ref:[REST API](../rest-api.md)
 
 ## Language Specification

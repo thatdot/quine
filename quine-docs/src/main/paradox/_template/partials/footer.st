@@ -55,13 +55,13 @@
             <a href="/core-concepts/architecture.html" class="footer-link">Architecture</a>
           </li>
           <li class="footer-list-item">
-            <a href="/components/standing-query-outputs.html" class="footer-link">Standing Query Outputs</a>
+            <a href="/getting-started/standing-queries-tutorial.html" class="footer-link">Standing Query Tutorial</a>
           </li>
           <li class="footer-list-item">
-            <a href="/core-concepts/exploration-ui.html" class="footer-link">Exploration UI</a>
+            <a href="/getting-started/ingest-streams-tutorial.html" class="footer-link">Ingest Streams Tutorial</a>
           </li>
           <li class="footer-list-item">
-            <a href="/components/writing-standing-queries.html" class="footer-link">Writing Standing Queries</a>
+            <a href="/getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
           </li>
         </ul>
         <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec2f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
@@ -90,7 +90,7 @@
             <a href="https://quine.io/recipes/apache-log-analytics" class="footer-link">Apache Log Analytics</a>
           </li>
           <li class="footer-list-item">
-            <a href="/reference/recipe-ref-manual.html" class="footer-link">Writing a Recipe</a>
+            <a href="/community/writing-a-recipe.html" class="footer-link">Writing a Recipe</a>
           </li>
         </ul>
         <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec4f-8e70ec0c" role="list" class="footer-list w-list-unstyled">

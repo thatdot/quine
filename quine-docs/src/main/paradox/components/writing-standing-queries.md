@@ -146,7 +146,7 @@ In addition, there are a couple ways to "wiretap" results as they are being prod
 
 ### `standing.wiretap` Cypher procedure
 
-From the @ref:[Exploration UI](../core-concepts/exploration-ui.md), the `standing.wiretap` Cypher procedure can be used to issue a query that will incrementally return results. Since this is just a regular, Cypher procedure, it can feed its outputs automatically into another query too. For example:
+From the @ref:[Exploration UI](../getting-started/exploration-ui.md), the `standing.wiretap` Cypher procedure can be used to issue a query that will incrementally return results. Since this is just a regular, Cypher procedure, it can feed its outputs automatically into another query too. For example:
 
 ```cypher
 // Wiretap "hasMaternalGrandpaJoe" and return properties of matching nodes
