@@ -8,6 +8,7 @@ import com.thatdot.quine.model.{DomainGraphBranch, HalfEdge, PropertyValue, Quin
 // Convenience class to define which NodeActor fields to close over (sometimes mutable!) for the sake of immediately serializing it.
 // Don't pass instances of this class around!
 final case class NodeSnapshot(
+  time: EventTime,
   properties: Map[Symbol, PropertyValue],
   edges: Iterable[HalfEdge],
   subscribersToThisNode: MutableMap[

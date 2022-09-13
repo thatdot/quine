@@ -191,7 +191,7 @@ abstract class PersistenceAgent extends StrictLogging {
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]]
+  ): Future[Option[Array[Byte]]]
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit]
 
@@ -313,11 +313,11 @@ trait MultipartSnapshotPersistenceAgent {
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] =
+  ): Future[Option[Array[Byte]]] =
     getLatestMultipartSnapshot(id, upToTime).flatMap {
       case Some(MultipartSnapshot(time, parts)) =>
         if (validateSnapshotParts(parts))
-          Future.successful(Some((time, parts.flatMap(_.partBytes).toArray)))
+          Future.successful(Some(parts.flatMap(_.partBytes).toArray))
         else {
           logger.warn(s"Failed reading multipart snapshot for id: $id upToTime: $upToTime; retrying with time: $time")
           getLatestSnapshot(id, time)

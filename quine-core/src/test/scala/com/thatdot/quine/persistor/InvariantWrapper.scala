@@ -73,7 +73,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
     wrapped.persistSnapshot(id, atTime, state)
   }
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     wrapped.getLatestSnapshot(id, upToTime)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =

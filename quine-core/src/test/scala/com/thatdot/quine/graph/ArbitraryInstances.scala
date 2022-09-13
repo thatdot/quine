@@ -686,6 +686,7 @@ trait ArbitraryInstances {
   }
   implicit val arbNodeSnapshot: Arbitrary[NodeSnapshot] = Arbitrary {
     Gen.resultOf[
+      EventTime,
       Map[Symbol, PropertyValue], // properties
       Iterable[HalfEdge], // edges
       IndexSubscribers, // subscribersToThisNode

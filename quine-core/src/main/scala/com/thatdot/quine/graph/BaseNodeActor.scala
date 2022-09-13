@@ -66,5 +66,5 @@ trait BaseNodeActor extends BaseNodeActorView {
   protected def updateRelevantToSnapshotOccurred(): Unit
 
   /** Serializes a snapshot and also resets the `latestUpdateAfterSnapshot` */
-  protected def toSnapshotBytes(): Array[Byte]
+  protected def toSnapshotBytes(time: EventTime): Array[Byte]
 }

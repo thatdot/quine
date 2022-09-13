@@ -3,6 +3,7 @@ include "base.fbs";
 namespace com.thatdot.quine.persistence;
 
 table NodeSnapshot {
+  time: long;
   properties: [Property];
   edges: [HalfEdge];
   subscribers: [Subscriber];

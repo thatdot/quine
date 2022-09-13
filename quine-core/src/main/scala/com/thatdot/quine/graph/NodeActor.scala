@@ -5,8 +5,8 @@ import java.util.concurrent.locks.StampedLock
 
 import scala.collection.compat._
 import scala.collection.mutable.{Map => MutableMap}
+import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -105,7 +105,18 @@ private[graph] class NodeActor(
       case None =>
         restoreFromSnapshotAndJournal(atTime)
       case Some(snapshotBytes) =>
-        restoreFromSnapshotBytes(snapshotBytes)
+        val restored: NodeSnapshot =
+          PersistenceCodecs.nodeSnapshotFormat
+            .read(snapshotBytes)
+            .fold(
+              err =>
+                throw new NodeWakeupFailedException(
+                  s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
+                  err
+                ),
+              identity
+            )
+        restoreFromSnapshot(restored)
         // Register/unregister universal standing queries
         syncStandingQueries()
         // TODO: QU-430 restoreFromSnapshotBytes doesn't account for standing query states!
@@ -222,11 +233,17 @@ private[graph] class NodeActor(
     }
 
   private[this] def snapshotOnUpdate(): Unit = if (persistenceConfig.snapshotOnUpdate) {
-    val snapshot = toSnapshotBytes()
     val occurredAt: EventTime = nextEventTime()
+    val snapshot = toSnapshotBytes(occurredAt)
     metrics.snapshotSize.update(snapshot.length)
     def persistSnapshot(): Future[Unit] =
-      metrics.persistorPersistSnapshotTimer.time(persistor.persistSnapshot(qid, occurredAt, snapshot))
+      metrics.persistorPersistSnapshotTimer.time(
+        persistor.persistSnapshot(
+          qid,
+          if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else occurredAt,
+          snapshot
+        )
+      )
     def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Done.type] =
       f.recoverWith { case NonFatal(e) =>
         logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
@@ -328,35 +345,45 @@ private[graph] class NodeActor(
   @throws[NodeWakeupFailedException]("When node wakeup fails irrecoverably")
   private[this] def restoreFromSnapshotAndJournal(untilOpt: Option[Milliseconds]): Unit = {
 
-    type Snapshot = Option[Array[Byte]]
-    type Journal = Iterable[NodeChangeEvent]
     type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
 
     // Get the snapshot and journal events
-    val snapshotAndJournal: Future[(Snapshot, Journal)] = {
-      implicit val ec: ExecutionContext = cypherEc
-      for {
-        // Find the snapshot
-        latestSnapshotOpt <-
-          if (persistenceConfig.snapshotEnabled) {
-            // TODO: should we warn about snapshot singleton with a historical time?
-            val upToTime = atTime match {
-              case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
-                EventTime.fromMillis(historicalTime)
-              case _ =>
-                EventTime.MaxValue
-            }
-            metrics.persistorGetLatestSnapshotTimer.time {
-              persistor.getLatestSnapshot(qid, upToTime)
-            }
-          } else
-            Future.successful(None)
+    val snapshotAndJournal = {
 
-        // Query the journal for any events that come after the snapshot
-        journalAfterSnapshot <-
-          if (persistenceConfig.journalEnabled) {
+      val eventualMaybeSnapshotBytes = if (persistenceConfig.snapshotEnabled) {
+        // TODO: should we warn about snapshot singleton with a historical time?
+        val upToTime = atTime match {
+          case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
+            EventTime.fromMillis(historicalTime)
+          case _ =>
+            EventTime.MaxValue
+        }
+        metrics.persistorGetLatestSnapshotTimer.time {
+          persistor.getLatestSnapshot(qid, upToTime)
+        }
+      } else
+        Future.successful(None)
+
+      val eventualMaybeSnapshot = eventualMaybeSnapshotBytes.map { maybeBytes =>
+        maybeBytes.map { bytes =>
+          PersistenceCodecs.nodeSnapshotFormat
+            .read(bytes)
+            .fold(
+              err =>
+                throw new NodeWakeupFailedException(
+                  s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
+                  err
+                ),
+              identity
+            )
+        }
+      }(cypherEc)
+
+      eventualMaybeSnapshot
+        .flatMap { latestSnapshotOpt =>
+          val journalAfterSnapshot = if (persistenceConfig.journalEnabled) {
             val startingAt = latestSnapshotOpt match {
-              case Some((snapshotTime, _)) => snapshotTime.nextEventTime(Some(log))
+              case Some(latestSnapshot) => latestSnapshot.time
               case None => EventTime.MinValue
             }
             val endingAt = untilOpt match {
@@ -369,8 +396,10 @@ private[graph] class NodeActor(
             // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
             // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
           } else
-            Future.successful(Vector.empty)
-      } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
+            Future.successful(Iterable.empty)
+
+          journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(cypherEc)
+        }(cypherEc)
     }
 
     // Get the standing query states
@@ -385,7 +414,7 @@ private[graph] class NodeActor(
     // Will defer all other message processing until the future is complete
     // It is OK to ignore the returned future from `pauseMessageProcessingUntil` because nothing else happens during
     // initialization of this actor. Future processing is deferred by `pauseMessageProcessingUntil`'s message stashing.
-    val _ = pauseMessageProcessingUntil[((Snapshot, Journal), StandingQueryStates)](
+    val _ = pauseMessageProcessingUntil[((Option[NodeSnapshot], Iterable[NodeChangeEvent]), StandingQueryStates)](
       snapshotAndJournal.zip(standingQueryStates),
       {
         case Success(((latestSnapshotOpt, journalAfterSnapshot), standingQueryStates)) =>
@@ -394,9 +423,8 @@ private[graph] class NodeActor(
             case None =>
               edges.clear()
               properties = Map.empty
-
-            case Some(snapshotBytes) =>
-              restoreFromSnapshotBytes(snapshotBytes)
+            case Some(snapshot) =>
+              restoreFromSnapshot(snapshot)
           }
           applyEventsEffectsInMemory(journalAfterSnapshot, shouldCauseSideEffects = false)
 
@@ -446,10 +474,11 @@ private[graph] class NodeActor(
     *
     * @return serialized node snapshot
     */
-  def toSnapshotBytes(): Array[Byte] = {
+  def toSnapshotBytes(time: EventTime): Array[Byte] = {
     latestUpdateAfterSnapshot = None // TODO: reconsider what to do if saving the snapshot fails!
     PersistenceCodecs.nodeSnapshotFormat.write(
       NodeSnapshot(
+        time,
         properties,
         edges.toSerialize,
         subscribers.subscribersToThisNode,
@@ -458,28 +487,15 @@ private[graph] class NodeActor(
     )
   }
 
-  /** During wake-up, deserialize a binary node snapshot and use it to initialize node state
+  /** Uses a node snapshot to initialize node state
     *
     * @note must be called on the actor thread
-    * @param snapshotBytes binary node snapshot
     */
-  @throws[NodeWakeupFailedException]("if snapshot bytes cannot be deserialized")
-  private def restoreFromSnapshotBytes(snapshotBytes: Array[Byte]): Unit = {
-    val restored: NodeSnapshot =
-      PersistenceCodecs.nodeSnapshotFormat
-        .read(snapshotBytes)
-        .fold(
-          err =>
-            throw new NodeWakeupFailedException(
-              s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
-              err
-            ),
-          identity
-        )
-    properties = restored.properties
-    restored.edges.foreach(edges +=)
-    subscribers = SubscribersToThisNode(restored.subscribersToThisNode)
-    domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(restored.domainNodeIndex)
+  private def restoreFromSnapshot(snapshot: NodeSnapshot): Unit = {
+    properties = snapshot.properties
+    snapshot.edges.foreach(edges +=)
+    subscribers = SubscribersToThisNode(snapshot.subscribersToThisNode)
+    domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(snapshot.domainNodeIndex)
     branchParentIndex =
       DomainNodeIndexBehavior.BranchParentIndex.reconstruct(domainNodeIndex, subscribers.subscribersToThisNode.keys)
   }

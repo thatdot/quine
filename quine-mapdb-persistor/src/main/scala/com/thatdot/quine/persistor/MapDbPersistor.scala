@@ -243,7 +243,7 @@ final class MapDbPersistor(
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] = {
+  ): Future[Option[Array[Byte]]] = {
     // missing values in key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = Array[AnyRef](id.array)
     val endingKey: Array[AnyRef] = upToTime match {
@@ -253,11 +253,7 @@ final class MapDbPersistor(
 
     tryGetLatestSnapshot(startingKey, endingKey, 5)
       .map { (maybeEntry: Option[JavaMap.Entry[Array[AnyRef], Array[Byte]]]) =>
-        maybeEntry.map { entry =>
-          val time: EventTime = EventTime.fromRaw(Long.unbox(entry.getKey.last))
-          val snapshot: Array[Byte] = entry.getValue
-          time -> snapshot
-        }
+        maybeEntry.map(_.getValue)
       }(ioDispatcher)
       .recoverWith { case e =>
         logger.error(s"getLatestSnapshot failed on $id. ${e.getMessage}")

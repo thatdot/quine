@@ -45,7 +45,7 @@ class EmptyPersistor(
   ): Future[Vector[NodeChangeEvent.WithTime]] = Future.successful(Vector.empty)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     Future.successful(None)
 
   def persistStandingQuery(standingQuery: StandingQuery) = Future.unit

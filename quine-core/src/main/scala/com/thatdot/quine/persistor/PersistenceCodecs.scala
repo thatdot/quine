@@ -1885,7 +1885,7 @@ object PersistenceCodecs extends LazyLogging {
   ): AssumedDomainEdge =
     Option(assumedEdge).map { edge =>
       val genericEdge = readGenericEdge(edge.edge)
-      val branch = readDomainGraphBranch(edge.branchType, edge.branch(_))
+      val branch = readDomainGraphBranch(edge.branchType, edge.branch)
       (genericEdge, branch)
     }
 
@@ -1894,6 +1894,7 @@ object PersistenceCodecs extends LazyLogging {
     snapshot: NodeSnapshot
   ): Offset = {
 
+    val time = snapshot.time.eventTime
     val properties: Offset = {
       val propertiesOffs: Array[Offset] = new Array[Offset](snapshot.properties.size)
       for (((propKey, propVal), i) <- snapshot.properties.zipWithIndex)
@@ -2010,6 +2011,7 @@ object PersistenceCodecs extends LazyLogging {
 
     persistence.NodeSnapshot.createNodeSnapshot(
       builder,
+      time,
       properties,
       edges,
       subscribers,
@@ -2018,6 +2020,7 @@ object PersistenceCodecs extends LazyLogging {
   }
 
   private[this] def readNodeSnapshot(snapshot: persistence.NodeSnapshot): NodeSnapshot = {
+    val time = EventTime.fromRaw(snapshot.time)
     val properties: Map[Symbol, PropertyValue] = {
       val builder = Map.newBuilder[Symbol, PropertyValue]
       var i: Int = 0
@@ -2043,8 +2046,7 @@ object PersistenceCodecs extends LazyLogging {
       val subscribersLength = snapshot.subscribersLength
       while (i < subscribersLength) {
         val subscriber: persistence.Subscriber = snapshot.subscribers(i)
-        val branch =
-          readDomainGraphBranch(subscriber.branchType, subscriber.branch(_))
+        val branch = readDomainGraphBranch(subscriber.branchType, subscriber.branch)
         val assumedEdge = readAssumedEdge(subscriber.assumedEdge)
         val notifiables = mutable.Set.empty[Notifiable]
         var j: Int = 0
@@ -2131,6 +2133,7 @@ object PersistenceCodecs extends LazyLogging {
     }
 
     NodeSnapshot(
+      time,
       properties,
       edges,
       subscribersToThisNode,

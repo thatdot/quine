@@ -328,26 +328,22 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can query the latest snapshot of a node") {
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MaxValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot3)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(44L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MaxValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot3)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MaxValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot3)
         }
       )
@@ -356,24 +352,21 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can query with EventTime.MinValue as the target time") {
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MinValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot0)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MinValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot0)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.MinValue)
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot0)
         }
       )
@@ -387,30 +380,25 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         },
         // right up to one snapshot
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(34L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot0)
         },
         // right after one snapshot
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(34L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot0)
         },
         // after some snapshots, before others
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(36L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot1)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(38L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(44L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot4)
         }
       )
@@ -419,26 +407,22 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can handle unsigned EventTime") {
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(-129387432L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(44L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(-129387432L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot2)
         },
         persistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
-          val (atTime, snapshot) = snapshotOpt.get
-          assert(atTime === EventTime.fromRaw(-129387432L))
+          val snapshot = snapshotOpt.get
           assert(snapshot === snapshot2)
         }
       )

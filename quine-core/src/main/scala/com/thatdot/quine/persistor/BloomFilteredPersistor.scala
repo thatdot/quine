@@ -105,7 +105,7 @@ private class BloomFilteredPersistor(
     wrappedPersistor.persistSnapshot(id, atTime, state)
   }
 
-  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =
+  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     if (mightContain(id))
       wrappedPersistor.getLatestSnapshot(id, upToTime)
     else

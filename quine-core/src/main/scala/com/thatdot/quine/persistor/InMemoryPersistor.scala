@@ -79,14 +79,14 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] = {
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] = {
     val snapshotsMap = snapshots.get(id)
     Future.successful(
       if (snapshotsMap == null) None
       else
         Option
           .apply(snapshotsMap.floorEntry(upToTime))
-          .map(e => (e.getKey, e.getValue))
+          .map(e => e.getValue)
     )
   }
 

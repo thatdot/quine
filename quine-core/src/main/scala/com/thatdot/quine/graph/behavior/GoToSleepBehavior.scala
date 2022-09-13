@@ -24,7 +24,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def graph: BaseGraph
 
-  protected def toSnapshotBytes(): Array[Byte]
+  protected def toSnapshotBytes(time: EventTime): Array[Byte]
 
   protected def actorRefLock: StampedLock
 
@@ -68,7 +68,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       val saveFuture = latestUpdateAfterSnapshot match {
         case Some(latestUpdateTime) if persistenceConfig.snapshotEnabled =>
           val snapshotTime = if (!persistenceConfig.snapshotSingleton) latestUpdateTime else EventTime.MaxValue
-          val snapshot: Array[Byte] = toSnapshotBytes()
+          val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
           metrics.snapshotSize.update(snapshot.length)
           retryPersistence(
             metrics.persistorPersistSnapshotTimer,
@@ -119,7 +119,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
           latestUpdateAfterSnapshot match {
             case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
-              val snapshot: Array[Byte] = toSnapshotBytes()
+              val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
               metrics.snapshotSize.update(snapshot.length)
 
               implicit val scheduler: Scheduler = context.system.scheduler

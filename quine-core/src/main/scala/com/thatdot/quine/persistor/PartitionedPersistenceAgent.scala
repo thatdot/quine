@@ -62,7 +62,7 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] =
     getAgent(id).persistSnapshot(id, atTime, state)
 
-  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =
+  override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     getAgent(id).getLatestSnapshot(id, upToTime)
 
   override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =

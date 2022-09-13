@@ -458,7 +458,7 @@ final class RocksDbPersistor(
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] = Future {
+  ): Future[Option[Array[Byte]]] = Future {
     val stamp = dbLock.tryReadLock()
     if (stamp == 0) throw new RocksDBUnavailableException()
     try {
@@ -467,8 +467,8 @@ final class RocksDbPersistor(
         val startKey = qidAndTime2Key(id, upToTime)
         it.seekForPrev(startKey)
         if (it.isValid) {
-          val (foundId, time) = key2QidAndTime(it.key())
-          if (foundId == id) Some(time -> it.value()) else None
+          val (foundId, _) = key2QidAndTime(it.key())
+          if (foundId == id) Some(it.value()) else None
         } else {
           None
         }

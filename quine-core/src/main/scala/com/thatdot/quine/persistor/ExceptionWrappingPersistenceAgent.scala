@@ -86,7 +86,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     persistenceAgent.persistSnapshot(id, atTime, state)
   )
 
-  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] = leftMap(
+  def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] = leftMap(
     new WrappedPersistorException(GetLatestSnapshot(id, upToTime), _),
     persistenceAgent.getLatestSnapshot(id, upToTime)
   )
