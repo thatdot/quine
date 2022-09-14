@@ -31,11 +31,11 @@ object FlatcPlugin extends AutoPlugin {
   override def buildSettings: Seq[Def.Setting[_]] =
     Seq(
       flatcDependency := {
-        val prefix = "https://github.com/google/flatbuffers/releases/download/v2.0.0/"
+        val prefix = "https://github.com/google/flatbuffers/releases/download/v2.0.8/"
         val suffixOpt =
           if (Properties.isMac) Some("Mac.flatc.binary.zip")
           else if (Properties.isWin) Some("Windows.flatc.binary.zip")
-          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-9.zip")
+          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-12.zip")
           else None
 
         suffixOpt.map(suffix => new URL(prefix + suffix))
