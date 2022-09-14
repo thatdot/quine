@@ -26,14 +26,14 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     }
   }
 
-  it should "roundtrip NodeChangeEvent.WithTime" in {
-    forAll { (event: NodeChangeEvent.WithTime) =>
+  it should "roundtrip NodeEvent.WithTime" in {
+    forAll { (event: NodeEvent.WithTime) =>
       eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event
     }
   }
 
-  it should "roundtrip NodeChangeEvent" in {
-    forAll { (event: NodeChangeEvent) =>
+  it should "roundtrip NodeEvent" in {
+    forAll { (event: NodeEvent) =>
       eventFormat.read(eventFormat.write(event)).get == event
     }
   }
@@ -44,9 +44,9 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     }
   }
 
-  it should "roundtrip DomainGraphBranch" in {
-    forAll { (dgb: DomainGraphBranch) =>
-      dgbFormat.read(dgbFormat.write(dgb)).get == dgb
+  it should "roundtrip DomainGraphNode" in {
+    forAll { (dgn: DomainGraphNode) =>
+      domainGraphNodeFormat.read(domainGraphNodeFormat.write(dgn)).get == dgn
     }
   }
 
@@ -66,5 +66,6 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     forAll { (subs: StandingQuerySubscribers, sq: CypherStandingQueryState) =>
       standingQueryStateFormat.read(standingQueryStateFormat.write(subs -> sq)).get == subs -> sq
     }
+
   }
 }

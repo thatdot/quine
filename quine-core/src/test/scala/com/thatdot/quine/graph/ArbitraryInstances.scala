@@ -40,6 +40,8 @@ import com.thatdot.quine.graph.cypher.{
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CypherSubscriber, ResultId}
 import com.thatdot.quine.model._
 
+import DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+
 /** The derived [[Arbitrary]] instances for some types get big fast. If the
   * serialization tests ever start being too slow, you can get scalacheck to
   * print out timing information for each property by adding the following to
@@ -67,7 +69,6 @@ trait ArbitraryInstances {
       }
     )
   }
-
   implicit def arbContainer2[C[_, _], T, U](implicit
     a: Arbitrary[(T, U)],
     b: Buildable[(T, U), C[T, U]],
@@ -362,18 +363,27 @@ trait ArbitraryInstances {
     Gen.resultOf[Symbol, EdgeDirection, QuineId, HalfEdge](HalfEdge.apply)
   }
 
-  implicit val arbNodeChangeEvent: Arbitrary[NodeChangeEvent] = Arbitrary {
+  implicit val arbNodeEvent: Arbitrary[NodeEvent] = Arbitrary {
     import NodeChangeEvent._
+    import DomainIndexEvent._
     Gen.oneOf(
-      Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeAdded.apply),
-      Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeRemoved.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertySet.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply)
+      Gen.resultOf[HalfEdge, NodeEvent](EdgeAdded.apply),
+      Gen.resultOf[HalfEdge, NodeEvent](EdgeRemoved.apply),
+      Gen.resultOf[Symbol, PropertyValue, NodeEvent](PropertySet.apply),
+      Gen.resultOf[Symbol, PropertyValue, NodeEvent](PropertyRemoved.apply),
+      Gen.resultOf[DomainGraphNodeId, QuineId, Set[StandingQueryId], NodeEvent](
+        CreateDomainNodeSubscription.apply
+      ),
+      Gen.resultOf[DomainGraphNodeId, StandingQueryId, Set[StandingQueryId], NodeEvent](
+        CreateDomainStandingQuerySubscription.apply
+      ),
+      Gen.resultOf[QuineId, DomainGraphNodeId, Boolean, NodeEvent](DomainNodeSubscriptionResult.apply),
+      Gen.resultOf[DomainGraphNodeId, QuineId, NodeEvent](CancelDomainNodeSubscription.apply)
     )
   }
 
-  implicit val arbNodeChangeEventWithTime: Arbitrary[NodeChangeEvent.WithTime] = Arbitrary {
-    Gen.resultOf[NodeChangeEvent, EventTime, NodeChangeEvent.WithTime](NodeChangeEvent.WithTime.apply)
+  implicit val arbNodeEventWithTime: Arbitrary[NodeEvent.WithTime] = Arbitrary {
+    Gen.resultOf[NodeEvent, EventTime, NodeEvent.WithTime](NodeEvent.WithTime.apply)
   }
 
   implicit val arbPropCompF: Arbitrary[PropertyComparisonFunc] = Arbitrary {
@@ -422,6 +432,58 @@ trait ArbitraryInstances {
     ](DomainNodeEquiv.apply)
   }
 
+  implicit val arbDomainGraphNodeEdge: Arbitrary[DomainGraphNodeEdge] = Arbitrary {
+    GenApply.resultOf[
+      GenericEdge,
+      DependencyDirection,
+      DomainGraphNodeId,
+      Boolean,
+      EdgeMatchConstraints,
+      DomainGraphNodeEdge
+    ](DomainGraphNodeEdge.apply)
+  }
+
+  implicit val arbDomainGraphNode: Arbitrary[DomainGraphNode] = Arbitrary {
+    Gen.lzy(
+      Gen.oneOf[DomainGraphNode](
+        GenApply.resultOf(
+          DomainGraphNode.Single(
+            _: DomainNodeEquiv,
+            _: Option[QuineId],
+            _: Seq[DomainGraphNodeEdge],
+            _: NodeLocalComparisonFunc
+          )
+        ),
+        GenApply.resultOf(
+          DomainGraphNode.Or(
+            _: Seq[DomainGraphNodeId]
+          )
+        ),
+        GenApply.resultOf(
+          DomainGraphNode.And(
+            _: Seq[DomainGraphNodeId]
+          )
+        ),
+        GenApply.resultOf(
+          DomainGraphNode.Not(
+            _: DomainGraphNodeId
+          )
+        ),
+        GenApply.resultOf(
+          DomainGraphNode.Mu(
+            _: MuVariableName,
+            _: DomainGraphNodeId
+          )
+        ),
+        GenApply.resultOf(
+          DomainGraphNode.MuVar(
+            _: MuVariableName
+          )
+        )
+      )
+    )
+  }
+
   implicit val arbDomainEdge: Arbitrary[DomainEdge] = Arbitrary {
     GenApply.resultOf[
       GenericEdge,
@@ -433,18 +495,7 @@ trait ArbitraryInstances {
     ](DomainEdge.apply)
   }
 
-  implicit val arbConstraintsFetch: Arbitrary[EdgeMatchConstraints] = Arbitrary {
-    Gen.oneOf(
-      Gen.const(MandatoryConstraint),
-      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints](FetchConstraint.apply)
-    )
-  }
-
-  implicit val arbMuVariableName: Arbitrary[MuVariableName] = Arbitrary {
-    Gen.resultOf[String, MuVariableName](MuVariableName.apply)
-  }
-
-  implicit val arbDgb: Arbitrary[DomainGraphBranch] = Arbitrary {
+  implicit val arbDomainGraphBranch: Arbitrary[DomainGraphBranch] = Arbitrary {
     Gen.lzy(
       sizedOneOf(
         small = List(Gen.resultOf(MuVar(_: MuVariableName))),
@@ -466,6 +517,17 @@ trait ArbitraryInstances {
     )
   }
 
+  implicit val arbEdgeMatchConstraints: Arbitrary[EdgeMatchConstraints] = Arbitrary {
+    Gen.oneOf(
+      Gen.const(MandatoryConstraint),
+      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints](FetchConstraint.apply)
+    )
+  }
+
+  implicit val arbMuVariableName: Arbitrary[MuVariableName] = Arbitrary {
+    Gen.resultOf[String, MuVariableName](MuVariableName.apply)
+  }
+
   implicit val arbEdgeCollection: Arbitrary[Iterator[HalfEdge]] = Arbitrary(
     Gen.resultOf[Seq[HalfEdge], Iterator[HalfEdge]](_.iterator)
   )
@@ -482,7 +544,7 @@ trait ArbitraryInstances {
   }
 
   type IndexSubscribers = MutableMap[
-    (DomainGraphBranch, AssumedDomainEdge),
+    DomainGraphNodeId,
     SubscribersToThisNodeUtil.Subscription
   ]
   implicit val arbIndexSubscribers: Arbitrary[IndexSubscribers] = cachedImplicit
@@ -490,7 +552,7 @@ trait ArbitraryInstances {
   type DomainNodeIndex = MutableMap[
     QuineId,
     MutableMap[
-      (DomainGraphBranch, AssumedDomainEdge),
+      DomainGraphNodeId,
       Option[IsDirected]
     ]
   ]
@@ -620,13 +682,13 @@ trait ArbitraryInstances {
   implicit val arbStandingQueryPattern: Arbitrary[StandingQueryPattern] = Arbitrary {
     Gen.oneOf[StandingQueryPattern](
       Gen.resultOf[
-        DomainGraphBranch,
+        DomainGraphNodeId,
         Boolean,
         Symbol,
         Boolean,
         PatternOrigin.DgbOrigin,
         StandingQueryPattern
-      ](StandingQueryPattern.Branch.apply),
+      ](StandingQueryPattern.DomainGraphNodeStandingQueryPattern.apply),
       Gen.resultOf[
         CypherStandingQuery,
         Boolean,

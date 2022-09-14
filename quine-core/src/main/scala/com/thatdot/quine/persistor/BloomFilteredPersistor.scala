@@ -14,12 +14,13 @@ import com.thatdot.quine.graph.{
   BaseGraph,
   EventTime,
   MemberIdx,
-  NodeChangeEvent,
+  NodeEvent,
   StandingQuery,
   StandingQueryId,
   StandingQueryPartId
 }
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 // This needs to be serializable for the bloom filter to be serializable
 case object QuineIdFunnel extends Funnel[QuineId] {
@@ -71,7 +72,7 @@ private class BloomFilteredPersistor(
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
     wrappedPersistor.emptyOfQuineData()
 
-  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
+  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistEvents(id, events)
   }
@@ -79,20 +80,22 @@ private class BloomFilteredPersistor(
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] =
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent]] =
     if (mightContain(id))
-      wrappedPersistor.getJournal(id, startingAt, endingAt)
+      wrappedPersistor.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
     else
       Future.successful(Iterable.empty)
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] =
     if (mightContain(id))
-      wrappedPersistor.getJournalWithTime(id, startingAt, endingAt)
+      wrappedPersistor.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
     else
       Future.successful(Iterable.empty)
 
@@ -173,6 +176,15 @@ private class BloomFilteredPersistor(
       }(ExecutionContexts.parasitic)
     ()
   }
+
+  override def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    wrappedPersistor.persistDomainGraphNodes(domainGraphNodes)
+
+  override def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] =
+    wrappedPersistor.removeDomainGraphNodes(domainGraphNodes)
+
+  override def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    wrappedPersistor.getDomainGraphNodes()
 
   override def shutdown(): Future[Unit] =
     wrappedPersistor.shutdown()

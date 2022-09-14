@@ -12,7 +12,7 @@ import akka.{Done, NotUsed}
 import com.codahale.metrics.{Counter, Meter}
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.model._
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 
 /** Information about a standing query that gets persisted and reloaded on startup
   *
@@ -93,52 +93,16 @@ sealed abstract class StandingQueryPattern {
 }
 object StandingQueryPattern extends LazyLogging {
 
-  /** Create a standing query pattern from a graph pattern
+  /** A DomainGraphNode standing query
     *
-    * @param pattern graph pattern
-    * @param cypherOriginal original Cypher query (if the pattern came from a Cypher query)
-    * @param includeCancellation should results about negative matches be included?
-    * @param useDomainGraphBranch should this be compiled into a DGB (or SQv4) query
-    * @param labelsProperty which property is used for labels
-    * @param idProvider which ID provider does the graph operate with
-    * @return the compiled pattern
-    */
-  @throws[InvalidQueryPattern]("when the pattern cannot be turned into a SQ of the desired sort")
-  def fromGraphPattern(
-    pattern: GraphQueryPattern,
-    cypherOriginal: Option[String],
-    includeCancellations: Boolean,
-    useDomainGraphBranch: Boolean,
-    labelsProperty: Symbol,
-    idProvider: QuineIdProvider
-  ): StandingQueryPattern = {
-    val origin = PatternOrigin.GraphPattern(pattern, cypherOriginal)
-    if (useDomainGraphBranch) {
-      if (!pattern.distinct) {
-        throw InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
-      }
-      val (branch, returnColumn) = pattern.compiledDomainGraphBranch(labelsProperty)
-      Branch(branch, returnColumn.formatAsString, returnColumn.aliasedAs, includeCancellations, origin)
-    } else {
-      if (pattern.distinct) {
-        // QU-568
-        throw InvalidQueryPattern("MultipleValues Standing Queries do not yet support `DISTINCT`")
-      }
-      val compiledQuery = pattern.compiledCypherStandingQuery(labelsProperty, idProvider)
-      SqV4(compiledQuery, includeCancellations, origin)
-    }
-  }
-
-  /** A DomainGraphBranch standing query
-    *
-    * @param branch branch to execute
+    * @param dgnId node to "execute"
     * @param formatReturnAsStr return `strId(n)` (as opposed to `id(n)`)
     * @param aliasReturnAs name given to the returned value
     * @param includeCancellation should results about negative matches be included?
     * @param origin how did the user specify this query?
     */
-  final case class Branch(
-    branch: DomainGraphBranch,
+  final case class DomainGraphNodeStandingQueryPattern(
+    dgnId: DomainGraphNodeId,
     formatReturnAsStr: Boolean,
     aliasReturnAs: Symbol,
     includeCancellation: Boolean,

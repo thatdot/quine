@@ -11,9 +11,7 @@ import scala.util.control.NonFatal
 import com.codahale.metrics.Timer
 
 import com.thatdot.quine.model.{
-  DomainGraphBranch,
   EdgeDirection,
-  GenericEdge,
   NodeLocalComparisonFunctions,
   PropertyComparisonFunctions,
   QuineId,
@@ -50,8 +48,6 @@ package object graph {
 
   type Notifiable = Either[QuineId, StandingQueryId]
 
-  // In short: the assumed edge must be the LAST edge tested; not the first requirement to be removed.
-  private[quine] type AssumedDomainEdge = Option[(GenericEdge, DomainGraphBranch)]
   private[quine] type LastNotification = Option[Boolean]
 
   /* DelayedInit on the object creation will keep objects nested inside from being instantiated until their first use.

@@ -5,7 +5,7 @@ import org.scalatest.Assertion
 import org.scalatest.funspec.AnyFunSpec
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Func, Position, SourceText}
-import com.thatdot.quine.graph.{GraphQueryPattern, InvalidQueryPattern, QuineIdRandomLongProvider, StandingQueryPattern}
+import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider}
 import com.thatdot.quine.model.QuineValue
 
 class StandingQueryPatternsTest extends AnyFunSpec {
@@ -642,27 +642,6 @@ class StandingQueryPatternsTest extends AnyFunSpec {
           Some(Position(1, 18, 17, SourceText(query)))
         )
       )
-    }
-
-    it("should reject a DistinctId query without a `DISTINCT` keyword") {
-      // non-arbitrary values
-      val query = "MATCH (n) RETURN id(n)"
-      val queryPattern = compileStandingQueryGraphPattern(query)
-
-      // arbitrary values
-      val (includeCancellations, labelsProperty) = (true, Symbol("__LABEL"))
-
-      val expectedException = intercept[InvalidQueryPattern] {
-        StandingQueryPattern.fromGraphPattern(
-          queryPattern,
-          Some(query),
-          includeCancellations = includeCancellations,
-          useDomainGraphBranch = true,
-          labelsProperty = labelsProperty,
-          idProvider
-        )
-      }
-      assert(expectedException.message === "DistinctId Standing Queries must specify a `DISTINCT` keyword")
     }
   }
 }

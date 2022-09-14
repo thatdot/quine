@@ -10,8 +10,17 @@ import akka.actor.ActorSystem
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, QuineUUIDProvider, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.graph.Generators.generateN
+import com.thatdot.quine.graph.{
+  ArbitraryInstances,
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  QuineUUIDProvider,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
 
 /** Abstract test suite that can be implemented just by specifying `persistor`.
   * The intent is that every new persistor should be able to extend this
@@ -20,7 +29,11 @@ import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
   *
   * TODO: add tests for standing queries
   */
-abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll with OptionValues {
+abstract class PersistenceAgentSpec
+    extends AsyncFunSpec
+    with BeforeAndAfterAll
+    with OptionValues
+    with ArbitraryInstances {
 
   implicit val system: ActorSystem = ActorSystem()
 
@@ -49,7 +62,7 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
   val event3: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(3L)))
   val event4: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(4L)))
 
-  // arbitary byte arrays
+  // arbitrary byte arrays
   val snapshot0: Array[Byte] = Array[Byte](1)
   val snapshot1: Array[Byte] = Array[Byte](-87, 60, 83, 99)
   val snapshot2: Array[Byte] = Array[Byte](11)
@@ -91,11 +104,11 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
         persistor.persistEvents(
           qid1,
           Seq(
-            NodeChangeEvent.WithTime(event0, EventTime.fromRaw(34L)),
-            NodeChangeEvent.WithTime(event1, EventTime.fromRaw(36L)),
-            NodeChangeEvent.WithTime(event2, EventTime.fromRaw(38L)),
-            NodeChangeEvent.WithTime(event3, EventTime.fromRaw(40L)),
-            NodeChangeEvent.WithTime(event4, EventTime.fromRaw(44L))
+            NodeEvent.WithTime(event0, EventTime.fromRaw(34L)),
+            NodeEvent.WithTime(event1, EventTime.fromRaw(36L)),
+            NodeEvent.WithTime(event2, EventTime.fromRaw(38L)),
+            NodeEvent.WithTime(event3, EventTime.fromRaw(40L)),
+            NodeEvent.WithTime(event4, EventTime.fromRaw(44L))
           )
         )
       )
@@ -108,30 +121,30 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
       persistor.persistEvents(
         qid0,
         Seq(
-          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
-          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+          NodeEvent.WithTime(event0, EventTime.MinValue),
+          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeEvent.WithTime(event3, EventTime.MaxValue)
         )
       ),
       // in between qid
       persistor.persistEvents(
         qid2,
         Seq(
-          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
-          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+          NodeEvent.WithTime(event0, EventTime.MinValue),
+          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeEvent.WithTime(event3, EventTime.MaxValue)
         )
       ),
       // "maximum qid" (all 1 bits)
       persistor.persistEvents(
         qid4,
         Seq(
-          NodeChangeEvent.WithTime(event0, EventTime.MinValue),
-          NodeChangeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeChangeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeChangeEvent.WithTime(event3, EventTime.MaxValue)
+          NodeEvent.WithTime(event0, EventTime.MinValue),
+          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+          NodeEvent.WithTime(event3, EventTime.MaxValue)
         )
       )
     )
@@ -141,20 +154,25 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
 
     it("can query a full journal of a node") {
       allOfConcurrent(
-        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3))
+        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3))
         },
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3, event4))
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3, event4))
         },
-        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3))
+        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3))
         },
-        persistor.getJournal(qid3, EventTime.MinValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq.empty)
+        persistor.getJournal(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq.empty)
         },
-        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3))
+        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3))
         }
       )
     }
@@ -162,30 +180,37 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can query with EventTime.MinValue lower bound") {
       allOfConcurrent(
         // before anything
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L)).map { journal =>
-          assert(journal === Seq.empty)
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq.empty)
         },
         // right up to one event
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L)).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         },
         // right after one event
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L)).map { journal =>
-          assert(journal === Seq(event0, event1))
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1))
         },
         // after all events
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L)).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3, event4))
+        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3, event4))
         },
         // first event is the min value
-        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MinValue).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         },
-        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MinValue).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         },
-        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MinValue).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         }
       )
     }
@@ -193,34 +218,42 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can query with EventTime.MaxValue upper bound") {
       allOfConcurrent(
         // before anything
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3, event4))
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3, event4))
         },
         // before one event
-        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event4))
+        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event4))
         },
         // starting exactly at one event
-        persistor.getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event4))
+        persistor.getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event4))
         },
         // starting exactly at the first event
-        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event0, event1, event2, event3, event4))
+        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0, event1, event2, event3, event4))
         },
         // after all events
-        persistor.getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue).map { journal =>
-          assert(journal === Seq.empty)
+        persistor.getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq.empty)
         },
         // first event is the min value
-        persistor.getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event3))
+        persistor.getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event3))
         },
-        persistor.getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event3))
+        persistor.getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event3))
         },
-        persistor.getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue).map { journal =>
-          assert(journal === Seq(event3))
+        persistor.getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event3))
         }
       )
     }
@@ -228,64 +261,84 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
     it("can query with bounds that are not maximums") {
       allOfConcurrent(
         // start and end before any events
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L)).map { journal =>
-          assert(journal === Seq.empty)
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq.empty)
         },
         // start and end between events
-        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L)).map { journal =>
-          assert(journal === Seq.empty)
-        },
+        persistor
+          .getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq.empty)
+          },
         // right up to one event
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L)).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         },
         // right after one event
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L)).map { journal =>
-          assert(journal === Seq(event0))
+        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event0))
         },
         // starting exactly at one event
-        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L)).map { journal =>
-          assert(journal === Seq(event0))
-        },
+        persistor
+          .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq(event0))
+          },
         // start and end on events
-        persistor.getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L)).map { journal =>
-          assert(journal === Seq(event1, event2, event3))
-        },
-        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L)).map { journal =>
-          assert(
-            journal === Seq(
-              event0,
-              event1,
-              event2,
-              event3,
-              event4
+        persistor
+          .getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq(event1, event2, event3))
+          },
+        persistor
+          .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(
+              journal === Seq(
+                event0,
+                event1,
+                event2,
+                event3,
+                event4
+              )
             )
-          )
-        }
+          }
       )
     }
 
     it("can handle unsigned EventTime") {
       allOfConcurrent(
         // event time needs to be treated as unsigned
-        persistor.getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event2))
-        },
-        persistor.getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event2))
-        },
-        persistor.getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event2))
-        },
+        persistor
+          .getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq(event2))
+          },
+        persistor
+          .getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq(event2))
+          },
+        persistor
+          .getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
+            assert(journal === Seq(event2))
+          },
         // event time needs to be treated as unsigned
-        persistor.getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event1, event2))
+        persistor.getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event1, event2))
         },
-        persistor.getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event1, event2))
+        persistor.getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event1, event2))
         },
-        persistor.getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L)).map { journal =>
-          assert(journal === Seq(event1, event2))
+        persistor.getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
+          journal =>
+            assert(journal === Seq(event1, event2))
         }
       )
     }
@@ -629,6 +682,27 @@ abstract class PersistenceAgentSpec extends AsyncFunSpec with BeforeAndAfterAll 
           persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty))
         )
       )
+    }
+  }
+
+  describe("persistDomainGraphNodes") {
+    val generated = generateN[DomainGraphNode](2, 2).map(dgn => DomainGraphNode.id(dgn) -> dgn).toMap
+    it("write") {
+      persistor.persistDomainGraphNodes(generated) map { _ =>
+        assert(true)
+      }
+    }
+    it("read") {
+      persistor.getDomainGraphNodes().map { n =>
+        assert(n === generated)
+      }
+    }
+    it("delete") {
+      persistor.removeDomainGraphNodes(generated.keySet) flatMap { _ =>
+        persistor.getDomainGraphNodes() map { n =>
+          assert(n.isEmpty)
+        }
+      }
     }
   }
 }

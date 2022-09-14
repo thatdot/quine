@@ -72,7 +72,6 @@ table PropertyComparisonFunctionListContains {
   values: [QuineValue];
 }
 
-
 // See [[com.thatdot.quine.model.NodeLocalComparisonFunc]]
 enum NodeLocalComparisonFunction: byte {
   Identicality,
@@ -128,21 +127,21 @@ table FetchConstraint {
 // See [[com.thatdot.quine.model.MandatoryConstraint]]
 table MandatoryConstraint { }
 
-// See [[com.thatdot.quine.model.DomainGraphBranch]]
-union DomainGraphBranch {
-  SingleBranch,
-  OrBranch,
-  AndBranch,
-  NotBranch,
-  MuBranch,
-  MuVarBranch,
+// See [[com.thatdot.quine.model.DomainGraphNode]]
+union DomainGraphNode {
+  SingleNode,
+  OrNode,
+  AndNode,
+  NotNode,
+  MuNode,
+  MuVarNode,
 }
 
-// See [[com.thatdot.quine.model.SingleBranch]]
-table SingleBranch {
+// See [[com.thatdot.quine.model.DomainGraphNode.SingleNode]]
+table SingleNode {
   domain_node_equiv: DomainNodeEquiv (required);
   identification: Identification;
-  next_branches: [DomainEdge];
+  next_nodes: [DomainEdge];
   comparison_function: NodeLocalComparisonFunction;
 }
 
@@ -150,29 +149,29 @@ table Identification {
   id: QuineId (required);
 }
 
-// See [[com.thatdot.quine.model.Or]]
-table OrBranch {
-  disjuncts: [DomainGraphBranch];
+// See [[com.thatdot.quine.model.DomainGraphNode.Or]]
+table OrNode {
+  disjuncts_dgn_ids: [long];
 }
 
-// See [[com.thatdot.quine.model.And]]
-table AndBranch {
-  conjuncts: [DomainGraphBranch];
+// See [[com.thatdot.quine.model.DomainGraphNode.And]]
+table AndNode {
+  conjuncts_dgn_ids: [long];
 }
 
-// See [[com.thatdot.quine.model.Not]]
-table NotBranch {
-  negated: DomainGraphBranch (required);
+// See [[com.thatdot.quine.model.DomainGraphNode.Not]]
+table NotNode {
+  negated_dgn_id: long;
 }
 
-// See [[com.thatdot.quine.model.Mu]]
-table MuBranch {
+// See [[com.thatdot.quine.model.DomainGraphNode.Mu]]
+table MuNode {
   variable: string (required);
-  branch: DomainGraphBranch (required);
+  dgn_id: long;
 }
 
-// See [[com.thatdot.quine.model.MuVar]]
-table MuVarBranch {
+// See [[com.thatdot.quine.model.DomainGraphNode.MuVar]]
+table MuVarNode {
   variable: string (required);
 }
 
@@ -180,7 +179,7 @@ table MuVarBranch {
 table DomainEdge {
   edge: GenericEdge (required);
   dependency: DependencyDirection;
-  branch: DomainGraphBranch (required);
+  dgn_id: long;
   circular_match_allowed: bool;
   constraints: EdgeMatchConstraints (required);
 }
@@ -245,9 +244,9 @@ table ZonedDateTime {
 
 root_type QuineValue;
 
-// Also see [[com.thatdot.quine.model.DomainGraphBranch]]
-// Unlike `DomainGraphBranch`, this can be used as a root type
-table BoxedDomainGraphBranch {
-  branch: DomainGraphBranch (required);
+// Also see [[com.thatdot.quine.model.DomainGraphNode]]
+// Unlike `DomainGraphNode`, this can be used as a root type
+table BoxedDomainGraphNode {
+  node: DomainGraphNode (required);
 }
-root_type BoxedDomainGraphBranch;
+root_type BoxedDomainGraphNode;

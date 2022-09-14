@@ -6,15 +6,9 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  BaseGraph,
-  EventTime,
-  NodeChangeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents
   *
@@ -36,22 +30,24 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
         .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
 
-  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
     getAgent(id).persistEvents(id, events)
 
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] =
-    getAgent(id).getJournal(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent]] =
+    getAgent(id).getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] =
-    getAgent(id).getJournalWithTime(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] =
+    getAgent(id).getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     getAgents.foldLeft(Source.empty[QuineId])(_ ++ _.enumerateJournalNodeIds())
@@ -93,6 +89,15 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
 
   override def ready(graph: BaseGraph): Unit =
     getAgents.foreach(_.ready(graph))
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    rootAgent.persistDomainGraphNodes(domainGraphNodes)
+
+  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] =
+    rootAgent.removeDomainGraphNodes(domainGraphNodes)
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    rootAgent.getDomainGraphNodes()
 
   override def shutdown(): Future[Unit] =
     Future

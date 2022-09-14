@@ -13,13 +13,15 @@ import com.thatdot.quine.graph.{
   BaseGraph,
   EventTime,
   MemberIdx,
-  NodeChangeEvent,
+  NodeEvent,
   StandingQuery,
   StandingQueryId,
   StandingQueryPartId
 }
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+
+import PersistenceAgent.CurrentVersion
 
 object PersistenceAgent {
 
@@ -125,21 +127,25 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param events event records to write
     * @return something that completes 'after' the write finishes
     */
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit]
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
 
   /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
     * @param id         affected node
     * @param startingAt only get events that occurred 'at' or 'after' this moment
     * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @param includeDomainIndexEvents whether to include [[com.thatdot.quine.graph.DomainIndexEvent]] type events in the result
     * @return node events without timestamps, ordered by ascending timestamp
     */
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] =
-    getJournalWithTime(id, startingAt, endingAt).map(_.map(_.event))(ExecutionContexts.parasitic)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent]] =
+    getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents).map(_.map(_.event))(
+      ExecutionContexts.parasitic
+    )
 
   /** Fetch a time-ordered list of events with timestamps affecting a node's state,
     * discarding timestamps.
@@ -147,13 +153,15 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param id         affected node
     * @param startingAt only get events that occurred 'at' or 'after' this moment
     * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @param includeDomainIndexEvents whether to include [[com.thatdot.quine.graph.DomainIndexEvent]] type events in the result
     * @return node events with timestamps, ordered by ascending timestamp
     */
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]]
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]]
 
   /** Get a source of every node in the graph which has been written to the
     * journal store.
@@ -265,6 +273,28 @@ abstract class PersistenceAgent extends StrictLogging {
     * Default implementation is a no op.
     */
   def ready(graph: BaseGraph): Unit = ()
+
+  /** Saves [[DomainGraphNode]]s to persistent storage.
+    *
+    * Note that [[DomainGraphNodeId]] is fully computed from [[DomainGraphNode]], therefore a
+    * Domain Graph Node cannot be updated. Calling this function with [[DomainGraphNode]] that
+    * is already stored is a no-op.
+    *
+    * @param domainGraphNodes [[DomainGraphNode]]s to be saved
+    * @return Future completes successfully when the external operation completes successfully
+    */
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit]
+
+  /** Removes [[DomainGraphNode]]s from persistent storage.
+    *
+    * @param domainGraphNodeIds IDs of DGNs to remove
+    * @return Future completes successfully when the external operation completes successfully
+    */
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit]
+
+  /** @return All [[DomainGraphNode]]s stored in persistent storage.
+    */
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]]
 
   /** Close this persistence agent
     *

@@ -2,6 +2,11 @@ package com.thatdot.quine.model
 
 import java.util.regex.Pattern
 
+import scala.collection.compat._
+
+import com.thatdot.quine.model
+import com.thatdot.quine.model.DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+
 /** A generic query instruction
   *
   * Historical note: there was a time when DomainGraphBranch was the 'only' way to interact
@@ -26,6 +31,11 @@ sealed abstract class DomainGraphBranch {
     * INV: elements are distinct (ie, children.toSet has the same elements as children)
     */
   def children: Iterable[DomainGraphBranch]
+
+  /** Recursively traverses the [[DomainGraphBranch]], producing a [[DomainGraphNode]] and [[DomainGraphNodeId]]
+    * for every node in the [[DomainGraphBranch]] tree, returned in a [[DomainGraphNodePackage]].
+    */
+  def toDomainGraphNodePackage: DomainGraphNodePackage
 }
 
 object DomainGraphBranch {
@@ -41,6 +51,38 @@ object DomainGraphBranch {
     Nil,
     NodeLocalComparisonFunctions.Wildcard
   )
+
+  /** Produces a [[DomainGraphBranch]] from the provided [[DomainGraphNodeId]]. */
+  def fromDomainGraphNodeId(
+    dgnId: DomainGraphNodeId,
+    getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
+  ): Option[DomainGraphBranch] = {
+    val f = fromDomainGraphNodeId(_, getDomainGraphNode)
+    getDomainGraphNode(dgnId) flatMap {
+      case DomainGraphNode.Single(domainNodeEquiv, identification, nextNodes, comparisonFunc) =>
+        val edges = nextNodes.toList.flatMap {
+          case DomainGraphNodeEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
+            f(edgeDgnId).map {
+              model.DomainEdge(edge, depDirection, _, circularMatchAllowed, constraints)
+            }
+        }
+        Option.when(nextNodes.size == edges.size)(
+          model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc)
+        )
+      case DomainGraphNode.Or(disjuncts) =>
+        val disjunctDgbs = disjuncts.flatMap(f(_))
+        Option.when(disjunctDgbs.size == disjuncts.size)(model.Or(disjunctDgbs.toList))
+      case DomainGraphNode.And(conjuncts) =>
+        val conjunctsDgbs = conjuncts.flatMap(f(_))
+        Option.when(conjunctsDgbs.size == conjuncts.size)(model.And(conjunctsDgbs.toList))
+      case DomainGraphNode.Not(negated) =>
+        f(negated) map model.Not
+      case DomainGraphNode.Mu(variable, dgnId) =>
+        f(dgnId) map (model.Mu(variable, _))
+      case DomainGraphNode.MuVar(variable) =>
+        Some(model.MuVar(variable))
+    }
+  }
 }
 
 /** Query for creating, fetching, or testing for a particular structure rooted at a node
@@ -80,6 +122,17 @@ final case class SingleBranch(
     nextBranches.collect { case DomainEdge(_, _, child, _, _) =>
       child
     }.toSet
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val edges = nextBranches map { case DomainEdge(e, depDirection, branch, circularMatchAllowed, constraints) =>
+      val DomainGraphNodePackage(childDgnId, population) = branch.toDomainGraphNodePackage
+      val edge = DomainGraphNodeEdge(e, depDirection, childDgnId, circularMatchAllowed, constraints)
+      (edge, population)
+    }
+    val dgn = DomainGraphNode.Single(domainNodeEquiv, identification, edges.map(_._1), comparisonFunc)
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn) ++ edges.flatMap(_._2))
+  }
 }
 object SingleBranch {
   // a branch that is consistent with being rooted at any arbitrary node.
@@ -114,6 +167,13 @@ final case class Or(disjuncts: List[DomainGraphBranch]) extends DomainGraphBranc
   }
 
   val children: Iterable[DomainGraphBranch] = disjuncts.toSet
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val recursiveResult = disjuncts.map(_.toDomainGraphNodePackage)
+    val dgn = DomainGraphNode.Or(recursiveResult.map(_.dgnId))
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn) ++ recursiveResult.flatMap(_.population))
+  }
 }
 
 /** Query for fetching/testing several results and taking the cross-product of
@@ -139,6 +199,13 @@ final case class And(conjuncts: List[DomainGraphBranch]) extends DomainGraphBran
   }
 
   val children: Iterable[DomainGraphBranch] = conjuncts.toSet
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val recursiveResult = conjuncts.map(_.toDomainGraphNodePackage)
+    val dgn = DomainGraphNode.And(recursiveResult.map(_.dgnId))
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn) ++ recursiveResult.flatMap(_.population))
+  }
 }
 
 /** Query for checking that a certain subquery is 'not' matched.
@@ -162,6 +229,13 @@ final case class Not(negated: DomainGraphBranch) extends DomainGraphBranch {
   }
 
   val children: Iterable[DomainGraphBranch] = Set(negated)
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val recursiveResult = negated.toDomainGraphNodePackage
+    val dgn = DomainGraphNode.Not(recursiveResult.dgnId)
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn) ++ recursiveResult.population)
+  }
 }
 
 /** See [[Mu]] and [[MuVar]] */
@@ -201,6 +275,13 @@ final case class Mu(
   }
 
   val children: Iterable[DomainGraphBranch] = Set(branch)
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val recursiveResult = branch.toDomainGraphNodePackage
+    val dgn = DomainGraphNode.Mu(variable, recursiveResult.dgnId)
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn) ++ recursiveResult.population)
+  }
 }
 
 /** Variable standing in for a recursive query
@@ -223,6 +304,12 @@ final case class MuVar(variable: MuVariableName) extends DomainGraphBranch {
   }
 
   val children: Iterable[DomainGraphBranch] = Iterable.empty
+
+  def toDomainGraphNodePackage: DomainGraphNodePackage = {
+    val dgn = DomainGraphNode.MuVar(variable)
+    val id = DomainGraphNode.id(dgn)
+    DomainGraphNodePackage(id, Map(id -> dgn))
+  }
 }
 
 object Substitution {

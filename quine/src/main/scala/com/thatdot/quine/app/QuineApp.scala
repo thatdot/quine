@@ -29,8 +29,17 @@ import com.thatdot.quine.app.routes.{
   StandingQueryStore
 }
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.graph
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
-import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, RunningStandingQuery, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, SqV4}
+import com.thatdot.quine.graph.{
+  GraphService,
+  HostQuineMetrics,
+  InvalidQueryPattern,
+  PatternOrigin,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -158,32 +167,55 @@ final class QuineApp(graph: GraphService)
       if (standingQueryOutputTargets.contains(queryName)) {
         Future.successful(false)
       } else {
+        val sqId = StandingQueryId.fresh()
         val sqResultsConsumers = query.outputs.map { case (k, v) =>
           k -> StandingQueryResultOutput.resultHandlingFlow(k, v, graph)
         }
-        val (sq: RunningStandingQuery, killSwitches) = graph.createStandingQuery(
-          queryName,
-          pattern = query.pattern match {
-            case StandingQueryPattern.Cypher(cypherQuery, mode) =>
-              com.thatdot.quine.graph.StandingQueryPattern.fromGraphPattern(
-                cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider),
-                Some(cypherQuery),
+        val (pattern, dgnPackage) = query.pattern match {
+          case StandingQueryPattern.Cypher(cypherQuery, mode) =>
+            val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider)
+            val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
+            if (mode == StandingQueryMode.DistinctId) {
+              if (!pattern.distinct) {
+                // TODO unit test this behavior
+                throw InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
+              }
+              val (branch, returnColumn) = pattern.compiledDomainGraphBranch(graph.labelsProperty)
+              val dgnPackage = branch.toDomainGraphNodePackage
+              val dgnPattern = DomainGraphNodeStandingQueryPattern(
+                dgnPackage.dgnId,
+                returnColumn.formatAsString,
+                returnColumn.aliasedAs,
                 query.includeCancellations,
-                mode == StandingQueryMode.DistinctId,
-                graph.labelsProperty,
-                graph.idProvider
+                origin
               )
-          },
-          outputs = sqResultsConsumers,
-          queueBackpressureThreshold = query.inputBufferSize,
-          shouldCalculateResultHashCode = query.shouldCalculateResultHashCode
-        )
-
-        val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
-          name -> (out -> killSwitches(name))
+              (dgnPattern, Some(dgnPackage))
+            } else {
+              if (pattern.distinct)
+                throw InvalidQueryPattern("MultipleValues Standing Queries do not yet support `DISTINCT`") // QU-568
+              val compiledQuery = pattern.compiledCypherStandingQuery(graph.labelsProperty, idProvider)
+              val sqv4Pattern = SqV4(compiledQuery, query.includeCancellations, origin)
+              (sqv4Pattern, None)
+            }
         }
-        standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
-        storeStandingQueries().map(_ => true)(graph.system.dispatcher)
+        (dgnPackage match {
+          case Some(p) => graph.dgnRegistry.registerAndPersistDomainGraphNodePackage(p, sqId)
+          case None => Future.unit
+        }).flatMap { _ =>
+          val (sq, killSwitches) = graph.createStandingQuery(
+            queryName,
+            pattern,
+            outputs = sqResultsConsumers,
+            queueBackpressureThreshold = query.inputBufferSize,
+            shouldCalculateResultHashCode = query.shouldCalculateResultHashCode,
+            sqId = sqId
+          )
+          val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
+            name -> (out -> killSwitches(name))
+          }
+          standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
+          storeStandingQueries().map(_ => true)(graph.system.dispatcher)
+        }(graph.system.dispatcher)
       }
     }
 
@@ -544,7 +576,7 @@ object QuineApp {
     idProvider: QuineIdProvider
   ): RegisteredStandingQuery = {
     val mode = internal.query match {
-      case _: graph.StandingQueryPattern.Branch => StandingQueryMode.DistinctId
+      case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
       case _: graph.StandingQueryPattern.SqV4 => StandingQueryMode.MultipleValues
     }
     val pattern = internal.query.origin match {

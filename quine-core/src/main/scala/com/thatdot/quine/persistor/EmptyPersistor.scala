@@ -5,8 +5,16 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Persistence agent which never saves anything
   *
@@ -30,19 +38,21 @@ class EmptyPersistor(
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = this.enumerateSnapshotNodeIds()
 
-  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future.unit
+  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
 
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
   ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
 
   override def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent.WithTime]] = Future.successful(Vector.empty)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Vector[NodeEvent.WithTime]] = Future.successful(Vector.empty)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
@@ -67,6 +77,12 @@ class EmptyPersistor(
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future.successful(Map.empty)
 
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = Future.unit
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = Future.unit
+
+  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = Future.unit
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = Future.successful(Map.empty)
 
   def shutdown(): Future[Unit] = Future.unit
 }

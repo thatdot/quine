@@ -18,7 +18,7 @@ import com.thatdot.quine.graph.edgecollection.EdgeCollection
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
-  DgbLocalEventIndexSummary,
+  DgnLocalEventIndexSummary,
   LiteralCommand,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
@@ -87,6 +87,7 @@ private[graph] class NodeActor(
   protected val metrics: HostQuineMetrics = graph.metrics
   protected var properties: Map[Symbol, PropertyValue] = Map.empty
   protected val edges: EdgeCollection = graph.edgeCollectionFactory.get()
+  protected val dgnRegistry = graph.dgnRegistry
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
 
@@ -120,9 +121,14 @@ private[graph] class NodeActor(
         // Register/unregister universal standing queries
         syncStandingQueries()
         // TODO: QU-430 restoreFromSnapshotBytes doesn't account for standing query states!
-        // However, DGB subscribers are available with just restoreFromSnapshotBytes
-        localEventIndex =
-          StandingQueryLocalEventIndex.from(subscribers.subscribersToThisNode.keysIterator, Iterator.empty)
+        // However, DGN subscribers are available with just restoreFromSnapshotBytes
+        val (localEventIndex, removed) = StandingQueryLocalEventIndex.from(
+          dgnRegistry,
+          subscribers.subscribersToThisNode.keysIterator,
+          Iterator.empty
+        )
+        this.localEventIndex = localEventIndex
+        subscribers.removeSubscribers(removed)
     }
 
     // Allow the GC to collect the snapshot now
@@ -135,7 +141,7 @@ private[graph] class NodeActor(
     */
   protected def syncStandingQueries(): Unit =
     if (atTime.isEmpty) {
-      updateUniversalQueriesOnWake()
+      updateUniversalQueriesOnWake(shouldSendReplies = true)
       updateUniversalCypherQueriesOnWake()
     }
 
@@ -158,11 +164,11 @@ private[graph] class NodeActor(
     if (atTime.isDefined) Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
     else if (atTimeOverride.isDefined && events.size > 1)
       Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
-    else {
-      val dedupedEffectingEvents = {
+    else
+      persistAndApplyEventsEffectsInMemory {
         if (events.isEmpty) Seq.empty
         else if (events.size == 1 && hasEffect(events.head))
-          Seq(NodeChangeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
+          Seq(NodeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
         else {
           /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
            * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
@@ -179,58 +185,67 @@ private[graph] class NodeActor(
               case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
             }
             .reverse
-            .map(e => WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
+            .map(e => NodeEvent.WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
           // TODO: It should be possible to do all this in only two passes over the collection with no reverses.
         }
       }
 
-      val persistAttempts = new AtomicInteger(1)
-      def persistEventsToJournal(): Future[Done.type] =
-        if (persistenceConfig.journalEnabled) {
-          metrics.persistorPersistEventTimer
-            .time(persistor.persistEvents(qid, dedupedEffectingEvents))
-            .transform(
-              _ =>
-                // TODO: add a metric to count `persistAttempts`
-                Done,
-              (e: Throwable) => {
-                val attemptCount = persistAttempts.getAndIncrement()
-                log.info(
-                  s"Retrying persistence from node: ${qid.pretty} with events: $dedupedEffectingEvents after: " +
-                  s"$attemptCount attempts, with error: $e"
-                )
-                e
-              }
-            )(cypherEc)
-        } else Future.successful(Done)
+  protected def processDomainIndexEvent(
+    event: DomainIndexEvent
+  ): Future[Done.type] =
+    persistAndApplyEventsEffectsInMemory(Seq(NodeEvent.WithTime(event, nextEventTime())))
 
-      (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
-        case (false, _) => Future.successful(Done)
-        case (true, EventEffectOrder.MemoryFirst) =>
-          applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event))
-          akka.pattern.retry(
-            () => persistEventsToJournal(),
-            Int.MaxValue,
-            1.millisecond,
-            10.seconds,
-            randomFactor = 0.1d
-          )(cypherEc, context.system.scheduler)
-        case (true, EventEffectOrder.PersistorFirst) =>
-          pauseMessageProcessingUntil[Done.type](
-            persistEventsToJournal(),
-            {
-              case Success(_) =>
-                // Executed by this actor (which is not slept), in order before any other messages are processed.
-                applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event))
-              case Failure(e) =>
-                log.info(
-                  s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
-                  s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
-                )
+  protected def persistAndApplyEventsEffectsInMemory(
+    dedupedEffectingEvents: Seq[NodeEvent.WithTime]
+  ): Future[Done.type] = {
+
+    val persistAttempts = new AtomicInteger(1)
+    def persistEventsToJournal(): Future[Done.type] =
+      if (persistenceConfig.journalEnabled) {
+        metrics.persistorPersistEventTimer
+          .time(persistor.persistEvents(qid, dedupedEffectingEvents))
+          .transform(
+            _ =>
+              // TODO: add a metric to count `persistAttempts`
+              Done,
+            (e: Throwable) => {
+              val attemptCount = persistAttempts.getAndIncrement()
+              log.info(
+                s"Retrying persistence from node: ${qid.pretty} with events: $dedupedEffectingEvents after: " +
+                s"$attemptCount attempts, with error: $e"
+              )
+              e
             }
-          ).map(_ => Done)(cypherEc)
-      }
+          )(cypherEc)
+      } else Future.successful(Done)
+
+    (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
+      case (false, _) => Future.successful(Done)
+      case (true, EventEffectOrder.MemoryFirst) =>
+        applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event), shouldCauseSideEffects = true)
+        akka.pattern.retry(
+          () => persistEventsToJournal(),
+          Int.MaxValue,
+          1.millisecond,
+          10.seconds,
+          randomFactor = 0.1d
+        )(cypherEc, context.system.scheduler)
+      case (true, EventEffectOrder.PersistorFirst) =>
+        pauseMessageProcessingUntil[Done.type](
+          persistEventsToJournal(),
+          {
+            case Success(_) =>
+              // Executed by this actor (which is not slept), in order before any other messages are processed.
+              applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event), shouldCauseSideEffects = true)
+            case Failure(e) =>
+              log.info(
+                s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
+                s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
+              )
+          }
+        ).map(_ => Done)(cypherEc)
     }
+  }
 
   private[this] def snapshotOnUpdate(): Unit = if (persistenceConfig.snapshotOnUpdate) {
     val occurredAt: EventTime = nextEventTime()
@@ -271,9 +286,10 @@ private[graph] class NodeActor(
     *                               events from a journal.
     */
   private[this] def applyEventsEffectsInMemory(
-    events: Iterable[NodeChangeEvent],
-    shouldCauseSideEffects: Boolean = true
+    events: Iterable[NodeEvent],
+    shouldCauseSideEffects: Boolean
   ): Unit = {
+    import DomainIndexEvent._
     events.foreach {
       case PropertySet(propKey, propValue) =>
         properties = properties + (propKey -> propValue)
@@ -298,13 +314,26 @@ private[graph] class NodeActor(
       case EdgeRemoved(edge) =>
         edges -= edge
         metrics.nodeEdgesCounter.decrement(edges.size)
+
+      case CreateDomainNodeSubscription(dgnId, nodeId, forQuery) =>
+        receiveDomainNodeSubscription(Left(nodeId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
+
+      case CreateDomainStandingQuerySubscription(dgnId, sqId, forQuery) =>
+        receiveDomainNodeSubscription(Right(sqId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
+
+      case DomainNodeSubscriptionResult(from, dgnId, result) =>
+        receiveIndexUpdate(from, dgnId, result, shouldSendReplies = shouldCauseSideEffects)
+
+      case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
+        cancelSubscription(dgnId, Left(fromSubscriber), shouldSendReplies = shouldCauseSideEffects)
     }
 
     if (shouldCauseSideEffects) { // `false` when restoring from journals
       latestUpdateAfterSnapshot = Some(latestEventTime())
       lastWriteMillis = latestEventTime().millis
       snapshotOnUpdate()
-      runPostActions(events)
+      val nodeChangeEvents = events.collect { case e: NodeChangeEvent => e }
+      runPostActions(nodeChangeEvents)
     }
   }
 
@@ -313,22 +342,26 @@ private[graph] class NodeActor(
     *
     * @param events ordered sequence of node events produced from a single message.
     */
-  private[this] def runPostActions(events: Iterable[NodeChangeEvent]): Unit = events foreach { e =>
-    e match {
-      case _: EdgeAdded | _: EdgeRemoved | _: PropertySet | _: PropertyRemoved =>
-        // update standing queries
-        localEventIndex.standingQueriesWatchingNodeEvent(e).foreach {
-          case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
-            updateCypherSq(e, cypherSubscriber)
-          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, assumedEdge) =>
-            // ensure that this node is subscribed to all other necessary nodes to continue processing the DGB
-            ensureSubscriptionToDomainEdges(branch, assumedEdge, subscribers.getRelatedQueries(branch, assumedEdge))
-            // ensure that all subscribers to this node are informed about any relevant changes caused by the recent
-            // event
-            subscribers.updateAnswerAndNotifySubscribers(branch, assumedEdge)
-        }
-      case _ => ()
-    }
+  private[this] def runPostActions(events: Iterable[NodeChangeEvent]): Unit = events.foreach { event =>
+    localEventIndex.standingQueriesWatchingNodeEvent(
+      event,
+      {
+        case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
+          updateCypherSq(event, cypherSubscriber)
+          false
+        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
+            case Some(dgn) =>
+              // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
+              ensureSubscriptionToDomainEdges(dgn, subscribers.getRelatedQueries(dgnId), shouldSendReplies = true)
+              // inform all subscribers to this node about any relevant changes caused by the recent event
+              subscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
+              false
+            case None =>
+              true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
+          }
+      }
+    )
   }
 
   /** Fast check for if a number is a power of 2 */
@@ -344,8 +377,6 @@ private[graph] class NodeActor(
     */
   @throws[NodeWakeupFailedException]("When node wakeup fails irrecoverably")
   private[this] def restoreFromSnapshotAndJournal(untilOpt: Option[Milliseconds]): Unit = {
-
-    type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
 
     // Get the snapshot and journal events
     val snapshotAndJournal = {
@@ -391,7 +422,7 @@ private[graph] class NodeActor(
               case None => EventTime.MaxValue
             }
             metrics.persistorGetJournalTimer.time {
-              persistor.getJournal(qid, startingAt, endingAt)
+              persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents = atTime.isEmpty)
             }
             // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
             // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
@@ -403,6 +434,7 @@ private[graph] class NodeActor(
     }
 
     // Get the standing query states
+    type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
     val standingQueryStates: Future[StandingQueryStates] =
       if (untilOpt.isEmpty)
         metrics.persistorGetStandingQueryStatesTimer.time {
@@ -414,7 +446,7 @@ private[graph] class NodeActor(
     // Will defer all other message processing until the future is complete
     // It is OK to ignore the returned future from `pauseMessageProcessingUntil` because nothing else happens during
     // initialization of this actor. Future processing is deferred by `pauseMessageProcessingUntil`'s message stashing.
-    val _ = pauseMessageProcessingUntil[((Option[NodeSnapshot], Iterable[NodeChangeEvent]), StandingQueryStates)](
+    val _ = pauseMessageProcessingUntil[((Option[NodeSnapshot], Iterable[NodeEvent]), StandingQueryStates)](
       snapshotAndJournal.zip(standingQueryStates),
       {
         case Success(((latestSnapshotOpt, journalAfterSnapshot), standingQueryStates)) =>
@@ -448,10 +480,13 @@ private[graph] class NodeActor(
             sqState._2.preStart(lookupInfo)
             standingQueries += handler -> sqState
           }
-          localEventIndex = StandingQueryLocalEventIndex.from(
+          val (localEventIndex, removed) = StandingQueryLocalEventIndex.from(
+            dgnRegistry,
             subscribers.subscribersToThisNode.keysIterator,
             standingQueries.iterator.map { case (handler, (_, state)) => handler -> state }
           )
+          this.localEventIndex = localEventIndex
+          subscribers.removeSubscribers(removed)
           syncStandingQueries()
 
           // Once edge map is updated, recompute cost to sleep
@@ -496,8 +531,14 @@ private[graph] class NodeActor(
     snapshot.edges.foreach(edges +=)
     subscribers = SubscribersToThisNode(snapshot.subscribersToThisNode)
     domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(snapshot.domainNodeIndex)
-    branchParentIndex =
-      DomainNodeIndexBehavior.BranchParentIndex.reconstruct(domainNodeIndex, subscribers.subscribersToThisNode.keys)
+    val (nodeParentIndex, removed) = DomainNodeIndexBehavior.NodeParentIndex.reconstruct(
+      domainNodeIndex,
+      subscribers.subscribersToThisNode.keys,
+      dgnRegistry
+    )
+    this.nodeParentIndex = nodeParentIndex
+    subscribers.subscribersToThisNode --= removed
+    ()
   }
 
   def debugNodeInternalState(): Future[NodeInternalState] = {
@@ -509,7 +550,7 @@ private[graph] class NodeActor(
       )
 
     val subscribersStrings = subscribers.subscribersToThisNode.toList
-      .map { case ((a, _), c) =>
+      .map { case (a, c) =>
         a -> c.subscribers.map {
           case Left(q) => q.pretty
           case Right(x) => x
@@ -518,26 +559,26 @@ private[graph] class NodeActor(
       .map(_.toString)
 
     val domainNodeIndexStrings = domainNodeIndex.index.toList
-      .map(t => t._1.pretty -> t._2.map { case ((a, _), c) => a -> c })
+      .map(t => t._1.pretty -> t._2.map { case (a, c) => a -> c })
       .map(_.toString)
 
-    val dgbLocalEventIndexSummary = {
+    val dgnLocalEventIndexSummary = {
       val propsIdx = localEventIndex.watchingForProperty.toList.flatMap { case (k, v) =>
-        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
-          k.name -> branch.hashCode()
+        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          k.name -> dgnId
         }
       }
       val edgesIdx = localEventIndex.watchingForEdge.toList.flatMap { case (k, v) =>
-        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
-          k.name -> branch.hashCode()
+        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          k.name -> dgnId
         }
       }
       val anyEdgesIdx = localEventIndex.watchingForAnyEdge.toList.collect {
-        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(branch, _) =>
-          branch.hashCode()
+        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          dgnId
       }
 
-      DgbLocalEventIndexSummary(
+      DgnLocalEventIndexSummary(
         propsIdx.toMap,
         edgesIdx.toMap,
         anyEdgesIdx.distinct
@@ -549,7 +590,8 @@ private[graph] class NodeActor(
         qid,
         startingAt = EventTime.MinValue,
         endingAt =
-          atTime.map(EventTime.fromMillis).map(_.largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue)
+          atTime.map(EventTime.fromMillis).map(_.largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue),
+        includeDomainIndexEvents = false
       )
       .recover { case err =>
         log.error(err, "failed to get journal for node {}", qid)
@@ -564,7 +606,7 @@ private[graph] class NodeActor(
           subscribersStrings,
           domainNodeIndexStrings,
           getSqState(),
-          dgbLocalEventIndexSummary,
+          dgnLocalEventIndexSummary,
           standingQueries.view.map { case ((globalId, sqId), (StandingQuerySubscribers(_, _, subs), st)) =>
             LocallyRegisteredStandingQuery(
               sqId.toString,
@@ -584,14 +626,14 @@ private[graph] class NodeActor(
 
   def getSqState(): SqStateResults =
     SqStateResults(
-      subscribers.subscribersToThisNode.toList.flatMap { case ((dgb, _), subs) =>
+      subscribers.subscribersToThisNode.toList.flatMap { case (dgnId, subs) =>
         subs.subscribers.toList.collect { case Left(q) => // filters out receivers outside the graph
-          SqStateResult(dgb.hashCode, dgb.size, q, subs.lastNotification)
+          SqStateResult(dgnId, q, subs.lastNotification)
         }
       },
       domainNodeIndex.index.toList.flatMap { case (q, m) =>
-        m.toList.map { case ((dgb, _), lastN) =>
-          SqStateResult(dgb.hashCode, dgb.size, q, lastN)
+        m.toList.map { case (dgnId, lastN) =>
+          SqStateResult(dgnId, q, lastN)
         }
       }
     )

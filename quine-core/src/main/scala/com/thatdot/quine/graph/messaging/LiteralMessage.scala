@@ -5,7 +5,8 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeChangeEvent}
+import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeEvent}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
@@ -88,7 +89,7 @@ object LiteralMessage {
   final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]
 
   /** A single result. Could be for an incoming subscriber or an outgoing subscription. */
-  final case class SqStateResult(queryId: Int, depth: Int, qid: QuineId, lastResult: Option[Boolean])
+  final case class SqStateResult(dgnId: DomainGraphNodeId, qid: QuineId, lastResult: Option[Boolean])
 
   /** Payload to report on the current results of the standing query matches on this node. */
   final case class SqStateResults(subscribers: List[SqStateResult], subscriptions: List[SqStateResult])
@@ -110,10 +111,10 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
-  final case class DgbLocalEventIndexSummary(
-    propIdx: Map[String, Int],
-    edgeIdx: Map[String, Int],
-    anyEdgeIdx: List[Int]
+  final case class DgnLocalEventIndexSummary(
+    propIdx: Map[String, DomainGraphNodeId],
+    edgeIdx: Map[String, DomainGraphNodeId],
+    anyEdgeIdx: List[DomainGraphNodeId]
   ) extends QuineMessage
 
   /** Relays a complete, non-authoritative snapshot of node-internal state, eg, for logging.
@@ -127,9 +128,9 @@ object LiteralMessage {
     subscribers: List[String], // TODO make this string more informative
     subscriptions: List[String], // TODO: make this string more informative
     sqStateResults: SqStateResults,
-    dgbLocalEventIndex: DgbLocalEventIndexSummary,
+    dgnLocalEventIndex: DgnLocalEventIndexSummary,
     cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
-    journal: Set[NodeChangeEvent.WithTime],
+    journal: Set[NodeEvent.WithTime],
     graphNodeHashCode: Long
   ) extends LiteralMessage
 

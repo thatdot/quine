@@ -20,11 +20,19 @@ import akka.{Done, NotUsed}
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
+import com.thatdot.quine.graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
+import com.thatdot.quine.model.DomainGraphNodePackage
 
 /** Functionality for standing queries. */
 trait StandingQueryOpsGraph extends BaseGraph {
+
+  val dgnRegistry: DomainGraphNodeRegistry = new DomainGraphNodeRegistry(
+    metrics.registerGaugeDomainGraphNodeCount,
+    persistor.persistDomainGraphNodes,
+    persistor.removeDomainGraphNodes
+  )
 
   /** Map of all currently live standing queries
     */
@@ -149,7 +157,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     queueMaxSize: Int = StandingQuery.DefaultQueueMaxSize,
     shouldCalculateResultHashCode: Boolean = false,
     skipPersistor: Boolean = false,
-    sqId: StandingQueryId = StandingQueryId.fresh() // fresh ID if none is provided
+    sqId: StandingQueryId
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
     requiredGraphIsReady()
     val rsqAndOutputs =
@@ -191,7 +199,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         standingQueryPartIndex.putAll(
           cypher.StandingQuery.indexableSubqueries(runsAsCypher.compiledQuery).view.map(sq => sq.id -> sq).toMap.asJava
         )
-      case _: StandingQueryPattern.Branch =>
+      case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
     }
 
     (runningSq, killSwitches)
@@ -201,18 +209,25 @@ trait StandingQueryOpsGraph extends BaseGraph {
     *
     * TODO: remove `skipPersistor` as an argument once the SQ sync protocol moves into Quine
     *
-    * @param ref which standing query to cancel
+    * @param standingQueryId which standing query to cancel
     * @param skipPersistor whether to skip modifying durable storage
     * @return Some Future that will return the final state of the standing query, or [[None]] if the standing query
     *         doesn't exist
     */
   def cancelStandingQuery(
-    ref: StandingQueryId,
+    standingQueryId: StandingQueryId,
     skipPersistor: Boolean = false
   ): Option[Future[(StandingQuery, Instant, Int)]] = {
     requiredGraphIsReady()
-    standingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
-      val persistence = if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)
+    standingQueries.remove(standingQueryId).map { (sq: RunningStandingQuery) =>
+      val persistence = (if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)).flatMap { _ =>
+        sq.query.query match {
+          case dgnPattern: DomainGraphNodeStandingQueryPattern =>
+            val dgnPackage = DomainGraphNodePackage(dgnPattern.dgnId, dgnRegistry.getDomainGraphNode(_))
+            dgnRegistry.unregisterDomainGraphNodePackage(dgnPackage, standingQueryId, skipPersistor)
+          case _ => Future.unit
+        }
+      }(shardDispatcherEC)
       val cancellation = sq.cancel()
       persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))(shardDispatcherEC)
     }
@@ -234,9 +249,9 @@ trait StandingQueryOpsGraph extends BaseGraph {
     *
     * @return source to wire-tap or [[None]] if the standing query doesn't exist
     */
-  def wireTapStandingQuery(ref: StandingQueryId): Option[Source[StandingQueryResult, NotUsed]] = {
+  def wireTapStandingQuery(standingQueryId: StandingQueryId): Option[Source[StandingQueryResult, NotUsed]] = {
     requiredGraphIsReady()
-    runningStandingQuery(ref).map(_.resultsHub)
+    runningStandingQuery(standingQueryId).map(_.resultsHub)
   }
 
   /** Ensure universal standing queries have been propagated out to all the
@@ -350,7 +365,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
     )
     (runningStandingQuery, killSwitches)
   }
-
 }
 
 object StandingQueryOpsGraph {

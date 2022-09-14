@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.LongAdder
 import scala.collection.concurrent
 import scala.jdk.CollectionConverters._
 
-import com.codahale.metrics.{Counter, Gauge, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
+import com.codahale.metrics.{Counter, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
 
 import com.thatdot.quine.util.SharedValve
 
@@ -78,15 +78,20 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   val snapshotSize: Histogram =
     metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
 
+  def registerGaugeDomainGraphNodeCount(size: () => Int): Unit = {
+    metricRegistry.registerGauge(MetricRegistry.name("dgn-reg", "count"), () => size())
+    ()
+  }
+
   /** Register a gauge tracking how many times a shared valve has been closed.
     *
     * @see [[SharedValve]] for details on this number
     * @param valve valve for which to create the gauge
     * @return registered gauge
     */
-  def registerGaugeValve(valve: SharedValve): Gauge[Int] = {
-    val gauge: Gauge[Int] = () => valve.getClosedCount
-    metricRegistry.register(MetricRegistry.name("shared", "valve", valve.name), gauge)
+  def registerGaugeValve(valve: SharedValve): Unit = {
+    metricRegistry.registerGauge(MetricRegistry.name("shared", "valve", valve.name), () => valve.getClosedCount)
+    ()
   }
 }
 object HostQuineMetrics {

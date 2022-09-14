@@ -563,8 +563,7 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
           Source.fromIterator { () =>
             sqr.subscribers.map { s =>
               Vector(
-                Expr.Integer(s.queryId.toLong),
-                Expr.Integer(s.depth.toLong),
+                Expr.Integer(s.dgnId.toLong),
                 Expr.Str(s.qid.pretty),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
               )
@@ -618,8 +617,7 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
           Source.fromIterator { () =>
             sqr.subscriptions.map { s =>
               Vector(
-                Expr.Integer(s.queryId.toLong),
-                Expr.Integer(s.depth.toLong),
+                Expr.Integer(s.dgnId.toLong),
                 Expr.Str(s.qid.pretty),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
               )

@@ -2,12 +2,16 @@ include "base.fbs";
 
 namespace com.thatdot.quine.persistence;
 
-// See [[com.thatdot.quine.graph.NodeChangeEvent]]
-union NodeChangeEventUnion {
+// See [[com.thatdot.quine.graph.NodeEvent]]
+union NodeEventUnion {
   AddEdge,
   RemoveEdge,
   AddProperty,
   RemoveProperty,
+  CreateDomainNodeSubscription,
+  CreateDomainStandingQuerySubscription,
+  DomainNodeSubscriptionResult,
+  CancelDomainNodeSubscription,
 }
 
 // See [[com.thatdot.quine.graph.EdgeAdded]]
@@ -36,17 +40,53 @@ table RemoveProperty {
   value: [byte] (required); // MessagePack-serialized `QuineValue`
 }
 
-// Also see [[com.thatdot.quine.graph.NodeChangeEvent.WithTime]]
-// Unlike `NodeChangeEventUnion`, this can be used as a root type
-table NodeChangeEventWithTime {
-  event_time: long;
-  event: NodeChangeEventUnion (required);
+// See [[com.thatdot.quine.graph.MergedIntoOther]]
+table MergeIntoOther {
+  into_id: [byte] (required); // raw bytes of a `QuineId`
 }
-root_type NodeChangeEventWithTime;
 
-// Also see [[com.thatdot.quine.graph.NodeChangeEvent]]
-// Unlike `NodeChangeEventUnion`, this can be used as a root type
-table NodeChangeEvent {
-  event: NodeChangeEventUnion (required);
+// See [[com.thatdot.quine.graph.MergedHere]]
+table MergeIntoHere {
+  from_id: [byte] (required); // raw bytes of a `QuineId`
 }
-root_type NodeChangeEvent;
+
+table CreateDomainNodeSubscription {
+  test_dgn_id: long;
+  reply_to: [byte] (required); // raw bytes of a `QuineId`
+  related_queries: [StandingQueryId] (required);
+}
+
+// See [[com.thatdot.quine.graph.CreateDomainStandingQuerySubscription]]
+table CreateDomainStandingQuerySubscription {
+  test_dgn_id: long;
+  reply_to: StandingQueryId (required);
+  related_queries: [StandingQueryId] (required);
+}
+
+// See [[com.thatdot.quine.graph.DomainNodeSubscriptionResult]]
+table DomainNodeSubscriptionResult {
+  from_id: [byte] (required); // raw bytes of a `QuineId`
+  test_dgn_id: long;
+  result: bool;
+}
+
+// See [[com.thatdot.quine.graph.CancelDomainNodeSubscription]]
+table CancelDomainNodeSubscription {
+    test_dgn_id: long;
+    already_cancelled_subscriber: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// Also see [[com.thatdot.quine.graph.NodeEvent.WithTime]]
+// Unlike `NodeEventUnion`, this can be used as a root type
+table NodeEventWithTime {
+  event_time: long;
+  event: NodeEventUnion (required);
+}
+root_type NodeEventWithTime;
+
+// Also see [[com.thatdot.quine.graph.NodeEvent]]
+// Unlike `NodeEventUnion`, this can be used as a root type
+table NodeEvent {
+  event: NodeEventUnion (required);
+}
+root_type NodeEvent;

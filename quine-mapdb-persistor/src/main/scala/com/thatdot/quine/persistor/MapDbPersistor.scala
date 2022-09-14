@@ -19,8 +19,17 @@ import com.typesafe.scalalogging.StrictLogging
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
 import org.mapdb.{DB, DBMaker, DataInput2, HTreeMap, Serializer}
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on MapDB
@@ -98,7 +107,7 @@ final class MapDbPersistor(
         MapDbPersistor.SerializerUnsignedLong // Node event timestamp
       )
     )
-    .valueSerializer(Serializer.BYTE_ARRAY) // NodeChangeEvent
+    .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
 
   private val snapshots: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
@@ -135,14 +144,22 @@ final class MapDbPersistor(
     .hashMap("metaData", Serializer.STRING, Serializer.BYTE_ARRAY)
     .createOrOpen()
 
+  private val domainGraphNodes: ConcurrentNavigableMap[java.lang.Long, Array[Byte]] = db
+    .treeMap("domainGraphNodes")
+    .keySerializer(
+      Serializer.LONG // Domain graph node ID
+    )
+    .valueSerializer(new SerializerCompressionWrapper(Serializer.BYTE_ARRAY)) // Domain graph node
+    .createOrOpen()
+
   override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future(
-      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
+      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )(ioDispatcher)
 
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
-    val eventsMap = for { NodeChangeEvent.WithTime(event, atTime) <- events } yield {
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
       val serializedEvent = PersistenceCodecs.eventFormat.write(event)
       nodeEventSize.update(serializedEvent.size)
       nodeEventTotalSize.inc(serializedEvent.size.toLong)
@@ -156,8 +173,9 @@ final class MapDbPersistor(
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -176,10 +194,16 @@ final class MapDbPersistor(
       .entrySet()
       .iterator()
       .asScala
-      .map { entry =>
-        val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[Long])
+      .flatMap { entry =>
+        val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[DomainGraphNodeId])
         val event = PersistenceCodecs.eventFormat.read(entry.getValue).get
-        NodeChangeEvent.WithTime(event, eventTime)
+        if (
+          includeDomainIndexEvents || (event match {
+            case _: NodeChangeEvent => true
+            case _: DomainIndexEvent => false
+          })
+        ) Iterator.single(NodeEvent.WithTime(event, eventTime))
+        else Iterator.empty
       }
       .toSeq
   }(ioDispatcher).recoverWith { case e => logger.error("getJournal failed", e); Future.failed(e) }(ioDispatcher)
@@ -338,6 +362,27 @@ final class MapDbPersistor(
         val _ = metaData.put(key, value)
     }
   }(ioDispatcher)
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = Future {
+    this.domainGraphNodes.putAll((domainGraphNodes map { case (dgbId, dgb) =>
+      dgbId.asInstanceOf[java.lang.Long] ->
+        PersistenceCodecs.domainGraphNodeFormat.write(dgb)
+    }).asJava)
+  }(ioDispatcher)
+
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] = Future {
+    domainGraphNodeIds foreach { dgnId =>
+      this.domainGraphNodes.remove(dgnId)
+    }
+  }(ioDispatcher)
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    Future(domainGraphNodes.asScala.toMap map { case (dgnId, dgnBytes) =>
+      dgnId.asInstanceOf[DomainGraphNodeId] -> PersistenceCodecs.domainGraphNodeFormat.read(dgnBytes).get
+    })(ioDispatcher).recoverWith({ case e =>
+      logger.error("getDomainGraphNodes failed.", e)
+      Future.failed(e)
+    })(ioDispatcher)
 
   /** Shutdown the DB cleanly, so that it can be opened back up later */
   def shutdown(): Future[Unit] = {

@@ -14,11 +14,6 @@ table PropertyCollectionValue {
   value: [byte];
 }
 
-table AssumedDomainEdge {
-  edge: GenericEdge;
-  branch: DomainGraphBranch;
-}
-
 union Notifiable {
   QuineId,
   StandingQueryId,
@@ -31,8 +26,7 @@ enum LastNotification: byte {
 }
 
 table Subscriber {
-  branch: DomainGraphBranch (required);
-  assumed_edge: AssumedDomainEdge;
+  dgn_id: long;
   notifiable: [Notifiable];
   last_notification: LastNotification;
   related_queries: [StandingQueryId] (required);
@@ -44,8 +38,7 @@ table NodeIndex {
 }
 
 table NodeIndexQuery {
-  branch: DomainGraphBranch (required);
-  assumed_edge: AssumedDomainEdge;
+  dgn_id: long;
   result: LastNotification;
 }
 

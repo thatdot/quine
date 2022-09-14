@@ -7,15 +7,9 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  BaseGraph,
-  EventTime,
-  NodeChangeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Wrapper for a persistor that checks that some invariants are upheld:
   *
@@ -24,17 +18,17 @@ import com.thatdot.quine.model.QuineId
   */
 class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
 
-  private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeChangeEvent]]
+  private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeEvent]]
   private val snapshots = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, Array[Byte]]]
 
   override def emptyOfQuineData(): Future[Boolean] =
     if (events.isEmpty && snapshots.isEmpty) wrapped.emptyOfQuineData()
     else Future.successful(false)
 
-  def persistEvents(id: QuineId, eventsWithTime: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
-    for { NodeChangeEvent.WithTime(event, atTime) <- eventsWithTime } {
+  def persistEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
       val previous = events
-        .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeChangeEvent]())
+        .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
         .put(atTime, event)
       assert(
         (previous eq null) || (previous eq event),
@@ -47,16 +41,18 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] =
-    wrapped.getJournal(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent]] =
+    wrapped.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] =
-    wrapped.getJournalWithTime(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] =
+    wrapped.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrapped.enumerateJournalNodeIds()
 
@@ -81,7 +77,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
 
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = wrapped.removeStandingQuery(standingQuery)
 
-  def getStandingQueries = wrapped.getStandingQueries
+  def getStandingQueries: Future[List[StandingQuery]] = wrapped.getStandingQueries
 
   def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
     wrapped.getStandingQueryStates(id)
@@ -89,6 +85,13 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrapped.getAllMetaData()
   def getMetaData(key: String): Future[Option[Array[Byte]]] = wrapped.getMetaData(key)
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = wrapped.setMetaData(key, newValue)
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    wrapped.persistDomainGraphNodes(domainGraphNodes)
+  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = wrapped.removeDomainGraphNodes(
+    domainGraphNodes
+  )
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = wrapped.getDomainGraphNodes()
 
   override def setStandingQueryState(
     standingQuery: StandingQueryId,

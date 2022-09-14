@@ -26,8 +26,17 @@ import org.rocksdb.{
   WriteOptions
 }
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
@@ -102,6 +111,7 @@ final class RocksDbPersistor(
   private[this] var standingQueryStatesCF: ColumnFamilyHandle = _
   private[this] var metaDataCF: ColumnFamilyHandle = _
   private[this] var defaultCF: ColumnFamilyHandle = _
+  private[this] var domainGraphNodesCF: ColumnFamilyHandle = _
 
   // Initialize the DB
   {
@@ -135,6 +145,7 @@ final class RocksDbPersistor(
     val standingQueryStatesDesc = new ColumnFamilyDescriptor("standing-query-states".getBytes(UTF_8), columnFamilyOpts)
     val metaDataDesc = new ColumnFamilyDescriptor("meta-data".getBytes(UTF_8), columnFamilyOpts)
     val defaultDesc = new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, columnFamilyOpts)
+    val domainGraphNodesDesc = new ColumnFamilyDescriptor("domain-graph-nodes".getBytes(UTF_8), columnFamilyOpts)
 
     // Make the column families
     val columnFamilyDescs =
@@ -144,7 +155,8 @@ final class RocksDbPersistor(
         standingQueriesDesc,
         standingQueryStatesDesc,
         metaDataDesc,
-        defaultDesc
+        defaultDesc,
+        domainGraphNodesDesc
       )
     val columnFamilyHandles = new java.util.ArrayList[ColumnFamilyHandle]()
     db = RocksDB.open(dbOpts, filePath, columnFamilyDescs, columnFamilyHandles)
@@ -155,6 +167,7 @@ final class RocksDbPersistor(
     standingQueryStatesCF = columnFamilyHandles.get(3)
     metaDataCF = columnFamilyHandles.get(4)
     defaultCF = columnFamilyHandles.get(5)
+    domainGraphNodesCF = columnFamilyHandles.get(6)
   }
 
   /** Close (synchronously) the RocksDB
@@ -166,6 +179,7 @@ final class RocksDbPersistor(
     db.cancelAllBackgroundWork(true)
 
     // Order matters
+    domainGraphNodesCF.close()
     journalsCF.close()
     snapshotsCF.close()
     standingQueriesCF.close()
@@ -177,6 +191,7 @@ final class RocksDbPersistor(
     columnFamilyOpts.close()
 
     // Just to be safe - using these objects after closing them means risking a segfault!
+    domainGraphNodesCF = null
     journalsCF = null
     snapshotsCF = null
     standingQueriesCF = null
@@ -235,6 +250,16 @@ final class RocksDbPersistor(
     finally dbLock.unlockRead(stamp)
   }
 
+  private[this] def removeKeys(
+    columnFamily: ColumnFamilyHandle,
+    keys: Set[Array[Byte]]
+  ): Unit = {
+    val stamp = dbLock.tryReadLock()
+    if (stamp == 0) throw new RocksDBUnavailableException()
+    try keys foreach (k => db.delete(columnFamily, writeOpts, k))
+    finally dbLock.unlockRead(stamp)
+  }
+
   /** Get (synchronously) a key from the column family
     *
     * @param columnFamily column family from which to get
@@ -266,14 +291,15 @@ final class RocksDbPersistor(
       try columnFamilyIsEmpty(snapshotsCF) &&
       columnFamilyIsEmpty(journalsCF) &&
       columnFamilyIsEmpty(standingQueriesCF) &&
-      columnFamilyIsEmpty(standingQueryStatesCF)
+      columnFamilyIsEmpty(standingQueryStatesCF) &&
+      columnFamilyIsEmpty(domainGraphNodesCF)
       finally dbLock.unlockRead(stamp)
     }(ioDispatcher)
   }
 
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
     val serializedEvents =
-      for { NodeChangeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
+      for { NodeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
         id,
         atTime
       ) -> PersistenceCodecs.eventFormat.write(event)
@@ -387,12 +413,13 @@ final class RocksDbPersistor(
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] = Future {
     val stamp = dbLock.tryReadLock()
     if (stamp == 0) throw new RocksDBUnavailableException()
     try {
-      val vb = Iterable.newBuilder[NodeChangeEvent.WithTime]
+      val vb = Iterable.newBuilder[NodeEvent.WithTime]
 
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
@@ -410,7 +437,12 @@ final class RocksDbPersistor(
         while (it.isValid) {
           val (_, eventTime) = key2QidAndTime(it.key())
           val event = PersistenceCodecs.eventFormat.read(it.value()).get
-          vb += NodeChangeEvent.WithTime(event, eventTime)
+          if (
+            includeDomainIndexEvents || (event match {
+              case _: NodeChangeEvent => true
+              case _: DomainIndexEvent => false
+            })
+          ) vb += NodeEvent.WithTime(event, eventTime)
           it.next()
         }
       } finally {
@@ -525,6 +557,36 @@ final class RocksDbPersistor(
     closeRocksDB()
     // Intentionally leave the lock permanently exclusively acquired!
   }
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = Future {
+    putKeyValues(
+      domainGraphNodesCF,
+      domainGraphNodes map { case (dgnId, dgn) =>
+        domainGraphNodeId2Key(dgnId) -> PersistenceCodecs.domainGraphNodeFormat.write(dgn)
+      }
+    )
+  }(ioDispatcher)
+
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] = Future {
+    removeKeys(domainGraphNodesCF, domainGraphNodeIds map domainGraphNodeId2Key)
+  }(ioDispatcher)
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = Future {
+    val stamp = dbLock.tryReadLock()
+    if (stamp == 0) throw new RocksDBUnavailableException()
+    try {
+      val mb = Map.newBuilder[DomainGraphNodeId, DomainGraphNode]
+      val it = db.newIterator(domainGraphNodesCF)
+      try {
+        it.seekToFirst()
+        while (it.isValid) {
+          mb += key2DomainGraphNodeId(it.key) -> PersistenceCodecs.domainGraphNodeFormat.read(it.value).get
+          it.next()
+        }
+      } finally it.close()
+      mb.result()
+    } finally dbLock.unlockRead(stamp)
+  }(ioDispatcher)
 
   def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)
 
@@ -746,6 +808,15 @@ object RocksDbPersistor {
       .put(qidBytes)
       .array
   }
+
+  final def domainGraphNodeId2Key(domainGraphNodeId: DomainGraphNodeId): Array[Byte] =
+    ByteBuffer
+      .allocate(8)
+      .putLong(domainGraphNodeId)
+      .array
+
+  final def key2DomainGraphNodeId(key: Array[Byte]): DomainGraphNodeId =
+    ByteBuffer.wrap(key).getLong
 
   /** Get the lexicographically (unsigned) "next" key of the same length
     *

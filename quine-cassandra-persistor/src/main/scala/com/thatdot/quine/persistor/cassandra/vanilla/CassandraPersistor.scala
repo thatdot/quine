@@ -60,8 +60,17 @@ import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.{Select, SelectFrom}
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.persistor.{
   MultipartSnapshotPersistenceAgent,
   PersistenceAgent,
@@ -105,6 +114,7 @@ object CassandraCodecs {
   implicit val byteArrayCodec: TypeCodec[Array[Byte]] = BLOB_TO_ARRAY
   implicit val stringCodec: TypeCodec[String] = TypeCodecs.TEXT
   implicit val intCodec: TypeCodec[Int] = TypeCodecs.INT.asInstanceOf[TypeCodec[Int]]
+  implicit val longCodec: TypeCodec[Long] = TypeCodecs.BIGINT.asInstanceOf[TypeCodec[Long]]
   implicit val quineIdCodec: TypeCodec[QuineId] = BLOB_TO_ARRAY.xmap(QuineId(_), _.array)
   implicit val standingQueryIdCodec: TypeCodec[StandingQueryId] = TypeCodecs.UUID.xmap(StandingQueryId(_), _.uuid)
   implicit val standingQueryPartIdCodec: TypeCodec[StandingQueryPartId] =
@@ -124,9 +134,14 @@ object CassandraCodecs {
   implicit val eventTimeCodec: TypeCodec[EventTime] =
     TypeCodecs.BIGINT.xmap(x => EventTime.fromRaw(x - Long.MaxValue - 1L), x => x.eventTime + Long.MaxValue + 1L)
 
-  implicit val nodeChangeEventCodec: TypeCodec[NodeChangeEvent] = BLOB_TO_ARRAY.xmap(
+  implicit val nodeEventCodec: TypeCodec[NodeEvent] = BLOB_TO_ARRAY.xmap(
     PersistenceCodecs.eventFormat.read(_).get,
     PersistenceCodecs.eventFormat.write
+  )
+
+  implicit val domainGraphNodeCodec: TypeCodec[DomainGraphNode] = BLOB_TO_ARRAY.xmap(
+    PersistenceCodecs.domainGraphNodeFormat.read(_).get,
+    PersistenceCodecs.domainGraphNodeFormat.write
   )
 }
 final case class CassandraColumn[A](name: CqlIdentifier, codec: TypeCodec[A]) {
@@ -295,7 +310,7 @@ trait JournalColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
   final protected val timestampColumn: CassandraColumn[EventTime] = CassandraColumn[EventTime]("timestamp")
-  final protected val dataColumn: CassandraColumn[NodeChangeEvent] = CassandraColumn[NodeChangeEvent]("data")
+  final protected val dataColumn: CassandraColumn[NodeEvent] = CassandraColumn[NodeEvent]("data")
 }
 
 class Journals(
@@ -322,12 +337,12 @@ class Journals(
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
     executeFuture(
       BatchStatement
         .newInstance(
           DefaultBatchType.UNLOGGED,
-          events map { case NodeChangeEvent.WithTime(event, atTime) =>
+          events map { case NodeEvent.WithTime(event, atTime) =>
             insert.bindColumns(
               quineIdColumn.set(id),
               timestampColumn.set(atTime),
@@ -343,7 +358,7 @@ class Journals(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] = executeSelect(
+  ): Future[Iterable[NodeEvent.WithTime]] = executeSelect(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
@@ -367,13 +382,13 @@ class Journals(
           timestampColumn.setLt(endingAt)
         )
     }
-  )(row => NodeChangeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
+  )(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
 
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] = selectColumn(
+  ): Future[Iterable[NodeEvent]] = selectColumn(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectByQuineId.bindColumns(quineIdColumn.set(id))
@@ -405,7 +420,7 @@ object Journals extends TableDefinition with JournalColumnNames {
   protected val tableName = "journals"
   protected val partitionKey = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
-  protected val dataColumns: List[CassandraColumn[NodeChangeEvent]] = List(dataColumn)
+  protected val dataColumns: List[CassandraColumn[NodeEvent]] = List(dataColumn)
 
   private val createTableStatement: SimpleStatement =
     makeCreateTableStatement
@@ -1014,6 +1029,108 @@ class MetaData(
   def nonEmpty(): Future[Boolean] = yieldsResults(MetaData.arbitraryRowStatement)
 }
 
+trait DomainGraphNodeColumnNames {
+  import CassandraCodecs._
+  final protected val domainGraphNodeIdColumn: CassandraColumn[DomainGraphNodeId] = CassandraColumn[Long]("dgn_id")
+  final protected val dataColumn: CassandraColumn[DomainGraphNode] = CassandraColumn[DomainGraphNode]("data")
+}
+
+object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames {
+  protected val tableName = "domain_graph_nodes"
+  protected val partitionKey = domainGraphNodeIdColumn
+  protected val clusterKeys = List.empty
+  protected val dataColumns: List[CassandraColumn[DomainGraphNode]] = List(dataColumn)
+
+  private val createTableStatement: SimpleStatement =
+    makeCreateTableStatement.build
+      .setTimeout(createTableTimeout)
+
+  private val selectAllStatement: SimpleStatement = select
+    .columns(domainGraphNodeIdColumn.name, dataColumn.name)
+    .build()
+
+  private val deleteStatement: SimpleStatement =
+    delete
+      .where(domainGraphNodeIdColumn.is.eq)
+      .build()
+      .setIdempotent(true)
+
+  def create(
+    session: CqlSession,
+    readConsistency: ConsistencyLevel,
+    writeConsistency: ConsistencyLevel,
+    insertTimeout: FiniteDuration,
+    selectTimeout: FiniteDuration,
+    shouldCreateTables: Boolean
+  )(implicit
+    mat: Materializer,
+    futureMonad: Monad[Future]
+  ): Future[DomainGraphNodes] = {
+    logger.debug("Preparing statements for {}", tableName)
+
+    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
+      logger.trace("Preparing {}", statement.getQuery)
+      session.prepareAsync(statement).toScala
+    }
+
+    val createdSchema =
+      if (shouldCreateTables)
+        session.executeAsync(createTableStatement).toScala
+      else
+        Future.unit
+
+    createdSchema.flatMap(_ =>
+      (
+        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
+        prepare(selectAllStatement.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
+        prepare(deleteStatement.setConsistencyLevel(readConsistency))
+      ).mapN(new DomainGraphNodes(session, _, _, _))
+    )(ExecutionContexts.parasitic)
+  }
+}
+
+class DomainGraphNodes(
+  session: CqlSession,
+  insertStatement: PreparedStatement,
+  selectAllStatement: PreparedStatement,
+  deleteStatement: PreparedStatement
+)(implicit mat: Materializer)
+    extends CassandraTable(session)
+    with DomainGraphNodeColumnNames {
+
+  import syntax._
+
+  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.arbitraryRowStatement)
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    executeFuture(
+      BatchStatement.newInstance(
+        DefaultBatchType.LOGGED,
+        domainGraphNodes.toSeq map { case (domainGraphNodeId, domainGraphNode) =>
+          insertStatement.bindColumns(
+            domainGraphNodeIdColumn.set(domainGraphNodeId),
+            dataColumn.set(domainGraphNode)
+          )
+        }: _*
+      )
+    )
+
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
+    executeFuture(
+      BatchStatement.newInstance(
+        DefaultBatchType.LOGGED,
+        domainGraphNodeIds.toSeq map { domainGraphNodeId =>
+          deleteStatement.bindColumns(
+            domainGraphNodeIdColumn.set(domainGraphNodeId)
+          )
+        }: _*
+      )
+    )
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    selectColumns(selectAllStatement.bind(), domainGraphNodeIdColumn, dataColumn)
+}
+
 /** Persistence implementation backed by Cassandra.
   *
   * @param keyspace The keyspace the quine tables should live in.
@@ -1090,7 +1207,7 @@ class CassandraPersistor(
         createQualifiedSession
     }
 
-  private val (journals, snapshots, standingQueries, standingQueryStates, metaData) = Await.result(
+  private val (journals, snapshots, standingQueries, standingQueryStates, metaData, domainGraphNodes) = Await.result(
     (
       Journals.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
       Snapshots.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
@@ -1110,13 +1227,14 @@ class CassandraPersistor(
         readTimeout,
         shouldCreateTables
       ),
-      MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables)
+      MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
+      DomainGraphNodes.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables)
     ).tupled,
     5.seconds
   )
 
   override def emptyOfQuineData(): Future[Boolean] = {
-    val dataTables = Seq(journals, snapshots, standingQueries, standingQueryStates)
+    val dataTables = Seq(journals, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
     // then combine them -- if any have results, then the system is not empty of quine data
     Future
       .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
@@ -1127,24 +1245,39 @@ class CassandraPersistor(
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = snapshots.enumerateAllNodeIds()
 
-  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
     journals.persistEvents(id, events)
 
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] =
-    journals
-      .getJournal(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean // TODO push down into Cassandra
+  ): Future[Iterable[NodeEvent]] = {
+    val j = journals.getJournal(id, startingAt, endingAt)
+    if (includeDomainIndexEvents)
+      j
+    else
+      j.map(_ filter (_.isInstanceOf[NodeChangeEvent]))(ExecutionContexts.parasitic)
+  }
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] =
-    journals
-      .getJournalWithTime(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean // TODO push down into Cassandra
+  ): Future[Iterable[NodeEvent.WithTime]] = {
+    val j = journals.getJournalWithTime(id, startingAt, endingAt)
+    if (includeDomainIndexEvents)
+      j
+    else
+      j.map(_ filter {
+        _ event match {
+          case _: NodeChangeEvent => true
+          case _: DomainIndexEvent => false
+        }
+      })(ExecutionContexts.parasitic)
+  }
 
   override def persistSnapshotPart(
     id: QuineId,
@@ -1218,6 +1351,15 @@ class CassandraPersistor(
 
   override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     metaData.setMetaData(key, newValue)
+
+  override def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    this.domainGraphNodes.persistDomainGraphNodes(domainGraphNodes)
+
+  override def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
+    this.domainGraphNodes.removeDomainGraphNodes(domainGraphNodeIds)
+
+  override def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    this.domainGraphNodes.getDomainGraphNodes()
 
   override def shutdown(): Future[Unit] = session.closeAsync().toScala.void
 

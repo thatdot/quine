@@ -10,7 +10,8 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   cypher
 }
-import com.thatdot.quine.model.{DomainGraphBranch, GenericEdge, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Hashable
 
 /** Top-level type of all SQ-related messages relayed through the graph
@@ -108,27 +109,28 @@ object StandingQueryMessage {
   }
 
   /** == DomainNodeIndexBehavior  == */
-  sealed abstract class DomainNodeSubscriptionCommand extends StandingQueryMessage
+  sealed abstract class DomainNodeSubscriptionCommand extends StandingQueryMessage {
+    val dgnId: DomainGraphNodeId
+  }
 
   final case class CreateDomainNodeSubscription(
-    testBranch: DomainGraphBranch,
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
+    dgnId: DomainGraphNodeId,
     replyTo: Either[QuineId, StandingQueryId],
     relatedQueries: Set[StandingQueryId]
   ) extends DomainNodeSubscriptionCommand
 
   final case class DomainNodeSubscriptionResult(
     from: QuineId,
-    testBranch: DomainGraphBranch,
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
+    dgnId: DomainGraphNodeId,
     result: Boolean
   ) extends DomainNodeSubscriptionCommand
       with SqResultLike {
+
     def isPositive = result
 
     def standingQueryResult(sq: StandingQuery, idProvider: QuineIdProvider): StandingQueryResult = {
       val (formatAsString, aliasedAs) = sq.query match {
-        case pat: StandingQueryPattern.Branch =>
+        case pat: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
           pat.formatReturnAsStr -> pat.aliasReturnAs.name
         case _: StandingQueryPattern.SqV4 =>
           throw new RuntimeException(s"Received branch result $this for SQv4 query $sq")
@@ -138,8 +140,7 @@ object StandingQueryMessage {
   }
 
   final case class CancelDomainNodeSubscription(
-    testBranch: DomainGraphBranch,
-    assumedEdge: Option[(GenericEdge, DomainGraphBranch)],
+    dgnId: DomainGraphNodeId,
     alreadyCancelledSubscriber: QuineId
   ) extends DomainNodeSubscriptionCommand
 

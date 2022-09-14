@@ -2,10 +2,12 @@ package com.thatdot.quine.graph
 
 import scala.collection.mutable
 
+import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.StandingQueryState
 import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
 import com.thatdot.quine.model
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, PropertyValue, SingleBranch}
 
 /** Local events a standing query may want to watch
@@ -32,7 +34,9 @@ object StandingQueryLocalEvents {
     *          - StandingQueryLocalEvents.Edge("not_in_pattern") will _not_ be extracted -- that edge is not relevant to
     *            the branch provided
     */
-  def extractWatchableEvents(branch: DomainGraphBranch): Set[StandingQueryLocalEvents] = {
+  def extractWatchableEvents(
+    branch: DomainGraphBranch
+  ): Set[StandingQueryLocalEvents] = {
 
     /** Recursive helper to extract the StandingQueryLocalEvents as described.
       *
@@ -73,7 +77,6 @@ object StandingQueryLocalEvents {
         extractWatchables(repeatsBranch, acc)
     }
 
-    // optimization: only convert Seq => Set once, to save time checking uniqueness over intermediate states
     extractWatchables(branch).toSet
   }
 }
@@ -150,33 +153,29 @@ final case class StandingQueryLocalEventIndex(
         watchingForAnyEdge -= handler
     }
 
-  /** Get the subscribers interested in a given node event */
-  def standingQueriesWatchingNodeEvent(event: NodeChangeEvent): Iterator[EventSubscriber] =
-    event match {
-      case NodeChangeEvent.EdgeAdded(halfEdge) =>
-        watchingForEdge
-          .getOrElse(halfEdge.edgeType, List.empty)
-          .iterator
-          .++(watchingForAnyEdge.iterator)
-
-      case NodeChangeEvent.EdgeRemoved(halfEdge) =>
-        watchingForEdge
-          .getOrElse(halfEdge.edgeType, List.empty)
-          .iterator
-          .++(watchingForAnyEdge.iterator)
-
-      case NodeChangeEvent.PropertySet(propKey, _) =>
-        watchingForProperty
-          .getOrElse(propKey, List.empty)
-          .iterator
-
-      case NodeChangeEvent.PropertyRemoved(propKey, _) =>
-        watchingForProperty
-          .getOrElse(propKey, List.empty)
-          .iterator
-
-      case _ => Iterator.empty
-    }
+  /** Invokes [[retainSubscriberPredicate]] with subscribers interested in a given node event.
+    * Callback [[retainSubscriberPredicate]] returns false to indicate the record is invalid and should be removed.
+    */
+  def standingQueriesWatchingNodeEvent(
+    event: NodeChangeEvent,
+    retainSubscriberPredicate: EventSubscriber => Boolean
+  ): Unit = event match {
+    case EdgeAdded(halfEdge) =>
+      watchingForEdge
+        .get(halfEdge.edgeType)
+        .foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+      watchingForAnyEdge.filter(retainSubscriberPredicate).foreach(watchingForAnyEdge.remove)
+    case EdgeRemoved(halfEdge) =>
+      watchingForEdge
+        .get(halfEdge.edgeType)
+        .foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+      watchingForAnyEdge.filter(retainSubscriberPredicate).foreach(watchingForAnyEdge.remove)
+    case PropertySet(propKey, _) =>
+      watchingForProperty.get(propKey).foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+    case PropertyRemoved(propKey, _) =>
+      watchingForProperty.get(propKey).foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+    case _ => ()
+  }
 }
 object StandingQueryLocalEventIndex {
 
@@ -188,9 +187,9 @@ object StandingQueryLocalEventIndex {
     def apply(sqIdTuple: (StandingQueryId, StandingQueryPartId)): StandingQueryWithId =
       StandingQueryWithId(sqIdTuple._1, sqIdTuple._2)
     def apply(
-      branchSubscriptionTuple: (DomainGraphBranch, AssumedDomainEdge)
+      dgnId: DomainGraphNodeId
     ): DomainNodeIndexSubscription =
-      DomainNodeIndexSubscription(branchSubscriptionTuple._1, branchSubscriptionTuple._2)
+      DomainNodeIndexSubscription(dgnId)
   }
 
   /** A single SQv4 standing query part -- this handles events by passing them to the SQ's state's "onNodeEvents" hook
@@ -203,12 +202,10 @@ object StandingQueryLocalEventIndex {
 
   /** A DGB subscription -- this handles events by routing them to multiple other nodes, ie, [[Notifiable]]s
     * @param branch
-    * @param assumedEdge
     * @see [[behavior.DomainNodeIndexBehavior.subscribers]]
     * @see [[behavior.DomainNodeIndexBehavior.SubscribersToThisNode.updateAnswerAndNotifySubscribers]]
     */
-  final case class DomainNodeIndexSubscription(branch: DomainGraphBranch, assumedEdge: AssumedDomainEdge)
-      extends EventSubscriber
+  final case class DomainNodeIndexSubscription(dgnId: DomainGraphNodeId) extends EventSubscriber
 
   def empty: StandingQueryLocalEventIndex = StandingQueryLocalEventIndex(
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
@@ -218,28 +215,33 @@ object StandingQueryLocalEventIndex {
 
   /** Rebuild the part of the event index based on the provided query states and subscribers
     *
-    * @param dgbSubscribers
+    * @param dgnSubscribers
     * @param standingQueryStates currently set states
-    * @return rebuilt index
+    * @return tuple containing rebuilt index and [[DomainGraphNodeId]]s that are not in the registry
     */
   def from(
-    dgbSubscribers: Iterator[(DomainGraphBranch, AssumedDomainEdge)],
+    dgnRegistry: DomainGraphNodeRegistry,
+    dgnSubscribers: Iterator[DomainGraphNodeId],
     standingQueryStates: Iterator[((StandingQueryId, StandingQueryPartId), StandingQueryState)]
-  ): StandingQueryLocalEventIndex = {
+  ): (StandingQueryLocalEventIndex, Iterable[DomainGraphNodeId]) = {
     val toReturn = StandingQueryLocalEventIndex.empty
-
-    val dgbEvents = for {
-      handler <- dgbSubscribers
-      (branch, _) = handler
-      event: StandingQueryLocalEvents <- StandingQueryLocalEvents.extractWatchableEvents(branch)
-    } yield event -> EventSubscriber(handler)
-
+    val removed = Iterable.newBuilder[DomainGraphNodeId]
+    val dgnEvents = for {
+      dgnId <- dgnSubscribers
+      branch <- dgnRegistry.getDomainGraphBranch(dgnId) match {
+        case Some(b) => Set(b)
+        case None =>
+          removed += dgnId
+          Set.empty
+      }
+      event <- StandingQueryLocalEvents.extractWatchableEvents(branch)
+    } yield event -> EventSubscriber(dgnId)
     val sqStateEvents = for {
       (handler, queryState) <- standingQueryStates
       event <- queryState.relevantEvents
     } yield event -> EventSubscriber(handler)
 
-    (dgbEvents ++ sqStateEvents).foreach { case (event, handler) =>
+    (dgnEvents ++ sqStateEvents).foreach { case (event, handler) =>
       event match {
         case StandingQueryLocalEvents.Property(key) =>
           toReturn.watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
@@ -252,6 +254,6 @@ object StandingQueryLocalEventIndex {
       }
     }
 
-    toReturn
+    (toReturn, removed.result())
   }
 }

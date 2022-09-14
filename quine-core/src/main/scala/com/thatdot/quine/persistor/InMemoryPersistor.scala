@@ -8,8 +8,17 @@ import scala.jdk.CollectionConverters._
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPartId
+}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Persistence implementation which actually just keeps everything in memory
   *
@@ -26,22 +35,23 @@ import com.thatdot.quine.model.QuineId
   * @param persistenceConfig persistence options
   */
 class InMemoryPersistor(
-  journals: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeChangeEvent]] = new ConcurrentHashMap(),
+  journals: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
   snapshots: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, Array[Byte]]] = new ConcurrentHashMap(),
   standingQueries: ConcurrentMap[StandingQueryId, StandingQuery] = new ConcurrentHashMap(),
   standingQueryStates: ConcurrentMap[QuineId, ConcurrentMap[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
     new ConcurrentHashMap(),
   metaData: ConcurrentMap[String, Array[Byte]] = new ConcurrentHashMap(),
+  domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
 ) extends PersistenceAgent {
 
   override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
-      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
+      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )
 
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
-    for { NodeChangeEvent.WithTime(event, atTime) <- events } journals
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- events } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit
@@ -50,18 +60,28 @@ class InMemoryPersistor(
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] = {
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] = {
     val eventsMap = journals.get(id)
     Future.successful(
-      if (eventsMap == null) Iterable.empty
+      if (eventsMap == null)
+        Iterable.empty
       else
         eventsMap
           .subMap(startingAt, true, endingAt, true)
           .entrySet()
           .iterator
           .asScala
-          .map(a => NodeChangeEvent.WithTime(a.getValue, a.getKey))
+          .flatMap { a =>
+            if (
+              includeDomainIndexEvents || (a.getValue match {
+                case _: NodeChangeEvent => true
+                case _: DomainIndexEvent => false
+              })
+            ) Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey))
+            else Iterator.empty
+          }
           .toSeq
     )
   }
@@ -143,6 +163,19 @@ class InMemoryPersistor(
     }
     Future.unit
   }
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = {
+    this.domainGraphNodes.putAll(domainGraphNodes.asJava)
+    Future.unit
+  }
+
+  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = {
+    for { domainGraphNodesId <- domainGraphNodes } this.domainGraphNodes.remove(domainGraphNodesId)
+    Future.unit
+  }
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
+    Future.successful(domainGraphNodes.asScala.toMap)
 
   def shutdown(): Future[Unit] = Future.unit
 }

@@ -5,21 +5,16 @@ import scala.util.{Failure, Success}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  BaseGraph,
-  EventTime,
-  NodeChangeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Reified version of persistor call for logging purposes
   */
 sealed abstract class PersistorCall
-case class PersistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]) extends PersistorCall
-case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
+case class PersistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]) extends PersistorCall
+case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime, includeDomainIndexEvents: Boolean)
+    extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
@@ -37,6 +32,9 @@ case class SetStandingQueryState(
 case class SetMetaData(key: String, payloadSize: Option[Int]) extends PersistorCall
 case class GetMetaData(key: String) extends PersistorCall
 case object GetAllMetaData extends PersistorCall
+case class PersistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]) extends PersistorCall
+case class RemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]) extends PersistorCall
+case object GetDomainGraphNodes extends PersistorCall
 
 class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
@@ -54,7 +52,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
       Failure(wrapped)
   }(ec)
 
-  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = leftMap(
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
     new WrappedPersistorException(PersistEvents(id, events), _),
     persistenceAgent.persistEvents(id, events)
   )
@@ -62,19 +60,21 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   override def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent]] = leftMap(
-    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
-    persistenceAgent.getJournal(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent]] = leftMap(
+    new WrappedPersistorException(GetJournal(id, startingAt, endingAt, includeDomainIndexEvents), _),
+    persistenceAgent.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
   )
 
   override def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Iterable[NodeChangeEvent.WithTime]] = leftMap(
-    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
-    persistenceAgent.getJournalWithTime(id, startingAt, endingAt)
+    endingAt: EventTime,
+    includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] = leftMap(
+    new WrappedPersistorException(GetJournal(id, startingAt, endingAt, includeDomainIndexEvents), _),
+    persistenceAgent.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
   )
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateJournalNodeIds()
@@ -137,6 +137,21 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   )
 
   override def ready(graph: BaseGraph): Unit = persistenceAgent.ready(graph)
+
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = leftMap(
+    new WrappedPersistorException(PersistDomainGraphNodes(domainGraphNodes), _),
+    persistenceAgent.persistDomainGraphNodes(domainGraphNodes)
+  )
+
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] = leftMap(
+    new WrappedPersistorException(RemoveDomainGraphNodes(domainGraphNodeIds), _),
+    persistenceAgent.removeDomainGraphNodes(domainGraphNodeIds)
+  )
+
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = leftMap(
+    new WrappedPersistorException(GetDomainGraphNodes, _),
+    persistenceAgent.getDomainGraphNodes()
+  )
 
   def shutdown(): Future[Unit] = persistenceAgent.shutdown()
 

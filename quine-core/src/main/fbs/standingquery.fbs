@@ -147,7 +147,7 @@ table StandingQuery {
 
 // See [[com.thatdot.quine.graph.StandingQueryPattern.Branch]]
 table BranchQuery {
-  branch: DomainGraphBranch (required);
+  dgn_id: long;
   format_return_as_string: bool;
   alias_return_as: string (required);
   include_cancellation: bool;

@@ -51,21 +51,38 @@ class GraphService(
 
   val shards: ArraySeq[LocalShardRef] = initializeShards()
 
-  /** asynchronous construction effect: load Standing Queries from the persistor
+  /** asynchronous construction effect: load Domain Graph Nodes and Standing Queries from the persistor
     */
   Await.result(
-    persistor.getStandingQueries.map(_.foreach { (sq: StandingQuery) =>
-      startStandingQuery(
-        sqId = sq.id,
-        name = sq.name,
-        pattern = sq.query,
-        outputs = Map.empty,
-        queueBackpressureThreshold = sq.queueBackpressureThreshold,
-        queueMaxSize = sq.queueMaxSize,
-        shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode
-      )
-      logger.info(s"Restored standing query: ${sq.name}")
-    })(shardDispatcherEC),
+    persistor
+      .getDomainGraphNodes()
+      .flatMap { domainGraphNodes =>
+        persistor.getStandingQueries.map { sqs =>
+          sqs foreach { sq =>
+            // update the references for every domain graph node used by this standing query
+            sq.query match {
+              case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
+                dgnRegistry.registerDomainGraphNodePackage(
+                  DomainGraphNodePackage(dgnPattern.dgnId, domainGraphNodes.get(_)),
+                  sq.id
+                )
+              case _ =>
+            }
+            startStandingQuery(
+              sqId = sq.id,
+              name = sq.name,
+              pattern = sq.query,
+              outputs = Map.empty,
+              queueBackpressureThreshold = sq.queueBackpressureThreshold,
+              queueMaxSize = sq.queueMaxSize,
+              shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode
+            )
+          }
+          val dgnsLen = domainGraphNodes.size
+          val sqsLen = sqs.size
+          if (dgnsLen + sqsLen > 0) logger.info(s"Restored $dgnsLen domain graph nodes and $sqsLen standing queries")
+        }(shardDispatcherEC)
+      }(shardDispatcherEC),
     10 seconds
   )
 

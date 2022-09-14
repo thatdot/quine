@@ -66,7 +66,7 @@ object NodeActorMailbox {
     case ProcessMessages | BaseMessage.Ack | StandingQueryMessage.UpdateStandingQueriesNoWake =>
       // messages whose semantics define that waking is undesirable
       true
-    case CancelDomainNodeSubscription(_, _, _) =>
+    case CancelDomainNodeSubscription(_, _) =>
       // optimization: nodes will proactively check for cancellations they need to perform on wakeup anyway
       // note that MultipleValues standing queries will still cause node wakes via CancelCypherSubscription()
       // but the logic that *sends* CancelCypherSubscription has a similar optimization
