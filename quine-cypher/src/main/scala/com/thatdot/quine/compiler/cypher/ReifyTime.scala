@@ -3,12 +3,14 @@ package com.thatdot.quine.compiler.cypher
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
+import scala.collection.Set
 import scala.concurrent.Future
 
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
-import com.thatdot.quine.graph.cypher.{Expr, _}
+import com.thatdot.quine.graph.cypher.CypherException.ConstraintViolation
+import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{LiteralOpsGraph, idFrom}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 
@@ -25,7 +27,9 @@ object ReifyTime extends UserDefinedProcedure {
         "periods" -> Type.List(Type.Str)
       ),
       outputs = Vector("node" -> Type.Node),
-      description = "Returns the nodes that represent the passed-in time."
+      description = """Reifies the timestamp into a [sub]graph of time nodes, where each node represents one
+                      |period (at the granularity of the period specifiers provided). Yields the reified nodes
+                      |with the finest granularity.""".stripMargin.replace('\n', ' ')
     )
 
   def call(
@@ -53,12 +57,16 @@ object ReifyTime extends UserDefinedProcedure {
     }
 
     // Determine periods to use. Normalize user input to lowercase for ease of use.
-    val periodsFiltered = (periodKeySet.map(_.map(_.toLowerCase)) match {
+    val periodsFiltered: Seq[Period] = (periodKeySet.map(_.map(_.toLowerCase)) match {
       case Some(pks) =>
+        if (pks.isEmpty)
+          throw ConstraintViolation("Argument 'periods' must not be empty")
         // Validate every period is defined
         val allPeriodKeys = allPeriods.map(_._1)
         if (!pks.forall(allPeriodKeys.contains))
-          throw wrongSignature(arguments)
+          throw ConstraintViolation(
+            "Argument 'periods' must contain only valid period specifiers (eg, 'year', 'minute', etc.)"
+          )
         // Filter allPeriods in order to preserve order
         allPeriods.filter(p => pks.contains(p._1))
       case None => allPeriods
@@ -114,11 +122,12 @@ object ReifyTime extends UserDefinedProcedure {
             graph.literalOps.setLabel(nextNodeId, period.name + ":" + period.labelFormat.format(nextPeriodSourceTime)),
             graph.literalOps.setProp(nodeId, "period", QuineValue.Str(period.name)),
             graph.literalOps.setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toInstant)),
-            graph.literalOps.addEdge(nodeId, nextNodeId, "next"),
-            graph.literalOps.addEdge(previousNodeId, nodeId, "next")
+            graph.literalOps.addEdge(nodeId, nextNodeId, "NEXT"),
+            graph.literalOps.addEdge(previousNodeId, nodeId, "NEXT")
           ) ::: (parentNodeId match {
             case Some(pid) =>
-              List(graph.literalOps.addEdge(pid, nodeId, period.name))
+              val periodEdgeName = period.name.toUpperCase
+              List(graph.literalOps.addEdge(pid, nodeId, periodEdgeName))
             case None => List.empty
           })
         )(implicitly, location.graph.nodeDispatcherEC)
@@ -132,14 +141,15 @@ object ReifyTime extends UserDefinedProcedure {
       (nodeId, effects) = generateTimeNode(dt, period, parentPeriod)
     } yield (nodeId, effects)
 
-    // Source containing the time node generated for each of the user's periods
+    // Source containing the time node generated at the user's smallest granularity time period
     // This only includes nodes that follow the parent hierarchy, not nodes connected by next
     val timeNodeSource = Source
-      .fromIterator(() => generateTimeNodeResult.map(_._1).iterator)
+      .single(generateTimeNodeResult.last._1)
       .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
       .map(Vector(_))
 
-    // Return a source that blocks until graph node commands have been responded to
+    // Return a source that blocks until graph node commands have been responded to,
+    // and contains the single smallest period time node
     Source
       .future(Future.sequence(generateTimeNodeResult.map(_._2))(implicitly, location.graph.nodeDispatcherEC))
       .map(_ => Left(()))
@@ -158,6 +168,9 @@ object ReifyTime extends UserDefinedProcedure {
     val labelFormat: DateTimeFormatter
   }
 
+  /** Keys are the values that may be specified as periods (ie, entries in the 'periods" list argument)
+    * This sequence must be ordered by increasing granularity, as its order is used to determine which nodes to yield.
+    */
   private val allPeriods: Seq[(PeriodKey, Period)] = Seq(
     "year" -> new Period {
       val name = "year"

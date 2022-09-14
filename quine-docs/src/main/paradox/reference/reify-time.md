@@ -35,7 +35,7 @@ Periods are:
 
 ## Return Values
 
-`reify.time` returns each of the time nodes reified by this function directly related to the input time. Note that this function creates time nodes that do not exist and reuses time nodes that already exist.
+`reify.time` returns the smallest period time node reified by this function. This function creates time nodes that do not exist and reuses time nodes that already exist.
 
 ## Examples
 
@@ -48,7 +48,7 @@ CALL reify.time() YIELD node AS n RETURN n
 Run with a time parsed from a string:
 
 ```cypher
-CALL reify.time(datetime("2022-04-11T11:06:12-0700"), ["month", "day"]) YIELD node AS n RETURN n
+CALL reify.time(datetime("2022-04-11T11:06:12Z"), ["month", "day"]) YIELD node AS n RETURN n
 ```
 
 Use within a Recipe:
