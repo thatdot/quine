@@ -1951,6 +1951,7 @@ object Expr {
     arguments: Vector[Expr]
   ) extends Expr {
 
+    // TODO function purity should be determined per-signature, not per-function name
     def isPure: Boolean = function.isPure && arguments.forall(_.isPure)
 
     // TODO: consider tracking which _functions_ cannot fail

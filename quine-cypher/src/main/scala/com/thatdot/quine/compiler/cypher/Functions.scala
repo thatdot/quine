@@ -12,9 +12,11 @@ import java.time.{
 import java.util.{Locale, TimeZone}
 
 import scala.collection.concurrent
-import scala.util.{Failure, Random, Try}
+import scala.util.{Random, Try}
 
 import com.google.common.hash.Hashing
+import com.typesafe.scalalogging.LazyLogging
+import org.apache.commons.codec.digest.MurmurHash2
 import org.opencypher.v9_0.expressions._
 import org.opencypher.v9_0.expressions.functions.{Category, Function, FunctionWithName}
 import org.opencypher.v9_0.frontend.phases._
@@ -26,7 +28,7 @@ import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, 
 import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
-import com.thatdot.quine.model.{NamespacedIdProvider, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{PositionAwareIdProvider, QuineId, QuineIdProvider}
 import com.thatdot.quine.util.HexConversions
 
 /** Class that wraps a Quine UDF into something that openCypher accepts as a function
@@ -51,6 +53,7 @@ final class OpenCypherUdf(quineUdf: UserDefinedFunction) extends Function with T
       )
   }
 }
+
 object OpenCypherUdf {
 
   /** Convert a Quine type into the closest fitting openCypher type */
@@ -121,6 +124,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherBytes,
     CypherStringBytes,
     CypherHash,
+    CypherKafkaHash,
     CypherIdFrom,
     CypherLocIdFrom,
     CypherGetHostFunction,
@@ -288,19 +292,50 @@ object CypherHash extends UserDefinedFunction {
   }
 }
 
+object CypherKafkaHash extends UserDefinedFunction {
+  val name = "kafkaHash"
+  val isPure = true
+
+  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector("partitionKey" -> Type.Str),
+      output = Type.Integer,
+      description =
+        "Hashes a string to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("partitionKey" -> Type.Bytes),
+      output = Type.Integer,
+      description =
+        "Hashes a bytes value to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner"
+    )
+  )
+  val category = Category.SCALAR
+
+  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+    val hashedInt = arguments match {
+      case Vector(Expr.Str(str)) => MurmurHash2.hash32(str)
+      case Vector(Expr.Bytes(bytes, _)) => MurmurHash2.hash32(bytes, bytes.length)
+      case _ => throw wrongSignature(arguments)
+    }
+    // kafka chooses to map the murmur2 hash to positive numbers via bitmask, as follows:
+    Expr.Integer((hashedInt & 0x7FFFFFFF).toLong)
+  }
+}
+
 object CypherIdFrom extends UserDefinedFunction {
   val name = "idFrom"
   val isPure = true
   // `idFrom` should be variadic, but we compromise with up to 16 arguments
-  val signatures: Vector[UserDefinedFunctionSignature] = Vector.tabulate(16) { (i: Int) =>
+  val signatures: Vector[UserDefinedFunctionSignature] = (1 to 16).map { (i: Int) =>
     UserDefinedFunctionSignature(
       arguments = Vector.tabulate(i) { j =>
         s"input$j" -> Type.Anything
       },
-      output = Type.Anything,
+      output = Type.Anything, // depends on the id provider
       description = "Hashes the input arguments into a valid ID"
     )
-  }
+  }.toVector
   val category = Category.SCALAR
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
@@ -309,63 +344,67 @@ object CypherIdFrom extends UserDefinedFunction {
   }
 }
 
-// trait for functions that require a partition-aware IdProvider to function
+// trait for functions that require a position-aware IdProvider to function
 // TODO only register these when an appropriate idProvider is configured (or when the cluster size is 1?)
-trait PartitionSensitiveFunction extends UserDefinedFunction {
+trait PositionSensitiveFunction extends UserDefinedFunction {
   final def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = idProvider match {
-    case namespacedProvider: NamespacedIdProvider => callNamespaced(arguments)(namespacedProvider)
+    case namespacedProvider: PositionAwareIdProvider => callWithPositioning(arguments)(namespacedProvider)
     case notNamespacedProvider @ _ =>
       throw CypherException.ConstraintViolation(
         s"Unable to use a non-namespaced ID provider ($notNamespacedProvider) with a namespace-dependent function $name",
         None
       )
   }
-  def callNamespaced(arguments: Vector[Value])(implicit idProvider: NamespacedIdProvider): Value
+
+  def callWithPositioning(arguments: Vector[Value])(implicit idProvider: PositionAwareIdProvider): Value
 }
 
-object CypherLocIdFrom extends UserDefinedFunction with PartitionSensitiveFunction {
+object CypherLocIdFrom extends UserDefinedFunction with PositionSensitiveFunction with LazyLogging {
   val name = "locIdFrom"
+
   val isPure = true
-  // as with [[CypherIdFrom]], we emulate a variadic argument, this time in the second position
-  val signatures: Vector[UserDefinedFunctionSignature] = Vector.tabulate(15) { (i: Int) =>
-    UserDefinedFunctionSignature(
-      arguments = Vector.tabulate(i) {
-        case 0 => s"partition" -> Type.Str
-        case j => s"input${j - 1}" -> Type.Anything
-      },
-      output = Type.Integer,
-      description = "Generates a localized ID (based on a hash of the input elements, if provided). " +
-        "All IDs generated with the same `partition` will correspond to nodes on the same host."
-    )
-  }
+
+  val signatures: Vector[UserDefinedFunctionSignature] =
+    // as with [[CypherIdFrom]], we emulate a variadic argument, this time in the second position
+    (2 to 16).map { (i: Int) =>
+      UserDefinedFunctionSignature(
+        arguments = Vector.tabulate(i) {
+          case 0 => "positionIdx" -> Type.Integer // first argument is always positionIdx
+          case j => s"input${j - 1}" -> Type.Anything
+        },
+        output = Type.Anything, // depends on the id provider
+        description = s"""Generates a consistent (based on a hash of the arguments) ID. The ID created will be managed
+             |by the cluster member whose position corresponds to the provided position index given the
+             |cluster topology.""".stripMargin.replace('\n', ' ')
+      )
+    }.toVector
   val category = Category.SCALAR
 
-  def callNamespaced(arguments: Vector[Value])(implicit idProvider: NamespacedIdProvider): Value =
-    Expr.fromQuineValue(
-      idProvider.qidToValue(
-        idProvider.customIdToQid(
-          arguments.toList match {
-            case Expr.Str(partition) :: idFromArgs =>
-              (idFromArgs match {
-                case Nil =>
-                  idProvider
-                    .newCustomIdInNamespace(partition)
-                case hashMeValues =>
-                  idProvider
-                    .hashedCustomIdInNamespace(partition, hashOfCypherValues(hashMeValues))
-              }).recoverWith { case err =>
-                Failure(
-                  CypherException.ConstraintViolation(
-                    s"Unable to create localized (partitioned) ID; underlying error was ${err.getMessage}"
-                  )
-                )
-              }.get
-            case _ => // Nil or the first parameter is anything other than a string
-              throw wrongSignature(arguments)
-          }
-        )
+  def callWithPositioning(arguments: Vector[Value])(implicit idProvider: PositionAwareIdProvider): Value = {
+    // parse the arguments
+    val (positionIdxLong: Long, argsToHash: List[Value]) = arguments.toList match {
+      case Expr.Integer(positionIdx) :: idFromArgs if idFromArgs.nonEmpty =>
+        positionIdx -> idFromArgs
+      case _ => // fewer than 2 arguments, or the first arg is anything other than a position index (integer)
+        throw wrongSignature(arguments)
+    }
+    // resolve the (Long) positionIdx argument down to an (Integer) position index, warning on overflow
+    val positionIdx = Math.floorMod(positionIdxLong, Int.MaxValue.toLong).toInt
+    if (positionIdx.toLong != positionIdxLong) {
+      logger.warn(
+        s"""locIdFrom was called with positionIdx argument: $positionIdxLong. This is outside the 32-bit range, and has
+           |been reduced to the 32-bit value: $positionIdx via modulo. The resultant ID will be managed by the
+           |member corresponding with position index: $positionIdx""".stripMargin.replace('\n', ' ')
       )
-    )
+    }
+    // compute the ID
+    val id: idProvider.CustomIdType =
+      idProvider.hashedCustomIdAtPositionIndex(positionIdx, hashOfCypherValues(argsToHash))
+
+    // convert the ID to an appropriate runtime value (based on the id provider)
+    val convertedId = idProvider.qidToValue(idProvider.customIdToQid(id))
+    Expr.fromQuineValue(convertedId)
+  }
 }
 
 /** Get the host a node should be assigned to, according to the idProvider. If the ID provider doesn't specify, you'll
@@ -906,6 +945,7 @@ object CypherDuration extends UserDefinedFunction {
 object CypherDurationBetween extends UserDefinedFunction {
   val name = "duration.between"
   val isPure = true
+
   def signatures: Seq[UserDefinedFunctionSignature] = Vector(
     UserDefinedFunctionSignature(
       arguments = Vector("date1" -> Type.LocalDateTime, "date2" -> Type.LocalDateTime),
@@ -918,6 +958,7 @@ object CypherDurationBetween extends UserDefinedFunction {
       description = "Compute the duration between two dates"
     )
   )
+
   val category = Category.TEMPORAL
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
@@ -1099,6 +1140,7 @@ object CypherGenFroms {
     new Random(hash).nextBytes(b)
     b
   }
+
   val all: List[CypherValueGenFrom] = List(
     new CypherValueGenFrom(
       Type.Str,

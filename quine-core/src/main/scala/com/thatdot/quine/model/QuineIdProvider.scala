@@ -170,19 +170,26 @@ abstract class QuineIdProvider extends StrictLogging {
   }
 }
 
-/** A QuineIdProvider that is "namespace-aware". All IDs allocated within a given namespace should "live on" the same
-  * host. Thus, nodeLocation should be implemented appropriately. Not every string need be a valid namespace. For
-  * example, [[NamespacedUuidProvider]] requires (at config time) a predetermined and preshared list of valid namespaces
-  * be provided to each host. The namespace-aware functions in this trait may return Failure when the provided namespace
-  * is considered invalid by the implementation.
+/** A QuineIdProvider that is "position-aware" by supporting allocation of IDs for a particular position index.
   *
-  * Namespaces do not need to be retrievable from an instance of [[CustomIdType]]
+  * Position indices are retrievable from IDs via [[QuineIdProvider.nodeLocation]]. Thus, nodeLocation should be
+  * implemented in a manner consistent with [[newCustomIdInNamespace]] and [[hashedCustomIdInNamespace]].
   *
-  * TODO these should probably be something like Either[InvalidNamespaceException, X] instead of Try[X]
+  * Some IDs may leave their position index unspecified, and some IDs that specify a position index may be constructed
+  * via means other than this interface.
   */
-trait NamespacedIdProvider extends QuineIdProvider {
-  def newCustomIdInNamespace(namespace: String): Try[CustomIdType]
-  def hashedCustomIdInNamespace(namespace: String, bytes: Array[Byte]): Try[CustomIdType]
+trait PositionAwareIdProvider extends QuineIdProvider {
+
+  /** Generate a fresh ID corresponding to [[positionIdx]]
+    * TODO currently only usable by tests: do we want to support this use case at all?
+    */
+  def newCustomIdAtPositionIndex(positionIdx: Integer): CustomIdType
+
+  /** Generate a deterministic ID corresponding to [[positionIdx]]
+    * INV: given the same [[bytes]] and [[positionIdx]], the same ID must be produced by successive invocations of this
+    *      function, including across JVMs
+    */
+  def hashedCustomIdAtPositionIndex(positionIdx: Integer, bytes: Array[Byte]): CustomIdType
 }
 
 object QuineIdProvider {

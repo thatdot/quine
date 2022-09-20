@@ -12,7 +12,7 @@ import com.thatdot.quine.graph.{
   Uuid3Provider,
   Uuid4Provider,
   Uuid5Provider,
-  WithPartitioning
+  WithExplicitPositions
 }
 import com.thatdot.quine.model.QuineIdProvider
 
@@ -25,7 +25,7 @@ sealed abstract class IdProviderType {
   /** Construct the ID provider associated with this configuration */
   def idProvider: QuineIdProvider = {
     val baseProvider = createUnpartitioned
-    if (partitioned) WithPartitioning(baseProvider) else baseProvider
+    if (partitioned) WithExplicitPositions(baseProvider) else baseProvider
   }
 
   /** Construct the unpartitioned ID provider associated with this configuration */
