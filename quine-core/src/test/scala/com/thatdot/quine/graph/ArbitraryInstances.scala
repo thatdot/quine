@@ -363,22 +363,33 @@ trait ArbitraryInstances {
     Gen.resultOf[Symbol, EdgeDirection, QuineId, HalfEdge](HalfEdge.apply)
   }
 
-  implicit val arbNodeEvent: Arbitrary[NodeEvent] = Arbitrary {
+  implicit val arbNodeChangeEvent: Arbitrary[NodeChangeEvent] = Arbitrary {
     import NodeChangeEvent._
+    Gen.oneOf(
+      Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeAdded.apply),
+      Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeRemoved.apply),
+      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertySet.apply),
+      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply)
+    )
+  }
+
+  implicit val arbDomainIndexEvent: Arbitrary[DomainIndexEvent] = Arbitrary {
     import DomainIndexEvent._
     Gen.oneOf(
-      Gen.resultOf[HalfEdge, NodeEvent](EdgeAdded.apply),
-      Gen.resultOf[HalfEdge, NodeEvent](EdgeRemoved.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeEvent](PropertySet.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeEvent](PropertyRemoved.apply),
-      Gen.resultOf[DomainGraphNodeId, QuineId, Set[StandingQueryId], NodeEvent](
+      Gen.resultOf[DomainGraphNodeId, QuineId, Set[StandingQueryId], DomainIndexEvent](
         CreateDomainNodeSubscription.apply
       ),
-      Gen.resultOf[DomainGraphNodeId, StandingQueryId, Set[StandingQueryId], NodeEvent](
+      Gen.resultOf[DomainGraphNodeId, StandingQueryId, Set[StandingQueryId], DomainIndexEvent](
         CreateDomainStandingQuerySubscription.apply
       ),
-      Gen.resultOf[QuineId, DomainGraphNodeId, Boolean, NodeEvent](DomainNodeSubscriptionResult.apply),
-      Gen.resultOf[DomainGraphNodeId, QuineId, NodeEvent](CancelDomainNodeSubscription.apply)
+      Gen.resultOf[QuineId, DomainGraphNodeId, Boolean, DomainIndexEvent](DomainNodeSubscriptionResult.apply),
+      Gen.resultOf[DomainGraphNodeId, QuineId, DomainIndexEvent](CancelDomainNodeSubscription.apply)
+    )
+  }
+  implicit val arbNodeEvent: Arbitrary[NodeEvent] = Arbitrary {
+    Gen.oneOf[NodeEvent](
+      arbDomainIndexEvent.arbitrary,
+      arbNodeChangeEvent.arbitrary
     )
   }
 

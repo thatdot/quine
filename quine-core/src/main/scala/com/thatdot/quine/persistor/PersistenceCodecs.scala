@@ -1765,16 +1765,16 @@ object PersistenceCodecs extends LazyLogging {
         TypeAndOffset(persistence.NodeEventUnion.RemoveProperty, event)
 
       case DomainIndexEvent.CreateDomainNodeSubscription(dgnId, replyToNode, relatedQueries) =>
-        val rltd = {
+        val rltd: Offset = {
           val relatedQueriesOffsets = new Array[Offset](relatedQueries.size)
-          for ((relatedQueries, i) <- relatedQueries.zipWithIndex)
-            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQueries)
+          for ((relatedQuery, i) <- relatedQueries.zipWithIndex)
+            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQuery)
           persistence.CreateDomainNodeSubscription.createRelatedQueriesVector(builder, relatedQueriesOffsets)
         }
         val event = persistence.CreateDomainNodeSubscription.createCreateDomainNodeSubscription(
           builder,
           dgnId,
-          writeQuineId(builder, replyToNode),
+          builder.createByteVector(replyToNode.array), //,writeQuineId(builder, replyToNode),
           rltd
         )
         TypeAndOffset(persistence.NodeEventUnion.CreateDomainNodeSubscription, event)
@@ -1782,10 +1782,12 @@ object PersistenceCodecs extends LazyLogging {
       case DomainIndexEvent.CreateDomainStandingQuerySubscription(testBranch, sqId, relatedQueries) =>
         val rltd = {
           val relatedQueriesOffsets = new Array[Offset](relatedQueries.size)
-          for ((relatedQueries, i) <- relatedQueries.zipWithIndex)
-            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQueries)
+          for ((relatedQuery, i) <- relatedQueries.zipWithIndex)
+            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQuery)
           persistence.CreateDomainStandingQuerySubscription.createRelatedQueriesVector(builder, relatedQueriesOffsets)
+
         }
+
         val event = persistence.CreateDomainStandingQuerySubscription.createCreateDomainStandingQuerySubscription(
           builder,
           testBranch,
@@ -1795,9 +1797,9 @@ object PersistenceCodecs extends LazyLogging {
         TypeAndOffset(persistence.NodeEventUnion.CreateDomainStandingQuerySubscription, event)
 
       case DomainIndexEvent.DomainNodeSubscriptionResult(from, testBranch, result) =>
-        val event = persistence.DomainNodeSubscriptionResult.createDomainNodeSubscriptionResult(
+        val event: Offset = persistence.DomainNodeSubscriptionResult.createDomainNodeSubscriptionResult(
           builder,
-          writeQuineId(builder, from),
+          builder.createByteVector(from.array),
           testBranch,
           result
         )
@@ -1807,7 +1809,7 @@ object PersistenceCodecs extends LazyLogging {
         val event = persistence.CancelDomainNodeSubscription.createCancelDomainNodeSubscription(
           builder,
           testBranch,
-          writeQuineId(builder, alreadyCancelledSubscriber)
+          builder.createByteVector(alreadyCancelledSubscriber.array)
         )
         TypeAndOffset(persistence.NodeEventUnion.CancelDomainNodeSubscription, event)
     }
@@ -1856,7 +1858,7 @@ object PersistenceCodecs extends LazyLogging {
         var i = 0
         val length = event.relatedQueriesLength
         while (i < length) {
-          event.relatedQueries(i)
+          relatedQueries += readStandingQueryId(event.relatedQueries(i))
           i += 1
         }
         DomainIndexEvent.CreateDomainNodeSubscription(dgnId, replyTo, relatedQueries.result())
@@ -1870,7 +1872,7 @@ object PersistenceCodecs extends LazyLogging {
         var i = 0
         val length = event.relatedQueriesLength
         while (i < length) {
-          event.relatedQueries(i)
+          relatedQueries += readStandingQueryId(event.relatedQueries(i))
           i += 1
         }
         DomainIndexEvent.CreateDomainStandingQuerySubscription(dgnId, replyTo, relatedQueries.result())

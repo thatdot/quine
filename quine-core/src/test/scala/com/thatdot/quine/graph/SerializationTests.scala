@@ -8,9 +8,6 @@ import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, StandingQueryState =>
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.PersistenceCodecs
 
-// WARNING: Using this can really make compile times explode!!!
-// import org.scalacheck.ScalacheckShapeless._
-
 class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks with ArbitraryInstances {
 
   // This doubles the default size and minimum successful tests
@@ -22,49 +19,66 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
   "Binary serialization" should "roundtrip QuineValue" in {
     forAll { (v: QuineValue) =>
       val bytes = QuineValue.writeMsgPack(v)
-      QuineValue.readMsgPack(bytes) == v && QuineValue.readMsgPackType(bytes) == v.quineType
+      assert(QuineValue.readMsgPack(bytes) == v && QuineValue.readMsgPackType(bytes) == v.quineType)
     }
   }
 
   it should "roundtrip NodeEvent.WithTime" in {
     forAll { (event: NodeEvent.WithTime) =>
-      eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event
+      assert(eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event)
     }
   }
 
-  it should "roundtrip NodeEvent" in {
-    forAll { (event: NodeEvent) =>
-      eventFormat.read(eventFormat.write(event)).get == event
+  it should "roundtrip NodeChangeEvent" in {
+    forAll { (event: NodeChangeEvent) =>
+      assert(eventFormat.read(eventFormat.write(event)).get == event)
+    }
+  }
+
+  it should "roundtrip DomainIndexEvent" in {
+    forAll { (event: DomainIndexEvent) =>
+      assert(eventFormat.read(eventFormat.write(event)).get == event)
     }
   }
 
   it should "roundtrip cypher.Expr" in {
     forAll { (e: CypherExpr) =>
-      cypherExprFormat.read(cypherExprFormat.write(e)).get == e
+      assert(cypherExprFormat.read(cypherExprFormat.write(e)).get == e)
     }
   }
 
   it should "roundtrip DomainGraphNode" in {
     forAll { (dgn: DomainGraphNode) =>
-      domainGraphNodeFormat.read(domainGraphNodeFormat.write(dgn)).get == dgn
+      assert(domainGraphNodeFormat.read(domainGraphNodeFormat.write(dgn)).get == dgn)
     }
   }
 
   it should "roundtrip NodeSnapshot" in {
+
+    def toVector[T](i: Iterable[T]): Vector[T] = Vector() ++ i
+
     forAll { (snapshot: NodeSnapshot) =>
-      nodeSnapshotFormat.read(nodeSnapshotFormat.write(snapshot)).get == snapshot
+      val converted = nodeSnapshotFormat.read(nodeSnapshotFormat.write(snapshot)).get
+      /* Snapshot is equal up to type of edges iterator returned.*/
+      assert(converted.copy(edges = toVector(converted.edges)) == snapshot)
     }
   }
 
   it should "roundtrip StandingQuery" in {
     forAll { (sq: StandingQuery) =>
-      standingQueryFormat.read(standingQueryFormat.write(sq)).get == sq
+      /*
+      The value "shouldCalculateResultHashCode" is not stored in flatbuffers and is always deserialized to "false",
+      so we omit from the comparison for randomly generated test values.
+       */
+      assert(
+        standingQueryFormat.read(standingQueryFormat.write(sq)).get == sq.copy(shouldCalculateResultHashCode = false)
+      )
     }
   }
 
   it should "roundtrip StandingQueryState" in {
     forAll { (subs: StandingQuerySubscribers, sq: CypherStandingQueryState) =>
-      standingQueryStateFormat.read(standingQueryStateFormat.write(subs -> sq)).get == subs -> sq
+      assert(standingQueryStateFormat.read(standingQueryStateFormat.write(subs -> sq)).get == subs -> sq)
     }
 
   }
