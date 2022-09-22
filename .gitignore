@@ -45,3 +45,5 @@ bin/
 # mac
 .DS_Store
 
+# python test
+public/quine/src/test/resources/ingest_test_script/venv/

@@ -12,25 +12,32 @@ import com.thatdot.quine.graph.IngestControl
 sealed trait QuineAppIngestControl extends IngestControl {
   val valveHandle: ValveSwitch
   val termSignal: Future[Done]
+  def pause(): Future[Boolean]
+  def unpause(): Future[Boolean]
+  def terminate(): Future[Done]
 }
 
-final case class ControlSwitches(killSwitch: UniqueKillSwitch, valveHandle: ValveSwitch, termSignal: Future[Done])
+final case class ControlSwitches(shutdownSwitch: ShutdownSwitch, valveHandle: ValveSwitch, termSignal: Future[Done])
     extends QuineAppIngestControl {
   def pause(): Future[Boolean] = valveHandle.flip(SwitchMode.Close)
   def unpause(): Future[Boolean] = valveHandle.flip(SwitchMode.Open)
-  def terminate(): Future[Done] = {
+  def terminate(): Future[Done] = shutdownSwitch.terminate(termSignal)
+}
+
+/** This allows us to generalize over ingests where we're manually adding akka stream kill switches and libraries
+  * (such as kafka) that provide a stream with a library class wrapping a kill switch.
+  */
+trait ShutdownSwitch {
+  def terminate(termSignal: Future[akka.Done]): Future[Done]
+}
+
+case class AkkaKillSwitch(killSwitch: UniqueKillSwitch) extends ShutdownSwitch {
+  def terminate(termSignal: Future[akka.Done]): Future[Done] = {
     killSwitch.shutdown()
     termSignal
   }
 }
-
-final class KafkaControl(
-  killSwitch: akka.kafka.scaladsl.Consumer.Control,
-  val valveHandle: ValveSwitch,
-  val termSignal: Future[akka.Done]
-) extends QuineAppIngestControl {
-  def pause(): Future[Boolean] = valveHandle.flip(SwitchMode.Close)
-  def unpause(): Future[Boolean] = valveHandle.flip(SwitchMode.Open)
-  // See https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#controlled-shutdown
-  override def terminate(): Future[akka.Done] = killSwitch.drainAndShutdown(termSignal)(ExecutionContexts.parasitic)
+case class KafkaKillSwitch(killSwitch: akka.kafka.scaladsl.Consumer.Control) extends ShutdownSwitch {
+  def terminate(termSignal: Future[akka.Done]): Future[akka.Done] =
+    killSwitch.drainAndShutdown(termSignal)(ExecutionContexts.parasitic)
 }

@@ -9,7 +9,6 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
-import akka.actor.ActorSystem
 import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.Keep
 import akka.stream.{KillSwitches, UniqueKillSwitch}
@@ -18,16 +17,8 @@ import akka.util.Timeout
 import cats.implicits._
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.ingest.createIngestStream
-import com.thatdot.quine.app.routes.{
-  AdministrationRoutesState,
-  IngestMetered,
-  IngestMetrics,
-  IngestStreamState,
-  IngestStreamWithControl,
-  QueryUiConfigurationState,
-  StandingQueryStore
-}
+import com.thatdot.quine.app.ingest.IngestSrcDef
+import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
@@ -43,21 +34,7 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
-import com.thatdot.quine.routes.{
-  IngestSchemas,
-  IngestStreamConfiguration,
-  QueryUiConfigurationSchemas,
-  RatesSummary,
-  RegisteredStandingQuery,
-  SampleQuery,
-  StandingQueryDefinition,
-  StandingQueryPattern,
-  StandingQueryResultOutputUserDef,
-  StandingQuerySchemas,
-  StandingQueryStats,
-  UiNodeAppearance,
-  UiNodeQuickQuery
-}
+import com.thatdot.quine.routes._
 
 /** The Quine application state
   *
@@ -78,7 +55,6 @@ final class QuineApp(graph: GraphService)
   import QuineApp._
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
-  implicit private[this] val system: ActorSystem = graph.system // implicitly creates a Materializer
 
   /** == Local state ==
     * Notes on synchronization:
@@ -326,20 +302,19 @@ final class QuineApp(graph: GraphService)
         Success(false)
       } else
         Try {
-          val meter = IngestMetered.ingestMeter(name)
-          val ingestSrc = createIngestStream(
+          val ingestSrcDef = IngestSrcDef.createIngestSrcDef(
             name,
             settings,
-            meter,
             if (wasRestoredFromStorage) SwitchMode.Close else SwitchMode.Open
-          )(graph, implicitly)
+          )(graph)
+          val ingestSrc = ingestSrcDef.stream()
 
-          val controlFuture = graph.masterStream.addIngestSrc(ingestSrc)
-          val ingestControl = Await.result(controlFuture, timeout.duration)
+          val controlFuture: Future[QuineAppIngestControl] = graph.masterStream.addIngestSrc(ingestSrc)
+          val ingestControl: QuineAppIngestControl = Await.result(controlFuture, timeout.duration)
 
           val streamDefWithControl = IngestStreamWithControl(
             settings,
-            IngestMetrics(Instant.now, None, meter),
+            IngestMetrics(Instant.now, None, ingestSrcDef.meter),
             Future.successful(ingestControl.valveHandle),
             restored = wasRestoredFromStorage
           )

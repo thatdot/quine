@@ -1,5 +1,7 @@
 package com.thatdot.quine.app.ingest.serialization
 
+import java.net.URL
+
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
@@ -14,33 +16,31 @@ import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 
 /** Describes formats that Quine can import
+  * Deserialized type refers to the the (nullable) type to be produced by invocations of this [[ImportFormat]]
   */
 trait ImportFormat {
 
-  /** The (nullable) type to be produced by invocations of this [[ImportFormat]]
-    */
-  type Deserialized
-
-  /** Attempt to import raw data as a [[Deserialized]]. This will get called for each value to be imported
+  /** Attempt to import raw data as a [[cypher.Value]]. This will get called for each value to be imported
+    *
     * @param data the raw data to decode
-    * @return A Success if and only if a [[Deserialized]] can be produced from the provided data,
+    * @return A Success if and only if a [[cypher.Value]] can be produced from the provided data,
     *         otherwise, a Failure describing the error during deserialization. These Failures should never
     *         be fatal.
     */
-  protected def importBytes(data: Array[Byte]): Try[Deserialized]
+  protected def importBytes(data: Array[Byte]): Try[cypher.Value]
 
-  /** Defers to [[importBytes]] but also checks that [[data]] can (probably) be safely sent via akka clustered messaging.
+  /** Defers to [[importBytes]] but also checks that input data can (probably) be safely sent via akka clustered messaging.
     * This is checked based on [[ImportFormat.akkaMessageSizeLimit]]
     *
-    * @param data byte payload
+    * @param data         byte payload
     * @param isSingleHost is the cluster just one host (in which case there is no risk of oversize payloads)
     * @return
     */
-  final def importMessageSafeBytes(data: Array[Byte], isSingleHost: Boolean): Try[Deserialized] =
-    if (!isSingleHost && data.length > ImportFormat.akkaMessageSizeLimit)
+  final def importMessageSafeBytes(data: Array[Byte], isSingleHost: Boolean): Try[cypher.Value] =
+    if (!isSingleHost && data.length > akkaMessageSizeLimit)
       Failure(
         new Exception(
-          s"Attempted to decode ${data.length} bytes, but records larger than ${ImportFormat.akkaMessageSizeLimit} bytes are prohibited."
+          s"Attempted to decode ${data.length} bytes, but records larger than $akkaMessageSizeLimit bytes are prohibited."
         )
       )
     else importBytes(data)
@@ -49,17 +49,28 @@ trait ImportFormat {
     */
   def label: String
 
-  /** Writes [[Deserialized]] instances into the graph.
-    */
-  def writeToGraph(
+  /** An estimated limit on record size (based on the akka remote frame size with 15kb of headspace) */
+  lazy val akkaMessageSizeLimit: Long =
+    ConfigFactory.load().getBytes("akka.remote.artery.advanced.maximum-frame-size") - 15 * 1024
+
+  def writeValueToGraph(
     graph: CypherOpsGraph,
-    deserialized: Deserialized
+    deserialized: cypher.Value
   ): Future[Done]
 }
 
-abstract class CypherImportFormat(query: String, parameter: String) extends ImportFormat with LazyLogging {
+class TestOnlyDrop extends ImportFormat {
+  override val label = "TestOnlyDrop"
 
-  override type Deserialized = cypher.Value
+  override def importBytes(data: Array[Byte]): Try[cypher.Value] = Success(cypher.Expr.Null)
+  override def writeValueToGraph(
+    graph: CypherOpsGraph,
+    deserialized: cypher.Value
+  ): Future[Done] = Future.successful(Done)
+
+}
+
+abstract class CypherImportFormat(query: String, parameter: String) extends ImportFormat with LazyLogging {
 
   override val label: String = "Cypher " + query
 
@@ -74,8 +85,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
         |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
     )
   }
-
-  override def writeToGraph(
+  def writeValueToGraph(
     graph: CypherOpsGraph,
     deserialized: cypher.Value
   ): Future[Done] =
@@ -83,37 +93,36 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
       .stream(deserialized)(graph)
       .runWith(Sink.ignore)(graph.materializer)
 }
+//"Drop Format" should not run a query but should still read from ...
 
-object ImportFormat {
-  // An estimated limit on record size (based on the akka remote frame size with 15kb of headspace)
-  val akkaMessageSizeLimit: Long =
-    ConfigFactory.load().getBytes("akka.remote.artery.advanced.maximum-frame-size") - 15 * 1024
+class CypherJsonInputFormat(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
 
-  class CypherJson(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
-
-    override def importBytes(data: Array[Byte]): Try[cypher.Value] = Try {
-      // deserialize bytes into JSON without going through string
-      val json: ujson.Value = ujson.read(data)
-      cypher.Value.fromJson(json)
-    }
-
+  override def importBytes(data: Array[Byte]): Try[cypher.Value] = Try {
+    // deserialize bytes into JSON without going through string
+    val json: ujson.Value = ujson.read(data)
+    cypher.Value.fromJson(json)
   }
 
-  class CypherRaw(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
+}
 
-    override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
-      Success(cypher.Expr.Bytes(arr, representsId = false))
+class CypherStringInputFormat(query: String, parameter: String, charset: String)
+    extends CypherImportFormat(query, parameter) {
 
-  }
+  override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
+    Success(cypher.Expr.Str(new String(arr, charset)))
 
-  class TestOnlyDrop extends ImportFormat {
-    override type Deserialized = Unit
-    override val label = "TestOnlyDrop"
-    override def importBytes(data: Array[Byte]): Try[Deserialized] = Success(())
-    override def writeToGraph(
-      graph: CypherOpsGraph,
-      deserialized: Deserialized
-    ): Future[Done] = Future.successful(Done)
-  }
+}
 
+class CypherRawInputFormat(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
+
+  override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
+    Success(cypher.Expr.Bytes(arr, representsId = false))
+
+}
+
+class ProtobufInputFormat(query: String, parameter: String, schemaUrl: URL, typeName: String)
+    extends CypherImportFormat(query, parameter) {
+  private val parser = new ProtobufParser(schemaUrl, typeName)
+
+  override protected def importBytes(data: Array[Byte]): Try[cypher.Value] = Try(parser.parseBytes(data))
 }

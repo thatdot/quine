@@ -4,7 +4,6 @@ import java.net.URL
 
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
-import scala.util.Try
 
 import com.google.protobuf.Descriptors.EnumValueDescriptor
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
@@ -95,12 +94,4 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
     case ENUM => Expr.Str(value.asInstanceOf[EnumValueDescriptor].getName)
     case MESSAGE => protobufMessageToCypher(value.asInstanceOf[DynamicMessage])
   }
-}
-
-class Protobuf(query: String, parameter: String, schemaUrl: URL, typeName: String)
-    extends CypherImportFormat(query, parameter) {
-
-  private val parser = new ProtobufParser(schemaUrl, typeName)
-
-  override protected def importBytes(data: Array[Byte]): Try[cypher.Value] = Try(parser.parseBytes(data))
 }
