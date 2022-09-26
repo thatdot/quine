@@ -5,6 +5,7 @@ import scala.collection.mutable
 import com.google.common.hash.Hashing.murmur3_128
 import org.scalacheck.rng.Seed
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.graph.{ArbitraryInstances, Generators}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -16,12 +17,12 @@ import com.thatdot.quine.model.PropertyComparisonFunctions.{
   Wildcard
 }
 
-class DomainGraphNodeTest extends AnyFlatSpec with ArbitraryInstances {
+class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstances {
   it must "generate stable identifiers for arbitrary values" in {
     val hasher = murmur3_128.newHasher
     val input = Generators.generateN[DomainGraphNode](100000, 200, Seed(0))
     for { dgn <- input } hasher.putLong(DomainGraphNode.id(dgn))
-    assert(6339398277639097776L === hasher.hash.asLong)
+    hasher.hash.asLong shouldBe -9003278968899442131L
   }
   it must "generate unique identifiers for arbitrary values" in {
     val nodes = mutable.Set.empty[DomainGraphNode]

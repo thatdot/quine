@@ -3,10 +3,11 @@ package com.thatdot.quine.graph
 import com.google.common.hash.Hashing.murmur3_128
 import org.scalacheck.rng.Seed
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 
-class GraphNodeHashCodeTest extends AnyFlatSpec with HalfEdgeGen with ArbitraryInstances {
+class GraphNodeHashCodeTest extends AnyFlatSpec with Matchers with HalfEdgeGen with ArbitraryInstances {
   it must "generate stable identifiers for arbitrary values" in {
     val hasher = murmur3_128.newHasher
     val times = 1000
@@ -21,6 +22,6 @@ class GraphNodeHashCodeTest extends AnyFlatSpec with HalfEdgeGen with ArbitraryI
       val graphNodeHashCode = GraphNodeHashCode(qid, properties, edges)
       hasher.putLong(graphNodeHashCode.value)
     }
-    assert(-7866497942312184115L === hasher.hash().asLong())
+    hasher.hash.asLong shouldBe 1634939222212781191L
   }
 }

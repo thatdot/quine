@@ -1,13 +1,13 @@
 package com.thatdot.quine.model
 
-import java.nio.ByteBuffer
 import java.time.Instant
 
 import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
-import org.msgpack.core.{MessagePack, MessagePacker, MessageUnpacker}
+import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
+import org.msgpack.core.{MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 
 /** Values that are recognized by the Quine interpreter. When talking about Quine
@@ -131,11 +131,11 @@ object QuineValue {
     def apply(entries: IterableOnce[(String, QuineValue)]): Map = new Map(SortedMap.from(entries))
   }
 
-  final case class DateTime(time: Instant) extends QuineValue {
+  final case class DateTime(timestamp: Instant) extends QuineValue {
     type JvmType = Instant
 
     def quineType = QuineType.DateTime
-    def underlyingJvmValue = time
+    def underlyingJvmValue = timestamp
   }
 
   object Id {
@@ -200,8 +200,7 @@ object QuineValue {
   }
 
   // Message pack extension tags
-  final val IdExt = 32
-  final val DateTimeExt = 33
+  final val IdExt: Byte = 32
 
   /** Read just the type of a [[QuineValue]] from a MessagePack payload
     *
@@ -210,8 +209,8 @@ object QuineValue {
     * @return type of serialized value
     */
   def readMsgPackType(unpacker: MessageUnpacker): QuineType = {
-    val format = unpacker.getNextFormat()
-    val typ = format.getValueType()
+    val format = unpacker.getNextFormat
+    val typ = format.getValueType
     typ match {
       case ValueType.NIL => QuineType.Null
       case ValueType.BOOLEAN => QuineType.Boolean
@@ -223,9 +222,9 @@ object QuineValue {
       case ValueType.MAP => QuineType.Map
       case ValueType.EXTENSION =>
         val extHeader = unpacker.unpackExtensionTypeHeader()
-        extHeader.getType() match {
-          case DateTimeExt => QuineType.DateTime
+        extHeader.getType match {
           case IdExt => QuineType.Id
+          case EXT_TIMESTAMP => QuineType.DateTime
           case other =>
             throw new IllegalArgumentException(s"Unsupported data extension $other")
         }
@@ -249,7 +248,7 @@ object QuineValue {
         if (unpacker.unpackBoolean()) QuineValue.True else QuineValue.False
 
       case ValueType.INTEGER =>
-        if (format == MessagePack.Code.UINT64)
+        if (format.getValueType == MessageFormat.UINT64)
           throw new IllegalArgumentException("Unsigned 64-bit numbers are unsupported")
         QuineValue.Integer(unpacker.unpackLong())
 
@@ -284,24 +283,16 @@ object QuineValue {
 
       case ValueType.EXTENSION =>
         val extHeader = unpacker.unpackExtensionTypeHeader()
-        val extData = new Array[Byte](extHeader.getLength())
-        unpacker.readPayload(extData)
-        extHeader.getType() match {
-          case DateTimeExt =>
-            if (extData.length != 12)
-              throw new IllegalArgumentException(
-                s"Invalid length for date time (expected 12 but got ${extData.length}"
-              )
-            val buffer = ByteBuffer.wrap(extData)
-            val seconds = buffer.getLong
-            val nanos = buffer.getInt
-            QuineValue.DateTime(Instant.ofEpochSecond(seconds, nanos.toLong))
+        extHeader.getType match {
+          case EXT_TIMESTAMP =>
+            QuineValue.DateTime(unpacker.unpackTimestamp(extHeader))
 
           case IdExt =>
+            val extData = unpacker.readPayload(extHeader.getLength)
             QuineValue.Id(QuineId(extData))
 
           case other =>
-            throw new IllegalArgumentException(s"Unsupported data extension $other")
+            throw new IllegalArgumentException(s"Unsupported msgpack data extension $other")
         }
     }
   }
@@ -347,13 +338,8 @@ object QuineValue {
           writeMsgPack(packer.packString(k), v)
         }
 
-      case QuineValue.DateTime(instant) =>
-        val data = ByteBuffer
-          .allocate(12)
-          .putLong(instant.getEpochSecond)
-          .putInt(instant.getNano)
-          .array
-        packer.packExtensionTypeHeader(DateTimeExt, 12).addPayload(data)
+      case QuineValue.DateTime(timestamp) =>
+        packer.packTimestamp(timestamp)
 
       case QuineValue.Id(qid) =>
         val data = qid.array
