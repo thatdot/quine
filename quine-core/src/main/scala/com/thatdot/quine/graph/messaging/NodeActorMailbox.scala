@@ -175,7 +175,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * @return whether the message was enqueued (else it was ignored)
     */
   @inline
-  private def enqueueIntoMessageQueue(qidAtTime: QuineIdAtTime, envelope: Envelope): Boolean =
+  def enqueueIntoMessageQueue(qidAtTime: QuineIdAtTime, envelope: Envelope): Boolean =
     if (NodeActorMailbox.shouldIgnoreWhenSleeping(envelope.message)) {
       false
     } else {
@@ -204,7 +204,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * @param shardRef address of the shard to which the node belongs
     * @param envelope message (and sender) to enqueue
     */
-  def enqueueIntoMessageQueue(qidAtTime: QuineIdAtTime, shardRef: ActorRef, envelope: Envelope): Unit =
+  def enqueueIntoMessageQueueAndWakeup(qidAtTime: QuineIdAtTime, shardRef: ActorRef, envelope: Envelope): Unit =
     if (enqueueIntoMessageQueue(qidAtTime, envelope)) {
       // Only wake up the node if a message was enqueued
       shardRef.tell(WakeUp(qidAtTime), ActorRef.noSender)

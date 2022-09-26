@@ -56,17 +56,17 @@ trait StaticShardGraph extends BaseGraph {
     ArraySeq.unsafeWrapArray(Array.tabulate(shardCount) { (shardId: Int) =>
       logger.info(s"Adding a new local shard at idx: $shardId")
 
-      val shardMap: concurrent.Map[QuineIdAtTime, GraphShardActor.NodeState] =
+      val nodeMap: concurrent.Map[QuineIdAtTime, GraphShardActor.NodeState] =
         new ConcurrentHashMap[QuineIdAtTime, GraphShardActor.NodeState]().asScala
 
       val localRef: ActorRef = system.actorOf(
-        Props(new GraphShardActor(this, shardId, shardMap, initialShardInMemoryLimit))
+        Props(new GraphShardActor(this, shardId, nodeMap, initialShardInMemoryLimit))
           .withMailbox("akka.quine.shard-mailbox")
           .withDispatcher(QuineDispatchers.shardDispatcherName),
         name = GraphShardActor.name(shardId)
       )
 
-      new LocalShardRef(localRef, shardId, shardMap)
+      new LocalShardRef(localRef, shardId, nodeMap)
     })
 
   def relayTell(
@@ -85,7 +85,7 @@ trait StaticShardGraph extends BaseGraph {
         // If that fails, manually enqueue the message and request the shard wake the node up
         if (!sentDirectTell) {
           val envelope = Envelope(message, originalSender, system)
-          NodeActorMailboxExtension(system).enqueueIntoMessageQueue(qidAtTime, shard.localRef, envelope)
+          NodeActorMailboxExtension(system).enqueueIntoMessageQueueAndWakeup(qidAtTime, shard.localRef, envelope)
         }
 
       case wrappedRef: WrappedActorRef =>
@@ -130,7 +130,7 @@ trait StaticShardGraph extends BaseGraph {
         // If that fails, manually enqueue the message and request the shard wake the node up
         if (!sentDirectTell) {
           val envelope = Envelope(message, originalSender, system)
-          NodeActorMailboxExtension(system).enqueueIntoMessageQueue(qidAtTime, shard.localRef, envelope)
+          NodeActorMailboxExtension(system).enqueueIntoMessageQueueAndWakeup(qidAtTime, shard.localRef, envelope)
         }
         promise.future
 

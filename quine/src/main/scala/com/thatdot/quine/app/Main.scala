@@ -67,7 +67,6 @@ object Main extends App with LazyLogging {
         Console.err.println("  $ java -Dconfig.file=your-conf-file.conf -jar quine.jar")
         sys.exit(1)
     }
-
     // Override webserver options
     val withWebserverOverrides = withoutOverrides.copy(
       webserver = withoutOverrides.webserver.copy(

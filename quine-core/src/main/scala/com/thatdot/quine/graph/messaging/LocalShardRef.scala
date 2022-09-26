@@ -37,8 +37,8 @@ final class LocalShardRef(
     * @return if the action could be executed (else the node is sleeping - see the node lifecycle)
     */
   def withLiveActorRef(id: QuineIdAtTime, withActorRef: ActorRef => Unit): Boolean =
-    nodesMap.get(id) match {
-      case Some(NodeState(_, actorRef, actorRefLock, _)) =>
+    nodesMap.get(id).exists { // if the node is absent (ie, fully asleep), return false. Otherwise:
+      case NodeState.LiveNode(_, actorRef, actorRefLock, _) =>
         val stamp = actorRefLock.tryReadLock()
         val gotReadLock = stamp != 0L
         if (gotReadLock) {
@@ -46,6 +46,6 @@ final class LocalShardRef(
           finally actorRefLock.unlockRead(stamp)
         }
         gotReadLock
-      case None => false
+      case NodeState.WakingNode => false
     }
 }

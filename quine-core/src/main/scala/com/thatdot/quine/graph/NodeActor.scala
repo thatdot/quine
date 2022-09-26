@@ -4,16 +4,18 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
 import scala.collection.compat._
-import scala.collection.mutable.{Map => MutableMap}
-import scala.concurrent.Future
+import scala.collection.mutable
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging}
 
 import com.thatdot.quine.graph.NodeChangeEvent._
+import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
 import com.thatdot.quine.graph.behavior._
+import com.thatdot.quine.graph.cypher.StandingQueryLookupInfo
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
@@ -27,9 +29,36 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceCodecs, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
+
+// This is just to pass the initial state to construct NodeActor with
+case class NodeActorConstructorArgs(
+  properties: Map[Symbol, PropertyValue],
+  edges: Iterable[HalfEdge],
+  subscribersToThisNode: mutable.Map[
+    DomainGraphNodeId,
+    SubscribersToThisNodeUtil.Subscription
+  ],
+  domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
+  standingQueries: mutable.Map[
+    (StandingQueryId, StandingQueryPartId),
+    (StandingQuerySubscribers, cypher.StandingQueryState)
+  ],
+  initialJournal: NodeActor.Journal
+)
+object NodeActorConstructorArgs {
+  def empty: NodeActorConstructorArgs = NodeActorConstructorArgs(
+    properties = Map.empty,
+    edges = Iterable.empty,
+    subscribersToThisNode = mutable.Map.empty,
+    domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(mutable.Map.empty),
+    standingQueries = mutable.Map.empty,
+    initialJournal = Iterable.empty
+  )
+}
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
   * computation (as an Akka actor).
@@ -44,17 +73,26 @@ import com.thatdot.quine.util.HexConversions
   * @param actorRefLock a lock on this node's [[ActorRef]] used to hard-stop messages when sleeping the node (relayTell uses
   *                     tryReadLock during its tell, so if a write lock is held for a node's actor, no messages can be
   *                     sent to it)
-  * @param restoreAfterFailureSnapshotOpt If a node snapshot failed to save when going to sleep, it is delivered back to
-  *                                       the node and used to restore the node in a wakeful state. This is defined as a
-  *                                       `var` so that it can be reassigned/released for garbage collection after use.
   */
 private[graph] class NodeActor(
   val qidAtTime: QuineIdAtTime,
   val graph: StandingQueryOpsGraph with CypherOpsGraph,
+  protected val persistor: PersistenceAgent,
   costToSleep: CostToSleep,
-  val wakefulState: AtomicReference[WakefulState],
-  val actorRefLock: StampedLock,
-  private var restoreAfterFailureSnapshotOpt: Option[Array[Byte]]
+  protected val wakefulState: AtomicReference[WakefulState],
+  protected val actorRefLock: StampedLock,
+  protected var properties: Map[Symbol, PropertyValue],
+  initialEdges: Iterable[HalfEdge],
+  subscribersToThisNode: mutable.Map[
+    DomainGraphNodeId,
+    SubscribersToThisNodeUtil.Subscription
+  ],
+  protected val domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
+  protected val standingQueries: mutable.Map[
+    (StandingQueryId, StandingQueryPartId),
+    (StandingQuerySubscribers, cypher.StandingQueryState)
+  ],
+  initialJournal: NodeActor.Journal
 ) extends Actor
     with ActorLogging
     with BaseNodeActor
@@ -82,12 +120,14 @@ private[graph] class NodeActor(
   val qid: QuineId = qidAtTime.id
   val atTime: Option[Milliseconds] = qidAtTime.atTime
   implicit val idProvider: QuineIdProvider = graph.idProvider
-  protected val persistor: PersistenceAgent = graph.persistor
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
-  protected var properties: Map[Symbol, PropertyValue] = Map.empty
-  protected val edges: EdgeCollection = graph.edgeCollectionFactory.get()
-  protected val dgnRegistry = graph.dgnRegistry
+  protected val edges: EdgeCollection = graph.edgeCollectionFactory.get
+  initialEdges.foreach(edges +=)
+  protected val dgnRegistry: DomainGraphNodeRegistry = graph.dgnRegistry
+
+  protected val subscribers: SubscribersToThisNode = SubscribersToThisNode(subscribersToThisNode)
+
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
 
@@ -95,45 +135,45 @@ private[graph] class NodeActor(
     // TODO: should this update `lastWriteMillis` too?
     latestUpdateAfterSnapshot = Some(latestEventTime())
 
+  // here be the side-effects performed by the constructor
+
+  protected var nodeParentIndex: DomainNodeIndexBehavior.NodeParentIndex = {
+    val (nodeIndex, removed) = DomainNodeIndexBehavior.NodeParentIndex.reconstruct(
+      domainNodeIndex,
+      subscribers.subscribersToThisNode.keys,
+      dgnRegistry
+    )
+    subscribers.subscribersToThisNode --= removed
+    nodeIndex
+  }
+
+  applyEventsEffectsInMemory(initialJournal, shouldCauseSideEffects = false)
+
+  {
+    val lookupInfo = StandingQueryLookupInfo(
+      graph.getStandingQueryPart,
+      qid,
+      idProvider
+    )
+    standingQueries.values foreach { case (_, sqState) => sqState.preStart(lookupInfo) }
+  }
+
   /** Index for efficiently determining which subscribers to standing queries (be they other standing queries or sets
     * of Notifiables) should be notified for node events
     */
-  protected var localEventIndex: StandingQueryLocalEventIndex =
-    StandingQueryLocalEventIndex.empty
-
-  { // here be the side-effects performed by the constructor
-    restoreAfterFailureSnapshotOpt match {
-      case None =>
-        restoreFromSnapshotAndJournal(atTime)
-      case Some(snapshotBytes) =>
-        val restored: NodeSnapshot =
-          PersistenceCodecs.nodeSnapshotFormat
-            .read(snapshotBytes)
-            .fold(
-              err =>
-                throw new NodeWakeupFailedException(
-                  s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
-                  err
-                ),
-              identity
-            )
-        restoreFromSnapshot(restored)
-        // Register/unregister universal standing queries
-        syncStandingQueries()
-        // TODO: QU-430 restoreFromSnapshotBytes doesn't account for standing query states!
-        // However, DGN subscribers are available with just restoreFromSnapshotBytes
-        val (localEventIndex, removed) = StandingQueryLocalEventIndex.from(
-          dgnRegistry,
-          subscribers.subscribersToThisNode.keysIterator,
-          Iterator.empty
-        )
-        this.localEventIndex = localEventIndex
-        subscribers.removeSubscribers(removed)
-    }
-
-    // Allow the GC to collect the snapshot now
-    restoreAfterFailureSnapshotOpt = None
+  protected val localEventIndex: StandingQueryLocalEventIndex = {
+    val (localIndex, removed) = StandingQueryLocalEventIndex.from(
+      dgnRegistry,
+      subscribers.subscribersToThisNode.keysIterator,
+      Iterator.empty //standingQueries.iterator.map { case (handler, (_, sqState)) => handler -> sqState }
+    )
+    subscribers.removeSubscribers(removed)
+    localIndex
   }
+  syncStandingQueries()
+
+  // Once edge collection is updated, compute cost to sleep
+  costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
 
   /** Synchronizes this node's standing queries with those of the current graph
     * - Registers and emits initial results for any standing queries not yet registered on this node
@@ -144,6 +184,9 @@ private[graph] class NodeActor(
       updateUniversalQueriesOnWake(shouldSendReplies = true)
       updateUniversalCypherQueriesOnWake()
     }
+
+  /** Fast check for if a number is a power of 2 */
+  private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
 
   /* Determine if this event causes a change to the respective state (defaults to this node's state) */
   protected def hasEffect(event: NodeChangeEvent): Boolean = event match {
@@ -364,144 +407,6 @@ private[graph] class NodeActor(
     )
   }
 
-  /** Fast check for if a number is a power of 2 */
-  private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
-
-  /** Load into the actor the state of the node at the specified time
-    *
-    * @note Since persistor access is asynchronous, this method will return
-    * before restoration is done. However, it will block the actor from
-    * processing messages until done.
-    *
-    * @param untilOpt load changes made up to and including this time
-    */
-  @throws[NodeWakeupFailedException]("When node wakeup fails irrecoverably")
-  private[this] def restoreFromSnapshotAndJournal(untilOpt: Option[Milliseconds]): Unit = {
-
-    // Get the snapshot and journal events
-    val snapshotAndJournal = {
-
-      val eventualMaybeSnapshotBytes = if (persistenceConfig.snapshotEnabled) {
-        // TODO: should we warn about snapshot singleton with a historical time?
-        val upToTime = atTime match {
-          case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
-            EventTime.fromMillis(historicalTime)
-          case _ =>
-            EventTime.MaxValue
-        }
-        metrics.persistorGetLatestSnapshotTimer.time {
-          persistor.getLatestSnapshot(qid, upToTime)
-        }
-      } else
-        Future.successful(None)
-
-      val eventualMaybeSnapshot = eventualMaybeSnapshotBytes.map { maybeBytes =>
-        maybeBytes.map { bytes =>
-          PersistenceCodecs.nodeSnapshotFormat
-            .read(bytes)
-            .fold(
-              err =>
-                throw new NodeWakeupFailedException(
-                  s"NodeActor state (snapshot) for node: ${qid.debug} could not be loaded",
-                  err
-                ),
-              identity
-            )
-        }
-      }(cypherEc)
-
-      eventualMaybeSnapshot
-        .flatMap { latestSnapshotOpt =>
-          val journalAfterSnapshot = if (persistenceConfig.journalEnabled) {
-            val startingAt = latestSnapshotOpt match {
-              case Some(latestSnapshot) => latestSnapshot.time
-              case None => EventTime.MinValue
-            }
-            val endingAt = untilOpt match {
-              case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
-              case None => EventTime.MaxValue
-            }
-            metrics.persistorGetJournalTimer.time {
-              persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents = atTime.isEmpty)
-            }
-            // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
-            // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
-          } else
-            Future.successful(Iterable.empty)
-
-          journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(cypherEc)
-        }(cypherEc)
-    }
-
-    // Get the standing query states
-    type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
-    val standingQueryStates: Future[StandingQueryStates] =
-      if (untilOpt.isEmpty)
-        metrics.persistorGetStandingQueryStatesTimer.time {
-          persistor.getStandingQueryStates(qid)
-        }
-      else
-        Future.successful(Map.empty)
-
-    // Will defer all other message processing until the future is complete
-    // It is OK to ignore the returned future from `pauseMessageProcessingUntil` because nothing else happens during
-    // initialization of this actor. Future processing is deferred by `pauseMessageProcessingUntil`'s message stashing.
-    val _ = pauseMessageProcessingUntil[((Option[NodeSnapshot], Iterable[NodeEvent]), StandingQueryStates)](
-      snapshotAndJournal.zip(standingQueryStates),
-      {
-        case Success(((latestSnapshotOpt, journalAfterSnapshot), standingQueryStates)) =>
-          // Update node state
-          latestSnapshotOpt match {
-            case None =>
-              edges.clear()
-              properties = Map.empty
-            case Some(snapshot) =>
-              restoreFromSnapshot(snapshot)
-          }
-          applyEventsEffectsInMemory(journalAfterSnapshot, shouldCauseSideEffects = false)
-
-          // Update standing query state
-          standingQueries = MutableMap.empty
-          val idProv = idProvider
-          val lookupInfo = new cypher.StandingQueryLookupInfo {
-            def lookupQuery(queryPartId: StandingQueryPartId): cypher.StandingQuery =
-              graph.getStandingQueryPart(queryPartId)
-            val node = qid
-            val idProvider = idProv
-          }
-          for ((handler, bytes) <- standingQueryStates) {
-            val sqState = PersistenceCodecs.standingQueryStateFormat
-              .read(bytes)
-              .getOrElse(
-                throw new NodeWakeupFailedException(
-                  s"NodeActor state (Standing Query States) for node: ${qid.debug} could not be loaded"
-                )
-              )
-            sqState._2.preStart(lookupInfo)
-            standingQueries += handler -> sqState
-          }
-          val (localEventIndex, removed) = StandingQueryLocalEventIndex.from(
-            dgnRegistry,
-            subscribers.subscribersToThisNode.keysIterator,
-            standingQueries.iterator.map { case (handler, (_, state)) => handler -> state }
-          )
-          this.localEventIndex = localEventIndex
-          subscribers.removeSubscribers(removed)
-          syncStandingQueries()
-
-          // Once edge map is updated, recompute cost to sleep
-          costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
-        case Failure(err) =>
-          // See QU-429
-          throw new NodeWakeupFailedException(
-            s"""NodeActor state for node: ${qid.debug} could not be loaded - this was most
-               |likely due to a problem deserializing journal events""".stripMargin.replace('\n', ' '),
-            err
-          )
-      }
-    )
-  }
-
   /** Serialize node state into a binary node snapshot
     *
     * @note returning just bytes instead of [[NodeSnapshot]] means that we don't need to worry
@@ -520,25 +425,6 @@ private[graph] class NodeActor(
         domainNodeIndex.index
       )
     )
-  }
-
-  /** Uses a node snapshot to initialize node state
-    *
-    * @note must be called on the actor thread
-    */
-  private def restoreFromSnapshot(snapshot: NodeSnapshot): Unit = {
-    properties = snapshot.properties
-    snapshot.edges.foreach(edges +=)
-    subscribers = SubscribersToThisNode(snapshot.subscribersToThisNode)
-    domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(snapshot.domainNodeIndex)
-    val (nodeParentIndex, removed) = DomainNodeIndexBehavior.NodeParentIndex.reconstruct(
-      domainNodeIndex,
-      subscribers.subscribersToThisNode.keys,
-      dgnRegistry
-    )
-    this.nodeParentIndex = nodeParentIndex
-    subscribers.subscribersToThisNode --= removed
-    ()
   }
 
   def debugNodeInternalState(): Future[NodeInternalState] = {
@@ -595,7 +481,7 @@ private[graph] class NodeActor(
       )
       .recover { case err =>
         log.error(err, "failed to get journal for node {}", qid)
-        Vector.empty
+        Iterable.empty
       }(context.dispatcher)
       .map { journal =>
         NodeInternalState(
@@ -637,4 +523,109 @@ private[graph] class NodeActor(
         }
       }
     )
+}
+
+object NodeActor {
+
+  type Snapshot = Option[Array[Byte]]
+  type Journal = Iterable[NodeEvent]
+  type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
+
+  def create(
+    quineIdAtTime: QuineIdAtTime,
+    snapshotBytesOpt: Option[Array[Byte]],
+    persistor: PersistenceAgent,
+    metrics: HostQuineMetrics
+  )(implicit ec: ExecutionContext): Future[NodeActorConstructorArgs] =
+    snapshotBytesOpt match {
+      case Some(bytes) => Future.successful(restoreFromSnapshotBytes(bytes)._2)
+      case None => restoreFromSnapshotAndJournal(quineIdAtTime, persistor, metrics)
+    }
+
+  /** Deserialize a binary node snapshot and use it to initialize node state
+    *
+    * @param snapshotBytes binary node snapshot
+    */
+  @throws("if snapshot bytes cannot be deserialized")
+  private def restoreFromSnapshotBytes(snapshotBytes: Array[Byte]): (EventTime, NodeActorConstructorArgs) = {
+    val restored: NodeSnapshot =
+      PersistenceCodecs.nodeSnapshotFormat
+        .read(snapshotBytes)
+        .get // Throws! ...because there's nothing better to do...
+
+    restored.time -> NodeActorConstructorArgs(
+      properties = restored.properties,
+      edges = restored.edges,
+      subscribersToThisNode = restored.subscribersToThisNode,
+      domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(restored.domainNodeIndex),
+      standingQueries = mutable.Map.empty,
+      initialJournal = Iterable.empty
+    )
+
+  }
+
+  /** Read the NodeActor state at the specified time
+    */
+  private[this] def restoreFromSnapshotAndJournal(
+    quineIdAtTime: QuineIdAtTime,
+    persistor: PersistenceAgent,
+    metrics: HostQuineMetrics
+  )(implicit ec: ExecutionContext): Future[NodeActorConstructorArgs] = {
+
+    val persistenceConfig = persistor.persistenceConfig
+    val QuineIdAtTime(qid, atTime) = quineIdAtTime
+
+    def getSnapshot(): Future[Option[Array[Byte]]] = {
+      val upToTime = atTime match {
+        case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
+          EventTime.fromMillis(historicalTime)
+        case _ =>
+          EventTime.MaxValue
+      }
+      metrics.persistorGetLatestSnapshotTimer.time {
+        persistor.getLatestSnapshot(qid, upToTime)
+      }
+    }
+
+    def getJournalAfter(after: Option[EventTime], includeDomainIndexEvents: Boolean): Future[Iterable[NodeEvent]] = {
+      val startingAt = after.fold(EventTime.MinValue)(_.nextEventTime(None))
+      val endingAt = atTime match {
+        case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
+        case None => EventTime.MaxValue
+      }
+      metrics.persistorGetJournalTimer.time {
+        persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
+      }
+    }
+
+    val snapshotAndJournal: Future[(Option[NodeActorConstructorArgs], Journal)] = for {
+      latestSnapshotBytesOpt <- if (persistenceConfig.snapshotEnabled) getSnapshot() else Future.successful(None)
+      //(snapshotTime, snapshotArgs) = latestSnapshotOpt.map(restoreFromSnapshotBytes)
+      latestSnapshotOpt = latestSnapshotBytesOpt map restoreFromSnapshotBytes
+      journalAfterSnapshot <-
+        if (persistenceConfig.journalEnabled) getJournalAfter(latestSnapshotOpt.map(_._1), atTime.isEmpty)
+        else Future.successful(Iterable.empty)
+    } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
+    val standingQueryStates: Future[StandingQueryStates] = atTime match {
+      case Some(_) => Future.successful(Map.empty)
+      case None =>
+        metrics.persistorGetStandingQueryStatesTimer.time {
+          persistor.getStandingQueryStates(qid)
+        }
+    }
+    snapshotAndJournal.zipWith(standingQueryStates) {
+      case (
+            (latestSnapshotOpt: Option[NodeActorConstructorArgs], journalAfterSnapshot: Journal),
+            standingQueryStates: StandingQueryStates
+          ) =>
+        val snapshotArgs = latestSnapshotOpt getOrElse NodeActorConstructorArgs.empty
+        snapshotArgs.copy(
+          initialJournal = journalAfterSnapshot,
+          standingQueries = mutable.Map.from(
+            standingQueryStates.view.mapValues(PersistenceCodecs.standingQueryStateFormat.read(_).get)
+          )
+        )
+    }
+
+  }
 }

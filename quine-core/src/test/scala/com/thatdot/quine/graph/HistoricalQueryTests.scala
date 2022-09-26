@@ -22,7 +22,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   implicit val timeout: Timeout = Timeout(10.seconds)
   val idProvider: QuineIdLongProvider = QuineIdLongProvider()
-  implicit val graph: LiteralOpsGraph = Await.result(
+  val graph: LiteralOpsGraph = Await.result(
     GraphService(
       "historical-query-tests",
       effectOrder = EventEffectOrder.PersistorFirst,

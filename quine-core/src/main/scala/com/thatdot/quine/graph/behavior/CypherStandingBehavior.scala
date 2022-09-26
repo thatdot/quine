@@ -127,14 +127,10 @@ trait CypherStandingBehavior
   }
 
   /** Locally registered & running standing queries */
-  final var standingQueries: mutable.Map[
+  protected def standingQueries: mutable.Map[
     (StandingQueryId, StandingQueryPartId),
     (StandingQuerySubscribers, cypher.StandingQueryState)
-  ] =
-    mutable.Map.empty[
-      (StandingQueryId, StandingQueryPartId),
-      (StandingQuerySubscribers, cypher.StandingQueryState)
-    ]
+  ]
 
   /** When running in [[PersistenceSchedule.OnNodeSleep]], updates
     * will be buffered here and persisted only on node sleep

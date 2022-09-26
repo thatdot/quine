@@ -140,6 +140,17 @@ trait StandingQueryLookupInfo {
   /** ID provider */
   val idProvider: QuineIdProvider
 }
+object StandingQueryLookupInfo {
+  def apply(
+    lq: StandingQueryPartId => StandingQuery,
+    id: QuineId,
+    idProv: QuineIdProvider
+  ): StandingQueryLookupInfo = new StandingQueryLookupInfo {
+    def lookupQuery(queryPartId: StandingQueryPartId): StandingQuery = lq(queryPartId)
+    val node: QuineId = id
+    val idProvider: QuineIdProvider = idProv
+  }
+}
 
 /** Limited scope of actions that a [[StandingQueryState]] is allowed to make */
 trait StandingQueryEffects extends StandingQueryLookupInfo {

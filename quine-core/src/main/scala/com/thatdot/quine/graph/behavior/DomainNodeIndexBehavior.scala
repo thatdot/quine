@@ -316,15 +316,15 @@ trait DomainNodeIndexBehavior
 
   /** @see [[SubscribersToThisNode]]
     */
-  protected var subscribers: SubscribersToThisNode = SubscribersToThisNode()
+  protected def subscribers: SubscribersToThisNode
 
   /** @see [[DomainNodeIndex]]
     */
-  protected var domainNodeIndex: DomainNodeIndex = DomainNodeIndex()
+  protected def domainNodeIndex: DomainNodeIndex
 
   /** @see [[NodeParentIndex]]
     */
-  protected var nodeParentIndex: NodeParentIndex = NodeParentIndex()
+  protected var nodeParentIndex: NodeParentIndex
 
   /** Called once on node wakeup, this updates universal SQs.
     *
