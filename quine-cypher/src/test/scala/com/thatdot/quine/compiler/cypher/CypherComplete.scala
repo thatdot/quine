@@ -1,6 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import cats.implicits._
 
@@ -164,8 +164,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     )
 
     testQuery(
-      "UNWIND [] AS empty RETURN empty, 'literal_that_is_not_returned'",
-      expectedColumns = Vector("empty", "'literal_that_is_not_returned'"),
+      "UNWIND [] AS empty RETURN empty, 'literal_returned_0_times'",
+      expectedColumns = Vector("empty", "'literal_returned_0_times'"),
       expectedRows = Seq.empty,
       expectedCannotFail = true
     )
@@ -310,8 +310,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       "MATCH (c)-->(p) WHERE c.first = 'Rose' RETURN p.first",
       expectedColumns = Vector("p.first"),
       expectedRows = Seq(
-        Vector(Expr.Str("Hermione")),
-        Vector(Expr.Str("Ron"))
+        Vector(Expr.Str("Ron")),
+        Vector(Expr.Str("Hermione"))
       ),
       expectedCanContainAllNodeScan = true
     )
@@ -598,45 +598,6 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     ordered = false
   )
 
-  describe("`FOREACH`, `SET`, `REMOVE` should always return exactly one row") {
-
-    /* `OPTIONAL MATCH (n) WHERE id(n) = null` ensures we have `n` of type node
-     * in context, but it will be null and all of the `SET`/`REMOVE`/`DELETE`
-     * won't have anything to do. They should still return exactly 1 row.
-     */
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null SET n.foo = 1 RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null REMOVE n.foo RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null DELETE n RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [] | DELETE n) RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-    testQuery(
-      "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [1,2,3] | DELETE n) RETURN 1",
-      expectedColumns = Vector("1"),
-      expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedIsReadOnly = false
-    )
-  }
-
   describe("Exceptions") {
     describe("TypeMismatch") {
       assertQueryExecutionFailure(
@@ -683,6 +644,86 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
     }
   }
+  describe("Updates and void procedures' return behavior") {
+
+    describe("Used as a mid-query clause: SET/REMOVE et al should return 1 row") {
+
+      /* `OPTIONAL MATCH (n) WHERE id(n) = null` ensures we have `n` of type node
+       * in context, but it will be null and all of the `SET`/`REMOVE`/`DELETE`
+       * won't have anything to do. They should still return exactly 1 row.
+       */
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null SET n.foo = 1 RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null CALL util.sleep(1) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = true
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null REMOVE n.foo RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null DELETE n RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [] | DELETE n) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [1,2,3] | DELETE n) RETURN 1",
+        expectedColumns = Vector("1"),
+        expectedRows = Seq(Vector(Expr.Integer(1L))),
+        expectedIsReadOnly = false
+      )
+    }
+    describe("Used as the final clause: SET/REMOVE et al should return 0 rows") {
+      testQuery(
+        "CREATE ({foo: 1234})",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false,
+        expectedIsIdempotent = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) SET n.name = 'Jenny', n.number = '8675309'",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) REMOVE n.name",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "MATCH (n) WHERE id(n) = idFrom(8675309) DELETE n",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = false
+      )
+      testQuery(
+        "CALL debug.sleep(idFrom(8675309))",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = true
+      )
+    }
+  }
 }
 
 // For testing only...
@@ -691,6 +732,8 @@ object MyReverse extends UserDefinedFunction {
   val name = "myreverse"
 
   val isPure = true
+
+  val category = "List"
 
   val signatures: Vector[UserDefinedFunctionSignature] = Vector(
     UserDefinedFunctionSignature(
@@ -727,7 +770,6 @@ object MyUnwind extends UserDefinedProcedure {
     arguments: Seq[cypher.Value],
     location: cypher.ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: cypher.Parameters,
     timeout: akka.util.Timeout
   ): akka.stream.scaladsl.Source[Vector[cypher.Value], _] =

@@ -12,16 +12,18 @@ import java.time.{
 import java.util.{Locale, TimeZone}
 
 import scala.collection.concurrent
-import scala.util.Failure
+import scala.util.{Failure, Random, Try}
 
 import com.google.common.hash.Hashing
 import org.opencypher.v9_0.expressions._
-import org.opencypher.v9_0.expressions.functions.Function
+import org.opencypher.v9_0.expressions.functions.{Category, Function, FunctionWithName}
 import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.util.Foldable.TreeAny
 import org.opencypher.v9_0.util.Rewritable.IteratorEq
+import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
 
+import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
 import com.thatdot.quine.model.{NamespacedIdProvider, QuineId, QuineIdProvider}
@@ -36,13 +38,16 @@ final class OpenCypherUdf(quineUdf: UserDefinedFunction) extends Function with T
   def name = quineUdf.name
 
   override def signatures: Seq[TypeSignature] = quineUdf.signatures.map {
-    case UserDefinedFunctionSignature(args, out, desc) =>
+    case UserDefinedFunctionSignature(arguments, outputType, description) =>
       FunctionTypeSignature(
-        functionName = name,
-        names = args.map(_._1).toVector,
-        argumentTypes = args.map(arg => OpenCypherUdf.typeToOpenCypherType(arg._2)).toVector,
-        outputType = OpenCypherUdf.typeToOpenCypherType(out),
-        description = desc
+        function = new FunctionWithName {
+          override def name: String = quineUdf.name
+        },
+        names = arguments.map(_._1).toVector,
+        argumentTypes = arguments.map(arg => OpenCypherUdf.typeToOpenCypherType(arg._2)).toVector,
+        outputType = OpenCypherUdf.typeToOpenCypherType(outputType),
+        description = description,
+        category = quineUdf.category
       )
   }
 }
@@ -91,7 +96,7 @@ final class QuineFunctionInvocation(
    * See QU-433
    */
   override def dup(children: Seq[AnyRef]): this.type =
-    if (children.iterator eqElements this.children) {
+    if (children.iterator eqElements this.treeChildren) {
       this
     } else {
       require(children.length == 4, "Wrong number of AST children")
@@ -109,8 +114,6 @@ final class QuineFunctionInvocation(
   * reflection
   */
 case object resolveFunctions extends StatementRewriter {
-
-  override def description: String = "resolve Quine user-defined functions"
 
   val additionalFeatures: List[UserDefinedFunction] = List(
     CypherStrId,
@@ -140,7 +143,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherCollMax,
     CypherCollMin,
     CypherMetaType
-  )
+  ) ++ CypherGenFroms.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
   val deprecatedNames: Map[String, UserDefinedFunction] = Map.empty
@@ -176,6 +179,7 @@ object CypherQuineId extends UserDefinedFunction {
       description = "Returns the Quine ID corresponding to the string"
     )
   )
+  val category = Category.SCALAR
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -183,7 +187,7 @@ object CypherQuineId extends UserDefinedFunction {
         idProvider
           .qidFromPrettyString(str)
           .toOption
-          .fold[Value](Expr.Null)((qid: QuineId) => Expr.Bytes(qid.array))
+          .fold[Value](Expr.Null)((qid: QuineId) => Expr.Bytes(qid))
       case other => throw wrongSignature(other)
     }
 }
@@ -199,6 +203,7 @@ object CypherStrId extends UserDefinedFunction {
       description = "Returns a string representation of the node's ID"
     )
   )
+  val category = Category.SCALAR
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -221,6 +226,7 @@ object CypherBytes extends UserDefinedFunction {
       description = "Returns bytes represented by a hexadecimal string"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -244,6 +250,7 @@ object CypherStringBytes extends UserDefinedFunction {
       description = "Encodes a string into bytes according to the specified encoding"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -271,6 +278,7 @@ object CypherHash extends UserDefinedFunction {
       description = "Hashes the input arguments"
     )
   }
+  val category = Category.SCALAR
 
   override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = {
     val hasher = Hashing.murmur3_128().newHasher()
@@ -293,6 +301,7 @@ object CypherIdFrom extends UserDefinedFunction {
       description = "Hashes the input arguments into a valid ID"
     )
   }
+  val category = Category.SCALAR
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
     val hashedQid: QuineId = idFrom(args: _*)
@@ -329,6 +338,7 @@ object CypherLocIdFrom extends UserDefinedFunction with PartitionSensitiveFuncti
         "All IDs generated with the same `partition` will correspond to nodes on the same host."
     )
   }
+  val category = Category.SCALAR
 
   def callNamespaced(arguments: Vector[Value])(implicit idProvider: NamespacedIdProvider): Value =
     Expr.fromQuineValue(
@@ -383,22 +393,11 @@ object CypherGetHostFunction extends UserDefinedFunction {
         "Compute which host a node ID (bytes representation) should be assigned to (null if unknown without contacting the graph)"
     )
   )
+  val category = Category.SCALAR
 
   def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
     val id: QuineId = arguments match {
-      case Vector(Expr.Node(id, _, _)) =>
-        id
-      case Vector(Expr.Str(idStr)) =>
-        idProvider
-          .qidFromPrettyString(idStr)
-          .recoverWith { case err =>
-            Failure(
-              CypherException.ConstraintViolation(s"The provided string could not be interpreted as a QuineId. $err")
-            )
-          }
-          .get
-      case Vector(Expr.Bytes(bs)) =>
-        QuineId(bs)
+      case Vector(oneArg) => extractQuineId(oneArg)(idProvider).getOrElse(throw wrongSignature(arguments))
       case _ => throw wrongSignature(arguments)
     }
 
@@ -406,17 +405,18 @@ object CypherGetHostFunction extends UserDefinedFunction {
   }
 }
 
+// TODO consider serializing multiple parameters as arrays as wel
 object CypherToJson extends UserDefinedFunction {
   val name = "toJson"
   val isPure = true
-  val signatures: Vector[UserDefinedFunctionSignature] =
-    Vector( // TODO consider serializing multiple parameters as arrays as well
-      UserDefinedFunctionSignature(
-        arguments = Vector("x" -> Type.Anything),
-        output = Type.Str,
-        description = "Returns x encoded as a JSON string"
-      )
+  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector("x" -> Type.Anything),
+      output = Type.Str,
+      description = "Returns x encoded as a JSON string"
     )
+  )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
     case Vector(x) => Expr.Str(ujson.write(Value.toJson(x)))
@@ -434,6 +434,7 @@ object CypherParseJson extends UserDefinedFunction {
       description = "Parses jsonStr to a Cypher value"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
     case Vector(Expr.Str(jsonStr)) => Value.fromJson(ujson.read(jsonStr))
@@ -451,14 +452,13 @@ object CypherUtf8Decode extends UserDefinedFunction {
       description = "Returns the bytes decoded as a UTF-8 String"
     )
   )
+  val category = Category.STRING
 
   // NB this will "fix" incorrectly-serialized UTF-8 by replacing invalid portions of input with the UTF-8 replacement string "\uFFFD"
   // This is typical for such decoders
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
-    case Vector(Expr.Bytes(bytes)) =>
+    case Vector(Expr.Bytes(bytes, _)) =>
       Expr.Str(new String(bytes, StandardCharsets.UTF_8))
-    case Vector(_) =>
-      Expr.Null
     case other => throw wrongSignature(other)
   }
 }
@@ -473,6 +473,7 @@ object CypherUtf8Encode extends UserDefinedFunction {
       description = "Returns the string encoded as UTF-8 bytes"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
     case Vector(Expr.Str(str)) => Expr.Bytes(str.getBytes(StandardCharsets.UTF_8))
@@ -493,6 +494,7 @@ object CypherMapFromPairs extends UserDefinedFunction {
       description = "Construct a map from a list of [key,value] entries"
     )
   )
+  val category = "Map"
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
     val output = Map.newBuilder[String, Value]
@@ -526,6 +528,7 @@ object CypherMapSortedProperties extends UserDefinedFunction {
       description = "Extract from a map a list of [key,value] entries sorted by the key"
     )
   )
+  val category = "Map"
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -549,6 +552,7 @@ object CypherMapRemoveKey extends UserDefinedFunction {
       description = "remove the key from the map"
     )
   )
+  val category = "Map"
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -568,6 +572,7 @@ object CypherMapMerge extends UserDefinedFunction {
       description = "Merge two maps"
     )
   )
+  val category = "Map"
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -587,6 +592,7 @@ object CypherMapDropNullValues extends UserDefinedFunction {
       description = "Keep only non-null from the map"
     )
   )
+  val category = "Map"
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -611,6 +617,7 @@ object CypherTextSplit extends UserDefinedFunction {
       description = "Splits the string around the first `limit` matches of the regex"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
     val arr: Array[String] = args match {
@@ -633,6 +640,7 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
         "Parses the string `text` using the regular expression `regex` and returns the first set of capture group matches"
     )
   )
+  val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
     args match {
@@ -672,6 +680,7 @@ object CypherDateTime extends UserDefinedFunction {
       description = "Parse a local date time from a string using a custom format"
     )
   )
+  val category = Category.TEMPORAL
 
   private[cypher] val unitFields: List[(String, TemporalField)] =
     Expr.temporalFields.toList
@@ -784,6 +793,7 @@ object CypherLocalDateTime extends UserDefinedFunction {
       description = "Parse a local date time from a string using a custom format"
     )
   )
+  val category = Category.TEMPORAL
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -860,6 +870,7 @@ object CypherDuration extends UserDefinedFunction {
       description = "Parse a duration from a string"
     )
   )
+  val category = Category.TEMPORAL
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -907,6 +918,7 @@ object CypherDurationBetween extends UserDefinedFunction {
       description = "Compute the duration between two dates"
     )
   )
+  val category = Category.TEMPORAL
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -935,6 +947,7 @@ object CypherFormatTemporal extends UserDefinedFunction {
       description = "Convert local date time into string"
     )
   )
+  val category = Category.TEMPORAL
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
@@ -970,6 +983,7 @@ object CypherCollMax extends UserDefinedFunction {
       )
     }
   }
+  val category = Category.LIST
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = {
     val inputs = args match {
@@ -1000,6 +1014,7 @@ object CypherCollMin extends UserDefinedFunction {
       )
     }
   }
+  val category = Category.LIST
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = {
     val inputs = args match {
@@ -1020,10 +1035,101 @@ object CypherMetaType extends UserDefinedFunction {
       description = "Inspect the (name of the) type of a value"
     )
   )
+  val category = Category.SCALAR
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
     args match {
       case Vector(v) => Expr.Str(v.typ.pretty)
       case other => throw wrongSignature(other)
     }
+}
+
+class CypherValueGen(outputType: Type, defaultSize: Long, randGen: (Long) => Value) extends UserDefinedFunction {
+  val name: String = s"gen.${outputType.pretty.toLowerCase}"
+  val category: String = Category.SCALAR
+  val isPure: Boolean = false
+
+  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+    val size = arguments match {
+      case Seq() => defaultSize
+      case Seq(Expr.Integer(i)) => i
+      case args => throw wrongSignature(args)
+    }
+    randGen(size)
+  }
+
+  val signatures: Seq[UserDefinedFunctionSignature] = {
+    val sig = UserDefinedFunctionSignature(
+      arguments = Vector("size" -> Type.Integer),
+      output = outputType,
+      description = s"Randomly generate a ${outputType.pretty.toLowerCase}."
+    )
+    Seq(sig.copy(arguments = Vector.empty), sig)
+  }
+}
+
+class CypherValueGenFrom(outputType: Type, defaultSize: Long, randGen: (Long, Long) => Value)
+    extends UserDefinedFunction {
+  override val name: String = s"gen.${outputType.pretty.toLowerCase}.from"
+  val category: String = Category.SCALAR
+  override val isPure: Boolean = true
+
+  override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+    val (hash, size) = arguments match {
+      case Seq(v) => v.hash.asLong() -> defaultSize
+      case Seq(v, Expr.Integer(i)) => v.hash.asLong() -> i
+      case args => throw wrongSignature(args)
+    }
+    randGen(hash, size)
+  }
+
+  override val signatures: Seq[UserDefinedFunctionSignature] = {
+    val sig = UserDefinedFunctionSignature(
+      arguments = Vector("fromValue" -> Type.Anything, "withSize" -> Type.Integer),
+      output = outputType,
+      description = s"Deterministically generate a random ${outputType.pretty.toLowerCase} from the provided input."
+    )
+    Seq(sig.copy(arguments = sig.arguments.dropRight(1)), sig)
+  }
+}
+
+object CypherGenFroms {
+  private def bytes(hash: Long, size: Int): Array[Byte] = {
+    val b = Array.ofDim[Byte](size)
+    new Random(hash).nextBytes(b)
+    b
+  }
+  val all: List[CypherValueGenFrom] = List(
+    new CypherValueGenFrom(
+      Type.Str,
+      8L,
+      (hash: Long, size: Long) => Expr.Str(new Random(hash).alphanumeric.take(size.toInt).mkString)
+    ),
+    new CypherValueGenFrom(
+      Type.Integer,
+      Int.MaxValue,
+      (hash: Long, size: Long) => Expr.Integer(new Random(hash).nextLong() % size) // Tolerating mod bias.
+    ),
+    new CypherValueGenFrom(
+      Type.Floating,
+      1L,
+      (hash: Long, size: Long) => Expr.Floating(new Random(hash).nextDouble() * size)
+    ),
+    new CypherValueGenFrom(Type.Bool, 1L, (hash: Long, size: Long) => Expr.Bool(new Random(hash).nextBoolean())),
+    new CypherValueGenFrom(Type.Bytes, 12L, (hash: Long, size: Long) => Expr.Bytes(bytes(hash, size.toInt))),
+    new CypherValueGenFrom(
+      Type.Node,
+      0L,
+      (hash: Long, size: Long) => Expr.Node(QuineId(Array.emptyByteArray), Set.empty, Map.empty)
+    ) {
+      override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
+        val size = Try(arguments(1).asLong("").toInt).getOrElse(4)
+        val rand = new Random(arguments.head.hash.asLong())
+        val props = (0 until size)
+          .map(i => Symbol(i.toString) -> Expr.Str(rand.alphanumeric.take(size * 2).mkString))
+          .toMap
+        Expr.Node(idFrom(arguments.head), Set.empty, props)
+      }
+    }
+  )
 }

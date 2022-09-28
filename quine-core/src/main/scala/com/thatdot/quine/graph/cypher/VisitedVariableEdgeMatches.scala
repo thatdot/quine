@@ -14,6 +14,9 @@ final case class VisitedVariableEdgeMatches private (
   /** Number of edges in the set */
   def size: Int = visited.size
 
+  /** Check if there are no edges in the set */
+  def isEmpty: Boolean = visited.isEmpty
+
   /** Add an edge to the set
     *
     * @param endpoint one endpoint

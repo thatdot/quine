@@ -1,0 +1,107 @@
+version: 1
+title: Standing Query Test Recipe
+contributor: https://github.com/rrwright
+summary: Create a mathematically defined graph and count the number of Standing Query results.
+description: 
+iconImage: 
+ingestStreams:
+  - format:
+      query: |-
+        WITH gen.node.from(toInteger($that)) AS n,
+             toInteger($that) AS i
+        MATCH (thisNode), (nextNode), (divNode) 
+        WHERE id(thisNode) = id(n) 
+          AND id(nextNode) = idFrom(i + 1) 
+          AND id(divNode) = idFrom(i / 10) 
+        SET thisNode.id = i,
+            thisNode.prop = gen.string.from(i)
+        CREATE (thisNode)-[:next]->(nextNode), 
+               (thisNode)-[:div_by_ten]->(divNode)
+      type: CypherLine
+    type: NumberIteratorIngest
+    ingestLimit: 100000
+standingQueries:
+  - pattern:
+      query: |-
+        MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+        WHERE exists(c.prop)
+        RETURN DISTINCT id(c) as id
+      type: Cypher
+    outputs:
+      count-1000-results:
+        type: Drop
+      #inspect-results:
+      #  type: CypherQuery
+      #  query: |-
+      #    MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
+      #    WHERE id(c) = $that.data.id
+      #    RETURN a.id, a.prop, b.id, b.prop, c.id, c.prop
+      #  andThen:
+      #    type: PrintToStandardOut
+nodeAppearances:
+  - predicate:
+      propertyKeys:
+        - id
+      knownValues: {}
+    label:
+      prefix: ''
+      key: id
+      type: Property
+quickQueries:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Adjacent Nodes
+      querySuffix: MATCH (n)--(m) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Refresh
+      querySuffix: RETURN n
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Local Properties
+      querySuffix: RETURN id(n), properties(n)
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Multiply by 10
+      querySuffix: MATCH (n)<-[:div_by_ten]-(m) RETURN m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Divide by 10
+      querySuffix: MATCH (n)-[:div_by_ten]->(m) RETURN m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Subscriber Results
+      querySuffix: CALL subscribers(n) yield queryId, queryDepth, receiverId, lastResult RETURN queryId, queryDepth, receiverId, lastResult
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    quickQuery:
+      name: Subscription Results
+      querySuffix: CALL subscriptions(n) yield queryId, queryDepth, receiverId, lastResult RETURN queryId, queryDepth, receiverId, lastResult
+      queryLanguage: Cypher
+      sort: Text
+sampleQueries: []

@@ -29,7 +29,8 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
-      "org.gnieh" % "logback-config" % logbackConfigV % Test
+      "org.gnieh" % "logback-config" % logbackConfigV % Test,
+      "commons-io" % "commons-io" % commonsIoV % Test
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {
@@ -89,15 +90,16 @@ lazy val `quine-rocksdb-persistor`: Project = project
 lazy val `quine-cassandra-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(`quine-core`)
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV,
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
     )
   )
 
-// Parser and interepreter foor a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
+// Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
@@ -117,13 +119,14 @@ lazy val `quine-cypher`: Project = project
   .settings(`scala 2.12`)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
+    scalacOptions += "-language:reflectiveCalls",
     libraryDependencies ++= Seq(
       "org.opencypher" % "expressions-9.0" % openCypherV,
       "org.opencypher" % "front-end-9.0" % openCypherV,
       "org.opencypher" % "parser-9.0" % openCypherV,
       "org.opencypher" % "util-9.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
-      "io.github.classgraph" % "classgraph" % "4.8.141",
+      "io.github.classgraph" % "classgraph" % "4.8.149",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
     ),
@@ -192,12 +195,14 @@ lazy val `quine-browser`: Project = project
     ),
     Compile / npmDependencies ++= Seq(
       "react-plotly.js" -> reactPlotlyV,
-      "swagger-ui-react" -> swaggerUiV
+      "@stoplight/elements" -> stoplightElementsV
     ),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
-    test := {}
+    test := {},
+    useYarn := true,
+    yarnExtraArgs := Seq("--frozen-lockfile")
   )
 
 // Streaming graph application built on top of the Quine library
@@ -216,7 +221,6 @@ lazy val `quine`: Project = project
   .settings(
     version := quineAppV,
     libraryDependencies ++= Seq(
-      "org.gnieh" % "logback-config" % logbackConfigV,
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
@@ -261,7 +265,7 @@ lazy val `quine`: Project = project
     scalaJSProjects := Seq(`quine-browser`),
     Assets / pipelineStages := Seq(scalaJSPipeline)
   )
-  .enablePlugins(BuildInfoPlugin, Packaging)
+  .enablePlugins(BuildInfoPlugin, Packaging, Docker, Ecr)
   .settings(
     startupMessage := "",
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),
@@ -270,11 +274,11 @@ lazy val `quine`: Project = project
 
 lazy val `quine-docs`: Project = {
   val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
-  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_builtin_functions.md")
+  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
   val cypherTable2 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_functions.md")
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
   val cypherTable3 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher_user_defined_procedures.md")
+    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-procedures.md")
   val recipesFolder =
     Def.task((Compile / paradox / sourceManaged).value / "recipes")
   Project("quine-docs", file("quine-docs"))
@@ -300,11 +304,12 @@ lazy val `quine-docs`: Project = {
         "snip.quine.base_dir" -> (`quine` / baseDirectory).value.getAbsolutePath,
         "material.repo" -> "https://github.com/thatdot/quine",
         "material.repo.type" -> "github",
-        "material.social" -> "https://quine-io.slack.com",
+        "material.social" -> "https://that.re/quine-slack",
         "material.social.type" -> "slack",
         "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
         "project.name" -> projectName.value,
-        "logo.link.title" -> "Quine"
+        "logo.link.title" -> "Quine",
+        "quine.jar" -> s"quine-${version.value}.jar"
       ),
       description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
       Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
@@ -316,13 +321,17 @@ lazy val `quine-docs`: Project = {
       Compile / paradox / mappings ++= List(
         docJson.value -> "reference/openapi.json"
       ),
-      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
-        val inDir: File = (quine / baseDirectory).value / "recipes"
-        val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
-        (Compile / runMain)
-          .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
-          .map(_ => (outDir * "*.md").get)
-      },
+      // ---
+      // Uncomment to build the recipe template pages
+      // then add * @ref:[Recipes](recipes/index.md) into docs.md
+      // ---
+      //Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
+      //  val inDir: File = (quine / baseDirectory).value / "recipes"
+      //  val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
+      //  (Compile / runMain)
+      //    .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
+      //    .map(_ => (outDir * "*.md").get)
+      //},
       Compile / paradoxNavigationDepth := 3,
       Compile / paradoxNavigationExpandDepth := Some(3),
       paradoxRoots := List("index.html", "docs.html", "about.html", "download.html"),

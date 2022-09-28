@@ -15,9 +15,12 @@ import com.thatdot.quine.graph.behavior.{DomainNodeIndexBehavior, StandingQueryS
 import com.thatdot.quine.graph.cypher.{Expr, StandingQueryState}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CypherSubscriber, ResultId}
 import com.thatdot.quine.model._
-import com.thatdot.quine.{model, persistence}
+import com.thatdot.quine.persistence
 
-/** Users hitting this error are probably trying to deserialize new union variants with old code
+/** The deserialization failed because a union (eg, a coproduct or enum) was tagged with an unknown type.
+  *
+  * Users hitting this error are probably trying to deserialize new union variants with old code, or removed union
+  * variants with new code.
   *
   * @param typeTag union tag (which is invalid)
   * @param validTags array of valid tags (organized according to their indices)
@@ -26,6 +29,12 @@ class InvalidUnionType(
   typeTag: Byte,
   validTags: Array[String]
 ) extends IllegalArgumentException(s"Invalid tag $typeTag (valid tags: ${validTags.mkString(", ")})")
+
+class InvalidPersistedQuineData(
+  msg: String =
+    s"Persisted data is invalid for the current version of Quine. Current Quine serialization version is ${PersistenceAgent.CurrentVersion}",
+  cause: Throwable = null
+) extends IllegalArgumentException(msg, cause)
 
 /** FlatBuffer-based codecs
   *
@@ -166,7 +175,7 @@ object PersistenceCodecs extends LazyLogging {
 
   private[this] def writeCypherBytes(builder: FlatBufferBuilder, bytes: cypher.Expr.Bytes): Offset = {
     val bytesOff: Offset = persistence.CypherBytes.createBytesVector(builder, bytes.b)
-    persistence.CypherBytes.createCypherBytes(builder, bytesOff)
+    persistence.CypherBytes.createCypherBytes(builder, bytesOff, bytes.representsId)
   }
 
   private[this] def writeCypherNode(builder: FlatBufferBuilder, node: cypher.Expr.Node): Offset = {
@@ -916,7 +925,7 @@ object PersistenceCodecs extends LazyLogging {
 
       case persistence.CypherValue.CypherBytes =>
         val bytes = makeExpr(new persistence.CypherBytes()).asInstanceOf[persistence.CypherBytes]
-        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes)
+        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes, bytes.representsId)
 
       case persistence.CypherValue.CypherNode =>
         val node = makeExpr(new persistence.CypherNode()).asInstanceOf[persistence.CypherNode]
@@ -1184,7 +1193,7 @@ object PersistenceCodecs extends LazyLogging {
 
       case persistence.CypherExpr.CypherBytes =>
         val bytes = makeExpr(new persistence.CypherBytes()).asInstanceOf[persistence.CypherBytes]
-        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes)
+        cypher.Expr.Bytes(bytes.bytesAsByteBuffer.remainingBytes, bytes.representsId)
 
       case persistence.CypherExpr.CypherNode =>
         val node = makeExpr(new persistence.CypherNode()).asInstanceOf[persistence.CypherNode]
@@ -1502,7 +1511,7 @@ object PersistenceCodecs extends LazyLogging {
 
   private[this] def writeDomainEdge(
     builder: FlatBufferBuilder,
-    de: DomainEdge[_ <: ExecInstruction]
+    de: DomainEdge
   ): Offset = {
 
     val depDirection: Byte = de.depDirection match {
@@ -1536,7 +1545,7 @@ object PersistenceCodecs extends LazyLogging {
     )
   }
 
-  private[this] def readDomainEdge(de: persistence.DomainEdge): DomainEdge[_ <: ExecInstruction] = {
+  private[this] def readDomainEdge(de: persistence.DomainEdge): DomainEdge = {
 
     val depDirection: DependencyDirection = de.dependency match {
       case persistence.DependencyDirection.DependsUpon => DependsUpon
@@ -1545,7 +1554,7 @@ object PersistenceCodecs extends LazyLogging {
       case other => throw new InvalidUnionType(other, persistence.DependencyDirection.names)
     }
 
-    val constraints: EdgeMatchConstraints[_ <: ExecInstruction] = de.constraintsType match {
+    val constraints: EdgeMatchConstraints = de.constraintsType match {
       case persistence.EdgeMatchConstraints.MandatoryConstraint =>
         MandatoryConstraint
       case persistence.EdgeMatchConstraints.FetchConstraint =>
@@ -1566,7 +1575,7 @@ object PersistenceCodecs extends LazyLogging {
 
   private[this] def writeDomainGraphBranch(
     builder: FlatBufferBuilder,
-    branch: DomainGraphBranch[_ <: ExecInstruction]
+    branch: DomainGraphBranch
   ): TypeAndOffset =
     branch match {
       case SingleBranch(dne, identification, nextBranches, compFunc) =>
@@ -1668,22 +1677,22 @@ object PersistenceCodecs extends LazyLogging {
   private[this] def readDomainGraphBranch(
     typ: Byte,
     makeBranch: Table => Table
-  ): DomainGraphBranch[_ <: ExecInstruction] =
+  ): DomainGraphBranch =
     typ match {
       case persistence.DomainGraphBranch.SingleBranch =>
         val single = makeBranch(new persistence.SingleBranch()).asInstanceOf[persistence.SingleBranch]
 
         val domainNodeEquiv: DomainNodeEquiv = readDomainNodeEquiv(single.domainNodeEquiv)
         val identification = Option(single.identification).map(ident => readQuineId(ident.id))
-        val nextBranches: List[DomainEdge[Fetch]] = {
-          val builder = List.newBuilder[DomainEdge[_]]
+        val nextBranches: List[DomainEdge] = {
+          val builder = List.newBuilder[DomainEdge]
           var i: Int = 0
           val nextBranchesLength = single.nextBranchesLength
           while (i < nextBranchesLength) {
             builder += readDomainEdge(single.nextBranches(i))
             i += 1
           }
-          builder.result().asInstanceOf[List[DomainEdge[Fetch]]]
+          builder.result()
         }
         val comparisonFunc: NodeLocalComparisonFunc = single.comparisonFunction match {
           case persistence.NodeLocalComparisonFunction.Identicality =>
@@ -1696,27 +1705,27 @@ object PersistenceCodecs extends LazyLogging {
             throw new InvalidUnionType(other, persistence.NodeLocalComparisonFunction.names)
         }
 
-        SingleBranch[Fetch](domainNodeEquiv, identification, nextBranches, comparisonFunc)
+        SingleBranch(domainNodeEquiv, identification, nextBranches, comparisonFunc)
 
       case persistence.DomainGraphBranch.OrBranch =>
         val or = makeBranch(new persistence.OrBranch()).asInstanceOf[persistence.OrBranch]
-        val disjuncts = List.newBuilder[DomainGraphBranch[_]]
+        val disjuncts = List.newBuilder[DomainGraphBranch]
         var i: Int = 0
         while (i < or.disjunctsLength) {
           disjuncts += readDomainGraphBranch(or.disjunctsType(i), or.disjuncts(_, i))
           i += 1
         }
-        Or[Fetch](disjuncts.result().asInstanceOf[List[DomainGraphBranch[model.Fetch]]])
+        Or(disjuncts.result())
 
       case persistence.DomainGraphBranch.AndBranch =>
         val and = makeBranch(new persistence.AndBranch()).asInstanceOf[persistence.AndBranch]
-        val conjuncts = List.newBuilder[DomainGraphBranch[_]]
+        val conjuncts = List.newBuilder[DomainGraphBranch]
         var i: Int = 0
         while (i < and.conjunctsLength) {
           conjuncts += readDomainGraphBranch(and.conjunctsType(i), and.conjuncts(_, i))
           i += 1
         }
-        And[Fetch](conjuncts.result().asInstanceOf[List[DomainGraphBranch[model.Fetch]]])
+        And(conjuncts.result())
 
       case persistence.DomainGraphBranch.NotBranch =>
         val not = makeBranch(new persistence.NotBranch()).asInstanceOf[persistence.NotBranch]
@@ -1734,12 +1743,12 @@ object PersistenceCodecs extends LazyLogging {
         throw new InvalidUnionType(other, persistence.DomainGraphBranch.names)
     }
 
-  private[this] def writeBoxedDomainGraphBranch(builder: FlatBufferBuilder, branch: DomainGraphBranch[_]): Offset = {
+  private[this] def writeBoxedDomainGraphBranch(builder: FlatBufferBuilder, branch: DomainGraphBranch): Offset = {
     val TypeAndOffset(branchTyp, branchOff) = writeDomainGraphBranch(builder, branch)
     persistence.BoxedDomainGraphBranch.createBoxedDomainGraphBranch(builder, branchTyp, branchOff)
   }
 
-  private[this] def readBoxedDomainGraphBranch(branch: persistence.BoxedDomainGraphBranch): DomainGraphBranch[_] =
+  private[this] def readBoxedDomainGraphBranch(branch: persistence.BoxedDomainGraphBranch): DomainGraphBranch =
     readDomainGraphBranch(branch.branchType, branch.branch(_))
 
   private[this] def writeNodeChangeEventUnion(
@@ -1901,7 +1910,7 @@ object PersistenceCodecs extends LazyLogging {
     Option(assumedEdge).map { edge =>
       val genericEdge = readGenericEdge(edge.edge)
       val branch = readDomainGraphBranch(edge.branchType, edge.branch(_))
-      (genericEdge, branch.asInstanceOf[DomainGraphBranch[Test]])
+      (genericEdge, branch)
     }
 
   private[this] def writeNodeSnapshot(
@@ -2080,7 +2089,7 @@ object PersistenceCodecs extends LazyLogging {
 
     val subscribersToThisNode = {
       val builder = mutable.Map.empty[
-        (DomainGraphBranch[model.Test], AssumedDomainEdge),
+        (DomainGraphBranch, AssumedDomainEdge),
         DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription
       ]
       var i: Int = 0
@@ -2088,7 +2097,7 @@ object PersistenceCodecs extends LazyLogging {
       while (i < subscribersLength) {
         val subscriber: persistence.Subscriber = snapshot.subscribers(i)
         val branch =
-          readDomainGraphBranch(subscriber.branchType, subscriber.branch(_)).asInstanceOf[DomainGraphBranch[Test]]
+          readDomainGraphBranch(subscriber.branchType, subscriber.branch(_))
         val assumedEdge = readAssumedEdge(subscriber.assumedEdge)
         val notifiables = mutable.Set.empty[Notifiable]
         var j: Int = 0
@@ -2143,7 +2152,7 @@ object PersistenceCodecs extends LazyLogging {
     val domainNodeIndex = {
       val builder = mutable.Map.empty[
         QuineId,
-        mutable.Map[(DomainGraphBranch[model.Test], AssumedDomainEdge), Option[Boolean]]
+        mutable.Map[(DomainGraphBranch, AssumedDomainEdge), Option[Boolean]]
       ]
 
       var i: Int = 0
@@ -2151,12 +2160,12 @@ object PersistenceCodecs extends LazyLogging {
       while (i < domainNodeIndexLength) {
         val nodeIndex: persistence.NodeIndex = snapshot.domainNodeIndex(i)
         val subscriber = readQuineId(nodeIndex.subscriber)
-        val results = mutable.Map.empty[(DomainGraphBranch[model.Test], AssumedDomainEdge), Option[Boolean]]
+        val results = mutable.Map.empty[(DomainGraphBranch, AssumedDomainEdge), Option[Boolean]]
         var j: Int = 0
         val queriesLength = nodeIndex.queriesLength
         while (j < queriesLength) {
           val query = nodeIndex.queries(j)
-          val branch = readDomainGraphBranch(query.branchType, query.branch(_)).asInstanceOf[DomainGraphBranch[Test]]
+          val branch = readDomainGraphBranch(query.branchType, query.branch(_))
           val assumedEdge = readAssumedEdge(query.assumedEdge)
           val result: Option[Boolean] = query.result match {
             case persistence.LastNotification.None => None
@@ -2871,18 +2880,13 @@ object PersistenceCodecs extends LazyLogging {
     persistence.GraphQueryPattern.addFilterCondType(builder, filterCondTyp)
     persistence.GraphQueryPattern.addFilterCond(builder, filterCondOff)
     persistence.GraphQueryPattern.addToReturn(builder, toReturnsOff)
-
-    // `distinct` is (conceptually) an Option[Bool], so `false` needs to be serialized differently than "absent"
-    builder.forceDefaults(true)
     persistence.GraphQueryPattern.addDistinct(builder, pattern.distinct)
-    builder.forceDefaults(false)
 
     persistence.GraphQueryPattern.endGraphQueryPattern(builder)
   }
 
   private[this] def readGraphQueryPattern(
-    pattern: persistence.GraphQueryPattern,
-    distinctByDefault: Boolean
+    pattern: persistence.GraphQueryPattern
   ): GraphQueryPattern = {
     val nodes: Seq[GraphQueryPattern.NodePattern] = {
       val builder = Seq.newBuilder[GraphQueryPattern.NodePattern]
@@ -2931,10 +2935,7 @@ object PersistenceCodecs extends LazyLogging {
       }
       builder.result()
     }
-    // migration: `distinct` was added in serialization version 10.1.0
-    val distinct: Boolean =
-      if (pattern.hasDistinct) pattern.distinct
-      else distinctByDefault
+    val distinct: Boolean = pattern.distinct
     GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, distinct)
   }
 
@@ -2955,10 +2956,9 @@ object PersistenceCodecs extends LazyLogging {
   }
 
   private[this] def readGraphPatternOrigin(
-    graphPatOrigin: persistence.GraphPatternOrigin,
-    distinctByDefault: Boolean
+    graphPatOrigin: persistence.GraphPatternOrigin
   ): PatternOrigin.GraphPattern = {
-    val graphPat = readGraphQueryPattern(graphPatOrigin.pattern, distinctByDefault)
+    val graphPat = readGraphQueryPattern(graphPatOrigin.pattern)
     val originalCypher: Option[String] = Option(graphPatOrigin.cypherOriginal)
     PatternOrigin.GraphPattern(graphPat, originalCypher)
   }
@@ -2987,41 +2987,13 @@ object PersistenceCodecs extends LazyLogging {
       case persistence.BranchOrigin.GraphPatternOrigin =>
         val graphPatOrigin = makeBranchOrigin(new persistence.GraphPatternOrigin())
           .asInstanceOf[persistence.GraphPatternOrigin]
-        val readOrigin = readGraphPatternOrigin(graphPatOrigin, distinctByDefault = true)
-        // migration case: issue a one-time warning to user about the changed cypher syntax, if applicable
-        if (!graphPatOrigin.pattern.hasDistinct) {
-          readOrigin.cypherOriginal match {
-            case Some(cypherQuery) =>
-              logger.warn(
-                s"""Migrating a SingleId Standing Query to a DistinctId Standing Query. The query's semantics will be
-                   |unchanged. However, if you wish to re-issue this Standing Query, you will need to RETURN DISTINCT
-                   |instead of RETURN. Original query text is: '$cypherQuery'""".stripMargin.replace('\n', ' ')
-              )
-            case None =>
-              // This migration is less serious -- it's setting a default for a previousely-undefined field
-              logger.info(
-                s"""Migrating a SingleId Standing Query to a DistinctId Standing Query. The query's semantics will be
-                   |unchanged. Query pattern is: $readOrigin""".stripMargin.replace('\n', ' ')
-              )
-          }
-        }
+        val readOrigin = readGraphPatternOrigin(graphPatOrigin)
 
-        // DistinctId queries must include a `distinct` clause - queries saved prior to the introduction of `distinct`
-        // will be automatically migrated by readGraphQueryPattern (called from readGraphPatternOrigin)
+        // DistinctId queries must include a `DISTINCT` keyword
         if (!readOrigin.pattern.distinct) {
-          // This SQ will run with the same semantics as if `distinct` were correctly set to `true`, but support for
-          // non-DISTINCT syntax should be removed in the future, at which point this should become an error.
-          logger.warn(
-            readOrigin.cypherOriginal match {
-              case Some(cypherQuery) =>
-                s"""Read a GraphPattern for a DistinctId query without a DISTINCT clause.
-                   |DistinctId queries without `DISTINCT` are deprecated and will be removed in the future.
-                   |Query was: '$cypherQuery'""".stripMargin.replace('\n', ' ')
-              case None =>
-                s"""DistinctId Standing Queries that do not specify `distinct` are deprecated and a future release will
-                   |require that DistinctId Standing Queries use patterns with `distinct`.
-                   |Query pattern was: $readOrigin""".stripMargin.replace('\n', ' ')
-            }
+          throw new InvalidPersistedQuineData(
+            s"Detected an invalid DistinctId query pattern during deserialization. DistinctId queries must return a single `DISTINCT` value. Detected pattern was: `${readOrigin.cypherOriginal
+              .getOrElse(readOrigin)}`"
           )
         }
         readOrigin
@@ -3054,7 +3026,7 @@ object PersistenceCodecs extends LazyLogging {
       case persistence.SqV4Origin.GraphPatternOrigin =>
         val graphPatOrigin = makeBranchOrigin(new persistence.GraphPatternOrigin())
           .asInstanceOf[persistence.GraphPatternOrigin]
-        val readOrigin = readGraphPatternOrigin(graphPatOrigin, distinctByDefault = false)
+        val readOrigin = readGraphPatternOrigin(graphPatOrigin)
         // MultipleValues queries do not yet support distinct (QU-568) so warn if that is requested
         if (readOrigin.pattern.distinct) {
           logger.warn(
@@ -3062,7 +3034,7 @@ object PersistenceCodecs extends LazyLogging {
               case Some(cypherQuery) =>
                 s"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '$cypherQuery'"
               case None =>
-                s"Read a GraphPattern for a MultipleValues query that does specifies `distinct`. This is not yet supported. Query pattern was: $readOrigin"
+                s"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: $readOrigin"
             }
           )
         }
@@ -3095,7 +3067,7 @@ object PersistenceCodecs extends LazyLogging {
     branchQuery: persistence.BranchQuery
   ): StandingQueryPattern.Branch = {
     val branch =
-      readDomainGraphBranch(branchQuery.branchType, branchQuery.branch(_)).asInstanceOf[DomainGraphBranch[Fetch]]
+      readDomainGraphBranch(branchQuery.branchType, branchQuery.branch(_))
     val origin = readBranchOrigin(branchQuery.originType, branchQuery.origin(_))
     StandingQueryPattern.Branch(
       branch,
@@ -3189,7 +3161,10 @@ object PersistenceCodecs extends LazyLogging {
       id,
       query,
       standingQuery.queueBackpressureThreshold,
-      standingQuery.queueMaxSize
+      standingQuery.queueMaxSize,
+      // do not support hash code on restored standing query,
+      // because the hash code is calculated per-host and is not stored
+      shouldCalculateResultHashCode = false
     )
   }
 
@@ -3761,11 +3736,11 @@ object PersistenceCodecs extends LazyLogging {
       readQuineValue(persistence.QuineValue.getRootAsQuineValue(buffer))
   }
 
-  val dgbFormat: BinaryFormat[DomainGraphBranch[_]] = new PackedFlatBufferBinaryFormat[DomainGraphBranch[_]] {
-    def writeToBuffer(builder: FlatBufferBuilder, branch: DomainGraphBranch[_]): Offset =
+  val dgbFormat: BinaryFormat[DomainGraphBranch] = new PackedFlatBufferBinaryFormat[DomainGraphBranch] {
+    def writeToBuffer(builder: FlatBufferBuilder, branch: DomainGraphBranch): Offset =
       writeBoxedDomainGraphBranch(builder, branch)
 
-    def readFromBuffer(buffer: ByteBuffer): DomainGraphBranch[_] =
+    def readFromBuffer(buffer: ByteBuffer): DomainGraphBranch =
       readBoxedDomainGraphBranch(persistence.BoxedDomainGraphBranch.getRootAsBoxedDomainGraphBranch(buffer))
   }
 

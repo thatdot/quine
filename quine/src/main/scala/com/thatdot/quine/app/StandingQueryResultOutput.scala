@@ -2,7 +2,6 @@ package com.thatdot.quine.app
 
 import java.nio.file.{Paths, StandardOpenOption}
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.util.{Failure, Random, Success, Try}
 
@@ -34,8 +33,10 @@ import ujson.BytesRenderer
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.serialization.QuineValueToProtobuf
+import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
+import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
@@ -52,7 +53,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
   /** Construct a destination to which results are output
     *
-    * @param name name of the result handler
+    * @param name name of the Standing Query Output
     * @param output configuration for handling the results
     * @param graph reference to the graph
     */
@@ -63,11 +64,11 @@ object StandingQueryResultOutput extends LazyLogging {
   ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
     val execToken = SqResultsExecToken(s"SQ: $name")
     output match {
+      case Drop => Flow[StandingQueryResult].map(_ => execToken)
       case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
         // TODO: use a host connection pool
 
         implicit val system: ActorSystem = graph.system
-        implicit val ec: ExecutionContext = system.dispatcher
         implicit val idProvider: QuineIdProvider = graph.idProvider
         val http = Http()
 
@@ -84,38 +85,39 @@ object StandingQueryResultOutput extends LazyLogging {
               )
             )
 
-            val posted = for {
-              response <- http.singleRequest(request)
-              _ <- {
-                if (response.status.isSuccess()) {
-                  response.entity
-                    .discardBytes()
-                    .future()
-                } else {
-                  Unmarshal(response)
-                    .to[String]
-                    .andThen {
-                      case Failure(err) =>
-                        logger.error(
-                          s"Failed to deserialize error response from POST $result to $url. " +
-                          s"Response status was ${response.status}",
-                          err
-                        )
-                      case Success(responseBody) =>
-                        logger.error(
-                          s"Failed to POST $result to $url. " +
-                          s"Response was ${response.status} (body: $responseBody)"
-                        )
-                    }
-                }
-              }
-            } yield execToken
+            val posted =
+              http
+                .singleRequest(request)
+                .flatMap(response =>
+                  if (response.status.isSuccess()) {
+                    response.entity
+                      .discardBytes()
+                      .future()
+                  } else {
+                    Unmarshal(response)
+                      .to[String]
+                      .andThen {
+                        case Failure(err) =>
+                          logger.error(
+                            s"Failed to deserialize error response from POST $result to $url. " +
+                            s"Response status was ${response.status}",
+                            err
+                          )
+                        case Success(responseBody) =>
+                          logger.error(
+                            s"Failed to POST $result to $url. " +
+                            s"Response was ${response.status} (body: $responseBody)"
+                          )
+                      }(system.dispatcher)
+                  }
+                )(system.dispatcher)
+                .map(_ => execToken)(system.dispatcher)
 
             // TODO: principled error handling
             posted.recover { case err =>
               logger.error("Failed to POST standing query result", err)
               execToken
-            }
+            }(system.dispatcher)
           }
 
       case WriteToKafka(topic, bootstrapServers, format) =>
@@ -127,7 +129,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
         serialized(name, format, graph)
           .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
-          .via(KafkaProducer.flexiFlow(settings))
+          .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))
           .map(_ => execToken)
 
       case WriteToKinesis(
@@ -169,7 +171,7 @@ object StandingQueryResultOutput extends LazyLogging {
             KinesisFlow(
               streamName,
               settings
-            )(kinesisAsyncClient)
+            )(kinesisAsyncClient).named(s"sq-output-kinesis-producer-for-$name")
           )
           .map(_ => execToken)
 
@@ -190,7 +192,7 @@ object StandingQueryResultOutput extends LazyLogging {
         // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
         Flow[StandingQueryResult]
           .map(result => result.toJson(graph.idProvider).toString + "\n")
-          .viaMat(SnsPublisher.flow(topic)(awsSnsClient))(Keep.right)
+          .viaMat(SnsPublisher.flow(topic)(awsSnsClient).named(s"sq-output-sns-producer-for-$name"))(Keep.right)
           .map(_ => execToken)
 
       case PrintToStandardOut(logLevel, logMode) =>
@@ -217,17 +219,18 @@ object StandingQueryResultOutput extends LazyLogging {
         Flow[StandingQueryResult]
           .map(result => ByteString(result.toJson(graph.idProvider).toString + "\n"))
           .alsoTo(
-            FileIO.toPath(
-              Paths.get(path),
-              Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
-            )
+            FileIO
+              .toPath(
+                Paths.get(path),
+                Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+              )
+              .named(s"sq-output-file-writer-for-$name")
           )
           .map(_ => execToken)
 
       case PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
         implicit val system: ActorSystem = graph.system
         implicit val idProvider: QuineIdProvider = graph.idProvider
-        implicit val ec: ExecutionContext = system.dispatcher
         val http = Http()
 
         // how often to send notifications (notifications will be batched by [[PostToSlack.SlackSerializable.apply]]
@@ -244,9 +247,9 @@ object StandingQueryResultOutput extends LazyLogging {
               uri = hookUrl,
               entity = HttpEntity.apply(contentType = `application/json`, result.slackJson)
             )
-            val posted = for {
-              response <- http.singleRequest(request)
-              _ <- {
+            val posted = http
+              .singleRequest(request)
+              .flatMap { response =>
                 if (response.status.isSuccess()) {
                   response.entity
                     .discardBytes()
@@ -266,42 +269,59 @@ object StandingQueryResultOutput extends LazyLogging {
                           s"Failed to POST ${result.slackJson} to slack webhook. " +
                           s"Response status was ${response.status}. Body was $responseBody"
                         )
-                    }
+                    }(system.dispatcher)
                 }
-              }
-            } yield execToken
+              }(system.dispatcher)
+              .map(_ => execToken)(system.dispatcher)
 
             // TODO: principled error handling
             posted.recover { case err =>
               logger.error("Failed to POST standing query result", err)
               execToken
-            }
+            }(system.dispatcher)
           }
 
-      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan) =>
-        val cypher.CompiledQuery(_, compiledQuery, _, fixedParameters, _) = compiler.cypher.compile(
+      case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
+        val compiledQuery @ cypher.CompiledQuery(_, queryAst, _, _, _) = compiler.cypher.compile(
           query,
           unfixedParameters = Seq(parameter)
         )
 
-        // TODO: This should be tested (and the user warned) before results are produced!
-        if (compiledQuery.canContainAllNodeScan && !allowAllNodeScan) {
+        // TODO: When in the initial set of SQ outputs, these should be tested before the SQ is registered!
+        if (queryAst.canContainAllNodeScan && !allowAllNodeScan) {
           throw new RuntimeException(
             "Cypher query may contain full node scan; re-write without possible full node scan, or pass allowAllNodeScan true. " +
-            s"The provided query was:  $query"
+            s"The provided query was: $query"
+          )
+        }
+        if (!queryAst.isIdempotent && shouldRetry) {
+          logger.warn(
+            """Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
+              |occur, query execution may be retried and duplicate data may be created. To avoid this,
+              |set shouldRetry = false in the Standing Query output""".stripMargin.replace('\n', ' ')
           )
         }
 
         val andThenFlow: Flow[(StandingQueryResult.Meta, cypher.QueryContext), SqResultsExecToken, NotUsed] =
-          andThen match {
+          (andThen match {
             case None =>
               Flow[(StandingQueryResult.Meta, cypher.QueryContext)]
-                .map { case (_, qc) =>
-                  logger.warn(
-                    s"Unused cypher standing query output for $name: ${qc.pretty}." +
-                    " Did you mean to specify `andThen`?"
-                  )
-                  execToken
+                .statefulMapConcat { () =>
+                  var warned = false
+
+                  tup => {
+                    logger.whenWarnEnabled {
+                      if (!warned) {
+                        warned = true
+                        logger.warn(
+                          s"""Unused Cypher Standing Query output for Standing Query output: $name with:
+                             |${tup._2.environment.size} columns. Did you mean to specify `andThen`?""".stripMargin
+                            .replace('\n', ' ')
+                        )
+                      }
+                    }
+                    List(execToken)
+                  }
                 }
 
             case Some(thenOutput) =>
@@ -310,8 +330,12 @@ object StandingQueryResultOutput extends LazyLogging {
                   val newData = qc.environment.map { case (keySym, cypherVal) =>
                     keySym.name -> Try(cypher.Expr.toQuineValue(cypherVal)).getOrElse {
                       logger.warn(
-                        s"Cypher standing query output for $name included cypher value not " +
-                        s"representable as a quine value: $cypherVal (using `null` instead)."
+                        s"""Cypher Standing Query output: $name included cypher value not representable as a
+                           |Quine value (logged at INFO level). Using `null` instead.""".stripMargin.replace('\n', ' ')
+                      )
+                      logger.info(
+                        s"""Cypher Value: $cypherVal could not be represented as a Quine value in Standing
+                           |Query output: $name""".stripMargin.replace('\n', ' ')
                       )
                       QuineValue.Null
                     }
@@ -319,25 +343,33 @@ object StandingQueryResultOutput extends LazyLogging {
                   StandingQueryResult(meta, newData)
                 }
                 .via(resultHandlingFlow(name, thenOutput, graph))
-          }
+          }).named(s"sq-output-andthen-for-$name")
+
+        lazy val atLeastOnceCypherQuery =
+          AtLeastOnceCypherQuery(compiledQuery, parameter, s"sq-output-action-query-for-$name")
 
         Flow[StandingQueryResult]
           .flatMapMerge(
             breadth = parallelism,
             result => {
-              val param = cypher.Expr.fromQuineValue(result.toQuineValueMap())
-              val params = cypher.Parameters(param +: fixedParameters.params)
+              val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap)
 
-              graph.cypherOps
-                .query(compiledQuery, params)
+              val cypherResultRows =
+                if (shouldRetry) atLeastOnceCypherQuery.stream(value)(graph)
+                else compiledQuery.run(Map(parameter -> value))(graph).results
+
+              cypherResultRows
+                .map { resultRow =>
+                  QueryContext(compiledQuery.columns.zip(resultRow).toMap)
+                }
                 .map(data => (result.meta, data))
             }
           )
           .via(andThenFlow)
     }
-  }
+  }.named(s"sq-output-${name}")
 
-  private def serialized[IdType](
+  private def serialized(
     name: String,
     format: OutputFormat,
     graph: BaseGraph
@@ -352,15 +384,16 @@ object StandingQueryResultOutput extends LazyLogging {
           .map(result =>
             serializer
               .toProtobufBytes(result.data)
-              .leftMap(err =>
+              .leftMap { err =>
                 logger.warn(
-                  "On standing query {}, can't serialize {} to protobuf type {}: {}",
-                  name,
-                  result.data,
-                  typeName,
+                  s"""On Standing Query output: $name, can't serialize provided datum (logged at INFO level)
+                     |to protobuf type: $typeName. Skipping datum.""".stripMargin.replace('\n', ' ')
+                )
+                logger.info(
+                  s"Standing Query output: $name failed to serialize Standing Query result as Protobuf: $result",
                   err
                 )
-              )
+              }
           )
           .collect { case Right(value) => value }
     }

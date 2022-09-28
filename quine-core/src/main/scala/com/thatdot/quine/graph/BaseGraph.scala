@@ -2,11 +2,13 @@ package com.thatdot.quine.graph
 
 import java.util.function.Supplier
 
+import scala.compat.ExecutionContexts
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
+import akka.dispatch.MessageDispatcher
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.util.Timeout
@@ -14,8 +16,11 @@ import akka.util.Timeout
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
+import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
+import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
+  QuineIdAtTime,
   QuineMessage,
   QuineRef,
   ResultHandler,
@@ -23,15 +28,18 @@ import com.thatdot.quine.graph.messaging.{
   ShardRef
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{EmptyPersistor, PersistenceAgent}
-import com.thatdot.quine.util.{SharedValve, ValveFlow}
+import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PersistenceAgent}
+import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictLogging {
 
   def system: ActorSystem
 
-  implicit val shardDispatcherEC: ExecutionContext =
-    system.dispatchers.lookup("akka.quine.graph-shard-dispatcher")
+  def dispatchers: QuineDispatchers
+
+  def shardDispatcherEC: MessageDispatcher = dispatchers.shardDispatcherEC
+  def nodeDispatcherEC: MessageDispatcher = dispatchers.nodeDispatcherEC
+  def blockingDispatcherEC: MessageDispatcher = dispatchers.blockingDispatcherEC
 
   implicit val materializer: Materializer =
     Materializer.matFromSystem(system)
@@ -63,10 +71,16 @@ trait BaseGraph extends StrictLogging {
 
   // TODO: put this in some other class which is a field here
   val ingestValve: SharedValve = new SharedValve("ingest")
+  metrics.registerGaugeValve(ingestValve)
 
   val masterStream: MasterStream = new MasterStream(materializer)
 
   def ingestThrottleFlow[A]: Flow[A, A, NotUsed] = Flow.fromGraph(new ValveFlow[A](ingestValve))
+
+  /** Strategy for choosing whether to apply effects in memory before confirming write to persistence, or to write to
+    * persistence first, and then apply in-memory effects after on-disk storage succeeds.
+    */
+  def effectOrder: EventEffectOrder
 
   /** Nodes will decline sleep if the last write to the node occurred less than
     * this many milliseconds ago (according to the actor's clock).
@@ -83,6 +97,12 @@ trait BaseGraph extends StrictLogging {
     * write (effectively disabling the setting).
     */
   def declineSleepWhenAccessWithinMillis: Long
+
+  /** Nodes will wait up to this amount of milliseconds before processing messages
+    * when at-time is in the future. This can occur when there is difference in
+    * the system clock across nodes in the cluster.
+    */
+  def maxCatchUpSleepMillis: Long
 
   /** Property on a node that gets used to store the list of strings that make
     * up the node's labels.
@@ -192,9 +212,10 @@ trait BaseGraph extends StrictLogging {
           Source
             .futureSource(awakeNodes)
             .map(_.quineId)
+            .named(s"all-recent-node-scan-shard-${shardRef.shardId}")
             .runWith(Sink.collection[QuineId, Set[QuineId]])
-        }
-        .map(_.foldLeft(Set.empty[QuineId])(_ union _))
+        }(implicitly, shardDispatcherEC)
+        .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
 
       // Return those nodes, plus the ones the persistor produces
       val combinedSource = Source.futureSource {
@@ -202,12 +223,12 @@ trait BaseGraph extends StrictLogging {
           val persistorNodes =
             persistor.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains)
           Source(inMemoryNodes) ++ persistorNodes
-        }
+        }(shardDispatcherEC)
       }
 
-      combinedSource.mapMaterializedValue(_ => NotUsed)
+      combinedSource.mapMaterializedValue(_ => NotUsed).named("all-node-scan-snapshot-based")
     } else {
-      persistor.enumerateJournalNodeIds()
+      persistor.enumerateJournalNodeIds().named("all-node-scan-journal-based")
     }
   }
 
@@ -236,9 +257,10 @@ trait BaseGraph extends StrictLogging {
         Source
           .futureSource(relayAsk(shard.quineRef, ShardMessage.SampleAwakeNodes(Some(lim), atTime, _)))
           .map(_.quineId)
+          .named(s"recent-node-sampler-shard-${shard.shardId}")
           .runWith(Sink.collection[QuineId, Set[QuineId]])
-      }
-      .map(_.foldLeft(Set.empty[QuineId])(_ union _))
+      }(implicitly, shardDispatcherEC)
+      .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
   }
 
   /** Snapshot nodes that are currently awake
@@ -248,7 +270,7 @@ trait BaseGraph extends StrictLogging {
     Future
       .traverse(shards) { (shard: ShardRef) =>
         relayAsk(shard.quineRef, ShardMessage.SnapshotInMemoryNodes)
-      }
+      }(implicitly, shardDispatcherEC)
       .map(_.foreach {
         case ShardMessage.SnapshotFailed(shardId, msg) =>
           logger.error(s"Shard: $shardId failed to snapshot nodes: $msg")
@@ -256,7 +278,7 @@ trait BaseGraph extends StrictLogging {
         case ShardMessage.SnapshotSucceeded(idFailures) =>
           for ((id, msg) <- idFailures)
             logger.error(s"Node ${id.debug(idProvider)} failed to snapshot: $msg")
-      })
+      })(shardDispatcherEC)
   }
 
   /** Get the in-memory limits for all the shards of this graph, possibly
@@ -280,7 +302,7 @@ trait BaseGraph extends StrictLogging {
         val shardId = shardRef.shardId
         val sendMessageToShard = () =>
           updates.get(shardId) match {
-            case None => relayAsk(shardRef.quineRef, ShardMessage.GetInMemoryLimits(_))
+            case None => relayAsk(shardRef.quineRef, ShardMessage.GetInMemoryLimits)
             case Some(newLimit) => relayAsk(shardRef.quineRef, ShardMessage.UpdateInMemoryLimits(newLimit, _))
           }
         remainingAdjustments -= shardId
@@ -293,9 +315,38 @@ trait BaseGraph extends StrictLogging {
     } else {
       Future
         .traverse(messages) { case (shardId, sendMessageToShard) =>
-          sendMessageToShard().map { case ShardMessage.CurrentInMemoryLimits(limits) => shardId -> limits }
-        }
-        .map(_.toMap)
+          sendMessageToShard().map { case ShardMessage.CurrentInMemoryLimits(limits) => shardId -> limits }(
+            shardDispatcherEC
+          )
+        }(implicitly, shardDispatcherEC)
+        .map(_.toMap)(shardDispatcherEC)
     }
   }
+
+  /** Request that a node go to sleep by sending a message to the node's shard.
+    */
+  def requestNodeSleep(quineId: QuineId)(implicit timeout: Timeout): Future[Unit] = {
+    requiredGraphIsReady()
+    val shard = shardFromNode(quineId)
+    relayAsk(shard.quineRef, RequestNodeSleep(QuineIdAtTime(quineId, None), _))
+      .map(_ => ())(shardDispatcherEC)
+  }
+
+  /** Lookup the shard for a node ID.
+    */
+  def shardFromNode(node: QuineId): ShardRef
+
+  /** Asynchronously compute a hash of the state of all nodes in the graph
+    * at the optionally specified time. Caller should ensure the graph is
+    * sufficiently stable and consistent before calling this function.
+    */
+  def getGraphHashCode(atTime: Option[Milliseconds] = None): Future[Long] =
+    enumerateAllNodeIds()
+      .mapAsyncUnordered(parallelism = 16) { qid =>
+        val timeout = 1 second
+        val resultHandler = implicitly[ResultHandler[GraphNodeHashCode]]
+        val ec = ExecutionContexts.parasitic
+        relayAsk(QuineIdAtTime(qid, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)
+      }
+      .runFold(zero = 0L)((e, f) => e + f)
 }

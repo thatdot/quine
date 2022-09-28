@@ -15,23 +15,24 @@ import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.CompiledQuery
-import com.thatdot.quine.persistor.InMemoryPersistor
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
-class CypherHarness(graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
+class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
 
   val timeout: Timeout = Timeout(10.seconds)
   // Used for e.g. literal ops that insert data - they use this as the timeout on relayAsk invocations.
   implicit val relayAskTimeout: Timeout = Timeout(3.seconds)
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
-  val graph: GraphService = Await.result(
+  val graph: BaseGraph with CypherOpsGraph with LiteralOpsGraph = Await.result(
     GraphService(
       graphName,
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = _ => InMemoryPersistor.empty,
-      idProvider = QuineIdLongProvider()
+      idProvider = idProv
     ),
     timeout.duration
   )
-  implicit val materializer: Materializer = graph.materializer
+  implicit def materializer: Materializer = graph.materializer
 
   override def afterAll(): Unit =
     Await.result(graph.shutdown(), timeout.duration * 2L)

@@ -110,6 +110,20 @@ sealed abstract class Query[+Start <: Location] extends Product with Serializabl
     * Note: if this is true it does not mean the query definitely does cause a full node scan
     */
   def canContainAllNodeScan: Boolean
+
+  /** substitute all parameters in this query and all descendants
+    * @param parameters a [[Parameters]] providing parameters used by [[Expr.Parameter]]s in this query.
+    * @return a copy of this query all provided parameters substituted
+    * INV: If all parameters used by [[Expr.Parameter]] AST nodes are provided, the returned
+    * query will have no [[Expr.Parameter]] AST nodes remaining in the tree
+    */
+  def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start]
+
+  /** Queries that might have to be executed in order to start execution of this query -- ie, "children" of this query.
+    * These are usually called "andThen" or similar. The children should be ordered by their execution order.
+    * For example, {{query1} UNION {query2}}.children == Seq({query1}, {query2})
+    */
+  def children: Seq[Query[_]]
 }
 
 object Query {
@@ -145,22 +159,36 @@ object Query {
     dropExisting: Boolean,
     toAdd: Vector[(Symbol, Expr)],
     adjustThis: Query[Start]
-  ): Query[Start] = adjustThis match {
-    // Nested AdjustContext
-    case AdjustContext(dropExisting2, toAdd2, inner, _) if toAdd == toAdd2 =>
-      val newDrop = dropExisting || dropExisting2
-      AdjustContext(newDrop, toAdd, inner)
+  ): Query[Start] =
+    adjustThis match {
+      // Nested AdjustContext
+      case AdjustContext(dropExisting2, toAdd2, inner, _) if toAdd == toAdd2 =>
+        val newDrop = dropExisting || dropExisting2
+        AdjustContext(newDrop, toAdd, inner)
 
-    case _ =>
-      val toAdd2 = toAdd.filter {
-        case (sym, Expr.Variable(sym2)) if !dropExisting => sym != sym2
-        case _ => true
-      }
-      if (toAdd2.isEmpty && !dropExisting)
-        adjustThis // Nothing changes!
-      else
-        AdjustContext(dropExisting, toAdd2, adjustThis)
-  }
+      case _ =>
+        // Are all existing column names preserved? if !dropExisting, then trivially true
+        val allExistingColumnsRemain = !dropExisting
+        // column information is not yet calculated, but if it were, this would also have allExistingColumnsRemain:
+        /*(adjustThis.columns match {
+          case Columns.Omitted => false
+          case Columns.Specified(colNames) =>
+            // NB this check is NOT order-preserving, so if the order of `toAdd` differs from `adjustThis.columns`,
+            // the ordering of `adjustThis.columns` will be used for the query at runtime
+            colNames.toSet == toAdd.map(_._1).toSet
+        })*/
+
+        // additions that actually do something w.r.t existing columns: add a new column, rename something, etc
+        // put another way: rule out any entries in `toAdd` that are no-ops when allExistingColumnsRemain
+        lazy val additionsGivenExistingColumns = toAdd.filterNot {
+          case (newVariable, Expr.Variable(oldVariable)) if newVariable == oldVariable => true
+          case _ => false
+        }
+
+        if (allExistingColumnsRemain && additionsGivenExistingColumns.isEmpty) adjustThis
+        else if (allExistingColumnsRemain) AdjustContext(dropExisting, additionsGivenExistingColumns, adjustThis)
+        else AdjustContext(dropExisting, toAdd, adjustThis)
+    }
 
   /** Like [[Filter]], but applies from peephole optimizations */
   def filter[Start <: Location](
@@ -182,6 +210,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): Empty = this
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** A unit query - returns exactly the input */
@@ -193,6 +223,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): Unit = this
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** A solid starting point for a query - usually some sort of index scan
@@ -213,6 +245,9 @@ object Query {
       case AllNodesScan => true
       case NodeById(_) => andThen.canContainAllNodeScan
     }
+    def substitute(parameters: Map[Expr.Parameter, Value]): AnchoredEntry =
+      copy(andThen = andThen.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(andThen)
   }
 
   /** A starting point from a node. This _can_ be an entry point from outside
@@ -231,6 +266,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = node.isPure && andThen.isIdempotent
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): ArgumentEntry =
+      copy(node = node.substitute(parameters), andThen = andThen.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(andThen)
   }
 
   /** Get the degree of a node
@@ -250,6 +288,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): GetDegree = this
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Hop across all matching edges going from one node to another
@@ -277,6 +317,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = toNode.forall(_.isPure)
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Expand =
+      copy(toNode = toNode.map(_.substitute(parameters)), andThen = andThen.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(andThen)
   }
 
   /** Check that a node has certain labels and properties, and add the node to
@@ -299,6 +342,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = propertiesOpt.forall(_.isPure)
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): LocalNode =
+      copy(propertiesOpt = propertiesOpt.map(_.substitute(parameters)))
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Walk through the records in a external CSV
@@ -321,6 +367,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = urlString.isPure
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): LoadCSV =
+      copy(urlString = urlString.substitute(parameters))
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Execute both queries one after another and concatenate the results
@@ -338,6 +387,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = unionLhs.isIdempotent && unionRhs.isIdempotent
     def canContainAllNodeScan: Boolean = unionLhs.canContainAllNodeScan || unionRhs.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Union[Start] =
+      copy(unionLhs = unionLhs.substitute(parameters), unionRhs = unionRhs.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(unionLhs, unionRhs)
   }
 
   /** Execute the first query then, if it didn't return any results, execute the
@@ -356,6 +408,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = tryFirst.isIdempotent && trySecond.isIdempotent
     def canContainAllNodeScan: Boolean = tryFirst.canContainAllNodeScan || trySecond.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Or[Start] =
+      copy(tryFirst = tryFirst.substitute(parameters), trySecond = trySecond.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(tryFirst, trySecond)
   }
 
   /** Execute two queries and join pairs of results which had matching values
@@ -388,6 +443,13 @@ object Query {
     def isIdempotent: Boolean = joinLhs.isIdempotent && joinRhs.isIdempotent &&
       lhsProperty.isPure && rhsProperty.isPure
     def canContainAllNodeScan: Boolean = joinLhs.canContainAllNodeScan || joinRhs.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): ValueHashJoin[Start] = copy(
+      joinLhs = joinLhs.substitute(parameters),
+      joinRhs = joinRhs.substitute(parameters),
+      lhsProperty = lhsProperty.substitute(parameters),
+      rhsProperty = rhsProperty.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(joinLhs, joinRhs)
   }
 
   /** Filter input stream keeping only entries which produce something when run
@@ -407,6 +469,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = acceptIfThisSucceeds.isIdempotent
     def canContainAllNodeScan: Boolean = acceptIfThisSucceeds.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): SemiApply[Start] =
+      copy(acceptIfThisSucceeds = acceptIfThisSucceeds.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(acceptIfThisSucceeds)
   }
 
   /** Apply one query, then apply another query to all the results of the first
@@ -429,6 +494,12 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = startWithThis.isIdempotent && thenCrossWithThis.isIdempotent
     def canContainAllNodeScan: Boolean = startWithThis.canContainAllNodeScan || thenCrossWithThis.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Apply[Start] =
+      copy(
+        startWithThis = startWithThis.substitute(parameters),
+        thenCrossWithThis = thenCrossWithThis.substitute(parameters)
+      )
+    def children: Seq[Query[_]] = Seq(startWithThis, thenCrossWithThis)
   }
 
   /** Try to apply a query. If there are results, return those as the outputs.
@@ -445,6 +516,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = query.isIdempotent
     def canContainAllNodeScan: Boolean = query.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Optional[Start] = copy(query = query.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(query)
   }
 
   /** Given a query, filter the outputs to keep only those where a condition
@@ -463,15 +536,20 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = condition.isPure && toFilter.isIdempotent
     def canContainAllNodeScan: Boolean = toFilter.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Filter[Start] = copy(
+      condition = condition.substitute(parameters),
+      toFilter = toFilter.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toFilter)
   }
 
   /** Given a query, drop a prefix of the results
     *
-    * @param drop how many results to drop
+    * @param drop how many results to drop (@see [[Query.Skip.Drop]])
     * @param toSkip the query whose output is cropped
     */
   final case class Skip[+Start <: Location](
-    drop: Expr,
+    drop: Skip.Drop,
     toSkip: Query[Start],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
@@ -480,15 +558,28 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = drop.isPure && toSkip.isIdempotent
     def canContainAllNodeScan: Boolean = toSkip.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Skip[Start] = copy(
+      drop = drop.substitute(parameters),
+      toSkip = toSkip.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toSkip)
+  }
+  object Skip {
+
+    /** an Expr that should evaluate to an integer describing how many rows to skip
+      * This expression will be run in a context including only results of a [[Limit.Take]] (if present) --
+      * in particular, values from the SKIPed query are not accessible
+      */
+    type Drop = Expr
   }
 
   /** Given a query, keep only a prefix of the results
     *
-    * @param take how many results to keep
+    * @param take how many results to keep (@see [[Query.Limit.Take]])
     * @param toLimit the query whose output is cropped
     */
   final case class Limit[+Start <: Location](
-    take: Expr,
+    take: Limit.Take,
     toLimit: Query[Start],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
@@ -497,16 +588,27 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = take.isPure && toLimit.isIdempotent
     def canContainAllNodeScan: Boolean = toLimit.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Limit[Start] = copy(
+      take = take.substitute(parameters),
+      toLimit = toLimit.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toLimit)
+  }
+  object Limit {
+
+    /** an Expr that should evaluate to an integer describing how many rows to keep
+      * This expression will be run in a context where values from the LIMITed query are not accessible
+      */
+    type Take = Expr
   }
 
   /** Given a query, sort the results by a certain expression in the output
     *
-    * @param by expressions under which the output is compared, and whether or
-    *           not the sort order is ascending
+    * @param by @see [[Query.Sort.SortBy]]
     * @param toSort the query whose output is sorted
     */
   final case class Sort[+Start <: Location](
-    by: Seq[(Expr, Boolean)],
+    by: Sort.SortBy,
     toSort: Query[Start],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
@@ -515,37 +617,83 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = by.forall(_._1.isPure) && toSort.isIdempotent
     def canContainAllNodeScan: Boolean = toSort.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Sort[Start] = copy(
+      by = by.map { case (expr, bool) => expr.substitute(parameters) -> bool },
+      toSort = toSort.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toSort)
+  }
+  object Sort {
+
+    /** expressions under which the rows should be compared, and whether or not the sort order is ascending
+      * @example (Variable('x), true) is like "ORDER BY x ASC"
+      * These expressions will be run in a context including context and results of the query being ordered
+      */
+    type SortBy = Seq[(Expr, Boolean)]
   }
 
-  /** Given a query, sort the results by a certain expression in the output and
-    * return a prefix of the sorted output
+  /** Given a query, map non-aggregated results of that query according to the specified rules for
+    * sorting, deduplication, and windowing/pagination
     *
-    * @param by expressions under which the output is compared, and whether or
-    *           not the sort order is ascending
-    * @param limit number of results to keep
-    * @param ascending is the output sorted in increasing or decreasing order?
-    * @param toTop the query whose output is sorted
+    * @inv Interpretation of Return matches cypher semantics for a single RETURN clause with no aggregations: In
+    * particular, interpreting a [[Return]] will produce the same results as interpreting an equivalent stack of
+    * Limit(Skip(Distinct(Sort)))) (@see [[delegates.naiveStack]])
+    *
+    * @param toReturn the query whose output is to be mapped
+    * @param orderBy either Some sequence of rules by which to order the results (@see [[Sort.SortBy]]) or None
+    *                TODO: is Some(Seq.empty) meaningful? If not, maybe just use Seq
+    * @param distinctBy either Some sequence of expressions among which to deduplicate (@see [[Distinct.DistinctBy]]) or None
+    *                TODO: is Some(Seq.empty) meaningful? If not, maybe just use Seq
+    *                TODO: is this ever different than the full set of columns? If not, maybe just Boolean like OC uses
+    * @param drop either Some number of results to drop (@see [[Skip.Drop]]) or None
+    * @param take either Some number of results to limit the result to (@see [[Limit.Take]]) or None
     */
-  final case class Top[+Start <: Location](
-    by: Seq[(Expr, Boolean)],
-    limit: Expr,
-    toTop: Query[Start],
+  final case class Return[+Start <: Location](
+    toReturn: Query[Start],
+    orderBy: Option[Sort.SortBy],
+    distinctBy: Option[Distinct.DistinctBy],
+    drop: Option[Skip.Drop],
+    take: Option[Limit.Take],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
-    def isReadOnly: Boolean = toTop.isReadOnly
-    def cannotFail: Boolean = false // non-number limit
-    def canDirectlyTouchNode: Boolean = false
-    def isIdempotent: Boolean = by.forall(_._1.isPure) && limit.isPure && toTop.isIdempotent
-    def canContainAllNodeScan: Boolean = toTop.canContainAllNodeScan
+    private[cypher] object delegates {
+      def sort[S >: Start <: Location](query: Query[S]): Option[Sort[S]] =
+        orderBy.map(by => Sort(by, query))
+      def distinct[S >: Start <: Location](query: Query[S]): Option[Distinct[S]] =
+        distinctBy.map(by => Distinct(by, query))
+      def skip[S >: Start <: Location](query: Query[S]): Option[Skip[S]] =
+        drop.map(n => Skip(n, query))
+      def limit[S >: Start <: Location](query: Query[S]): Option[Limit[S]] =
+        take.map(n => Limit(n, query))
+
+      private def orPassThru[S >: Start <: Location](step: Query[S] => Option[Query[S]]): Query[S] => Query[S] =
+        query => step(query).getOrElse(query)
+
+      val naiveStack: Query[Start] =
+        (orPassThru(sort) andThen orPassThru(distinct) andThen orPassThru(skip) andThen orPassThru(limit))(toReturn)
+    }
+    def isReadOnly: Boolean = delegates.naiveStack.isReadOnly
+    def cannotFail: Boolean = delegates.naiveStack.cannotFail
+    def canDirectlyTouchNode: Boolean = delegates.naiveStack.canDirectlyTouchNode
+    def isIdempotent: Boolean = delegates.naiveStack.isIdempotent
+    def canContainAllNodeScan: Boolean = delegates.naiveStack.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Return[Start] = copy(
+      toReturn = toReturn.substitute(parameters),
+      orderBy = orderBy.map(_.map { case (expr, bool) => expr.substitute(parameters) -> bool }),
+      distinctBy = distinctBy.map(_.map(_.substitute(parameters))),
+      drop = drop.map(_.substitute(parameters)),
+      take = take.map(_.substitute(parameters))
+    )
+    def children: Seq[Query[_]] = Seq(toReturn)
   }
 
   /** Given a query, deduplicate the results by a certain expression
     *
-    * @param by expressions under which the output is compared
+    * @param by expressions under which the output is compared (@see [[Query.Distinct.DistinctBy]])
     * @param toDedup the query whose output is deduplicated
     */
   final case class Distinct[+Start <: Location](
-    by: Seq[Expr],
+    by: Distinct.DistinctBy,
     toDedup: Query[Start],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
@@ -554,6 +702,21 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = by.forall(_.isPure) && toDedup.isIdempotent
     def canContainAllNodeScan: Boolean = toDedup.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Distinct[Start] = copy(
+      by = by.map(_.substitute(parameters)),
+      toDedup = toDedup.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toDedup)
+  }
+  object Distinct {
+
+    /** Expressions by which the rows are deduplicated -- each unique cross-product will be kept, with duplicates dropped
+      * @example a DistinctBy of Seq(Variable('x), Variable('y)) would deduplicate the following stream like:
+      * Input: (x=1, y=2), (x=1, y=1), (x=1, y=2), (x=2, y=1)
+      * Output: (x=1, y=2), (x=1, y=1),             (x=2, y=1)
+      * These expressions will be run in a context including context and results of the query being ordered
+      */
+    type DistinctBy = Seq[Expr]
   }
 
   /** Expand out a list in the context object
@@ -574,6 +737,11 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = listExpr.isPure && unwindFrom.isIdempotent
     def canContainAllNodeScan: Boolean = unwindFrom.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Unwind[Start] = copy(
+      listExpr = listExpr.substitute(parameters),
+      unwindFrom = unwindFrom.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(unwindFrom)
   }
 
   /** Tweak the values stored in the output (context)
@@ -593,6 +761,11 @@ object Query {
     def canDirectlyTouchNode: Boolean = false
     def isIdempotent: Boolean = toAdd.forall(_._2.isPure) && adjustThis.isIdempotent
     def canContainAllNodeScan: Boolean = adjustThis.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): AdjustContext[Start] = copy(
+      toAdd = toAdd.map { case (sym, expr) => sym -> expr.substitute(parameters) },
+      adjustThis = adjustThis.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(adjustThis)
   }
 
   /** Mutate a property of a node
@@ -610,6 +783,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = newValue.forall(_.isPure)
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): SetProperty =
+      copy(newValue = newValue.map(_.substitute(parameters)))
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Mutate in batch properties of a node
@@ -627,6 +803,9 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = !includeExisting && properties.isPure
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): SetProperties =
+      copy(properties = properties.substitute(parameters))
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Delete a node, relationship, or path
@@ -647,6 +826,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = toDelete.isPure
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): Delete = copy(toDelete = toDelete.substitute(parameters))
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Mutate an edge of a node
@@ -673,6 +854,11 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = target.isPure && andThen.isIdempotent
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): SetEdge = copy(
+      target = target.substitute(parameters),
+      andThen = andThen.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(andThen)
   }
 
   /** Mutate labels of a node
@@ -690,6 +876,8 @@ object Query {
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = true // NB labels are a deduplicated `Set`
     def canContainAllNodeScan: Boolean = false
+    def substitute(parameters: Map[Expr.Parameter, Value]): SetLabels = this
+    def children: Seq[Query[_]] = Seq.empty
   }
 
   /** Eager aggregation along properties
@@ -718,6 +906,12 @@ object Query {
     def isIdempotent: Boolean =
       aggregateAlong.forall(_._2.isPure) && aggregateWith.forall(_._2.isPure) && toAggregate.isIdempotent
     def canContainAllNodeScan: Boolean = toAggregate.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): EagerAggregation[Start] = copy(
+      aggregateAlong = aggregateAlong.map { case (sym, expr) => sym -> expr.substitute(parameters) },
+      aggregateWith = aggregateWith.map { case (sym, aggregator) => sym -> aggregator.substitute(parameters) },
+      toAggregate = toAggregate.substitute(parameters)
+    )
+    def children: Seq[Query[_]] = Seq(toAggregate)
   }
 
   /** Custom procedure call
@@ -738,7 +932,30 @@ object Query {
     def cannotFail: Boolean = false
     def canDirectlyTouchNode: Boolean = true
     def isIdempotent: Boolean = procedure.isIdempotent && arguments.forall(_.isPure)
-
     def canContainAllNodeScan: Boolean = procedure.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): ProcedureCall =
+      copy(arguments = arguments.map(_.substitute(parameters)))
+    def children: Seq[Query[_]] = Seq.empty
+  }
+
+  /** Sub query context, which allows for running a subquery and then stitching
+    * the initial input columns back to the subquery outputs.
+    *
+    * @param subQuery inner query
+    * @param importvariables which variables to import into the subquery
+    */
+  final case class SubQuery[+Start <: Location](
+    subQuery: Query[Start],
+    importedVariables: Vector[Symbol],
+    columns: Columns = Columns.Omitted
+  ) extends Query[Start] {
+    def isReadOnly: Boolean = subQuery.isReadOnly
+    def cannotFail: Boolean = subQuery.cannotFail
+    def canDirectlyTouchNode: Boolean = false
+    def isIdempotent: Boolean = subQuery.isIdempotent
+    def canContainAllNodeScan: Boolean = subQuery.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): SubQuery[Start] =
+      copy(subQuery = subQuery.substitute(parameters))
+    def children: Seq[Query[_]] = Seq(subQuery)
   }
 }

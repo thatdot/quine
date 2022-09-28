@@ -2,7 +2,7 @@ package com.thatdot.quine.persistor
 
 import java.util.concurrent._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
 import akka.NotUsed
@@ -35,29 +35,34 @@ class InMemoryPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
 ) extends PersistenceAgent {
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
       journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
     )
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = {
-    journals
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = {
+    for { NodeChangeEvent.WithTime(event, atTime) <- events } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit
   }
 
-  def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] = {
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = {
     val eventsMap = journals.get(id)
     Future.successful(
-      if (eventsMap == null) Vector.empty
+      if (eventsMap == null) Iterable.empty
       else
         eventsMap
           .subMap(startingAt, true, endingAt, true)
-          .values()
+          .entrySet()
           .iterator
           .asScala
-          .toVector
+          .map(a => NodeChangeEvent.WithTime(a.getValue, a.getKey))
+          .toSeq
     )
   }
 

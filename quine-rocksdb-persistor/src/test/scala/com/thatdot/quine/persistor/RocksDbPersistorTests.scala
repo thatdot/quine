@@ -3,7 +3,9 @@ package com.thatdot.quine.persistor
 import java.nio.file.Files
 import java.util.Properties
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, CoordinatedShutdown}
+
+import org.apache.commons.io.FileUtils
 
 import com.thatdot.quine.graph.HistoricalQueryTests
 
@@ -13,8 +15,8 @@ class RocksDbPersistorTests extends HistoricalQueryTests {
 
   override def makePersistor(system: ActorSystem): PersistenceAgent =
     if (RocksDbPersistor.loadRocksDbLibrary()) {
-      // TODO: delete on exit
       val f = Files.createTempDirectory("rocks.db")
+      CoordinatedShutdown(system).addJvmShutdownHook(() => FileUtils.forceDelete(f.toFile))
       new RocksDbPersistor(
         filePath = f.toString,
         writeAheadLog = true,

@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.behavior
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.StampedLock
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
@@ -13,14 +12,15 @@ import akka.actor.{ActorRef, Scheduler}
 import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph._
+import com.thatdot.quine.graph.messaging.QuineIdAtTime
 import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
-import com.thatdot.quine.persistor.{InNodePersistor, PersistenceConfig}
+import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def persistenceConfig: PersistenceConfig
 
-  protected def persistor: InNodePersistor
+  protected def persistor: PersistenceAgent
 
   protected def graph: BaseGraph
 
@@ -38,6 +38,18 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
   ]
 
   protected def lastWriteMillis: Long
+
+  // TODO: retry in persistors
+  private def retryPersistence[T](timer: Timer, op: => Future[T], ec: ExecutionContext)(implicit
+    scheduler: Scheduler
+  ): Future[T] =
+    akka.pattern.retry(
+      () => timer.time(op),
+      attempts = 5,
+      minBackoff = 100.millis,
+      maxBackoff = 5.seconds,
+      randomFactor = 0.5
+    )(ec, scheduler)
 
   /* NB: all of the messages being sent/received in `goToSleep` are to/from the
    *     shard actor. Consequently, it is safe (and more efficient) to use
@@ -58,16 +70,11 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           val snapshotTime = if (!persistenceConfig.snapshotSingleton) latestUpdateTime else EventTime.MaxValue
           val snapshot: Array[Byte] = toSnapshotBytes()
           metrics.snapshotSize.update(snapshot.length)
-          akka.pattern.retry(
-            () =>
-              metrics.persistorPersistSnapshotTimer.time {
-                persistor.persistSnapshot(snapshotTime, snapshot)
-              },
-            attempts = 5,
-            minBackoff = 100.millis,
-            maxBackoff = 5.seconds,
-            randomFactor = 0.5
-          )(context.dispatcher, context.system.scheduler)
+          retryPersistence(
+            metrics.persistorPersistSnapshotTimer,
+            persistor.persistSnapshot(qid, snapshotTime, snapshot),
+            context.dispatcher
+          )(context.system.scheduler)
 
         case _ => Future.unit
       }
@@ -75,9 +82,14 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
     case GoToSleep =>
       val shardActor: ActorRef = sender()
+      // promise tracking updates to shard in-memory map of nodes (completed by the shard)
+      val shardPromise = Promise[Unit]()
+
+      def reportSleepSuccess(qidAtTime: QuineIdAtTime): Unit =
+        shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
 
       // Transition out of a `ConsideringSleep` state (if it is still state)
-      val sleepingPromise = Promise[Unit]()
+
       val newState: WakefulState = wakefulState.updateAndGet {
         case WakefulState.ConsideringSleep(deadline) =>
           val millisNow = latestEventTime().millis
@@ -86,7 +98,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           val tooRecentWrite = graph.declineSleepWhenWriteWithinMillis > 0 &&
             graph.declineSleepWhenWriteWithinMillis > millisNow - lastWriteMillis
           if (deadline.hasTimeLeft() && !tooRecentAccess && !tooRecentWrite) {
-            WakefulState.GoingToSleep(sleepingPromise.future)
+            WakefulState.GoingToSleep(shardPromise)
           } else {
             WakefulState.Awake
           }
@@ -105,64 +117,53 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
             log.error(s"Update occurred on a historical node $atTime (but it won't be persisted)")
           }
 
-          // Completion of the sleeping promise
-          sleepingPromise.completeWith {
-            latestUpdateAfterSnapshot match {
-              case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
-                val snapshot: Array[Byte] = toSnapshotBytes()
-                metrics.snapshotSize.update(snapshot.length)
+          latestUpdateAfterSnapshot match {
+            case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
+              val snapshot: Array[Byte] = toSnapshotBytes()
+              metrics.snapshotSize.update(snapshot.length)
 
-                implicit val ec: ExecutionContext = context.dispatcher
-                implicit val scheduler: Scheduler = context.system.scheduler
+              implicit val scheduler: Scheduler = context.system.scheduler
 
-                // Schedule an update to the shard
-                sleepingPromise.future.onComplete {
-                  case Success(_) => shardActor ! SleepOutcome.SleepSuccess(qidAtTime)
-                  case Failure(err) => shardActor ! SleepOutcome.SleepFailed(qidAtTime, snapshot, err)
-                }
-
-                // TODO: retry in persistors
-                def retryPersistence[T](timer: Timer, op: => Future[T]): Future[T] =
-                  akka.pattern.retry(
-                    () => timer.time(op),
-                    attempts = 5,
-                    minBackoff = 100.millis,
-                    maxBackoff = 5.seconds,
-                    randomFactor = 0.5
+              // Save all persistor data
+              val snapshotSaved = retryPersistence(
+                metrics.persistorPersistSnapshotTimer,
+                persistor.persistSnapshot(
+                  qid,
+                  if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
+                  else latestUpdateTime,
+                  snapshot
+                ),
+                context.dispatcher
+              )
+              val standingQueryStatesSaved = Future.traverse(pendingStandingQueryWrites) {
+                case key @ (globalId, localId) =>
+                  val serialized = standingQueries.get(key).map(standingQueryStateFormat.write)
+                  serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
+                  retryPersistence(
+                    metrics.persistorSetStandingQueryStateTimer,
+                    persistor.setStandingQueryState(globalId, qid, localId, serialized),
+                    context.dispatcher
                   )
+              }(implicitly, context.dispatcher)
 
-                // Save all persistor data
-                val snapshotSaved = retryPersistence(
-                  metrics.persistorPersistSnapshotTimer,
-                  persistor.persistSnapshot(
-                    if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
-                    else latestUpdateTime,
-                    snapshot
+              val persistenceFuture = snapshotSaved zip standingQueryStatesSaved
+
+              // Schedule an update to the shard
+              persistenceFuture.onComplete {
+                case Success(_) => reportSleepSuccess(qidAtTime)
+                case Failure(err) =>
+                  shardActor ! SleepOutcome.SleepFailed(
+                    qidAtTime,
+                    snapshot,
+                    edges.size,
+                    properties.transform((_, v) => v.serialized.length), // this eagerly serializes; can be expensive
+                    err,
+                    shardPromise
                   )
-                )
-                if (pendingStandingQueryWrites.isEmpty) {
-                  snapshotSaved
-                } else {
-                  val pendingStatesSerialized = pendingStandingQueryWrites.view.map { case key @ (globalId, localId) =>
-                    val serialized = standingQueries.get(key).map(standingQueryStateFormat.write)
-                    serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
-                    (globalId, localId, serialized)
-                  }.toVector // materialize so that the reads of `pendingStandingQueryWrites` happen on the actor thread
-                  val standingQueryStatesSaved = Future
-                    .traverse(pendingStatesSerialized) { case (globalId, localId, serialized) =>
-                      retryPersistence(
-                        metrics.persistorSetStandingQueryStateTimer,
-                        persistor.setStandingQueryState(globalId, localId, serialized)
-                      )
-                    }
+              }(context.dispatcher)
 
-                  snapshotSaved.zipWith(standingQueryStatesSaved)((_, _) => ())(ExecutionContexts.parasitic)
-                }
-
-              case _ =>
-                shardActor ! SleepOutcome.SleepSuccess(qidAtTime)
-                Future.unit
-            }
+            case _ =>
+              reportSleepSuccess(qidAtTime)
           }
 
           /* Block waiting for the write lock to the ActorRef

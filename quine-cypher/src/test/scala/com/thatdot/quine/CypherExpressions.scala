@@ -317,7 +317,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     )
 
     testQuery(
-      "RETURN CASE toInt(NULL) WHEN NULL THEN 'equal' ELSE 'not-equal' END AS answer",
+      "RETURN CASE toInteger(NULL) WHEN NULL THEN 'equal' ELSE 'not-equal' END AS answer",
       expectedColumns = Vector("answer"),
       expectedRows = Seq(Vector(Expr.Str("equal")))
     )

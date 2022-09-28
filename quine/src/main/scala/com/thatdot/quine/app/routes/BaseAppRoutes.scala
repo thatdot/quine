@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.StatusCodes
@@ -20,8 +20,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
 
   val graph: BaseGraph
 
-  val ec: ExecutionContext
-
   val timeout: Timeout
 
   implicit def idProvider: QuineIdProvider = graph.idProvider
@@ -34,7 +32,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
 
   def isLive = true
   def isReady = graph.isReady
-  val nodeTitlePropKeys = List.empty // TODO?
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */
   def staticFilesRoute: Route

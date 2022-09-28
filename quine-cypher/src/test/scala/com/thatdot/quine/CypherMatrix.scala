@@ -7,8 +7,8 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
   import idProv.ImplicitConverters._
 
   val neoNode: Expr.Node = Expr.Node(0L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Neo")))
-  val trinityNode: Expr.Node = Expr.Node(1L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Trinity")))
-  val morpheusNode: Expr.Node = Expr.Node(2L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Morpheus")))
+  val morpheusNode: Expr.Node = Expr.Node(1L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Morpheus")))
+  val trinityNode: Expr.Node = Expr.Node(2L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Trinity")))
   val cypherNode: Expr.Node =
     Expr.Node(3L, Set(Symbol("Crew"), Symbol("Matrix")), Map(Symbol("name") -> Expr.Str("Cypher")))
   val agentSmithNode: Expr.Node =
@@ -45,17 +45,17 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedColumns = Vector("thing"),
     expectedRows = Seq(
       Vector(neoNode),
-      Vector(trinityNode),
       Vector(morpheusNode),
+      Vector(trinityNode),
       Vector(cypherNode),
       Vector(agentSmithNode),
       Vector(architectNode),
-      Vector(Expr.Relationship(0L, Symbol("LOVES"), Map.empty, 1L)),
-      Vector(Expr.Relationship(0L, Symbol("KNOWS"), Map.empty, 2L)),
-      Vector(Expr.Relationship(2L, Symbol("KNOWS"), Map.empty, 1L)),
-      Vector(Expr.Relationship(2L, Symbol("KNOWS"), Map.empty, 3L)),
-      Vector(Expr.Relationship(3L, Symbol("KNOWS"), Map.empty, 4L)),
-      Vector(Expr.Relationship(4L, Symbol("CODED_BY"), Map.empty, 5L))
+      Vector(Expr.Relationship(neoNode.id, Symbol("KNOWS"), Map.empty, morpheusNode.id)),
+      Vector(Expr.Relationship(neoNode.id, Symbol("LOVES"), Map.empty, trinityNode.id)),
+      Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, trinityNode.id)),
+      Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, cypherNode.id)),
+      Vector(Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id)),
+      Vector(Expr.Relationship(agentSmithNode.id, Symbol("CODED_BY"), Map.empty, architectNode.id))
     ),
     expectedCanContainAllNodeScan = true
   )
@@ -88,12 +88,12 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedColumns = Vector("n.name", "collect(m.name)"),
     expectedRows = Seq(
       Vector(Expr.Str("Cypher"), Expr.List(Vector(Expr.Str("Agent Smith"), Expr.Str("Morpheus")))),
-      Vector(Expr.Str("Neo"), Expr.List(Vector(Expr.Str("Morpheus"), Expr.Str("Trinity")))),
+      Vector(Expr.Str("Neo"), Expr.List(Vector(Expr.Str("Trinity"), Expr.Str("Morpheus")))),
       Vector(
         Expr.Str("Morpheus"),
-        Expr.List(Vector(Expr.Str("Cypher"), Expr.Str("Neo"), Expr.Str("Trinity")))
+        Expr.List(Vector(Expr.Str("Cypher"), Expr.Str("Trinity"), Expr.Str("Neo")))
       ),
-      Vector(Expr.Str("Trinity"), Expr.List(Vector(Expr.Str("Morpheus"), Expr.Str("Neo"))))
+      Vector(Expr.Str("Trinity"), Expr.List(Vector(Expr.Str("Neo"), Expr.Str("Morpheus"))))
     ),
     expectedCanContainAllNodeScan = true,
     ordered = false
@@ -137,11 +137,15 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     ordered = false
   )
 
-  val neoMorpheusEdge: Expr.Relationship = Expr.Relationship(0L, Symbol("KNOWS"), Map.empty, 2L)
-  val morpheusTrinityEdge: Expr.Relationship = Expr.Relationship(2L, Symbol("KNOWS"), Map.empty, 1L)
-  val morpheusCypherEdge: Expr.Relationship = Expr.Relationship(2L, Symbol("KNOWS"), Map.empty, 3L)
-  val cypherAgentSmithEdge: Expr.Relationship = Expr.Relationship(3L, Symbol("KNOWS"), Map.empty, 4L)
-  val agentSmithArchitectEdge: Expr.Relationship = Expr.Relationship(4L, Symbol("CODED_BY"), Map.empty, 5L)
+  val neoMorpheusEdge: Expr.Relationship = Expr.Relationship(neoNode.id, Symbol("KNOWS"), Map.empty, morpheusNode.id)
+  val morpheusTrinityEdge: Expr.Relationship =
+    Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, trinityNode.id)
+  val morpheusCypherEdge: Expr.Relationship =
+    Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, cypherNode.id)
+  val cypherAgentSmithEdge: Expr.Relationship =
+    Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id)
+  val agentSmithArchitectEdge: Expr.Relationship =
+    Expr.Relationship(agentSmithNode.id, Symbol("CODED_BY"), Map.empty, architectNode.id)
 
   testQuery(
     "match (n) return n.name, (n)-->()-->()",

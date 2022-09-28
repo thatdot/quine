@@ -1,27 +1,28 @@
 package com.thatdot.quine.gremlin
 
-import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 
 import akka.stream.scaladsl.{Keep, Sink}
 import akka.stream.{KillSwitches, Materializer}
 import akka.util.Timeout
 
 import org.scalactic.source.Position
-import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.{Assertion, BeforeAndAfterAll}
 
-import com.thatdot.quine.graph._
-import com.thatdot.quine.model._
-import com.thatdot.quine.persistor.InMemoryPersistor
+import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, QuineUUIDProvider}
+import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
-class GremlinHarness(graphName: String) extends AnyFunSuite with BeforeAndAfterAll {
+class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfterAll {
 
   implicit val timeout: Timeout = Timeout(10.seconds)
   implicit val idProv: QuineUUIDProvider.type = QuineUUIDProvider
   implicit val graph: LiteralOpsGraph = Await.result(
     GraphService(
       graphName,
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = _ => InMemoryPersistor.empty,
       idProvider = idProv
     ),
@@ -38,7 +39,8 @@ class GremlinHarness(graphName: String) extends AnyFunSuite with BeforeAndAfterA
     *
     *  @param queryText query whose output we are checking
     *  @param expected the expected output
-    *  @param pos source position of the call to `testQuery`
+    *  @param parameters constants in the query
+    *  @param pos source position of the test
     */
   def testQuery(
     queryText: String,
@@ -47,7 +49,7 @@ class GremlinHarness(graphName: String) extends AnyFunSuite with BeforeAndAfterA
     ordered: Boolean = true
   )(implicit
     pos: Position
-  ): Assertion = {
+  ): Future[Assertion] = {
     val queryResults = gremlin.query(queryText, parameters)
     val (killSwitch, resultsFut) = queryResults
       .viaMat(KillSwitches.single)(Keep.right)
@@ -60,29 +62,29 @@ class GremlinHarness(graphName: String) extends AnyFunSuite with BeforeAndAfterA
       () => killSwitch.abort(new java.util.concurrent.TimeoutException())
     )
 
-    val actualResults = Await.result(resultsFut, timeout.duration)
-    if (ordered)
-      assert(actualResults == expected, "ordered results must match")
-    else
-      assert(actualResults.toSet == expected.toSet, "unordered results must match")
+    resultsFut.map { actualResults =>
+      if (ordered)
+        assert(actualResults == expected, "ordered results must match")
+      else
+        assert(actualResults.toSet == expected.toSet, "unordered results must match")
+    }
   }
 
   /** Check that a given query crashes with the given exception.
     *
     *  @param queryText query whose output we are checking
     *  @param expectedMessage the expected error
-    *  @param pos source position of the call to `testQuery`
+    *  @param pos source position of the test
     */
   def interceptQuery(
     queryText: String,
     expectedMessage: String
   )(implicit
     pos: Position
-  ): Assertion = {
-    val actual = intercept[QuineGremlinException] {
-      val queried = gremlin.query(queryText).runWith(Sink.ignore)
-      Await.result(queried, timeout.duration)
+  ): Future[Assertion] = {
+    val actualFut = recoverToExceptionIf[QuineGremlinException] {
+      Future(gremlin.query(queryText).runWith(Sink.ignore)).flatten
     }
-    assert(actual.pretty == expectedMessage)
+    actualFut.map(actual => assert(actual.pretty === expectedMessage))
   }
 }

@@ -1,10 +1,10 @@
 package com.thatdot.quine.graph
 
-import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 
-import scala.collection.concurrent
-import scala.concurrent.Future
+import scala.collection.compat.immutable.ArraySeq
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
@@ -15,8 +15,10 @@ import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection}
+import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.model._
-import com.thatdot.quine.persistor.PersistenceAgent
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent}
+import com.thatdot.quine.util.QuineDispatchers
 
 class GraphService(
   val system: ActorSystem,
@@ -25,8 +27,10 @@ class GraphService(
   val shardCount: Int,
   val inMemorySoftNodeLimit: Option[Int],
   val inMemoryHardNodeLimit: Option[Int],
+  val effectOrder: EventEffectOrder,
   val declineSleepWhenWriteWithinMillis: Long,
   val declineSleepWhenAccessWithinMillis: Long,
+  val maxCatchUpSleepMillis: Long,
   val labelsProperty: Symbol,
   val edgeCollectionFactory: Supplier[EdgeCollection],
   val metrics: HostQuineMetrics
@@ -38,13 +42,32 @@ class GraphService(
 
   initializeNestedObjects()
 
+  val dispatchers = new QuineDispatchers(system)
+
   def nodeClass: Class[NodeActor] = classOf[NodeActor]
 
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit] =
     InMemoryNodeLimit.fromOptions(inMemorySoftNodeLimit, inMemoryHardNodeLimit)
 
-  val runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
-    new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
+  val shards: ArraySeq[LocalShardRef] = initializeShards()
+
+  /** asynchronous construction effect: load Standing Queries from the persistor
+    */
+  Await.result(
+    persistor.getStandingQueries.map(_.foreach { (sq: StandingQuery) =>
+      startStandingQuery(
+        sqId = sq.id,
+        name = sq.name,
+        pattern = sq.query,
+        outputs = Map.empty,
+        queueBackpressureThreshold = sq.queueBackpressureThreshold,
+        queueMaxSize = sq.queueMaxSize,
+        shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode
+      )
+      logger.info(s"Restored standing query: ${sq.name}")
+    })(shardDispatcherEC),
+    10 seconds
+  )
 
   /* By initializing this last, it will be `false` during the construction and only true
    * once object construction finishes
@@ -53,10 +76,8 @@ class GraphService(
 
   override def shutdown(): Future[Unit] = {
     isReady = false
-    for {
-      _ <- shutdownStandingQueries()
-      _ <- super.shutdown()
-    } yield ()
+    shutdownStandingQueries()
+      .flatMap(_ => super.shutdown())(shardDispatcherEC)
   }
 }
 
@@ -67,10 +88,12 @@ object GraphService {
     persistor: ActorSystem => PersistenceAgent,
     idProvider: QuineIdProvider,
     shardCount: Int = 4,
+    effectOrder: EventEffectOrder,
     inMemorySoftNodeLimit: Option[Int] = Some(50000),
     inMemoryHardNodeLimit: Option[Int] = Some(75000),
     declineSleepWhenWriteWithinMillis: Long = 100L,
     declineSleepWhenAccessWithinMillis: Long = 0L,
+    maxCatchUpSleepMillis: Long = 2000L,
     labelsProperty: Symbol = Symbol("__LABEL"),
     edgeCollectionFactory: Supplier[EdgeCollection] = () => new ReverseOrderedEdgeCollection,
     metricRegistry: MetricRegistry = new MetricRegistry
@@ -106,8 +129,10 @@ object GraphService {
         shardCount,
         inMemorySoftNodeLimit,
         inMemoryHardNodeLimit,
+        effectOrder,
         declineSleepWhenWriteWithinMillis,
         declineSleepWhenAccessWithinMillis,
+        maxCatchUpSleepMillis,
         labelsProperty,
         edgeCollectionFactory,
         HostQuineMetrics(metricRegistry)

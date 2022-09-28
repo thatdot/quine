@@ -3,7 +3,7 @@ package com.thatdot.quine.app
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
 
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.Future
 import scala.util.Try
 
 import endpoints4s.{Codec, Invalid, Valid, Validated}
@@ -17,8 +17,6 @@ import com.thatdot.quine.graph.{BaseGraph, MemberIdx}
   * @param graph reference to the underlying graph
   */
 abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
-
-  implicit val ec: ExecutionContextExecutor = graph.system.dispatcher // TODO: use other dispatcher?
 
   /** Store a key-value pair that is relevant only for one particular app instance (i.e. "local")
     *
@@ -59,11 +57,13 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
   final protected def getLocalMetaData[A](key: String, localMemberId: MemberIdx)(implicit
     schema: JsonSchema[A]
   ): Future[Option[A]] =
-    graph.persistor.getLocalMetaData(key, localMemberId).map {
-      _.flatMap { jsonBytes =>
-        Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
-      }
-    }
+    graph.persistor
+      .getLocalMetaData(key, localMemberId)
+      .map {
+        _.flatMap { jsonBytes =>
+          Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
+        }
+      }(graph.system.dispatcher)
 
   /** Retrieve a value associated with a key which was stored for the entire graph
     *
@@ -72,11 +72,13 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
     * @return the value, if found
     */
   final protected def getGlobalMetaData[A](key: String)(implicit schema: JsonSchema[A]): Future[Option[A]] =
-    graph.persistor.getMetaData(key).map {
-      _.flatMap { jsonBytes =>
-        Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
-      }
-    }
+    graph.persistor
+      .getMetaData(key)
+      .map {
+        _.flatMap { jsonBytes =>
+          Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
+        }
+      }(graph.system.dispatcher)
 
   /** Deserialize a value intended to be stored as metadata
     *
@@ -118,8 +120,8 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
       case Some(value) => Future.successful(value)
       case None =>
         val defaulted = defaultValue
-        storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)
-    }
+        storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
+    }(graph.system.dispatcher)
 
   /** Retrieve a value associated with a key stored for the entire graph as a
     * whole, but write and return in a default value if the key is not already
@@ -135,20 +137,21 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
       case Some(value) => Future.successful(value)
       case None =>
         val defaulted = defaultValue
-        storeGlobalMetaData(key, defaulted).map(_ => defaulted)
-    }
+        storeGlobalMetaData(key, defaulted).map(_ => defaulted)(graph.system.dispatcher)
+    }(graph.system.dispatcher)
 }
 
 object BaseApp {
 
   /** Codec for UTF-8 strings */
   private val utf8Codec = new Codec[Array[Byte], String] {
-    private[this] val decoder = UTF_8.newDecoder()
-
     def encode(str: String): Array[Byte] = str.getBytes(UTF_8)
     def decode(bytes: Array[Byte]): Validated[String] = Validated.fromTry(Try {
-      val result = decoder.decode(ByteBuffer.wrap(bytes))
-      result.toString
+
+      /** Use a decoder object so that invalid data will result in a [caught] exception rather than silently being
+        * converted to replacement characters
+        */
+      UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString
     })
   }
 }

@@ -1,5 +1,7 @@
 package com.thatdot.quine.graph
 
+import akka.event.LoggingAdapter
+
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.model.Milliseconds
@@ -53,12 +55,34 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
   /** @return time and event sequence numbers (the non-millisecond part of the time) */
   def timestampAndEventSequence: Long = eventTime & (EventSequenceMask | TimestampSequenceMask)
 
-  /** @return the next smallest event time
+  /** @param logOpt an optional logger. If specified, this will be used to report overflow warnings to the operator
+    * @return the next smallest event time
     *
     * @note this is supposed to almost always have the same logical time, but if the event sequence
     * number overflows, it'll increment the logical time too.
     */
-  def nextEventTime: EventTime = new EventTime(eventTime + 1L)
+  def nextEventTime(logOpt: Option[LoggingAdapter]): EventTime = {
+    val nextTime = new EventTime(eventTime + 1L)
+    logOpt.foreach { log =>
+      if (nextTime.millis != millis) {
+        log.warning(
+          """Too many operations on this node caused nextEventTime to overflow
+            |milliseconds from: {} to: {}. Historical queries for the overflowed
+            |millisecond may not reflect all updates.""".stripMargin.replace('\n', ' '),
+          millis,
+          nextTime.millis
+        )
+      }
+      if (nextTime.timestampSequence != timestampSequence) {
+        log.warning(
+          "Too many operations on this node caused nextEventTime to overflow timestampSequence from: {} to: {}",
+          timestampSequence,
+          nextTime.timestampSequence
+        )
+      }
+    }
+    nextTime
+  }
 
   /** @return the largest event time that is still in this same millisecond as this event time
     *
@@ -121,13 +145,13 @@ object EventTime extends LazyLogging {
 
     // Warn on various overflows
     if (milliseconds < 0L || MillisMax <= milliseconds) {
-      logger.error(s"Milliseconds $milliseconds in $time needs to be between 0 and $MillisMax")
+      logger.error(s"Milliseconds: $milliseconds in: $time needs to be between 0 and $MillisMax")
     }
     if (timestampSequence < 0L || TimestampSequenceMax <= timestampSequence) {
-      logger.warn(s"Timestamp sequence number $timestampSequence in $time overflowed")
+      logger.warn(s"Timestamp sequence number: $timestampSequence in: $time overflowed")
     }
     if (eventSequence < 0L || EventSequenceMax <= eventSequence) {
-      logger.warn(s"Event sequence number $eventSequence in $time overflowed")
+      logger.warn(s"Event sequence number: $eventSequence in: $time overflowed")
     }
 
     time

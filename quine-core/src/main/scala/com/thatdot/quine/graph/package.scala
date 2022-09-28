@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.{util => ju}
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.util.control.NonFatal
 
 import com.codahale.metrics.Timer
@@ -51,14 +51,14 @@ package object graph {
   type Notifiable = Either[QuineId, StandingQueryId]
 
   // In short: the assumed edge must be the LAST edge tested; not the first requirement to be removed.
-  private[quine] type AssumedDomainEdge = Option[(GenericEdge, DomainGraphBranch[model.Test])]
+  private[quine] type AssumedDomainEdge = Option[(GenericEdge, DomainGraphBranch)]
   private[quine] type LastNotification = Option[Boolean]
 
   /* DelayedInit on the object creation will keep objects nested inside from being instantiated until their first use.
    * Multithreaded deserialization was creating a race condition in nested object creation. Somehow this lead to a deadlock.
    * https://issues.scala-lang.org/browse/SI-3007
    */
-  private[quine] def initializeNestedObjects(): Unit = synchronized {
+  private[quine] def initializeNestedObjects(): Unit = blocking(synchronized {
     EdgeDirection
     EdgeDirection.Outgoing
     EdgeDirection.Incoming
@@ -66,18 +66,18 @@ package object graph {
     NodeLocalComparisonFunctions
     PropertyComparisonFunctions
     ()
-  }
+  })
 
   implicit class FutureRecoverWith[T](f: Future[T]) {
     /* NB: it is important that the message be call by name, since we want to avoid actually
      *     computing the message until we are sure there is actually a failure to report
      */
-    def recoveryMessage[U >: T](message: => String)(implicit ec: ExecutionContext): Future[U] =
+    def recoveryMessage[U >: T](message: => String, ec: ExecutionContext): Future[U] =
       f.recoverWith {
         case e: QuineRuntimeFutureException => Future.failed(e)
         case e: Throwable =>
           Future.failed(new QuineRuntimeFutureException(message, e))
-      }
+      }(ec)
   }
 
   implicit class ByteBufferOps(private val bb: ByteBuffer) extends AnyVal {

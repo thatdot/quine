@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import scala.collection.immutable
 import scala.compat.java8.StreamConverters._
 
-import com.thatdot.quine.app.RecipePackage
+import com.thatdot.quine.app.{Recipe, RecipePackage}
 
 object GenerateRecipeDirectory extends App {
 
@@ -111,6 +111,14 @@ object GenerateRecipeDirectory extends App {
       |""".stripMargin
     }
 
+    val cliParameters = Recipe
+      .applySubstitutions(recipe, Map.empty)
+      .fold(_.map(_.name).toList, _ => Nil)
+      .distinct
+      .zipWithIndex
+      .map { case (name, idx) => s" --recipe-value $name=$$PARAM${idx + 1}" }
+      .mkString
+
     s"""
     |# ${recipe.title}
     |
@@ -123,9 +131,11 @@ object GenerateRecipeDirectory extends App {
     |
     |### Command line invocation
     |
+    |@@@vars { start-delimiter="&" stop-delimiter="&" }
     |```bash
-    |$$ java -jar quine-1.0.0.jar -r ${recipePackage.name}
+    |$$ java -jar &quine.jar& -r ${recipePackage.name}$cliParameters
     |```
+    |@@@
     |
     |### Recipe
     |

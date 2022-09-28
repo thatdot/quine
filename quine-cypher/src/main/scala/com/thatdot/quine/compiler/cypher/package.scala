@@ -10,10 +10,18 @@ import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.google.common.util.concurrent.UncheckedExecutionException
 import org.opencypher.v9_0.ast.semantics
-import org.opencypher.v9_0.ast.semantics.SemanticExpressionCheck
-import org.opencypher.v9_0.frontend.phases.{BaseContext, BaseState, Transformer}
+import org.opencypher.v9_0.ast.semantics.SemanticFeature
+import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.frontend.{PlannerName, phases}
-import org.opencypher.v9_0.util.{InputPosition, SyntaxException, symbols}
+import org.opencypher.v9_0.rewriting.rewriters.SameNameNamer
+import org.opencypher.v9_0.util.OpenCypherExceptionFactory.SyntaxException
+import org.opencypher.v9_0.util.{
+  CypherExceptionFactory,
+  InputPosition,
+  OpenCypherExceptionFactory,
+  RecordingNotificationLogger,
+  symbols
+}
 import org.opencypher.v9_0.{ast, expressions, rewriting}
 
 import com.thatdot.quine.graph.cypher._
@@ -56,6 +64,7 @@ package object cypher {
       }
       .flatMapConcat(queryCypherValues(_).results)
       .to(Sink.ignore)
+      .named("cypher-script")
       .run()(graph.materializer)
 
   /** Compile a Cypher statement
@@ -82,7 +91,7 @@ package object cypher {
        *
        * Some design space needs to be explored here.
        */
-      case _: ast.Command =>
+      case _: ast.SchemaCommand =>
         throw new CypherException.Compile(
           "Cypher commands are not supported (only queries)",
           Some(position(statement.position))
@@ -257,7 +266,7 @@ package object cypher {
     }
   }
 
-  /** Try to compile queries of the form `MATCH <pattern> WHERE <condition> RETURN <columns>`
+  /** Try to compile queries of the form `MATCH <pattern> WHERE <condition> RETURN [DISTINCT] <columns>`
     * into a pattern that can be used to construct a standing query.
     *
     * @param queryText the Cypher query
@@ -303,20 +312,6 @@ package object cypher {
       .run(parameters, initialColumns, atTime)(graph)
   }
 
-  /* TODO this hack works around a bug in `openCypher` semantic checking of unary
-   * addition. The bug is resolved in `v9.0.20210312` -- remove this when we update
-   */
-  SemanticExpressionCheck.semanticCheckFallback =
-    (ctx: expressions.Expression.SemanticContext, expr: expressions.Expression) => {
-      expr match {
-        case x: expressions.UnaryAdd =>
-          SemanticExpressionCheck.check(ctx, x.arguments) chain
-            SemanticExpressionCheck.checkTypes(x, x.signatures)
-        case _ =>
-          SemanticExpressionCheck.crashOnUnknownExpression(ctx, expr)
-      }
-    }
-
   /** The openCypher `front-end` pipeline that will parse, validate, and
     * normalize queries before we start trying to turn them into the IR AST that
     * runs in Quine
@@ -324,22 +319,32 @@ package object cypher {
     * @see openCypherParseAndRewrite
     */
   private val openCypherPipeline: Transformer[BaseContext, BaseState, BaseState] = {
-    import org.opencypher.v9_0.ast.semantics._
     import org.opencypher.v9_0.frontend.phases._
+
+    val supportedFeatures = Array[SemanticFeature](SemanticFeature.CorrelatedSubQueries)
 
     // format: off
     val parsingPhase = {
-      Parsing.adds(BaseContains[ast.Statement])                         andThen
-      SyntaxDeprecationWarnings(rewriting.Deprecations.V1)              andThen
-      PreparatoryRewriting(rewriting.Deprecations.V1)                   andThen
-      patternExpressionAsComprehension                                  andThen
-      SemanticAnalysis(warn = true).adds(BaseContains[SemanticState])   andThen
-      AstRewriting(
-        rewriting.RewriterStepSequencer.newPlain,
-        rewriting.rewriters.Forced // always extract literals into parameters
-      )
+      Parsing                                              andThen
+      SyntaxDeprecationWarnings(rewriting.Deprecations.V1) andThen
+      PreparatoryRewriting(rewriting.Deprecations.V1)      andThen
+      patternExpressionAsComprehension                     andThen
+      SemanticAnalysis(warn = true, supportedFeatures: _*) andThen
+      AstRewriting(SameNameNamer)                          andThen
+      LiteralExtraction(rewriting.rewriters.Forced)
     }
-    val rewritePhase = CompilationPhases.lateAstRewriting
+
+    // format: off
+    val rewritePhase = {
+      isolateAggregation andThen
+      SemanticAnalysis(warn = false, supportedFeatures: _*) andThen
+      Namespacer andThen
+      transitiveClosure andThen
+      rewriteEqualityToInPredicate andThen
+      CNFNormalizer andThen
+      collapseMultipleInPredicates andThen
+      SemanticAnalysis(warn = false, supportedFeatures: _*)
+    } // CompilationPhases.lateAstRewriting
 
     // format: off
     val pipeline = {
@@ -368,14 +373,31 @@ package object cypher {
     * @see [[openCypherPipeline]]
     */
   private val openCypherStandingPipeline: Transformer[BaseContext, BaseState, BaseState] = {
-    import org.opencypher.v9_0.ast.semantics._
     import org.opencypher.v9_0.frontend.phases._
+    import org.opencypher.v9_0.rewriting.Deprecations
+    import org.opencypher.v9_0.util.StepSequencer
+    import org.opencypher.v9_0.rewriting.rewriters.normalizeWithAndReturnClauses
+    import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
+
+    val supportedFeatures = Array[SemanticFeature](SemanticFeature.CorrelatedSubQueries)
+
+    case object aliasReturns extends Phase[BaseContext, BaseState, BaseState] {
+      override def process(from: BaseState, context: BaseContext): BaseState = {
+        val rewriter = normalizeWithAndReturnClauses.getRewriter(Deprecations.V1, context.cypherExceptionFactory, context.notificationLogger)
+        val rewrittenStatement = from.statement().endoRewrite(rewriter)
+        from.withStatement(rewrittenStatement)
+      }
+
+      override val phase = AST_REWRITE
+      override def postConditions: Set[StepSequencer.Condition] = Set.empty
+    }
 
     // format: off
     val parsingPhase = {
-      Parsing.adds(BaseContains[ast.Statement])                         andThen
-      patternExpressionAsComprehension                                  andThen
-      SemanticAnalysis(warn = true).adds(BaseContains[SemanticState])
+      Parsing                                              andThen
+      patternExpressionAsComprehension                     andThen
+      aliasReturns                                         andThen
+      SemanticAnalysis(warn = true, supportedFeatures: _*)
     }
 
     // format: off
@@ -423,13 +445,12 @@ package object cypher {
     val baseContext = new BaseContext {
 
       override def tracer = phases.CompilationPhaseTracer.NO_TRACING
-      override def notificationLogger = new phases.RecordingNotificationLogger()
-      override def exceptionCreator =
-        new semantics.SyntaxExceptionCreator(initial.queryText, initial.startPosition)
+      override def notificationLogger = new RecordingNotificationLogger()
+      override def cypherExceptionFactory: CypherExceptionFactory = OpenCypherExceptionFactory(initial.startPosition)
 
       /* This is gross. The only way I found to understand how to reasonably
        * implement this was to look at the corresponding code in Neo4j. I'm
-       * still not fully clear on what prupose this serves...
+       * still not fully clear on what purpose this serves...
        */
       override def monitors = new phases.Monitors {
 
@@ -464,16 +485,16 @@ package object cypher {
     val output = try pipeline.transform(initial, baseContext)
     catch {
       case error: SyntaxException =>
-        throw new CypherException.Syntax(
+        throw CypherException.Syntax(
           wrapping = error.getMessage(),
-          position = error.pos.map(position(_))
+          position = Some(position(error.pos))
         )
 
       // TODO: can something better than this be done? What sorts of errors
       // can these be?
       case error: Throwable =>
-        throw new CypherException.Compile(
-          wrapping = error.toString(),
+        throw CypherException.Compile(
+          wrapping = error.toString,
           position = None
         )
     }

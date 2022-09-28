@@ -1,5 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
+import scala.collection.immutable.{ListMap, ListSet}
 import scala.collection.mutable
 
 import cats.Endo
@@ -107,7 +108,7 @@ final case class Graph(
     ) match {
 
       case (Some(cypherVar), None) =>
-        val tempBindName = NodeNameGenerator.name(atNode.position.bumped())
+        val tempBindName = NodeNameGenerator.name(atNode.position.newUniquePos())
         val tempLv = expressions.Variable(tempBindName)(atNode.position)
 
         for {
@@ -427,20 +428,22 @@ object Graph {
 
   /** Construct a graph from a pattern */
   def fromPattern(pattern: expressions.Pattern): CompM[Graph] = {
-    val nodes = mutable.Map.empty[expressions.LogicalVariable, expressions.NodePattern]
-    val relationships = Set.newBuilder[Relationship]
-    val namedParts = Map.newBuilder[expressions.Variable, expressions.AnonymousPatternPart]
+    val nodesSeen = mutable.Set.empty[expressions.LogicalVariable]
+    val nodes = ListMap.newBuilder[expressions.LogicalVariable, expressions.NodePattern]
+    val relationships = ListSet.newBuilder[Relationship]
+    val namedParts = ListMap.newBuilder[expressions.Variable, expressions.AnonymousPatternPart]
 
     def addNodePattern(
       nodeVar: expressions.LogicalVariable,
       nodePat: expressions.NodePattern
-    ): Unit = nodes.get(nodeVar) match {
+    ): Unit = nodesSeen.contains(nodeVar) match {
       // This is the first time we see the variable, so define it
-      case None =>
+      case false =>
         nodes += nodeVar -> nodePat
+        nodesSeen += nodeVar
 
       // The variable has already been defined
-      case Some(_) =>
+      case true =>
         assert(nodePat.labels.isEmpty && nodePat.properties.isEmpty, s"Variable `$nodeVar` is already defined")
     }
 
@@ -487,7 +490,8 @@ object Graph {
     CompM.getSourceText.flatMap[Graph] { implicit sourceText =>
       try {
         pattern.patternParts.foreach(visitPatternPart)
-        CompM.pure(Graph(nodes.toMap, relationships.result(), namedParts.result()))
+        val graph = Graph(nodes.result(), relationships.result(), namedParts.result())
+        CompM.pure(graph)
       } catch {
         case err: cypher.CypherException.Compile => CompM.raiseError(err)
       }

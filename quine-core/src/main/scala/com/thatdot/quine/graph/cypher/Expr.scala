@@ -11,7 +11,7 @@ import java.time.{
 }
 
 import scala.collection.compat._
-import scala.collection.immutable.{Map => ScalaMap}
+import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
 import com.google.common.hash.{HashCode, Hasher, Hashing}
@@ -55,6 +55,13 @@ sealed abstract class Expr {
     parameters: Parameters
   ): Value
 
+  /** substitute all parameters in this expression and all descendants
+    * @param parameters a [[Parameters]] providing parameters used by [[Expr.Parameter]]s within this expression.
+    * @return a copy of this expression with all provided parameters substituted
+    * INV: If all parameters used by [[Expr.Parameter]] AST nodes are provided, the returned
+    * expression will have no [[Expr.Parameter]] AST nodes remaining in the tree
+    */
+  def substitute(parameters: ScalaMap[Expr.Parameter, Value]): Expr
 }
 
 /** TODO: missing values supported by Neo4j (but not required by openCypher)
@@ -86,7 +93,7 @@ object Expr {
     case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue(_)).toMap)
     case QuineValue.DateTime(instant) =>
       DateTime(JavaZonedDateTime.ofInstant(instant, ZoneOffset.UTC))
-    case QuineValue.Id(id) => Bytes(id.array)
+    case QuineValue.Id(id) => Bytes(id)
   }
 
   def toQuineValue(value: Value): QuineValue = value match {
@@ -96,7 +103,8 @@ object Expr {
     case True => QuineValue.True
     case False => QuineValue.False
     case Null => QuineValue.Null
-    case Bytes(arr) => QuineValue.Bytes(arr) // NB this may be an ID or bytes
+    case Bytes(arr, false) => QuineValue.Bytes(arr)
+    case Bytes(arr, true) => QuineValue.Id(QuineId(arr))
     case List(vec) => QuineValue.List(vec.map(toQuineValue(_)))
     case Map(map) => QuineValue.Map(map.view.mapValues(toQuineValue(_)).toMap)
     case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toInstant)
@@ -204,7 +212,7 @@ object Expr {
   object Integer {
 
     /* Cache of small integers from -128 to 127 inclusive, to share references
-     * whenever possible (less allocations + faster comparisions)
+     * whenever possible (less allocations + faster comparisons)
      */
     private val integerCacheMin = -128L
     private val integerCacheMax = 127L
@@ -377,13 +385,15 @@ object Expr {
   /** A cypher value representing an array of bytes
     *
     * @note there is no way to directly write a literal for this in Cypher
+    * @param b array of bytes (do not mutate this!)
+    * @param representsId do these bytes represent an ID? (just a hint, not part of `hashCode` or `equals`)
     */
-  final case class Bytes(b: Array[Byte]) extends PropertyValue {
+  final case class Bytes(b: Array[Byte], representsId: Boolean = false) extends PropertyValue {
     override def hashCode: Int =
       MurmurHash3.bytesHash(b, 0x54321) // 12345 would make QuineValue.Bytes hash the same as
     override def equals(other: Any): Boolean =
       other match {
-        case Bytes(bytesOther) => b.toSeq == bytesOther.toSeq
+        case Bytes(bytesOther, _) => b.toSeq == bytesOther.toSeq
         case _ => false
       }
 
@@ -396,6 +406,9 @@ object Expr {
       hasher
         .putInt("Bytes".hashCode)
         .putBytes(b)
+  }
+  object Bytes {
+    def apply(qid: QuineId): Bytes = Bytes(qid.array, representsId = true)
   }
 
   /** A cypher value representing a node
@@ -482,15 +495,13 @@ object Expr {
     *
     * @param map underlying Scala map of values
     */
-  final case class Map(map: ScalaMap[String, Value]) extends PropertyValue {
-
+  final case class Map private (map: SortedMap[String, Value]) extends PropertyValue {
     def typ = Type.Map
 
     def addToHasher(hasher: Hasher): Hasher = {
       hasher
         .putInt("Map".hashCode)
         .putInt(map.size)
-      // TODO: ensure iteration order is reliable (see QU-654)
       for ((key, value) <- map) {
         hasher.putString(key, StandardCharsets.UTF_8)
         value.addToHasher(hasher)
@@ -499,7 +510,9 @@ object Expr {
     }
   }
   object Map {
-    val empty: Map = Map(ScalaMap.empty)
+    def apply(entries: IterableOnce[(String, Value)]): Map = new Map(SortedMap.from(entries))
+    def apply(entries: (String, Value)*): Map = new Map(SortedMap.from(entries))
+    val empty: Map = new Map(SortedMap.empty)
   }
 
   /** A cypher path - a linear sequence of alternating nodes and edges
@@ -668,6 +681,8 @@ object Expr {
 
     def cannotFail: Boolean = true
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Variable = this
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       qc.getOrElse(id, Null)
   }
@@ -689,6 +704,8 @@ object Expr {
 
     // Argument is not map-like
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Property = copy(expr = expr.substitute(parameters))
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       expr.eval(qc) match {
@@ -746,6 +763,11 @@ object Expr {
 
     // Key is not string or object is not map-like
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): DynamicProperty = copy(
+      expr = expr.substitute(parameters),
+      keyExpr = keyExpr.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       expr.eval(qc) match {
@@ -815,6 +837,12 @@ object Expr {
     // Non-list argument
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListSlice = copy(
+      list = list.substitute(parameters),
+      from = from.map(_.substitute(parameters)),
+      to = to.map(_.substitute(parameters))
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       list.eval(qc) match {
         case List(elems) =>
@@ -859,6 +887,8 @@ object Expr {
 
     def cannotFail: Boolean = true
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Expr = parameters.getOrElse(this, this)
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       p.params.apply(name)
   }
@@ -877,6 +907,9 @@ object Expr {
 
     def cannotFail: Boolean = expressions.forall(_.cannotFail)
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListLiteral =
+      copy(expressions = expressions.map(_.substitute(parameters)))
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       List(expressions.map(_.eval(qc)))
   }
@@ -894,6 +927,10 @@ object Expr {
     def isPure: Boolean = entries.values.forall(_.isPure)
 
     def cannotFail: Boolean = entries.values.forall(_.cannotFail)
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): MapLiteral = copy(
+      entries = entries.view.mapValues(_.substitute(parameters)).toMap
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Map(entries.view.mapValues(_.eval(qc)).toMap)
@@ -920,6 +957,11 @@ object Expr {
 
     // Original value is not map-like
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): MapProjection = copy(
+      original = original.substitute(parameters),
+      items = items.map { case (str, expr) => str -> expr.substitute(parameters) }
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val newItems: Seq[(String, Value)] = items.map { case (variable, expr) =>
@@ -956,6 +998,10 @@ object Expr {
     // Argument is not alternating node/relationship values
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): PathExpression = copy(
+      nodeEdges = nodeEdges.map(_.substitute(parameters))
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val evaled = nodeEdges.map(_.eval(qc))
       val head = evaled.head.asInstanceOf[Node]
@@ -981,10 +1027,14 @@ object Expr {
     // Argument is not a relationship
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipStart = copy(
+      relationship = relationship.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
         case Null => Null
-        case Relationship(start, _, _, _) => Bytes(start.array)
+        case Relationship(start, _, _, _) => Bytes(start)
 
         case other =>
           throw CypherException.TypeMismatch(
@@ -1006,10 +1056,14 @@ object Expr {
     // Argument is not a relationship
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipEnd = copy(
+      relationship = relationship.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       relationship.eval(qc) match {
         case Null => Null
-        case Relationship(_, _, _, end) => Bytes(end.array)
+        case Relationship(_, _, _, end) => Bytes(end)
 
         case other =>
           throw CypherException.TypeMismatch(
@@ -1035,6 +1089,11 @@ object Expr {
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
     def cannotFail: Boolean = lhs.cannotFail && rhs.cannotFail
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Equal = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       Value.compare(lhs.eval(qc), rhs.eval(qc))
@@ -1095,8 +1154,13 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
-    // Incompatible argument types
+    // incompatible argument types
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Subtract = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     @throws[ArithmeticException]("if the result overflows")
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
@@ -1158,6 +1222,11 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Multiply = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
+
     @inline
     @throws[ArithmeticException]("if the result overflows")
     def operation(n1: Number, n2: Number): Number = n1 * n2
@@ -1179,6 +1248,11 @@ object Expr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Divide = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
+
     @inline
     @throws[ArithmeticException]("if the divisor is zero")
     def operation(n1: Number, n2: Number): Number = n1 / n2
@@ -1197,6 +1271,11 @@ object Expr {
   final case class Modulo(lhs: Expr, rhs: Expr) extends ArithmeticExpr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Modulo = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     @inline
     @throws[ArithmeticException]("if the divisor is zero")
@@ -1217,6 +1296,11 @@ object Expr {
   final case class Exponentiate(lhs: Expr, rhs: Expr) extends ArithmeticExpr {
 
     def isPure: Boolean = lhs.isPure && rhs.isPure
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Exponentiate = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     @inline
     def operation(n1: Number, n2: Number): Number = n1 ^ n2
@@ -1244,6 +1328,11 @@ object Expr {
 
     // Incompatible argument types
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Add = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       (lhs.eval(qc), rhs.eval(qc)) match {
@@ -1329,6 +1418,10 @@ object Expr {
     // Non-number argument
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): UnaryAdd = copy(
+      argument = argument.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
       argument.eval(qc) match {
         case n: Number => n
@@ -1356,6 +1449,10 @@ object Expr {
 
     // Non-number argument
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): UnarySubtract = copy(
+      argument = argument.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
       argument.eval(qc) match {
@@ -1395,6 +1492,11 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): GreaterEqual = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x >= 0) True else False
@@ -1418,6 +1520,11 @@ object Expr {
 
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): LessEqual = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
@@ -1443,6 +1550,11 @@ object Expr {
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Greater = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x > 0) True else False
@@ -1466,6 +1578,11 @@ object Expr {
 
     // Incompatible types cannot be compared
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Less = copy(
+      lhs = lhs.substitute(parameters),
+      rhs = rhs.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
@@ -1492,6 +1609,11 @@ object Expr {
 
     // Non-list RHS
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): InList = copy(
+      element = element.substitute(parameters),
+      list = list.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       (element.eval(qc), list.eval(qc)) match {
@@ -1524,6 +1646,11 @@ object Expr {
 
     def cannotFail: Boolean = scrutinee.cannotFail && startsWith.cannotFail
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): StartsWith = copy(
+      scrutinee = scrutinee.substitute(parameters),
+      startsWith = startsWith.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), startsWith.eval(qc)) match {
         case (Str(scrut), Str(start)) => Bool.apply(scrut.startsWith(start))
@@ -1546,6 +1673,11 @@ object Expr {
 
     def cannotFail: Boolean = scrutinee.cannotFail && endsWith.cannotFail
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): EndsWith = copy(
+      scrutinee = scrutinee.substitute(parameters),
+      endsWith = endsWith.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), endsWith.eval(qc)) match {
         case (Str(scrut), Str(end)) => Bool.apply(scrut.endsWith(end))
@@ -1567,6 +1699,11 @@ object Expr {
     def isPure: Boolean = scrutinee.isPure && contained.isPure
 
     def cannotFail: Boolean = scrutinee.cannotFail && contained.cannotFail
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Contains = copy(
+      scrutinee = scrutinee.substitute(parameters),
+      contained = contained.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), contained.eval(qc)) match {
@@ -1596,6 +1733,11 @@ object Expr {
     // Regex pattern can be invalid
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Regex = copy(
+      scrutinee = scrutinee.substitute(parameters),
+      regex = regex.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       (scrutinee.eval(qc), regex.eval(qc)) match {
         case (Str(scrut), Str(reg)) => Bool.apply(scrut.matches(reg))
@@ -1617,6 +1759,10 @@ object Expr {
 
     def cannotFail: Boolean = notNull.cannotFail
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): IsNotNull = copy(
+      notNull = notNull.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       notNull.eval(qc) match {
         case Null => False
@@ -1637,6 +1783,10 @@ object Expr {
     def isPure: Boolean = isNull.isPure
 
     def cannotFail: Boolean = isNull.cannotFail
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): IsNull = copy(
+      isNull = isNull.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       isNull.eval(qc) match {
@@ -1660,6 +1810,10 @@ object Expr {
 
     // Non boolean argument
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Not = copy(
+      negated = negated.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       negated.eval(qc) match {
@@ -1689,6 +1843,10 @@ object Expr {
 
     // Non boolean arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): And = copy(
+      conjuncts = conjuncts.map(_.substitute(parameters))
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       conjuncts.foldLeft[Bool](True) { case (acc: Bool, boolExpr: Expr) =>
@@ -1720,6 +1878,10 @@ object Expr {
 
     // Non boolean arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Or = copy(
+      disjuncts = disjuncts.map(_.substitute(parameters))
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       disjuncts.foldLeft[Bool](False) { case (acc: Bool, boolExpr: Expr) =>
@@ -1758,6 +1920,12 @@ object Expr {
     def cannotFail: Boolean = scrutinee.forall(_.cannotFail) &&
       branches.forall(t => t._1.cannotFail && t._2.cannotFail) && default.forall(_.cannotFail)
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): Case = copy(
+      scrutinee = scrutinee.map(_.substitute(parameters)),
+      branches = branches.map { case (l, r) => l.substitute(parameters) -> r.substitute(parameters) },
+      default = default.map(_.substitute(parameters))
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val scrut = scrutinee.getOrElse(True).eval(qc)
       branches
@@ -1787,6 +1955,9 @@ object Expr {
 
     // TODO: consider tracking which _functions_ cannot fail
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): Function =
+      copy(arguments = arguments.map(_.substitute(parameters)))
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val argVals = arguments.map(_.eval(qc))
@@ -1820,6 +1991,12 @@ object Expr {
     def isPure: Boolean = list.isPure && filterPredicate.isPure && extract.isPure
 
     def cannotFail: Boolean = list.cannotFail && filterPredicate.cannotFail && extract.cannotFail
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): ListComprehension = copy(
+      list = list.substitute(parameters),
+      filterPredicate = filterPredicate.substitute(parameters),
+      extract = extract.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): List =
       List(
@@ -1862,6 +2039,11 @@ object Expr {
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): AllInList = copy(
+      list = list.substitute(parameters),
+      filterPredicate = filterPredicate.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       list
         .eval(qc)
@@ -1903,6 +2085,11 @@ object Expr {
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): AnyInList = copy(
+      list = list.substitute(parameters),
+      filterPredicate = filterPredicate.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
       list
         .eval(qc)
@@ -1943,6 +2130,11 @@ object Expr {
 
     // Can fail when `filterPredicate` returns a non-boolean
     def cannotFail: Boolean = false
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): SingleInList = copy(
+      list = list.substitute(parameters),
+      filterPredicate = filterPredicate.substitute(parameters)
+    )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool = {
       val (truesCount: Int, sawNull: Boolean) = list
@@ -2001,6 +2193,12 @@ object Expr {
     // Can fail when `list` returns a non-list
     def cannotFail: Boolean = false
 
+    def substitute(parameters: ScalaMap[Parameter, Value]): ReduceList = copy(
+      initial = initial.substitute(parameters),
+      list = list.substitute(parameters),
+      reducer = reducer.substitute(parameters)
+    )
+
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       list
         .eval(qc)
@@ -2019,6 +2217,8 @@ object Expr {
     def isPure: Boolean = false
 
     def cannotFail: Boolean = true
+
+    def substitute(parameters: ScalaMap[Parameter, Value]): FreshNodeId.type = this
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
       Expr.fromQuineValue(idp.qidToValue(idp.newQid()))
@@ -2041,6 +2241,8 @@ sealed abstract class Value extends Expr {
   def isPure: Boolean = true
 
   def cannotFail: Boolean = true
+
+  def substitute(parameters: ScalaMap[Expr.Parameter, Value]): Value = this
 
   @throws[CypherException.TypeMismatch]("if the value is not an integer")
   def asLong(context: String): Long = this match {
@@ -2127,7 +2329,7 @@ sealed abstract class Value extends Expr {
     case Expr.True => true
     case Expr.False => false
     case Expr.Null => null
-    case Expr.Bytes(byteArray) => byteArray
+    case Expr.Bytes(byteArray, _) => byteArray
 
     case _: Expr.Node =>
       throw new IllegalArgumentException(
@@ -2162,7 +2364,9 @@ sealed abstract class Value extends Expr {
     case Expr.True => "true"
     case Expr.False => "false"
     case Expr.Null => "null"
-    case Expr.Bytes(b: Array[Byte]) => HexConversions.formatHexBinary(b)
+    case Expr.Bytes(b, representsId) =>
+      val prefix = if (representsId) "#" else "" // #-prefix matches [[qidToPrettyString]]
+      prefix + HexConversions.formatHexBinary(b)
 
     case Expr.Node(id, lbls, props) =>
       val propsStr = props
@@ -2194,25 +2398,30 @@ sealed abstract class Value extends Expr {
   }
 }
 object Value {
+  // utility for comparing maps' (already key-sorted) entries
+  private val sortedMapEntryOrdering = Ordering.Tuple2(Ordering.String, ordering)
 
   /** Compare two property values in a strict homogeneous fashion (ex: `x < y`)
     *
-    * This form of comparision fails if given a non-property type (such as a
+    * This order implements the conceptual model of "comparability"
+    * outlined in the OpenCypher 9 spec.
+    *
+    * This form of comparison fails if given a non-property type (such as a
     * list or a node) or if given operands of different types.
     *
     * @see [[https://neo4j.com/docs/cypher-manual/current/syntax/operators/#cypher-comparison]]
     * @note the docs are stricter than Neo4j. I've followed in Neo4j's steps.
     *
-    * @param lhs the left-hand side of the comparision
-    * @param rhs the right-hand side of the comparision
+    * @param lhs the left-hand side of the comparison
+    * @param rhs the right-hand side of the comparison
     * @return a negative integer, zero, or a positive integer if the LHS is less than, equal to, or
-    *         greater than the RHS (or [[scala.None]] if the comparision fails)
+    *         greater than the RHS (or [[scala.None]] if the comparison fails)
     */
   object partialOrder {
     @inline
     @throws[CypherException]
     def tryCompare(lhs: Value, rhs: Value): Option[Int] = (lhs, rhs) match {
-      // `null` taints the whole comparision
+      // `null` taints the whole comparison
       case (_, Expr.Null) | (Expr.Null, _) => None
 
       // Strings: lexicographic
@@ -2221,7 +2430,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Booleans: `false < true`
@@ -2233,7 +2442,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Bool),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Numbers: `NaN` is larger than all others
@@ -2249,7 +2458,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Number),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Dates
@@ -2258,14 +2467,14 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.LocalDateTime),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
       case (Expr.DateTime(i1), Expr.DateTime(i2)) => Some(i1.compareTo(i2))
       case (_: Expr.DateTime, other) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.DateTime),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
         )
 
       // Duration
@@ -2274,22 +2483,45 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Duration),
           actualValue = other,
-          context = "right-hand side of a comparision"
+          context = "right-hand side of a comparison"
+        )
+      case (Expr.Map(m1), Expr.Map(m2)) =>
+        if (m1.valuesIterator.contains(Expr.Null) || m2.valuesIterator.contains(Expr.Null)) {
+          // Null makes maps incomparable
+          None
+        } else {
+          // Otherwise match ORDER BY because the semantics are at our discretion
+          Some(
+            ((m1.view) zip (m2.view))
+              .map { case (entry1, entry2) => sortedMapEntryOrdering.compare(entry1, entry2) }
+              .dropWhile(_ == 0)
+              .headOption
+              .getOrElse(JavaInteger.compare(m1.size, m2.size))
+          )
+        }
+      case (_: Expr.Map, other) =>
+        throw CypherException.TypeMismatch(
+          expected = Seq(Type.Map),
+          actualValue = other,
+          context = "right-hand side of a comparison"
         )
 
-      // TODO: Compare lists, maps, possibly more
+      // TODO: Compare lists, possibly more
 
       // Not comparable
       case (other, _) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str, Type.Bool, Type.Number, Type.Duration, Type.LocalDateTime, Type.DateTime),
           actualValue = other,
-          context = "left-hand side of a comparision"
+          context = "left-hand side of a comparison"
         )
     }
   }
 
   /** A reflexive, transitive, symmetric ordering of all values (for `ORDER BY`)
+    *
+    * This order implements the conceptual model of "orderability and equivalence"
+    * outlined in the OpenCypher 9 spec.
     *
     * IMPORTANT: do not use this ordering in evaluating cypher expressions. In
     * expressions, you probably need [[partialOrder]]. This order explicitly
@@ -2376,17 +2608,20 @@ object Value {
       case (_, _: Expr.List) => -1
 
       // Maps comes next...
-      // TODO: we should be comparing keys in ascending order
       case (Expr.Map(m1), Expr.Map(m2)) =>
-        val comp = JavaInteger.compare(m1.size, m2.size)
-        if (comp != 0) comp
-        else JavaInteger.compare(m1.hashCode, m2.hashCode)
+        // Map orderability written to be consistent with other cypher systems, though underspecified in openCypher.
+        // See [[CypherEquality]] test suite for some examples
+        ((m1.view) zip (m2.view))
+          .map { case (entry1, entry2) => sortedMapEntryOrdering.compare(entry1, entry2) }
+          .dropWhile(_ == 0)
+          .headOption
+          .getOrElse(JavaInteger.compare(m1.size, m2.size))
       case (_: Expr.Map, _) => 1
       case (_, _: Expr.Map) => 1
 
       // Next byte strings
       // TODO: where do these actually go?
-      case (Expr.Bytes(b1), Expr.Bytes(b2)) =>
+      case (Expr.Bytes(b1, _), Expr.Bytes(b2, _)) =>
         TypeclassInstances.ByteArrOrdering.compare(b1, b2)
       case (_: Expr.Bytes, _) => 1
       case (_, _: Expr.Bytes) => 1
@@ -2405,7 +2640,11 @@ object Value {
     }
   }
 
-  /** Ternary comparision
+  /** Ternary comparison
+    *
+    * This comparison implements the conceptual model of "equality"  outlined in
+    * the OpenCypher 9 spec. This is consistent with comparability (ie [[partialOrder]])
+    * but not necessarily with orderability or equivalence (ie [[ordering]])
     *
     * [[Expr.Null]] represents some undetermined value. This leads to a handful of
     * surprising identities:
@@ -2444,7 +2683,7 @@ object Value {
     case (Expr.True, Expr.True) => Expr.True
     case (Expr.False, Expr.False) => Expr.True
     case (Expr.Str(s1), Expr.Str(s2)) => Expr.Bool.apply(s1 == s2)
-    case (Expr.Bytes(b1), Expr.Bytes(b2)) => Expr.Bool.apply(b1 sameElements b2)
+    case (Expr.Bytes(b1, _), Expr.Bytes(b2, _)) => Expr.Bool.apply(b1 sameElements b2)
 
     case (Expr.List(vs1), Expr.List(vs2)) if vs1.length == vs2.length =>
       vs1
@@ -2494,6 +2733,7 @@ object Value {
     case bytes: Array[Byte] => Expr.Bytes(bytes)
 
     case vector: Vector[Any] => Expr.List(vector.map(fromAny))
+    case list: List[Any] => Expr.List(list.view.map(fromAny).toVector)
     case map: Map[_, _] =>
       val builder = Map.newBuilder[String, Value]
       for ((keyAny, elem) <- map)
@@ -2565,7 +2805,8 @@ object Value {
     case Expr.Floating(dbl) => ujson.Num(dbl)
     case Expr.List(vs) => ujson.Arr.from(vs.view.map(toJson))
     case Expr.Map(kvs) => ujson.Obj.from(kvs.view.map(kv => kv._1 -> toJson(kv._2)))
-    case Expr.Bytes(byteArray) => ujson.Arr.from(byteArray)
+    case Expr.Bytes(byteArray, false) => ujson.Arr.from(byteArray)
+    case Expr.Bytes(byteArray, true) => ujson.Str(QuineId(byteArray).pretty)
     case Expr.LocalDateTime(localDateTime) => ujson.Str(localDateTime.toString)
     case Expr.DateTime(zonedDateTime) => ujson.Str(zonedDateTime.toString)
     case Expr.Duration(duration) => ujson.Str(duration.toString)

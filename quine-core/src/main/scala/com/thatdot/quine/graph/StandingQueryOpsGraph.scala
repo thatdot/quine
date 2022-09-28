@@ -1,8 +1,8 @@
 package com.thatdot.quine.graph
 
 import java.time.Instant
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{ConcurrentHashMap, ExecutionException}
 import java.{lang, util}
 
 import scala.collection.compat._
@@ -26,9 +26,17 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 /** Functionality for standing queries. */
 trait StandingQueryOpsGraph extends BaseGraph {
 
-  /** Map of all currently live standing queries.
+  /** Map of all currently live standing queries
     */
-  def runningStandingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery]
+  private val standingQueries: concurrent.Map[StandingQueryId, RunningStandingQuery] =
+    new ConcurrentHashMap[StandingQueryId, RunningStandingQuery]().asScala
+
+  def runningStandingQueries: scala.collection.Map[StandingQueryId, RunningStandingQuery] = standingQueries.toMap
+
+  def runningStandingQuery(standingQueryId: StandingQueryId): Option[RunningStandingQuery] =
+    standingQueries.get(standingQueryId)
+
+  def clearStandingQueries(): Unit = standingQueries.clear()
 
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.CypherStandingBehavior])
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.DomainNodeIndexBehavior])
@@ -46,7 +54,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         logger.info(
           s"Performing a full update of the standingQueryPartIndex because of query for part IDs ${keys.asScala.toList}"
         )
-        val runningSqs = runningStandingQueries.values.view
+        val runningSqs = runningStandingQueries.values
           .map(_.query.query)
           .collect { case StandingQueryPattern.SqV4(sq, _, _) => sq }
           .toVector
@@ -54,15 +62,15 @@ trait StandingQueryOpsGraph extends BaseGraph {
           .foldLeft(Set.empty[cypher.StandingQuery])((acc, sq) => cypher.StandingQuery.indexableSubqueries(sq, acc))
           .map(sq => sq.id -> sq)
           .toMap
-        if (keys.asScala.exists(!runningSqParts.keySet.contains(_)))
-          logger.warn("Unable to find running StandingQuery part")
+        val runningPartsKeys = runningSqParts.keySet
+        keys.asScala.collectFirst {
+          case part if !runningPartsKeys.contains(part) =>
+            logger.warn(s"Unable to find running Standing Query part: $part")
+        }
         runningSqParts.asJava
       }
       def load(k: StandingQueryPartId): cypher.StandingQuery = loadAll(Seq(k).asJava).get(k)
     })
-
-  def getStandingQuery(sqId: StandingQueryId): Option[RunningStandingQuery] =
-    runningStandingQueries.get(sqId)
 
   /** Report a new result for the specified standing query to this host's results queue for that query
     *
@@ -72,7 +80,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     * @return if the result was successfully enqueued
     */
   def reportStandingResult(sqId: StandingQueryId, sqResult: SqResultLike): Boolean =
-    getStandingQuery(sqId).exists { standingQuery =>
+    runningStandingQuery(sqId) exists { standingQuery =>
       if (sqResult.isPositive || standingQuery.query.query.includeCancellation) {
         standingQuery.resultMeter.mark()
         standingQuery.resultsQueue.offer(sqResult.standingQueryResult(standingQuery.query, idProvider)) match {
@@ -80,12 +88,28 @@ trait StandingQueryOpsGraph extends BaseGraph {
             true
           case QueueOfferResult.Failure(err) =>
             standingQuery.droppedCounter.inc()
-            logger.warn(s"onResult: failed to enqueue standing query ${standingQuery.query.name} result $sqResult", err)
-            false
-          case other =>
-            standingQuery.droppedCounter.inc()
             logger.warn(
-              s"onResult: failed to enqueue standing query ${standingQuery.query.name} result $sqResult ($other)"
+              s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name} due to error: ${err.getMessage}"
+            )
+            logger.info(
+              s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}",
+              err
+            )
+            false
+          case QueueOfferResult.QueueClosed =>
+            logger.warn(
+              s"onResult: Standing Query Result arrived but result queue already closed for: ${standingQuery.query.name}"
+            )
+            logger.info(
+              s"onResult: Standing Query result queue already closed for: ${standingQuery.query.name}. Dropped result: ${sqResult}"
+            )
+            false
+          case QueueOfferResult.Dropped =>
+            logger.warn(
+              s"onResult: dropped Standing Query result for: ${standingQuery.query.name}"
+            )
+            logger.info(
+              s"onResult: dropped Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}"
             )
             false
         }
@@ -96,8 +120,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   /** Complete all standing query streams (since the graph is shutting down */
   def shutdownStandingQueries(): Future[Unit] = Future
-    .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.cancel())
-    .map(_ => ())
+    .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.cancel())(
+      implicitly,
+      shardDispatcherEC
+    )
+    .map(_ => ())(shardDispatcherEC)
 
   /** Register a new standing query
     *
@@ -120,29 +147,43 @@ trait StandingQueryOpsGraph extends BaseGraph {
     outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
     queueBackpressureThreshold: Int = StandingQuery.DefaultQueueBackpressureThreshold,
     queueMaxSize: Int = StandingQuery.DefaultQueueMaxSize,
+    shouldCalculateResultHashCode: Boolean = false,
     skipPersistor: Boolean = false,
     sqId: StandingQueryId = StandingQueryId.fresh() // fresh ID if none is provided
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
     requiredGraphIsReady()
     val rsqAndOutputs =
-      startStandingQuery(sqId = sqId, name, pattern, outputs, queueBackpressureThreshold, queueMaxSize)
+      startStandingQuery(
+        sqId = sqId,
+        name,
+        pattern,
+        outputs,
+        queueBackpressureThreshold,
+        queueMaxSize,
+        shouldCalculateResultHashCode
+      )
     if (!skipPersistor) {
       persistor.persistStandingQuery(rsqAndOutputs._1.query)
     }
     rsqAndOutputs
   }
 
+  /** Start a standing query that will be registered on all nodes awoken in the graph
+    *
+    * INV: This will never throw [[GraphNotReadyException]], because it is used as part of readying a graph
+    */
   protected def startStandingQuery(
     sqId: StandingQueryId,
     name: String,
     pattern: StandingQueryPattern,
     outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
     queueBackpressureThreshold: Int,
-    queueMaxSize: Int
+    queueMaxSize: Int,
+    shouldCalculateResultHashCode: Boolean
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
-    val sq = StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize)
+    val sq = StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
     val (runningSq, killSwitches) = runStandingQuery(sq, outputs)
-    runningStandingQueries.put(sqId, runningSq)
+    standingQueries.put(sqId, runningSq)
 
     // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
     pattern match {
@@ -170,10 +211,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
     skipPersistor: Boolean = false
   ): Option[Future[(StandingQuery, Instant, Int)]] = {
     requiredGraphIsReady()
-    runningStandingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
+    standingQueries.remove(ref).map { (sq: RunningStandingQuery) =>
       val persistence = if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)
       val cancellation = sq.cancel()
-      persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))
+      persistence.zipWith(cancellation)((_, _) => (sq.query, sq.startTime, sq.bufferCount))(shardDispatcherEC)
     }
   }
 
@@ -195,7 +236,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     */
   def wireTapStandingQuery(ref: StandingQueryId): Option[Source[StandingQueryResult, NotUsed]] = {
     requiredGraphIsReady()
-    runningStandingQueries.get(ref).map(_.resultsHub)
+    runningStandingQuery(ref).map(_.resultsHub)
   }
 
   /** Ensure universal standing queries have been propagated out to all the
@@ -254,8 +295,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
           if (sq.queueBackpressureThreshold <= inBuffer.getAndSet(0)) {
             ingestValve.open()
           }
-        }
-        (mat, done)
+        }(shardDispatcherEC)
+        mat -> done
       }
       .map { (x: StandingQueryResult) =>
         if (sq.queueBackpressureThreshold == inBuffer.getAndDecrement()) {
@@ -263,7 +304,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
         }
         x
       }
-      .toMat(BroadcastHub.sink[StandingQueryResult](bufferSize = 8))(Keep.both)
+      .named(s"sq-results-for-${sq.name}")
+      .toMat(
+        BroadcastHub.sink[StandingQueryResult](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}")
+      )(Keep.both)
       // bufferSize = 8 ensures all consumers attached to the hub are kept within 8 elements of each other
       .run()
 
@@ -273,7 +317,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         logSqOutputFailure(sq.name, err)
         cancelStandingQuery(sq.id)
       case Success(_) => // Do nothing. This is the shutdown case.
-    }
+    }(shardDispatcherEC)
 
     val killSwitches = outputs.map { case (name, o) =>
       val killer = o.viaMat(KillSwitches.single)(Keep.right)
@@ -289,13 +333,15 @@ trait StandingQueryOpsGraph extends BaseGraph {
         def offer(r: StandingQueryResult) = {
           val res = queue.offer(r)
           if (res == QueueOfferResult.Enqueued) {
-            if (sq.queueBackpressureThreshold == inBuffer.incrementAndGet()) {
+            if (sq.queueBackpressureThreshold == inBuffer.incrementAndGet())
               ingestValve.close()
-            }
+            if (sq.shouldCalculateResultHashCode)
+              // Integrate each standing query result hash code using `add`
+              // so the result is order agnostic
+              metrics.standingQueryResultHashCode(sq.id).add(r.dataHashCode)
           }
           res
         }
-
       },
       query = sq,
       resultsHub = resultsHub,

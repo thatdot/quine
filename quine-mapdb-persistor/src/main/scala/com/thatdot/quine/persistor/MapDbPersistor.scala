@@ -21,6 +21,7 @@ import org.mapdb.{DB, DBMaker, DataInput2, HTreeMap, Serializer}
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on MapDB
   *
@@ -63,8 +64,8 @@ final class MapDbPersistor(
   val nodeEventTotalSize: Counter =
     metricRegistry.counter(MetricRegistry.name("map-db-persistor", "journal-event-total-size"))
 
-  implicit val ioDispatcher: ExecutionContext =
-    actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
+  val ioDispatcher: ExecutionContext =
+    new QuineDispatchers(actorSystem).blockingDispatcherEC
 
   // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `akka.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
   // TODO: don't hardcode magical values - config them
@@ -83,7 +84,7 @@ final class MapDbPersistor(
     case None => Cancellable.alreadyCancelled
     case Some(dur) =>
       actorSystem.scheduler.scheduleWithFixedDelay(dur, dur)(() => db.commit())(
-        actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
+        ioDispatcher
       )
   }
 
@@ -134,29 +135,29 @@ final class MapDbPersistor(
     .hashMap("metaData", Serializer.STRING, Serializer.BYTE_ARRAY)
     .createOrOpen()
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future(
       journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty
     )(ioDispatcher)
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future {
-    val serializedEvent = PersistenceCodecs.eventFormat.write(event)
-    nodeEventSize.update(serializedEvent.size)
-    nodeEventTotalSize.inc(serializedEvent.size.toLong)
-    val _ = journals.put(
-      Array[AnyRef](id.array, Long.box(atTime.eventTime)),
-      serializedEvent
-    )
-  }.recoverWith { case e =>
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
+    val eventsMap = for { NodeChangeEvent.WithTime(event, atTime) <- events } yield {
+      val serializedEvent = PersistenceCodecs.eventFormat.write(event)
+      nodeEventSize.update(serializedEvent.size)
+      nodeEventTotalSize.inc(serializedEvent.size.toLong)
+      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+    }
+    val _ = journals.putAll((eventsMap toMap).asJava)
+  }(ioDispatcher).recoverWith { case e =>
     logger.error("persistEvent failed.", e); Future.failed(e)
-  }
+  }(ioDispatcher)
 
-  def getJournal(
+  def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future {
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -172,12 +173,16 @@ final class MapDbPersistor(
 
     journals
       .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
-      .values()
+      .entrySet()
       .iterator()
       .asScala
-      .map((bytes: Array[Byte]) => PersistenceCodecs.eventFormat.read(bytes).get)
-      .toVector
-  }.recoverWith { case e => logger.error("getJournal failed", e); Future.failed(e) }
+      .map { entry =>
+        val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[Long])
+        val event = PersistenceCodecs.eventFormat.read(entry.getValue).get
+        NodeChangeEvent.WithTime(event, eventTime)
+      }
+      .toSeq
+  }(ioDispatcher).recoverWith { case e => logger.error("getJournal failed", e); Future.failed(e) }(ioDispatcher)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
@@ -192,6 +197,7 @@ final class MapDbPersistor(
             List(qid)
           }
       }
+      .named("mapdb-all-node-scan-via-journals")
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
@@ -206,13 +212,14 @@ final class MapDbPersistor(
             List(qid)
           }
       }
+      .named("mapdb-all-node-scan-via-snapshots")
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] =
     Future {
       val _ = snapshots.put(Array[AnyRef](id.array, Long.box(atTime.eventTime)), snapshotBytes)
-    }.recoverWith { case e =>
+    }(ioDispatcher).recoverWith { case e =>
       logger.error("persistSnapshot failed.", e); Future.failed(e)
-    }
+    }(ioDispatcher)
 
   /* MapDB has a [bug](https://github.com/jankotek/mapdb/issues/966) that sporadically causes
    * errors in `getLatestSnapshot`. This is an attempt to reduce the likelihood of this error
@@ -225,13 +232,13 @@ final class MapDbPersistor(
     remainingAttempts: Int
   ): Future[Option[JavaMap.Entry[Array[AnyRef], Array[Byte]]]] =
     Future
-      .apply(Option(snapshots.subMap(startingKey, true, endingKey, true).lastEntry()))
+      .apply(Option(snapshots.subMap(startingKey, true, endingKey, true).lastEntry()))(ioDispatcher)
       .recoverWith {
         case e: org.mapdb.DBException.GetVoid if remainingAttempts > 0 =>
           // This is a known MapDB issue, see <https://github.com/jankotek/mapdb/issues/966>
           logger.info(s"tryGetLatestSnapshot failed. Remaining attempts: $remainingAttempts Message: ${e.getMessage}")
           tryGetLatestSnapshot(startingKey, endingKey, remainingAttempts - 1)
-      }
+      }(ioDispatcher)
 
   def getLatestSnapshot(
     id: QuineId,
@@ -251,17 +258,17 @@ final class MapDbPersistor(
           val snapshot: Array[Byte] = entry.getValue
           time -> snapshot
         }
-      }
+      }(ioDispatcher)
       .recoverWith { case e =>
         logger.error(s"getLatestSnapshot failed on $id. ${e.getMessage}")
         Future.failed(e)
-      }
+      }(ioDispatcher)
   }
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val bytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
     val _ = standingQueries.add(bytes)
-  }
+  }(ioDispatcher)
 
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val bytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
@@ -271,13 +278,13 @@ final class MapDbPersistor(
     standingQueryStates
       .subMap(Array[AnyRef](topLevelId), Array[AnyRef](topLevelId, null))
       .clear()
-  }
+  }(ioDispatcher)
 
-  def getStandingQueries: Future[List[StandingQuery]] = Future(standingQueries.iterator().asScala)
-    .map(_.map(b => PersistenceCodecs.standingQueryFormat.read(b).get).toList)
+  def getStandingQueries: Future[List[StandingQuery]] = Future(standingQueries.iterator().asScala)(ioDispatcher)
+    .map(_.map(b => PersistenceCodecs.standingQueryFormat.read(b).get).toList)(ioDispatcher)
     .recoverWith { case e =>
       logger.error("getStandingQueries failed.", e); Future.failed(e)
-    }
+    }(ioDispatcher)
 
   override def getStandingQueryStates(
     id: QuineId
@@ -303,7 +310,7 @@ final class MapDbPersistor(
     }
 
     toReturn.result()
-  }
+  }(ioDispatcher)
 
   override def setStandingQueryState(
     standingQuery: StandingQueryId,
@@ -317,15 +324,15 @@ final class MapDbPersistor(
       case Some(newValue) =>
         val _ = standingQueryStates.put(Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid), newValue)
     }
-  }
+  }(ioDispatcher)
 
-  def getMetaData(key: String): Future[Option[Array[Byte]]] = Future(Option(metaData.get(key)))
+  def getMetaData(key: String): Future[Option[Array[Byte]]] = Future(Option(metaData.get(key)))(ioDispatcher)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future {
     val toReturn = Map.newBuilder[String, Array[Byte]]
     metaData.forEach((key: String, value: Array[Byte]) => toReturn += key -> value)
     toReturn.result()
-  }
+  }(ioDispatcher)
 
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = Future {
     newValue match {
@@ -334,7 +341,7 @@ final class MapDbPersistor(
       case Some(value) =>
         val _ = metaData.put(key, value)
     }
-  }
+  }(ioDispatcher)
 
   /** Shutdown the DB cleanly, so that it can be opened back up later */
   def shutdown(): Future[Unit] = {
@@ -389,7 +396,7 @@ object MapDbPersistor {
       if (createParentDir) {
         val parentDir = path.getAbsoluteFile.getParentFile
         if (parentDir.mkdirs())
-          logger.warn("{} did not exist; created.", parentDir)
+          logger.warn("Parent directory: {} of requested persistence location did not exist; created.", parentDir)
       }
       PersistedDb(path)
     }

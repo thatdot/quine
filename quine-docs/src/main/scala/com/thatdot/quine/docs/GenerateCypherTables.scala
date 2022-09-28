@@ -5,6 +5,7 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import org.pegdown.PegDownProcessor
 
+import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
 
 object GenerateCypherTables extends App {
@@ -129,9 +130,11 @@ object GenerateCypherTables extends App {
   com.thatdot.quine.compiler.cypher.resolveFunctions
 
   val paths: List[(Path, String)] = List(
-    builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions),
-    userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values),
-    userDefinedProcsPath -> userDefinedProcedureTable(Proc.userDefinedProcedures.values)
+    builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions.sortBy(_.name)),
+    userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values.toList.sortBy(_.name)),
+    userDefinedProcsPath -> userDefinedProcedureTable(
+      (new CypherStandingWiretap(_ => None) :: Proc.userDefinedProcedures.values.toList).sortBy(_.name)
+    )
   )
 
   for ((outputPath, outputString) <- paths) {

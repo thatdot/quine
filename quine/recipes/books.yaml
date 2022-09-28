@@ -1,0 +1,135 @@
+version: 1
+title: Book ratings demo
+contributor: https://github.com/stevenbenjamin
+summary: Demonstration of building a graph of reviewers, their reviews and products
+description: |-
+  Raw review data is imported from an example data set.
+  For each review we create nodes for the review, the reviewer (user) and the
+  reviewed product.
+
+  Input review fields:
+  ------------------
+  reviewerID - ID of the reviewer, e.g. A2SUAM1J3GNN3B
+  asin - ID of the product, e.g. 0000013714
+  reviewerName - name of the reviewer
+  vote - helpful votes of the review
+  style - a dictionary of the product metadata, e.g., "Format" is "Hardcover"
+  reviewText - text of the review
+  overall - rating of the product
+  summary - summary of the review
+  unixReviewTime - time of the review (unix time)
+  reviewTime - time of the review (raw)
+  image - images that users post after they have received the product
+
+  Example data can be found at
+  -------------------
+  http://deepyeti.ucsd.edu/jianmo/amazon/categoryFilesSmall/Books_5.json.gz
+
+ingestStreams:
+  - type: FileIngest
+    path: $in_file
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (review), (product), (user) 
+        WHERE id(review) = idFrom("Review", $that.reviewerID, $that.asin, $that.reviewTime)
+          AND id(product) = idFrom("Product", $that.asin)
+          AND id(user) = idFrom("User", $that.reviewerID)
+        SET review = $that, review:Review,
+            product.id = $that.asin, product:Product,
+            user.name = $that.reviewerName, user:User,
+            review.ok = $that.overall > 4
+        WITH review, product, user
+        CALL incrementCounter(user, "reviewsPosted")
+        CALL incrementCounter(product, "reviews")
+        CALL incrementCounter(product, "total_score", $that.overall)
+        CREATE (product)<-[:REVIEWED]-(review)<-[:POSTED]-(user)
+        WITH $that.asin AS asin
+        MATCH (p) WHERE id(p) = idFrom("Product", asin)
+        SET p.avg = tofloat(p.total_score) / tofloat(p.reviews)
+standingQueries:        
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (r:Review) RETURN DISTINCT id(r) AS id
+    outputs:
+      trending-products:
+        type: CypherQuery
+        query: |-
+          MATCH (p:Product)<-[:REVIEWED]-(r:Review)
+          WHERE strId(r) = $that.data.id
+          MATCH (p2:Product)<-[:REVIEWED]-(r2:Review)
+          WHERE id(p2) = id(p)
+          WITH p2, count(r2) as ct, abs(r2.unixReviewTime - r.unixReviewTime) as diff, r.unixReviewTime as timestamp, r.reviewTime as date
+          WHERE ct > 5 AND diff <= 86400000
+          RETURN p2.id as product_id, ct, timestamp, date
+        andThen:
+          type: PrintToStandardOut
+          
+sampleQueries:
+  - name: Most Active User
+    query: |-
+       MATCH (u:User) WITH u ORDER BY u.reviewsPosted DESC LIMIT 1 MATCH (u)--(m) RETURN u, m
+    queryLanguage: Cypher
+    sort: Node
+  - name: Most Reviewed Book
+    query: MATCH (p:Product) WITH p ORDER BY p.reviews DESC LIMIT 1 MATCH (p)--(r) RETURN p, r
+    queryLanguage: Cypher
+    sort: Node
+  - name: Good Reviews
+    query: MATCH (r:Review) WHERE r.ok RETURN r
+    sort: Node
+  - name: Highest Rated Book
+    query: MATCH (p:Product) RETURN p ORDER BY p.avg DESC LIMIT 1
+    sort: Node
+  - name: Lowest Rated Book
+    query: MATCH (p:Product) RETURN p ORDER BY p.avg ASC LIMIT 1
+    sort: Node
+quickQueries: []
+nodeAppearances:
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: User
+    label:
+      type: Property
+      key: name
+    color: "#490e55"
+    icon: ion-person
+  - predicate:
+      propertyKeys: []
+      knownValues: {
+        ok: false
+      }
+      dbLabel: Review
+    color: "#c70039"
+    size: 40.00
+    icon: ion-thumbsdown
+    label:
+      type: Property
+      key: overall
+      prefix: ""
+  - predicate:
+      propertyKeys: []
+      knownValues: {
+        ok: true
+      }
+      dbLabel: Review
+    color: "#32a139"
+    size: 40.00
+    icon: ion-thumbsup
+    label:
+      type: Property
+      key: overall
+      prefix: ""
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Product
+    color: "#66490c"
+    icon: ion-document
+    size: 40.00
+    label:
+      type: Property
+      key: id
+      prefix: "product: "

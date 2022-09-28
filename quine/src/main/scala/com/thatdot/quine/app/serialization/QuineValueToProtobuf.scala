@@ -112,7 +112,7 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
         case JavaType.LONG => Right(Long.box(time.toEpochMilli))
         case JavaType.STRING => Right(time.toString)
         // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
-        // to be able to give an error message that says "Yes, it's a message, but not the write type of message."
+        // to be able to give an error message that says "Yes, it's a message, but not the right type of message."
         // The current error message will say "Can't coerce DateTime to MESSAGE" in that case,
         // but that should give you a clue of what's going on anyways.
         case JavaType.MESSAGE if field.getMessageType == Timestamp.getDescriptor =>

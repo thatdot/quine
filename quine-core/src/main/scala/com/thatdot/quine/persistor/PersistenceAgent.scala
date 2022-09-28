@@ -1,5 +1,6 @@
 package com.thatdot.quine.persistor
 
+import scala.compat.CompatBuildFrom.implicitlyBF
 import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -17,13 +18,12 @@ import com.thatdot.quine.graph.{
   StandingQueryPartId
 }
 import com.thatdot.quine.model.QuineId
-
-import PersistenceAgent.CurrentVersion
+import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
 
 object PersistenceAgent {
 
   /** persistence version implemented by the running persistor */
-  val CurrentVersion: Version = Version(11, 0, 0)
+  val CurrentVersion: Version = Version(12, 0, 0)
 
   /** key used to store [[Versions]] in persistence metadata */
   val VersionMetadataKey = "serialization_version"
@@ -42,12 +42,8 @@ abstract class PersistenceAgent extends StrictLogging {
     * are considered Quine-core data.
     *
     * This is used to determine when an existing persistor's data may be safely used by any Quine version.
-    *
-    * @param ec This operation queries several different kinds of data (journals, snapshots, etc). `ec` acts
-    *           as a suggestion for which execution context to use while combining these data sources. Implementations
-    *           may ignore this parameter.
     */
-  def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = Future.successful(false)
+  def emptyOfQuineData(): Future[Boolean] = Future.successful(false)
 
   /** Get the version that will be used for a certain subset of data
     *
@@ -64,43 +60,44 @@ abstract class PersistenceAgent extends StrictLogging {
     versionMetaDataKey: String,
     currentVersion: Version,
     isDataEmpty: () => Future[Boolean]
-  ): Future[Version] = {
-    implicit val ec = ExecutionContexts.parasitic
+  ): Future[Version] =
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
-        logger.info(s"No version was set in the persistence backend for $context, initializing to $currentVersion")
-        setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+        logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
+        setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+          .map(_ => currentVersion)(ExecutionContexts.parasitic)
 
       case Some(persistedVBytes) =>
         Version.fromBytes(persistedVBytes) match {
           case None =>
-            val msg = s"Persistence backend cannot parse version for $context at $versionMetaDataKey"
+            val msg = s"Persistence backend cannot parse version for: $context at: $versionMetaDataKey"
             Future.failed(new IllegalStateException(msg))
           case Some(compatibleV) if currentVersion.canReadFrom(compatibleV) =>
             if (currentVersion <= compatibleV) {
               logger.info(
-                s"Persistence backend for $context is at $compatibleV, this is usable as-is by $currentVersion"
+                s"Persistence backend for: $context is at: $compatibleV, this is usable as-is by: $currentVersion"
               )
               Future.successful(compatibleV)
             } else {
               logger.info(
-                s"Persistence backend for $context was at $compatibleV, upgrading to compatible $currentVersion"
+                s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
               )
-              setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+              setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+                .map(_ => currentVersion)(ExecutionContexts.parasitic)
             }
           case Some(incompatibleV) =>
             isDataEmpty().flatMap {
               case true =>
                 logger.warn(
-                  s"Persistor reported that the last run used an incompatible $incompatibleV for $context, but no data was saved, so setting version to $currentVersion and continuing"
+                  s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
                 )
-                setMetaData(versionMetaDataKey, Some(currentVersion.toBytes)).map(_ => currentVersion)
+                setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+                  .map(_ => currentVersion)(ExecutionContexts.parasitic)
               case false =>
                 Future.failed(new IncompatibleVersion(context, incompatibleV, currentVersion))
-            }
+            }(ExecutionContexts.parasitic)
         }
-    }
-  }
+    }(ExecutionContexts.parasitic)
 
   /** Gets the version of data last stored by this persistor, or PersistenceAgent.CurrentVersion
     *
@@ -117,33 +114,45 @@ abstract class PersistenceAgent extends StrictLogging {
       "core quine data",
       PersistenceAgent.VersionMetadataKey,
       CurrentVersion,
-      () => emptyOfQuineData()(ExecutionContexts.parasitic)
+      () => emptyOfQuineData()
     )
 
   /** Persist an individual event affecting a node's state
     *
     * @param id    affected node
     * @param atTime when the event occurs
-    * @param event state change
+    * @param events event records to write
     * @return something that completes 'after' the write finishes
     */
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit]
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit]
 
-  /** Fetch a time-ordered list of events affecting a node's state
-    *
-    * TODO: for debug purposes, consider adding a version of this function that returns events
-    *       along with the time at which they occur
+  /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
     * @param id         affected node
-    * @param startingAt only get events that occured 'at' or 'after' this moment
-    * @param endingAt   only get events that occured 'at' or 'before' this moment
-    * @return node events, ordered by ascending timestamp
+    * @param startingAt only get events that occurred 'at' or 'after' this moment
+    * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @return node events without timestamps, ordered by ascending timestamp
     */
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]]
+  ): Future[Iterable[NodeChangeEvent]] =
+    getJournalWithTime(id, startingAt, endingAt).map(_.map(_.event))(ExecutionContexts.parasitic)
+
+  /** Fetch a time-ordered list of events with timestamps affecting a node's state,
+    * discarding timestamps.
+    *
+    * @param id         affected node
+    * @param startingAt only get events that occurred 'at' or 'after' this moment
+    * @param endingAt   only get events that occurred 'at' or 'before' this moment
+    * @return node events with timestamps, ordered by ascending timestamp
+    */
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]]
 
   /** Get a source of every node in the graph which has been written to the
     * journal store.
@@ -235,7 +244,7 @@ abstract class PersistenceAgent extends StrictLogging {
 
   /** Update (or remove) a given metadata key
     *
-    * @param key      name of the metadata
+    * @param key      name of the metadata - must be nonempty
     * @param newValue what to store ([[None]] corresponds to clearing out the value)
     */
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
@@ -243,7 +252,7 @@ abstract class PersistenceAgent extends StrictLogging {
   /** Update (or remove) a local metadata key.
     * For a local persistor, this is the same as setMetaData.
     *
-    * @param key           name of the metadata
+    * @param key           name of the metadata - must be nonempty
     * @param localMemberId Identifier for this member's position in the cluster.
     * @param newValue      what to store ([[None]] corresponds to clearing out the value)
     */
@@ -258,94 +267,80 @@ abstract class PersistenceAgent extends StrictLogging {
     */
   def shutdown(): Future[Unit]
 
-  /** Handle for customizing a node's view into the peristence layer.
-    *
-    * This can be used to dynamically override how certain nodes save (or don't)
-    * their data. For instance, one could use the reference to the node to look
-    * up a certain `dont_write` property and ignore calls to `persistEvent` or
-    * `persistSnapshot` if that property exists.
-    *
-    * @note reference to the node should not leak out of the `InNodePersistor`
-    * @return an inidivdual node's view of the persistence layer
-    */
-  def forNode(qid: QuineId): InNodePersistor = new NodePersistor(qid, this)
-
   /** Configuration that determines how the client of PersistenceAgent should use it.
     */
   def persistenceConfig: PersistenceConfig
 }
 
-/** Node-specific interface into a Quine storage layer
-  *
-  * @see [[PersistenceAgent#forNode]]
-  */
-trait InNodePersistor {
-
-  /** @see [[PersistenceAgent#persistEvent]] */
-  def persistEvent(atTime: EventTime, event: NodeChangeEvent): Future[Unit]
-
-  /** @see [[PersistenceAgent#getJournal]] */
-  def getJournal(startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]]
-
-  /** @see [[PersistenceAgent#persistSnapshot]] */
-  def persistSnapshot(atTime: EventTime, state: Array[Byte]): Future[Unit]
-
-  /** @see [[PersistenceAgent#getLatestSnapshot]] */
-  def getLatestSnapshot(upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]]
-
-  /** @see [[PersistenceAgent#getStandingQueryStates]] */
-  def getStandingQueryStates(): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]]
-
-  /** @see [[PersistenceAgent#setStandingQueryState]] */
-  def setStandingQueryState(
-    standingQuery: StandingQueryId,
-    standingQueryId: StandingQueryPartId,
-    state: Option[Array[Byte]]
-  ): Future[Unit]
-
-  def persistenceConfig: PersistenceConfig
+object MultipartSnapshotPersistenceAgent {
+  case class MultipartSnapshot(time: EventTime, parts: Seq[MultipartSnapshotPart])
+  case class MultipartSnapshotPart(partBytes: Array[Byte], multipartIndex: Int, multipartCount: Int)
 }
 
-class NodePersistor(qid: QuineId, persistorParent: PersistenceAgent) extends InNodePersistor {
+/** Mixin for [[PersistenceAgent]] that stores snapshot blobs as smaller multi-part blobs.
+  * Because this makes snapshot writes non-atomic, it is possible only part of a snapshot will be
+  * successfully written. Therefore, when a snapshot is read, the snapshot's integrity is checked.
+  */
+trait MultipartSnapshotPersistenceAgent {
+  this: PersistenceAgent =>
 
-  def persistEvent(atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
-    persistorParent.persistEvent(qid, atTime, event)
+  import MultipartSnapshotPersistenceAgent._
 
-  def getJournal(startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
-    persistorParent.getJournal(qid, startingAt, endingAt)
+  val multipartSnapshotExecutionContext: ExecutionContext
+  val snapshotPartMaxSizeBytes: Int
 
-  def persistSnapshot(atTime: EventTime, state: Array[Byte]): Future[Unit] =
-    persistorParent.persistSnapshot(qid, atTime, state)
+  def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = {
+    val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
+    val partCount = parts.length
+    if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node: $id with part count: $partCount")
+    Future
+      .sequence {
+        for {
+          (partBytes, partIndex) <- parts.zipWithIndex
+          multipartSnapshotPart = MultipartSnapshotPart(partBytes, partIndex, partCount)
+        } yield persistSnapshotPart(id, atTime, multipartSnapshotPart)
+      }(implicitlyBF, multipartSnapshotExecutionContext)
+      .map(_ => ())(ExecutionContexts.parasitic)
+  }
 
   def getLatestSnapshot(
+    id: QuineId,
     upToTime: EventTime
   ): Future[Option[(EventTime, Array[Byte])]] =
-    persistorParent.getLatestSnapshot(qid, upToTime)
+    getLatestMultipartSnapshot(id, upToTime).flatMap {
+      case Some(MultipartSnapshot(time, parts)) =>
+        if (validateSnapshotParts(parts))
+          Future.successful(Some((time, parts.flatMap(_.partBytes).toArray)))
+        else {
+          logger.warn(s"Failed reading multipart snapshot for id: $id upToTime: $upToTime; retrying with time: $time")
+          getLatestSnapshot(id, time)
+        }
+      case None =>
+        Future.successful(None)
+    }(multipartSnapshotExecutionContext)
 
-  def getStandingQueryStates(): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    persistorParent.getStandingQueryStates(qid)
+  private def validateSnapshotParts(parts: Seq[MultipartSnapshotPart]): Boolean = {
+    val partsLength = parts.length
+    var result = true
+    for { (MultipartSnapshotPart(_, multipartIndex, multipartCount), partIndex) <- parts.zipWithIndex } {
+      if (multipartIndex != partIndex) {
+        logger.warn(s"Snapshot part has unexpected index: $multipartIndex (expected: $partIndex)")
+        result = false
+      }
+      if (multipartCount != partsLength) {
+        logger.warn(s"Snapshot part has unexpected count: $multipartCount (expected: $partsLength)")
+        result = false
+      }
+    }
+    result
+  }
 
-  def setStandingQueryState(
-    standingQuery: StandingQueryId,
-    standingQueryId: StandingQueryPartId,
-    state: Option[Array[Byte]]
-  ): Future[Unit] = persistorParent.setStandingQueryState(standingQuery, qid, standingQueryId, state)
+  def persistSnapshotPart(id: QuineId, atTime: EventTime, part: MultipartSnapshotPart): Future[Unit]
 
-  def persistenceConfig = persistorParent.persistenceConfig
-}
-
-/** Mix-in for persistors that don't save events (implements event related functions as no-ops) */
-trait NoJournalPersistenceAgent extends PersistenceAgent {
-
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future.unit
-
-  override def getJournal(
+  def getLatestMultipartSnapshot(
     id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
-
-  override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = Source.empty
+    upToTime: EventTime
+  ): Future[Option[MultipartSnapshot]]
 }
 
 final case class PersistorTerminatedException(msg: String) extends RuntimeException(msg)

@@ -3,6 +3,7 @@ package com.thatdot.quine.app
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets.UTF_8
 
+import cats.data.{NonEmptyList, Validated}
 import org.scalatest.EitherValues
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -125,7 +126,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           ),
           standingQueries = List(
             StandingQueryDefinition(
-              pattern = StandingQueryPattern.Cypher(query = "MATCH (n) RETURN id(n)"),
+              pattern = StandingQueryPattern.Cypher(query = "MATCH (n) RETURN DISTINCT id(n)"),
               outputs = Map(
                 "output-1" -> StandingQueryResultOutputUserDef.CypherQuery(
                   query = "X",
@@ -138,7 +139,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          statusQuery = Some(StatusQuery("match (n) return count(n)"))
+          statusQuery = Some(StatusQuery("MATCH (n) RETURN count(n)"))
         )
     )
   }
@@ -149,13 +150,19 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "c" -> "d",
       "$x" -> "y"
     )
-    assert(Recipe.applySubstitution("a", values) == "a")
-    assert(Recipe.applySubstitution("$a", values) == "b")
-    assert(Recipe.applySubstitution("$c", values) == "d")
-    assert(Recipe.applySubstitution("$$a", values) == "$a")
-    assert(Recipe.applySubstitution("foo $a bar", values) == "foo $a bar") // internal substitutions not supported
-    assertThrows[RuntimeException](Recipe.applySubstitution("$x", values)) // x is not defined
-    assert(Recipe.applySubstitution("$$x", values) == "$x") // $$x is not parsed as a token because $$ is a literal $
+    assert(Recipe.applySubstitution("a", values) == Validated.valid("a"))
+    assert(Recipe.applySubstitution("$a", values) == Validated.valid("b"))
+    assert(Recipe.applySubstitution("$c", values) == Validated.valid("d"))
+    assert(Recipe.applySubstitution("$$a", values) == Validated.valid("$a"))
+
+    // internal substitutions not supported
+    assert(Recipe.applySubstitution("foo $a bar", values) == Validated.valid("foo $a bar"))
+
+    // x is not defined
+    assert(Recipe.applySubstitution("$x", values) == Validated.invalid(Recipe.UnboundVariableError("x")).toValidatedNel)
+
+    // $$x is not parsed as a token because $$ is a literal $
+    assert(Recipe.applySubstitution("$$x", values) == Validated.valid("$x"))
   }
 
   test("recipe substitution") {
@@ -184,7 +191,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       "path" -> "/foo/bar"
     )
     assert(
-      Recipe.applySubstitutions(recipe.value, values) ==
+      Recipe.applySubstitutions(recipe.value, values) == Validated.valid(
         Recipe(
           version = 1,
           title = "bar",
@@ -209,6 +216,59 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           sampleQueries = List.empty[SampleQuery],
           statusQuery = Some(StatusQuery("match (n) return count(n)"))
         )
+      )
     )
   }
+
+  test("recipe substitution errors") {
+    val yaml = """
+        | version: 1
+        | title: bar
+        | contributor: abc
+        | summary: summary
+        | description: desc
+        | iconImage: http://example.com
+        | ingestStreams:
+        | - type: FileIngest
+        |   path: $path1
+        |   format:
+        |     type: CypherJson
+        |     query: yadda
+        | - type: FileIngest
+        |   path: $path2
+        |   format:
+        |     type: CypherJson
+        |     query: yadda
+        | - type: FileIngest
+        |   path: $path4
+        |   format:
+        |     type: CypherJson
+        |     query: yadda
+        | - type: FileIngest
+        |   path: $path3
+        |   format:
+        |     type: CypherJson
+        |     query: yadda
+        | standingQueries: []
+        | nodeAppearances: []
+        | quickQueries: []
+        | sampleQueries: []
+        | statusQuery:
+        |   cypherQuery: match (n) return count(n)
+        |""".stripMargin
+    val recipe = loadYamlString(yaml)
+    val values = Map(
+      "path2" -> "/foo/bar"
+    )
+    assert(
+      Recipe.applySubstitutions(recipe.value, values) == Validated.invalid(
+        NonEmptyList.of(
+          Recipe.UnboundVariableError("path1"),
+          Recipe.UnboundVariableError("path4"),
+          Recipe.UnboundVariableError("path3")
+        )
+      )
+    )
+  }
+
 }

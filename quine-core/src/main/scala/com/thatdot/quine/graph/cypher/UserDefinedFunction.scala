@@ -14,6 +14,11 @@ abstract class UserDefinedFunction {
   /** What is the name of the UDF */
   def name: String
 
+  /** Category of functionality this function falls under.
+    * Implementation note: this should be one of the values of [[org.opencypher.v9_0.expressions.functions.Category$]]
+    */
+  def category: String
+
   /** Is this a pure function? A pure function satisfies all of:
     *
     * - Returns a value that is fully computed from the function parameter
@@ -26,6 +31,9 @@ abstract class UserDefinedFunction {
   def isPure: Boolean
 
   /** How to call the UDF
+    *
+    * Implementation note: the canonical way to reject an execution due to a conflict between [[signatures]]
+    * and `arguments` is `throw wrongSignature(arguments)`
     *
     * @param arguments arguments passed into the UDF (after they've been evaluated)
     * @param idProvider ID provider

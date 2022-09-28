@@ -1,7 +1,7 @@
 package com.thatdot.quine.gremlin
 
 import scala.collection.compat._
-import scala.reflect.ClassTag
+import scala.reflect.{ClassTag, classTag}
 import scala.util.matching.Regex
 
 import akka.NotUsed
@@ -22,7 +22,7 @@ import com.thatdot.quine.model.{Milliseconds, QuineValue}
   *     persistor = EmptyPersistor()(_),
   *     idProvider = QuineUUIDProvider,
   *   )
-  *   implicit val ec = graph.system.dispatcher
+  *   val ec = graph.system.dispatcher
   *   implicit val timeout = Timeout(10 seconds)
   *
   *   // Setup the Gremlin client
@@ -72,7 +72,7 @@ final case class GremlinQueryRunner(
       parameters.view.mapValues(TypedValue.apply).foldLeft(VariableStore.empty) { case (store, (name, value)) =>
         store + ((name, value.eval()(store, idProvider)))
       }
-    query.run(store, atTime)
+    query.run(store, atTime).named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
   }
 
   /** Execute a Gremlin query on the graph, collect the results, and cast them to the desired type */
@@ -83,6 +83,8 @@ final case class GremlinQueryRunner(
     atTime: Option[Milliseconds] = None
   ): Source[T, NotUsed] = {
     val msg = "Top level query was required by the user to have a different type"
-    query(queryString, parameters, atTime).map(_.castTo[T](msg, None).get)
+    query(queryString, parameters, atTime)
+      .map(_.castTo[T](msg, None).get)
+      .named(s"gremlin-query-as-${classTag[T].runtimeClass.getSimpleName}-${atTime.fold("none")(_.millis.toString)}")
   }
 }

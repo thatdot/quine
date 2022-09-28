@@ -7,6 +7,7 @@ import scala.collection.mutable
 import com.typesafe.scalalogging.LazyLogging
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.util.UnNamedNameGenerator
+import org.opencypher.v9_0.util.helpers.NameDeduplicator
 import org.opencypher.v9_0.{ast, expressions}
 
 import com.thatdot.quine.compiler.cypher.QueryPart.IdFunc
@@ -188,7 +189,8 @@ object StandingQueryPatterns extends LazyLogging {
         paramsIdx,
         variableNamer = (subExpr: expressions.Expression) => {
           if (subExpr == item.expression) colName.name
-          else UnNamedNameGenerator.name(subExpr.position.bumped())
+          else
+            NameDeduplicator.removeGeneratedNamesAndParams(UnNamedNameGenerator.name(subExpr.position.newUniquePos()))
         },
         nodeIds.keySet,
         propertiesWatched,
@@ -205,7 +207,7 @@ object StandingQueryPatterns extends LazyLogging {
           otherConstraint,
           paramsIdx,
           variableNamer = (subExpr: expressions.Expression) => {
-            UnNamedNameGenerator.name(subExpr.position.bumped())
+            NameDeduplicator.removeGeneratedNamesAndParams(UnNamedNameGenerator.name(subExpr.position.newUniquePos()))
           },
           nodeIds.keySet,
           propertiesWatched,

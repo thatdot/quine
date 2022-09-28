@@ -28,6 +28,7 @@ import org.rocksdb.{
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
   *
@@ -62,8 +63,8 @@ final class RocksDbPersistor(
 
   import RocksDbPersistor._
 
-  implicit val ioDispatcher: ExecutionContext =
-    actorSystem.dispatchers.lookup("akka.quine.persistor-blocking-dispatcher")
+  val ioDispatcher: ExecutionContext =
+    new QuineDispatchers(actorSystem).blockingDispatcherEC
 
   /* All mutable fields below are mutated only when this lock is held exclusively
    *
@@ -204,6 +205,21 @@ final class RocksDbPersistor(
     finally dbLock.unlockRead(stamp)
   }
 
+  /** Write (synchronously) a key value pair into the column family
+    *
+    * @param columnFamily column family into which to write
+    * @param keyValues data yo
+    */
+  private[this] def putKeyValues(
+    columnFamily: ColumnFamilyHandle,
+    keyValues: Map[Array[Byte], Array[Byte]]
+  ): Unit = {
+    val stamp = dbLock.tryReadLock()
+    if (stamp == 0) throw new RocksDBUnavailableException()
+    try for { (key, value) <- keyValues } db.put(columnFamily, writeOpts, key, value)
+    finally dbLock.unlockRead(stamp)
+  }
+
   /** Remove (synchronously) a key from the column family
     *
     * @param columnFamily column family from which to remove
@@ -234,7 +250,7 @@ final class RocksDbPersistor(
     finally dbLock.unlockRead(stamp)
   }
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = {
+  override def emptyOfQuineData(): Future[Boolean] = {
     def columnFamilyIsEmpty(cf: ColumnFamilyHandle): Boolean = {
       val it = db.newIterator(cf)
       try {
@@ -255,19 +271,23 @@ final class RocksDbPersistor(
     }(ioDispatcher)
   }
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] = Future {
-    val eventBytes = PersistenceCodecs.eventFormat.write(event)
-    putKeyValue(journalsCF, qidAndTime2Key(id, atTime), eventBytes)
-  }
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future {
+    val serializedEvents =
+      for { NodeChangeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
+        id,
+        atTime
+      ) -> PersistenceCodecs.eventFormat.write(event)
+    putKeyValues(journalsCF, serializedEvents toMap)
+  }(ioDispatcher)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] = Future {
     putKeyValue(snapshotsCF, qidAndTime2Key(id, atTime), snapshotBytes)
-  }
+  }(ioDispatcher)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val sqBytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
     putKeyValue(standingQueriesCF, standingQuery.name.getBytes(UTF_8), sqBytes)
-  }
+  }(ioDispatcher)
 
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = Future {
     val keyBytes = key.getBytes(UTF_8)
@@ -275,7 +295,7 @@ final class RocksDbPersistor(
       case None => removeKey(metaDataCF, keyBytes)
       case Some(valBytes) => putKeyValue(metaDataCF, keyBytes, valBytes)
     }
-  }
+  }(ioDispatcher)
 
   def setStandingQueryState(
     sqId: StandingQueryId,
@@ -288,7 +308,7 @@ final class RocksDbPersistor(
       case None => removeKey(standingQueryStatesCF, keyBytes)
       case Some(stateBytes) => putKeyValue(standingQueryStatesCF, keyBytes, stateBytes)
     }
-  }
+  }(ioDispatcher)
 
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val beginKey = sqIdPrefixKey(standingQuery.id)
@@ -311,7 +331,7 @@ final class RocksDbPersistor(
       }
       db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -340,7 +360,8 @@ final class RocksDbPersistor(
               sqId == sqId2 && {
                 (qid == id) || {
                   incrementKey(sqIdPrefixKey(sqId)) match {
-                    case Some(nextSqId) => it.seek(nextSqId)
+                    case Some(nextSqId) =>
+                      it.seek(nextSqId)
 
                     // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
                     case None => noMoreSqs = true
@@ -349,27 +370,29 @@ final class RocksDbPersistor(
                 }
               }
             }
-          )
+          ) {
             mb += (sqId -> sqPartId) -> it.value()
+            it.next()
+          }
         }
       } finally it.close()
       mb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))
-  }
+  }(ioDispatcher)
 
-  def getJournal(
+  def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = Future {
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = Future {
     val stamp = dbLock.tryReadLock()
     if (stamp == 0) throw new RocksDBUnavailableException()
     try {
-      val vb = Vector.newBuilder[NodeChangeEvent]
+      val vb = Iterable.newBuilder[NodeChangeEvent.WithTime]
 
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
@@ -377,7 +400,7 @@ final class RocksDbPersistor(
       // Non-inclusive end key (see ReadOptions.setIterateUpperBound)
       val endKey = endingAt match {
         case EventTime.MaxValue => qidBytes2NextKey(id.array)
-        case _ => qidAndTime2Key(id, endingAt.nextEventTime)
+        case _ => qidAndTime2Key(id, endingAt.nextEventTime(logOpt = None))
       }
 
       val readOptions = new ReadOptions().setIterateUpperBound(new Slice(endKey))
@@ -385,7 +408,9 @@ final class RocksDbPersistor(
       try {
         it.seek(startKey)
         while (it.isValid) {
-          vb += PersistenceCodecs.eventFormat.read(it.value()).get
+          val (_, eventTime) = key2QidAndTime(it.key())
+          val event = PersistenceCodecs.eventFormat.read(it.value()).get
+          vb += NodeChangeEvent.WithTime(event, eventTime)
           it.next()
         }
       } finally {
@@ -394,7 +419,7 @@ final class RocksDbPersistor(
       }
       vb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getStandingQueries: Future[List[StandingQuery]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -411,7 +436,7 @@ final class RocksDbPersistor(
       } finally it.close()
       lb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future {
     val stamp = dbLock.tryReadLock()
@@ -428,7 +453,7 @@ final class RocksDbPersistor(
       } finally it.close()
       mb.result()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def getLatestSnapshot(
     id: QuineId,
@@ -441,22 +466,21 @@ final class RocksDbPersistor(
       try {
         val startKey = qidAndTime2Key(id, upToTime)
         it.seekForPrev(startKey)
-        if (it.isValid && java.util.Arrays.equals(id.array, key2QidBytes(it.key()))) {
-          val bb = ByteBuffer.wrap(it.key())
-          val time = bb.getLong
-          Some(EventTime(time) -> it.value())
+        if (it.isValid) {
+          val (foundId, time) = key2QidAndTime(it.key())
+          if (foundId == id) Some(time -> it.value()) else None
         } else {
           None
         }
       } finally it.close()
     } finally dbLock.unlockRead(stamp)
-  }
+  }(ioDispatcher)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
-    enumerateIds(snapshotsCF)
+    enumerateIds(snapshotsCF).named("rocksdb-all-node-scan-via-snapshots")
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
-    enumerateIds(journalsCF)
+    enumerateIds(journalsCF).named("rocksdb-all-node-scan-via-journals")
 
   /** Iterate (asynchronously) through the ID part of keys in a column family
     *
@@ -502,7 +526,7 @@ final class RocksDbPersistor(
     // Intentionally leave the lock permanently exclusively acquired!
   }
 
-  def shutdown(): Future[Unit] = Future(shutdownSync())
+  def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)
 
   def delete(): Unit = {
     shutdownSync()
@@ -718,6 +742,7 @@ object RocksDbPersistor {
       .allocate(16 + 2 + qidLen)
       .putLong(sqIdUuid.getMostSignificantBits)
       .putLong(sqIdUuid.getLeastSignificantBits)
+      .putShort((qidLen & 0xFFFF).asInstanceOf[Short])
       .put(qidBytes)
       .array
   }

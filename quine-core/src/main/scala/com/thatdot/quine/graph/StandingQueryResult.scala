@@ -1,5 +1,10 @@
 package com.thatdot.quine.graph
 
+import scala.jdk.CollectionConverters._
+
+import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
+import com.google.common.hash.{HashCode, Hasher, Hashing}
+
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 
@@ -17,7 +22,7 @@ final case class StandingQueryResult(
 
   /** Return this result as a single `QuineValue` (use sparingly, this effectively throws away type safety!)
     */
-  def toQuineValueMap(): QuineValue.Map = QuineValue.Map(
+  def toQuineValueMap: QuineValue.Map = QuineValue.Map(
     Map(
       "meta" -> QuineValue(meta.toMap),
       "data" -> QuineValue(data)
@@ -28,6 +33,80 @@ final case class StandingQueryResult(
     "meta" -> meta.toJson,
     "data" -> QuineValue.toJson(QuineValue.Map(data))
   )
+
+  // TODO eliminate duplicated code below and in DomainGraphNode.scala
+
+  private def putOrdered[T](seq: Seq[T], into: Hasher, putElement: T => HashCode): Hasher = {
+    val size = seq.size
+    into.putInt(size)
+    if (size > 0) into.putBytes(combineOrdered(seq.map(putElement).asJava).asBytes)
+    into
+  }
+
+  private def putUnordered[T](iter: Iterable[T], into: Hasher, putElement: T => HashCode): Hasher = {
+    val seq = iter.toList
+    val size = seq.size
+    into.putInt(size)
+    if (size > 0) into.putBytes(combineUnordered(seq.map(putElement).asJava).asBytes)
+    into
+  }
+
+  // hash function implementing the 128-bit murmur3 algorithm
+  private def newHasher = Hashing.murmur3_128.newHasher
+
+  private def putQuineValueMapKeyValue(keyValue: (String, QuineValue), into: Hasher): Hasher = {
+    val (key, value) = keyValue
+    into.putUnencodedChars(key)
+    putQuineValue(value, into)
+  }
+
+  private def putQuineValue(from: QuineValue, into: Hasher): Hasher =
+    from match {
+      case QuineValue.Str(string) =>
+        into.putByte(0)
+        into.putUnencodedChars(string)
+      case QuineValue.Integer(long) =>
+        into.putByte(1)
+        into.putLong(long)
+      case QuineValue.Floating(double) =>
+        into.putByte(2)
+        into.putDouble(double)
+      case QuineValue.True =>
+        into.putByte(3)
+        into.putBoolean(true)
+      case QuineValue.False =>
+        into.putByte(4)
+        into.putBoolean(false)
+      case QuineValue.Null =>
+        into.putByte(5)
+      case QuineValue.Bytes(bytes) =>
+        into.putByte(6)
+        into.putBytes(bytes)
+      case QuineValue.List(list) =>
+        into.putByte(7)
+        putOrdered[QuineValue](
+          list,
+          into,
+          putQuineValue(_, newHasher).hash
+        )
+      case QuineValue.Map(map) =>
+        into.putByte(8)
+        putUnordered[(String, QuineValue)](
+          map,
+          into,
+          putQuineValueMapKeyValue(_, newHasher).hash
+        )
+      case QuineValue.DateTime(time) =>
+        into.putByte(9)
+        into.putLong(time.getEpochSecond)
+        into.putInt(time.getNano)
+      case QuineValue.Id(id) =>
+        into.putByte(10)
+        into.putBytes(id.array)
+    }
+
+  def dataHashCode: Long =
+    putUnordered[(String, QuineValue)](data, newHasher, putQuineValueMapKeyValue(_, newHasher).hash).hash().asLong()
 }
 
 object StandingQueryResult {

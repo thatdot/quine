@@ -11,7 +11,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AsyncFunSuite
 
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineValue}
-import com.thatdot.quine.persistor.{InMemoryPersistor, PersistenceAgent}
+import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor, PersistenceAgent}
 
 class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
@@ -25,6 +25,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
   implicit val graph: LiteralOpsGraph = Await.result(
     GraphService(
       "historical-query-tests",
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = makePersistor,
       idProvider = idProvider
     ),
@@ -91,6 +92,20 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t0)).map { props =>
       assert(props == Map.empty)
+    }
+  }
+
+  test("logState properties before any events or snapshots") {
+    assume(runnable)
+    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+      assert(s.properties.isEmpty)
+    }
+  }
+
+  test("logState journal before any events or snapshots") {
+    assume(runnable)
+    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+      assert(s.journal.isEmpty)
     }
   }
 

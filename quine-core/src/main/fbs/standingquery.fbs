@@ -170,7 +170,7 @@ table GraphQueryPattern {
   to_extract: [ReturnColumn];
   filter_cond: CypherExpr;
   to_return: [CypherMapExprEntry];
-  distinct: bool = null;
+  distinct: bool;
 }
 
 // See [[com.thatdot.quine.graph.StandingQueryPattern.SqV4]]

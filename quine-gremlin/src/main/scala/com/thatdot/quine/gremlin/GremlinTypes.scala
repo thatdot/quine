@@ -20,7 +20,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
   implicit val graph: LiteralOpsGraph
   implicit val idProvider: QuineIdProvider = graph.idProvider
 
-  implicit val ec: ExecutionContext = graph.shardDispatcherEC
+  val gremlinEc: ExecutionContext = graph.shardDispatcherEC
   implicit val t: Timeout
 
   private type AtTime = Option[Milliseconds]
@@ -77,8 +77,9 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         case Result(u, _, _) if !warned =>
           warned = true
           logger.warn(
-            s"The `$stepName` step discarded the following input: $u (additional discards won't be logged)"
+            s"Gremlin query step: `$stepName` discarded a result (logged at INFO level) additional discards will not be logged."
           )
+          logger.info(s"Gremlin query step: `$stepName` step discarded a result: $u")
           List.empty
         case _ => List.empty
       }
@@ -205,19 +206,21 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       // Drop inputs, fetch some nodes, and emit those
       dropAndWarn(".recentV(...)")
         .concat(Source.futureSource {
-          graph.recentNodes(lim.toInt, atTime).map { (qidSet: Set[QuineId]) =>
-            Source(
-              qidSet.view
-                .map(qid =>
-                  Result(
-                    unwrap = Vertex(qid),
-                    path = List(qid),
-                    matchContext = VariableStore.empty
+          graph
+            .recentNodes(lim.toInt, atTime)
+            .map { (qidSet: Set[QuineId]) =>
+              Source(
+                qidSet.view
+                  .map(qid =>
+                    Result(
+                      unwrap = Vertex(qid),
+                      path = List(qid),
+                      matchContext = VariableStore.empty
+                    )
                   )
-                )
-                .toList
-            )
-          }
+                  .toList
+              )
+            }(gremlinEc)
         })
     }
 
@@ -286,7 +289,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
               Source.single(r)
             else
               Source.empty
-          })
+          }(gremlinEc))
         }
     }
 
@@ -381,8 +384,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
                   withLimit = lim.map(_.toInt),
                   atTime = atTime
                 )
-              }
-              .map(_.flatten)
+              }(implicitly, gremlinEc)
+              .map(_.flatten)(gremlinEc)
           }
 
           Source.futureSource(edgesFut.map { edges =>
@@ -414,7 +417,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
                 newPath = if (toVertex) otherQid :: path else path
               } yield Result(newU, newPath, matchContext)
             )
-          })
+          }(gremlinEc))
         }
 
       lim.fold(flw)(flw.take(_))
@@ -574,32 +577,34 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
           val vert = u.castTo[Vertex](s"`.$name(...)` requires vertex inputs", Some(pos)).get
 
           Source.futureSource(
-            graph.literalOps.getProps(vert.id, atTime).map { props =>
-              // If the user specifies no properties, that means get _all_ of them
-              val keyStrs =
-                if (writtenKeyStrs.nonEmpty)
-                  writtenKeyStrs
-                else
-                  props.keys.map(_.name).toList
+            graph.literalOps
+              .getProps(vert.id, atTime)
+              .map { props =>
+                // If the user specifies no properties, that means get _all_ of them
+                val keyStrs =
+                  if (writtenKeyStrs.nonEmpty)
+                    writtenKeyStrs
+                  else
+                    props.keys.map(_.name).toList
 
-              val keyValues: List[(String, Any)] = for {
-                keyStr <- keyStrs
-                value <- props.get(Symbol(keyStr)).map { (prop: PropertyValue) =>
-                  prop.deserialized.getOrElse {
-                    throw FailedDeserializationError(keyStr, prop.serialized, Some(pos))
+                val keyValues: List[(String, Any)] = for {
+                  keyStr <- keyStrs
+                  value <- props.get(Symbol(keyStr)).map { (prop: PropertyValue) =>
+                    prop.deserialized.getOrElse {
+                      throw FailedDeserializationError(keyStr, prop.serialized, Some(pos))
+                    }
                   }
-                }
-              } yield (keyStr -> value.underlyingJvmValue)
+                } yield (keyStr -> value.underlyingJvmValue)
 
-              // `valueMap` vs. `values` case
-              if (groupResultsInMap) {
-                Source.single(Result(keyValues.toMap, path, matchContext))
-              } else {
-                Source.apply(keyValues.map { case kv: (String, Any) =>
-                  Result(kv._2, path, matchContext)
-                })
-              }
-            }
+                // `valueMap` vs. `values` case
+                if (groupResultsInMap) {
+                  Source.single(Result(keyValues.toMap, path, matchContext))
+                } else {
+                  Source.apply(keyValues.map { case kv: (String, Any) =>
+                    Result(kv._2, path, matchContext)
+                  })
+                }
+              }(gremlinEc)
           )
         }
     }

@@ -1,6 +1,14 @@
 package com.thatdot.quine.graph
 
-import com.codahale.metrics.{Counter, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.LongAdder
+
+import scala.collection.concurrent
+import scala.jdk.CollectionConverters._
+
+import com.codahale.metrics.{Counter, Gauge, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
+
+import com.thatdot.quine.util.SharedValve
 
 // A MetricRegistry, wrapped with canonical accessors for common Quine metrics
 final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
@@ -60,9 +68,26 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   def standingQueryStateSize(sqId: StandingQueryId): Histogram =
     metricRegistry.histogram(MetricRegistry.name("standing-queries", "states", sqId.uuid.toString))
 
+  private val standingQueryResultHashCodeRegistry: concurrent.Map[StandingQueryId, LongAdder] =
+    new ConcurrentHashMap[StandingQueryId, LongAdder]().asScala
+
+  def standingQueryResultHashCode(standingQueryId: StandingQueryId): LongAdder =
+    standingQueryResultHashCodeRegistry.getOrElseUpdate(standingQueryId, new LongAdder)
+
   /** Histogram of size (in bytes) of persisted node snapshots */
   val snapshotSize: Histogram =
-    metricRegistry.histogram(MetricRegistry.name("persistors", "snapshot-sizes"))
+    metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
+
+  /** Register a gauge tracking how many times a shared valve has been closed.
+    *
+    * @see [[SharedValve]] for details on this number
+    * @param valve valve for which to create the gauge
+    * @return registered gauge
+    */
+  def registerGaugeValve(valve: SharedValve): Gauge[Int] = {
+    val gauge: Gauge[Int] = () => valve.getClosedCount
+    metricRegistry.register(MetricRegistry.name("shared", "valve", valve.name), gauge)
+  }
 }
 object HostQuineMetrics {
 

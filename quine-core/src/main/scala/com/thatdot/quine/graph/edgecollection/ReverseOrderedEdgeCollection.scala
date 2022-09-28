@@ -2,15 +2,15 @@ package com.thatdot.quine.graph.edgecollection
 
 import scala.collection.compat._
 
-import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId, Test}
+import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
 import com.thatdot.quine.util.ReversibleLinkedHashSet
 
 /** Conceptually, this is a mutable `ReversibleLinkedHashSet[HalfEdge]`.
   * Under the hood, it gets implemented with some auxiliary collections because we want to be able to
   * efficiently query for subsets which have some particular edge types, directions, or ids. For
   * more on that, see the various `matching` methods. Additionally, we want to maintain a consistent
-  * ordering over edges (the current implementation maintains the ordering according to
-  * order of creation).
+  * ordering over edges (the current implementation maintains the ordering according to reverse
+  * order of creation -- that is, newest to oldest).
   * Under the hood, it gets implemented with some maps and sets because we want to be able to
   * efficiently query for subsets which have some particular edge types, directions, or ids. For
   * more on that, see the various `matching` methods.
@@ -92,7 +92,7 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
   override def contains(edge: HalfEdge): Boolean = edges contains edge
 
   // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
-  override def hasUniqueGenEdges(requiredEdges: Set[DomainEdge[Test]], thisQid: QuineId): Boolean = {
+  override def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean = {
     val (circAlloweds, circDisalloweds) = requiredEdges.filter(_.constraints.min > 0).partition(_.circularMatchAllowed)
     val circAllowed = circAlloweds.groupMapReduce(_.edge)(_ => 1)(_ + _)
     val circDisallowed = circDisalloweds.groupMapReduce(_.edge)(_ => 1)(_ + _)

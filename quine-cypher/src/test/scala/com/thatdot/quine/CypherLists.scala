@@ -49,7 +49,7 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
     testExpression("size(range(0, 10)[0..3])", Expr.Integer(3L))
   }
 
-  describe("list comprehensions (and `filter`/`extract`)") {
+  describe("list comprehensions") {
     testExpression(
       "[x IN range(0,10) WHERE x % 2 = 0 | x^3]",
       Expr.List(
@@ -98,7 +98,7 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
     )
 
     testExpression(
-      "filter(x in range(0,10) WHERE x > 3)",
+      "[x in range(0,10) WHERE x > 3]",
       Expr.List(
         Vector(
           Expr.Integer(4),
@@ -113,7 +113,7 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
     )
 
     testExpression(
-      "extract(x in range(0,10) | x ^ 2)",
+      "[x in range(0,10) | x ^ 2]",
       Expr.List(
         Vector(
           Expr.Floating(0.0),

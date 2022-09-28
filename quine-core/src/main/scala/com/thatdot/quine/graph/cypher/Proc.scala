@@ -2,23 +2,23 @@ package com.thatdot.quine.graph.cypher
 
 import java.util.concurrent.ConcurrentHashMap
 
-import scala.collection.compat._
 import scala.collection.concurrent
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
-import com.thatdot.quine.graph.messaging.{LiteralMessage, QuineIdAtTime}
-import com.thatdot.quine.graph.{BaseGraph, LiteralOpsGraph}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, QuineId}
+import com.thatdot.quine.graph.LiteralOpsGraph
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
 /** Cypher procedure
   *
   * TODO: thread in type signatures and error messages
   */
 sealed abstract class Proc {
+
+  def name: String
 
   /** Output columns of the procedure */
   def outputColumns: Columns.Specified
@@ -44,7 +44,6 @@ sealed abstract class Proc {
     arguments: Seq[Value],
     location: ProcedureExecutionLocation
   )(implicit
-    ec: ExecutionContext,
     parameters: Parameters,
     timeout: Timeout
   ): Source[Vector[Value], _]
@@ -69,29 +68,11 @@ object Proc {
     val retColumnPathName: Symbol = Symbol("path")
     val outputColumns: Columns.Specified = Columns.Specified(Vector(retColumnPathName))
 
-    // TODO: abstract this out into a config setting
-    val defaultMaxLength: Int = 10
-
-    private def getNode(qid: QuineId, graph: BaseGraph, atTime: Option[Milliseconds])(implicit
-      ec: ExecutionContext,
-      timeout: Timeout
-    ): Future[Expr.Node] =
-      graph
-        .relayAsk(QuineIdAtTime(qid, atTime), LiteralMessage.GetRawPropertiesCommand(_))
-        .map { case LiteralMessage.RawPropertiesMap(labels, props) =>
-          Expr.Node(
-            qid,
-            labels.getOrElse(Set.empty),
-            props.view.mapValues(pv => Expr.fromQuineValue(pv.deserialized.get)).toMap
-          )
-        }
-
     def call(
       context: QueryContext,
       arguments: Seq[Value],
       location: ProcedureExecutionLocation
     )(implicit
-      ec: ExecutionContext,
       parameters: Parameters,
       timeout: Timeout
     ): Source[Vector[Value], _] = {
@@ -106,7 +87,8 @@ object Proc {
             actualArguments = other
           )
       }
-      val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+      val literalGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
+      val cypherGraph = location.graph
       val atTime = location.atTime
 
       // Get the valid edge directions in the path pattern
@@ -124,7 +106,7 @@ object Proc {
       val maxLength: Int = options
         .get("maxLength")
         .collect { case Expr.Integer(n) if n >= 0 => n.toInt }
-        .getOrElse(defaultMaxLength)
+        .getOrElse(cypherGraph.defaultMaxCypherShortestPathLength)
 
       // Get valid edge types to traverse
       val edgeTypes: Option[Set[Symbol]] = options
@@ -147,7 +129,7 @@ object Proc {
       ): Future[Map[QuineId, List[(QuineId, Expr.Relationship)]]] =
         Future
           .traverse(toExpand: Iterable[(QuineId, List[(QuineId, Expr.Relationship)])]) { case (qid, path) =>
-            graph.literalOps
+            literalGraph.literalOps
               .getHalfEdges(
                 qid,
                 // optimization: if we're only looking for the shortest path along a single edge
@@ -170,12 +152,12 @@ object Proc {
                       throw new IllegalStateException("this should be unreachable")
                   }
                   other -> ((qid, rel) :: path)
-              })
-          }
+              })(literalGraph.nodeDispatcherEC)
+          }(implicitly, cypherGraph.nodeDispatcherEC)
           .map(
             _.foldLeft(Map.newBuilder[QuineId, List[(QuineId, Expr.Relationship)]])(_ ++= _)
               .result()
-          )
+          )(literalGraph.nodeDispatcherEC)
 
       /** Essentially, this does two breadth-first searches (via stepOutwards), alternating which
         * side is searching, until either the max length is surpassed or the two searches have a
@@ -241,35 +223,42 @@ object Proc {
             }
 
             // Fetch out all of the properties/labels of the nodes on the path
-            for {
-              headPathNode <- getNode(headPath, graph, atTime)
-              restPathNodes <- Future.traverse(restPath) { case (rel, qid) =>
-                getNode(qid, graph, atTime).map(rel -> _)
-              }
-            } yield Expr.Path(headPathNode, restPathNodes)
+            val headPathNode = UserDefinedProcedure.getAsCypherNode(headPath, atTime, literalGraph)
+            val tailPathNodes = Future.traverse(restPath) { case (rel, qid) =>
+              UserDefinedProcedure
+                .getAsCypherNode(qid, atTime, literalGraph)
+                .map(rel -> _)(literalGraph.nodeDispatcherEC)
+            }(implicitly, literalGraph.nodeDispatcherEC)
+
+            headPathNode.zipWith(tailPathNodes) { case (head, tail) =>
+              Expr.Path(head, tail)
+            }(literalGraph.nodeDispatcherEC)
           }
 
         // Return the results - a single path
         if (shortestPathResults.hasNext)
-          shortestPathResults.next().map(Some(_))
+          shortestPathResults.next().map(Some(_))(literalGraph.nodeDispatcherEC)
         else
           // by this point, we know we don't yet have a shortest path
-          for {
-            newProgressFromStart <- stepOutwards(
-              seenFromStart,
-              progressFromStart,
-              if (forward) directionFilter else directionFilter.map(_.reverse)
-            )
-            newSeenFromStart = seenFromStart | progressFromStart.keySet
-            result <- bidirectionalSearch(
-              seenFromEnd,
-              progressFromEnd,
-              newSeenFromStart,
-              newProgressFromStart,
-              !forward,
-              currentPathLength + 1
-            )
-          } yield result
+          stepOutwards(
+            seenFromStart,
+            progressFromStart,
+            if (forward) directionFilter else directionFilter.map(_.reverse)
+          )
+            .map { newProgressFromStart =>
+              val newSeenFromStart = seenFromStart | progressFromStart.keySet
+              newProgressFromStart -> newSeenFromStart
+            }(literalGraph.nodeDispatcherEC)
+            .flatMap { case (newProgressFromStart, newSeenFromStart) =>
+              bidirectionalSearch(
+                seenFromEnd,
+                progressFromEnd,
+                newSeenFromStart,
+                newProgressFromStart,
+                !forward,
+                currentPathLength + 1
+              )
+            }(literalGraph.nodeDispatcherEC)
       }
 
       Source
@@ -283,7 +272,7 @@ object Proc {
           pathOptFut.map {
             case Some(path) => Source.single(Vector(path))
             case _ => Source.empty
-          }
+          }(literalGraph.nodeDispatcherEC)
         }
     }
 
@@ -303,7 +292,6 @@ object Proc {
       arguments: Seq[Value],
       location: ProcedureExecutionLocation
     )(implicit
-      ec: ExecutionContext,
       parameters: Parameters,
       timeout: Timeout
     ): Source[Vector[Value], _] =

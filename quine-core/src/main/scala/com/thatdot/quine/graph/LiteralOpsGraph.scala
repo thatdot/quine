@@ -3,6 +3,7 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
+import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.messaging.LiteralMessage._
@@ -31,6 +32,11 @@ trait LiteralOpsGraph extends BaseGraph {
       relayAsk(QuineIdAtTime(node, atTime), LogInternalState).flatten
     }
 
+    def getSqResults(node: QuineId)(implicit timeout: Timeout): Future[SqStateResults] = {
+      requiredGraphIsReady()
+      relayAsk(QuineIdAtTime(node, None), GetSqState)
+    }
+
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), DeleteNodeCommand(true, _)).flatten
@@ -41,9 +47,58 @@ trait LiteralOpsGraph extends BaseGraph {
       timeout: Timeout
     ): Future[Map[Symbol, PropertyValue]] = {
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), GetRawPropertiesCommand)
-        .map(_.properties)(ExecutionContexts.parasitic)
+      (getPropsAndLabels(node, atTime) map { case (x, _) =>
+        x // keeping only properties
+      })(ExecutionContexts.parasitic)
     }
+
+    /** Get all properties and labels of a node
+      *
+      * @param node which node to query
+      * @param atTime the historical moment to query, or None for the moving present
+      * @return map of all of the properties and set of all of the labels
+      */
+    def getPropsAndLabels(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
+      timeout: Timeout
+    ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
+      requiredGraphIsReady()
+      val futureSource = relayAsk(QuineIdAtTime(node, atTime), GetPropertiesCommand)
+      Source
+        .futureSource(futureSource)
+        .runFold((Map.empty[Symbol, PropertyValue], Set.empty[Symbol])) {
+          case ((propertiesAccumulator, labelsAccumulator), message) =>
+            message match {
+              case PropertyMessage(Left((key, value))) => (propertiesAccumulator + (key -> value), labelsAccumulator)
+              case PropertyMessage(Right(value)) => (propertiesAccumulator, labelsAccumulator + value)
+            }
+        }
+        .map {
+          case (a, c) if c.isEmpty => (a, None)
+          case (a, c) => (a, Some(c))
+        }(shardDispatcherEC)
+    }
+
+    /** Set node label to multiple values
+      *
+      * @param node on which node the label should be set
+      * @param labels labels to set
+      */
+    def setLabels(node: QuineId, labels: Set[String])(implicit
+      timeout: Timeout
+    ): Future[Unit] = {
+      requiredGraphIsReady()
+      relayAsk(QuineIdAtTime(node, None), SetLabels(labels.map(Symbol(_)), _)).flatten
+        .map(_ => ())(ExecutionContexts.parasitic)
+    }
+
+    /** Set node label to a single value
+      *
+      * @param node on which node the label should be set
+      * @param label label to set
+      */
+    def setLabel(node: QuineId, label: String)(implicit
+      timeout: Timeout
+    ): Future[Unit] = setLabels(node, Set(label))
 
     /** Set a single property on a node
       *
@@ -85,8 +140,9 @@ trait LiteralOpsGraph extends BaseGraph {
       atTime: Option[Milliseconds] = None
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
-        .map(_.halfEdges)(ExecutionContexts.parasitic)
+      val halfEdgesSource =
+        relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
+      Source.futureSource(halfEdgesSource).map(_.halfEdge).runFold(Set.empty[HalfEdge])((a, v) => a + v)
     }
 
     // NB: Checks that the other half of the edge exists
@@ -99,19 +155,21 @@ trait LiteralOpsGraph extends BaseGraph {
       atTime: Option[Milliseconds] = None
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
       requiredGraphIsReady()
-      for {
-        halfEdges <- getHalfEdges(node, withType, withDir, withId, withLimit, atTime)
-        filtered <- Future.traverse(halfEdges) { (h: HalfEdge) =>
-          getHalfEdges(
-            node = h.other,
-            withType = Some(h.edgeType),
-            withDir = Some(h.direction.reverse),
-            withId = Some(node),
-            withLimit = Some(1), // we just care about `nonEmpty`
-            atTime = atTime
-          ).map(otherSide => if (otherSide.nonEmpty) Some(h) else None)
-        }
-      } yield filtered.collect { case Some(completeEdges) => completeEdges }
+      getHalfEdges(node, withType, withDir, withId, withLimit, atTime)
+        .flatMap(halfEdges =>
+          Future
+            .traverse(halfEdges) { (h: HalfEdge) =>
+              getHalfEdges(
+                node = h.other,
+                withType = Some(h.edgeType),
+                withDir = Some(h.direction.reverse),
+                withId = Some(node),
+                withLimit = Some(1), // we just care about `nonEmpty`
+                atTime = atTime
+              ).map(otherSide => if (otherSide.nonEmpty) Some(h) else None)(shardDispatcherEC)
+            }(implicitly, shardDispatcherEC)
+        )(shardDispatcherEC)
+        .map(filtered => filtered.collect { case Some(completeEdges) => completeEdges })(shardDispatcherEC)
     }
 
     def addEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
@@ -127,7 +185,7 @@ trait LiteralOpsGraph extends BaseGraph {
         QuineIdAtTime(to, None),
         AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
       )
-      one.zipWith(two)((_, _) => ())
+      one.zipWith(two)((_, _) => ())(shardDispatcherEC)
     }
 
     def removeEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
@@ -143,18 +201,19 @@ trait LiteralOpsGraph extends BaseGraph {
         QuineIdAtTime(to, None),
         RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
       )
-      one.zipWith(two)((_, _) => ())
+      one.zipWith(two)((_, _) => ())(shardDispatcherEC)
     }
 
     def mergeNode(fromThat: QuineId, intoThis: QuineId)(implicit timeout: Timeout): Future[QuineId] = {
       requiredGraphIsReady()
-      for {
-        id <- relayAsk(
-          QuineIdAtTime(intoThis, None),
-          GetNodeId
-        ) // Get the final node ID, in the case of multiple recursive merges.
-        _ <- relayAsk(QuineIdAtTime(fromThat, None), MergeIntoNodeCommand(id.qid, _))
-      } yield id.qid
+      relayAsk(
+        QuineIdAtTime(intoThis, None),
+        GetNodeId
+      )
+        .flatMap(id =>
+          relayAsk(QuineIdAtTime(fromThat, None), MergeIntoNodeCommand(id.qid, _))
+            .map(_ => id.qid)(shardDispatcherEC)
+        )(shardDispatcherEC)
     }
   }
 }

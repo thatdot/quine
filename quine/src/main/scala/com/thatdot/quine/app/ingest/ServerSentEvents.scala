@@ -51,7 +51,8 @@ final case class ServerSentEvents(
           .importMessageSafeBytes(bytes, isSingleHost)
           .fold(
             { err =>
-              logger.warn(s"Error decoding event data for event $event", err)
+              logger.warn(s"Failed to deserialize a Server-Sent Event (logged at INFO level). Skipping this event.")
+              logger.info(s"Failed to deserialize Server-Sent Event: $event", err)
               List.empty
             },
             List(_)

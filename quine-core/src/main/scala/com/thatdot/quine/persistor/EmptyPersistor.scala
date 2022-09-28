@@ -1,11 +1,11 @@
 package com.thatdot.quine.persistor
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
 
 /** Persistence agent which never saves anything
@@ -16,9 +16,9 @@ import com.thatdot.quine.model.QuineId
   */
 class EmptyPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
-) extends NoJournalPersistenceAgent {
+) extends PersistenceAgent {
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] =
+  override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(true)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = {
@@ -29,6 +29,20 @@ class EmptyPersistor(
   }
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = this.enumerateSnapshotNodeIds()
+
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] = Future.unit
+
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
+
+  override def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Vector[NodeChangeEvent.WithTime]] = Future.successful(Vector.empty)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[(EventTime, Array[Byte])]] =

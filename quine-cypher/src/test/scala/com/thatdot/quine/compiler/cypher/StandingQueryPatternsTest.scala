@@ -5,7 +5,7 @@ import org.scalatest.Assertion
 import org.scalatest.funspec.AnyFunSpec
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Func, Position, SourceText}
-import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider}
+import com.thatdot.quine.graph.{GraphQueryPattern, InvalidQueryPattern, QuineIdRandomLongProvider, StandingQueryPattern}
 import com.thatdot.quine.model.QuineValue
 
 class StandingQueryPatternsTest extends AnyFunSpec {
@@ -124,7 +124,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
 
     // multiple non-conflicting id() in where condition
     testQuery(
-      "MATCH (n) WHERE id(n) = 50 AND id(n) = 50 RETURN id(n)",
+      "MATCH (n) WHERE id(n) = 50 AND id(n) = 50 RETURN DISTINCT id(n)",
       GraphQueryPattern(
         List(
           NodePattern(
@@ -139,13 +139,13 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         Seq(ReturnColumn.Id(NodePatternId(0), false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = false
+        distinct = true
       )
     )
 
     // multiple non-conflicting strId() in where condition
     testQuery(
-      "MATCH (n) WHERE strId(n) = '99' AND strId(n) = '99' RETURN id(n)",
+      "MATCH (n) WHERE strId(n) = '99' AND strId(n) = '99' RETURN DISTINCT strId(n)",
       GraphQueryPattern(
         List(
           NodePattern(
@@ -157,16 +157,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         List(),
         NodePatternId(0),
-        Seq(ReturnColumn.Id(NodePatternId(0), false, Symbol("id(n)"))),
+        Seq(ReturnColumn.Id(NodePatternId(0), true, Symbol("strId(n)"))),
         None,
         Nil,
-        distinct = false
+        distinct = true
       )
     )
 
     // multiple non-conflicting heterogenous id constraints in where condition
     testQuery(
-      "MATCH (n) WHERE strId(n) = '100' AND id(n) = 100 RETURN id(n)",
+      "MATCH (n) WHERE strId(n) = '100' AND id(n) = 100 RETURN DISTINCT id(n)",
       GraphQueryPattern(
         List(
           NodePattern(
@@ -181,7 +181,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         Seq(ReturnColumn.Id(NodePatternId(0), false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = false
+        distinct = true
       )
     )
   }
@@ -238,12 +238,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Id(NodePatternId(2), false, Symbol("  UNNAMED50")),
+          ReturnColumn.Id(NodePatternId(2), false, Symbol("anon_49")),
           ReturnColumn.Id(NodePatternId(1), false, Symbol("id(m)")),
-          ReturnColumn.Id(NodePatternId(0), false, Symbol("  UNNAMED41"))
+          ReturnColumn.Id(NodePatternId(0), false, Symbol("anon_40"))
         ),
         Some(
-          Expr.Not(Expr.Equal(Expr.Variable(Symbol("  UNNAMED41")), Expr.Variable(Symbol("  UNNAMED50"))))
+          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_40")), Expr.Variable(Symbol("anon_49"))))
         ),
         Seq(Symbol("id(m)") -> Expr.Variable(Symbol("id(m)"))),
         distinct = false
@@ -280,26 +280,26 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("  UNNAMED72")),
-          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("  UNNAMED53")),
-          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("  UNNAMED91"))
+          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_71")),
+          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_52")),
+          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_90"))
         ),
         Some(
           Expr.Equal(
             Expr.Property(
               Expr.Function(
                 Func.UserDefined("parseJson"),
-                Vector(Expr.Variable(Symbol("  UNNAMED53")))
+                Vector(Expr.Variable(Symbol("anon_52")))
               ),
               Symbol("baz")
             ),
-            Expr.Variable(Symbol("  UNNAMED72"))
+            Expr.Variable(Symbol("anon_71"))
           )
         ),
         Seq(
           Symbol("bytes(m.qux)") -> Expr.Function(
             Func.UserDefined("bytes"),
-            Vector(Expr.Variable(Symbol("  UNNAMED91")))
+            Vector(Expr.Variable(Symbol("anon_90")))
           )
         ),
         distinct = false
@@ -571,19 +571,20 @@ class StandingQueryPatternsTest extends AnyFunSpec {
   }
 
   describe("Error messages") {
-    // Something more than just `MATCH ... WHERE ... RETURN [DISTINCT]`
+
+    // should reject ORDER BY clause (something more than just `MATCH ... WHERE ... RETURN [DISTINCT]`)
     {
       val query = "MATCH (n) WHERE exists(n.foo) RETURN id(n) ORDER BY n.qux"
       interceptQuery(
         query,
         CypherException.Compile(
           "Wrong format for a standing query (expected `MATCH ... WHERE ... RETURN ...`)",
-          Some(Position(1, 58, 57, SourceText(query)))
+          Some(Position(1, 1, 0, SourceText(query)))
         )
       )
     }
 
-    // Naming an edge
+    // should reject naming an edge
     {
       val query = "MATCH (n)-[e:Foo]->(m) RETURN id(n), e.type, id(m)"
       interceptQuery(
@@ -595,7 +596,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
 
-    // Giving more than one label to an edge
+    // should reject giving more than one label to an edge
     {
       val query = "MATCH (n)-[:Foo|:Bar]->(m) RETURN id(n), id(m)"
       interceptQuery(
@@ -607,7 +608,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
 
-    // Undirected edge pattern
+    // should reject undirected edge patterns
     {
       val query = "MATCH (n)-[:Foo]-(m) RETURN id(n), id(m)"
       interceptQuery(
@@ -619,7 +620,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
 
-    // Invalid use of a variable
+    // should reject general use of a node variable
     {
       val query = "MATCH (n) WHERE size(keys(n)) > 2 RETURN id(n)"
       interceptQuery(
@@ -631,7 +632,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     }
 
-    // Unbound variable
+    // should reject usage of an unbound variable
     {
       val query = "MATCH (n) RETURN m.foo"
       interceptQuery(
@@ -641,6 +642,27 @@ class StandingQueryPatternsTest extends AnyFunSpec {
           Some(Position(1, 18, 17, SourceText(query)))
         )
       )
+    }
+
+    it("should reject a DistinctId query without a `DISTINCT` keyword") {
+      // non-arbitrary values
+      val query = "MATCH (n) RETURN id(n)"
+      val queryPattern = compileStandingQueryGraphPattern(query)
+
+      // arbitrary values
+      val (includeCancellations, labelsProperty) = (true, Symbol("__LABEL"))
+
+      val expectedException = intercept[InvalidQueryPattern] {
+        StandingQueryPattern.fromGraphPattern(
+          queryPattern,
+          Some(query),
+          includeCancellations = includeCancellations,
+          useDomainGraphBranch = true,
+          labelsProperty = labelsProperty,
+          idProvider
+        )
+      }
+      assert(expectedException.message === "DistinctId Standing Queries must specify a `DISTINCT` keyword")
     }
   }
 }

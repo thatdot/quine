@@ -3,7 +3,7 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -12,6 +12,7 @@ import akka.util.{ByteString, Timeout}
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
+import com.thatdot.quine.model.{Milliseconds, QuineId}
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes._
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo}
@@ -29,7 +30,6 @@ trait AdministrationRoutesImpl
 
   def graph: BaseGraph
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
 
   /** Current product version */
   val version: String
@@ -75,7 +75,7 @@ trait AdministrationRoutesImpl
 
     val counters = graph.metrics.metricRegistry.getCounters.asScala.map { case (name, counter) =>
       Counter(name, counter.getCount)
-    }.toVector
+    }
     val timers = graph.metrics.metricRegistry.getTimers.asScala.map { case (name, timer) =>
       val NANOS_IN_MILLI = 1e6
       val snap = timer.getSnapshot
@@ -94,7 +94,7 @@ trait AdministrationRoutesImpl
         `20` = snap.getValue(0.20) / NANOS_IN_MILLI,
         `10` = snap.getValue(0.10) / NANOS_IN_MILLI
       )
-    }.toVector
+    }
 
     val gauges: Seq[NumericGauge] = {
       def coerceDouble[T](value: T): Option[Double] = value match {
@@ -115,24 +115,28 @@ trait AdministrationRoutesImpl
       (for {
         (name, g) <- graph.metrics.metricRegistry.getGauges.asScala
         v <- coerceDouble(g.getValue)
-      } yield NumericGauge(name, v)).toVector
+      } yield NumericGauge(name, v)).toSeq
     }
 
     MetricsReport(
       Instant.now(),
-      counters,
-      timers,
+      counters.toSeq,
+      timers.toSeq,
       gauges
     )
   }
 
   // Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
   private val shutdownRoute = shutdown.implementedBy { _ =>
-    ec.execute(() => Runtime.getRuntime().exit(0)) // `ec.execute` ensures the shutdown request is answered
+    graph.shardDispatcherEC.execute(() =>
+      Runtime.getRuntime().exit(0)
+    ) // `ec.execute` ensures the shutdown request is answered
   }
 
   private val metaDataRoute = metaData.implementedByAsync { _ =>
-    graph.persistor.getAllMetaData().map(_.view.map { case (k, v) => k -> ByteString(v) }.toMap)
+    graph.persistor
+      .getAllMetaData()
+      .map(_.view.map { case (k, v) => k -> ByteString(v) }.toMap)(graph.shardDispatcherEC)
   }
 
   private val shardSizesRoute = shardSizes.implementedByAsync { resizes =>
@@ -143,6 +147,16 @@ trait AdministrationRoutesImpl
       })(ExecutionContexts.parasitic)
   }
 
+  private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { (quineId: QuineId) =>
+    graph.requestNodeSleep(quineId)
+  }
+
+  private val graphHashCodeRoute = graphHashCode.implementedByAsync { atTime: Option[Milliseconds] =>
+    val at = atTime.getOrElse(Milliseconds.currentTime())
+    val ec = ExecutionContexts.parasitic
+    graph.getGraphHashCode(Some(at)).map(GraphHashCode(_, at.millis))(ec)
+  }
+
   final val administrationRoutes: Route =
     buildInfoRoute ~
     configRoute ~
@@ -151,5 +165,7 @@ trait AdministrationRoutesImpl
     metricsRoute ~
     shutdownRoute ~
     metaDataRoute ~
-    shardSizesRoute
+    shardSizesRoute ~
+    requestSleepNodeRoute ~
+    graphHashCodeRoute
 }

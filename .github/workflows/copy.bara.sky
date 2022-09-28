@@ -11,10 +11,12 @@ PROJECT_LEVEL_INCLUDE = [
     "Dependencies.scala",
     "FlatcPlugin.scala",
     "Packaging.scala",
+    "Docker.scala",
     "ParadoxThatdot.scala",
     "plugins.sbt",
     "QuineSettings.scala",
     "ScalaFix.scala",
+    "Ecr.scala"
 ]
 
 PUSH_INCLUDE = [

@@ -20,6 +20,7 @@ trait ServerEntitiesWithExamples
           entity.dataBytes
             .via(CsvParsing.lineScanner())
             .map(_.view.map(_.decodeString(charset)).toList)
+            .named("csv-unmarshaller")
             .runWith(Sink.collection[List[String], List[List[String]]])
         }
         .forContentTypes(MediaTypes.`text/csv`)

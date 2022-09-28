@@ -6,11 +6,12 @@ import com.thatdot.quine.util.LoopbackPort
 
 final case class WebServerConfig private (
   address: String,
-  port: Int
+  port: Int,
+  enabled: Boolean
 )
 object WebServerConfig {
 
-  def apply(address: String, port: Int): WebServerConfig = {
+  def apply(address: String, port: Int, enabled: Boolean = true): WebServerConfig = {
     // These special cased hostnames match the special cases in akka's ArterySettings:
     // This allows using akka-style <get...> syntax in Quine's webserver binding config
     val resolvedAddress = address match {
@@ -23,6 +24,6 @@ object WebServerConfig {
       case x => x
     }
 
-    new WebServerConfig(resolvedAddress, resolvedPort)
+    new WebServerConfig(resolvedAddress, resolvedPort, enabled)
   }
 }

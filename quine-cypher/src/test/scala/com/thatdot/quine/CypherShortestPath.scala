@@ -91,7 +91,7 @@ class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
   )
 
   testShortestPath(
-    "shortestPath((n)<-[:foo|:bar*]-(m))",
+    "shortestPath((n)<-[:foo|bar*]-(m))",
     from = 5L,
     to = 1L,
     expectedValue = Some(Expr.Path(n5, Vector(e35 -> n3, e13 -> n1)))

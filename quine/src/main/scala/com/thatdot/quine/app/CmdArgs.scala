@@ -77,8 +77,8 @@ object CmdArgs {
           effects collect {
             case DisplayToOut(msg: String) => msg
             case DisplayToErr(msg: String) => msg
-            case ReportError(msg: String) => s"Warning: $msg"
-            case ReportWarning(msg: String) => s"Error: $msg"
+            case ReportError(msg: String) => s"Error: $msg"
+            case ReportWarning(msg: String) => s"Warning: $msg"
           } mkString "\n"
         }
       case (Some(config), _) => Right(config)

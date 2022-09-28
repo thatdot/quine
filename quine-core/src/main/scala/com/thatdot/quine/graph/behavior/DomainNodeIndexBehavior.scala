@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.behavior
 import scala.annotation.nowarn
 import scala.collection.compat._
 import scala.collection.mutable
-import scala.compat._
 
 import akka.actor.{Actor, ActorLogging}
 import akka.event.LoggingAdapter
@@ -28,7 +27,7 @@ import com.thatdot.quine.graph.{
   StandingQueryPattern
 }
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{DomainEdge, DomainGraphBranch, HalfEdge, QuineId, Test}
+import com.thatdot.quine.model.{DomainEdge, DomainGraphBranch, HalfEdge, QuineId}
 
 /** Conceptual note:
   * Standing queries should really be a subscription to whether the other satisfies a domain node (branch) or not,
@@ -55,14 +54,14 @@ object DomainNodeIndexBehavior {
   final case class DomainNodeIndex(
     index: mutable.Map[
       QuineId,
-      mutable.Map[(DomainGraphBranch[model.Test], AssumedDomainEdge), LastNotification]
+      mutable.Map[(DomainGraphBranch, AssumedDomainEdge), LastNotification]
     ] = mutable.Map.empty
   ) {
 
     def contains(id: QuineId): Boolean = index.contains(id)
     def contains(
       id: QuineId,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Boolean = index.get(id).exists(_.contains(testBranch -> assumedEdge))
 
@@ -75,7 +74,7 @@ object DomainNodeIndexBehavior {
       */
     def newIndex(
       id: QuineId,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Boolean = if (
       !contains(id, testBranch, assumedEdge) // don't duplicate subscriptions
@@ -94,7 +93,7 @@ object DomainNodeIndexBehavior {
       */
     def removeIndex(
       id: QuineId,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Option[(QuineId, LastNotification)] =
       if (contains(id, testBranch, assumedEdge)) {
@@ -114,7 +113,7 @@ object DomainNodeIndexBehavior {
       * @return the last known state for each downstream subscription
       */
     def removeAllIndicesInefficiently(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Iterable[(QuineId, LastNotification)] = index.keys
       .flatMap { id =>
@@ -132,7 +131,7 @@ object DomainNodeIndexBehavior {
       */
     def updateResult(
       fromOther: QuineId,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge,
       result: Boolean,
       relatedQueries: Set[StandingQueryId]
@@ -140,7 +139,7 @@ object DomainNodeIndexBehavior {
       if (index contains fromOther) index(fromOther)(testBranch -> assumedEdge) = Some(result)
       else {
         // if at least one related query is still active in the graph
-        if (relatedQueries.exists(graph.getStandingQuery(_).nonEmpty)) {
+        if (relatedQueries.exists(graph.runningStandingQuery(_).nonEmpty)) {
           index += (fromOther -> mutable.Map(testBranch -> assumedEdge -> Some(result)))
         } else {
           // intentionally ignore because this update is about [a] SQ[s] we know to be deleted
@@ -152,7 +151,7 @@ object DomainNodeIndexBehavior {
 
     def lookup(
       id: QuineId,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Option[Boolean] =
       index.get(id).flatMap(_.get(testBranch -> assumedEdge).flatten)
@@ -184,12 +183,12 @@ object DomainNodeIndexBehavior {
       */
     private[graph] def reconstruct(
       domainNodeIndex: DomainNodeIndex,
-      branchesRootedHere: Iterable[(DomainGraphBranch[Test], AssumedDomainEdge)]
+      branchesRootedHere: Iterable[(DomainGraphBranch, AssumedDomainEdge)]
     ): BranchParentIndex = {
       var idx = BranchParentIndex()
       // First, find the child branches known to this node using the domainNodeIndex.
       // These define the keys of our [[branchParentIndex]]
-      val knownChildBranches: Map[DomainGraphBranch[Test], Set[AssumedDomainEdge]] =
+      val knownChildBranches: Map[DomainGraphBranch, Set[AssumedDomainEdge]] =
         domainNodeIndex.index.toSeq.view
           .flatMap { case (_, indexedOnPeer) => indexedOnPeer.keys }
           .groupBy { case (branch, assumedEdge @ _) => branch }
@@ -219,21 +218,21 @@ object DomainNodeIndexBehavior {
     * This index is separate from [[subscribers]] because a single downstream DGB can be a child of multiple other DGBs.
     */
   final case class BranchParentIndex(
-    knownParents: Map[(DomainGraphBranch[model.Test], AssumedDomainEdge), Set[
-      (DomainGraphBranch[model.Test], AssumedDomainEdge)
+    knownParents: Map[(DomainGraphBranch, AssumedDomainEdge), Set[
+      (DomainGraphBranch, AssumedDomainEdge)
     ]] = Map.empty
   ) {
 
     // All known parent branches of [[testBranch]], according to [[knownParents]]
     def parentBranchesOf(
-      testBranch: (DomainGraphBranch[model.Test], AssumedDomainEdge)
-    ): Set[(DomainGraphBranch[model.Test], AssumedDomainEdge)] =
+      testBranch: (DomainGraphBranch, AssumedDomainEdge)
+    ): Set[(DomainGraphBranch, AssumedDomainEdge)] =
       knownParents.getOrElse(testBranch, Set.empty)
 
     def +(
       childParentTuple: (
-        (DomainGraphBranch[model.Test], AssumedDomainEdge),
-        (DomainGraphBranch[model.Test], AssumedDomainEdge)
+        (DomainGraphBranch, AssumedDomainEdge),
+        (DomainGraphBranch, AssumedDomainEdge)
       )
     ): BranchParentIndex = {
       val (child, parent) = childParentTuple
@@ -246,15 +245,15 @@ object DomainNodeIndexBehavior {
     /** Create a copy of this with no parents registered for `child`
       */
     def --(
-      child: (DomainGraphBranch[model.Test], AssumedDomainEdge)
+      child: (DomainGraphBranch, AssumedDomainEdge)
     ): BranchParentIndex = copy(knownParents = knownParents - child)
 
     /** Create a copy of this with all but the specified parent registered for `child`
       */
     def -(
       childParentTuple: (
-        (DomainGraphBranch[model.Test], AssumedDomainEdge),
-        (DomainGraphBranch[model.Test], AssumedDomainEdge)
+        (DomainGraphBranch, AssumedDomainEdge),
+        (DomainGraphBranch, AssumedDomainEdge)
       )
     ): BranchParentIndex = {
       val (child, parent) = childParentTuple
@@ -265,7 +264,7 @@ object DomainNodeIndexBehavior {
         copy(knownParents = knownParents.updated(child, newParents))
     }
 
-    def knownChildren: Iterable[(DomainGraphBranch[Test], AssumedDomainEdge)] = knownParents.keys
+    def knownChildren: Iterable[(DomainGraphBranch, AssumedDomainEdge)] = knownParents.keys
   }
 
   // TODO make this the companion object of DomainNodeIndexBehavior.SubscribersToThisNode once that type is unnested
@@ -339,8 +338,7 @@ trait DomainNodeIndexBehavior
     // NOTE: we cannot use `+=` because if already registered we want to avoid
     //       duplicating the result
     for {
-      universalSqId <- graph.runningStandingQueries.keys
-      universalSq <- graph.getStandingQuery(universalSqId)
+      (universalSqId, universalSq) <- graph.runningStandingQueries
       query <- universalSq.query.query match {
         case branchQuery: StandingQueryPattern.Branch => Some(branchQuery.branch)
         case _ => None
@@ -358,7 +356,7 @@ trait DomainNodeIndexBehavior
     for {
       ((query, assumedEdge), SubscribersToThisNodeUtil.Subscription(subscribers, _, sqIds)) <-
         subscribers.subscribersToThisNode
-      if sqIds.forall(graph.getStandingQuery(_).isEmpty)
+      if sqIds.forall(graph.runningStandingQuery(_).isEmpty)
       subscriber <- subscribers
     } cancelSubscription(query, assumedEdge, subscriber)
   }
@@ -382,10 +380,10 @@ trait DomainNodeIndexBehavior
     * query paired with a set of edges that match in the graph
     */
   private[this] def resolveDomainEdgesWithIndex(
-    testBranch: model.SingleBranch[model.Test],
+    testBranch: model.SingleBranch,
     assumedEdge: AssumedDomainEdge
-  ): List[(DomainEdge[model.Test], Set[(HalfEdge, Option[Boolean])])] =
-    testBranch.nextBranches.flatMap { (domainEdge: DomainEdge[model.Test]) =>
+  ): List[(DomainEdge, Set[(HalfEdge, Option[Boolean])])] =
+    testBranch.nextBranches.flatMap { (domainEdge: DomainEdge) =>
       val edgeResults: Set[(HalfEdge, Option[Boolean])] = edges
         .matching(domainEdge.edge)
         .map { (e: HalfEdge) =>
@@ -398,7 +396,7 @@ trait DomainNodeIndexBehavior
     }
 
   private[this] def edgesSatisfiedByIndex(
-    testBranch: model.SingleBranch[model.Test],
+    testBranch: model.SingleBranch,
     assumedEdge: AssumedDomainEdge
   ): Option[Boolean] = {
 
@@ -406,7 +404,7 @@ trait DomainNodeIndexBehavior
      * data and collect their `QuineId`'s
      */
     var missingInformation = false
-    val edgeResolutions: List[(DomainEdge[model.Test], Set[QuineId])] =
+    val edgeResolutions: List[(DomainEdge, Set[QuineId])] =
       resolveDomainEdgesWithIndex(testBranch, assumedEdge)
         .map { case (domainEdge, halfEdges) =>
           val qids = halfEdges.collect { case (HalfEdge(_, _, qid), Some(true)) => qid }
@@ -447,7 +445,7 @@ trait DomainNodeIndexBehavior
     */
   private[this] def receiveDomainNodeSubscription(
     from: Notifiable,
-    testBranch: DomainGraphBranch[model.Test],
+    testBranch: DomainGraphBranch,
     assumedEdge: AssumedDomainEdge,
     relatedQueries: Set[StandingQueryId]
   ): Unit = {
@@ -468,7 +466,7 @@ trait DomainNodeIndexBehavior
     * a tree rooted at this node?"
     */
   protected def ensureSubscriptionToDomainEdges(
-    testBranch: DomainGraphBranch[model.Test],
+    testBranch: DomainGraphBranch,
     assumedEdge: AssumedDomainEdge,
     relatedQueries: Set[StandingQueryId]
   ): Unit = {
@@ -517,7 +515,7 @@ trait DomainNodeIndexBehavior
 
   private[this] def receiveIndexUpdate(
     fromOther: QuineId,
-    otherTestBranch: DomainGraphBranch[model.Test],
+    otherTestBranch: DomainGraphBranch,
     otherAssumedEdge: AssumedDomainEdge,
     result: Boolean
   ): Unit = {
@@ -545,12 +543,12 @@ trait DomainNodeIndexBehavior
     * @param subscriber
     */
   private[this] def cancelSubscription(
-    testBranch: DomainGraphBranch[model.Test],
+    testBranch: DomainGraphBranch,
     assumedEdge: AssumedDomainEdge,
     subscriber: Notifiable
   ): Unit = {
     // update [[subscribers]]
-    val abandonedBranches: Map[(DomainGraphBranch[Test], AssumedDomainEdge), SubscribersToThisNodeUtil.Subscription] =
+    val abandonedBranches: Map[(DomainGraphBranch, AssumedDomainEdge), SubscribersToThisNodeUtil.Subscription] =
       subscribers.removeSubscriber(subscriber, testBranch -> assumedEdge)
 
     val nextBranchesToRemove = abandonedBranches match {
@@ -638,13 +636,13 @@ trait DomainNodeIndexBehavior
     */
   case class SubscribersToThisNode(
     subscribersToThisNode: mutable.Map[
-      (DomainGraphBranch[model.Test], AssumedDomainEdge),
+      (DomainGraphBranch, AssumedDomainEdge),
       SubscribersToThisNodeUtil.Subscription
     ] = mutable.Map.empty
   ) {
     import SubscribersToThisNodeUtil.Subscription
     def containsSubscriber(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedDomainEdge: AssumedDomainEdge,
       subscriber: Notifiable,
       forQuery: StandingQueryId
@@ -657,24 +655,24 @@ trait DomainNodeIndexBehavior
         .getOrElse(false)
 
     def tracksBranch(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Boolean = subscribersToThisNode.contains(testBranch -> assumedEdge)
 
     def getAnswer(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Option[Boolean] = subscribersToThisNode.get(testBranch -> assumedEdge).flatMap(_.lastNotification)
 
     def getRelatedQueries(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Set[StandingQueryId] =
       subscribersToThisNode.get(testBranch -> assumedEdge).toSeq.flatMap(_.relatedQueries).toSet
 
     def add(
       from: Notifiable,
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge,
       relatedQueries: Set[StandingQueryId]
     ): Unit =
@@ -703,8 +701,8 @@ trait DomainNodeIndexBehavior
     // Returns: the subscriptions removed from if and only if there are no other Notifiables in those subscriptions.
     private[DomainNodeIndexBehavior] def removeSubscriber(
       subscriber: Notifiable,
-      branch: (DomainGraphBranch[model.Test], AssumedDomainEdge)
-    ): Map[(DomainGraphBranch[model.Test], AssumedDomainEdge), Subscription] =
+      branch: (DomainGraphBranch, AssumedDomainEdge)
+    ): Map[(DomainGraphBranch, AssumedDomainEdge), Subscription] =
       subscribersToThisNode
         .get(branch)
         .map { case subscription @ Subscription(notifiables, _, _) =>
@@ -713,7 +711,7 @@ trait DomainNodeIndexBehavior
             Map(branch -> subscription)
           } else {
             subscribersToThisNode(branch) -= subscriber // else remove just the requested subscriber
-            Map.empty[(DomainGraphBranch[model.Test], AssumedDomainEdge), Subscription]
+            Map.empty[(DomainGraphBranch, AssumedDomainEdge), Subscription]
           }
         }
         .getOrElse(Map.empty)
@@ -728,7 +726,7 @@ trait DomainNodeIndexBehavior
       }
 
     def updateAnswerAndPropagateToRelevantSubscribers(
-      downstreamBranch: DomainGraphBranch[Test],
+      downstreamBranch: DomainGraphBranch,
       downstreamAssumedEdge: AssumedDomainEdge
     ): Unit = {
       val parentBranches = branchParentIndex.parentBranchesOf(downstreamBranch -> downstreamAssumedEdge)
@@ -769,13 +767,13 @@ trait DomainNodeIndexBehavior
     }
 
     def updateAnswerAndNotifySubscribers(
-      testBranch: DomainGraphBranch[model.Test],
+      testBranch: DomainGraphBranch,
       assumedEdge: AssumedDomainEdge
     ): Unit = {
       val subscriptionKey = testBranch -> assumedEdge
       testBranch match {
         // TODO this is the only variant used for standing queries
-        case single: model.SingleBranch[model.Test] =>
+        case single: model.SingleBranch =>
           val matchesLocal = localTestBranch(single) // TODO: Consider whether to test assumedEdge in `localTestBranch`?
           val edgesSatisfied = edgesSatisfiedByIndex(single, assumedEdge)
           subscribersToThisNode.get(subscriptionKey).foreach {

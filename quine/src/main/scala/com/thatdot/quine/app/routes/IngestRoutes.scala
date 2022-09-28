@@ -3,6 +3,7 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
@@ -18,6 +19,7 @@ import akka.{Done, NotUsed}
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.Logger
 
+import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes._
 
 trait IngestStreamState {
@@ -146,8 +148,8 @@ trait IngestRoutesImpl
     with exts.ServerQuineEndpoints {
 
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
   implicit def materializer: Materializer
+  def graph: BaseGraph
 
   private def stream2Info(conf: IngestStreamWithControl[IngestStreamConfiguration]): Future[IngestStreamInfo] =
     conf.status.map { status =>
@@ -157,7 +159,7 @@ trait IngestRoutesImpl
         conf.settings,
         conf.metrics.toEndpointResponse
       )
-    }
+    }(graph.shardDispatcherEC)
 
   val serviceState: IngestStreamState
 
@@ -181,32 +183,40 @@ trait IngestRoutesImpl
     serviceState.removeIngestStream(name) match {
       case None => Future.successful(None)
       case Some(control @ IngestStreamWithControl(settings, metrics, valve @ _, _, _, close, terminated)) =>
-        for {
-          previousStatus <- control.status
-          _ = close() // start terminating the ingest
-          message <- terminated map { case Done => None } recover { case e =>
-            Some(e.toString)
-          } // wait to respond to the API call until termination finishes
-        } yield {
-          val newStatus = {
-            import IngestStreamStatus._
-            previousStatus match {
-              // in these cases, the ingest was healthy and runnable/running
-              case Running | Paused | Restored => Terminated
-              // in these cases, the ingest was not running/runnable
-              case Completed | Failed | Terminated => previousStatus
-            }
+        val finalStatus = control.status.map { previousStatus =>
+          import IngestStreamStatus._
+          previousStatus match {
+            // in these cases, the ingest was healthy and runnable/running
+            case Running | Paused | Restored => Terminated
+            // in these cases, the ingest was not running/runnable
+            case Completed | Failed | Terminated => previousStatus
           }
-          Some(
-            IngestStreamInfoWithName(
-              name,
-              newStatus,
-              message,
-              settings,
-              metrics.toEndpointResponse
-            )
-          )
+        }(ExecutionContexts.parasitic)
+
+        val terminationMessage: Future[Option[String]] = {
+          // start terminating the ingest
+          close()
+          // future will return when termination finishes
+          terminated
+            .map({ case Done => None })(graph.shardDispatcherEC)
+            .recover({ case e =>
+              Some(e.toString)
+            })(graph.shardDispatcherEC)
         }
+
+        finalStatus
+          .zip(terminationMessage)
+          .map { case (newStatus, message) =>
+            Some(
+              IngestStreamInfoWithName(
+                name,
+                newStatus,
+                message,
+                settings,
+                metrics.toEndpointResponse
+              )
+            )
+          }(graph.shardDispatcherEC)
     }
   }
 
@@ -214,7 +224,7 @@ trait IngestRoutesImpl
   private val ingestStreamLookupRoute = ingestStreamLookup.implementedByAsync { (name: String) =>
     serviceState.getIngestStream(name) match {
       case None => Future.successful(None)
-      case Some(stream) => stream2Info(stream).map(s => Some(s.withName(name)))
+      case Some(stream) => stream2Info(stream).map(s => Some(s.withName(name)))(graph.shardDispatcherEC)
     }
   }
 
@@ -224,9 +234,9 @@ trait IngestRoutesImpl
       .traverse(
         serviceState.getIngestStreams(): TraversableOnce[(String, IngestStreamWithControl[IngestStreamConfiguration])]
       ) { case (name, ingest) =>
-        stream2Info(ingest).map(name -> _)
-      }
-      .map(_.toMap)
+        stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
+      }(implicitly, graph.shardDispatcherEC)
+      .map(_.toMap)(graph.shardDispatcherEC)
   }
 
   private[this] def setIngestStreamPauseState(
@@ -236,12 +246,14 @@ trait IngestRoutesImpl
     serviceState.getIngestStream(name) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        for {
-          valve <- ingest.valve
-          _ <- valve.flip(newState)
-          _ = (ingest.restored = false)
-          info <- stream2Info(ingest)
-        } yield Some(info.withName(name))
+        val flippedValve = ingest.valve.flatMap(_.flip(newState))(graph.shardDispatcherEC)
+        val ingestStatus = flippedValve.flatMap { _ =>
+          ingest.restored = false // FIXME not threadsafe
+          stream2Info(ingest)
+        }(graph.shardDispatcherEC)
+
+        ingestStatus.map(status => Some(status.withName(name)))(graph.shardDispatcherEC)
+
     }
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { (name: String) =>

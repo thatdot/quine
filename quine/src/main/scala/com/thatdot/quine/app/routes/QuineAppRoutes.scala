@@ -1,6 +1,5 @@
 package com.thatdot.quine.app.routes
 
-import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
 
 import akka.http.scaladsl.server.Directives._
@@ -10,7 +9,7 @@ import akka.util.Timeout
 import com.typesafe.scalalogging.LazyLogging
 import org.webjars.WebJarAssetLocator
 
-import com.thatdot.quine.app.{BuildInfo, Config}
+import com.thatdot.quine.app.BuildInfo
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
@@ -21,6 +20,7 @@ import com.thatdot.quine.model.QuineId
   *
   * @param graph underlying graph
   * @param serviceState quine application state
+  * @param currentConfig rendered JSON config
   * @param ec execution context
   * @param timeout timeout
   */
@@ -30,7 +30,7 @@ class QuineAppRoutes(
     with QueryUiConfigurationState
     with StandingQueryStore
     with IngestStreamState,
-  val ec: ExecutionContext,
+  val currentConfig: ujson.Value,
   val timeout: Timeout
 ) extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -45,7 +45,6 @@ class QuineAppRoutes(
     with LazyLogging {
 
   val version = BuildInfo.version
-  lazy val currentConfig: ujson.Value = Config.loadedConfigJson
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
 
   val webJarAssetLocator = new WebJarAssetLocator()

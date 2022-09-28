@@ -1,5 +1,6 @@
 ---
 layout: page-no-nav
+description: Learn the origins of the Quine streaming graph project and its nod to namesake, philosopher and logician W.V.O. Quine
 ---
 
 # About Quine
@@ -20,6 +21,6 @@ thatDot team’s conviction that the best infrastructure software thrives within
 an open, diverse community of contributors and that well-made software freely
 available benefits everyone.
 
-@@include[upcoming events](includes/about/upcoming_events.md)
+@@include[upcoming events](includes/about/upcoming-events.md)
 
-@@include[wvo quine origins](includes/about/wvo_quine_origins.md)
+@@include[wvo quine origins](includes/about/wvo-quine-origins.md)

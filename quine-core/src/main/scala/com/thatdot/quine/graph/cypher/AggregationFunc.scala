@@ -27,6 +27,14 @@ sealed abstract class Aggregator {
     * the expression to throw exceptions when evaluated?
     */
   def cannotFail: Boolean
+
+  /** substitute all parameters in this aggregator
+    * @param parameters a [[Parameters]] providing parameters used by [[Expr.Parameter]]s within this aggregator.
+    * @return a copy of this expression with all provided parameters substituted
+    * INV: If all parameters used by [[Expr.Parameter]] instances are provided, the returned
+    * aggregator will have no [[Expr.Parameter]]-typed [[Expr]]s remaining
+    */
+  def substitute(parameters: Map[Expr.Parameter, Value]): Aggregator
 }
 
 object Aggregator {
@@ -71,6 +79,7 @@ object Aggregator {
     )
     val isPure = true
     def cannotFail = true
+    def substitute(parameters: Map[Expr.Parameter, Value]): countStar.type = this
   }
 
   /** Tally up the number of non-null results */
@@ -84,6 +93,7 @@ object Aggregator {
     )
     def isPure = expr.isPure
     def cannotFail = expr.cannotFail
+    def substitute(parameters: Map[Expr.Parameter, Value]): count = copy(expr = expr.substitute(parameters))
   }
 
   /** Accumulate the results in a list value */
@@ -97,6 +107,7 @@ object Aggregator {
     )
     def isPure = expr.isPure
     def cannotFail = expr.cannotFail
+    def substitute(parameters: Map[Expr.Parameter, Value]): collect = copy(expr = expr.substitute(parameters))
   }
 
   /** Compute the average of numeric results */
@@ -134,6 +145,8 @@ object Aggregator {
 
     // Non-number arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): avg = copy(expr = expr.substitute(parameters))
   }
 
   // TODO: this needs to work for duration types
@@ -166,6 +179,8 @@ object Aggregator {
 
     // Non-number arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): sum = copy(expr = expr.substitute(parameters))
   }
 
   /** Compute the maximum of results.
@@ -191,6 +206,8 @@ object Aggregator {
     def isPure: Boolean = expr.isPure
 
     def cannotFail: Boolean = expr.cannotFail
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): max = copy(expr = expr.substitute(parameters))
   }
 
   /** Compute the minimum of results.
@@ -216,6 +233,8 @@ object Aggregator {
     def isPure: Boolean = expr.isPure
 
     def cannotFail: Boolean = expr.cannotFail
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): min = copy(expr = expr.substitute(parameters))
   }
 
   /** Compute the standard deviation of results.
@@ -263,6 +282,8 @@ object Aggregator {
 
     // Non-number arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): StDev = copy(expr = expr.substitute(parameters))
   }
 
   /** Compute the percentile of results.
@@ -344,6 +365,11 @@ object Aggregator {
 
     // Non-number arguments
     def cannotFail: Boolean = false
+
+    def substitute(parameters: Map[Expr.Parameter, Value]): Percentile = copy(
+      expr = expr.substitute(parameters),
+      percentileExpr = percentileExpr.substitute(parameters)
+    )
   }
 }
 

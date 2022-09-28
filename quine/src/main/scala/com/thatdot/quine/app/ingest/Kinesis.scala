@@ -2,8 +2,8 @@ package com.thatdot.quine.app.ingest
 
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 import akka.stream.alpakka.kinesis.KinesisErrors.KinesisSourceError
@@ -54,7 +54,7 @@ case object Kinesis extends LazyLogging {
     shardIterator: ShardIterator,
     numRetries: Int,
     maxPerSecond: Option[Int]
-  )(implicit ec: ExecutionContext) {
+  ) {
 
     /** Start polling for and importing records from the configured shard
       * @param graph
@@ -109,7 +109,7 @@ case object Kinesis extends LazyLogging {
                 .asScala
                 .map(_.shardId())
                 .toSet
-            )
+            )(graph.system.dispatcher)
         case atLeastOneId => Future.successful(atLeastOneId)
       }
       // a source to yielding a single List of shard settings
@@ -125,7 +125,9 @@ case object Kinesis extends LazyLogging {
       // there is an alternate KCL source we could use (https://doc.akka.io/docs/alpakka/current/kinesis.html) but
       // it requires more configuration, as well as dynamoDB and cloudwatch access
       val kinesisSource: Source[kinesisModel.Record, UniqueKillSwitch] = shardSettingsSource
-        .flatMapConcat(shardSettings => KinesisSource.basicMerge(shardSettings, kinesisClient))
+        .flatMapConcat(shardSettings =>
+          KinesisSource.basicMerge(shardSettings, kinesisClient).named(s"kinesis-ingest-source-for-$streamName")
+        )
         .viaMat(KillSwitches.single)(Keep.right)
 
       val isSingleHost = graph.isSingleHost
@@ -145,14 +147,13 @@ case object Kinesis extends LazyLogging {
             .importMessageSafeBytes(bytes, isSingleHost)
             .fold(
               { err =>
+                // TODO should partition key be treated as PII?
                 logger.warn(
-                  s"""Received record with sequence number ${record.sequenceNumber()} with
-                         |partition key ${record.partitionKey()} on stream $streamName that
-                         |${format.getClass.getSimpleName} could not decode.""".stripMargin
-                    .replace('\n', ' '),
-                  err
+                  s"""Failed to deserialize Kinesis record with sequence number: ${record.sequenceNumber} with
+                     |partition key: ${record.partitionKey} on stream: $streamName using format:
+                     |${format.getClass.getSimpleName}. Skipping record.""".stripMargin.replace('\n', ' ')
                 )
-                logger.debug(err.getStackTrace.mkString("", "\n", "\n"))
+                logger.info(s"""Failed to decode Kinesis record: $record""", err)
                 List.empty
               },
               List(_)
@@ -160,8 +161,9 @@ case object Kinesis extends LazyLogging {
         }
         .via(throttled)
         .via(graph.ingestThrottleFlow)
-        .mapAsyncUnordered(parallelism)(format.writeToGraph(graph, _).map(_ => ingestToken))
-        .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c)) }
+        .mapAsyncUnordered(parallelism)(format.writeToGraph(graph, _).map(_ => ingestToken)(graph.system.dispatcher))
+        .watchTermination() { case ((a, b), c) => b.map(v => ControlSwitches(a, v, c))(graph.system.dispatcher) }
+        .named(s"kinesis-ingest-for-$streamName")
     }
   }
 }

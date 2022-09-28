@@ -3,12 +3,16 @@ package com.thatdot.quine.app.config
 import java.io.File
 import java.net.InetSocketAddress
 
+import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import akka.actor.ActorSystem
 
 import com.datastax.oss.driver.api.core.DefaultConsistencyLevel
 import com.typesafe.scalalogging.LazyLogging
+import pureconfig.ConfigConvert
+import pureconfig.generic.auto._
+import pureconfig.generic.semiauto.deriveConvert
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.persistor._
@@ -47,7 +51,7 @@ object PersistenceAgentType {
   }
 
   final case class RocksDb(
-    filepath: File,
+    filepath: File = new File(sys.env.getOrElse("QUINE_DATA", "quine.db")),
     writeAheadLog: Boolean = true,
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
@@ -60,7 +64,7 @@ object PersistenceAgentType {
       if (createParentDir) {
         val parentDir = filepath.getAbsoluteFile.getParentFile
         if (parentDir.mkdirs())
-          logger.warn("{} did not exist; created.", parentDir)
+          logger.warn(s"Configured persistence directory: $parentDir did not exist; created.")
       }
       val db =
         try new RocksDbPersistor(
@@ -140,11 +144,12 @@ object PersistenceAgentType {
     writeConsistency: DefaultConsistencyLevel = DefaultConsistencyLevel.LOCAL_QUORUM,
     endpoints: List[InetSocketAddress] = defaultCassandraAddress,
     localDatacenter: String = "datacenter1",
-    insertTimeout: FiniteDuration = 10.seconds,
-    selectTimeout: FiniteDuration = 10.seconds,
+    writeTimeout: FiniteDuration = 10.seconds,
+    readTimeout: FiniteDuration = 10.seconds,
     shouldCreateTables: Boolean = true,
     shouldCreateKeyspace: Boolean = true,
-    bloomFilterSize: Option[Long] = None
+    bloomFilterSize: Option[Long] = None,
+    snapshotPartMaxSizeBytes: Int = 1000000
   ) extends PersistenceAgentType {
     def isLocal: Boolean = false
 
@@ -157,13 +162,27 @@ object PersistenceAgentType {
         writeConsistency,
         endpoints,
         localDatacenter,
-        insertTimeout,
-        selectTimeout,
+        writeTimeout,
+        readTimeout,
         shouldCreateTables,
         shouldCreateKeyspace,
-        Some(Metrics)
+        Some(Metrics),
+        snapshotPartMaxSizeBytes
       )
       BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, db, persistenceConfig)
     }
+  }
+
+  implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
+    import Implicits._
+
+    // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
+    @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
+      ConfigConvert.viaNonEmptyString[InetSocketAddress](
+        s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
+        addr => addr.getHostString + ':' + addr.getPort
+      )
+
+    deriveConvert[PersistenceAgentType]
   }
 }

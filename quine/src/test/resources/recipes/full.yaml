@@ -17,10 +17,10 @@ standingQueries:
       query: X
   pattern:
     type: Cypher
-    query: MATCH (n) RETURN id(n)
+    query: MATCH (n) RETURN DISTINCT id(n)
 nodeAppearances: []
 quickQueries: []
 sampleQueries: []
 statusQuery:
-  cypherQuery: match (n) return count(n)
+  cypherQuery: MATCH (n) RETURN count(n)
 summary: summary

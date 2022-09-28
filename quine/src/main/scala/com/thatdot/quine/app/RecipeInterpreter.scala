@@ -5,7 +5,7 @@ import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -36,7 +36,7 @@ object RecipeInterpreter {
     appState: RecipeState,
     graphService: CypherOpsGraph,
     quineWebserverUrl: Option[String]
-  )(implicit ec: ExecutionContext, idProvider: QuineIdProvider): Cancellable = {
+  )(implicit idProvider: QuineIdProvider): Cancellable = {
     statusLines.info(s"Running Recipe ${recipe.title}")
 
     if (recipe.nodeAppearances.nonEmpty) {
@@ -116,7 +116,7 @@ object RecipeInterpreter {
     graphService: BaseGraph,
     ingestStreamName: String,
     interval: FiniteDuration = 1 second
-  )(implicit ec: ExecutionContext): Cancellable = {
+  ): Cancellable = {
     val actorSystem = graphService.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
@@ -130,25 +130,25 @@ object RecipeInterpreter {
           statusLines.remove(statusLine)
           ()
         case Some(ingestStream) =>
-          for {
-            status <- ingestStream.status(Materializer.matFromSystem(actorSystem))
-            stats = ingestStream.metrics.toEndpointResponse
-          } {
-            val message =
-              s"$ingestStreamName status is ${status.toString.toLowerCase} and ingested ${stats.ingestedCount}"
-            if (status.isTerminal) {
-              statusLines.info(message)
-              task.cancel()
-              statusLines.remove(statusLine)
-            } else {
-              statusLines.update(
-                statusLine,
-                message
-              )
-            }
-          }
+          ingestStream
+            .status(Materializer.matFromSystem(actorSystem))
+            .foreach { status =>
+              val stats = ingestStream.metrics.toEndpointResponse
+              val message =
+                s"$ingestStreamName status is ${status.toString.toLowerCase} and ingested ${stats.ingestedCount}"
+              if (status.isTerminal) {
+                statusLines.info(message)
+                task.cancel()
+                statusLines.remove(statusLine)
+              } else {
+                statusLines.update(
+                  statusLine,
+                  message
+                )
+              }
+            }(graphService.system.dispatcher)
       }
-    }
+    }(graphService.system.dispatcher)
     task
   }
 
@@ -158,30 +158,32 @@ object RecipeInterpreter {
     graph: BaseGraph,
     standingQueryName: String,
     interval: FiniteDuration = 1 second
-  )(implicit ec: ExecutionContext): Cancellable = {
+  ): Cancellable = {
     val actorSystem = graph.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
       initialDelay = interval,
       interval = interval
     ) { () =>
-      appState.getStandingQuery(standingQueryName) onComplete {
-        case Failure(ex) =>
-          statusLines.error(s"Failed getting Standing Query $standingQueryName", ex)
-          task.cancel()
-          statusLines.remove(statusLine)
-          ()
-        case Success(None) =>
-          statusLines.error(s"Failed getting Standing Query $standingQueryName (it does not exist)")
-          task.cancel()
-          statusLines.remove(statusLine)
-          ()
-        case Success(Some(standingQuery)) =>
-          val standingQueryStatsCount =
-            standingQuery.stats.values.view.map(_.rates.count).sum
-          statusLines.update(statusLine, s"$standingQueryName count ${standingQueryStatsCount}")
-      }
-    }
+      appState
+        .getStandingQuery(standingQueryName)
+        .onComplete {
+          case Failure(ex) =>
+            statusLines.error(s"Failed getting Standing Query $standingQueryName", ex)
+            task.cancel()
+            statusLines.remove(statusLine)
+            ()
+          case Success(None) =>
+            statusLines.error(s"Failed getting Standing Query $standingQueryName (it does not exist)")
+            task.cancel()
+            statusLines.remove(statusLine)
+            ()
+          case Success(Some(standingQuery)) =>
+            val standingQueryStatsCount =
+              standingQuery.stats.values.view.map(_.rates.count).sum
+            statusLines.update(statusLine, s"$standingQueryName count ${standingQueryStatsCount}")
+        }(graph.system.dispatcher)
+    }(graph.system.dispatcher)
     task
   }
 
@@ -191,7 +193,7 @@ object RecipeInterpreter {
     graphService: CypherOpsGraph,
     statusQuery: StatusQuery,
     interval: FiniteDuration = 5 second
-  )(implicit ec: ExecutionContext, idProvider: QuineIdProvider): Cancellable = {
+  )(implicit idProvider: QuineIdProvider): Cancellable = {
     val actorSystem = graphService.system
     val changed = new OnChanged[String]
     lazy val task: Cancellable = actorSystem.scheduler.scheduleWithFixedDelay(
@@ -207,6 +209,7 @@ object RecipeInterpreter {
             queryResults.results
               .take(printQueryMaxResults)
               .toMat(Sink.seq)(Keep.right)
+              .named("recipe-status-query")
               .run()(graphService.materializer),
             5 seconds
           )
@@ -214,7 +217,7 @@ object RecipeInterpreter {
       } catch {
         case _: TimeoutException => statusLines.warn("Status query timed out")
       }
-    }
+    }(graphService.system.dispatcher)
     task
   }
 
@@ -247,11 +250,15 @@ object RecipeInterpreter {
       val valueStrings = resultRecord.map(Value.toJson(_).toString)
       val valueStringMaxLength = valueStrings.map(_.length).max
       val separator = " | "
+      val headerLengthMin = 40
       val headerLengthMax = 200
       val header =
         fixedLength(
           s"---[ Status Query result ${resultRecordIndex + 1} ]",
-          Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax),
+          Math.max(
+            headerLengthMin,
+            Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax)
+          ),
           '-'
         )
       val footer =

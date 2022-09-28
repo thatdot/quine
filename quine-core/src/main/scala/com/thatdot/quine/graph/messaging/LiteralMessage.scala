@@ -2,8 +2,11 @@ package com.thatdot.quine.graph.messaging
 
 import scala.concurrent.Future
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Properties, PropertyValue, QuineId, QuineValue}
+import akka.NotUsed
+import akka.stream.scaladsl.Source
+
+import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeChangeEvent}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
   *
@@ -21,8 +24,8 @@ object LiteralMessage {
     withLimit: Option[Int],
     replyTo: QuineRef
   ) extends LiteralCommand
-      with AskableQuineMessage[HalfEdgeSet]
-  final case class HalfEdgeSet(halfEdges: Set[HalfEdge]) extends LiteralMessage
+      with AskableQuineMessage[Source[HalfEdgeMessage, NotUsed]]
+  final case class HalfEdgeMessage(halfEdge: HalfEdge) extends LiteralMessage
 
   final case class AddHalfEdgeCommand(
     halfEdge: HalfEdge,
@@ -36,22 +39,17 @@ object LiteralMessage {
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
-  final case class GetRawPropertiesCommand(replyTo: QuineRef)
+  final case class GetPropertiesCommand(replyTo: QuineRef)
       extends LiteralCommand
-      with AskableQuineMessage[RawPropertiesMap]
-  final case class RawPropertiesMap(
-    labels: Option[Set[Symbol]],
-    properties: Map[Symbol, PropertyValue]
-  ) extends LiteralMessage
+      with AskableQuineMessage[Source[PropertyMessage, NotUsed]]
+  case class PropertyMessage(value: Either[(Symbol, PropertyValue), Symbol]) extends LiteralMessage
 
   final case class GetPropertiesAndEdges(replyTo: QuineRef)
       extends LiteralCommand
-      with AskableQuineMessage[PropertiesAndEdges]
+      with AskableQuineMessage[Source[PropertyOrEdgeMessage, NotUsed]]
 
-  final case class PropertiesAndEdges(
-    id: QuineId,
-    properties: Properties,
-    edges: Set[HalfEdge]
+  final case class PropertyOrEdgeMessage(
+    value: Either[(Symbol, PropertyValue), HalfEdge]
   ) extends LiteralMessage
 
   final case class SetPropertyCommand(
@@ -93,6 +91,18 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[NodeInternalState]]
 
+  final case class GetNodeHashCode(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[GraphNodeHashCode]
+
+  /** Request the current results of the standing query matches on this node. */
+  final case class GetSqState(replyTo: QuineRef) extends LiteralCommand with AskableQuineMessage[SqStateResults]
+
+  /** A single result. Could be for an incoming subscriber or an outgoing subscription. */
+  final case class SqStateResult(queryId: Int, depth: Int, qid: QuineId, lastResult: Option[Boolean])
+
+  /** Payload to report on the current results of the standing query matches on this node. */
+  final case class SqStateResults(subscribers: List[SqStateResult], subscriptions: List[SqStateResult])
+      extends QuineMessage
+
   /** IncrementCounter Procedure */
   final case class IncrementProperty(propertyKey: Symbol, incrementAmount: Long, replyTo: QuineRef)
       extends LiteralCommand
@@ -109,19 +119,29 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
+  final case class DgbLocalEventIndexSummary(
+    propIdx: Map[String, Int],
+    edgeIdx: Map[String, Int],
+    anyEdgeIdx: List[Int]
+  ) extends QuineMessage
+
   /** Relays a complete, non-authoritative snapshot of node-internal state, eg, for logging.
     * ONLY FOR DEBUGGING!
     */
   final case class NodeInternalState(
+    atTime: Option[Milliseconds],
     properties: Map[Symbol, String],
     edges: Set[HalfEdge],
     forwardTo: Option[QuineId],
     mergedIntoHere: Set[QuineId],
     latestUpdateMillisAfterSnapshot: Option[EventTime],
-    subscribers: Option[String], // TODO make this string more informative
-    subscriptions: Option[String], // TODO: make this string more informative
+    subscribers: List[String], // TODO make this string more informative
+    subscriptions: List[String], // TODO: make this string more informative
+    sqStateResults: SqStateResults,
+    dgbLocalEventIndex: DgbLocalEventIndexSummary,
     cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
-    journal: Vector[NodeChangeEvent]
+    journal: Set[NodeChangeEvent.WithTime],
+    graphNodeHashCode: Long
   ) extends LiteralMessage
 
   final case class LocallyRegisteredStandingQuery(

@@ -72,7 +72,7 @@ standingQueries:
           (tx)-[:defined_in]->(ba:block_assoc)
         WHERE
           tainted.tainted IS NOT NULL
-          AND NOT EXISTS (ba.orphaned)
+          AND NOT EXISTS(ba.orphaned)
         RETURN
           id(tainted) AS accountId,
           tainted.tainted AS oldTaintedLevel,

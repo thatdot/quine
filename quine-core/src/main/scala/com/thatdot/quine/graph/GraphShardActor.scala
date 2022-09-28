@@ -5,8 +5,8 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
 import scala.collection.concurrent
-import scala.concurrent.Future
 import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteDuration}
+import scala.concurrent.{Future, Promise}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -36,7 +36,7 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
 }
 import com.thatdot.quine.graph.messaging.{NodeActorMailboxExtension, QuineIdAtTime, QuineMessage, QuineRefOps}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.ExpiringLruSet
+import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 
 /** Shard in the Quine graph
   *
@@ -65,8 +65,9 @@ final private[quine] class GraphShardActor(
     with QuineRefOps
     with Timers {
 
-  import GraphShardActor.{NodeState, WakeUpOutcome}
   import context.system
+
+  import GraphShardActor.{NodeState, WakeUpOutcome}
 
   implicit def idProvider: QuineIdProvider = graph.idProvider
 
@@ -171,10 +172,10 @@ final private[quine] class GraphShardActor(
         }
 
         newState match {
-          // Keep track of the shutdown future
-          case WakefulState.GoingToSleep(sleepFut) =>
+          // Keep track of the side effects as a result of shutting down the node
+          case WakefulState.GoingToSleep(shardPromise) =>
             unlikelyIncompleteShdnCounter.inc()
-            WakeUpOutcome.IncompleteActorShutdown(sleepFut)
+            WakeUpOutcome.IncompleteActorShutdown(shardPromise.future)
 
           // Try to perform the action
           case WakefulState.Awake =>
@@ -202,7 +203,7 @@ final private[quine] class GraphShardActor(
           actorRefLock,
           snapshotBytesOpt
         ).withMailbox("akka.quine.node-mailbox")
-          .withDispatcher("akka.quine.node-dispatcher")
+          .withDispatcher(QuineDispatchers.nodeDispatcherName)
 
         // Must be in a try because Akka may not have finished freeing the name even if the actor is shut down.
         try {
@@ -246,14 +247,14 @@ final private[quine] class GraphShardActor(
 
         // If the node was not already considering sleep, tell it to
         if (previous == WakefulState.Awake) {
-          log.debug("sleepActor: sent GoToSleep request to {}", target)
+          log.debug("sleepActor: sent GoToSleep request to: {}", target)
           actorRef ! GoToSleep
         } else {
-          log.debug("sleepActor: {} is already {}", target, previous)
+          log.debug("sleepActor: {} is already: {}", target, previous)
         }
 
       case None =>
-        log.warning("sleepActor: cannot find actor for {}", target)
+        log.warning("sleepActor: cannot find actor for: {}", target)
     }
 
   /** Basic LRU cache of the dedup IDs of the last 10000 delivery relays
@@ -370,11 +371,23 @@ final private[quine] class GraphShardActor(
       }
 
     // Actor shut down completely
-    case SleepOutcome.SleepSuccess(id) =>
-      log.debug("Sleep succeeded for {}", id)
+    case SleepOutcome.SleepSuccess(id, shardPromise) =>
+      log.debug("Sleep succeeded for {}", id.debug)
       nodes -= id
       inMemoryActorList.remove(id)
       nodesSleptSuccessCounter.inc()
+      val promiseCompletedUniquely = shardPromise.trySuccess(())
+      if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
+        shardPromise.future.value.get match {
+          case Success(_) =>
+            log.info("Received redundant notification about successfully slept node: {}", id.debug)
+          case Failure(_) =>
+            log.error(
+              """Received notification that node: {} slept, but that node already reported a failure for the same sleep request""",
+              id.debug
+            )
+        }
+      }
 
       // Remove the message queue if empty, or else wake up the node
       val removed = NodeActorMailboxExtension(system).removeMessageQueueIfEmpty(id)
@@ -384,11 +397,40 @@ final private[quine] class GraphShardActor(
       * the persistor couldn't successfully persist the data. Try to wake the
       * node back up.
       */
-    case SleepOutcome.SleepFailed(id, snapshot, exception) =>
-      log.error(exception, "Failed to serialize data for {}. Restoring the node.", id)
+    case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
+      log.error(
+        exception,
+        "Failed to store: {} bytes on: {}, composed of: {} edges and: {} properties. Restoring the node.",
+        snapshot.length,
+        id.debug,
+        numEdges,
+        propertySizes.size
+      )
+      if (log.isInfoEnabled)
+        log.info(
+          "Property sizes on failed store: {}: {}",
+          id.debug,
+          propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")
+        )
       nodes -= id
       inMemoryActorList.remove(id)
       nodesSleptFailureCounter.inc()
+      val promiseCompletedUniquely = shardPromise.tryFailure(exception)
+      if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
+        shardPromise.future.value.get match {
+          case Success(_) =>
+            log.error(
+              """A node failed to sleep: {}, but that node already reported a success for the same sleep request""",
+              id.debug
+            )
+          case Failure(e) =>
+            log.warning(
+              s"A node failed to sleep, and reported that failure multiple times: {}. Latest error was: {}",
+              id.debug,
+              e
+            )
+        }
+      }
 
       // wake the node back up
       self ! WakeUp(
@@ -407,8 +449,8 @@ final private[quine] class GraphShardActor(
           val stats = shardStats()
           if (log.isWarningEnabled) {
             log.warning(
-              s"No more retries waking up $id " +
-              s"with sleep status ${nodes.get(id)} " +
+              s"No more retries waking up: ${id.debug} " +
+              s"with sleep status: ${nodes.get(id)} " +
               s"with nodes-on-shard: ${stats.awake} awake, ${stats.goingToSleep} going to sleep " +
               s"Outcome: $badOutcome " +
               s"Errors: " + errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", ")
@@ -418,57 +460,53 @@ final private[quine] class GraphShardActor(
 
         // Retry because the actor name should (hopefully) be freed by then.
         case _: WakeUpOutcome.ActorNameStillReserved =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.ActorNameStillReserved
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           LocalMessageDelivery.slidingDelay(remaining) match {
             case None => self ! msgToDeliver
             case Some(delay) =>
-              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)
+              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
               ()
           }
 
         // Retry because the actor name should (hopefully) be freed by then.
         case _: WakeUpOutcome.UnexpectedWakeUpError =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.UnexpectedWakeUpError
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           LocalMessageDelivery.slidingDelay(remaining) match {
             case None => self ! msgToDeliver
             case Some(delay) =>
-              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)
+              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
               ()
           }
 
         // Wait until the node is done shutting down before we retry
-        case WakeUpOutcome.IncompleteActorShutdown(nodeShutdown) =>
-          implicit val ec = context.dispatcher
+        case WakeUpOutcome.IncompleteActorShutdown(nodeRemovedFromMaps) =>
           val eKey = WakeUpErrorStates.IncompleteActorShutdown
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
-          nodeShutdown.onComplete { _ =>
+
+          nodeRemovedFromMaps.onComplete { _ =>
             self ! msgToDeliver
-          }
+          }(context.dispatcher)
           ()
 
         // Retry in some fixed time
         case WakeUpOutcome.InMemoryNodeCountHardLimitReached =>
-          implicit val ec = context.dispatcher
           val eKey = WakeUpErrorStates.InMemoryNodeCountHardLimitReached
           val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
           val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
           // TODO: don't hardcode the time until retry
-          log.warning("Failed to wake up {} due to hard in-memory limit {} (retrying)", id, inMemoryLimit)
-          context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)
+          log.warning("Failed to wake up: {} due to hard in-memory limit: {} (retrying)", id.debug, inMemoryLimit)
+          context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)(context.dispatcher)
           // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
           ()
       }
 
     case s @ SnapshotInMemoryNodes(_) =>
       implicit val timeout = Timeout(10 minutes)
-      implicit val ec = context.dispatcher
 
       /* TODO: Since `SaveSnapshot` is one of the message types we discard when
        * cleaning up a node mailbox, we can't differentiate an ask timeout (due
@@ -481,12 +519,12 @@ final private[quine] class GraphShardActor(
             .mapTo[Future[Unit]]
             .recover { case _: AskTimeoutException =>
               Future.unit
-            } // this timeout is most likel the node going to sleep
+            }(context.dispatcher) // this timeout is most likely the node going to sleep
             .flatten
             .transform {
               case Success(()) => Success(None)
               case Failure(err) => Success(Some(id -> err))
-            }
+            }(context.dispatcher)
         }
         .toVector
 
@@ -496,14 +534,14 @@ final private[quine] class GraphShardActor(
             case None => map
             case Some((id, err)) => map + (id -> err)
           }
-        }
+        }(context.dispatcher)
         .onComplete {
           case Success(failureMap) =>
             s ?! SnapshotSucceeded(failureMap)
 
           case Failure(err) =>
             s ?! SnapshotFailed(shardId, err)
-        }
+        }(context.dispatcher)
 
     case msg @ RemoveNodesIf(LocalPredicate(predicate), _) =>
       for ((nodeId, nodeState) <- nodes; if predicate(nodeId)) {
@@ -514,8 +552,9 @@ final private[quine] class GraphShardActor(
       }
       msg ?! Done
 
-    case RequestNodeSleep(idToSleep) =>
+    case msg @ RequestNodeSleep(idToSleep, _) =>
       sleepActor(idToSleep)
+      msg ?! Done
 
     case msg @ InitiateShardShutdown(_) =>
       val remaining = requestShutdown() // Reports the count of live actors remaining
@@ -541,7 +580,9 @@ object GraphShardActor {
     */
   def name(shardId: Int): String = s"shard-$shardId"
 
-  /** How long is the delay before a node accepts sleep? */
+  /** How long the node has to process the GoToSleep message before it refuses sleep
+    * (starting from when that message was sent).
+    */
   val SleepDeadlineDelay: FiniteDuration = 3.seconds
 
   /** Possible outcomes when trying to wake up a node */
@@ -549,7 +590,10 @@ object GraphShardActor {
   private object WakeUpOutcome {
     case object AlreadyAwake extends WakeUpOutcome
     case object Awoken extends WakeUpOutcome
-    final case class IncompleteActorShutdown(persistingFuture: Future[Unit]) extends WakeUpOutcome
+
+    /** @param shardNodesUpdated Future tracking when the shard has removed the node from its nodes map
+      */
+    final case class IncompleteActorShutdown(shardNodesUpdated: Future[Unit]) extends WakeUpOutcome
     case object InMemoryNodeCountHardLimitReached extends WakeUpOutcome
     final case class ActorNameStillReserved(underlying: InvalidActorNameException) extends WakeUpOutcome
     final case class UnexpectedWakeUpError(error: Throwable) extends WakeUpOutcome
@@ -633,7 +677,10 @@ object InMemoryNodeLimit {
  *
  *  - whenever the node goes through [2], it sends the shard a [[StillAwake]] message
  *
- *  - when the future in [[GoingToSleep]] completes, a [[SleepOutcome]] message is sent to the shard
+ *  - when the shard Promise in [[GoingToSleep]] completes, a [[SleepOutcome]] message is sent to the shard carrying
+ *    the shard promise
+ *
+ *  - when the shard receives a [[SleepOutcome]] message, it will complete the included Promise
  *
  *  - `actorRefLock: StampedLock` is write-acquired in a blocking fashion (and never released)
  *    right after the node enters `GoingToSleep` (since the actor ref is no longer valid as soon
@@ -643,7 +690,7 @@ sealed abstract private[quine] class WakefulState
 private[quine] object WakefulState {
   case object Awake extends WakefulState
   final case class ConsideringSleep(deadline: Deadline) extends WakefulState
-  final case class GoingToSleep(persistor: Future[Unit]) extends WakefulState
+  final case class GoingToSleep(shard: Promise[Unit]) extends WakefulState
 }
 
 sealed abstract class ControlMessages
@@ -651,7 +698,8 @@ sealed abstract class NodeControlMessage extends ControlMessages
 sealed abstract class ShardControlMessage extends ControlMessages
 
 /** Sent by a shard to a node to request the node check its wakeful state and
-  * possibly go to sleep.
+  * possibly go to sleep. This will result in at most 1 [[SleepOutcome]] sent
+  * from the node back to the shard.
   *
   * @note if the node wakeful state no longer makes sense by the time the node
   * gets this message, that's fine, it'll be ignored!
@@ -671,16 +719,26 @@ private[quine] case object SaveSnapshot extends NodeControlMessage
 
 /** Sent by the node to the shard right before the node's actor is stopped. This
   * allows the shard to remove the node from the map and possibly also take
-  * mitigating actions for a failed snapshot.
+  * mitigating actions for a failed snapshot. This is always sent within a JVM, and
+  * at most 1 [[SleepOutcome]] message will be sent as a result of a [[GoToSleep]] message
   */
-sealed abstract private[quine] class SleepOutcome extends ShardControlMessage
+sealed abstract private[quine] class SleepOutcome extends ShardControlMessage {
+
+  /** Promise that the shard will complete once the shard's in-memory tracking of nodes has been updated
+    * to account for this message. Because the shard receives a [[SleepOutcome]] at most once, this promise
+    * will be completed exactly once, up to the JVM crashing: when the shard processes the [[SleepOutcome]] message.
+    */
+  val nodeMapUpdatedPromise: Promise[Unit]
+}
 object SleepOutcome {
 
   /** Node is asleep and fine
     *
     * @param id node that slept
+    * @param nodeMapUpdatedPromise [[SleepOutcome.nodeMapUpdatedPromise]]
     */
-  final private[quine] case class SleepSuccess(id: QuineIdAtTime) extends SleepOutcome
+  final private[quine] case class SleepSuccess(id: QuineIdAtTime, nodeMapUpdatedPromise: Promise[Unit])
+      extends SleepOutcome
 
   /** Node is stopped, but the saving of data failed
     *
@@ -691,12 +749,18 @@ object SleepOutcome {
     *
     * @param id node that stopped
     * @param snapshotBytes data bytes of the node snapshot that could not be saved
+    * @param numEdges number of half edges on this node
+    * @param propertySizes exact serialized size of each property on this node
     * @param error the error from the persistence layer
+    * @param nodeMapUpdatedPromise [[SleepOutcome.nodeMapUpdatedPromise]]
     */
   final private[quine] case class SleepFailed(
     id: QuineIdAtTime,
     snapshotBytes: Array[Byte],
-    error: Throwable
+    numEdges: Int,
+    propertySizes: Map[Symbol, Int],
+    error: Throwable,
+    nodeMapUpdatedPromise: Promise[Unit]
   ) extends SleepOutcome
 }
 

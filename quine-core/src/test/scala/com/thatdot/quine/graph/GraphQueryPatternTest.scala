@@ -105,7 +105,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       toReturn = Nil,
       distinct = true
     )
-    val expectedBranch = SingleBranch[Create](
+    val expectedBranch = SingleBranch(
       DomainNodeEquiv(
         None,
         Map(
@@ -137,7 +137,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         distinct = true
       )
     }
-    val expected = SingleBranch[Create](
+    val expected = SingleBranch(
       DomainNodeEquiv(
         None,
         Map(
@@ -153,14 +153,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
         DomainEdge(
           GenericEdge(Symbol("a"), EdgeDirection.Outgoing),
           DependsUpon,
-          SingleBranch[Create](
+          SingleBranch(
             DomainNodeEquiv.empty,
             None,
             List(
               DomainEdge(
                 GenericEdge(Symbol("b"), EdgeDirection.Outgoing),
                 DependsUpon,
-                SingleBranch[Create](
+                SingleBranch(
                   DomainNodeEquiv(
                     None,
                     Map(
@@ -198,14 +198,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
         distinct = true
       )
     }
-    val expected = SingleBranch[Create](
+    val expected = SingleBranch(
       DomainNodeEquiv.empty,
       None,
       List(
         DomainEdge(
           GenericEdge(Symbol("a"), EdgeDirection.Incoming),
           DependsUpon,
-          SingleBranch[Create](
+          SingleBranch(
             DomainNodeEquiv(
               None,
               Map(
@@ -223,7 +223,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         DomainEdge(
           GenericEdge(Symbol("b"), EdgeDirection.Outgoing),
           DependsUpon,
-          SingleBranch[Create](
+          SingleBranch(
             DomainNodeEquiv(
               None,
               Map(
@@ -262,7 +262,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         distinct = true
       )
     }
-    val expected = SingleBranch[Create](
+    val expected = SingleBranch(
       DomainNodeEquiv(
         None,
         Map(
@@ -278,14 +278,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
         DomainEdge(
           GenericEdge(Symbol("c"), EdgeDirection.Incoming),
           DependsUpon,
-          SingleBranch[Create](
+          SingleBranch(
             DomainNodeEquiv.empty,
             None,
             List(
               DomainEdge(
                 GenericEdge(Symbol("a"), EdgeDirection.Incoming),
                 DependsUpon,
-                SingleBranch[Create](
+                SingleBranch(
                   DomainNodeEquiv(
                     None,
                     Map(
@@ -301,7 +301,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
                     DomainEdge(
                       GenericEdge(Symbol("b"), EdgeDirection.Outgoing),
                       DependsUpon,
-                      SingleBranch[Create](
+                      SingleBranch(
                         DomainNodeEquiv(
                           None,
                           Map(
@@ -317,7 +317,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
                           DomainEdge(
                             GenericEdge(Symbol("f"), EdgeDirection.Outgoing),
                             DependsUpon,
-                            SingleBranch[Create](
+                            SingleBranch(
                               DomainNodeEquiv(
                                 None,
                                 Map(
@@ -347,7 +347,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
               DomainEdge(
                 GenericEdge(Symbol("d"), EdgeDirection.Outgoing),
                 DependsUpon,
-                SingleBranch[Create](
+                SingleBranch(
                   DomainNodeEquiv.empty,
                   node5.qidOpt,
                   List()
@@ -356,7 +356,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
               DomainEdge(
                 GenericEdge(Symbol("e"), EdgeDirection.Outgoing),
                 DependsUpon,
-                SingleBranch[Create](
+                SingleBranch(
                   DomainNodeEquiv(
                     None,
                     Map(
@@ -488,7 +488,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
           Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(Symbol("__local_id")),
-              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get.array)
+              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get)
             )
           ),
           cypher.StandingQuery.LocalId(Symbol("__local_id"), false),
@@ -566,7 +566,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
                   Some(
                     cypher.Expr.Equal(
                       cypher.Expr.Variable(Symbol("__local_id")),
-                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get.array)
+                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get)
                     )
                   ),
                   cypher.StandingQuery.LocalId(Symbol("__local_id"), false),

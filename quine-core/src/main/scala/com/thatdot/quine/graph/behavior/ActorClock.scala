@@ -5,7 +5,7 @@ import scala.concurrent.duration.DurationLong
 
 import akka.actor.ActorLogging
 
-import com.thatdot.quine.graph.EventTime
+import com.thatdot.quine.graph.{BaseNodeActorView, EventTime}
 import com.thatdot.quine.model.Milliseconds
 
 /** Mix this in last to build in a monotonic [[EventTime]] clock to the actor.
@@ -15,6 +15,8 @@ import com.thatdot.quine.model.Milliseconds
   */
 trait ActorClock extends ActorLogging with PriorityStashingBehavior {
 
+  this: BaseNodeActorView =>
+
   private var currentTime: EventTime = EventTime.fromMillis(Milliseconds.currentTime())
   private var previousMillis: Long = 0
   private var eventOccurred: Boolean = false
@@ -23,7 +25,7 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
   final protected def nextEventTime(): EventTime = {
     eventOccurred = true
     val current = currentTime
-    currentTime = currentTime.nextEventTime
+    currentTime = currentTime.nextEventTime(Some(log))
     current
   }
 
@@ -40,10 +42,14 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
   protected def actorClockBehavior(inner: Receive): Receive = { case message: Any =>
     previousMillis = currentTime.millis
     val systemMillis = System.currentTimeMillis()
+    val atSysDiff = atTime.map(systemMillis - _.millis)
 
     // Time has gone backwards! Pause message processing until it is caught up
     if (systemMillis < previousMillis) {
-      log.warning(
+      // Some systems will frequently report a clock going back several milliseconds, and Quine can handle this without
+      // intervention, so log only at INFO level. If this message was due to an overflow, a warning will have already
+      // been logged by EventTime
+      log.info(
         "No more operations are available on node: {} during the millisecond: {}  This can occur because of high traffic to a single node (which will slow the stream slightly), or because the system clock has moved backwards. Previous time record was: {}",
         idProvider.customIdFromQid(qid).getOrElse(qid),
         systemMillis,
@@ -62,14 +68,30 @@ trait ActorClock extends ActorLogging with PriorityStashingBehavior {
         )(context.system.dispatcher)
 
       // Pause message processing until system time has likely caught up to local actor millis
-      pauseMessageProcessingUntil(timeHasProbablyCaughtUp.future)
+      val _ = pauseMessageProcessingUntil(timeHasProbablyCaughtUp.future)
     } else {
-      currentTime = currentTime.tick(
-        mustAdvanceLogicalTime = eventOccurred,
-        newMillis = systemMillis
-      )
-      eventOccurred = false
-      inner(message)
+      atSysDiff match {
+        // Clock skew: if at-time is too far in the future, drop the message
+        case Some(diff) if -diff > graph.maxCatchUpSleepMillis =>
+          log.error("Dropping message because node at-time is {} ms in future", -diff)
+        // Clock skew: if at-time is in the near future, resend the message when the
+        // time difference has elapsed
+        case Some(diff) if diff < 0 =>
+          log.warning("Resending message with delay because node at-time is {} ms in future", -diff)
+          context.system.scheduler
+            .scheduleOnce(
+              delay = (diff + 1).millis,
+              runnable = (() => self.tell(StashedMessage(message), sender())): Runnable
+            )(context.system.dispatcher)
+          ()
+        case _ =>
+          currentTime = currentTime.tick(
+            mustAdvanceLogicalTime = eventOccurred,
+            newMillis = systemMillis
+          )
+          eventOccurred = false
+          inner(message)
+      }
     }
   }
 }

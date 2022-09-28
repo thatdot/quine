@@ -1,7 +1,10 @@
+---
+description: Quine leverages a persistent data store to offload inactive graph nodes for performance
+---
 # Persistors
 
 @@@index
-* @ref:[Cassandra Setup](cassandra_setup.md)
+* @ref:[Cassandra Setup](cassandra-setup.md)
 @@@
 
 The graph operates in memory, but saves its data to disk. Because data is durably stored, Quine does not need to define any time-windows for matching up data in memory. This data is managed automatically so that it is transparent to the operation of the graph, and saved in a way that is fast for streaming data.
@@ -18,13 +21,12 @@ The format of data saved on disk is conceptually a key-value pair, where the key
 
 Using RocksDB in Quine requires no special changes to use it, since it is the default. The setting that would choose RocksDB specifically is:
 
-`thatdot.quine.store.type=rocks-db`
+`quine.store.type=rocks-db`
 
 @@@ warning
 
-RocksDB is distributed by its authors as a binary artifact built for specific architectures and used from JVM applications through the Java Native Interface (JNI). At the time of this writing, RocksDB does not yet support the `arm64` architecture needed by Apple's M1 CPUs. As a result, Quine cannot use the RocksDB persistor when running on an M1 Mac. The issue tracking support for an M1-compatible build of the `rocksdbjni` package is here: @link:[https://github.com/facebook/rocksdb/issues/7720](https://github.com/facebook/rocksdb/issues/7720){ open=new } While it appears that issue has been resolved, we are waiting for the merged code to be officially released.
-
-If you try to start Quine with the default settings on an M1 Mac, you will get an error suggesting that you run with the option to use MapDB instead: `-Dquine.store.type=map-db`
+RocksDB is distributed by its authors as a binary artifact built for specific architectures and used from JVM applications through the Java Native Interface (JNI).
+If you try to start Quine with the default settings on an unsupported platform, you will get an error suggesting that you run with the option to use MapDB instead: `-Dquine.store.type=map-db`.
 
 @@@
 
@@ -36,7 +38,7 @@ MapDB does have some other limitations though. Memory mapped files are generally
 
 To use MapDB, set the following configuration setting:
 
-`thatdot.quine.store.type=map-db`
+`quine.store.type=map-db`
 
 <!--
 ### LMDB (Lightning database)
@@ -46,10 +48,6 @@ To use MapDB, set the following configuration setting:
 
 ### Cassandra
 
-@link:[Apache Cassandra](https://cassandra.apache.org/_/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an idea data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
+@link:[Apache Cassandra](https://cassandra.apache.org/-/index.html){ open=new } is a distributed NoSQL database. It is highly configurable and trusted by enterprise organizations around the world to manage very large amounts of data. Cassandra is an ideal data storage mechanism for a Quine persistor. Using Cassandra, Quine instances can achieve extremely high throughput, high-availability, data replication, and failover strategies needed for production operation in the enterprise.
 
-See the @ref:[Cassandra Setup](cassandra_setup.md) page for details on setting up and using Cassandra with Quine.
-
-### AWS S3
-
-@link:[AWS S3](https://aws.amazon.com/s3/){ open=new } is a cloud object store. Is it possible to use S3 as a persistor for some configurations of Quine. S3 has some particular limitations in speed, latency, and object structure which do not make it suitable to store data with the traditional event-sourcing strategy. However, Quine can be configured to operate the graph with a strategy to save only complete snapshots to the persistor. This "snapshot-only" mode works with S3, but carries the risk that data is not stored durably until a node is expired out the in-memory cache (which depends on many internal factors). Because of these limitations, S3 support is considered experimental at this time.
+See the @ref:[Cassandra Setup](cassandra-setup.md) page for details on setting up and using Cassandra with Quine.

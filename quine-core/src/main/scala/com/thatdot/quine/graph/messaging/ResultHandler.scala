@@ -1,13 +1,13 @@
 package com.thatdot.quine.graph.messaging
 
 import scala.concurrent.{Future, Promise}
-import scala.reflect.ClassTag
+import scala.reflect.{ClassTag, classTag}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Source, StreamRefs}
+import akka.stream.scaladsl.{Flow, Source, StreamRefs}
 import akka.stream.{Materializer, StreamRefResolver}
 
 import com.thatdot.quine.graph.BaseGraph
@@ -111,9 +111,14 @@ object ResultHandler {
         if (responseStaysWithinJvm) {
           graph.relayTell(to, BaseMessage.Response(QuineResponse.LocalSource(response)))
         } else {
-          val mapped = response.map(r => BaseMessage.Response(QuineResponse.Success(r))).recover { case NonFatal(e) =>
-            BaseMessage.Response(QuineResponse.Failure(e))
-          }
+          val mapped = response.via( // `.via` a named, nested flow (instead of directly `.map`ing) for better errors
+            Flow[A]
+              .map(r => BaseMessage.Response(QuineResponse.Success(r)))
+              .recover { case NonFatal(e) =>
+                BaseMessage.Response(QuineResponse.Failure(e))
+              }
+              .named(s"result-handler-source-of-${classTag[A].runtimeClass.getSimpleName}")
+          )
           val ref = mapped.runWith(StreamRefs.sourceRef())
           val serialized = StreamRefResolver.get(graph.system).toSerializationFormat(ref)
           graph.relayTell(to, BaseMessage.Response(QuineResponse.StreamRef(serialized)))

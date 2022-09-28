@@ -240,7 +240,7 @@ private[quine] object ExpiringLruSet {
           progressMadeThisIteration = false
         } else {
           logger.warn(
-            s"doExpiration: halting due to lack of progress, but still oversize by $oversizedBy"
+            s"doExpiration: halting due to lack of progress, but LRU cache is still oversized by: $oversizedBy"
           )
           return
         }

@@ -406,11 +406,12 @@ final case class FileIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
   @docs("path to the file")
   path: String,
-  @docs(s"""text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly
-  |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
-  |""".stripMargin)
+  @docs(
+    "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
+    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
+  )
   encoding: String = "UTF-8",
-  @docs("maximum number of records being processed as once")
+  @docs("maximum number of records being processed at once")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   @docs("maximum size (in bytes) of any line in the file")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
@@ -432,15 +433,38 @@ final case class FileIngest(
 @docs("An active stream of data being ingested from standard input to this Quine process.")
 final case class StandardInputIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
-  @docs(s"""text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly
-           |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).""".stripMargin)
+  @docs(
+    "text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly supported " +
+    "-- other encodings will be transcoded to UTF-8 on the fly (and ingest may be slower)."
+  )
   encoding: String = "UTF-8",
-  @docs("maximum number of records being processed as once")
+  @docs("maximum number of records being processed at once")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   @docs("maximum size (in bytes) of any line")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs("maximum records to process per second")
   maximumPerSecond: Option[Int]
+) extends IngestStreamConfiguration
+
+/** Number iterator ingest source for easy testing */
+@title("Number Iterator Ingest")
+@docs(
+  "An infinite ingest stream which requires no data source and just produces new sequential numbers" +
+  " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value."
+)
+case class NumberIteratorIngest(
+  format: FileIngestFormat = IngestRoutes.defaultNumberFormat,
+  @docs("begin the stream with this number")
+  startAt: Long = 0L,
+  @docs("optionally end the stream after consuming this many items")
+  ingestLimit: Option[Long],
+  @docs(
+    "limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
+    "backpressure elsewhere in the system."
+  )
+  throttlePerSecond: Option[Int],
+  @docs("maximum number of records being processed at once")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism
 ) extends IngestStreamConfiguration
 
 @title("File Ingest Format")
@@ -607,6 +631,9 @@ object IngestRoutes {
   val defaultMaximumLineSize: Int = 128 * 1024 * 1024 // 128MB
   val defaultStreamedRecordFormat: StreamedRecordFormat.CypherJson = StreamedRecordFormat.CypherJson("CREATE ($that)")
   val defaultFileRecordFormat: FileIngestFormat.CypherJson = FileIngestFormat.CypherJson("CREATE ($that)", "that")
+  val defaultNumberFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
+    "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)"
+  )
 }
 trait IngestRoutes
     extends endpoints4s.algebra.Endpoints

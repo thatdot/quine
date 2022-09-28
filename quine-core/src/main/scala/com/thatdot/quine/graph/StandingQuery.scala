@@ -35,29 +35,10 @@ final case class StandingQuery(
   id: StandingQueryId,
   query: StandingQueryPattern,
   queueBackpressureThreshold: Int,
-  queueMaxSize: Int
-) {
+  queueMaxSize: Int,
+  shouldCalculateResultHashCode: Boolean
+)
 
-  /** The Set of columns this SQ will extract as [[cypher.Expr.Bytes]] that should actually be [[QuineValue.Id]]
-    *
-    * Uses additional information (the pattern) to undo the lossy conversion from [[QuineValue]] to [[cypher.Value]]
-    * performed by the SQv4 matching runtime. Because the QuineIds can be represented by any runtime type (depending
-    * only on the idProvider), but the [open]Cypher compiler assumes IDs are Longs, [[QuineValue.Id]] is represented as
-    * [[cypher.Expr.Bytes]], rather than as a type like (a hypothetical) cypher.Expr.Id. However, if we know that a
-    * [[cypher.Expr.Bytes]] instance represents a [[QuineValue.Id]], we can convert back losslessly.
-    *
-    * @see [[messaging.QuineMessage.NewCypherResult.standingQueryResult]]
-    */
-  val rawIdReturnColumns: Set[Symbol] = (query.origin match {
-    case PatternOrigin.GraphPattern(pattern, _) =>
-      pattern.toExtract.collect { case GraphQueryPattern.ReturnColumn.Id(_, formatAsString @ false, aliasedAs) =>
-        aliasedAs
-      }
-    case PatternOrigin.DirectDgb | PatternOrigin.DirectSqV4 =>
-      Seq.empty
-  }).toSet
-
-}
 object StandingQuery {
 
   /** @see [[StandingQuery.queueMaxSize]]
@@ -134,18 +115,7 @@ object StandingQueryPattern extends LazyLogging {
     val origin = PatternOrigin.GraphPattern(pattern, cypherOriginal)
     if (useDomainGraphBranch) {
       if (!pattern.distinct) {
-        logger.warn(
-          cypherOriginal match {
-            case Some(cypherQuery) =>
-              s"""DistinctId Standing Queries that do not specify a `DISTINCT` clause are deprecated.
-                  |DistinctId queries without `DISTINCT` are deprecated and will be removed in the future.
-                  |Query was: '$cypherQuery'""".stripMargin.replace('\n', ' ')
-            case None =>
-              s"""DistinctId Standing Queries that do not specify `distinct` are deprecated and a future release will
-                  |require that DistinctId Standing Queries use patterns with `distinct`.
-                  |Query pattern was: $pattern""".stripMargin.replace('\n', ' ')
-          }
-        )
+        throw InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
       }
       val (branch, returnColumn) = pattern.compiledDomainGraphBranch(labelsProperty)
       Branch(branch, returnColumn.formatAsString, returnColumn.aliasedAs, includeCancellations, origin)
@@ -168,7 +138,7 @@ object StandingQueryPattern extends LazyLogging {
     * @param origin how did the user specify this query?
     */
   final case class Branch(
-    branch: DomainGraphBranch[Test],
+    branch: DomainGraphBranch,
     formatReturnAsStr: Boolean,
     aliasReturnAs: Symbol,
     includeCancellation: Boolean,

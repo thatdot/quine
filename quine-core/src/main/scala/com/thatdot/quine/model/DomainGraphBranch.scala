@@ -2,46 +2,18 @@ package com.thatdot.quine.model
 
 import java.util.regex.Pattern
 
-sealed abstract class ExecInstruction
-
-sealed abstract class Create extends ExecInstruction
-
-sealed abstract class Fetch extends Create
-
-sealed abstract class Test extends Fetch
-
-//sealed abstract class FetchOptional extends Fetch ???
-
 /** A generic query instruction
-  *
-  * The phantom type parameter constrains the contexts in which a query works:
-  *
-  *   - [[Create]] query can be used to create, fetch, or test
-  *   - [[Fetch]] query can be used to fetch, test
-  *   - [[Test]] query can be used to test
-  *
-  * This ends up working even in the Scala type-system. Due to contravariance,
-  * `DomainGraphBranch[Create] <: DomainGraphBranch[Fetch]` and
-  * `DomainGraphBranch[Fetch]  <: DomainGraphBranch[Test]`.
-  *
-  * In practice, this means functions taking DomainGraphBranch arguments should use the "lowest" ExecInstruction they
-  * can. For example, a function that only needs to test values, but should also support Create and Fetch DGBs would
-  * have a signature like `def iOnlyTest(dgb: DomainGraphBranch[Test]): Boolean`. A function that should only support
-  * Create DGBs, but not Fetch or Test, might have a signature like `def iCreateThings(dgb: DomainGraphBranch[Create])`
   *
   * Historical note: there was a time when DomainGraphBranch was the 'only' way to interact
   * with the datastore.
   */
-sealed abstract class DomainGraphBranch[-T <: ExecInstruction] {
+sealed abstract class DomainGraphBranch {
 
   /** Total depth of the [[DomainGraphBranch]] */
   def length: Int
 
   /** Total nodes in the [[DomainGraphBranch]] */
   def size: Int
-
-  /** Safely cast a [[DomainGraphBranch]] into a super type */
-  def upcast[U <: ExecInstruction](ev: U <:< T): DomainGraphBranch[U] = this.asInstanceOf
 
   /** Format this DGB as a "pretty" (multiline, indented) string
     * @param indentCount the base number of indents to add to the serialized string
@@ -53,7 +25,7 @@ sealed abstract class DomainGraphBranch[-T <: ExecInstruction] {
     *
     * INV: elements are distinct (ie, children.toSet has the same elements as children)
     */
-  def children: Iterable[DomainGraphBranch[T]]
+  def children: Iterable[DomainGraphBranch]
 }
 
 object DomainGraphBranch {
@@ -61,28 +33,14 @@ object DomainGraphBranch {
   /** A query which creates nothing and succeeds everywhere (with one empty
     * result)
     */
-  def empty: SingleBranch[Create] = SingleBranch.empty
+  def empty: SingleBranch = SingleBranch.empty
 
-  def wildcard: SingleBranch[Test] = SingleBranch[Test](
+  def wildcard: SingleBranch = SingleBranch(
     DomainNodeEquiv.empty,
     None,
     Nil,
     NodeLocalComparisonFunctions.Wildcard
   )
-
-  /** Since there is only one class extending `DomainGraphBranch[Create]`, it is
-    * safe to convert any such instance into `SingleBranch[Create]`
-    *
-    * The Scala compiler won't figure that out on its own though, hence the need
-    * for this implicit conversion
-    */
-  implicit def asSingleBranch(dgb: DomainGraphBranch[Create]): SingleBranch[Create] = dgb match {
-    case l: SingleBranch[Create] => l
-    case _ =>
-      throw new Exception(
-        s"Only `$SingleBranch[Create]` can be a `$DomainGraphBranch[Create]`. You had: $dgb"
-      )
-  }
 }
 
 /** Query for creating, fetching, or testing for a particular structure rooted at a node
@@ -92,38 +50,17 @@ object DomainGraphBranch {
   * @param nextBranches recursive subqueries (on nodes found by following edges)
   * @param comparisonFunc how to evaluate the domainNodeEquiv against a potentially-matching node
   */
-final case class SingleBranch[-T <: ExecInstruction](
+final case class SingleBranch(
   domainNodeEquiv: DomainNodeEquiv,
   identification: Option[QuineId] = None,
-  nextBranches: List[DomainEdge[T]],
+  nextBranches: List[DomainEdge],
   comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset
-) extends DomainGraphBranch[T] {
+) extends DomainGraphBranch {
 
   def length: Int = 1 + nextBranches.foldLeft(0)((acc, e) => Math.max(acc, e.branch.length))
   def size: Int = 1 + nextBranches.foldLeft(0)((acc, e) => acc + e.branch.size)
 
-  def identifyRoot(id: QuineId): SingleBranch[T] = this.copy(identification = Some(id))
-
-  /** Linearize a [[Create]] branch into a list of paths, and put sort these in dependency order.
-    *
-    * @param ev value-level proof that [[T]] is a super type of [[Create]]. Coupled with [[subtypeCreate]], this implies
-    *           that [[T]] actually is equal to [[Create]]. We use [[<:<]] instead of [[=:=]] to satisfy constraints
-    *           imposed by the fact that [[DomainGraphBranch]] is upcast.
-    * @return a list of linear paths
-    */
-  def allLinearComponentsInDependencyOrder(implicit ev: Create <:< T): List[DomainGraphPath] = {
-    // `Create <:< T` and `T <:< Create` ==> `T =:= Create` ==> `LocalProps[T] =:= LocalProps[Create]`
-    val self = this.asInstanceOf[SingleBranch[Create]]
-    DGBOps.linearComponentsInDependencyOrder(self)
-  }
-
-  // This only can be called when T = Create.
-  def isSuperSetOf(other: DomainGraphBranch[Create])(implicit ev: Create <:< T): Boolean =
-    // `Create <:< T` and `T <:< Create` ==> `T =:= Create` ==> `List[DomainEdge[T]] =:= List[DomainEdge[Create]]`
-    NodeLocalComparisonFunctions.EqualSubset(domainNodeEquiv, other.domainNodeEquiv) &&
-    (identification.isEmpty || other.identification.isEmpty || (identification == other.identification)) &&
-    other.nextBranches.forall(c => nextBranches.exists(b => b.isSuperSetOf(c))) &&
-    comparisonFunc == other.comparisonFunc
+  def identifyRoot(id: QuineId): SingleBranch = this.copy(identification = Some(id))
 
   override def pretty(indentCount: Int = 0): String = {
     def indents(count: Int = indentCount) = "\t" * count
@@ -139,14 +76,14 @@ final case class SingleBranch[-T <: ExecInstruction](
        |${indents(indentCount)})""".stripMargin
   }
 
-  val children: Iterable[DomainGraphBranch[T]] =
+  val children: Iterable[DomainGraphBranch] =
     nextBranches.collect { case DomainEdge(_, _, child, _, _) =>
       child
     }.toSet
 }
 object SingleBranch {
   // a branch that is consistent with being rooted at any arbitrary node.
-  def empty: SingleBranch[Create] = SingleBranch[Create](
+  def empty: SingleBranch = SingleBranch(
     DomainNodeEquiv.empty,
     None,
     List.empty,
@@ -160,7 +97,7 @@ object SingleBranch {
   * @param disjuncts queries whose results we concatenate
   * INV: T is not Create -- in particular, there exists T <:< Fetch
   */
-final case class Or[-T <: ExecInstruction](disjuncts: List[DomainGraphBranch[T]]) extends DomainGraphBranch[T] {
+final case class Or(disjuncts: List[DomainGraphBranch]) extends DomainGraphBranch {
 
   override def length: Int = 1 + disjuncts.foldLeft(0)((acc, y) => Math.max(acc, y.length))
   override def size: Int = 1 + disjuncts.foldLeft(0)((acc, y) => acc + y.size)
@@ -176,7 +113,7 @@ final case class Or[-T <: ExecInstruction](disjuncts: List[DomainGraphBranch[T]]
     }
   }
 
-  val children: Iterable[DomainGraphBranch[T]] = disjuncts.toSet
+  val children: Iterable[DomainGraphBranch] = disjuncts.toSet
 }
 
 /** Query for fetching/testing several results and taking the cross-product of
@@ -185,7 +122,7 @@ final case class Or[-T <: ExecInstruction](disjuncts: List[DomainGraphBranch[T]]
   * @param conjuncts queries whose results we combine
   * INV: T is not Create -- in particular, there exists T <:< Fetch
   */
-final case class And[-T <: ExecInstruction](conjuncts: List[DomainGraphBranch[T]]) extends DomainGraphBranch[T] {
+final case class And(conjuncts: List[DomainGraphBranch]) extends DomainGraphBranch {
 
   override def length: Int = 1 + conjuncts.foldLeft(0)((acc, y) => Math.max(acc, y.length))
   override def size: Int = 1 + conjuncts.foldLeft(0)((acc, y) => acc + y.size)
@@ -201,7 +138,7 @@ final case class And[-T <: ExecInstruction](conjuncts: List[DomainGraphBranch[T]
     }
   }
 
-  val children: Iterable[DomainGraphBranch[T]] = conjuncts.toSet
+  val children: Iterable[DomainGraphBranch] = conjuncts.toSet
 }
 
 /** Query for checking that a certain subquery is 'not' matched.
@@ -212,7 +149,7 @@ final case class And[-T <: ExecInstruction](conjuncts: List[DomainGraphBranch[T]
   * @param negated query we are testing
   * INV: T is not Create -- in particular, there exists T <:< Fetch
   */
-final case class Not[-T <: ExecInstruction](negated: DomainGraphBranch[T]) extends DomainGraphBranch[T] {
+final case class Not(negated: DomainGraphBranch) extends DomainGraphBranch {
 
   override def length: Int = 1 + negated.length
   override def size: Int = 1 + negated.size
@@ -224,7 +161,7 @@ final case class Not[-T <: ExecInstruction](negated: DomainGraphBranch[T]) exten
        |$indents)""".stripMargin
   }
 
-  val children: Iterable[DomainGraphBranch[T]] = Set(negated)
+  val children: Iterable[DomainGraphBranch] = Set(negated)
 }
 
 /** See [[Mu]] and [[MuVar]] */
@@ -245,12 +182,12 @@ final case class MuVariableName(str: String) extends AnyVal
   * @param branch the recursive query, almost always using `variable`
   * INV: T is not Create -- in particular, there exists T <:< Fetch
   */
-final case class Mu[-T <: ExecInstruction](
+final case class Mu(
   variable: MuVariableName,
-  branch: DomainGraphBranch[T] // scope of the variable
-) extends DomainGraphBranch[T] {
+  branch: DomainGraphBranch // scope of the variable
+) extends DomainGraphBranch {
 
-  def unfold: DomainGraphBranch[T] = Substitution.substitute(branch, variable, this)
+  def unfold: DomainGraphBranch = Substitution.substitute(branch, variable, this)
 
   override def length: Int = 1 + branch.length
   override def size: Int = 1 + branch.size
@@ -263,7 +200,7 @@ final case class Mu[-T <: ExecInstruction](
        |${indents()})""".stripMargin
   }
 
-  val children: Iterable[DomainGraphBranch[T]] = Set(branch)
+  val children: Iterable[DomainGraphBranch] = Set(branch)
 }
 
 /** Variable standing in for a recursive query
@@ -275,7 +212,7 @@ final case class Mu[-T <: ExecInstruction](
   *                 enclosing [[Mu]]
   * INV: T is not Create -- in particular, there exists T <:< Fetch
   */
-final case class MuVar[-T <: ExecInstruction](variable: MuVariableName) extends DomainGraphBranch[T] {
+final case class MuVar(variable: MuVariableName) extends DomainGraphBranch {
 
   override def length: Int = 1
   override def size: Int = 1
@@ -285,34 +222,34 @@ final case class MuVar[-T <: ExecInstruction](variable: MuVariableName) extends 
     s"${indents}MuVar(${variable.str})"
   }
 
-  val children: Iterable[DomainGraphBranch[T]] = Iterable.empty
+  val children: Iterable[DomainGraphBranch] = Iterable.empty
 }
 
 object Substitution {
-  def substitute[T <: ExecInstruction](
-    subsituteIn: DomainGraphBranch[T],
+  def substitute(
+    subsituteIn: DomainGraphBranch,
     variable: MuVariableName,
-    branch: DomainGraphBranch[T]
-  ): DomainGraphBranch[T] = subsituteIn match {
+    branch: DomainGraphBranch
+  ): DomainGraphBranch = subsituteIn match {
     case SingleBranch(dne, id, nextBranches, comparisonFunc) =>
       val nextBranchesSubstituted =
-        nextBranches.map(nextBranch => nextBranch.copy(branch = substitute[T](nextBranch.branch, variable, branch)))
+        nextBranches.map(nextBranch => nextBranch.copy(branch = substitute(nextBranch.branch, variable, branch)))
       SingleBranch(dne, id, nextBranchesSubstituted, comparisonFunc)
 
     case And(conjuncts) =>
-      And(conjuncts.map(conjunct => substitute[T](conjunct, variable, branch)))
+      And(conjuncts.map(conjunct => substitute(conjunct, variable, branch)))
 
     case Or(disjuncts) =>
-      And(disjuncts.map(disjunct => substitute[T](disjunct, variable, branch)))
+      And(disjuncts.map(disjunct => substitute(disjunct, variable, branch)))
 
     case Not(negated) =>
-      Not(substitute[T](negated, variable, branch))
+      Not(substitute(negated, variable, branch))
 
     case Mu(variableMu, branchMu) =>
       assert(
         variableMu != variable
       ) // This should not be possible - fresh vars must be used for every [[Mu]]
-      Mu(variableMu, substitute[T](branchMu, variable, branch))
+      Mu(variableMu, substitute(branchMu, variable, branch))
 
     case v @ MuVar(variable2) => if (variable == variable2) branch else v
   }
@@ -416,20 +353,13 @@ final case class GenericEdge(edgeType: Symbol, direction: EdgeDirection) {
   override def toString: String = s"GenericEdge(${edgeType.name},$direction)"
 }
 
-final case class DomainEdge[-T <: ExecInstruction](
+final case class DomainEdge(
   edge: GenericEdge,
   depDirection: DependencyDirection,
-  branch: DomainGraphBranch[T],
+  branch: DomainGraphBranch,
   circularMatchAllowed: Boolean = false,
-  constraints: EdgeMatchConstraints[T] = MandatoryConstraint
+  constraints: EdgeMatchConstraints = MandatoryConstraint
 ) {
-
-  // This only can be called when T = Create.
-  def isSuperSetOf(other: DomainEdge[Create])(implicit ev: Create <:< T): Boolean =
-    edge == other.edge &&
-    branch.upcast(ev).isSuperSetOf(other.branch) &&
-    circularMatchAllowed == other.circularMatchAllowed &&
-    constraints >= other.constraints
 
   def toString(indent: Int = 0): String = {
     def indents(count: Int) = "\t" * count
@@ -443,21 +373,16 @@ final case class DomainEdge[-T <: ExecInstruction](
   }
 }
 
-sealed abstract class EdgeMatchConstraints[-T <: ExecInstruction] {
+sealed abstract class EdgeMatchConstraints {
   val min: Int
 
   // `maxMatch` should express whether a match fails in the runtime when found edges > max.
   // The possibility of building results as subsets of total matches (via maxConstruct size) is a model issue.
   val maxMatch: Option[Int]
-
-  /** Checks if this constraint is at least as restrictive as another constraint */
-  def >=[U <: ExecInstruction](other: EdgeMatchConstraints[U]): Boolean =
-    min >= other.min &&
-    (other.maxMatch.isEmpty || maxMatch.fold(false)(_ <= other.maxMatch.get))
 }
 
-final case class FetchConstraint(min: Int, maxMatch: Option[Int]) extends EdgeMatchConstraints[Fetch]
-case object MandatoryConstraint extends EdgeMatchConstraints[Create] {
+final case class FetchConstraint(min: Int, maxMatch: Option[Int]) extends EdgeMatchConstraints
+case object MandatoryConstraint extends EdgeMatchConstraints {
   val min = 1
   val maxMatch: Option[Int] = None
 }

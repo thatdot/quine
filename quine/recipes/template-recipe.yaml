@@ -51,10 +51,10 @@ quickQueries: [ ]
 # Customize sample queries listed in web UI
 sampleQueries:
   - name: Nodes
-    query: match(n) return n limit 10
+    query: MATCH(n) RETURN n LIMIT 10
   - name: Count Nodes
-    query: match (n) return count(n)
+    query: MATCH (n) RETURN count(n)
 
 # Optional Cypher query to be executed and reported to the Recipe user
 statusQuery:
-  cypherQuery: match (n) return n limit 10
+  cypherQuery: MATCH (n) RETURN n LIMIT 10

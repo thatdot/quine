@@ -58,7 +58,11 @@ final case class WebsocketSimpleStartup(
     // NB Instead of killing this source with the downstream KillSwitch, we could switch this Source.never to a
     // Source.maybe, completing it with None to kill the connection -- this is closer to the docs for
     // webSocketClientFlow
-    val outboundMessages = Source.fromIterator(() => initMessages.iterator).map(TextMessage(_)).concat(Source.never)
+    val outboundMessages = Source
+      .fromIterator(() => initMessages.iterator)
+      .map(TextMessage(_))
+      .concat(Source.never)
+      .named("websocket-ingest-outbound-messages")
     val baseHttpClientSettings = ClientConnectionSettings(system)
     // Copy (and potentially tweak) baseHttpClientSettings for websockets usage
     val httpClientSettings = keepaliveProtocol match {
@@ -74,10 +78,12 @@ final case class WebsocketSimpleStartup(
         )
       case WebsocketSimpleStartupIngest.NoKeepalive => baseHttpClientSettings
     }
-    val wsFlow = Http().webSocketClientFlow(
-      WebSocketRequest(wsUrl),
-      settings = httpClientSettings
-    )
+    val wsFlow = Http()
+      .webSocketClientFlow(
+        WebSocketRequest(wsUrl),
+        settings = httpClientSettings
+      )
+      .named("websocket-ingest-client")
 
     val (websocketUpgraded, websocketSource) = outboundMessages
       .viaMat(wsFlow)(Keep.right)
@@ -110,7 +116,14 @@ final case class WebsocketSimpleStartup(
                     .importMessageSafeBytes(bytes.toArray, graph.isSingleHost)
                     .fold(
                       { err =>
-                        logger.warn(s"Error decoding event data for event $msg", err)
+
+                        logger.warn(
+                          s"Failed to deserialize a Websockets message (logged at INFO level). Skipping this message."
+                        )
+                        logger.info(
+                          s"Failed to deserialize Websockets message UTF-8 representation: ${bytes.utf8String}",
+                          err
+                        )
                         List.empty
                       },
                       List(_)
@@ -123,6 +136,7 @@ final case class WebsocketSimpleStartup(
               .watchTermination() { case ((killSwitch, valveSwitch), doneFut) =>
                 valveSwitch.map(v => ControlSwitches(killSwitch, v, doneFut))(ExecutionContexts.parasitic)
               }
+              .named("websocket-ingest")
           )
       }(ExecutionContexts.parasitic))
       .mapMaterializedValue(_.flatten)

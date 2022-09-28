@@ -104,7 +104,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing node $node with a non-integer ID $other may cause Bolt clients to crash"
+            s"Serializing node: ${node.id.debug} with a non-integer ID may cause Bolt clients to crash"
           )
           other
       },
@@ -166,7 +166,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing edge $relationship with a non-integer start ID $other may cause Bolt clients to crash"
+            s"Serializing edge with a non-integer start ID: $other may cause Bolt clients to crash"
           )
           other
       },
@@ -174,7 +174,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing edge $relationship with a non-integer end ID $other may cause Bolt clients to crash"
+            s"Serializing edge with a non-integer end ID: $other may cause Bolt clients to crash"
           )
           other
       },

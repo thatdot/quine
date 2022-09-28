@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.behavior
 
 import com.thatdot.quine.graph.BaseNodeActorView
 import com.thatdot.quine.model.EdgeDirection.{Incoming, Outgoing, Undirected}
-import com.thatdot.quine.model.{DomainEdge, DomainNodeEquiv, HalfEdge, SingleBranch, Test}
+import com.thatdot.quine.model.{DomainEdge, DomainNodeEquiv, HalfEdge, SingleBranch}
 
 trait DomainNodeTests extends BaseNodeActorView {
 
@@ -21,11 +21,11 @@ trait DomainNodeTests extends BaseNodeActorView {
       }
     )
 
-  private[this] def hasGenericEdges(requiredEdges: Set[DomainEdge[Test]]): Boolean =
+  private[this] def hasGenericEdges(requiredEdges: Set[DomainEdge]): Boolean =
     edges.hasUniqueGenEdges(requiredEdges, qid)
 
-  protected def localTestBranch(testBranch: SingleBranch[Test]): Boolean =
+  protected def localTestBranch(testBranch: SingleBranch): Boolean =
     testBranch.identification.forall(_ == qid) && localPropsMatch(testBranch.domainNodeEquiv) && hasCircularEdges(
       testBranch.domainNodeEquiv
-    ) && hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge[Test]])
+    ) && hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge])
 }

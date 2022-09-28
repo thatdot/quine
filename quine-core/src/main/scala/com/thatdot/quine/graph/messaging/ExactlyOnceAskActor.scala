@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.messaging
 
+import scala.concurrent.Promise
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
-import scala.concurrent.{ExecutionContextExecutor, Promise}
 import scala.util.Random
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
@@ -40,7 +40,6 @@ final private[quine] class ExactlyOnceAskActor[Resp](
 ) extends Actor
     with ActorLogging
     with Timers {
-  implicit private val ec: ExecutionContextExecutor = context.dispatcher
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
 
   // Remote messages get retried
@@ -55,7 +54,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       interval = retryInterval,
       receiver = actorRef,
       message = toSend
-    )
+    )(context.dispatcher, self)
   } else {
     Cancellable.alreadyCancelled
   }

@@ -4,6 +4,7 @@ import cats.implicits._
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.frontend.phases.StatementRewriter
+import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{NodeNameGenerator, UnNamedNameGenerator}
 
 import com.thatdot.quine.graph.cypher
@@ -17,7 +18,7 @@ object Expression {
 
   /** Run an action in a new scope.
     *
-    * This means that columns/variables defined in the argument are visibly for
+    * This means that columns/variables defined in the argument are visible for
     * the rest of its execution, but not once `scoped` has finished running.
     *
     * @param wq action to run in a new scope
@@ -91,39 +92,54 @@ object Expression {
         end1 <- end.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
       } yield cypher.Expr.ListSlice(expr1, start1, end1)
 
-    // All of these turn into list comprehensions
+    /* All of these turn into list comprehensions
+     *
+     * Also, for reasons that aren't clear to me, this is one place in openCyphe
+     * where the `variable` being bound may not have been freshened (it may shadow
+     * another variable of the same name). Since the rest of our compilation
+     * scoping assumes fresh names, we defensively manually replace the bound
+     * variable with a fresh one.
+     */
     case expressions.FilterExpression(expressions.FilterScope(variable, predOpt), list) =>
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         (varExpr, predicate) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            predicateOpt <- predOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
             predicate = predicateOpt.getOrElse(cypher.Expr.True)
           } yield (varExpr, predicate)
         }
         list1 <- compile(list)
       } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, varExpr)
     case expressions.ExtractExpression(expressions.ExtractScope(variable, predOpt, extOpt), list) =>
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
+      val freshExtOpt = extOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         (varExpr, predicate, extract) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            predicateOpt <- predOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
             predicate = predicateOpt.getOrElse(cypher.Expr.True)
-            extractOpt <- extOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
+            extractOpt <- freshExtOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
             extract = extractOpt.getOrElse(varExpr)
           } yield (varExpr, predicate, extract)
         }
         list1 <- compile(list)
       } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
     case expressions.ListComprehension(expressions.ExtractScope(variable, predOpt, extOpt), list) =>
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
+      val freshExtOpt = extOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         (varExpr, predicate, extract) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            predicateOpt <- predOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
             predicate = predicateOpt.getOrElse(cypher.Expr.True)
-            extractOpt <- extOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
+            extractOpt <- freshExtOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
             extract = extractOpt.getOrElse(varExpr)
           } yield (varExpr, predicate, extract)
         }
@@ -131,59 +147,74 @@ object Expression {
       } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
 
     case expressions.ReduceExpression(expressions.ReduceScope(acc, variable, expr), init, list) =>
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshAcc = acc.renameId(UnNamedNameGenerator.name(acc.position.newUniquePos()))
+      val freshExpr = expr
+        .copyAndReplace(variable)
+        .by(freshVar)
+        .copyAndReplace(acc)
+        .by(freshAcc)
       for {
         init1 <- compile(init)
         list1 <- compile(list)
         (varExpr, accExpr, expr1) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            accExpr <- WithQueryT.lift(CompM.addColumn(acc))
-            expr1 <- compile(expr)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            accExpr <- WithQueryT.lift(CompM.addColumn(freshAcc))
+            expr1 <- compile(freshExpr)
           } yield (varExpr, accExpr, expr1)
         }
       } yield cypher.Expr.ReduceList(accExpr.id, init1, varExpr.id, list1, expr1)
 
     case expressions.AllIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
       require(predOpt.nonEmpty)
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         list1 <- compile(list)
         (varExpr, pred1) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            pred1 <- compile(predOpt.get)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            pred1 <- compile(freshPredOpt.get)
           } yield (varExpr, pred1)
         }
       } yield cypher.Expr.AllInList(varExpr.id, list1, pred1)
     case expressions.AnyIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
       require(predOpt.nonEmpty)
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         list1 <- compile(list)
         (varExpr, pred1) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            pred1 <- compile(predOpt.get)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            pred1 <- compile(freshPredOpt.get)
           } yield (varExpr, pred1)
         }
       } yield cypher.Expr.AnyInList(varExpr.id, list1, pred1)
     case expressions.NoneIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
       require(predOpt.nonEmpty)
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         list1 <- compile(list)
         (varExpr, pred1) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            pred1 <- compile(predOpt.get)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            pred1 <- compile(freshPredOpt.get)
           } yield (varExpr, pred1)
         }
       } yield cypher.Expr.Not(cypher.Expr.AnyInList(varExpr.id, list1, pred1))
     case expressions.SingleIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
       require(predOpt.nonEmpty)
+      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
+      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
       for {
         list1 <- compile(list)
         (varExpr, pred1) <- scoped {
           for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(variable))
-            pred1 <- compile(predOpt.get)
+            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+            pred1 <- compile(freshPredOpt.get)
           } yield (varExpr, pred1)
         }
       } yield cypher.Expr.SingleInList(varExpr.id, list1, pred1)
@@ -273,7 +304,7 @@ object Expression {
 
         if (f.function == functions.StartNode) {
           require(args.length == 1, "`startNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.bumped())
+          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
           val nodeVariable = expressions.Variable(nodeName)(f.position)
 
           WithQueryT[CompM, cypher.Expr] {
@@ -302,7 +333,7 @@ object Expression {
           WithQueryT.pure[CompM, cypher.Expr](cypher.Expr.IsNotNull(args.head))
         } else if (f.function == functions.EndNode) {
           require(args.length == 1, "`endNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.bumped())
+          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
           val nodeVariable = expressions.Variable(nodeName)(f.position)
 
           WithQueryT[CompM, cypher.Expr] {
@@ -330,7 +361,7 @@ object Expression {
       }
 
     case e @ expressions.GetDegree(node, relType, dir) =>
-      val bindName = UnNamedNameGenerator.name(e.position.bumped())
+      val bindName = UnNamedNameGenerator.name(e.position.newUniquePos())
       val bindVariable = expressions.Variable(bindName)(e.position)
 
       WithQueryT[CompM, cypher.Expr] {
@@ -377,7 +408,7 @@ object Expression {
 
       // Put the pattern into a form
       val pat = expressions.Pattern(Seq(expressions.EveryPath(rel.element)))(e.position)
-      val pathName = UnNamedNameGenerator.name(e.position.bumped())
+      val pathName = UnNamedNameGenerator.name(e.position.newUniquePos())
       val pathVariable = expressions.Variable(pathName)(e.position)
 
       WithQueryT {
@@ -496,7 +527,7 @@ object Expression {
               Map("types" -> cypher.Expr.List(edgesStrVect))
           }
 
-          val shortestPathName = UnNamedNameGenerator.name(e.position.bumped())
+          val shortestPathName = UnNamedNameGenerator.name(e.position.newUniquePos())
           val shortestPathVariable = expressions.Variable(shortestPathName)(e.position)
 
           WithQueryT {
@@ -609,7 +640,7 @@ object Expression {
           astNode = callExpr
         )
 
-      case functions.Filename | functions.Linenumber | functions.Point | functions.Distance | functions.Reduce | _ =>
+      case functions.File | functions.Linenumber | functions.Point | functions.Distance | functions.Reduce | _ =>
         CompM.raiseCompileError(
           message = s"Failed to resolve function `${callExpr.name}`",
           astNode = callExpr
@@ -632,8 +663,6 @@ case object patternExpressionAsComprehension extends StatementRewriter {
 
   import org.opencypher.v9_0.frontend.phases._
   import org.opencypher.v9_0.util.{bottomUp, Rewriter}
-
-  override def description: String = "turns pattern expressions into comprehensions"
 
   override def instance(ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift {
     case e: expressions.PatternExpression =>
@@ -659,7 +688,7 @@ case object patternExpressionAsComprehension extends StatementRewriter {
   def patternExpr2Comp(e: expressions.PatternExpression): expressions.PatternComprehension = {
     val expressions.PatternExpression(relsPat) = e
 
-    val freshName = UnNamedNameGenerator.name(e.position.bumped())
+    val freshName = UnNamedNameGenerator.name(e.position.newUniquePos())
     val freshVariable = expressions.Variable(freshName)(e.position)
 
     expressions.PatternComprehension(

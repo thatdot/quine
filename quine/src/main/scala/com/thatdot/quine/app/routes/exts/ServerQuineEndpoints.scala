@@ -4,7 +4,7 @@ import scala.util.{Failure, Success}
 
 import akka.util.ByteString
 
-import endpoints4s.{Codec, Valid, Validated}
+import endpoints4s.{Codec, Invalid, Valid, Validated}
 
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.routes.exts.QuineEndpoints
@@ -37,7 +37,13 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
 
   lazy val atTimeCodec: Codec[Option[Long], Option[Milliseconds]] =
     new Codec[Option[Long], Option[Milliseconds]] {
-      def decode(atTime: Option[Long]): Validated[AtTime] = Valid(atTime.map(Milliseconds.apply))
+      def decode(atTime: Option[Long]): Validated[AtTime] = {
+        val now = System.currentTimeMillis
+        atTime match {
+          case Some(at) if at > now => Invalid(s"Value $at must be less than system time $now")
+          case _ => Valid(atTime.map(Milliseconds.apply))
+        }
+      }
       def encode(atTime: AtTime): Option[Long] = atTime.map(_.millis)
     }
 

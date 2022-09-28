@@ -90,6 +90,7 @@ table CypherNull { }
 // See [[com.thatdot.quine.graph.cypher.Expr.Bytes]]
 table CypherBytes {
   bytes: [byte];
+  represents_id: bool;
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Node]]

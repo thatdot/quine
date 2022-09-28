@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.routes
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.http.scaladsl.model.ws
@@ -49,28 +49,32 @@ trait StandingQueryRoutesImpl
 
   implicit def graph: StandingQueryOpsGraph
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
   implicit def materializer: Materializer
 
   def serviceState: StandingQueryStore
 
   private val standingIssueRoute = standingIssue.implementedByAsync { case (name, query) =>
-    try serviceState.addStandingQuery(name, query) map {
-      case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
-      case true => Right(())
-    } catch {
+    try serviceState
+      .addStandingQuery(name, query)
+      .map {
+        case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
+        case true => Right(())
+      }(graph.shardDispatcherEC)
+    catch {
       case InvalidQueryPattern(message) =>
         Future.successful(Left(endpoints4s.Invalid(message)))
     }
   }
 
   private val standingAddOutRoute = standingAddOut.implementedByAsync { case (name, outputName, sqResultOutput) =>
-    serviceState.addStandingQueryOutput(name, outputName, sqResultOutput).map {
-      _.map {
-        case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
-        case true => Right(())
-      }
-    }
+    serviceState
+      .addStandingQueryOutput(name, outputName, sqResultOutput)
+      .map {
+        _.map {
+          case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
+          case true => Right(())
+        }
+      }(graph.shardDispatcherEC)
   }
 
   private val standingRemoveOutRoute = standingRemoveOut.implementedByAsync { case (name, outputName) =>
@@ -90,12 +94,14 @@ trait StandingQueryRoutesImpl
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
             handleWebSocketMessages(
-              Flow.fromSinkAndSource(
-                Sink.ignore,
-                source
-                  .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
-                  .map((r: StandingQueryResult) => ws.TextMessage(ujson.write(r.toJson)))
-              )
+              Flow
+                .fromSinkAndSource(
+                  Sink.ignore,
+                  source
+                    .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
+                    .map((r: StandingQueryResult) => ws.TextMessage(ujson.write(r.toJson)))
+                )
+                .named(s"sq-results-websocket-for-$name")
             )
 
         }

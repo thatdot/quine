@@ -264,7 +264,7 @@ trait WebSocketQueryProtocolServer
               .runWith(sink)
 
             // Schedule its removal from the map
-            termination.onComplete(_ => queries.remove(run.queryId))
+            termination.onComplete(_ => queries.remove(run.queryId))(graph.shardDispatcherEC)
 
             QueryStarted(run.queryId, isReadOnly, canContainAllNodeScan, columns)
 
@@ -285,5 +285,6 @@ trait WebSocketQueryProtocolServer
         }
     }
 
-  final val queryProtocolWS: Route = query.directive(_ => handleWebSocketMessages(queryProtocol))
+  final val queryProtocolWS: Route =
+    query.directive(_ => handleWebSocketMessages(queryProtocol.named("ui-query-protocol-websocket")))
 }

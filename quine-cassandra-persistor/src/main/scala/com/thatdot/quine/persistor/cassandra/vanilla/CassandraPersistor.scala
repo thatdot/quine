@@ -9,6 +9,7 @@ import scala.collection.immutable
 import scala.compat.ExecutionContexts
 import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
+import scala.compat.java8.OptionConverters._
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -29,14 +30,16 @@ import com.datastax.oss.driver.api.core.`type`.codec.ExtraTypeCodecs.BLOB_TO_ARR
 import com.datastax.oss.driver.api.core.`type`.codec.{MappingCodec, PrimitiveLongCodec, TypeCodec, TypeCodecs}
 import com.datastax.oss.driver.api.core.`type`.reflect.GenericType
 import com.datastax.oss.driver.api.core.cql.{
+  BatchStatement,
   BoundStatement,
   BoundStatementBuilder,
+  DefaultBatchType,
   PreparedStatement,
   Row,
   SimpleStatement,
   Statement
 }
-import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
+import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.{ASC, DESC}
 import com.datastax.oss.driver.api.core.{
   ConsistencyLevel,
   CqlIdentifier,
@@ -59,7 +62,12 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceCodecs, PersistenceConfig}
+import com.thatdot.quine.persistor.{
+  MultipartSnapshotPersistenceAgent,
+  PersistenceAgent,
+  PersistenceCodecs,
+  PersistenceConfig
+}
 
 object syntax {
   private def genericType[A](implicit tag: ClassTag[A]): GenericType[A] =
@@ -96,12 +104,26 @@ object CassandraCodecs {
   import syntax._
   implicit val byteArrayCodec: TypeCodec[Array[Byte]] = BLOB_TO_ARRAY
   implicit val stringCodec: TypeCodec[String] = TypeCodecs.TEXT
+  implicit val intCodec: TypeCodec[Int] = TypeCodecs.INT.asInstanceOf[TypeCodec[Int]]
   implicit val quineIdCodec: TypeCodec[QuineId] = BLOB_TO_ARRAY.xmap(QuineId(_), _.array)
   implicit val standingQueryIdCodec: TypeCodec[StandingQueryId] = TypeCodecs.UUID.xmap(StandingQueryId(_), _.uuid)
   implicit val standingQueryPartIdCodec: TypeCodec[StandingQueryPartId] =
     TypeCodecs.UUID.xmap(StandingQueryPartId(_), _.uuid)
+
+  /** [[EventTime]] is represented using Cassandra's 64-bit `bigint`
+    *
+    * Since event time ordering is unsigned, we need to shift over the raw
+    * underlying long by [[Long.MinValue]] in order to ensure that ordering
+    * gets mapped over properly to the signed `bigint` ordering.
+    *
+    * {{{
+    * EventTime.MinValue -> 0L + Long.MaxValue + 1L = Long.MinValue   // smallest event time
+    * EventTime.MaxValue -> -1L + Long.MaxValue + 1L = Long.MaxValue  // largest event time
+    * }}}
+    */
   implicit val eventTimeCodec: TypeCodec[EventTime] =
-    TypeCodecs.BIGINT.xmap(EventTime.fromRaw, _.eventTime)
+    TypeCodecs.BIGINT.xmap(x => EventTime.fromRaw(x - Long.MaxValue - 1L), x => x.eventTime + Long.MaxValue + 1L)
+
   implicit val nodeChangeEventCodec: TypeCodec[NodeChangeEvent] = BLOB_TO_ARRAY.xmap(
     PersistenceCodecs.eventFormat.read(_).get,
     PersistenceCodecs.eventFormat.write
@@ -144,7 +166,7 @@ abstract class TableDefinition extends LazyLogging {
   protected def clusterKeys: List[CassandraColumn[_]]
   protected def dataColumns: List[CassandraColumn[_]]
 
-  /** Start building a CREATE TABLE statement, based on the {{{partitionKey}}}, {{{clusterKeys}}}, and {{dataColumns}}}
+  /** Start building a CREATE TABLE statement, based on the {{{partitionKey}}}, {{{clusterKeys}}}, and {{{dataColumns}}}
     * specified. Set any other desired options (e.g. {{{.withClusteringOrder}}}) and then call {{{.build()}}} to
     * get a CQL statement to execute.
     * @return a CreateTable builder
@@ -191,6 +213,10 @@ abstract class CassandraTable(session: CqlSession) {
   def nonEmpty(): Future[Boolean]
   def pair[A, B](columnA: CassandraColumn[A], columnB: CassandraColumn[B])(row: Row): (A, B) =
     (columnA.get(row), columnB.get(row))
+  def triple[A, B, C](columnA: CassandraColumn[A], columnB: CassandraColumn[B], columnC: CassandraColumn[C])(
+    row: Row
+  ): (A, B, C) =
+    (columnA.get(row), columnB.get(row), columnC.get(row))
 
   /** Helper method for wrapping Java Reactive Streams CQL execution in Akka Streams
     *
@@ -212,7 +238,7 @@ abstract class CassandraTable(session: CqlSession) {
     materializer: Materializer,
     cbf: Factory[A, C with immutable.Iterable[_]]
   ): Future[C] =
-    executeSource(statement).map(rowFn).runWith(Sink.collection)
+    executeSource(statement).map(rowFn).named("cassandra-select-query").runWith(Sink.collection)
 
   /** Same as {{{executeSelect}}}, just with a {{{CassandraColumn.get}}} as the {{{rowFn}}}
     *
@@ -237,6 +263,17 @@ abstract class CassandraTable(session: CqlSession) {
     cbf: Factory[(A, B), C with immutable.Iterable[_]]
   ): Future[C] =
     executeSelect(statement)(pair(colA, colB))
+
+  final protected def selectColumns[A, B, C, D](
+    statement: Statement[_],
+    colA: CassandraColumn[A],
+    colB: CassandraColumn[B],
+    colC: CassandraColumn[C]
+  )(implicit
+    materializer: Materializer,
+    cbf: Factory[(A, B, C), D with immutable.Iterable[_]]
+  ): Future[D] =
+    executeSelect(statement)(triple(colA, colB, colC))
 
   /** Helper method for converting no-op results to {{{Future[Unit]}}}
     *
@@ -263,11 +300,17 @@ trait JournalColumnNames {
 
 class Journals(
   session: CqlSession,
+  insertTimeout: FiniteDuration,
+  writeConsistency: ConsistencyLevel,
   selectAllQuineIds: PreparedStatement,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
   selectByQuineIdUntilTimestamp: PreparedStatement,
   selectByQuineIdSinceUntilTimestamp: PreparedStatement,
+  selectWithTimeByQuineId: PreparedStatement,
+  selectWithTimeByQuineIdSinceTimestamp: PreparedStatement,
+  selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
+  selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
   insert: PreparedStatement
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
@@ -277,22 +320,60 @@ class Journals(
   def nonEmpty(): Future[Boolean] = yieldsResults(Journals.arbitraryRowStatement)
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
-    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get)
+    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 
-  def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
+  def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
     executeFuture(
-      insert.bindColumns(
-        quineIdColumn.set(id),
-        timestampColumn.set(atTime),
-        dataColumn.set(event)
-      )
+      BatchStatement
+        .newInstance(
+          DefaultBatchType.UNLOGGED,
+          events map { case NodeChangeEvent.WithTime(event, atTime) =>
+            insert.bindColumns(
+              quineIdColumn.set(id),
+              timestampColumn.set(atTime),
+              dataColumn.set(event)
+            )
+          }: _*
+        )
+        .setTimeout(insertTimeout.toJava)
+        .setConsistencyLevel(writeConsistency)
     )
+
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] = executeSelect(
+    (startingAt, endingAt) match {
+      case (EventTime.MinValue, EventTime.MaxValue) =>
+        selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
+
+      case (EventTime.MinValue, _) =>
+        selectWithTimeByQuineIdUntilTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setLt(endingAt)
+        )
+
+      case (_, EventTime.MaxValue) =>
+        selectWithTimeByQuineIdSinceTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setGt(startingAt)
+        )
+
+      case _ =>
+        selectWithTimeByQuineIdSinceUntilTimestamp.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setGt(startingAt),
+          timestampColumn.setLt(endingAt)
+        )
+    }
+  )(row => NodeChangeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
 
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeChangeEvent]] = selectColumn(
+  ): Future[Iterable[NodeChangeEvent]] = selectColumn(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectByQuineId.bindColumns(quineIdColumn.set(id))
@@ -328,7 +409,7 @@ object Journals extends TableDefinition with JournalColumnNames {
 
   private val createTableStatement: SimpleStatement =
     makeCreateTableStatement
-      .withClusteringOrder(timestampColumn.name, DESC)
+      .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
       .build
       .setTimeout(createTableTimeout)
@@ -354,6 +435,28 @@ object Journals extends TableDefinition with JournalColumnNames {
 
   private val selectByQuineIdSinceUntilTimestampQuery: SimpleStatement =
     selectByQuineIdQuery
+      .where(
+        timestampColumn.is.gte,
+        timestampColumn.is.lte
+      )
+      .build()
+
+  private val selectWithTimeByQuineIdQuery: Select =
+    selectByQuineIdQuery
+      .column(timestampColumn.name)
+
+  private val selectWithTimeByQuineIdSinceTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
+      .where(timestampColumn.is.gte)
+      .build()
+
+  private val selectWithTimeByQuineIdUntilTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
+      .where(timestampColumn.is.lte)
+      .build()
+
+  private val selectWithTimeByQuineIdSinceUntilTimestampQuery: SimpleStatement =
+    selectWithTimeByQuineIdQuery
       .where(
         timestampColumn.is.gte,
         timestampColumn.is.lte
@@ -397,8 +500,26 @@ object Journals extends TableDefinition with JournalColumnNames {
         prepare(
           selectByQuineIdSinceUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
         ),
+        prepare(
+          selectWithTimeByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdSinceTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdUntilTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
+        prepare(
+          selectWithTimeByQuineIdSinceUntilTimestampQuery
+            .setTimeout(selectTimeout.toJava)
+            .setConsistencyLevel(readConsistency)
+        ),
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new Journals(session, _, _, _, _, _, _))
+      ).mapN(new Journals(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }
@@ -409,27 +530,35 @@ trait SnapshotsColumnNames {
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
   final protected val timestampColumn: CassandraColumn[EventTime] = CassandraColumn[EventTime]("timestamp")
   final protected val dataColumn: CassandraColumn[Array[Byte]] = CassandraColumn[Array[Byte]]("data")
+  final protected val multipartIndexColumn: CassandraColumn[Int] = CassandraColumn[Int]("multipart_index")
+  final protected val multipartCountColumn: CassandraColumn[Int] = CassandraColumn[Int]("multipart_count")
 }
 
 object Snapshots extends TableDefinition with SnapshotsColumnNames {
   protected val tableName = "snapshots"
   protected val partitionKey = quineIdColumn
-  protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
-  protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(dataColumn)
+  protected val clusterKeys: List[CassandraColumn[_]] = List(timestampColumn, multipartIndexColumn)
+  protected val dataColumns: List[CassandraColumn[_]] = List(dataColumn, multipartCountColumn)
 
   private val createTableStatement: SimpleStatement =
     makeCreateTableStatement.withClusteringOrder(timestampColumn.name, DESC).build.setTimeout(createTableTimeout)
 
-  private val getLatest: Select =
+  private val getLatestTime: Select =
     select
-      .columns(timestampColumn.name, dataColumn.name)
+      .columns(timestampColumn.name)
       .where(quineIdColumn.is.eq)
       .limit(1)
 
-  private val getLatestBefore =
-    getLatest
+  private val getLatestTimeBefore: SimpleStatement =
+    getLatestTime
       .where(timestampColumn.is.lte)
       .build()
+
+  private val getParts: SimpleStatement = select
+    .columns(dataColumn.name, multipartIndexColumn.name, multipartCountColumn.name)
+    .where(quineIdColumn.is.eq)
+    .where(timestampColumn.is.eq)
+    .build()
 
   private val selectAllQuineIds: SimpleStatement = select.distinct
     .column(quineIdColumn.name)
@@ -442,8 +571,6 @@ object Snapshots extends TableDefinition with SnapshotsColumnNames {
     insertTimeout: FiniteDuration,
     selectTimeout: FiniteDuration,
     shouldCreateTables: Boolean
-  )(
-    ec: ExecutionContext
   )(implicit
     futureMonad: Monad[Future]
   ): Future[Snapshots] = {
@@ -463,10 +590,11 @@ object Snapshots extends TableDefinition with SnapshotsColumnNames {
     createdSchema.flatMap(_ =>
       (
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(getLatest.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(getLatestBefore.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
+        prepare(getLatestTime.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
+        prepare(getLatestTimeBefore.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
+        prepare(getParts.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
         prepare(selectAllQuineIds.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency))
-      ).mapN(new Snapshots(session, _, _, _, _)(ec))
+      ).mapN(new Snapshots(session, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
   }
 
@@ -475,55 +603,65 @@ object Snapshots extends TableDefinition with SnapshotsColumnNames {
 class Snapshots(
   session: CqlSession,
   insertStatement: PreparedStatement,
-  getLatestStatment: PreparedStatement,
-  getLatestBeforeStatement: PreparedStatement,
+  getLatestTimeStatement: PreparedStatement,
+  getLatestTimeBeforeStatement: PreparedStatement,
+  getPartsStatement: PreparedStatement,
   selectAllQuineIds: PreparedStatement
-)(ec: ExecutionContext)
-    extends CassandraTable(session)
+) extends CassandraTable(session)
     with SnapshotsColumnNames {
   import syntax._
 
   def nonEmpty(): Future[Boolean] = yieldsResults(Snapshots.arbitraryRowStatement)
 
-  // I don't know that retrieving the first row and getting the timestamp and data fields  from that row
-  // is trivial (like making a tuple is), so I dispatch that to an ExecutionContext.
-  private def selectSnapshot(query: BoundStatement): Future[Option[(EventTime, Array[Byte])]] =
-    session
-      .executeAsync(query)
-      .toScala
-      .map(results => Option(results.one).map(pair(timestampColumn, dataColumn)))(ec)
-
-  def persistSnapshot(
+  def persistSnapshotPart(
     id: QuineId,
     atTime: EventTime,
-    state: Array[Byte]
+    part: Array[Byte],
+    partIndex: Int,
+    partCount: Int
   ): Future[Unit] = executeFuture(
     insertStatement.bindColumns(
       quineIdColumn.set(id),
       timestampColumn.set(atTime),
-      dataColumn.set(state)
+      dataColumn.set(part),
+      multipartIndexColumn.set(partIndex),
+      multipartCountColumn.set(partCount)
     )
   )
 
-  def getLatestSnapshot(
+  def getLatestSnapshotTime(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] =
-    selectSnapshot(
-      upToTime match {
+  ): Future[Option[EventTime]] =
+    session
+      .executeAsync(upToTime match {
         case EventTime.MaxValue =>
-          getLatestStatment.bindColumns(quineIdColumn.set(id))
-
+          getLatestTimeStatement.bindColumns(quineIdColumn.set(id))
         case _ =>
-          getLatestBeforeStatement.bindColumns(
+          getLatestTimeBeforeStatement.bindColumns(
             quineIdColumn.set(id),
             timestampColumn.setLt(upToTime)
           )
-      }
+      })
+      .toScala
+      .map(results => Option(results.one).map(timestampColumn.get))(ExecutionContexts.parasitic)
+
+  def getSnapshotParts(
+    id: QuineId,
+    atTime: EventTime
+  )(implicit mat: Materializer): Future[Seq[(Array[Byte], Int, Int)]] =
+    selectColumns(
+      getPartsStatement.bindColumns(
+        quineIdColumn.set(id),
+        timestampColumn.set(atTime)
+      ),
+      dataColumn,
+      multipartIndexColumn,
+      multipartCountColumn
     )
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
-    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get)
+    executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 }
 
 trait StandingQueriesColumnNames {
@@ -763,14 +901,17 @@ class StandingQueryStates(
 
   def removeStandingQuery(standingQuery: StandingQueryId): Future[Unit] =
     executeSource(getIdsForStandingQueryStatement.bindColumns(standingQueryIdColumn.set(standingQuery)))
+      .named("cassandra-get-standing-query-ids")
       .runWith(
-        Sink.foreachAsync(16) { row =>
-          val deleteStatement = removeStandingQueryStatement.bindColumns(
-            quineIdColumn.set(quineIdColumn.get(row)),
-            standingQueryIdColumn.set(standingQuery)
-          )
-          executeFuture(deleteStatement)
-        }
+        Sink
+          .foreachAsync[ReactiveRow](16) { row =>
+            val deleteStatement = removeStandingQueryStatement.bindColumns(
+              quineIdColumn.set(quineIdColumn.get(row)),
+              standingQueryIdColumn.set(standingQuery)
+            )
+            executeFuture(deleteStatement)
+          }
+          .named("cassandra-remove-standing-queries")
       )
       .map(_ => ())(ExecutionContexts.parasitic)
 }
@@ -856,6 +997,7 @@ class MetaData(
   def getMetaData(key: String): Future[Option[Array[Byte]]] =
     executeSource(selectSingleStatement.bindColumns(keyColumn.set(key)))
       .map(row => valueColumn.get(row))
+      .named(s"cassandra-get-metadata-$key")
       .runWith(Sink.headOption)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] =
@@ -876,10 +1018,10 @@ class MetaData(
   *
   * @param keyspace The keyspace the quine tables should live in.
   * @param replicationFactor
-  * @param readConsitency
+  * @param readConsistency
   * @param writeConsistency
-  * @param insertTimeout How long to wait for a response when running an INSERT statement.
-  * @param selectTimeout How long to wait for a response when running a SELECT statement.
+  * @param writeTimeout How long to wait for a response when running an INSERT statement.
+  * @param readTimeout How long to wait for a response when running a SELECT statement.
   * @param endpoints address(s) (host and port) of the Cassandra cluster to connect to.
   * @param localDatacenter If endpoints are specified, this argument is required. Default value on a new Cassandra install is 'datacenter1'.
   * @param shouldCreateTables Whether or not to create the required tables if they don't already exist.
@@ -893,14 +1035,20 @@ class CassandraPersistor(
   writeConsistency: ConsistencyLevel,
   endpoints: List[InetSocketAddress],
   localDatacenter: String,
-  insertTimeout: FiniteDuration,
-  selectTimeout: FiniteDuration,
+  writeTimeout: FiniteDuration,
+  readTimeout: FiniteDuration,
   shouldCreateTables: Boolean,
   shouldCreateKeyspace: Boolean,
-  metricRegistry: Option[MetricRegistry]
+  metricRegistry: Option[MetricRegistry],
+  val snapshotPartMaxSizeBytes: Int
 )(implicit
   materializer: Materializer
-) extends PersistenceAgent {
+) extends PersistenceAgent
+    with MultipartSnapshotPersistenceAgent {
+
+  import MultipartSnapshotPersistenceAgent._
+
+  val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
   // Technically only Apply[Future] is required, but people might not be familiar with that,
@@ -918,8 +1066,22 @@ class CassandraPersistor(
     .build()
 
   private val session: CqlSession =
-    try createQualifiedSession
-    catch {
+    try {
+      val session = createQualifiedSession
+      // Log a warning if the Cassandra keyspace replication factor does not match Quine configuration
+      for { keyspaceMetadata <- session.getMetadata.getKeyspace(keyspace).asScala } {
+        val keyspaceReplicationConfig = keyspaceMetadata.getReplication.asScala.toMap
+        val clazz = keyspaceReplicationConfig.get("class")
+        val factor = keyspaceReplicationConfig.get("replication_factor")
+        if (
+          clazz.contains("org.apache.cassandra.locator.SimpleStrategy") && !factor.contains(replicationFactor.toString)
+        )
+          logger.warn(
+            s"Unexpected replication factor: $factor (expected: $replicationFactor) for Cassandra keyspace: $keyspace"
+          )
+      }
+      session
+    } catch {
       case _: InvalidKeyspaceException if shouldCreateKeyspace =>
         val sess = sessionBuilder.build()
         // CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}
@@ -930,59 +1092,91 @@ class CassandraPersistor(
 
   private val (journals, snapshots, standingQueries, standingQueryStates, metaData) = Await.result(
     (
-      Journals.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables),
-      Snapshots.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables)(
-        materializer.executionContext
-      ),
+      Journals.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
+      Snapshots.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
       StandingQueries.create(
         session,
         readConsistency,
         writeConsistency,
-        insertTimeout,
-        selectTimeout,
+        writeTimeout,
+        readTimeout,
         shouldCreateTables
       ),
       StandingQueryStates.create(
         session,
         readConsistency,
         writeConsistency,
-        insertTimeout,
-        selectTimeout,
+        writeTimeout,
+        readTimeout,
         shouldCreateTables
       ),
-      MetaData.create(session, readConsistency, writeConsistency, insertTimeout, selectTimeout, shouldCreateTables)
+      MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables)
     ).tupled,
     5.seconds
   )
 
-  override def emptyOfQuineData()(implicit ec: ExecutionContext): Future[Boolean] = {
+  override def emptyOfQuineData(): Future[Boolean] = {
     val dataTables = Seq(journals, snapshots, standingQueries, standingQueryStates)
     // then combine them -- if any have results, then the system is not empty of quine data
-    Future.traverse(dataTables)(_.nonEmpty()).map(_.exists(identity))
+    Future
+      .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
+      .map(_.exists(identity))(ExecutionContexts.parasitic)
   }
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = journals.enumerateAllNodeIds()
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = snapshots.enumerateAllNodeIds()
 
-  override def persistEvent(id: QuineId, atTime: EventTime, event: NodeChangeEvent): Future[Unit] =
-    journals.persistEvent(id, atTime, event)
+  override def persistEvents(id: QuineId, events: Seq[NodeChangeEvent.WithTime]): Future[Unit] =
+    journals.persistEvents(id, events)
 
-  override def getJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime): Future[Vector[NodeChangeEvent]] =
-    journals.getJournal(id, startingAt, endingAt)
+  override def getJournal(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent]] =
+    journals
+      .getJournal(id, startingAt, endingAt)
 
-  override def persistSnapshot(
+  def getJournalWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeChangeEvent.WithTime]] =
+    journals
+      .getJournalWithTime(id, startingAt, endingAt)
+
+  override def persistSnapshotPart(
     id: QuineId,
     atTime: EventTime,
-    state: Array[Byte]
-  ): Future[Unit] =
-    snapshots.persistSnapshot(id, atTime, state)
+    part: MultipartSnapshotPart
+  ): Future[Unit] = {
+    val MultipartSnapshotPart(bytes, index, count) = part
+    snapshots.persistSnapshotPart(id, atTime, bytes, index, count)
+  }
 
-  override def getLatestSnapshot(
+  override def getLatestMultipartSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[(EventTime, Array[Byte])]] =
-    snapshots.getLatestSnapshot(id, upToTime)
+  ): Future[Option[MultipartSnapshot]] =
+    snapshots
+      .getLatestSnapshotTime(id, upToTime)
+      .map({
+        case Some(time) =>
+          snapshots
+            .getSnapshotParts(id, time)
+            .map(parts =>
+              parts
+                .map { case (partBytes, partIndex, partCount) =>
+                  MultipartSnapshotPart(partBytes, partIndex, partCount)
+                }
+            )(ExecutionContexts.parasitic)
+            .map(multipartSnapshotParts => Some(MultipartSnapshot(time, multipartSnapshotParts)))(
+              ExecutionContexts.parasitic
+            )
+        case _ => Future.successful(None)
+      })(multipartSnapshotExecutionContext)
+      .flatten
 
   override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
     standingQueries.persistStandingQuery(standingQuery)

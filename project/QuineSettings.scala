@@ -5,7 +5,7 @@ import scalajsbundler.sbtplugin.ScalaJSBundlerPlugin.autoImport._
 
 object QuineSettings {
 
-  val scalaV212 = "2.12.15"
+  val scalaV212 = "2.12.16"
   val scalaV213 = "2.13.8"
   val `scala 2.12 to 2.13`: Seq[Setting[_]] = Seq(
     scalaVersion := scalaV212,
@@ -27,7 +27,9 @@ object QuineSettings {
       "utf8",
       "-feature",
       "-unchecked",
-      "-deprecation"
+      "-deprecation",
+      "-release",
+      "11"
     ),
     autoAPIMappings := true,
     scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
@@ -52,7 +54,7 @@ object QuineSettings {
       case _ =>
         Seq.empty
     }),
-    javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+    javacOptions ++= Seq("--release", "11")
   )
 
   /* Settings for building a Scala.js/React webapp using Slinky

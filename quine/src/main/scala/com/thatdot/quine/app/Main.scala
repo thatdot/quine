@@ -4,10 +4,11 @@ import java.io.File
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 import akka.actor.{ActorSystem, Cancellable}
 import akka.util.Timeout
@@ -15,14 +16,23 @@ import akka.util.Timeout
 import ch.qos.logback.classic.LoggerContext
 import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.slf4j.LoggerFactory
+import pureconfig.ConfigSource
+import pureconfig.error.ConfigReaderException
 
-import com.thatdot.quine.app.config.PersistenceAgentType
+import com.thatdot.quine.app.config.{PersistenceAgentType, QuineConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
-import com.thatdot.quine.persistor.PersistenceConfig
+import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
 
 object Main extends App with LazyLogging {
+
+  private val statusLines =
+    new StatusLines(
+      // This name comes from quine's logging.conf
+      Logger("thatdot.Interactive"),
+      System.err
+    )
 
   // Parse command line arguments.
   // On any failure, print messages and terminate process.
@@ -37,32 +47,52 @@ object Main extends App with LazyLogging {
   }
 
   // If there's a recipe URL or file path, block and read it, apply substitutions, and fail fast.
-  val recipe: Option[Recipe] = {
-    val parsedRecipe: Option[Recipe] = for { r <- cmdArgs.recipe } yield Recipe.get(r) match {
+  val recipe: Option[Recipe] = cmdArgs.recipe.map { (recipeIdentifyingString: String) =>
+    Recipe.getAndSubstitute(recipeIdentifyingString, cmdArgs.recipeValues) match {
       case Left(messages) =>
         messages.foreach(l => Console.err.println(l))
         sys.exit(1)
       case Right(recipe) => recipe
     }
-    val substitutedRecipe =
-      for { r <- parsedRecipe } yield try Recipe.applySubstitutions(r, cmdArgs.recipeValues)
-      catch {
-        case NonFatal(e) =>
-          Console.err.println(e.getMessage)
-          sys.exit(1)
-      }
-    substitutedRecipe
   }
 
-  // specifies that logback configuration will be loaded from the "logging.quine" Typesafe Config scope
-  sys.props("logback-root") = "logging.quine"
+  // Parse config for Quine and apply command line overrides.
+  val config: QuineConfig = {
+    // Regular HOCON loading of options (from java properties and `conf` files)
+    val withoutOverrides = ConfigSource.default.load[QuineConfig] match {
+      case Right(config) => config
+      case Left(failures) =>
+        Console.err.println(new ConfigReaderException[QuineConfig](failures).getMessage())
+        Console.err.println("Did you forget to pass in a config file?")
+        Console.err.println("  $ java -Dconfig.file=your-conf-file.conf -jar quine.jar")
+        sys.exit(1)
+    }
 
-  private val statusLines =
-    new StatusLines(
-      // This name comes from quine's logging.conf
-      Logger("thatdot.Interactive"),
-      System.err
+    // Override webserver options
+    val withWebserverOverrides = withoutOverrides.copy(
+      webserver = withoutOverrides.webserver.copy(
+        port = cmdArgs.port.getOrElse(withoutOverrides.webserver.port),
+        enabled = !cmdArgs.disableWebservice && withoutOverrides.webserver.enabled
+      )
     )
+
+    // Recipe overrides (unless --force-config command line flag is used)
+    if (recipe.isDefined && !cmdArgs.forceConfig) {
+      val tempDataFile: File = File.createTempFile("quine-", ".db")
+      tempDataFile.delete()
+      if (cmdArgs.deleteDataFile) {
+        tempDataFile.deleteOnExit()
+      } else {
+        // Only print the data file name when NOT DELETING the temporary file
+        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
+      }
+      withWebserverOverrides.copy(
+        store = PersistenceAgentType.RocksDb(
+          filepath = tempDataFile
+        )
+      )
+    } else withWebserverOverrides
+  }
 
   // Optionally print a message on startup
   if (BuildInfo.startupMessage.nonEmpty) {
@@ -80,36 +110,8 @@ object Main extends App with LazyLogging {
     s"Running ${BuildInfo.version} with $numCores available cores and $maxHeapSize."
   }
 
-  // When running a recipe, overwrite some configuration values
-  // (unless --force-config command line flag is used)
-  private val config: Config.QuineConfig = {
-    val rawConfig = Config.config
-    if (recipe.isDefined && !cmdArgs.forceConfig) {
-      val tempDataFile: File = File.createTempFile("quine-", ".db")
-      tempDataFile.delete()
-      if (cmdArgs.deleteDataFile) {
-        tempDataFile.deleteOnExit()
-      } else {
-        // Only print the data file name when NOT DELETING the temporary file
-        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
-      }
-      rawConfig.copy(
-        webserver = rawConfig.webserver.copy(
-          port = cmdArgs.port.getOrElse(rawConfig.webserver.port)
-        ),
-        store = PersistenceAgentType.RocksDb(
-          filepath = tempDataFile
-        ),
-        persistence = PersistenceConfig(
-          journalEnabled = false,
-          snapshotSingleton = true
-        )
-      )
-    } else rawConfig
-  }
-
   if (config.dumpConfig) {
-    statusLines.info(Config.loadedConfigHocon)
+    statusLines.info(config.loadedConfigHocon)
   }
 
   val timeout: Timeout = config.timeout
@@ -117,63 +119,61 @@ object Main extends App with LazyLogging {
   config.metricsReporters.foreach(Metrics.addReporter(_, "quine"))
   Metrics.startReporters()
 
-  val graphTry: Try[GraphService] = {
-    implicit val ec: ExecutionContext = scala.concurrent.ExecutionContext.global
-    Await
-      .ready(
-        for {
-          graph <- GraphService(
-            persistor = config.store.persistor(config.persistence)(_),
-            idProvider = config.id.idProvider,
-            shardCount = config.shardCount,
-            inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
-            inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
-            declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
-            declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
-            labelsProperty = Symbol(config.labelsProperty),
-            edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
-            metricRegistry = Metrics
-          )
-          _ <- graph.persistor.syncVersion(
-            "Quine app state",
-            QuineApp.VersionKey,
-            QuineApp.CurrentPersistenceVersion,
-            () => QuineApp.quineAppIsEmpty(graph.persistor)
-          )
-        } yield graph,
-        timeout.duration
+  val graph: GraphService =
+    try Await
+      .result(
+        GraphService(
+          persistor = system =>
+            new ExceptionWrappingPersistenceAgent(
+              config.store.persistor(config.persistence)(system),
+              system.dispatcher
+            ),
+          idProvider = config.id.idProvider,
+          shardCount = config.shardCount,
+          inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
+          inMemoryHardNodeLimit = config.inMemoryHardNodeLimit,
+          effectOrder = config.persistence.effectOrder,
+          declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
+          declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
+          maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
+          labelsProperty = Symbol(config.labelsProperty),
+          edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
+          metricRegistry = Metrics
+        ).flatMap(graph =>
+          graph.persistor
+            .syncVersion(
+              "Quine app state",
+              QuineApp.VersionKey,
+              QuineApp.CurrentPersistenceVersion,
+              () => QuineApp.quineAppIsEmpty(graph.persistor)
+            )
+            .map(_ => graph)(ExecutionContexts.parasitic)
+        )(ExecutionContexts.parasitic),
+        atMost = timeout.duration
       )
-      .value
-      .get
-  }
-
-  val graph: GraphService = graphTry.fold(
-    { err =>
-      statusLines.error("Unable to start graph", err)
-      sys.exit(1)
-    },
-    g => g
-  )
+    catch {
+      case NonFatal(err) =>
+        statusLines.error("Unable to start graph", err)
+        sys.exit(1)
+    }
 
   implicit val system: ActorSystem = graph.system
   val ec: ExecutionContext = graph.shardDispatcherEC
   val appState = new QuineApp(graph)
 
-  registerUserDefinedProcedure(new CypherStandingWiretap(appState.getStandingQueryId(_)))
+  registerUserDefinedProcedure(new CypherStandingWiretap(appState.getStandingQueryId))
 
   // Warn if character encoding is unexpected
-  if (Charset.defaultCharset() != StandardCharsets.UTF_8) {
+  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
     statusLines.warn(
-      s"System character encoding is ${Charset.defaultCharset()} - did you mean to specify -Dfile.encoding=UTF-8?"
+      s"System character encoding is ${Charset.defaultCharset} - did you mean to specify -Dfile.encoding=UTF-8?"
     )
   }
 
-  // Inform when the graph is ready
-  statusLines.info("Graph is ready!")
+  statusLines.info("Graph is ready")
 
-  // The web service is started when asked for by command line arguments,
-  // or when no command arguments are specified.
-  val quineWebserverUrl: Option[String] = if (!cmdArgs.disableWebservice) {
+  // The web service is started unless it was disabled.
+  val quineWebserverUrl: Option[String] = if (config.webserver.enabled) {
     Some(s"http://${config.webserver.address}:${config.webserver.port}")
   } else {
     None
@@ -182,20 +182,32 @@ object Main extends App with LazyLogging {
   @volatile
   var recipeInterpreterTask: Option[Cancellable] = None
 
-  appState
-    .load(timeout, config.shouldResumeIngest)
-    .onComplete { _ =>
-      statusLines.info("Application state loaded.")
-      recipeInterpreterTask = recipe.map(r =>
-        RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(system.dispatcher, graph.idProvider)
-      )
-    }(ec)
+  def attemptAppLoad(): Unit =
+    appState
+      .load(timeout, config.shouldResumeIngest)
+      .onComplete {
+        case Success(()) =>
+          recipeInterpreterTask = recipe.map(r =>
+            RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(
+              graph.idProvider
+            )
+          )
+        case Failure(cause) =>
+          statusLines.warn(
+            "Failed to load application state. This is most likely due to a failure " +
+            "in the persistence backend",
+            cause
+          )
+          system.scheduler.scheduleOnce(500.millis)(attemptAppLoad())(ec)
+      }(ec)
+
+  attemptAppLoad()
 
   quineWebserverUrl foreach { url =>
-    new QuineAppRoutes(graph, appState, ec, timeout)
+    new QuineAppRoutes(graph, appState, config.loadedConfigJson, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
-        case Success(_) => statusLines.info(s"Quine app web server available at $url")
+        case Success(_) => statusLines.info(s"Quine web server available at $url")
         case Failure(_) => // akka will have logged a stacktrace to the debug logger
       }(ec)
   }
@@ -219,7 +231,7 @@ object Main extends App with LazyLogging {
       case NonFatal(e) =>
         statusLines.error(s"Graceful shutdown of Quine encountered an error", e)
     }
-    statusLines.info("Shutdown complete.")
+    statusLines.info("Shutdown complete")
     LoggerFactory.getILoggerFactory match {
       case context: LoggerContext => context.stop()
       case _ => ()

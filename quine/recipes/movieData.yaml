@@ -1,0 +1,243 @@
+# Recipe schema version (currently only supported value is 1;)
+version: 1
+
+# Identifies the Recipe but is not necessarily unique or immutable
+title: Ingesting CSV Files
+
+# URL to social profile of the person or organization responsible for this Recipe
+contributor: https://github.com/maglietti
+
+# Brief copy about this Recipe
+summary: |-
+  This recipe takes sample movie and rating data, builds a graph, and alerts 
+  when an actor is also the director of a movie.
+
+# Longer form copy about this Recipe
+description: |-
+  This recipe is part of the Quine Ingest Stream blog series. This time, we'll 
+  work with `CSV` data exported from IMDb to answer the question; *"Which actors 
+  have acted in and directed the same movie?"*
+
+# Ingest Streams connect to data sources and establish how data is processed and transformed
+ingestStreams:
+  # INGEST-1
+  - type: FileIngest
+    path: $movie_file
+    format:
+      type: CypherCsv
+      headers: true
+      query: |-
+        WITH $that AS row
+        MATCH (m) 
+        WHERE row.Entity = 'Movie' 
+          AND id(m) = idFrom("Movie", row.movieId)
+        SET
+          m:Movie,
+          m.tmdbId = row.tmdbId,
+          m.imdbId = row.imdbId,
+          m.imdbRating = toFloat(row.imdbRating),
+          m.released = row.released,
+          m.title = row.title,
+          m.year = toInteger(row.year),
+          m.poster = row.poster,
+          m.runtime = toInteger(row.runtime),
+          m.countries = split(coalesce(row.countries,""), "|"),
+          m.imdbVotes = toInteger(row.imdbVotes),
+          m.revenue = toInteger(row.revenue),
+          m.plot = row.plot,
+          m.url = row.url,
+          m.budget = toInteger(row.budget),
+          m.languages = split(coalesce(row.languages,""), "|"),
+          m.movieId = row.movieId
+        WITH m,split(coalesce(row.genres,""), "|") AS genres
+        UNWIND genres AS genre
+        WITH m, genre
+        MATCH (g) 
+        WHERE id(g) = idFrom("Genre", genre)
+        SET g.genre = genre, g:Genre
+        MERGE (m:Movie)-[:IN_GENRE]->(g:Genre)
+
+  # INGEST-2
+  - type: FileIngest
+    path: $movie_file
+    format:
+      type: CypherCsv
+      headers: true
+      query: |-
+        WITH $that AS row
+        MATCH (p) 
+        WHERE row.Entity = "Person" 
+          AND id(p) = idFrom("Person", row.tmdbId)
+        SET
+          p:Person,
+          p.imdbId = row.imdbId,
+          p.bornIn = row.bornIn,
+          p.name = row.name,
+          p.bio = row.bio,
+          p.poster = row.poster,
+          p.url = row.url,
+          p.born = row.born,
+          p.died = row.died,
+          p.tmdbId = row.tmdbId,
+          p.born = CASE row.born WHEN "" THEN null ELSE datetime(row.born + "T00:00:00Z") END,
+          p.died = CASE row.died WHEN "" THEN null ELSE datetime(row.died + "T00:00:00Z") END
+
+  # INGEST-3
+  - type: FileIngest
+    path: $movie_file
+    format:
+      type: CypherCsv
+      headers: true
+      query: |-
+        WITH $that AS row
+        WITH row 
+        WHERE row.Entity = "Join" 
+          AND row.Work = "Acting"
+        MATCH (p), (m), (r) 
+        WHERE id(p) = idFrom("Person", row.tmdbId)
+          AND id(m) = idFrom("Movie", row.movieId)
+          AND id(r) = idFrom("Role", row.tmdbId, row.movieId, row.role)
+        SET 
+          r.role = row.role, 
+          r.movie = row.movieId, 
+          r.tmdbId = row.tmdbId, 
+          r:Role
+        MERGE (p:Person)-[:PLAYED]->(r:Role)<-[:HAS_ROLE]-(m:Movie)
+        MERGE (p:Person)-[:ACTED_IN]->(m:Movie)
+
+  # INGEST-4
+  - type: FileIngest
+    path: $movie_file
+    format:
+      type: CypherCsv
+      headers: true
+      query: |-
+        WITH $that AS row
+        WITH row WHERE row.Entity = "Join" AND row.Work = "Directing"
+        MATCH (p), (m) 
+        WHERE id(p) = idFrom("Person", row.tmdbId)
+          AND id(m) = idFrom("Movie", row.movieId)
+        MERGE (p:Person)-[:DIRECTED]->(m:Movie)
+
+  # INGEST-5
+  - type: FileIngest
+    path: $rating_file
+    format:
+      type: CypherCsv
+      headers: true
+      query: |-
+        WITH $that AS row
+        MATCH (m), (u), (rtg) 
+        WHERE id(m) = idFrom("Movie", row.movieId)
+          AND id(u) = idFrom("User", row.userId)
+          AND id(rtg) = idFrom("Rating", row.movieId, row.userId, row.rating)
+        SET u.name = row.name, u:User
+        SET rtg.rating = row.rating,
+          rtg.timestamp = toInteger(row.timestamp),
+          rtg:Rating
+        MERGE (u:User)-[:SUBMITTED]->(rtg:Rating)<-[:HAS_RATING]-(m:Movie)
+        MERGE (u:User)-[:RATED]->(m:Movie)
+
+# Standing Queries define how data is transformed and output.
+standingQueries:
+  - pattern:
+      type: Cypher
+      mode: MultipleValues
+      query: |-
+        MATCH (a:Movie)<-[:ACTED_IN]-(p:Person)-[:DIRECTED]->(m:Movie) 
+        WHERE id(a) = id(m)
+        RETURN id(m) as movieId, m.title as Movie, id(p) as personId, p.name as Actor
+    outputs:
+      set-ActedDirected:
+        type: CypherQuery
+        query: |-
+          MATCH (m),(p)
+          WHERE strId(m) = $that.data.movie 
+            AND strId(p) = $that.data.person
+          MERGE (p:Person)-[:ActedDirected]->(m:Movie)
+      log-actor-director:
+        type: WriteToFile
+        path: "ActorDirector.jsonl"
+
+# Customize node appearance in web UI.
+nodeAppearances:
+  - predicate:
+      dbLabel: Movie
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-film
+    label:
+      key: title
+      type: Property
+
+  - predicate:
+      dbLabel: Person
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-person
+    color: "#ffd700"
+    label:
+      key: name
+      type: Property
+
+  - predicate:
+      dbLabel: Role
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-microphone
+    color: "#7CFC00"
+    label:
+      key: role
+      type: Property
+
+  - predicate:
+      dbLabel: User
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-chat
+    color: "#7e7e7e"
+    label:
+      key: name
+      type: Property
+
+  - predicate:
+      dbLabel: Genre
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-menu
+    color: "#00FFFF"
+    label:
+      key: genre
+      type: Property
+
+  - predicate:
+      dbLabel: Rating
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-android-star
+    color: "#9932CC"
+    label:
+      key: rating
+      type: Property
+
+# Add queries to node context menus in web UI
+quickQueries: []
+
+# Customize sample queries listed in web UI
+sampleQueries:
+  - name: Sample of Nodes
+    query: match(n) return n limit 10
+  - name: Count Nodes
+    query: MATCH (n) RETURN distinct labels(n), count(*)
+  - name: Count Relationships
+    query: MATCH (n)-[r]->() RETURN type(r), count(*)
+  - name: Movie Genres
+    query: match (g:Genre) return g
+  - name: Person Acted In a movie
+    query: MATCH (p:Person)-[:ACTED_IN]->(m:Movie) RETURN *
+  - name: Person Directed a movie
+    query: MATCH (p:Person)-[:DIRECTED]-(m:Movie) RETURN *
+  - name: Person Acted In and Directed a movie
+    query: MATCH (p:Person)-[:ActedDirected]->(m:Movie) RETURN *
+  - name: User Rated a movie
+    query: MATCH (u:User)-[:RATED]-(m:Movie) RETURN *

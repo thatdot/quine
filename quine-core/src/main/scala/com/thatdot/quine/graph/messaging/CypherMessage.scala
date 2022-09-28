@@ -31,10 +31,11 @@ object CypherMessage {
 
   /** Start by checking a half edge. If that matches, move on to the actual query
     *
-    * See [[QueryPackage]] for details on the fields
-    *
     * @param halfEdge half edge to look at
     * @param action `None` means "check", `Some(true)` means add, `Some(false)` means remove
+    * @param query the actual query to execute
+    * @param parameters the query parameters (these are basically constants)
+    * @param context the variables brought into scope by the query up til now
     */
   final case class CheckOtherHalfEdge(
     halfEdge: HalfEdge,

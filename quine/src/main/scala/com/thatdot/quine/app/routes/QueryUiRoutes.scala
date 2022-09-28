@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.Future
 import scala.concurrent.duration.Duration
-import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -12,6 +12,8 @@ import akka.http.scaladsl.server.Route
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import akka.util.Timeout
+
+import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.{
@@ -31,17 +33,14 @@ trait QueryUiRoutesImpl
     with endpoints4s.akkahttp.server.Endpoints
     with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints
-    with exts.ServerRequestTimeoutOps {
+    with exts.ServerRequestTimeoutOps
+    with LazyLogging {
 
   val gremlin: GremlinQueryRunner
-
-  /** prioritized properties used as fallbacks if the node is missing a label */
-  val nodeTitlePropKeys: List[Symbol] // = List(Symbol("name"))
 
   implicit def graph: LiteralOpsGraph with CypherOpsGraph
   implicit def idProvider: QuineIdProvider
   implicit def timeout: Timeout
-  implicit def ec: ExecutionContext
   implicit def materializer: Materializer
 
   private[this] lazy val idProv = idProvider
@@ -113,32 +112,30 @@ trait QueryUiRoutesImpl
     id: QuineId,
     atTime: AtTime
   ): Future[UiNode[QuineId]] =
-    graph.literalOps.getProps(id, atTime).map { (props: Map[Symbol, PropertyValue]) =>
-      val gremlinLabel = graph.labelsProperty
-      val parsedProperties = (props - gremlinLabel).map { case (propKey, pickledValue) =>
-        val unpickledValue = pickledValue.deserialized.fold[Any](
-          _ => pickledValue.serialized,
-          _.underlyingJvmValue
-        )
-        propKey.name -> writeGremlinValue(unpickledValue)
-      }
-
-      val nodeLabel = (Iterator(gremlinLabel) ++ nodeTitlePropKeys)
-        .flatMap[Try[QuineValue]](props.get(_).map(_.deserialized))
-        .collectFirst {
-          case Success(QuineValue.List(lst)) =>
-            lst.map(_.underlyingJvmValue).mkString(":")
-          case Success(QuineValue.Str(string)) => string
+    graph.literalOps
+      .getPropsAndLabels(id, atTime)
+      .map { case (props, labels) =>
+        val parsedProperties = props.map { case (propKey, pickledValue) =>
+          val unpickledValue = pickledValue.deserialized.fold[Any](
+            _ => pickledValue.serialized,
+            _.underlyingJvmValue
+          )
+          propKey.name -> writeGremlinValue(unpickledValue)
         }
-        .getOrElse("ID: " + id.pretty)
 
-      UiNode(
-        id = id,
-        hostIndex = hostIndex(id),
-        label = nodeLabel,
-        properties = parsedProperties
-      )
-    }
+        val nodeLabel = if (labels.exists(_.nonEmpty)) {
+          labels.get.map(_.name).mkString(":")
+        } else {
+          "ID: " + id.pretty
+        }
+
+        UiNode(
+          id = id,
+          hostIndex = hostIndex(id),
+          label = nodeLabel,
+          properties = parsedProperties
+        )
+      }(graph.shardDispatcherEC)
 
   /** Post-process UI nodes. This serves as a hook for last minute modifications to the nodes sen
     * out to the UI.
@@ -209,10 +206,7 @@ trait QueryUiRoutesImpl
           val nodeLabel = if (labels.nonEmpty) {
             labels.map(_.name).mkString(":")
           } else {
-            nodeTitlePropKeys.iterator
-              .flatMap(properties.get(_))
-              .collectFirst[String] { case CypherExpr.Str(str) => str }
-              .getOrElse("ID: " + qid.pretty)
+            "ID: " + qid.pretty
           }
 
           UiNode(
@@ -304,6 +298,7 @@ trait QueryUiRoutesImpl
       val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
       (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
     } else {
+      logger.debug(s"User requested EXPLAIN of query: ${res.compiled.query}")
       val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
       (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
     }
@@ -312,16 +307,20 @@ trait QueryUiRoutesImpl
   // The Query UI relies heavily on a couple Gremlin endpoints for making queries.
   final val gremlinApiRoute: Route = {
     def catchGremlinException[A](futA: => Future[A]): Future[Either[ClientErrors, A]] =
-      Future.fromTry(Try(futA)).flatten.transform {
-        case Success(a) => Success(Right(a))
-        case Failure(qge: QuineGremlinException) => Success(Left(endpoints4s.Invalid(qge.toString)))
-        case Failure(err) => Failure(err)
-      }
+      Future
+        .fromTry(Try(futA))
+        .flatten
+        .transform {
+          case Success(a) => Success(Right(a))
+          case Failure(qge: QuineGremlinException) => Success(Left(endpoints4s.Invalid(qge.toString)))
+          case Failure(err) => Failure(err)
+        }(graph.shardDispatcherEC)
 
     gremlinPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
       catchGremlinException {
         queryGremlinGeneric(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -329,6 +328,7 @@ trait QueryUiRoutesImpl
       catchGremlinException {
         queryGremlinNodes(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-node-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -336,6 +336,7 @@ trait QueryUiRoutesImpl
       catchGremlinException {
         queryGremlinEdges(query, atTime)
           .via(Util.completionTimeoutOpt(t))
+          .named(s"gremlin-edge-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     }
@@ -344,19 +345,23 @@ trait QueryUiRoutesImpl
   // The Query UI relies heavily on a couple Cypher endpoints for making queries.
   final val cypherApiRoute: Route = {
     def catchCypherException[A](futA: => Future[A]): Future[Either[ClientErrors, A]] =
-      Future.fromTry(Try(futA)).flatten.transform {
-        case Success(a) => Success(Right(a))
-        case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
-        case Failure(err) => Failure(err)
-      }
+      Future
+        .fromTry(Try(futA))
+        .flatten
+        .transform {
+          case Success(a) => Success(Right(a))
+          case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
+          case Failure(err) => Failure(err)
+        }(graph.shardDispatcherEC)
 
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
       catchCypherException {
         val (columns, results, isReadOnly, _) = queryCypherGeneric(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-          .map(CypherQueryResult(columns, _))
+          .map(CypherQueryResult(columns, _))(graph.shardDispatcherEC)
       }
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
@@ -364,6 +369,7 @@ trait QueryUiRoutesImpl
         val (results, isReadOnly, _) = queryCypherNodes(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
@@ -372,6 +378,7 @@ trait QueryUiRoutesImpl
         val (results, isReadOnly, _) = queryCypherEdges(query, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
+          .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     }
