@@ -38,14 +38,13 @@ ingestStreams:
             dbNode:db 
         
         SET userNode = $that.performer, 
-            userNode.Name = $that.performer.user_text, 
+            userNode.name = $that.performer.user_text, 
             userNode:user 
         
         CREATE (revNode)-[:TO]->(pageNode),
-               (revNode)-[:IN]->(dbNode),
+               (pageNode)-[:IN]->(dbNode),
                (userNode)-[:RESPONSIBLE_FOR]->(revNode),
-               (parentNode)-[:NEXT]->(revNode),
-               (parentNode)-[:TO]->(pageNode)
+               (parentNode)-[:NEXT]->(revNode)
 
 standingQueries:
   - pattern:
@@ -65,3 +64,4 @@ standingQueries:
 nodeAppearances: [ ]
 quickQueries: [ ]
 sampleQueries: [ ]
+statusQuery: null
