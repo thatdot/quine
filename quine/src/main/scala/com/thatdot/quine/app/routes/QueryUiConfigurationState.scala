@@ -8,6 +8,20 @@ import scala.util.matching.Regex
 import com.thatdot.quine.routes.{SampleQuery, UiNodeAppearance, UiNodeQuickQuery}
 
 object QueryUiConfigurationState {
+
+  /** regex to match hex codepoints in several styles:
+    * - c0de
+    * - &#xc0de;
+    * - \c0de
+    * - \uc0de
+    *
+    * plus a few minor variations thereof -- this is used to parse user input, so accepting
+    * too many strings is better than accepting too few
+    *
+    * inv: if this matches, it will return exactly 1 capture group containing hex characters
+    *
+    * NB this will match an odd number of hex characters if provided
+    */
   val codepointRegex: Regex = raw"(?:\\|&#x|\\u)?([a-f0-9]+);?".r
   // map of full ion- icon name to rendered unicode icon
   val icons: Map[String, String] = Source
