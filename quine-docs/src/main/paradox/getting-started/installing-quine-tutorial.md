@@ -4,16 +4,16 @@ description: Getting Started - Installing Quine
 
 # Installing Quine
 
-Quine is a key participant in a streaming event data pipeline that consumes data, builds it into a graph structure, runs computation on that graph to answer questions or compute results, and then stream them out. Quine combines the real-time event processing capabilities of systems like Flink and kSQLdb with the graph data structure found in graph databases like Neo4J and Tigergraph.
+Quine is a key participant in a streaming event data pipeline that consumes data, builds it into a graph structure, runs computation on that graph to answer questions or compute results, and then stream them out. Quine combines the real-time event processing capabilities of systems like Flink and ksqlDB with the graph data structure found in graph databases like Neo4j and Tigergraph.
 
 There are multiple ways for you to install Quine, select the one that is best for your environment from the list below.
 
 | Method                          | Description                                                                                                                                                                                  |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker Container                | If you already have Docker, this is the quickest way to get up and running with the minimum setup time and impact to your environment.                                                       |
-| Download Java distribution file | Download the `jar` file to run locally on your laptop or development server. Running the `jar` file locally is the most flexible way to evaluate Quine.           |
-| Build from source               | Need to do a deeper evaluation of how Quine operates? Clone the open source repository from GitHub and dig in!                                                                               |
-| Cloud hosted by thatDot         | Are you interested in the [Quine Enterprise features](https://www.thatdot.com/product/pricing)? Contact our sales team to set up an evaluation environment in your cloud provider of choice. |
+| @ref:[**Docker Container**](#docker-container)                | If you already have Docker, this is the quickest way to get up and running with the minimum setup time and impact to your environment.                                                       |
+| @ref:[**Download Java distribution file**](#distribution-file) | Download the `jar` file to run locally on your laptop or development server. Running the `jar` file locally is the most flexible way to evaluate Quine.           |
+| @ref:[**Build from source**](#open-source)               | Need to do a deeper evaluation of how Quine operates? Clone the open source repository from GitHub and dig in!                                                                               |
+| @ref:[**Cloud hosted by thatDot**](#cloud-hosted-saas)         | Are you interested in the [Quine Enterprise features](https://www.thatdot.com/product/pricing)? Contact our sales team to set up an evaluation environment in your cloud provider of choice. |
 
 Follow the steps below to install Quine for use in your environment.
 
