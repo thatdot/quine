@@ -22,6 +22,7 @@ ingestStreams:
           AND id(parentNode) = idFrom('revision', $that.rev_parent_id)
         
         SET revNode = $that,
+            revNode.bot = $that.performer.user_is_bot,
             revNode:revision
 
         SET parentNode.rev_id = $that.rev_parent_id
