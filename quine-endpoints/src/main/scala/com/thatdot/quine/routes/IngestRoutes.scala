@@ -473,6 +473,7 @@ sealed abstract class FileIngestFormat
 object FileIngestFormat {
 
   /** Create using a cypher query, passing each line in as a string */
+  @title("CypherLine")
   @unnamed()
   @docs("""For every line in the file, the  received, given Cypher query will be
   |re-executed with the parameter in the query set equal to a string matching
@@ -484,6 +485,7 @@ object FileIngestFormat {
   ) extends FileIngestFormat
 
   /** Create using a cypher query, expecting each line to be a JSON record */
+  @title("CypherJson")
   @unnamed()
   @docs("""Lines in the file should be JSON values. For every value received, the
   |given Cypher query will be re-executed with the parameter in the query set
@@ -495,7 +497,8 @@ object FileIngestFormat {
   ) extends FileIngestFormat
 
   /** Create using a cypher query, expecting each line to be a single row CSV record */
-  @unnamed
+  @title("CypherCSV")
+  @unnamed()
   @docs("""For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
           |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether
           |`headers` are available.""".stripMargin)
