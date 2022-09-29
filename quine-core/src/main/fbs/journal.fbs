@@ -7,11 +7,7 @@ union NodeEventUnion {
   AddEdge,
   RemoveEdge,
   AddProperty,
-  RemoveProperty,
-  CreateDomainNodeSubscription,
-  CreateDomainStandingQuerySubscription,
-  DomainNodeSubscriptionResult,
-  CancelDomainNodeSubscription,
+  RemoveProperty
 }
 
 // See [[com.thatdot.quine.graph.EdgeAdded]]
@@ -48,32 +44,6 @@ table MergeIntoOther {
 // See [[com.thatdot.quine.graph.MergedHere]]
 table MergeIntoHere {
   from_id: [byte] (required); // raw bytes of a `QuineId`
-}
-
-table CreateDomainNodeSubscription {
-  test_dgn_id: long;
-  reply_to: [byte] (required); // raw bytes of a `QuineId`
-  related_queries: [StandingQueryId] (required);
-}
-
-// See [[com.thatdot.quine.graph.CreateDomainStandingQuerySubscription]]
-table CreateDomainStandingQuerySubscription {
-  test_dgn_id: long;
-  reply_to: StandingQueryId (required);
-  related_queries: [StandingQueryId] (required);
-}
-
-// See [[com.thatdot.quine.graph.DomainNodeSubscriptionResult]]
-table DomainNodeSubscriptionResult {
-  from_id: [byte] (required); // raw bytes of a `QuineId`
-  test_dgn_id: long;
-  result: bool;
-}
-
-// See [[com.thatdot.quine.graph.CancelDomainNodeSubscription]]
-table CancelDomainNodeSubscription {
-    test_dgn_id: long;
-    already_cancelled_subscriber: [byte] (required); // raw bytes of a `QuineId`
 }
 
 // Also see [[com.thatdot.quine.graph.NodeEvent.WithTime]]

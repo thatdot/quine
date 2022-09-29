@@ -13,8 +13,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   */
 sealed abstract class PersistorCall
 case class PersistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]) extends PersistorCall
-case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime, includeDomainIndexEvents: Boolean)
-    extends PersistorCall
+case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
@@ -52,29 +51,34 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
       Failure(wrapped)
   }(ec)
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
+  /** Persist [[NodeChangeEvent]] values. */
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
     new WrappedPersistorException(PersistEvents(id, events), _),
-    persistenceAgent.persistEvents(id, events)
+    persistenceAgent.persistNodeChangeEvents(id, events)
   )
 
-  override def getJournal(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
-  ): Future[Iterable[NodeEvent]] = leftMap(
-    new WrappedPersistorException(GetJournal(id, startingAt, endingAt, includeDomainIndexEvents), _),
-    persistenceAgent.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
+  /** Persist [[DomainIndexEvent]] values. */
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
+    new WrappedPersistorException(PersistEvents(id, events), _),
+    persistenceAgent.persistDomainIndexEvents(id, events)
   )
 
-  override def getJournalWithTime(
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = leftMap(
-    new WrappedPersistorException(GetJournal(id, startingAt, endingAt, includeDomainIndexEvents), _),
-    persistenceAgent.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
+    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
+    persistenceAgent.getNodeChangeEventsWithTime(id, startingAt, endingAt)
+  )
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = leftMap(
+    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
+    persistenceAgent.getDomainIndexEventsWithTime(id, startingAt, endingAt)
   )
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateJournalNodeIds()

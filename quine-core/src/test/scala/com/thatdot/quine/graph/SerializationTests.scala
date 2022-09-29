@@ -36,7 +36,7 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
 
   it should "roundtrip DomainIndexEvent" in {
     forAll { (event: DomainIndexEvent) =>
-      assert(NodeEventCodec.format.read(NodeEventCodec.format.write(event)).get == event)
+      assert(DomainIndexEventCodec.format.read(DomainIndexEventCodec.format.write(event)).get == event)
     }
   }
 

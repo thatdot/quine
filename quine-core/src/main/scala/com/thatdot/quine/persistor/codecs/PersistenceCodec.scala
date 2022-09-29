@@ -26,6 +26,16 @@ class InvalidUnionType(
   validTags: Array[String]
 ) extends IllegalArgumentException(s"Invalid tag $typeTag (valid tags: ${validTags.mkString(", ")})")
 
+//TODO this is temporary, and only serves to mark places where the code is processing a NodeEvent type
+// but expects a NodeChangeEvent or DomainIndexType. We can remove this when we remove the NodeEvent
+// union type.
+class InvalidEventType(
+  event: NodeEvent,
+  validTags: Array[String]
+) extends IllegalArgumentException(
+      s"The type ${event.getClass.getSimpleName} can not be processed as a NodeChangeEvent (valid types: ${validTags.mkString(", ")})"
+    )
+
 class InvalidPersistedQuineData(
   msg: String =
     s"Persisted data is invalid for the current version of Quine. Current Quine serialization version is ${PersistenceAgent.CurrentVersion}",

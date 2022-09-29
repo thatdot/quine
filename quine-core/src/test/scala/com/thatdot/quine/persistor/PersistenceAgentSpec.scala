@@ -4,6 +4,7 @@ import java.util.UUID
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
+import scala.util.Random
 
 import akka.actor.ActorSystem
 
@@ -13,6 +14,7 @@ import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 import com.thatdot.quine.graph.Generators.generateN
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
+  DomainIndexEvent,
   EventTime,
   NodeChangeEvent,
   NodeEvent,
@@ -705,4 +707,59 @@ abstract class PersistenceAgentSpec
       }
     }
   }
+
+  describe("persistNodeChangeEvents") {
+
+    val r = new Random()
+
+    val qid = idProvider.customIdStringToQid(UUID.randomUUID().toString).get
+    // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
+    val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, r.nextInt(10) + 1)
+    val withTimeUnsorted: Seq[NodeEvent.WithTime] =
+      generated.toSeq.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(r.nextLong())))
+
+    val sorted = withTimeUnsorted.sorted(Ordering.by { e: NodeEvent.WithTime => e.atTime })
+
+    val minTime = sorted.head.atTime
+    val maxTime = sorted.last.atTime
+
+    it("write") {
+      //we should be able to write events without worrying about sort order
+      persistor.persistEvents(qid, withTimeUnsorted) map { _ =>
+        assert(true)
+      }
+    }
+
+    it("read") {
+      persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
+    }
+  }
+
+  describe("persistDomainIndexEvents") {
+
+    val r = new Random()
+
+    val qid = idProvider.customIdStringToQid(UUID.randomUUID().toString).get
+    // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
+    val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, r.nextInt(10) + 1)
+    val withTimeUnsorted: Seq[NodeEvent.WithTime] =
+      generated.toSeq.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(r.nextLong())))
+
+    val sorted: Seq[NodeEvent.WithTime] = withTimeUnsorted.sorted(Ordering.by { e: NodeEvent.WithTime => e.atTime })
+
+    val minTime = sorted.head.atTime
+    val maxTime = sorted.last.atTime
+
+    it("write") {
+      //we should be able to write events without worrying about sort order
+      persistor.persistEvents(qid, withTimeUnsorted) map { _ =>
+        assert(true)
+      }
+    }
+    it("read") {
+      persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
+    }
+
+  }
+
 }

@@ -22,7 +22,6 @@ import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper,
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
-  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId,
@@ -30,7 +29,12 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, NodeEventCodec, StandingQueryCodec}
+import com.thatdot.quine.persistor.codecs.{
+  DomainGraphNodeCodec,
+  DomainIndexEventCodec,
+  NodeEventCodec,
+  StandingQueryCodec
+}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on MapDB
@@ -42,7 +46,7 @@ import com.thatdot.quine.util.QuineDispatchers
   *   2. Skyrocketing times for `commit` as DB files reach 2GB which we've worked around by adding
   *      support for sharded persistors (see [[ShardedPersistor]])
   *
-  *   3. All DB files are all fully memory-mapped, sowe end up memory-mapping an ever growing
+  *   3. All DB files are all fully memory-mapped, so we end up memory-mapping an ever growing
   *      amount of data! This either crashes or becomes really inefficient if the data files exceed
   *      the amount of RAM a user has.
   *
@@ -100,8 +104,8 @@ final class MapDbPersistor(
 
   // TODO: investigate using `valuesOutsideNodesEnable` for the `treeMap`
 
-  private val journals: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
-    .treeMap("journals")
+  private val nodeChangeEvents: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+    .treeMap("nodeChangeEvents")
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.BYTE_ARRAY, // QuineId
@@ -109,6 +113,17 @@ final class MapDbPersistor(
       )
     )
     .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
+    .createOrOpen()
+
+  private val domainIndexEvents: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+    .treeMap("domainIndexEvents")
+    .keySerializer(
+      new SerializerArrayTuple(
+        Serializer.BYTE_ARRAY, // QuineId
+        MapDbPersistor.SerializerUnsignedLong // DomainIndexEvent timestamp
+      )
+    )
+    .valueSerializer(Serializer.BYTE_ARRAY) // DomainIndexEvent
     .createOrOpen()
 
   private val snapshots: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
@@ -156,26 +171,13 @@ final class MapDbPersistor(
   override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future(
-      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )(ioDispatcher)
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
-    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
-      val serializedEvent = NodeEventCodec.format.write(event)
-      nodeEventSize.update(serializedEvent.length)
-      nodeEventTotalSize.inc(serializedEvent.length.toLong)
-      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
-    }
-    val _ = journals.putAll((eventsMap toMap).asJava)
-  }(ioDispatcher).recoverWith { case e =>
-    logger.error("persistEvent failed.", e); Future.failed(e)
-  }(ioDispatcher)
-
-  def getJournalWithTime(
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
@@ -190,7 +192,7 @@ final class MapDbPersistor(
     val includeStartingKey = true
     val includeEndingKey = true
 
-    journals
+    nodeChangeEvents
       .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
       .entrySet()
       .iterator()
@@ -198,20 +200,71 @@ final class MapDbPersistor(
       .flatMap { entry =>
         val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[DomainGraphNodeId])
         val event = NodeEventCodec.format.read(entry.getValue).get
-        if (
-          includeDomainIndexEvents || (event match {
-            case _: NodeChangeEvent => true
-            case _: DomainIndexEvent => false
-          })
-        ) Iterator.single(NodeEvent.WithTime(event, eventTime))
-        else Iterator.empty
+        Iterator.single(NodeEvent.WithTime(event, eventTime))
       }
       .toSeq
-  }(ioDispatcher).recoverWith { case e => logger.error("getJournal failed", e); Future.failed(e) }(ioDispatcher)
+  }(ioDispatcher)
+    .recoverWith { case e => logger.error("getNodeChangeEvents failed", e); Future.failed(e) }(ioDispatcher)
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+
+    // missing values in array key = -infinity, `null` = +infinity
+    val startingKey: Array[AnyRef] = startingAt match {
+      case EventTime.MinValue => Array[AnyRef](id.array)
+      case _ => Array[AnyRef](id.array, Long.box(startingAt.eventTime))
+    }
+    val endingKey: Array[AnyRef] = endingAt match {
+      case EventTime.MaxValue => Array[AnyRef](id.array, null)
+      case _ => Array[AnyRef](id.array, Long.box(endingAt.eventTime))
+    }
+    val includeStartingKey = true
+    val includeEndingKey = true
+
+    domainIndexEvents
+      .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
+      .entrySet()
+      .iterator()
+      .asScala
+      .flatMap { entry =>
+        val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[DomainGraphNodeId])
+        val event = DomainIndexEventCodec.format.read(entry.getValue).get
+        Iterator.single(NodeEvent.WithTime(event, eventTime))
+      }
+      .toSeq
+  }(ioDispatcher)
+    .recoverWith { case e => logger.error("getDomainIndexEvents failed", e); Future.failed(e) }(ioDispatcher)
+
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
+      val serializedEvent = NodeEventCodec.format.write(event)
+      nodeEventSize.update(serializedEvent.length)
+      nodeEventTotalSize.inc(serializedEvent.length.toLong)
+      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+    }
+    val _ = nodeChangeEvents.putAll((eventsMap toMap).asJava)
+  }(ioDispatcher).recoverWith { case e =>
+    logger.error("persisting NodeChangeEvents failed.", e); Future.failed(e)
+  }(ioDispatcher)
+
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
+      val serializedEvent = DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
+      nodeEventSize.update(serializedEvent.length)
+      nodeEventTotalSize.inc(serializedEvent.length.toLong)
+      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+    }
+    val _ = domainIndexEvents.putAll((eventsMap toMap).asJava)
+  }(ioDispatcher).recoverWith { case e =>
+    logger.error("persisting DomainIndexEvents failed.", e); Future.failed(e)
+  }(ioDispatcher)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
-      .fromJavaStream(() => journals.navigableKeySet().parallelStream())
+      .fromJavaStream(() => nodeChangeEvents.navigableKeySet().parallelStream())
       .map(x => new QuineId(x.head.asInstanceOf[Array[Byte]]))
       .statefulMapConcat { () =>
         var previous: Option[QuineId] = None
@@ -408,6 +461,7 @@ final class MapDbPersistor(
           logger.error("Failed to delete DB file {} ({})", file, err)
       }
   }
+
 }
 
 object MapDbPersistor {

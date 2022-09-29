@@ -8,15 +8,7 @@ import scala.jdk.CollectionConverters._
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  DomainIndexEvent,
-  EventTime,
-  NodeChangeEvent,
-  NodeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
+import com.thatdot.quine.graph.{EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -36,6 +28,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   */
 class InMemoryPersistor(
   journals: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
+  domainIndexEvents: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
   snapshots: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, Array[Byte]]] = new ConcurrentHashMap(),
   standingQueries: ConcurrentMap[StandingQueryId, StandingQuery] = new ConcurrentHashMap(),
   standingQueryStates: ConcurrentMap[QuineId, ConcurrentMap[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
@@ -47,21 +40,27 @@ class InMemoryPersistor(
 
   override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
-      journals.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      journals.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- events } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit
   }
 
-  def getJournalWithTime(
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- events } domainIndexEvents
+      .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
+      .put(atTime, event)
+    Future.unit
+  }
+
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = {
     val eventsMap = journals.get(id)
     Future.successful(
@@ -73,15 +72,27 @@ class InMemoryPersistor(
           .entrySet()
           .iterator
           .asScala
-          .flatMap { a =>
-            if (
-              includeDomainIndexEvents || (a.getValue match {
-                case _: NodeChangeEvent => true
-                case _: DomainIndexEvent => false
-              })
-            ) Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey))
-            else Iterator.empty
-          }
+          .flatMap(a => Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey)))
+          .toSeq
+    )
+  }
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = {
+    val eventsMap = domainIndexEvents.get(id)
+    Future.successful(
+      if (eventsMap == null)
+        Iterable.empty
+      else
+        eventsMap
+          .subMap(startingAt, true, endingAt, true)
+          .entrySet()
+          .iterator
+          .asScala
+          .flatMap(a => Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey)))
           .toSeq
     )
   }

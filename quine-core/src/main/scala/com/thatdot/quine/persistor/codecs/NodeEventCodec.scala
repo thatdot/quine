@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
-import com.thatdot.quine.graph.{ByteBufferOps, DomainIndexEvent, EventTime, NodeChangeEvent, NodeEvent, StandingQueryId}
+import com.thatdot.quine.graph.{ByteBufferOps, EventTime, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{Offset, TypeAndOffset}
@@ -50,54 +50,9 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         )
         TypeAndOffset(persistence.NodeEventUnion.RemoveProperty, event)
 
-      case DomainIndexEvent.CreateDomainNodeSubscription(dgnId, replyToNode, relatedQueries) =>
-        val rltd: Offset = {
-          val relatedQueriesOffsets = new Array[Offset](relatedQueries.size)
-          for ((relatedQuery, i) <- relatedQueries.zipWithIndex)
-            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQuery)
-          persistence.CreateDomainNodeSubscription.createRelatedQueriesVector(builder, relatedQueriesOffsets)
-        }
-        val event = persistence.CreateDomainNodeSubscription.createCreateDomainNodeSubscription(
-          builder,
-          dgnId,
-          builder.createByteVector(replyToNode.array),
-          rltd
-        )
-        TypeAndOffset(persistence.NodeEventUnion.CreateDomainNodeSubscription, event)
+      case other =>
+        throw new InvalidEventType(other, persistence.NodeEventUnion.names)
 
-      case DomainIndexEvent.CreateDomainStandingQuerySubscription(testBranch, sqId, relatedQueries) =>
-        val rltd = {
-          val relatedQueriesOffsets = new Array[Offset](relatedQueries.size)
-          for ((relatedQuery, i) <- relatedQueries.zipWithIndex)
-            relatedQueriesOffsets(i) = writeStandingQueryId(builder, relatedQuery)
-          persistence.CreateDomainStandingQuerySubscription.createRelatedQueriesVector(builder, relatedQueriesOffsets)
-
-        }
-
-        val event = persistence.CreateDomainStandingQuerySubscription.createCreateDomainStandingQuerySubscription(
-          builder,
-          testBranch,
-          writeStandingQueryId(builder, sqId),
-          rltd
-        )
-        TypeAndOffset(persistence.NodeEventUnion.CreateDomainStandingQuerySubscription, event)
-
-      case DomainIndexEvent.DomainNodeSubscriptionResult(from, testBranch, result) =>
-        val event: Offset = persistence.DomainNodeSubscriptionResult.createDomainNodeSubscriptionResult(
-          builder,
-          builder.createByteVector(from.array),
-          testBranch,
-          result
-        )
-        TypeAndOffset(persistence.NodeEventUnion.DomainNodeSubscriptionResult, event)
-
-      case DomainIndexEvent.CancelDomainNodeSubscription(testBranch, alreadyCancelledSubscriber) =>
-        val event = persistence.CancelDomainNodeSubscription.createCancelDomainNodeSubscription(
-          builder,
-          testBranch,
-          builder.createByteVector(alreadyCancelledSubscriber.array)
-        )
-        TypeAndOffset(persistence.NodeEventUnion.CancelDomainNodeSubscription, event)
     }
   private[this] def readNodeEventUnion(
     typ: Byte,
@@ -133,49 +88,6 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         val propertyKey = Symbol(event.key)
         val propertyValue = PropertyValue.fromBytes(event.valueAsByteBuffer.remainingBytes)
         NodeChangeEvent.PropertyRemoved(propertyKey, propertyValue)
-
-      case persistence.NodeEventUnion.CreateDomainNodeSubscription =>
-        val event = makeEvent(new persistence.CreateDomainNodeSubscription())
-          .asInstanceOf[persistence.CreateDomainNodeSubscription]
-        val dgnId = event.testDgnId()
-        val replyTo = new QuineId(event.replyToAsByteBuffer.remainingBytes)
-        val relatedQueries = Set.newBuilder[StandingQueryId]
-        var i = 0
-        val length = event.relatedQueriesLength
-        while (i < length) {
-          relatedQueries += readStandingQueryId(event.relatedQueries(i))
-          i += 1
-        }
-        DomainIndexEvent.CreateDomainNodeSubscription(dgnId, replyTo, relatedQueries.result())
-
-      case persistence.NodeEventUnion.CreateDomainStandingQuerySubscription =>
-        val event = makeEvent(new persistence.CreateDomainStandingQuerySubscription())
-          .asInstanceOf[persistence.CreateDomainStandingQuerySubscription]
-        val dgnId = event.testDgnId()
-        val replyTo = readStandingQueryId(event.replyTo)
-        val relatedQueries = Set.newBuilder[StandingQueryId]
-        var i = 0
-        val length = event.relatedQueriesLength
-        while (i < length) {
-          relatedQueries += readStandingQueryId(event.relatedQueries(i))
-          i += 1
-        }
-        DomainIndexEvent.CreateDomainStandingQuerySubscription(dgnId, replyTo, relatedQueries.result())
-
-      case persistence.NodeEventUnion.DomainNodeSubscriptionResult =>
-        val event = makeEvent(new persistence.DomainNodeSubscriptionResult())
-          .asInstanceOf[persistence.DomainNodeSubscriptionResult]
-        val from = new QuineId(event.fromIdAsByteBuffer.remainingBytes)
-        val dgnId = event.testDgnId()
-        val result = event.result()
-        DomainIndexEvent.DomainNodeSubscriptionResult(from, dgnId, result)
-
-      case persistence.NodeEventUnion.CancelDomainNodeSubscription =>
-        val event = makeEvent(new persistence.CancelDomainNodeSubscription())
-          .asInstanceOf[persistence.CancelDomainNodeSubscription]
-        val dgnId = event.testDgnId()
-        val subscriber = new QuineId(event.alreadyCancelledSubscriberAsByteBuffer.remainingBytes)
-        DomainIndexEvent.CancelDomainNodeSubscription(dgnId, subscriber)
 
       case other =>
         throw new InvalidUnionType(other, persistence.NodeEventUnion.names)

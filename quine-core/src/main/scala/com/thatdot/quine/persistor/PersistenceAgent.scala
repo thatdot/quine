@@ -11,6 +11,7 @@ import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
   BaseGraph,
+  DomainIndexEvent,
   EventTime,
   MemberIdx,
   NodeEvent,
@@ -20,15 +21,14 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-
-import PersistenceAgent.CurrentVersion
+import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
 
 object PersistenceAgent {
 
   /** persistence version implemented by the running persistor */
   val CurrentVersion: Version = Version(13, 0, 0)
 
-  /** key used to store [[Versions]] in persistence metadata */
+  /** key used to store [[Version]] in persistence metadata */
   val VersionMetadataKey = "serialization_version"
 }
 
@@ -40,9 +40,6 @@ abstract class PersistenceAgent extends StrictLogging {
     * May return `true` even when the persistor contains a version number
     * May return `false` even when the persistor contains no Quine-core data, though this should be avoided
     * when possible.
-    *
-    * Implementations should at least call [[PersistenceAgent.quineMetadataKeys]] to determine which metadata
-    * are considered Quine-core data.
     *
     * This is used to determine when an existing persistor's data may be safely used by any Quine version.
     */
@@ -120,14 +117,26 @@ abstract class PersistenceAgent extends StrictLogging {
       () => emptyOfQuineData()
     )
 
-  /** Persist an individual event affecting a node's state
+  /** Persist a series of [[NodeEvent]]s affecting a node's state.
     *
     * @param id    affected node
-    * @param atTime when the event occurs
     * @param events event records to write
     * @return something that completes 'after' the write finishes
     */
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
+  final def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    val (domainIndexEvents, nodeChangeEvents) = events.partition(e => e.event.isInstanceOf[DomainIndexEvent])
+    implicit val ctx: ExecutionContext = ExecutionContexts.parasitic
+    for {
+      _ <- persistDomainIndexEvents(id, domainIndexEvents)
+      _ <- persistNodeChangeEvents(id, nodeChangeEvents)
+    } yield ()
+  }
+
+  /** Persist [[NodeChangeEvent]] values. */
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
+
+  /** Persist [[DomainIndexEvent]] values. */
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
 
   /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
@@ -137,7 +146,7 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param includeDomainIndexEvents whether to include [[com.thatdot.quine.graph.DomainIndexEvent]] type events in the result
     * @return node events without timestamps, ordered by ascending timestamp
     */
-  def getJournal(
+  final def getJournal(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
@@ -156,11 +165,41 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param includeDomainIndexEvents whether to include [[com.thatdot.quine.graph.DomainIndexEvent]] type events in the result
     * @return node events with timestamps, ordered by ascending timestamp
     */
-  def getJournalWithTime(
+  final def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
     includeDomainIndexEvents: Boolean
+  ): Future[Iterable[NodeEvent.WithTime]] = {
+
+    def mergeEvents(
+      i1: Iterable[NodeEvent.WithTime],
+      i2: Iterable[NodeEvent.WithTime]
+    ): Iterable[NodeEvent.WithTime] = (i1 ++ i2).toVector.sortBy(e => e.atTime.millis)
+
+    val nceEvents = getNodeChangeEventsWithTime(id, startingAt, endingAt)
+
+    if (!includeDomainIndexEvents) {
+      nceEvents
+    } else {
+      implicit val ctx: ExecutionContext = ExecutionContexts.parasitic
+      for {
+        h: Iterable[NodeEvent.WithTime] <- nceEvents
+        i: Iterable[NodeEvent.WithTime] <- getDomainIndexEventsWithTime(id, startingAt, endingAt)
+      } yield mergeEvents(h, i)
+    }
+  }
+
+  def getNodeChangeEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]]
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]]
 
   /** Get a source of every node in the graph which has been written to the

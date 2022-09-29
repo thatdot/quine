@@ -1,0 +1,51 @@
+include "base.fbs";
+
+namespace com.thatdot.quine.persistence;
+
+// See [[com.thatdot.quine.graph.DomainIndexEvent]]
+union DomainIndexEventUnion {
+  CreateDomainNodeSubscription,
+  CreateDomainStandingQuerySubscription,
+  DomainNodeSubscriptionResult,
+  CancelDomainNodeSubscription,
+}
+
+table CreateDomainNodeSubscription {
+  test_dgn_id: long;
+  reply_to: [byte] (required); // raw bytes of a `QuineId`
+  related_queries: [StandingQueryId] (required);
+}
+
+// See [[com.thatdot.quine.graph.CreateDomainStandingQuerySubscription]]
+table CreateDomainStandingQuerySubscription {
+  test_dgn_id: long;
+  reply_to: StandingQueryId (required);
+  related_queries: [StandingQueryId] (required);
+}
+
+// See [[com.thatdot.quine.graph.DomainNodeSubscriptionResult]]
+table DomainNodeSubscriptionResult {
+  from_id: [byte] (required); // raw bytes of a `QuineId`
+  test_dgn_id: long;
+  result: bool;
+}
+
+// See [[com.thatdot.quine.graph.CancelDomainNodeSubscription]]
+table CancelDomainNodeSubscription {
+    test_dgn_id: long;
+    already_cancelled_subscriber: [byte] (required); // raw bytes of a `QuineId`
+}
+
+// Also see [[com.thatdot.quine.graph.NodeEvent.WithTime]]
+table DomainIndexEventWithTime {
+  event_time: long;
+  event: DomainIndexEventUnion (required);
+}
+root_type DomainIndexEventWithTime;
+
+// Also see [[com.thatdot.quine.graph.DomainIndexEvent]]
+// Unlike `NodeEventUnion`, this can be used as a root type
+table DomainIndexEvent {
+  event: DomainIndexEventUnion (required);
+}
+root_type DomainIndexEvent;

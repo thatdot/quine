@@ -41,7 +41,6 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
-  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId,
@@ -49,7 +48,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, NodeEventCodec}
+import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, DomainIndexEventCodec, NodeEventCodec}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, PersistenceAgent, PersistenceConfig}
 
 object syntax {
@@ -112,7 +111,10 @@ object CassandraCodecs {
     NodeEventCodec.format.read(_).get,
     NodeEventCodec.format.write
   )
-
+  implicit val domainIndexEventCodec: TypeCodec[DomainIndexEvent] = BLOB_TO_ARRAY.xmap(
+    DomainIndexEventCodec.format.read(_).get,
+    DomainIndexEventCodec.format.write
+  )
   implicit val domainGraphNodeCodec: TypeCodec[DomainGraphNode] = BLOB_TO_ARRAY.xmap(
     DomainGraphNodeCodec.format.read(_).get,
     DomainGraphNodeCodec.format.write
@@ -356,7 +358,15 @@ class CassandraPersistor(
         createQualifiedSession
     }
 
-  private val (journals, snapshots, standingQueries, standingQueryStates, metaData, domainGraphNodes) = Await.result(
+  private val (
+    journals,
+    snapshots,
+    standingQueries,
+    standingQueryStates,
+    metaData,
+    domainGraphNodes,
+    domainIndexEvents
+  ) = Await.result(
     (
       Journals.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
       Snapshots.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
@@ -377,13 +387,28 @@ class CassandraPersistor(
         shouldCreateTables
       ),
       MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
-      DomainGraphNodes.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables)
+      DomainGraphNodes.create(
+        session,
+        readConsistency,
+        writeConsistency,
+        writeTimeout,
+        readTimeout,
+        shouldCreateTables
+      ),
+      DomainIndexEvents.create(
+        session,
+        readConsistency,
+        writeConsistency,
+        writeTimeout,
+        readTimeout,
+        shouldCreateTables
+      )
     ).tupled,
     5.seconds
   )
 
   override def emptyOfQuineData(): Future[Boolean] = {
-    val dataTables = Seq(journals, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
+    val dataTables = Seq(journals, domainIndexEvents, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
     // then combine them -- if any have results, then the system is not empty of quine data
     Future
       .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
@@ -393,45 +418,6 @@ class CassandraPersistor(
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = journals.enumerateAllNodeIds()
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = snapshots.enumerateAllNodeIds()
-
-  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
-    journals.persistEvents(id, events)
-
-  override def getJournal(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean // TODO push down into Cassandra
-  ): Future[Iterable[NodeEvent]] = {
-    val j = journals.getJournal(id, startingAt, endingAt)
-    if (includeDomainIndexEvents)
-      j
-    else
-      j.map(_ filter {
-        _ match {
-          case _: NodeChangeEvent => true
-          case _: DomainIndexEvent => false
-        }
-      })(ExecutionContexts.parasitic)
-  }
-
-  def getJournalWithTime(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean // TODO push down into Cassandra
-  ): Future[Iterable[NodeEvent.WithTime]] = {
-    val j = journals.getJournalWithTime(id, startingAt, endingAt)
-    if (includeDomainIndexEvents)
-      j
-    else
-      j.map(_ filter {
-        _ event match {
-          case _: NodeChangeEvent => true
-          case _: DomainIndexEvent => false
-        }
-      })(ExecutionContexts.parasitic)
-  }
 
   override def persistSnapshotPart(
     id: QuineId,
@@ -516,5 +502,23 @@ class CassandraPersistor(
     this.domainGraphNodes.getDomainGraphNodes()
 
   override def shutdown(): Future[Unit] = session.closeAsync().toScala.void
+
+  override def getNodeChangeEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = journals.getJournalWithTime(id, startingAt, endingAt)
+
+  override def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
+
+  override def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+    journals.persistEvents(id, events)
+
+  override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+    domainIndexEvents.persistEvents(id, events)
 
 }

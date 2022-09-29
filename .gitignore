@@ -1,7 +1,6 @@
 *.db
 *.data
 *.class
-*.log
 
 # local settings
 .java-version
@@ -36,7 +35,6 @@ bin/
 .cache
 
 # intellij idea
-*.log
 *.iml
 *.ipr
 *.iws

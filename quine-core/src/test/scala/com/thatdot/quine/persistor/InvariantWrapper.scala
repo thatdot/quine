@@ -25,7 +25,8 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
     if (events.isEmpty && snapshots.isEmpty) wrapped.emptyOfQuineData()
     else Future.successful(false)
 
-  def persistEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  /** Persist [[NodeChangeEvent]] values. */
+  def persistNodeChangeEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
       val previous = events
         .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
@@ -35,24 +36,36 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
         s"Duplicate events at node id $id and time $atTime: $event & $previous"
       )
     }
-    wrapped.persistEvents(id, eventsWithTime)
+    wrapped.persistNodeChangeEvents(id, eventsWithTime)
   }
 
-  override def getJournal(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
-  ): Future[Iterable[NodeEvent]] =
-    wrapped.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
+  /** Persist [[DomainIndexEvent]] values. */
+  def persistDomainIndexEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
+      val previous = events
+        .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
+        .put(atTime, event)
+      assert(
+        (previous eq null) || (previous eq event),
+        s"Duplicate events at node id $id and time $atTime: $event & $previous"
+      )
+    }
+    wrapped.persistDomainIndexEvents(id, eventsWithTime)
+  }
 
-  def getJournalWithTime(
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] =
-    wrapped.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
+    wrapped.getNodeChangeEventsWithTime(id, startingAt, endingAt)
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] =
+    wrapped.getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrapped.enumerateJournalNodeIds()
 

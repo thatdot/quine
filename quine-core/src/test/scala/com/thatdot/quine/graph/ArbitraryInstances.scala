@@ -386,15 +386,9 @@ trait ArbitraryInstances {
       Gen.resultOf[DomainGraphNodeId, QuineId, DomainIndexEvent](CancelDomainNodeSubscription.apply)
     )
   }
-  implicit val arbNodeEvent: Arbitrary[NodeEvent] = Arbitrary {
-    Gen.oneOf[NodeEvent](
-      arbDomainIndexEvent.arbitrary,
-      arbNodeChangeEvent.arbitrary
-    )
-  }
 
   implicit val arbNodeEventWithTime: Arbitrary[NodeEvent.WithTime] = Arbitrary {
-    Gen.resultOf[NodeEvent, EventTime, NodeEvent.WithTime](NodeEvent.WithTime.apply)
+    Gen.resultOf[NodeChangeEvent, EventTime, NodeEvent.WithTime](NodeEvent.WithTime.apply)
   }
 
   implicit val arbPropCompF: Arbitrary[PropertyComparisonFunc] = Arbitrary {

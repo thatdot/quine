@@ -30,24 +30,25 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
         .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
 
-  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
-    getAgent(id).persistEvents(id, events)
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+    getAgent(id).persistNodeChangeEvents(id, events)
 
-  override def getJournal(
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+    getAgent(id).persistDomainIndexEvents(id, events)
+
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
-  ): Future[Iterable[NodeEvent]] =
-    getAgent(id).getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
-
-  def getJournalWithTime(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] =
-    getAgent(id).getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
+    getAgent(id).getNodeChangeEventsWithTime(id, startingAt, endingAt)
+
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] =
+    getAgent(id).getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     getAgents.foldLeft(Source.empty[QuineId])(_ ++ _.enumerateJournalNodeIds())

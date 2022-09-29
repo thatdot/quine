@@ -38,8 +38,8 @@ object BloomFilteredPersistor {
     maybeSize.fold(persistor)(new BloomFilteredPersistor(persistor, _, persistenceConfig))
 }
 
-/** [[PersistenceAgent]] wrapper that short-circuits read calls to [[getJournal]],
-  * [[getJournalWithTime]], [[getLatestSnapshot]], and [[getStandingQueryStates]] regarding
+/** [[PersistenceAgent]] wrapper that short-circuits read calls to[[getNodeChangeEventsWithTime]],
+  * [[getLatestSnapshot]], and [[getStandingQueryStates]] regarding
   * QuineIds assigned to this position that the persistor knows not to exist with empty results.
   *
   * @param wrappedPersistor The persistor implementation to wrap
@@ -72,30 +72,33 @@ private class BloomFilteredPersistor(
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
     wrappedPersistor.emptyOfQuineData()
 
-  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
     bloomFilter.put(id)
-    wrappedPersistor.persistEvents(id, events)
+    wrappedPersistor.persistNodeChangeEvents(id, events)
   }
 
-  override def getJournal(
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+    bloomFilter.put(id)
+    wrappedPersistor.persistDomainIndexEvents(id, events)
+  }
+
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
-  ): Future[Iterable[NodeEvent]] =
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] =
     if (mightContain(id))
-      wrappedPersistor.getJournal(id, startingAt, endingAt, includeDomainIndexEvents)
+      wrappedPersistor.getNodeChangeEventsWithTime(id, startingAt, endingAt)
     else
       Future.successful(Iterable.empty)
 
-  def getJournalWithTime(
+  def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] =
     if (mightContain(id))
-      wrappedPersistor.getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents)
+      wrappedPersistor.getDomainIndexEventsWithTime(id, startingAt, endingAt)
     else
       Future.successful(Iterable.empty)
 

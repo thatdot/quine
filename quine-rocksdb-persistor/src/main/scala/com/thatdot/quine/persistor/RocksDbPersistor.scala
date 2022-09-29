@@ -12,19 +12,7 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.Source
 
-import org.rocksdb.{
-  BuiltinComparator,
-  ColumnFamilyDescriptor,
-  ColumnFamilyHandle,
-  ColumnFamilyOptions,
-  DBOptions,
-  Options,
-  ReadOptions,
-  RocksDB,
-  RocksIterator,
-  Slice,
-  WriteOptions
-}
+import org.rocksdb._
 
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
@@ -37,7 +25,12 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, NodeEventCodec, StandingQueryCodec}
+import com.thatdot.quine.persistor.codecs.{
+  DomainGraphNodeCodec,
+  DomainIndexEventCodec,
+  NodeEventCodec,
+  StandingQueryCodec
+}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
@@ -106,7 +99,8 @@ final class RocksDbPersistor(
   private[this] var dbResetCount: Int = 0
 
   // Column families
-  private[this] var journalsCF: ColumnFamilyHandle = _
+  private[this] var nodeEventsCF: ColumnFamilyHandle = _
+  private[this] var domainIndexEventsCF: ColumnFamilyHandle = _
   private[this] var snapshotsCF: ColumnFamilyHandle = _
   private[this] var standingQueriesCF: ColumnFamilyHandle = _
   private[this] var standingQueryStatesCF: ColumnFamilyHandle = _
@@ -127,7 +121,7 @@ final class RocksDbPersistor(
     * @note this should only be called from a thread that holds [[dbLock]] (or the constructor)
     * @see [[https://github.com/facebook/rocksdb/wiki/RocksJava-Basics#opening-a-database-with-column-families]]
     */
-  private[this] def openRocksDB() = {
+  private[this] def openRocksDB(): Unit = {
     // Technically, I don't think these ever need to change - they could be immutable
     dbOpts = (if (dbOptionProperties.isEmpty) new DBOptions() else DBOptions.getDBOptionsFromProps(dbOptionProperties))
       .setCreateIfMissing(true)
@@ -140,7 +134,8 @@ final class RocksDbPersistor(
       .setSync(syncWrites)
 
     // Define column family options
-    val journalsDesc = new ColumnFamilyDescriptor("journals".getBytes(UTF_8), columnFamilyOpts)
+    val nodeEventsDesc = new ColumnFamilyDescriptor("node-events".getBytes(UTF_8), columnFamilyOpts)
+    val domainIndexEventsDesc = new ColumnFamilyDescriptor("domain-index-events".getBytes(UTF_8), columnFamilyOpts)
     val snapshotsDesc = new ColumnFamilyDescriptor("snapshots".getBytes(UTF_8), columnFamilyOpts)
     val standingQueriesDesc = new ColumnFamilyDescriptor("standing-queries".getBytes(UTF_8), columnFamilyOpts)
     val standingQueryStatesDesc = new ColumnFamilyDescriptor("standing-query-states".getBytes(UTF_8), columnFamilyOpts)
@@ -151,7 +146,8 @@ final class RocksDbPersistor(
     // Make the column families
     val columnFamilyDescs =
       java.util.Arrays.asList(
-        journalsDesc,
+        nodeEventsDesc,
+        domainIndexEventsDesc,
         snapshotsDesc,
         standingQueriesDesc,
         standingQueryStatesDesc,
@@ -162,13 +158,14 @@ final class RocksDbPersistor(
     val columnFamilyHandles = new java.util.ArrayList[ColumnFamilyHandle]()
     db = RocksDB.open(dbOpts, filePath, columnFamilyDescs, columnFamilyHandles)
 
-    journalsCF = columnFamilyHandles.get(0)
-    snapshotsCF = columnFamilyHandles.get(1)
-    standingQueriesCF = columnFamilyHandles.get(2)
-    standingQueryStatesCF = columnFamilyHandles.get(3)
-    metaDataCF = columnFamilyHandles.get(4)
-    defaultCF = columnFamilyHandles.get(5)
-    domainGraphNodesCF = columnFamilyHandles.get(6)
+    nodeEventsCF = columnFamilyHandles.get(0)
+    domainIndexEventsCF = columnFamilyHandles.get(1)
+    snapshotsCF = columnFamilyHandles.get(2)
+    standingQueriesCF = columnFamilyHandles.get(3)
+    standingQueryStatesCF = columnFamilyHandles.get(4)
+    metaDataCF = columnFamilyHandles.get(5)
+    defaultCF = columnFamilyHandles.get(6)
+    domainGraphNodesCF = columnFamilyHandles.get(7)
   }
 
   /** Close (synchronously) the RocksDB
@@ -181,7 +178,8 @@ final class RocksDbPersistor(
 
     // Order matters
     domainGraphNodesCF.close()
-    journalsCF.close()
+    nodeEventsCF.close()
+    domainIndexEventsCF.close()
     snapshotsCF.close()
     standingQueriesCF.close()
     standingQueryStatesCF.close()
@@ -193,7 +191,8 @@ final class RocksDbPersistor(
 
     // Just to be safe - using these objects after closing them means risking a segfault!
     domainGraphNodesCF = null
-    journalsCF = null
+    domainIndexEventsCF = null
+    nodeEventsCF = null
     snapshotsCF = null
     standingQueriesCF = null
     standingQueryStatesCF = null
@@ -202,6 +201,13 @@ final class RocksDbPersistor(
     db = null
     dbOpts = null
     columnFamilyOpts = null
+  }
+
+  private def withReadLock[U](f: => U): U = {
+    val stamp = dbLock.tryReadLock()
+    if (stamp == 0) throw new RocksDBUnavailableException()
+    try f
+    finally dbLock.unlockRead(stamp)
   }
 
   /** Write (synchronously) a key value pair into the column family
@@ -214,12 +220,8 @@ final class RocksDbPersistor(
     columnFamily: ColumnFamilyHandle,
     key: Array[Byte],
     value: Array[Byte]
-  ): Unit = {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try db.put(columnFamily, writeOpts, key, value)
-    finally dbLock.unlockRead(stamp)
-  }
+  ): Unit =
+    withReadLock(db.put(columnFamily, writeOpts, key, value))
 
   /** Write (synchronously) a key value pair into the column family
     *
@@ -229,12 +231,8 @@ final class RocksDbPersistor(
   private[this] def putKeyValues(
     columnFamily: ColumnFamilyHandle,
     keyValues: Map[Array[Byte], Array[Byte]]
-  ): Unit = {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try for { (key, value) <- keyValues } db.put(columnFamily, writeOpts, key, value)
-    finally dbLock.unlockRead(stamp)
-  }
+  ): Unit =
+    withReadLock(for { (key, value) <- keyValues } db.put(columnFamily, writeOpts, key, value))
 
   /** Remove (synchronously) a key from the column family
     *
@@ -244,22 +242,13 @@ final class RocksDbPersistor(
   private[this] def removeKey(
     columnFamily: ColumnFamilyHandle,
     key: Array[Byte]
-  ): Unit = {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try db.delete(columnFamily, writeOpts, key)
-    finally dbLock.unlockRead(stamp)
-  }
+  ): Unit =
+    withReadLock(db.delete(columnFamily, writeOpts, key))
 
   private[this] def removeKeys(
     columnFamily: ColumnFamilyHandle,
     keys: Set[Array[Byte]]
-  ): Unit = {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try keys foreach (k => db.delete(columnFamily, writeOpts, k))
-    finally dbLock.unlockRead(stamp)
-  }
+  ): Unit = withReadLock(keys foreach (k => db.delete(columnFamily, writeOpts, k)))
 
   /** Get (synchronously) a key from the column family
     *
@@ -269,12 +258,7 @@ final class RocksDbPersistor(
   private[this] def getKey(
     columnFamily: ColumnFamilyHandle,
     key: Array[Byte]
-  ): Option[Array[Byte]] = {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try Option(db.get(columnFamily, key))
-    finally dbLock.unlockRead(stamp)
-  }
+  ): Option[Array[Byte]] = withReadLock(Option(db.get(columnFamily, key)))
 
   override def emptyOfQuineData(): Future[Boolean] = {
     def columnFamilyIsEmpty(cf: ColumnFamilyHandle): Boolean = {
@@ -287,24 +271,41 @@ final class RocksDbPersistor(
 
     // on the io dispatcher: check that each column family is empty
     Future {
-      val stamp = dbLock.tryReadLock()
-      if (stamp == 0) throw new RocksDBUnavailableException()
-      try columnFamilyIsEmpty(snapshotsCF) &&
-      columnFamilyIsEmpty(journalsCF) &&
-      columnFamilyIsEmpty(standingQueriesCF) &&
-      columnFamilyIsEmpty(standingQueryStatesCF) &&
-      columnFamilyIsEmpty(domainGraphNodesCF)
-      finally dbLock.unlockRead(stamp)
+      withReadLock(
+        columnFamilyIsEmpty(snapshotsCF) &&
+        columnFamilyIsEmpty(nodeEventsCF) &&
+        columnFamilyIsEmpty(domainIndexEventsCF) &&
+        columnFamilyIsEmpty(standingQueriesCF) &&
+        columnFamilyIsEmpty(standingQueryStatesCF) &&
+        columnFamilyIsEmpty(domainGraphNodesCF)
+      )
     }(ioDispatcher)
   }
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
-    val serializedEvents =
-      for { NodeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+    val serializedEvents = {
+      //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
+      for {
+        NodeEvent.WithTime(event, atTime) <- events //.filter(n => n.event.isInstanceOf[NodeChangeEvent])
+      } yield qidAndTime2Key(
         id,
         atTime
       ) -> NodeEventCodec.format.write(event)
-    putKeyValues(journalsCF, serializedEvents toMap)
+    }
+    putKeyValues(nodeEventsCF, serializedEvents toMap)
+  }(ioDispatcher)
+
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+    val serializedEvents =
+      //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
+      for {
+        NodeEvent.WithTime(event, atTime) <- events //.filter(n => n.event.isInstanceOf[DomainIndexEvent])
+      } yield qidAndTime2Key(
+        id,
+        atTime
+      ) -> DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
+
+    putKeyValues(domainIndexEventsCF, serializedEvents toMap)
   }(ioDispatcher)
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] = Future {
@@ -340,30 +341,24 @@ final class RocksDbPersistor(
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val beginKey = sqIdPrefixKey(standingQuery.id)
     val endKeyOpt = incrementKey(beginKey)
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try {
-      db.delete(standingQueriesCF, writeOpts, standingQuery.name.getBytes(UTF_8))
-      val endKey = endKeyOpt match {
-        case Some(endKey) => endKey
+    withReadLock(db.delete(standingQueriesCF, writeOpts, standingQuery.name.getBytes(UTF_8)))
+    val endKey = endKeyOpt match {
+      case Some(endKey) => endKey
 
-        // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
-        case None =>
-          val it = db.newIterator(standingQueryStatesCF)
-          try {
-            it.seekToLast()
-            val lastKey = it.key()
-            Arrays.copyOf(lastKey, lastKey.length + 1) // a key that is bigger than the last key
-          } finally it.close()
-      }
-      db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
-    } finally dbLock.unlockRead(stamp)
+      // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
+      case None =>
+        val it = db.newIterator(standingQueryStatesCF)
+        try {
+          it.seekToLast()
+          val lastKey = it.key()
+          Arrays.copyOf(lastKey, lastKey.length + 1) // a key that is bigger than the last key
+        } finally it.close()
+    }
+    db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
   }(ioDispatcher)
 
   def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try {
+    withReadLock {
       val mb = Map.newBuilder[(StandingQueryId, StandingQueryPartId), Array[Byte]]
       val it = db.newIterator(standingQueryStatesCF)
       try {
@@ -404,24 +399,22 @@ final class RocksDbPersistor(
         }
       } finally it.close()
       mb.result()
-    } finally dbLock.unlockRead(stamp)
+    }
+
   }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))
   }(ioDispatcher)
 
-  def getJournalWithTime(
+  def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try {
-      val vb = Iterable.newBuilder[NodeEvent.WithTime]
 
+    withReadLock {
+      val vb = Iterable.newBuilder[NodeEvent.WithTime]
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
 
@@ -432,18 +425,15 @@ final class RocksDbPersistor(
       }
 
       val readOptions = new ReadOptions().setIterateUpperBound(new Slice(endKey))
-      val it = db.newIterator(journalsCF, readOptions)
+      val it = db.newIterator(nodeEventsCF, readOptions)
       try {
         it.seek(startKey)
         while (it.isValid) {
-          val (_, eventTime) = key2QidAndTime(it.key())
           val event = NodeEventCodec.format.read(it.value()).get
-          if (
-            includeDomainIndexEvents || (event match {
-              case _: NodeChangeEvent => true
-              case _: DomainIndexEvent => false
-            })
-          ) vb += NodeEvent.WithTime(event, eventTime)
+          if (event.isInstanceOf[NodeChangeEvent]) {
+            val (_, eventTime) = key2QidAndTime(it.key())
+            vb += NodeEvent.WithTime(event, eventTime)
+          }
           it.next()
         }
       } finally {
@@ -451,13 +441,46 @@ final class RocksDbPersistor(
         readOptions.close()
       }
       vb.result()
-    } finally dbLock.unlockRead(stamp)
+    }
   }(ioDispatcher)
 
-  def getStandingQueries: Future[List[StandingQuery]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try {
+  def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+
+    withReadLock {
+      val vb = Iterable.newBuilder[NodeEvent.WithTime]
+      // Inclusive start key
+      val startKey = qidAndTime2Key(id, startingAt)
+
+      // Non-inclusive end key (see ReadOptions.setIterateUpperBound)
+      val endKey = endingAt match {
+        case EventTime.MaxValue => qidBytes2NextKey(id.array)
+        case _ => qidAndTime2Key(id, endingAt.nextEventTime(logOpt = None))
+      }
+
+      val readOptions = new ReadOptions().setIterateUpperBound(new Slice(endKey))
+      val it = db.newIterator(domainIndexEventsCF, readOptions)
+      try {
+        it.seek(startKey)
+        while (it.isValid) {
+          val event = DomainIndexEventCodec.format.read(it.value()).get
+          val (_, eventTime) = key2QidAndTime(it.key())
+          vb += NodeEvent.WithTime(event, eventTime)
+          it.next()
+        }
+      } finally {
+        it.close()
+        readOptions.close()
+      }
+      vb.result()
+    }
+  }(ioDispatcher)
+
+  def getStandingQueries: Future[List[StandingQuery]] = Future(
+    withReadLock {
       val lb = List.newBuilder[StandingQuery]
       val it = db.newIterator(standingQueriesCF)
       try {
@@ -468,52 +491,44 @@ final class RocksDbPersistor(
         }
       } finally it.close()
       lb.result()
-    } finally dbLock.unlockRead(stamp)
-  }(ioDispatcher)
+    }
+  )(ioDispatcher)
 
-  def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
+  def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future(withReadLock {
+    val mb = Map.newBuilder[String, Array[Byte]]
+    val it = db.newIterator(metaDataCF)
     try {
-      val mb = Map.newBuilder[String, Array[Byte]]
-      val it = db.newIterator(metaDataCF)
-      try {
-        it.seekToFirst()
-        while (it.isValid) {
-          mb += new String(it.key(), UTF_8) -> it.value()
-          it.next()
-        }
-      } finally it.close()
-      mb.result()
-    } finally dbLock.unlockRead(stamp)
-  }(ioDispatcher)
+      it.seekToFirst()
+      while (it.isValid) {
+        mb += new String(it.key(), UTF_8) -> it.value()
+        it.next()
+      }
+    } finally it.close()
+    mb.result()
+  })(ioDispatcher)
 
   def getLatestSnapshot(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[Array[Byte]]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
+  ): Future[Option[Array[Byte]]] = Future(withReadLock {
+    val it = db.newIterator(snapshotsCF)
     try {
-      val it = db.newIterator(snapshotsCF)
-      try {
-        val startKey = qidAndTime2Key(id, upToTime)
-        it.seekForPrev(startKey)
-        if (it.isValid) {
-          val (foundId, _) = key2QidAndTime(it.key())
-          if (foundId == id) Some(it.value()) else None
-        } else {
-          None
-        }
-      } finally it.close()
-    } finally dbLock.unlockRead(stamp)
-  }(ioDispatcher)
+      val startKey = qidAndTime2Key(id, upToTime)
+      it.seekForPrev(startKey)
+      if (it.isValid) {
+        val (foundId, _) = key2QidAndTime(it.key())
+        if (foundId == id) Some(it.value()) else None
+      } else {
+        None
+      }
+    } finally it.close()
+  })(ioDispatcher)
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     enumerateIds(snapshotsCF).named("rocksdb-all-node-scan-via-snapshots")
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
-    enumerateIds(journalsCF).named("rocksdb-all-node-scan-via-journals")
+    enumerateIds(nodeEventsCF).named("rocksdb-all-node-scan-via-journals")
 
   /** Iterate (asynchronously) through the ID part of keys in a column family
     *
@@ -525,25 +540,24 @@ final class RocksDbPersistor(
     Source
       .unfoldResource[QuineId, RocksIterator](
         create = { () =>
-          val stamp = dbLock.tryReadLock()
-          if (stamp == 0) throw new RocksDBUnavailableException()
-          if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
-          try {
+          withReadLock {
+            if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
+
             val it = db.newIterator(columnFamily)
             it.seekToFirst()
             it
-          } finally dbLock.unlockRead(stamp)
+          }
         },
         read = { (it: RocksIterator) =>
-          val stamp = dbLock.tryReadLock()
-          if (stamp == 0) throw new RocksDBUnavailableException()
-          if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
-          try if (!it.isValid) None
-          else {
-            val qidBytes = key2QidBytes(it.key())
-            it.seek(qidBytes2NextKey(qidBytes))
-            Some(QuineId(qidBytes))
-          } finally dbLock.unlockRead(stamp)
+          withReadLock {
+            if (resetCnt != dbResetCount) throw new ConcurrentModificationException("RocksDB has been reset")
+            if (!it.isValid) None
+            else {
+              val qidBytes = key2QidBytes(it.key())
+              it.seek(qidBytes2NextKey(qidBytes))
+              Some(QuineId(qidBytes))
+            }
+          }
         },
         close = _.close()
       )
@@ -573,9 +587,7 @@ final class RocksDbPersistor(
   }(ioDispatcher)
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = Future {
-    val stamp = dbLock.tryReadLock()
-    if (stamp == 0) throw new RocksDBUnavailableException()
-    try {
+    withReadLock {
       val mb = Map.newBuilder[DomainGraphNodeId, DomainGraphNode]
       val it = db.newIterator(domainGraphNodesCF)
       try {
@@ -586,7 +598,7 @@ final class RocksDbPersistor(
         }
       } finally it.close()
       mb.result()
-    } finally dbLock.unlockRead(stamp)
+    }
   }(ioDispatcher)
 
   def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)

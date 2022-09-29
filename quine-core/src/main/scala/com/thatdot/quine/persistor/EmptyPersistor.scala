@@ -5,14 +5,7 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{
-  EventTime,
-  NodeChangeEvent,
-  NodeEvent,
-  StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
-}
+import com.thatdot.quine.graph.{EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -38,21 +31,21 @@ class EmptyPersistor(
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = this.enumerateSnapshotNodeIds()
 
-  override def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
-
-  override def getJournal(
+  override def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
-  ): Future[Vector[NodeChangeEvent]] = Future.successful(Vector.empty)
-
-  override def getJournalWithTime(
-    id: QuineId,
-    startingAt: EventTime,
-    endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    endingAt: EventTime
   ): Future[Vector[NodeEvent.WithTime]] = Future.successful(Vector.empty)
+
+  override def getDomainIndexEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Vector[NodeEvent.WithTime]] = Future.successful(Vector.empty)
+
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
+
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
