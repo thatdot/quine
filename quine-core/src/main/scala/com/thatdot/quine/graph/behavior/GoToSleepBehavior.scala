@@ -13,7 +13,7 @@ import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
-import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
+import com.thatdot.quine.persistor.codecs.StandingQueryStateCodec
 import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
@@ -137,7 +137,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
               )
               val standingQueryStatesSaved = Future.traverse(pendingStandingQueryWrites) {
                 case key @ (globalId, localId) =>
-                  val serialized = standingQueries.get(key).map(standingQueryStateFormat.write)
+                  val serialized = standingQueries.get(key).map(StandingQueryStateCodec.format.write)
                   serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
                   retryPersistence(
                     metrics.persistorSetStandingQueryStateTimer,

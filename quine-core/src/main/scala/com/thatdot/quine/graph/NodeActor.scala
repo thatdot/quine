@@ -31,7 +31,8 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceCodecs, PersistenceConfig}
+import com.thatdot.quine.persistor.codecs.{SnapshotCodec, StandingQueryStateCodec}
+import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
 // This is just to pass the initial state to construct NodeActor with
@@ -416,7 +417,7 @@ private[graph] class NodeActor(
     */
   def toSnapshotBytes(time: EventTime): Array[Byte] = {
     latestUpdateAfterSnapshot = None // TODO: reconsider what to do if saving the snapshot fails!
-    PersistenceCodecs.nodeSnapshotFormat.write(
+    SnapshotCodec.format.write(
       NodeSnapshot(
         time,
         properties,
@@ -549,7 +550,7 @@ object NodeActor {
   @throws("if snapshot bytes cannot be deserialized")
   private def restoreFromSnapshotBytes(snapshotBytes: Array[Byte]): (EventTime, NodeActorConstructorArgs) = {
     val restored: NodeSnapshot =
-      PersistenceCodecs.nodeSnapshotFormat
+      SnapshotCodec.format
         .read(snapshotBytes)
         .get // Throws! ...because there's nothing better to do...
 
@@ -622,7 +623,7 @@ object NodeActor {
         snapshotArgs.copy(
           initialJournal = journalAfterSnapshot,
           standingQueries = mutable.Map.from(
-            standingQueryStates.view.mapValues(PersistenceCodecs.standingQueryStateFormat.read(_).get)
+            standingQueryStates.view.mapValues(StandingQueryStateCodec.format.read(_).get)
           )
         )
     }

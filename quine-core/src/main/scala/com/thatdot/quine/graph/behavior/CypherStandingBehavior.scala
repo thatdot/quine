@@ -9,18 +9,7 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.{EventSubscriber, StandingQueryWithId}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
-  CancelCypherResult,
-  CancelCypherSubscription,
-  CreateCypherSubscription,
-  CypherStandingQueryCommand,
-  CypherSubscriber,
-  NewCypherResult,
-  ResultId,
-  UpdateStandingQueriesCommand,
-  UpdateStandingQueriesNoWake,
-  UpdateStandingQueriesWake
-}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{
   BaseNodeActor,
@@ -33,7 +22,7 @@ import com.thatdot.quine.graph.{
   cypher
 }
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.PersistenceCodecs.standingQueryStateFormat
+import com.thatdot.quine.persistor.codecs.StandingQueryStateCodec
 import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig, PersistenceSchedule}
 
 trait CypherStandingBehavior
@@ -269,7 +258,7 @@ trait CypherStandingBehavior
   ): Future[Unit] =
     persistenceConfig.standingQuerySchedule match {
       case PersistenceSchedule.OnNodeUpdate =>
-        val serialized = state.map(standingQueryStateFormat.write)
+        val serialized = state.map(StandingQueryStateCodec.format.write)
         serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
         new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
           persistor.setStandingQueryState(

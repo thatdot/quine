@@ -37,6 +37,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, NodeEventCodec, StandingQueryCodec}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
@@ -302,7 +303,7 @@ final class RocksDbPersistor(
       for { NodeEvent.WithTime(event, atTime) <- events } yield qidAndTime2Key(
         id,
         atTime
-      ) -> PersistenceCodecs.eventFormat.write(event)
+      ) -> NodeEventCodec.format.write(event)
     putKeyValues(journalsCF, serializedEvents toMap)
   }(ioDispatcher)
 
@@ -311,7 +312,7 @@ final class RocksDbPersistor(
   }(ioDispatcher)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
-    val sqBytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
+    val sqBytes = StandingQueryCodec.format.write(standingQuery)
     putKeyValue(standingQueriesCF, standingQuery.name.getBytes(UTF_8), sqBytes)
   }(ioDispatcher)
 
@@ -436,7 +437,7 @@ final class RocksDbPersistor(
         it.seek(startKey)
         while (it.isValid) {
           val (_, eventTime) = key2QidAndTime(it.key())
-          val event = PersistenceCodecs.eventFormat.read(it.value()).get
+          val event = NodeEventCodec.format.read(it.value()).get
           if (
             includeDomainIndexEvents || (event match {
               case _: NodeChangeEvent => true
@@ -462,7 +463,7 @@ final class RocksDbPersistor(
       try {
         it.seekToFirst()
         while (it.isValid) {
-          lb += PersistenceCodecs.standingQueryFormat.read(it.value()).get
+          lb += StandingQueryCodec.format.read(it.value()).get
           it.next()
         }
       } finally it.close()
@@ -562,7 +563,7 @@ final class RocksDbPersistor(
     putKeyValues(
       domainGraphNodesCF,
       domainGraphNodes map { case (dgnId, dgn) =>
-        domainGraphNodeId2Key(dgnId) -> PersistenceCodecs.domainGraphNodeFormat.write(dgn)
+        domainGraphNodeId2Key(dgnId) -> DomainGraphNodeCodec.format.write(dgn)
       }
     )
   }(ioDispatcher)
@@ -580,7 +581,7 @@ final class RocksDbPersistor(
       try {
         it.seekToFirst()
         while (it.isValid) {
-          mb += key2DomainGraphNodeId(it.key) -> PersistenceCodecs.domainGraphNodeFormat.read(it.value).get
+          mb += key2DomainGraphNodeId(it.key) -> DomainGraphNodeCodec.format.read(it.value).get
           it.next()
         }
       } finally it.close()

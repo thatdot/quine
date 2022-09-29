@@ -16,8 +16,8 @@ import akka.stream.scaladsl.{Source, StreamConverters}
 
 import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegistry}
 import com.typesafe.scalalogging.StrictLogging
+import org.mapdb._
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
-import org.mapdb.{DB, DBMaker, DataInput2, HTreeMap, Serializer}
 
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
@@ -30,6 +30,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, NodeEventCodec, StandingQueryCodec}
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on MapDB
@@ -160,9 +161,9 @@ final class MapDbPersistor(
 
   def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
     val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
-      val serializedEvent = PersistenceCodecs.eventFormat.write(event)
-      nodeEventSize.update(serializedEvent.size)
-      nodeEventTotalSize.inc(serializedEvent.size.toLong)
+      val serializedEvent = NodeEventCodec.format.write(event)
+      nodeEventSize.update(serializedEvent.length)
+      nodeEventTotalSize.inc(serializedEvent.length.toLong)
       Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
     }
     val _ = journals.putAll((eventsMap toMap).asJava)
@@ -196,7 +197,7 @@ final class MapDbPersistor(
       .asScala
       .flatMap { entry =>
         val eventTime = EventTime.fromRaw(entry.getKey()(1).asInstanceOf[DomainGraphNodeId])
-        val event = PersistenceCodecs.eventFormat.read(entry.getValue).get
+        val event = NodeEventCodec.format.read(entry.getValue).get
         if (
           includeDomainIndexEvents || (event match {
             case _: NodeChangeEvent => true
@@ -286,12 +287,12 @@ final class MapDbPersistor(
   }
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
-    val bytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
+    val bytes = StandingQueryCodec.format.write(standingQuery)
     val _ = standingQueries.add(bytes)
   }(ioDispatcher)
 
   def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
-    val bytes = PersistenceCodecs.standingQueryFormat.write(standingQuery)
+    val bytes = StandingQueryCodec.format.write(standingQuery)
     val _ = standingQueries.remove(bytes)
 
     val topLevelId = standingQuery.id.uuid
@@ -301,7 +302,7 @@ final class MapDbPersistor(
   }(ioDispatcher)
 
   def getStandingQueries: Future[List[StandingQuery]] = Future(standingQueries.iterator().asScala)(ioDispatcher)
-    .map(_.map(b => PersistenceCodecs.standingQueryFormat.read(b).get).toList)(ioDispatcher)
+    .map(_.map(b => StandingQueryCodec.format.read(b).get).toList)(ioDispatcher)
     .recoverWith { case e =>
       logger.error("getStandingQueries failed.", e); Future.failed(e)
     }(ioDispatcher)
@@ -366,7 +367,7 @@ final class MapDbPersistor(
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = Future {
     this.domainGraphNodes.putAll((domainGraphNodes map { case (dgbId, dgb) =>
       dgbId.asInstanceOf[java.lang.Long] ->
-        PersistenceCodecs.domainGraphNodeFormat.write(dgb)
+        DomainGraphNodeCodec.format.write(dgb)
     }).asJava)
   }(ioDispatcher)
 
@@ -378,7 +379,7 @@ final class MapDbPersistor(
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
     Future(domainGraphNodes.asScala.toMap map { case (dgnId, dgnBytes) =>
-      dgnId.asInstanceOf[DomainGraphNodeId] -> PersistenceCodecs.domainGraphNodeFormat.read(dgnBytes).get
+      dgnId.asInstanceOf[DomainGraphNodeId] -> DomainGraphNodeCodec.format.read(dgnBytes).get
     })(ioDispatcher).recoverWith({ case e =>
       logger.error("getDomainGraphNodes failed.", e)
       Future.failed(e)

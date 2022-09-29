@@ -6,15 +6,14 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 import com.thatdot.quine.graph.behavior.StandingQuerySubscribers
 import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, StandingQueryState => CypherStandingQueryState}
 import com.thatdot.quine.model._
-import com.thatdot.quine.persistor.PersistenceCodecs
+import com.thatdot.quine.persistor.codecs.NodeEventCodec.eventWithTimeFormat
+import com.thatdot.quine.persistor.codecs._
 
 class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks with ArbitraryInstances {
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
     PropertyCheckConfiguration(sizeRange = 200, minSuccessful = 200)
-
-  import PersistenceCodecs._
 
   "Binary serialization" should "roundtrip QuineValue" in {
     forAll { (v: QuineValue) =>
@@ -31,36 +30,33 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
 
   it should "roundtrip NodeChangeEvent" in {
     forAll { (event: NodeChangeEvent) =>
-      assert(eventFormat.read(eventFormat.write(event)).get == event)
+      assert(NodeEventCodec.format.read(NodeEventCodec.format.write(event)).get == event)
     }
   }
 
   it should "roundtrip DomainIndexEvent" in {
     forAll { (event: DomainIndexEvent) =>
-      assert(eventFormat.read(eventFormat.write(event)).get == event)
+      assert(NodeEventCodec.format.read(NodeEventCodec.format.write(event)).get == event)
     }
   }
 
   it should "roundtrip cypher.Expr" in {
     forAll { (e: CypherExpr) =>
-      assert(cypherExprFormat.read(cypherExprFormat.write(e)).get == e)
+      assert(CypherExprCodec.format.read(CypherExprCodec.format.write(e)).get == e)
     }
   }
 
   it should "roundtrip DomainGraphNode" in {
     forAll { (dgn: DomainGraphNode) =>
-      assert(domainGraphNodeFormat.read(domainGraphNodeFormat.write(dgn)).get == dgn)
+      assert(DomainGraphNodeCodec.format.read(DomainGraphNodeCodec.format.write(dgn)).get == dgn)
     }
   }
 
   it should "roundtrip NodeSnapshot" in {
-
-    def toVector[T](i: Iterable[T]): Vector[T] = Vector() ++ i
-
     forAll { (snapshot: NodeSnapshot) =>
-      val converted = nodeSnapshotFormat.read(nodeSnapshotFormat.write(snapshot)).get
+      val converted = SnapshotCodec.format.read(SnapshotCodec.format.write(snapshot)).get
       /* Snapshot is equal up to type of edges iterator returned.*/
-      assert(converted.copy(edges = toVector(converted.edges)) == snapshot)
+      assert(converted.copy(edges = converted.edges.toVector) == snapshot)
     }
   }
 
@@ -71,14 +67,15 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
       so we omit from the comparison for randomly generated test values.
        */
       assert(
-        standingQueryFormat.read(standingQueryFormat.write(sq)).get == sq.copy(shouldCalculateResultHashCode = false)
+        StandingQueryCodec.format.read(StandingQueryCodec.format.write(sq)).get == sq
+          .copy(shouldCalculateResultHashCode = false)
       )
     }
   }
 
   it should "roundtrip StandingQueryState" in {
     forAll { (subs: StandingQuerySubscribers, sq: CypherStandingQueryState) =>
-      assert(standingQueryStateFormat.read(standingQueryStateFormat.write(subs -> sq)).get == subs -> sq)
+      assert(StandingQueryStateCodec.format.read(StandingQueryStateCodec.format.write(subs -> sq)).get == subs -> sq)
     }
 
   }
