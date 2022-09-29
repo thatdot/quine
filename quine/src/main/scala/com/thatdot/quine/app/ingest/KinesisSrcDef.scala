@@ -5,6 +5,7 @@ import java.time.Instant
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 import akka.NotUsed
@@ -12,7 +13,7 @@ import akka.stream.alpakka.kinesis.ShardIterator._
 import akka.stream.alpakka.kinesis.ShardSettings
 import akka.stream.alpakka.kinesis.scaladsl.KinesisSource
 import akka.stream.contrib.SwitchMode
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Flow, Source}
 
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
@@ -100,44 +101,61 @@ final case class KinesisSrcDef(
     }
 
     val kinesisClient = builder.build()
-    graph.system.registerOnTermination(kinesisClient.close()) // TODO
+    graph.system.registerOnTermination(kinesisClient.close())
 
     // a Future yielding the shard IDs to read from
-    val shardIdsFut: Future[Set[String]] = shardIds.getOrElse(Set()) match {
-      case noIds if noIds.isEmpty =>
-        kinesisClient
-          .describeStream(
-            DescribeStreamRequest.builder().streamName(streamName).build()
-          )
-          .toScala
-          .map(response =>
-            response
-              .streamDescription()
-              .shards()
-              .asScala
-              .map(_.shardId())
-              .toSet
-          )(graph.system.dispatcher)
-      case atLeastOneId => Future.successful(atLeastOneId)
-    }
-    // a source to yielding a single List of shard settings
-    val shardSettingsSource: Source[List[ShardSettings], NotUsed] = Source
-      .future(shardIdsFut)
-      .map(ids =>
-        ids
-          .map(shardId => ShardSettings(streamName, shardId).withShardIterator(shardIterator))
-          .toList
+    val shardSettingsFut: Future[List[ShardSettings]] =
+      (shardIds.getOrElse(Set()) match {
+        case noIds if noIds.isEmpty =>
+          kinesisClient
+            .describeStream(
+              DescribeStreamRequest.builder().streamName(streamName).build()
+            )
+            .toScala
+            .map(response =>
+              response
+                .streamDescription()
+                .shards()
+                .asScala
+                .map(_.shardId())
+                .toSet
+            )(graph.materializer.executionContext)
+        case atLeastOneId => Future.successful(atLeastOneId)
+      })
+        .map(ids =>
+          ids
+            .map(shardId => ShardSettings(streamName, shardId).withShardIterator(shardIterator))
+            .toList
+        )(graph.materializer.executionContext)
+
+    // A Flow that limits the stream to 2MB * (number of shards) per second
+    // TODO This is an imperfect heuristic, as the limit imposed is literally 2MB _per shard_,
+    // not 2MB per shard "on average across all shards".
+    val kinesisRateLimiter: Flow[kinesisModel.Record, kinesisModel.Record, NotUsed] = Flow
+      .futureFlow(
+        shardSettingsFut.map { shards =>
+          val kinesisShardCount = shards.length
+          // there are a maximum of 500 shards per stream
+          val throttleBytesPerSecond = kinesisShardCount * 2 * 1024 * 1024
+          Flow[kinesisModel.Record]
+            .throttle(
+              throttleBytesPerSecond,
+              1.second,
+              rec =>
+                // asByteArrayUnsafe avoids extra allocations, to get the length we can't use a readonly bytebuffer
+                rec.data().asByteArrayUnsafe().length
+            )
+        }(graph.materializer.executionContext)
       )
+      .mapMaterializedValue(_ => NotUsed)
 
-    /* Kinesis data source
-     there is an alternate KCL source we could use (https://doc.akka.io/docs/alpakka/current/kinesis.html) but
-     it requires more configuration, as well as dynamoDB and cloudwatch access
-     */
-
-    // Start polling for and importing records from the configured shard
-    shardSettingsSource
+    Source
+      .future(shardSettingsFut)
       .flatMapConcat(shardSettings =>
-        KinesisSource.basicMerge(shardSettings, kinesisClient).named(s"kinesis-ingest-source-for-$streamName")
+        KinesisSource
+          .basicMerge(shardSettings, kinesisClient)
       )
+      .via(kinesisRateLimiter)
+
   }
 }
