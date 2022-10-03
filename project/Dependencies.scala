@@ -53,7 +53,7 @@ object Dependencies {
   val scalaLoggingV = "3.9.5"
   val scalaParserCombinatorsV = "1.1.2"
   val scalaTestScalaCheckV = "3.2.11.0"
-  val scalaTestV = "3.2.13"
+  val scalaTestV = "3.2.14"
   val scalajsDomV = "2.3.0"
   val scalajsMacroTaskExecutorV = "1.1.0"
   val scoptV = "4.1.0"
