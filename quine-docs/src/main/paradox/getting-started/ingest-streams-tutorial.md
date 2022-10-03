@@ -164,68 +164,88 @@ Using the information that we identified above, we can create a model of the gra
 Using this model from above we can create an ingest query in Cypher to shape and load the event into nodes in the graph.
 
 ```cypher
-MATCH (revNode) WHERE id(revNode) = idFrom("revision", $that.rev_id)
-MATCH (pageNode) WHERE id(pageNode) = idFrom("page", $that.page_id)
-MATCH (dbNode) WHERE id(dbNode) = idFrom("db", $that.database)
-MATCH (userNode) WHERE id(userNode) = idFrom("id", $that.performer.user_id)
-MATCH (parentNode) WHERE id(parentNode) = idFrom("revision", $that.rev_parent_id)
-SET revNode = $that, revNode:rev:revCreate
+MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode)
+WHERE id(revNode) = idFrom('revision', $that.rev_id) 
+  AND id(pageNode) = idFrom('page', $that.page_id) 
+  AND id(dbNode) = idFrom('db', $that.database)
+  AND id(userNode) = idFrom('id', $that.performer.user_id) 
+  AND id(parentNode) = idFrom('revision', $that.rev_parent_id)
+
+SET revNode = $that,
+    revNode.bot = $that.performer.user_is_bot,
+    revNode:revision
+
+SET parentNode.rev_id = $that.rev_parent_id
+
 SET pageNode.id = $that.page_id, 
     pageNode.namespace = $that.page_namespace, 
-    pageNode.title = $that.page_title,
-    pageNode.comment = $that.comment,
-    pageNode.is_redirect = $that.is_redirect, 
-    pageNode:page
-SET dbNode.database = $that.database, dbNode:db
+    pageNode.title = $that.page_title, 
+    pageNode.comment = $that.comment, 
+    pageNode.is_redirect = $that.page_is_redirect, 
+    pageNode:page 
+
+SET dbNode.database = $that.database, 
+    dbNode:db 
+
 SET userNode = $that.performer, 
-    userNode.Name = $that.performer.user_text, 
-    userNode:user
-CREATE (revNode)-[:page]->(pageNode)
-CREATE (revNode)-[:db]->(dbNode)
-CREATE (revNode)-[:by]->(userNode)
-CREATE (revNode)-[:parent]->(parentNode)
+    userNode.name = $that.performer.user_text, 
+    userNode:user 
+
+CREATE (revNode)-[:TO]->(pageNode),
+       (pageNode)-[:IN]->(dbNode),
+       (userNode)-[:RESPONSIBLE_FOR]->(revNode),
+       (parentNode)-[:NEXT]->(revNode)
 ```
 
 Take a minute to understand this Cypher query.
 
 The first thing that Quine does when it receives an event from an event source is to parse the object based on the ingest stream `type` setting and pass along the parsed object in the `$that` parameter.
 
-The first series of `MATCH` statements manifest the `revNode`, `pageNode`, `dbNode`, `userNode` and `parentNode` nodes by setting the node id to the id determined by the `idFrom` function.
+The first `MATCH` statement locates the `revNode`, `pageNode`, `dbNode`, `userNode` and `parentNode` nodes by setting the node id to the id determined by the `idFrom` function.
 
 ```cypher
-MATCH (revNode) WHERE id(revNode) = idFrom("revision", $that.rev_id)
-MATCH (pageNode) WHERE id(pageNode) = idFrom("page", $that.page_id)
-MATCH (dbNode) WHERE id(dbNode) = idFrom("db", $that.database)
-MATCH (userNode) WHERE id(userNode) = idFrom("id", $that.performer.user_id)
-MATCH (parentNode) WHERE id(parentNode) = idFrom("revision", $that.rev_parent_id)
+MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode)
+WHERE id(revNode) = idFrom('revision', $that.rev_id) 
+  AND id(pageNode) = idFrom('page', $that.page_id) 
+  AND id(dbNode) = idFrom('db', $that.database)
+  AND id(userNode) = idFrom('id', $that.performer.user_id) 
+  AND id(parentNode) = idFrom('revision', $that.rev_parent_id)
 ```
 
-The next section of the query uses `SET` to populate the properties in each node from the parsed data in `$that`.
+The next section of the query uses `SET` to populate the properties into each node from the parsed data in `$that`.
 
 ```cypher
-SET revNode = $that, revNode:rev:revCreate
+SET revNode = $that,
+    revNode.bot = $that.performer.user_is_bot,
+    revNode:revision
+
+SET parentNode.rev_id = $that.rev_parent_id
+
 SET pageNode.id = $that.page_id, 
     pageNode.namespace = $that.page_namespace, 
-    pageNode.title = $that.page_title,
-    pageNode.comment = $that.comment,
-    pageNode.is_redirect = $that.is_redirect, 
-    pageNode:page
-SET dbNode.database = $that.database, dbNode:db
+    pageNode.title = $that.page_title, 
+    pageNode.comment = $that.comment, 
+    pageNode.is_redirect = $that.page_is_redirect, 
+    pageNode:page 
+
+SET dbNode.database = $that.database, 
+    dbNode:db 
+
 SET userNode = $that.performer, 
-    userNode.Name = $that.performer.user_text, 
+    userNode.name = $that.performer.user_text, 
     userNode:user
 ```
 
-And the final section of the query defines the relationships between the nodes using `CREATE`.
+And the final section of the query establishes the relationships between the nodes using `CREATE`.
 
 ```cypher
-CREATE (revNode)-[:page]->(pageNode)
-CREATE (revNode)-[:db]->(dbNode)
-CREATE (revNode)-[:by]->(userNode)
-CREATE (revNode)-[:parent]->(parentNode)
+CREATE (revNode)-[:TO]->(pageNode),
+       (pageNode)-[:IN]->(dbNode),
+       (userNode)-[:RESPONSIBLE_FOR]->(revNode),
+       (parentNode)-[:NEXT]->(revNode)
 ```
 
-Lets update the `wikimedia-revision-create` ingest stream with this new ingest query.
+Now, lets update the `wikimedia-revision-create` ingest stream with this new ingest query.
 
 * Remove the existing ingest stream.
 
@@ -238,7 +258,7 @@ curl -X "DELETE" "http://127.0.0.1:8080/api/v1/ingest/wikipedia-revision-create"
 ```json
 {
   "format": {
-    "query": "MATCH (revNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) \nMATCH (pageNode) WHERE id(pageNode) = idFrom('page', $that.page_id) \nMATCH (dbNode) WHERE id(dbNode) = idFrom('db', $that.database) \nMATCH (userNode) WHERE id(userNode) = idFrom('id', $that.performer.user_id) \nMATCH (parentNode) WHERE id(parentNode) = idFrom('revision', $that.rev_parent_id) \nSET revNode = $that, revNode:rev:revCreate \nSET pageNode.id = $that.page_id, \n  pageNode.namespace = $that.page_namespace, \n  pageNode.title = $that.page_title, \n  pageNode.comment = $that.comment, \n  pageNode.is_redirect = $that.is_redirect, \n  pageNode:page \nSET dbNode.database = $that.database, \n  dbNode:db SET userNode = $that.performer, \n  userNode.Name = $that.performer.user_text, \n  userNode:user \nCREATE (revNode)-[:page]->(pageNode) \nCREATE (revNode)-[:db]->(dbNode) \nCREATE (revNode)-[:by]->(userNode) \nCREATE (revNode)-[:parent]->(parentNode)",
+    "query": "MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) AND id(pageNode) = idFrom('page', $that.page_id) AND id(dbNode) = idFrom('db', $that.database) AND id(userNode) = idFrom('id', $that.performer.user_id) AND id(parentNode) = idFrom('revision', $that.rev_parent_id) SET revNode = $that, revNode.bot = $that.performer.user_is_bot, revNode:revision SET parentNode.rev_id = $that.rev_parent_id SET pageNode.id = $that.page_id, pageNode.namespace = $that.page_namespace, pageNode.title = $that.page_title, pageNode.comment = $that.comment, pageNode.is_redirect = $that.page_is_redirect, pageNode:page SET dbNode.database = $that.database, dbNode:db SET userNode = $that.performer, userNode.name = $that.performer.user_text, userNode:user CREATE (revNode)-[:TO]->(pageNode), (pageNode)-[:IN]->(dbNode), (userNode)-[:RESPONSIBLE_FOR]->(revNode), (parentNode)-[:NEXT]->(revNode)",
     "parameter": "that",
     "type": "CypherJson"
   },
@@ -255,7 +275,7 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/ingest/wikipedia-revision-create" \
      -d $'{
   "type": "ServerSentEventsIngest",
   "format": {
-    "query": "MATCH (revNode) WHERE id(revNode) = idFrom(\'revision\', $that.rev_id) \\nMATCH (pageNode) WHERE id(pageNode) = idFrom(\'page\', $that.page_id) \\nMATCH (dbNode) WHERE id(dbNode) = idFrom(\'db\', $that.database) \\nMATCH (userNode) WHERE id(userNode) = idFrom(\'id\', $that.performer.user_id) \\nMATCH (parentNode) WHERE id(parentNode) = idFrom(\'revision\', $that.rev_parent_id) \\nSET revNode = $that, revNode:rev:revCreate \\nSET pageNode.id = $that.page_id, \\n  pageNode.namespace = $that.page_namespace, \\n  pageNode.title = $that.page_title, \\n  pageNode.comment = $that.comment, \\n  pageNode.is_redirect = $that.is_redirect, \\n  pageNode:page \\nSET dbNode.database = $that.database, \\n  dbNode:db SET userNode = $that.performer, \\n  userNode.Name = $that.performer.user_text, \\n  userNode:user \\nCREATE (revNode)-[:page]->(pageNode) \\nCREATE (revNode)-[:db]->(dbNode) \\nCREATE (revNode)-[:by]->(userNode) \\nCREATE (revNode)-[:parent]->(parentNode)",
+    "query": "MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode) WHERE id(revNode) = idFrom(\'revision\', $that.rev_id) AND id(pageNode) = idFrom(\'page\', $that.page_id) AND id(dbNode) = idFrom(\'db\', $that.database) AND id(userNode) = idFrom(\'id\', $that.performer.user_id) AND id(parentNode) = idFrom(\'revision\', $that.rev_parent_id) SET revNode = $that, revNode.bot = $that.performer.user_is_bot, revNode:revision SET parentNode.rev_id = $that.rev_parent_id SET pageNode.id = $that.page_id, pageNode.namespace = $that.page_namespace, pageNode.title = $that.page_title, pageNode.comment = $that.comment, pageNode.is_redirect = $that.page_is_redirect, pageNode:page SET dbNode.database = $that.database, dbNode:db SET userNode = $that.performer, userNode.name = $that.performer.user_text, userNode:user CREATE (revNode)-[:TO]->(pageNode), (pageNode)-[:IN]->(dbNode), (userNode)-[:RESPONSIBLE_FOR]->(revNode), (parentNode)-[:NEXT]->(revNode)",
     "type": "CypherJson",
     "parameter": "that"
   },
@@ -266,7 +286,7 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/ingest/wikipedia-revision-create" \
 You can verify that the stream is active by sending `GET` to the `/api/v1/ingest` endpoint.
 
 ```shell
-curl "http://127.0.0.1:8080/api/v1/ingest | jq '.'"
+curl "http://127.0.0.1:8080/api/v1/ingest" | jq '.'
 ```
 
 Quine will return the status of all of the ingest streams that are configured. In our case, we only have one stream and it is running.
@@ -277,7 +297,7 @@ Quine will return the status of all of the ingest streams that are configured. I
     "status": "Running",
     "settings": {
       "format": {
-        "query": "MATCH (revNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) \nMATCH (pageNode) WHERE id(pageNode) = idFrom('page', $that.page_id) \nMATCH (dbNode) WHERE id(dbNode) = idFrom('db', $that.database) \nMATCH (userNode) WHERE id(userNode) = idFrom('id', $that.performer.user_id) \nMATCH (parentNode) WHERE id(parentNode) = idFrom('revision', $that.rev_parent_id) \nSET revNode = $that, revNode:rev:revCreate \nSET pageNode.id = $that.page_id, \n  pageNode.namespace = $that.page_namespace, \n  pageNode.title = $that.page_title, \n  pageNode.comment = $that.comment, \n  pageNode.is_redirect = $that.is_redirect, \n  pageNode:page \nSET dbNode.database = $that.database, \n  dbNode:db SET userNode = $that.performer, \n  userNode.Name = $that.performer.user_text, \n  userNode:user \nCREATE (revNode)-[:page]->(pageNode) \nCREATE (revNode)-[:db]->(dbNode) \nCREATE (revNode)-[:by]->(userNode) \nCREATE (revNode)-[:parent]->(parentNode)",
+        "query": "MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) AND id(pageNode) = idFrom('page', $that.page_id) AND id(dbNode) = idFrom('db', $that.database) AND id(userNode) = idFrom('id', $that.performer.user_id) AND id(parentNode) = idFrom('revision', $that.rev_parent_id) SET revNode = $that, revNode.bot = $that.performer.user_is_bot, revNode:revision SET parentNode.rev_id = $that.rev_parent_id SET pageNode.id = $that.page_id, pageNode.namespace = $that.page_namespace, pageNode.title = $that.page_title, pageNode.comment = $that.comment, pageNode.is_redirect = $that.page_is_redirect, pageNode:page SET dbNode.database = $that.database, dbNode:db SET userNode = $that.performer, userNode.name = $that.performer.user_text, userNode:user CREATE (revNode)-[:TO]->(pageNode), (revNode)-[:IN]->(dbNode), (userNode)-[:RESPONSIBLE_FOR]->(revNode), (parentNode)-[:NEXT]->(revNode)",
         "parameter": "that",
         "type": "CypherJson"
       },
@@ -286,23 +306,23 @@ Quine will return the status of all of the ingest streams that are configured. I
       "type": "ServerSentEventsIngest"
     },
     "stats": {
-      "ingestedCount": 28403,
+      "ingestedCount": 1666,
       "rates": {
-        "count": 28403,
-        "oneMinute": 230.475968648614,
-        "fiveMinute": 49.154760604815,
-        "fifteenMinute": 16.65817311961242,
-        "overall": 5.170710769062376
+        "count": 1666,
+        "oneMinute": 21.44527113707015,
+        "fiveMinute": 15.367459925922011,
+        "fifteenMinute": 13.715948876513574,
+        "overall": 26.105181113725962
       },
       "byteRates": {
-        "count": 42209020,
-        "oneMinute": 342498.82686522714,
-        "fiveMinute": 73049.01485621286,
-        "fifteenMinute": 24758.66326960408,
-        "overall": 7684.070125448163
+        "count": 2574561,
+        "oneMinute": 32566.461096455438,
+        "fiveMinute": 22733.450385686425,
+        "fifteenMinute": 20032.299030301117,
+        "overall": 40341.915896294115
       },
-      "startTime": "2022-08-26T15:04:50.139203Z",
-      "totalRuntime": 5122660
+      "startTime": "2022-09-28T15:13:21.932384Z",
+      "totalRuntime": 62921
     }
   }
 }
@@ -310,6 +330,6 @@ Quine will return the status of all of the ingest streams that are configured. I
 
 ## Next Steps
 
-You have data streaming into Quine and forming a graph. Over time the shape of the graph will become more connected as new events arrive.
+You have data streaming into Quine and forming a graph. Over time, the shape of the graph will become more connected as new events arrive.
 
 In the @ref:[standing query](standing-queries-tutorial.md) tutorial we will separate human generated events from bot generated events in the english wikipedia database and send them to a destination in your data pipeline for additional processing.  

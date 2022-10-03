@@ -1,0 +1,89 @@
+version: 1
+title: Planetside 2
+contributor: https://github.com/emanb29
+summary: Models real-time player kill data from Planetside 2 and supplements the killfeed graph with detailed information about the player characters and the weapons used.
+description: |-
+  Ingests the websockets killfeed from Daybreak Games' MMOFPS "PlanetSide 2", invoking the getJsonLines procedure to lazily fill out unknown static data. Replace all instances of `s:example` with a service-id acquired from http://census.daybreakgames.com/#service-id
+ingestStreams:
+  - type: WebsocketSimpleStartupIngest
+    url: wss://push.planetside2.com/streaming?environment=ps2&service-id=s:example
+    initMessages:
+    # A couple notes: character names are not reused across servers, so we can subscribe to all servers ("worlds") and not worry about namespacing character names
+    # Characters can be *renamed*, but this is rare because it costs the player $25
+    - |- 
+      {
+        "service":"event",
+        "action":"subscribe",
+        "worlds": ["all"],
+        "characters":["all"],
+        "eventNames":["Death"]
+      }
+    format:
+      type: CypherJson
+      query: |-
+        WITH * WHERE $that.type = 'serviceMessage'
+        CREATE (m:murder) // these are never replayed, so no reason to idFrom
+        SET m = COALESCE($that.payload, {})
+        WITH id(m) as mId
+        MATCH (murder) WHERE id(murder) = mId
+        MATCH (victim) WHERE id(victim) = idFrom('character', murder.character_id)
+        MATCH (attacker) WHERE id(attacker) = idFrom('character', murder.attacker_character_id)
+        MATCH (weapon) WHERE id(weapon) = idFrom('weapon', murder.attacker_weapon_id)
+        SET weapon.uninitialized = weapon.weapon_id IS NULL // flag the weapon for initialization if applicable
+        SET victim:character, attacker:character, weapon:weapon,
+          victim.character_id = murder.character_id, attacker.character_id = murder.attacker_character_id,
+          weapon.weapon_id = murder.attacker_weapon_id
+        CREATE (victim)<-[:victim]-(murder)-[:attacker]->(attacker), (murder)-[:weapon]->(weapon)
+        // characters contain mutable data, eg certs. We'll add the timestamp to give us something to hook for refreshing data
+        WITH murder, victim, attacker
+        UNWIND [victim, attacker] AS character
+        SET character.last_update = murder.timestamp
+standingQueries:
+  # Populate character data
+  - pattern:
+      type: Cypher
+      # match each new character-label node
+      query: MATCH (newCharacter:character) WHERE exists(newCharacter.character_id) RETURN DISTINCT id(newCharacter) AS id
+    outputs:
+      populate-fresh-character:
+        type: CypherQuery
+        query: |-
+          MATCH (c)
+          WHERE id(c) = $that.data.id
+          CALL loadJsonLines("https://census.daybreakgames.com/s:example/get/ps2:v2/character/?character_id="+c.character_id) YIELD value
+          SET c += COALESCE(value.character_list[0], {}) // there should always be a "character_list" with exactly 1 value: the character we queried
+  # Populate weapon data
+  - pattern:
+      type: Cypher
+      query: MATCH (weapon:weapon) WHERE weapon.uninitialized = true AND exists(weapon.weapon_id) RETURN DISTINCT id(weapon) AS id
+    outputs:
+      populate-weapon:
+        type: CypherQuery
+        query: |-
+          MATCH (weapon) WHERE id(weapon) = $that.data.id
+          CALL loadJsonLines("https://census.daybreakgames.com/s:example/get/ps2:v2/item?item_id="+weapon.weapon_id+"&c:join=weapon_datasheet") YIELD value
+          SET weapon += COALESCE(value.item_list[0], {}) // there should always be a "item_list" with exactly 1 value: the weapon we queried
+          REMOVE weapon.uninitialized
+  # Future Standing Query idea: monitor for "trades" (ie, when two players kill each other simultaneously)
+nodeAppearances:
+  - predicate:
+      propertyKeys: []
+      dbLabel: character
+      knownValues: {}
+    icon: ion-android-person
+  - predicate:
+      propertyKeys: []
+      dbLabel: murder
+      knownValues: {}
+    icon: "\u2694\uFE0F"
+  - predicate:
+      propertyKeys: []
+      dbLabel: weapon
+      knownValues: {}
+    icon: "\uD83D\uDD2B"
+  - predicate:
+      propertyKeys: []
+      dbLabels: []
+      knownValues: {}
+quickQueries: []
+sampleQueries: []

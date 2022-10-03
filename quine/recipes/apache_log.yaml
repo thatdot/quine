@@ -25,21 +25,19 @@ ingestStreams:
           type: 'log'
         })
 standingQueries:
-  - outputs:
+  - pattern:
+      type: Cypher
+      query: MATCH (l) WHERE l.type = 'log' RETURN DISTINCT id(l) AS id
+      mode: DistinctId
+    outputs:
       verb:
         type: CypherQuery
         query: |-
           MATCH (l) WHERE id(l) = $that.data.id
           MATCH (v) WHERE id(v) = idFrom('verb', l.verb)
-          CREATE (l)-[:verb]->(v)
           SET v.type = 'verb',
             v.verb = l.verb
-          RETURN null
-          SKIP 1
-    pattern:
-      type: Cypher
-      query: MATCH (l) WHERE l.type = 'log' RETURN DISTINCT id(l) AS id
-      mode: DistinctId
+          CREATE (l)-[:verb]->(v)
 nodeAppearances: [ ]
 quickQueries: [ ]
 sampleQueries:

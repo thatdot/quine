@@ -79,12 +79,10 @@ Our task is to find the human-generated events (not bots) in the stream, separat
 Using the Exploration UI we can develop a Cypher query that returns the last 10 `revision-create` event nodes.
 
 ```cypher
-MATCH (n:rev:revCreate)
-WHERE n.performer.user_is_bot = false
-  AND n.database = "enwiki"
-RETURN DISTINCT strid(n) as NodeID,
-  n.page_title as Title,
-  n.performer.user_text as User
+MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: 'enwiki'})
+RETURN DISTINCT strid(userNode) as NodeID,
+  revNode.page_title as Title,
+  revNode.performer.user_text as User
 LIMIT 10
 ```
 
@@ -95,13 +93,16 @@ We can use this Cypher query to develop the standing query.
 1. Write the `pattern`  portion of the standing query
 
 ```cypher
-MATCH (n:rev:revCreate) WHERE n.performer.user_is_bot = false AND n.database = 'enwiki' RETURN id(n) as id
+MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: 'enwiki'})
+RETURN DISTINCT id(revNode) as id
 ```
 
 2. Write the `output` portion of the standing query
 
 ```cypher
-MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)
+MATCH (n)
+WHERE id(n) = $that.data.id
+RETURN properties(n)
 ```
 
 3. Form the standing query JSON object
@@ -109,17 +110,16 @@ MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)
 ```json
 {
   "pattern": {
-    "query": "MATCH (n:rev:revCreate) WHERE n.performer.user_is_bot = false AND n.database = 'enwiki' RETURN id(n) as id",
-    "type": "Cypher",
-    "mode": "MultipleValues"
+    "query": "MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: 'enwiki'}) RETURN DISTINCT id(revNode) as id",
+    "type": "Cypher"
   },
   "outputs": {
     "print-output": {
       "type": "CypherQuery",
-        "query": "MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)",
-        "andThen": {
-          "type": "PrintToStandardOut"
-        }
+      "query": "MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)",
+      "andThen": {
+        "type": "PrintToStandardOut"
+      }
     }
   }
 }
@@ -134,9 +134,8 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/query/standing/not-a-bot" \
      -H 'Content-Type: application/json' \
      -d $'{
   "pattern": {
-    "query": "MATCH (n:rev:revCreate) WHERE n.performer.user_is_bot = false AND n.database = \'enwiki\' RETURN id(n) as id",
-    "type": "Cypher",
-    "mode": "MultipleValues"
+    "query": "MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: \'enwiki\'}) RETURN DISTINCT id(revNode) as id",
+    "type": "Cypher"
   },
   "outputs": {
     "print-output": {

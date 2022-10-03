@@ -69,6 +69,7 @@ standingQueries: [ ]
 nodeAppearances: [ ]
 quickQueries: [ ]
 sampleQueries: [ ]
+statusQuery: null
 ```
 
 Now let's build a recipe to reproduce the use case from the @ref:[**Getting Started**](ingest-streams-tutorial.md) scenario. Remember our goal:
@@ -89,7 +90,7 @@ summary: Stream page-update events that were not created by bots
 description: |-
   This recipe will separate human generated events from bot generated
   events in the english wikipedia database page-update event stream
-  and store them in for additional processing.
+  and store them for additional processing.
   API Reference: https://stream.wikimedia.org/?doc#/streams/get_v2_stream_mediawiki_revision_create
 ```
 
@@ -102,7 +103,7 @@ Here's the JSON version of the ingest stream that we developed earlier in the @r
 ```json
 {
   "format": {
-    "query": "MATCH (revNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) \nMATCH (pageNode) WHERE id(pageNode) = idFrom('page', $that.page_id) \nMATCH (dbNode) WHERE id(dbNode) = idFrom('db', $that.database) \nMATCH (userNode) WHERE id(userNode) = idFrom('id', $that.performer.user_id) \nMATCH (parentNode) WHERE id(parentNode) = idFrom('revision', $that.rev_parent_id) \nSET revNode = $that, revNode:rev:revCreate \nSET pageNode.id = $that.page_id, \n  pageNode.namespace = $that.page_namespace, \n  pageNode.title = $that.page_title, \n  pageNode.comment = $that.comment, \n  pageNode.is_redirect = $that.is_redirect, \n  pageNode:page \nSET dbNode.database = $that.database, \n  dbNode:db SET userNode = $that.performer, \n  userNode.Name = $that.performer.user_text, \n  userNode:user \nCREATE (revNode)-[:page]->(pageNode) \nCREATE (revNode)-[:db]->(dbNode) \nCREATE (revNode)-[:by]->(userNode) \nCREATE (revNode)-[:parent]->(parentNode)",
+    "query": "MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) AND id(pageNode) = idFrom('page', $that.page_id) AND id(dbNode) = idFrom('db', $that.database) AND id(userNode) = idFrom('id', $that.performer.user_id) AND id(parentNode) = idFrom('revision', $that.rev_parent_id) SET revNode = $that, revNode.bot = $that.performer.user_is_bot, revNode:revision SET parentNode.rev_id = $that.rev_parent_id SET pageNode.id = $that.page_id, pageNode.namespace = $that.page_namespace, pageNode.title = $that.page_title, pageNode.comment = $that.comment, pageNode.is_redirect = $that.page_is_redirect, pageNode:page SET dbNode.database = $that.database, dbNode:db SET userNode = $that.performer, userNode.name = $that.performer.user_text, userNode:user CREATE (revNode)-[:TO]->(pageNode), (pageNode)-[:IN]->(dbNode), (userNode)-[:RESPONSIBLE_FOR]->(revNode), (parentNode)-[:NEXT]->(revNode)",
     "parameter": "that",
     "type": "CypherJson"
   },
@@ -111,7 +112,7 @@ Here's the JSON version of the ingest stream that we developed earlier in the @r
 }
 ```
 
-And the converted YAML version.
+And the converted YAML version, edited for readability and style
 
 ```yaml
 ingestStreams:
@@ -121,26 +122,37 @@ ingestStreams:
       type: CypherJson
       parameter: that
       query: |-
-        MATCH (revNode) WHERE id(revNode) = idFrom('revision', $that.rev_id) 
-        MATCH (pageNode) WHERE id(pageNode) = idFrom('page', $that.page_id) 
-        MATCH (dbNode) WHERE id(dbNode) = idFrom('db', $that.database) 
-        MATCH (userNode) WHERE id(userNode) = idFrom('id', $that.performer.user_id) 
-        MATCH (parentNode) WHERE id(parentNode) = idFrom('revision', $that.rev_parent_id) 
-        SET revNode = $that, revNode:rev:revCreate 
+        MATCH (revNode),(pageNode),(dbNode),(userNode),(parentNode)
+        WHERE id(revNode) = idFrom('revision', $that.rev_id) 
+          AND id(pageNode) = idFrom('page', $that.page_id) 
+          AND id(dbNode) = idFrom('db', $that.database)
+          AND id(userNode) = idFrom('id', $that.performer.user_id) 
+          AND id(parentNode) = idFrom('revision', $that.rev_parent_id)
+        
+        SET revNode = $that,
+            revNode.bot = $that.performer.user_is_bot,
+            revNode:revision
+
+        SET parentNode.rev_id = $that.rev_parent_id
+        
         SET pageNode.id = $that.page_id, 
-          pageNode.namespace = $that.page_namespace, 
-          pageNode.title = $that.page_title, 
-          pageNode.comment = $that.comment, 
-          pageNode.is_redirect = $that.is_redirect, 
-          pageNode:page 
+            pageNode.namespace = $that.page_namespace, 
+            pageNode.title = $that.page_title, 
+            pageNode.comment = $that.comment, 
+            pageNode.is_redirect = $that.page_is_redirect, 
+            pageNode:page 
+        
         SET dbNode.database = $that.database, 
-          dbNode:db SET userNode = $that.performer, 
-          userNode.Name = $that.performer.user_text, 
-          userNode:user 
-        CREATE (revNode)-[:page]->(pageNode) 
-        CREATE (revNode)-[:db]->(dbNode) 
-        CREATE (revNode)-[:by]->(userNode) 
-        CREATE (revNode)-[:parent]->(parentNode)
+            dbNode:db 
+        
+        SET userNode = $that.performer, 
+            userNode.name = $that.performer.user_text, 
+            userNode:user 
+        
+        CREATE (revNode)-[:TO]->(pageNode),
+               (pageNode)-[:IN]->(dbNode),
+               (userNode)-[:RESPONSIBLE_FOR]->(revNode),
+               (parentNode)-[:NEXT]->(revNode)
 ```
 
 ## Standing Query
@@ -152,17 +164,16 @@ JSON:
 ```json
 {
   "pattern": {
-    "query": "MATCH (n:rev:revCreate) WHERE n.performer.user_is_bot = false AND n.database = 'enwiki' RETURN id(n) as id",
-    "type": "Cypher",
-    "mode": "MultipleValues"
+    "query": "MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: 'enwiki'}) RETURN DISTINCT id(revNode) as id",
+    "type": "Cypher"
   },
   "outputs": {
     "print-output": {
       "type": "CypherQuery",
-        "query": "MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)",
-        "andThen": {
-          "type": "PrintToStandardOut"
-        }
+      "query": "MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)",
+      "andThen": {
+        "type": "PrintToStandardOut"
+      }
     }
   }
 }
@@ -174,16 +185,16 @@ YAML:
 standingQueries:
   - pattern:
       query: |-
-        MATCH (n:rev:revCreate) 
-        WHERE n.performer.user_is_bot = false 
-          AND n.database = 'enwiki' 
-        RETURN id(n) as id
+        MATCH (userNode:user {user_is_bot: false})-[:RESPONSIBLE_FOR]->(revNode:revision {database: 'enwiki'})
+        RETURN DISTINCT id(revNode) as id
       type: Cypher
-      mode: MultipleValues
     outputs:
       print-output:
         type: CypherQuery
-        query: MATCH (n) WHERE id(n) = $that.data.id RETURN properties(n)
+        query: |-
+          MATCH (n)
+          WHERE id(n) = $that.data.id
+          RETURN properties(n)
         andThen:
           type: PrintToStandardOut
 ```
@@ -199,7 +210,7 @@ I saved the recipe elements that we created above into a file named @link:[wikip
 Launching Quine and the recipe.
 
 ```shell
-❯ java -jar quine-1.3.2.jar -r non-bot-revisions-mvp.yaml
+❯ java -jar quine-1.3.2.jar -r wikipedia-non-bot-revisions.yaml
 Graph is ready
 Running Recipe Wikipedia non-bot page update event stream
 Running Standing Query STANDING-1

@@ -78,6 +78,13 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   val compiled: cypher.CompiledQuery = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
   lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "ingest-query")
 
+  if (compiled.query.canContainAllNodeScan) {
+    // TODO this should be lifted to an (overrideable, see allowAllNodeScan in SQ outputs) API error
+    logger.warn(
+      "Cypher query may contain full node scan; re-write without possible full node scan, or pass allowAllNodeScan true. " +
+        s"The provided query was: ${compiled.queryText}"
+    )
+  }
   if (!compiled.query.isIdempotent) {
     // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
     logger.warn(
