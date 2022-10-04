@@ -10,7 +10,6 @@ If you have questions, just click the Slack icon in the upper right corner of th
 @@@index
 * @ref:[Code of Conduct](code-of-conduct.md)
 * @ref:[Contributing](contributing.md)
-* @ref:[Writing a Recipe](writing-a-recipe.md)
 @@@
 
 @@toc { depth=1 }

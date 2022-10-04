@@ -15,7 +15,6 @@ Want to get coding right away? Quine recipes provide useful examples to help get
 * @ref:[Querying 3D Data Tutorial](3d-data-ingest-sq.md)
 * @ref:[REST API](rest-api.md)
 * @ref:[Recipes](about-recipes.md)
-* @ref:[Writing a Recipe](../community/writing-a-recipe.md)
 * @ref:[Operational Considerations](operational-considerations.md)
 @@@
 

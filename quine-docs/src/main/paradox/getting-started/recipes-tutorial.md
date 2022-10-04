@@ -6,9 +6,9 @@ description: Getting Started - Quine Recipes
 
 In this article we will cover Quine recipes -- what are they for, their components, and how to use them to quickly iterate through the design-code-test portion of the development lifecycle.
 
-## What is a Quine recipe
+## What is a Quine Recipe
 
-A recipe is a `yaml` file that contains all of the query and exploration UI configuration objects necessary to begin processing streaming event data in Quine. Quine recipe components correspond directly to Quine's REST API elements, though the API accepts JSON rather than YAML. This means patterns and behaviors developed in a `dev` or `test` environment can be applied to the production environment with only slight modifications.
+A recipe is a `yaml` file that contains all of the query and exploration UI configuration objects necessary to begin processing streaming event data in Quine. Quine recipe components correspond directly to Quine's REST API elements, though the API accepts JSON rather than YAML. This means patterns and behaviors developed using the API in a `dev` or `test` environment can be applied to the production environment with only slight modifications.
 
 **A recipe allows you to:**
 
@@ -16,22 +16,11 @@ A recipe is a `yaml` file that contains all of the query and exploration UI conf
 2. Configure standing queries
 3. Configure the Quine Exploration UI for graph analysis
 
-## When to use a recipe
+Recipes are covered in detail inside the @ref:[recipe reference](../reference/recipe-ref-manual.md)
 
-Quine recipes enable you to quickly iterate in Quine and to share what you've built with others so they can reproduce, explore and expand upon a solution.
+## Differences Between Recipes and the REST API
 
-**Consider writing a recipe:**
-
-* When you are actively developing an event streaming solution
-* To preserve a solution whenever a development milestone is achieved
-* To configure the visual aspects of the Quine Exploration UI
-* To store `quick queries` and `sample queries` that aide in graph analysis
-* To share your solution with collaborators or the open source community
-* When interacting with Quine support
-
-## Operational differences between Recipes and the REST API
-
-Recipes package together Quine config, graph logic/structure, and exploration UI customizations that run automatically when Quine starts up. A recipe file defines the graph and exploration UI configuration, and infers a Quine configuration. There are a couple of operational differences that you need to keep in mind when launching Quine along with a recipe.
+There are a couple of operational differences that you need to keep in mind when launching Quine along with a recipe.
 
 * **API calls allow naming** - When you create an ingest stream or a standing query using the API, you choose the name for the object in the URL. The corresponding recipe object uses standardized names in the form of `INGEST-#` and `STANDING-#`.
 
