@@ -10,13 +10,13 @@ description: A standing query matches some graph structure incrementally while n
 
 @@@
 
-A -Standing Query- is a query that matches some graph structure incrementally while new data is written in. Standing queries report results when the full pattern has been found.
+A standing query is a query that matches some graph structure incrementally while new data is written in. Standing queries report results when the full pattern has been found.
 
-Seeing which Standing Queries are currently running, or adding/removing a Standing Query is all done through the REST API, by the endpoints under the "Standing Queries" section in the docs pages shipped with each instance of Quine.
+Seeing which standing queries are currently running, or adding/removing a standing query is all done through the REST API, by the endpoints under the "Standing Queries" section in the docs pages shipped with each instance of Quine.
 
 ## Syntax and Structure
 
-The first step to making a Standing Query is determining what the graph pattern is that you want to watch for. This pattern is expressed using a subset of the same Cypher language that is used for regular queries. The reasoning behind this is that the (unordered) set of positive matches, minus the set of negative matches (ie, cancellations) produced by a standing query over a period of time should be the same as the matches produced if the same Cypher query had been issued in a non-standing fashion after all data has been written in.
+The first step to making a standing query is determining what the graph pattern is that you want to watch for. This pattern is expressed using a subset of the same Cypher language that is used for regular queries. The reasoning behind this is that the (unordered) set of positive matches, minus the set of negative matches (ie, cancellations) produced by a standing query over a period of time should be the same as the matches produced if the same Cypher query had been issued in a non-standing fashion after all data has been written in.
 
 Standing queries have two parts: a "match" query and an "output". The "match" portion defines the structure of what we're looking for. The "output" defines an action to take for each result produced by the "match" query.
 
@@ -24,7 +24,7 @@ The "match" query describes a graph pattern that is matched incrementally on eve
 
 ### Match query
 
-The "match" portion of a Standing Query is a declarative graph pattern. This pattern is usually expressed using a subset of the Cypher query language. For example:
+The "match" portion of a standing query is a declarative graph pattern. This pattern is usually expressed using a subset of the Cypher query language. For example:
 
 ```cypher
 // Locate people with a maternal grandpa "Joe"
@@ -77,7 +77,7 @@ The following restrictions will also be lifted in the near future:
 
 ### Output action
 
-Once you've decided what graph structure to watch for, the second half of a Standing Query is deciding what to do with the results. This step can be initially skipped as Standing Query outputs can always be added even after the query is running, with the `/api/v1/query/standing/{name}/output` endpoint. The information that is produced for each result includes:
+Once you've decided what graph structure to watch for, the second half of a standing query is deciding what to do with the results. This step can be initially skipped as standing query outputs can always be added even after the query is running, with the `/api/v1/query/standing/{name}/output` endpoint. The information that is produced for each result includes:
 
  1. Query data returned from the "match" portion (e.g. the ID of the node). This is structured as an object whose keys are the names of the values returned (ex: `RETURN DISTINCT strId(n)` would have key `"strId(n)"` and `RETURN DISTINCT id(n) AS theId` would have key `"theId"`). The intuition is that each query data returned is analogous to a row returned from a regular Cypher query - the key names match what would normally be Cypher column names.
 
@@ -107,7 +107,7 @@ CREATE (:Person { name: "Peter" }),
        (:Person { name: "James" })
 ```
 
-Then, if we add a "friend" edge from "Peter" to "John", "Peter" will trigger a new Standing Query match.
+Then, if we add a "friend" edge from "Peter" to "John", "Peter" will trigger a new standing query match.
 
 ```cypher
 MATCH (peter:Person { name: "Peter" }), (john:Person { name: "John" })
@@ -123,7 +123,7 @@ CREATE (peter)-[:friend]->(james)
 
 @@@
 
-There are pre-built output adapters for at least the following (this list is continually growing—refer to the Standing Query section of the @ref:[REST API](../reference/rest-api.md) for an exhaustive list):
+There are pre-built output adapters for at least the following (this list is continually growing—refer to the standing query section of the @ref:[REST API](../reference/rest-api.md) for an exhaustive list):
 
   * publishing to a Kafka topic
   * publishing to an AWS Kinesis stream
@@ -132,15 +132,15 @@ There are pre-built output adapters for at least the following (this list is con
   * `POST`-ing results to an HTTP endpoint
   * executing another Cypher query
 
-The last of these options is particularly powerful, since it makes it possible to mutate the graph in a way that can trigger another Standing Query result into any other output adapter. This makes it possible to post-process results to collect more information from the graph or to filter out matches that don't meet some requirement.
+The last of these options is particularly powerful, since it makes it possible to mutate the graph in a way that can trigger another standing query result into any other output adapter. This makes it possible to post-process results to collect more information from the graph or to filter out matches that don't meet some requirement.
 
 #### Cypher Query as an Output
 
-The Cypher query output is defined in terms of a regular Cypher query that is run for each result produced by the Standing Query. <!--The results from the Standing Query are available under a Cypher query parameter—see the --ref [3D data tutorial]  ../../tutorials/3d-data-ingest-sq.md   for an end-to-end example of this. --> To make sure the query is correct and the desired results are matched, it is highly recommended that the output query be tested independently in the Exploration UI.
+The Cypher query output is defined in terms of a regular Cypher query that is run for each result produced by the standing query. <!--The results from the standing query are available under a Cypher query parameter—see the --ref [3D data tutorial]  ../../tutorials/3d-data-ingest-sq.md   for an end-to-end example of this. --> To make sure the query is correct and the desired results are matched, it is highly recommended that the output query be tested independently in the Exploration UI.
 
 ## Inspecting Running Queries
 
-Since Standing Queries use a subset of regular Cypher query syntax, the Standing Query itself can be run as a regular query either to see what data already in the graph would have been matched by the query or to understand why a particular node in the graph is not a match. When doing so, you should constrain the starting points of the query if there is already a large amount of data in the system (see @ref:[querying infinite data](../core-concepts/querying-infinite-data.md)).
+Since standing queries use a subset of regular Cypher query syntax, the standing query itself can be run as a regular query either to see what data already in the graph would have been matched by the query or to understand why a particular node in the graph is not a match. When doing so, you should constrain the starting points of the query if there is already a large amount of data in the system (see @ref:[querying infinite data](../core-concepts/querying-infinite-data.md)).
 
 In addition, there are a couple ways to "wiretap" results as they are being produced and inspect them live. These are meant primarily as debug mechanisms - not substitutes for outputs.
 
@@ -200,4 +200,4 @@ MATCH (person)<-[:has-mother|:has-father]-(child) WHERE id(person) = personId
 RETURN person.name, child.name, child.yearBorn
 ```
 
-Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the Standing Query and if that second query modifies the data—for instance, adding an edge connected to the node.
+Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the standing query and if that second query modifies the data—for instance, adding an edge connected to the node.
