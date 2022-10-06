@@ -1,3 +1,6 @@
+---
+description: Quine fits into a streaming event pipeline in between, or consuming from and writing back out to, streaming event processors like Kafka or Kinesis.
+---
 # Streaming Systems
 
 A streaming system processes events -- data -- that is **continuously generated**, often in **high volumes** and at **high velocity** in real time. A streaming event source typically consists of a continuous stream of timestamped logs that record events as they happen – such as a user logging in via an identity management system, or a web server logging page requests from an online application.

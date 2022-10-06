@@ -55,6 +55,9 @@
             <a href="/core-concepts/architecture.html" class="footer-link">Architecture</a>
           </li>
           <li class="footer-list-item">
+            <a href="https://docs.quine.io/core-concepts/streaming-systems.html" class="footer-link">Quine and Event Streams</a>
+          </li>
+          <li class="footer-list-item">
             <a href="/getting-started/standing-queries-tutorial.html" class="footer-link">Standing Query Tutorial</a>
           </li>
           <li class="footer-list-item">
@@ -81,6 +84,9 @@
             <h3 class="h3-footer"><strong>Recipes</strong></h3>
           </li>
           <li class="footer-list-item">
+            <a href="https://docs.quine.io/getting-started/recipes-tutorial.html" class="footer-link">Recipes Overview</a>
+          </li>
+          <li class="footer-list-item">
             <a href="https://quine.io/recipes/ethereum-tag-propagation" class="footer-link">Ethereum</a>
           </li>
           <li class="footer-list-item">
@@ -88,9 +94,6 @@
           </li>
           <li class="footer-list-item">
             <a href="https://quine.io/recipes/apache-log-analytics" class="footer-link">Apache Log Analytics</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="/community/writing-a-recipe.html" class="footer-link">Writing a Recipe</a>
           </li>
         </ul>
         <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec4f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
@@ -101,7 +104,7 @@
             <a href="https://github.com/thatdot/quine" target="_blank" class="footer-link">GitHub</a>
           </li>
           <li class="footer-list-item">
-            <a data-ctegory="Slack Signup" data-action="Link click" data-label="quine slack footer" href="https://quine-io.slack.com/join/shared_invite/zt-171x7z72f-a6Zqhrot3C7cwsR3xi5suA#/shared-invite/email" target="_blank" class="footer-link">Slack</a>
+            <a data-ctegory="Slack Signup" data-action="Link click" data-label="quine slack footer" href="https://that.re/quine-slack" target="_blank" class="footer-link">Slack</a>
           </li>
           <li class="footer-list-item">
             <a href="https://quine.io/code-of-conduct" class="footer-link">Code of Conduct</a>
