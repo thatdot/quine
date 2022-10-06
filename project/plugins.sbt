@@ -18,4 +18,4 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-git" % "1.0.2")
 addSbtPlugin("com.github.sbt" % "sbt-proguard" % "0.5.0")
 addSbtPlugin("io.spray" % "sbt-revolver" % "0.9.1")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.3")
-libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.281"
+libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.285"
