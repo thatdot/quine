@@ -4,8 +4,8 @@ import scala.collection.BuildFrom
 import scala.language.higherKinds
 
 object CompatBuildFrom {
-  /**
-    * Can be used in place of `implicitly` when the implicit type is a BuildFrom to assist in typechecking
+
+  /** Can be used in place of `implicitly` when the implicit type is a BuildFrom to assist in typechecking
     *
     * @example Future.sequence(myFutures)(implicitlyBF, ExecutionContexts.global)
     */

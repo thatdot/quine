@@ -6,7 +6,7 @@ import scalajsbundler.sbtplugin.ScalaJSBundlerPlugin.autoImport._
 object QuineSettings {
 
   val scalaV212 = "2.12.16"
-  val scalaV213 = "2.13.8"
+  val scalaV213 = "2.13.9"
   val `scala 2.12 to 2.13`: Seq[Setting[_]] = Seq(
     scalaVersion := scalaV212,
     crossScalaVersions := Seq(scalaV212, scalaV213)
