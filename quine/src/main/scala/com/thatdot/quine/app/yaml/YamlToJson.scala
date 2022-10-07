@@ -9,6 +9,7 @@ import org.yaml.snakeyaml.nodes._
 import upickle.core.{ArrVisitor, ObjVisitor, Visitor}
 
 private class FlatteningConstructor extends SafeConstructor(new LoaderOptions) {
+
   def flatten(node: MappingNode): MappingNode = {
     flattenMapping(node)
     node
