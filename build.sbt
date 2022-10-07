@@ -94,7 +94,8 @@ lazy val `quine-cassandra-persistor`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV,
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
+      "net.jcip" % "jcip-annotations" % "1.0",
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
     )
   )
@@ -245,6 +246,9 @@ lazy val `quine`: Project = project
       "org.endpoints4s" %% "algebra-json-schema" % endpoints4sDefaultV,
       "org.endpoints4s" %% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
+      "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
+      // for the akka-streams integration
+      "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
       // WebJars (javascript dependencies masquerading as JARs)
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.npm" % "vis-network" % visNetworkV,

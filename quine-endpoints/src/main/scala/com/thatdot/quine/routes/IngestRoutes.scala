@@ -253,6 +253,20 @@ object KinesisIngest {
     final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
   }
 }
+@title("Pulsar Ingest Stream")
+@unnamed
+@docs("A stream of data being ingested from Pulsar.")
+final case class PulsarIngest(
+  @docs("format used to decode each Pulsar record")
+  format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
+  @docs("name of the Pulsar topic from which to ingest") topics: Seq[String],
+  @docs("Pulsar service url") pulsarUrl: String,
+  @docs("subscription key") subscriptionName: String,
+  @docs("Pulsar subscription type") subscriptionType: PulsarSubscriptionType,
+  @docs("maximum number of records to write simultaneously")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+) extends IngestStreamConfiguration
 
 @title("Kinesis Ingest Stream")
 @unnamed
@@ -541,6 +555,15 @@ object FileIngestMode {
   val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
 }
 
+sealed trait PulsarSubscriptionType {}
+object PulsarSubscriptionType {
+  case object Exclusive extends PulsarSubscriptionType
+  case object Shared extends PulsarSubscriptionType
+  case object Failover extends PulsarSubscriptionType
+  case object KeyShared extends PulsarSubscriptionType
+  val values: Seq[PulsarSubscriptionType] = Seq(Exclusive, Shared, Failover, KeyShared)
+}
+
 sealed trait CsvCharacter { def char: Byte }
 object CsvCharacter {
   case object Backslash extends CsvCharacter { def char: Byte = '\\' }
@@ -606,6 +629,9 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
   )
   val exampleIngestStreamInfoWithName: IngestStreamInfoWithName =
     exampleIngestStreamInfo.withName("log1-entity-ingest-source")
+
+  implicit lazy val pulsarSubscriptTypeSchema: JsonSchema[PulsarSubscriptionType] =
+    stringEnumeration(PulsarSubscriptionType.values)(_.toString)
 
   implicit lazy val kafkaSubscriptionSchema: JsonSchema[Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments]] =
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)

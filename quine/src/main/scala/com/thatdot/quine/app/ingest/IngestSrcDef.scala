@@ -27,7 +27,7 @@ import com.thatdot.quine.graph.cypher.{Value => CypherValue}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
-/** Definition of an ingestor that performs the actions
+/** Definition of an ingest that performs the actions
   *    sourceWithShutdown -> throttle -> writeToGraph -> ack
   *    @see [[stream]]
   *
@@ -41,7 +41,7 @@ import com.thatdot.quine.util.StringInput.filenameOrUrl
   * defining metering, since that requires access to the original values.
   *
   * [[RawValuesIngestSrcDef]] builds from source of raw values: Source[InputType, NotUsed].
-  * That is, defined by a stream of uninterpreted inputs. The RawValues ingestor
+  * That is, defined by a stream of uninterpreted inputs. The RawValues ingest
   * is responsible for defining how results will be deserialized from raw bytes.
   */
 abstract class IngestSrcDef(
@@ -252,6 +252,25 @@ object IngestSrcDef extends LazyLogging {
         iteratorType,
         numRetries,
         maxPerSecond
+      )
+    case PulsarIngest(
+          format,
+          topics,
+          serviceUrl,
+          subscriptionName,
+          subscriptionType,
+          parallelism,
+          maximumPerSecond
+        ) =>
+      PulsarSrcDef(
+        serviceUrl,
+        topics,
+        subscriptionName,
+        subscriptionType,
+        importFormatFor(format),
+        initialSwitchMode,
+        parallelism,
+        maximumPerSecond
       )
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond) =>

@@ -216,6 +216,12 @@ object Recipe {
               maximumPerSecond
             )
           )
+
+        case PulsarIngest(format, topic, url, subscriptionName, subscriptionType, parallelism, maximumPerSecond) =>
+          (url.subs).map(
+            PulsarIngest(format, topic, _, subscriptionName, subscriptionType, parallelism, maximumPerSecond)
+          )
+
         case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond) =>
           (
             url.subs

@@ -27,10 +27,14 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard
+    case PathList("META-INF", "native-image", "io.netty", "codec-http", "native-image.properties") =>
+      MergeStrategy.discard
+    case "findbugsExclude.xml" => MergeStrategy.discard
     case "JS_DEPENDENCIES" => MergeStrategy.discard
     // See https://github.com/akka/akka/issues/29456
     case PathList("google", "protobuf", file) if file.split('.').last == "proto" => MergeStrategy.first
     case PathList("google", "protobuf", "compiler", "plugin.proto") => MergeStrategy.first
+    case PathList("org", "apache", "avro", "reflect", _) => MergeStrategy.first
     case other => MergeStrategy.defaultMergeStrategy(other)
   }
 

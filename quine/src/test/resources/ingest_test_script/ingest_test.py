@@ -10,6 +10,7 @@ from termcolor import colored
 import logging
 import boto3
 import time
+import pulsar
 
 logging.basicConfig(level=logging.INFO)
 
@@ -139,7 +140,7 @@ class KafkaConfig(TestConfig):
         self.topic = topic
         self.kafka_url = kafka_url
         self.commit = commit
-        
+
     def recipe(self):
         return {"name": self.name,
                 "type": "KafkaIngest",
@@ -158,6 +159,32 @@ class KafkaConfig(TestConfig):
                 logging.debug(f"writing to {self.topic} [{message}]")
                 producer.produce(message.encode("utf-8"))
 
+class PulsarConfig(TestConfig):
+    def __init__(self, count:int, quine_url: str, topic:str, pulsar_url:str, subscription_name:str):
+        super().__init__(count, quine_url)
+        self.topic = topic
+        self.pulsar_url=pulsar_url
+        self.subscription_name=subscription_name
+
+    def recipe(self):
+        return {"name":self.name,
+                "type": "PulsarIngest",
+                "format": {"query": "CREATE ($that)", "type": "CypherJson"},
+                "topics": [self.topic],
+                "pulsarUrl":self.pulsar_url,
+                "subscriptionName": self.subscription_name,
+                "subscriptionType":"Shared"}
+
+    def write_values(self, values: List):
+        client = pulsar.Client(self.pulsar_url)
+        producer = client.create_producer(self.topic)
+
+        for value in self.generate_values():
+            message = json.dumps(value)
+            logging.debug(f"writing to {self.topic} [{message}]")
+            producer.send(message.encode("utf-8"))
+
+        client.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -191,18 +218,25 @@ if __name__ == "__main__":
     sqs_parser.add_argument("-r", "--region", help="aws region", default="us-east-1")
     sqs_parser.add_argument("-k", "--key", help="aws key", required=True)
     sqs_parser.add_argument("-s", "--secret", help="aws secret", required=True)
+    #
+    # pulsar args
+    #
+    pulsar_parser = subparsers.add_parser("pulsar")
+    pulsar_parser.add_argument("-t", "--topic", help="pulsar topic(s) to consumer from", default="test_topic")
+    pulsar_parser.add_argument("-u", "--pulsar_url", help="pulsar service url", default="pulsar://localhost:6650")
+    pulsar_parser.add_argument("-n", "--subscription_name", help="subscription name", default="my_subscription")
+
+
     args = parser.parse_args()
 
     if args.type == "kafka":
         config = KafkaConfig(args.count, args.quine_url, args.topic, args.kafka_url, args.commit)
-        config.run_test()
     elif args.type == "kinesis":
         config = KinesisConfig(args.count, args.quine_url, args.name,
                                {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "sqs":
         config = SQSConfig(args.count, args.quine_url, args.queue_url,
                                {"region": args.region, "key": args.key, "secret": args.secret})
-        config.run_test(sleep_time_ms=1000)
-
-        # ╰─$ ./kafka-populate.py foo --count 42
-        # Namespace(global=None, subparser_name='foo', count='42')
+    elif args.type == "pulsar":
+        config = PulsarConfig(args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name)
+    config.run_test(sleep_time_ms=1000)

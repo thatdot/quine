@@ -100,7 +100,6 @@ case class CsvIngestSrcDef(
       // is only used in errors and this is a success response,
       // it's not necessary to populate it.
       .map((t: Value) => (Success(t), ByteString.empty))
-
 }
 
 case class StringIngestSrcDef(
