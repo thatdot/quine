@@ -7,6 +7,7 @@ import scala.util.Using
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
+import org.snakeyaml.engine.v2.api.LoadSettings
 
 import com.thatdot.quine.testutil.UJsonGenerators
 
@@ -32,7 +33,7 @@ class YamlJsonConversionTest
 
   "uJson ASTs" should "be round-trippable through YAML" in {
     forAll { (inputJson: ujson.Value) =>
-      val yamlJson = new YamlJson
+      val yamlJson = new YamlJson(LoadSettings.builder.build)
       val yaml = inputJson.transform(yamlJson)
       val transformedJson = yamlJson.transform(yaml, ujson.Value)
       transformedJson shouldBe inputJson

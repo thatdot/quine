@@ -261,7 +261,7 @@ lazy val `quine`: Project = project
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
       "com.github.scopt" %% "scopt" % scoptV,
-      "org.yaml" % "snakeyaml" % snakeYamlV,
+      "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,
       "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
     )
   )
