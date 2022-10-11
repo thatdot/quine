@@ -2,13 +2,13 @@ package com.thatdot.quine.graph.standing
 
 import org.scalatest.funsuite.AnyFunSuite
 
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 
 class LocalIdStateTest extends AnyFunSuite {
 
   test("local id state") {
 
-    val query = StandingQuery.LocalId(
+    val query = MultipleValuesStandingQuery.LocalId(
       aliasedAs = Symbol("idValue"),
       formatAsString = false
     )
@@ -27,7 +27,7 @@ class LocalIdStateTest extends AnyFunSuite {
 
   test("local id state (formatting result as string)") {
 
-    val query = StandingQuery.LocalId(
+    val query = MultipleValuesStandingQuery.LocalId(
       aliasedAs = Symbol("idValue"),
       formatAsString = true
     )

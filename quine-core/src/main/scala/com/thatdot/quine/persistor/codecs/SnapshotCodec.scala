@@ -46,7 +46,7 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
           (
             (
               node,
-              DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription(
+              DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
                 notifiables,
                 lastNotification,
                 relatedQueries
@@ -157,7 +157,7 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
     val subscribersToThisNode = {
       val builder = mutable.Map.empty[
         DomainGraphNodeId,
-        DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription
+        DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
       ]
       var i: Int = 0
       val subscribersLength = snapshot.subscribersLength
@@ -204,7 +204,7 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
           k += 1
         }
 
-        builder += dgnId -> DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription(
+        builder += dgnId -> DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
           notifiables.toSet,
           lastNotification,
           relatedQueries.toSet

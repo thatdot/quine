@@ -5,6 +5,7 @@ import java.util.regex.Pattern
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{
   GraphQueryPattern,
   PatternOrigin,
@@ -463,9 +464,9 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
 
   private[this] def writeSqV4StandingQuery(
     builder: FlatBufferBuilder,
-    cypherQuery: StandingQueryPattern.SqV4
+    cypherQuery: StandingQueryPattern.MultipleValuesQueryPattern
   ): Offset = {
-    val TypeAndOffset(queryTyp, queryOff) = writeCypherStandingQuery(builder, cypherQuery.compiledQuery)
+    val TypeAndOffset(queryTyp, queryOff) = writeMultipleValuesStandingQuery(builder, cypherQuery.compiledQuery)
     val TypeAndOffset(originTyp, originOff) = writeSqV4Origin(builder, cypherQuery.origin)
     persistence.SqV4Query.createSqV4Query(
       builder,
@@ -479,10 +480,10 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
 
   private[this] def readSqV4StandingQuery(
     cypherQuery: persistence.SqV4Query
-  ): StandingQueryPattern.SqV4 = {
-    val query: cypher.StandingQuery = readCypherStandingQuery(cypherQuery.queryType, cypherQuery.query)
+  ): StandingQueryPattern.MultipleValuesQueryPattern = {
+    val query: MultipleValuesStandingQuery = readMultipleValuesStandingQuery(cypherQuery.queryType, cypherQuery.query)
     val origin: PatternOrigin.SqV4Origin = readSqV4Origin(cypherQuery.originType, cypherQuery.origin)
-    StandingQueryPattern.SqV4(query, cypherQuery.includeCancellation, origin)
+    StandingQueryPattern.MultipleValuesQueryPattern(query, cypherQuery.includeCancellation, origin)
   }
 
   private[this] def writeDomainGraphNodeStandingQueryPattern(
@@ -524,7 +525,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
         val offset: Offset = writeDomainGraphNodeStandingQueryPattern(builder, dgnPattern)
         TypeAndOffset(persistence.StandingQueryPattern.BranchQuery, offset)
 
-      case cypher: StandingQueryPattern.SqV4 =>
+      case cypher: StandingQueryPattern.MultipleValuesQueryPattern =>
         val offset: Offset = writeSqV4StandingQuery(builder, cypher)
         TypeAndOffset(persistence.StandingQueryPattern.SqV4Query, offset)
     }

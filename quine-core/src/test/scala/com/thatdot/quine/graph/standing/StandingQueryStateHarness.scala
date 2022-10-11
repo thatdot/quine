@@ -4,9 +4,13 @@ import scala.collection.mutable
 
 import org.scalactic.source.Position
 
-import com.thatdot.quine.graph.cypher.{QueryContext, StandingQuery, StandingQueryEffects}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CancelCypherResult, NewCypherResult, ResultId}
-import com.thatdot.quine.graph.{NodeChangeEvent, QuineIdLongProvider, StandingQueryPartId}
+import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryEffects, QueryContext}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  CancelMultipleValuesResult,
+  NewMultipleValuesResult,
+  ResultId
+}
+import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, QuineIdLongProvider}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 
 /** Mocked up handler of standing query effects - instead of actually doing anything with the
@@ -19,22 +23,22 @@ import com.thatdot.quine.model.{QuineId, QuineIdProvider}
   * @param node ID of the fake node on which this is running
   * @param idProvider ID provider
   */
-final case class StandingQueryEffectsTester(
-  subscriptionsCreated: mutable.Queue[(QuineId, StandingQuery)],
-  subscriptionsCancelled: mutable.Queue[(QuineId, StandingQueryPartId)],
+final case class MultipleValuesStandingQueryEffectsTester(
+  subscriptionsCreated: mutable.Queue[(QuineId, MultipleValuesStandingQuery)],
+  subscriptionsCancelled: mutable.Queue[(QuineId, MultipleValuesStandingQueryPartId)],
   resultsReported: mutable.Queue[(ResultId, QueryContext)],
   resultsCancelled: mutable.Queue[ResultId],
   node: QuineId,
   idProvider: QuineIdProvider,
-  knownQueries: mutable.Map[StandingQueryPartId, StandingQuery]
-) extends StandingQueryEffects {
+  knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]
+) extends MultipleValuesStandingQueryEffects {
 
-  def createSubscription(onNode: QuineId, query: StandingQuery): Unit = {
+  def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
     knownQueries += query.id -> query
     subscriptionsCreated.enqueue(onNode -> query)
   }
 
-  def cancelSubscription(onNode: QuineId, queryId: StandingQueryPartId): Unit =
+  def cancelSubscription(onNode: QuineId, queryId: MultipleValuesStandingQueryPartId): Unit =
     subscriptionsCancelled.enqueue(onNode -> queryId)
 
   def reportNewResult(resultId: ResultId, result: QueryContext): Unit =
@@ -47,9 +51,11 @@ final case class StandingQueryEffectsTester(
     subscriptionsCreated.isEmpty && subscriptionsCancelled.isEmpty &&
     resultsReported.isEmpty && resultsCancelled.isEmpty
 
-  def lookupQuery(queryPartId: StandingQueryPartId): StandingQuery = knownQueries(queryPartId)
+  def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = knownQueries(
+    queryPartId
+  )
 }
-object StandingQueryEffectsTester {
+object MultipleValuesStandingQueryEffectsTester {
 
   /** Create an empty effects tester
     *
@@ -57,11 +63,11 @@ object StandingQueryEffectsTester {
     * @return empty effects tester
     */
   def empty(
-    query: StandingQuery,
-    initiallyKnownQueries: Seq[StandingQuery] = Seq.empty,
+    query: MultipleValuesStandingQuery,
+    initiallyKnownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty,
     idProvider: QuineIdProvider = QuineIdLongProvider()
-  ): StandingQueryEffectsTester =
-    new StandingQueryEffectsTester(
+  ): MultipleValuesStandingQueryEffectsTester =
+    new MultipleValuesStandingQueryEffectsTester(
       mutable.Queue.empty,
       mutable.Queue.empty,
       mutable.Queue.empty,
@@ -78,23 +84,24 @@ object StandingQueryEffectsTester {
   * @param query the query being checked
   * @param effects how effects are mocked up
   */
-class StandingQueryStateWrapper[S <: StandingQuery](
+class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   final val query: S,
-  final val knownQueries: Seq[StandingQuery] = Seq.empty
+  final val knownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty
 ) {
   final val sqState: query.State = query.createState()
-  final val effects: StandingQueryEffectsTester = StandingQueryEffectsTester.empty(query, knownQueries)
+  final val effects: MultipleValuesStandingQueryEffectsTester =
+    MultipleValuesStandingQueryEffectsTester.empty(query, knownQueries)
 
   def testInvariants()(implicit pos: Position): Unit = ()
 
-  def initialize[A]()(thenCheck: StandingQueryEffectsTester => A)(implicit pos: Position): A = {
+  def initialize[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
     sqState.preStart(effects)
     sqState.onInitialize(effects)
     testInvariants()
     thenCheck(effects)
   }
 
-  def shutdown[A]()(thenCheck: StandingQueryEffectsTester => A)(implicit pos: Position): A = {
+  def shutdown[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
     sqState.onShutdown(effects)
     thenCheck(effects)
   }
@@ -107,7 +114,7 @@ class StandingQueryStateWrapper[S <: StandingQuery](
     * @return output of the check
     */
   def reportNodeEvents[A](events: Seq[NodeChangeEvent], shouldHaveEffects: Boolean)(
-    thenCheck: StandingQueryEffectsTester => A
+    thenCheck: MultipleValuesStandingQueryEffectsTester => A
   )(implicit pos: Position): A = {
     val hadEffects = sqState.onNodeEvents(events, effects)
     assert(
@@ -125,8 +132,8 @@ class StandingQueryStateWrapper[S <: StandingQuery](
     * @param thenCheck after processing the subscription, check something about the state
     * @return output of the check
     */
-  def reportNewSubscriptionResult[A](result: NewCypherResult, shouldHaveEffects: Boolean)(
-    thenCheck: StandingQueryEffectsTester => A
+  def reportNewSubscriptionResult[A](result: NewMultipleValuesResult, shouldHaveEffects: Boolean)(
+    thenCheck: MultipleValuesStandingQueryEffectsTester => A
   )(implicit pos: Position): A = {
     val hadEffects = sqState.onNewSubscriptionResult(result, effects)
     assert(
@@ -144,8 +151,8 @@ class StandingQueryStateWrapper[S <: StandingQuery](
     * @param thenCheck after processing the subscription, check something about the state
     * @return output of the check
     */
-  def reportCancelledSubscriptionResult[A](result: CancelCypherResult, shouldHaveEffects: Boolean)(
-    thenCheck: StandingQueryEffectsTester => A
+  def reportCancelledSubscriptionResult[A](result: CancelMultipleValuesResult, shouldHaveEffects: Boolean)(
+    thenCheck: MultipleValuesStandingQueryEffectsTester => A
   )(implicit pos: Position): A = {
     val hadEffects = sqState.onCancelledSubscriptionResult(result, effects)
     assert(

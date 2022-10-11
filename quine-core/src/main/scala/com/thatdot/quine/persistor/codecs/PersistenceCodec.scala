@@ -7,6 +7,7 @@ import scala.collection.compat.immutable._
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{cypher, _}
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistence
@@ -1305,15 +1306,20 @@ trait PersistenceCodec[T] extends LazyLogging {
         throw new InvalidUnionType(other, persistence.CypherValue.names)
     }
 
-  protected[this] def writeStandingQueryPartId(builder: FlatBufferBuilder, sqId: StandingQueryPartId): Offset =
-    persistence.StandingQueryPartId.createStandingQueryPartId(
+  protected[this] def writeMultipleValuesStandingQueryPartId(
+    builder: FlatBufferBuilder,
+    sqId: MultipleValuesStandingQueryPartId
+  ): Offset =
+    persistence.MultipleValuesStandingQueryPartId.createMultipleValuesStandingQueryPartId(
       builder,
       sqId.uuid.getLeastSignificantBits,
       sqId.uuid.getMostSignificantBits
     )
 
-  protected[this] def readStandingQueryPartId(sqId: persistence.StandingQueryPartId): StandingQueryPartId =
-    StandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
+  protected[this] def readMultipleValuesStandingQueryPartId(
+    sqId: persistence.MultipleValuesStandingQueryPartId
+  ): MultipleValuesStandingQueryPartId =
+    MultipleValuesStandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
 
   protected[this] def writeStandingQueryId(builder: FlatBufferBuilder, sqId: StandingQueryId): Offset =
     persistence.StandingQueryId.createStandingQueryId(
@@ -1325,36 +1331,36 @@ trait PersistenceCodec[T] extends LazyLogging {
   protected[this] def readStandingQueryId(sqId: persistence.StandingQueryId): StandingQueryId =
     StandingQueryId(new UUID(sqId.highBytes, sqId.lowBytes))
 
-  private[this] def writeCypherCrossStandingQuery(
+  private[this] def writeMultipleValuesCrossStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.Cross
+    query: MultipleValuesStandingQuery.Cross
   ): Offset = {
     val queriesTyps: Array[Byte] = new Array[Byte](query.queries.length)
     val queriesOffs: Array[Offset] = new Array[Offset](query.queries.length)
     for ((subQuery, i) <- query.queries.zipWithIndex) {
-      val TypeAndOffset(subQueryTyp, subQueryOff) = writeCypherStandingQuery(builder, subQuery)
+      val TypeAndOffset(subQueryTyp, subQueryOff) = writeMultipleValuesStandingQuery(builder, subQuery)
       queriesTyps(i) = subQueryTyp
       queriesOffs(i) = subQueryOff
     }
-    persistence.CypherCrossStandingQuery.createCypherCrossStandingQuery(
+    persistence.MultipleValuesCrossStandingQuery.createMultipleValuesCrossStandingQuery(
       builder,
-      persistence.CypherCrossStandingQuery.createQueriesTypeVector(builder, queriesTyps),
-      persistence.CypherCrossStandingQuery.createQueriesVector(builder, queriesOffs),
+      persistence.MultipleValuesCrossStandingQuery.createQueriesTypeVector(builder, queriesTyps),
+      persistence.MultipleValuesCrossStandingQuery.createQueriesVector(builder, queriesOffs),
       query.emitSubscriptionsLazily
     )
   }
 
-  private[this] def readCypherCrossStandingQuery(
-    query: persistence.CypherCrossStandingQuery
-  ): cypher.StandingQuery.Cross = {
+  private[this] def readMultipleValuesCrossStandingQuery(
+    query: persistence.MultipleValuesCrossStandingQuery
+  ): MultipleValuesStandingQuery.Cross = {
     var i = 0
     val queriesLength = query.queriesLength
-    val queries: Array[cypher.StandingQuery] = new Array[cypher.StandingQuery](queriesLength)
+    val queries: Array[MultipleValuesStandingQuery] = new Array[MultipleValuesStandingQuery](queriesLength)
     while (i < queriesLength) {
-      queries(i) = readCypherStandingQuery(query.queriesType(i), query.queries(_, i))
+      queries(i) = readMultipleValuesStandingQuery(query.queriesType(i), query.queries(_, i))
       i += 1
     }
-    cypher.StandingQuery.Cross(
+    MultipleValuesStandingQuery.Cross(
       ArraySeq.unsafeWrapArray(queries),
       query.emitSubscriptionsLazily
     )
@@ -1362,10 +1368,10 @@ trait PersistenceCodec[T] extends LazyLogging {
 
   private[this] def writeCypherValueConstraint(
     builder: FlatBufferBuilder,
-    constraint: cypher.StandingQuery.LocalProperty.ValueConstraint
+    constraint: MultipleValuesStandingQuery.LocalProperty.ValueConstraint
   ): TypeAndOffset =
     constraint match {
-      case cypher.StandingQuery.LocalProperty.Equal(value) =>
+      case MultipleValuesStandingQuery.LocalProperty.Equal(value) =>
         val TypeAndOffset(compareToTyp, compareToOff) = writeCypherValue(builder, value)
         val off = persistence.CypherValueConstraintEqual.createCypherValueConstraintEqual(
           builder,
@@ -1374,7 +1380,7 @@ trait PersistenceCodec[T] extends LazyLogging {
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintEqual, off)
 
-      case cypher.StandingQuery.LocalProperty.NotEqual(value) =>
+      case MultipleValuesStandingQuery.LocalProperty.NotEqual(value) =>
         val TypeAndOffset(compareToTyp, compareToOff) = writeCypherValue(builder, value)
         val off = persistence.CypherValueConstraintNotEqual.createCypherValueConstraintNotEqual(
           builder,
@@ -1383,13 +1389,13 @@ trait PersistenceCodec[T] extends LazyLogging {
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintNotEqual, off)
 
-      case cypher.StandingQuery.LocalProperty.Any =>
+      case MultipleValuesStandingQuery.LocalProperty.Any =>
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintAny, emptyTable(builder))
 
-      case cypher.StandingQuery.LocalProperty.None =>
+      case MultipleValuesStandingQuery.LocalProperty.None =>
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintNone, emptyTable(builder))
 
-      case cypher.StandingQuery.LocalProperty.Regex(pattern) =>
+      case MultipleValuesStandingQuery.LocalProperty.Regex(pattern) =>
         val patternOff = builder.createString(pattern)
         val off = persistence.CypherValueConstraintRegex.createCypherValueConstraintRegex(
           builder,
@@ -1397,7 +1403,7 @@ trait PersistenceCodec[T] extends LazyLogging {
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintRegex, off)
 
-      case cypher.StandingQuery.LocalProperty.ListContains(values) =>
+      case MultipleValuesStandingQuery.LocalProperty.ListContains(values) =>
         val valuesTyps: Array[Byte] = new Array[Byte](values.size)
         val valuesOffs: Array[Offset] = new Array[Offset](values.size)
         for ((value, i) <- values.zipWithIndex) {
@@ -1416,31 +1422,31 @@ trait PersistenceCodec[T] extends LazyLogging {
   private[this] def readCypherValueConstraint(
     typ: Byte,
     makeValueConstraint: Table => Table
-  ): cypher.StandingQuery.LocalProperty.ValueConstraint =
+  ): MultipleValuesStandingQuery.LocalProperty.ValueConstraint =
     typ match {
       case persistence.CypherValueConstraint.CypherValueConstraintEqual =>
         val cons = makeValueConstraint(new persistence.CypherValueConstraintEqual())
           .asInstanceOf[persistence.CypherValueConstraintEqual]
         val value = readCypherValue(cons.compareToType, cons.compareTo(_))
-        cypher.StandingQuery.LocalProperty.Equal(value)
+        MultipleValuesStandingQuery.LocalProperty.Equal(value)
 
       case persistence.CypherValueConstraint.CypherValueConstraintNotEqual =>
         val cons = makeValueConstraint(new persistence.CypherValueConstraintNotEqual())
           .asInstanceOf[persistence.CypherValueConstraintNotEqual]
         val value = readCypherValue(cons.compareToType, cons.compareTo(_))
-        cypher.StandingQuery.LocalProperty.NotEqual(value)
+        MultipleValuesStandingQuery.LocalProperty.NotEqual(value)
 
       case persistence.CypherValueConstraint.CypherValueConstraintAny =>
-        cypher.StandingQuery.LocalProperty.Any
+        MultipleValuesStandingQuery.LocalProperty.Any
 
       case persistence.CypherValueConstraint.CypherValueConstraintNone =>
-        cypher.StandingQuery.LocalProperty.None
+        MultipleValuesStandingQuery.LocalProperty.None
 
       case persistence.CypherValueConstraint.CypherValueConstraintRegex =>
         val cons = makeValueConstraint(new persistence.CypherValueConstraintRegex())
           .asInstanceOf[persistence.CypherValueConstraintRegex]
         val pattern = cons.pattern
-        cypher.StandingQuery.LocalProperty.Regex(pattern)
+        MultipleValuesStandingQuery.LocalProperty.Regex(pattern)
 
       case persistence.CypherValueConstraint.CypherValueConstraintListContains =>
         val cons = makeValueConstraint(new persistence.CypherValueConstraintListContains())
@@ -1455,15 +1461,15 @@ trait PersistenceCodec[T] extends LazyLogging {
           }
           builder.result()
         }
-        cypher.StandingQuery.LocalProperty.ListContains(values)
+        MultipleValuesStandingQuery.LocalProperty.ListContains(values)
 
       case other =>
         throw new InvalidUnionType(other, persistence.CypherValueConstraint.names)
     }
 
-  private[this] def writeCypherLocalPropertyStandingQuery(
+  private[this] def writeMultipleValuesLocalPropertyStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.LocalProperty
+    query: MultipleValuesStandingQuery.LocalProperty
   ): Offset = {
     val propertyKeyOff: Offset = builder.createString(query.propKey.name)
     val TypeAndOffset(consTyp, consOff) = writeCypherValueConstraint(builder, query.propConstraint)
@@ -1471,7 +1477,7 @@ trait PersistenceCodec[T] extends LazyLogging {
       case None => NoOffset
       case Some(an) => builder.createString(an.name)
     }
-    persistence.CypherLocalPropertyStandingQuery.createCypherLocalPropertyStandingQuery(
+    persistence.MultipleValuesLocalPropertyStandingQuery.createMultipleValuesLocalPropertyStandingQuery(
       builder,
       propertyKeyOff,
       consTyp,
@@ -1480,35 +1486,35 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
   }
 
-  private[this] def readCypherLocalPropertyStandingQuery(
-    query: persistence.CypherLocalPropertyStandingQuery
-  ): cypher.StandingQuery.LocalProperty = {
+  private[this] def readMultipleValuesLocalPropertyStandingQuery(
+    query: persistence.MultipleValuesLocalPropertyStandingQuery
+  ): MultipleValuesStandingQuery.LocalProperty = {
     val propertyKey = Symbol(query.propertyKey)
     val propertyConstraint = readCypherValueConstraint(query.propertyConstraintType, query.propertyConstraint(_))
     val aliasedAs = Option(query.aliasedAs).map(Symbol.apply)
-    cypher.StandingQuery.LocalProperty(propertyKey, propertyConstraint, aliasedAs)
+    MultipleValuesStandingQuery.LocalProperty(propertyKey, propertyConstraint, aliasedAs)
   }
 
-  private[this] def readCypherLocalIdStandingQuery(
-    query: persistence.CypherLocalIdStandingQuery
-  ): cypher.StandingQuery.LocalId =
-    cypher.StandingQuery.LocalId(Symbol(query.aliasedAs), query.formatAsString)
+  private[this] def readMultipleValuesLocalIdStandingQuery(
+    query: persistence.MultipleValuesLocalIdStandingQuery
+  ): MultipleValuesStandingQuery.LocalId =
+    MultipleValuesStandingQuery.LocalId(Symbol(query.aliasedAs), query.formatAsString)
 
-  private[this] def writeCypherLocalIdStandingQuery(
+  private[this] def writeMultipleValuesLocalIdStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.LocalId
+    query: MultipleValuesStandingQuery.LocalId
   ): Offset = {
     val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
-    persistence.CypherLocalIdStandingQuery.createCypherLocalIdStandingQuery(
+    persistence.MultipleValuesLocalIdStandingQuery.createMultipleValuesLocalIdStandingQuery(
       builder,
       aliasedAsOff,
       query.formatAsString
     )
   }
 
-  private[this] def writeCypherSubscribeAcrossEdgeStandingQuery(
+  private[this] def writeMultipleValuesSubscribeAcrossEdgeStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.SubscribeAcrossEdge
+    query: MultipleValuesStandingQuery.SubscribeAcrossEdge
   ): Offset = {
     val edgeNameOff: Offset = query.edgeName match {
       case None => NoOffset
@@ -1526,8 +1532,8 @@ trait PersistenceCodec[T] extends LazyLogging {
           }
         )
     }
-    val TypeAndOffset(andThenTyp, andThenOff) = writeCypherStandingQuery(builder, query.andThen)
-    persistence.CypherSubscribeAcrossEdgeStandingQuery.createCypherSubscribeAcrossEdgeStandingQuery(
+    val TypeAndOffset(andThenTyp, andThenOff) = writeMultipleValuesStandingQuery(builder, query.andThen)
+    persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery.createMultipleValuesSubscribeAcrossEdgeStandingQuery(
       builder,
       edgeNameOff,
       edgeDirOff,
@@ -1536,9 +1542,9 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
   }
 
-  private[this] def readCypherSubscribeAcrossEdgeStandingQuery(
-    query: persistence.CypherSubscribeAcrossEdgeStandingQuery
-  ): cypher.StandingQuery.SubscribeAcrossEdge = {
+  private[this] def readMultipleValuesSubscribeAcrossEdgeStandingQuery(
+    query: persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery
+  ): MultipleValuesStandingQuery.SubscribeAcrossEdge = {
     val edgeName: Option[Symbol] = Option(query.edgeName).map(Symbol.apply)
     val edgeDirection: Option[EdgeDirection] = Option(query.edgeDirection).map { dir =>
       dir.edgeDirection match {
@@ -1548,40 +1554,41 @@ trait PersistenceCodec[T] extends LazyLogging {
         case other => throw new InvalidUnionType(other, persistence.EdgeDirection.names)
       }
     }
-    val andThen: cypher.StandingQuery = readCypherStandingQuery(query.andThenType, query.andThen(_))
-    cypher.StandingQuery.SubscribeAcrossEdge(edgeName, edgeDirection, andThen)
+    val andThen: MultipleValuesStandingQuery = readMultipleValuesStandingQuery(query.andThenType, query.andThen(_))
+    MultipleValuesStandingQuery.SubscribeAcrossEdge(edgeName, edgeDirection, andThen)
   }
 
-  private[this] def writeCypherEdgeSubscriptionReciprocalStandingQuery(
+  private[this] def writeMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.EdgeSubscriptionReciprocal
+    query: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
   ): Offset = {
     val halfEdgeOff: Offset = writeHalfEdge(builder, query.halfEdge)
-    val andThenIdOff: Offset = writeStandingQueryPartId(builder, query.andThenId)
-    persistence.CypherEdgeSubscriptionReciprocalStandingQuery.createCypherEdgeSubscriptionReciprocalStandingQuery(
-      builder,
-      halfEdgeOff,
-      andThenIdOff
-    )
+    val andThenIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, query.andThenId)
+    persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery
+      .createMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
+        builder,
+        halfEdgeOff,
+        andThenIdOff
+      )
   }
 
-  private[this] def readCypherEdgeSubscriptionReciprocalStandingQuery(
-    query: persistence.CypherEdgeSubscriptionReciprocalStandingQuery
-  ): cypher.StandingQuery.EdgeSubscriptionReciprocal = {
+  private[this] def readMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
+    query: persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery
+  ): MultipleValuesStandingQuery.EdgeSubscriptionReciprocal = {
     val halfEdge: HalfEdge = readHalfEdge(query.halfEdge)
-    val andThenId: StandingQueryPartId = readStandingQueryPartId(query.andThenId)
-    cypher.StandingQuery.EdgeSubscriptionReciprocal(halfEdge, andThenId)
+    val andThenId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(query.andThenId)
+    MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(halfEdge, andThenId)
   }
 
-  private[this] def writeCypherFilterMapStandingQuery(
+  private[this] def writeMultipleValuesFilterMapStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery.FilterMap
+    query: MultipleValuesStandingQuery.FilterMap
   ): Offset = {
     val TypeAndOffset(condTyp, condOff) = query.condition match {
       case None => TypeAndOffset(persistence.CypherExpr.NONE, NoOffset)
       case Some(cond) => writeCypherExpr(builder, cond)
     }
-    val TypeAndOffset(toFilterTyp, toFilterOff) = writeCypherStandingQuery(builder, query.toFilter)
+    val TypeAndOffset(toFilterTyp, toFilterOff) = writeMultipleValuesStandingQuery(builder, query.toFilter)
     val toAddOff: Offset = {
       val toAddOffs: Array[Offset] = new Array[Offset](query.toAdd.size)
       for (((key, valueExpr), i) <- query.toAdd.zipWithIndex) {
@@ -1589,9 +1596,9 @@ trait PersistenceCodec[T] extends LazyLogging {
         val TypeAndOffset(valueTyp, valueOff) = writeCypherExpr(builder, valueExpr)
         toAddOffs(i) = persistence.CypherMapExprEntry.createCypherMapExprEntry(builder, keyOff, valueTyp, valueOff)
       }
-      persistence.CypherFilterMapStandingQuery.createToAddVector(builder, toAddOffs)
+      persistence.MultipleValuesFilterMapStandingQuery.createToAddVector(builder, toAddOffs)
     }
-    persistence.CypherFilterMapStandingQuery.createCypherFilterMapStandingQuery(
+    persistence.MultipleValuesFilterMapStandingQuery.createMultipleValuesFilterMapStandingQuery(
       builder,
       condTyp,
       condOff,
@@ -1602,13 +1609,13 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
   }
 
-  private[this] def readCypherFilterMapStandingQuery(
-    query: persistence.CypherFilterMapStandingQuery
-  ): cypher.StandingQuery.FilterMap = {
+  private[this] def readMultipleValuesFilterMapStandingQuery(
+    query: persistence.MultipleValuesFilterMapStandingQuery
+  ): MultipleValuesStandingQuery.FilterMap = {
     val condition: Option[cypher.Expr] =
       if (query.conditionType == persistence.CypherExpr.NONE) None
       else Some(readCypherExpr(query.conditionType, query.condition(_)))
-    val toFilter: cypher.StandingQuery = readCypherStandingQuery(query.toFilterType, query.toFilter)
+    val toFilter: MultipleValuesStandingQuery = readMultipleValuesStandingQuery(query.toFilterType, query.toFilter)
     val toAdd: List[(Symbol, cypher.Expr)] = {
       val builder = List.newBuilder[(Symbol, cypher.Expr)]
       var i = 0
@@ -1622,83 +1629,89 @@ trait PersistenceCodec[T] extends LazyLogging {
       }
       builder.result()
     }
-    cypher.StandingQuery.FilterMap(condition, toFilter, query.dropExisting, toAdd)
+    MultipleValuesStandingQuery.FilterMap(condition, toFilter, query.dropExisting, toAdd)
   }
 
-  protected[this] def writeCypherStandingQuery(
+  protected[this] def writeMultipleValuesStandingQuery(
     builder: FlatBufferBuilder,
-    query: cypher.StandingQuery
+    query: MultipleValuesStandingQuery
   ): TypeAndOffset =
     query match {
-      case _: cypher.StandingQuery.UnitSq =>
-        TypeAndOffset(persistence.CypherStandingQuery.CypherUnitStandingQuery, emptyTable(builder))
+      case _: MultipleValuesStandingQuery.UnitSq =>
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesUnitStandingQuery, emptyTable(builder))
 
-      case cross: cypher.StandingQuery.Cross =>
-        val offset: Offset = writeCypherCrossStandingQuery(builder, cross)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherCrossStandingQuery, offset)
+      case cross: MultipleValuesStandingQuery.Cross =>
+        val offset: Offset = writeMultipleValuesCrossStandingQuery(builder, cross)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesCrossStandingQuery, offset)
 
-      case localProp: cypher.StandingQuery.LocalProperty =>
-        val offset: Offset = writeCypherLocalPropertyStandingQuery(builder, localProp)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherLocalPropertyStandingQuery, offset)
+      case localProp: MultipleValuesStandingQuery.LocalProperty =>
+        val offset: Offset = writeMultipleValuesLocalPropertyStandingQuery(builder, localProp)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesLocalPropertyStandingQuery, offset)
 
-      case localId: cypher.StandingQuery.LocalId =>
-        val offset: Offset = writeCypherLocalIdStandingQuery(builder, localId)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherLocalIdStandingQuery, offset)
+      case localId: MultipleValuesStandingQuery.LocalId =>
+        val offset: Offset = writeMultipleValuesLocalIdStandingQuery(builder, localId)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesLocalIdStandingQuery, offset)
 
-      case subscriber: cypher.StandingQuery.SubscribeAcrossEdge =>
-        val offset: Offset = writeCypherSubscribeAcrossEdgeStandingQuery(builder, subscriber)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherSubscribeAcrossEdgeStandingQuery, offset)
+      case subscriber: MultipleValuesStandingQuery.SubscribeAcrossEdge =>
+        val offset: Offset = writeMultipleValuesSubscribeAcrossEdgeStandingQuery(builder, subscriber)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesSubscribeAcrossEdgeStandingQuery, offset)
 
-      case reciprocal: cypher.StandingQuery.EdgeSubscriptionReciprocal =>
-        val offset: Offset = writeCypherEdgeSubscriptionReciprocalStandingQuery(builder, reciprocal)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherEdgeSubscriptionReciprocalStandingQuery, offset)
+      case reciprocal: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal =>
+        val offset: Offset = writeMultipleValuesEdgeSubscriptionReciprocalStandingQuery(builder, reciprocal)
+        TypeAndOffset(
+          persistence.MultipleValuesStandingQuery.MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
+          offset
+        )
 
-      case filterMap: cypher.StandingQuery.FilterMap =>
-        val offset: Offset = writeCypherFilterMapStandingQuery(builder, filterMap)
-        TypeAndOffset(persistence.CypherStandingQuery.CypherFilterMapStandingQuery, offset)
+      case filterMap: MultipleValuesStandingQuery.FilterMap =>
+        val offset: Offset = writeMultipleValuesFilterMapStandingQuery(builder, filterMap)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesFilterMapStandingQuery, offset)
 
     }
 
-  protected[this] def readCypherStandingQuery(
+  protected[this] def readMultipleValuesStandingQuery(
     typ: Byte,
     makeSq: Table => Table
-  ): cypher.StandingQuery =
+  ): MultipleValuesStandingQuery =
     typ match {
-      case persistence.CypherStandingQuery.CypherUnitStandingQuery =>
-        cypher.StandingQuery.UnitSq()
+      case persistence.MultipleValuesStandingQuery.MultipleValuesUnitStandingQuery =>
+        MultipleValuesStandingQuery.UnitSq()
 
-      case persistence.CypherStandingQuery.CypherCrossStandingQuery =>
+      case persistence.MultipleValuesStandingQuery.MultipleValuesCrossStandingQuery =>
         val cross =
-          makeSq(new persistence.CypherCrossStandingQuery()).asInstanceOf[persistence.CypherCrossStandingQuery]
-        readCypherCrossStandingQuery(cross)
+          makeSq(new persistence.MultipleValuesCrossStandingQuery())
+            .asInstanceOf[persistence.MultipleValuesCrossStandingQuery]
+        readMultipleValuesCrossStandingQuery(cross)
 
-      case persistence.CypherStandingQuery.CypherLocalPropertyStandingQuery =>
-        val localProp = makeSq(new persistence.CypherLocalPropertyStandingQuery())
-          .asInstanceOf[persistence.CypherLocalPropertyStandingQuery]
-        readCypherLocalPropertyStandingQuery(localProp)
+      case persistence.MultipleValuesStandingQuery.MultipleValuesLocalPropertyStandingQuery =>
+        val localProp = makeSq(new persistence.MultipleValuesLocalPropertyStandingQuery())
+          .asInstanceOf[persistence.MultipleValuesLocalPropertyStandingQuery]
+        readMultipleValuesLocalPropertyStandingQuery(localProp)
 
-      case persistence.CypherStandingQuery.CypherLocalIdStandingQuery =>
+      case persistence.MultipleValuesStandingQuery.MultipleValuesLocalIdStandingQuery =>
         val localId =
-          makeSq(new persistence.CypherLocalIdStandingQuery()).asInstanceOf[persistence.CypherLocalIdStandingQuery]
-        readCypherLocalIdStandingQuery(localId)
+          makeSq(new persistence.MultipleValuesLocalIdStandingQuery())
+            .asInstanceOf[persistence.MultipleValuesLocalIdStandingQuery]
+        readMultipleValuesLocalIdStandingQuery(localId)
 
-      case persistence.CypherStandingQuery.CypherSubscribeAcrossEdgeStandingQuery =>
-        val subscribeAcrossEdge = makeSq(new persistence.CypherSubscribeAcrossEdgeStandingQuery())
-          .asInstanceOf[persistence.CypherSubscribeAcrossEdgeStandingQuery]
-        readCypherSubscribeAcrossEdgeStandingQuery(subscribeAcrossEdge)
+      case persistence.MultipleValuesStandingQuery.MultipleValuesSubscribeAcrossEdgeStandingQuery =>
+        val subscribeAcrossEdge = makeSq(new persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery())
+          .asInstanceOf[persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery]
+        readMultipleValuesSubscribeAcrossEdgeStandingQuery(subscribeAcrossEdge)
 
-      case persistence.CypherStandingQuery.CypherEdgeSubscriptionReciprocalStandingQuery =>
-        val reciprocal = makeSq(new persistence.CypherEdgeSubscriptionReciprocalStandingQuery())
-          .asInstanceOf[persistence.CypherEdgeSubscriptionReciprocalStandingQuery]
-        readCypherEdgeSubscriptionReciprocalStandingQuery(reciprocal)
+      case persistence.MultipleValuesStandingQuery.MultipleValuesEdgeSubscriptionReciprocalStandingQuery =>
+        val reciprocal = makeSq(new persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery())
+          .asInstanceOf[persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery]
+        readMultipleValuesEdgeSubscriptionReciprocalStandingQuery(reciprocal)
 
-      case persistence.CypherStandingQuery.CypherFilterMapStandingQuery =>
+      case persistence.MultipleValuesStandingQuery.MultipleValuesFilterMapStandingQuery =>
         val filterMap =
-          makeSq(new persistence.CypherFilterMapStandingQuery()).asInstanceOf[persistence.CypherFilterMapStandingQuery]
-        readCypherFilterMapStandingQuery(filterMap)
+          makeSq(new persistence.MultipleValuesFilterMapStandingQuery())
+            .asInstanceOf[persistence.MultipleValuesFilterMapStandingQuery]
+        readMultipleValuesFilterMapStandingQuery(filterMap)
 
       case other =>
-        throw new InvalidUnionType(other, persistence.CypherStandingQuery.names)
+        throw new InvalidUnionType(other, persistence.MultipleValuesStandingQuery.names)
     }
 
 }

@@ -12,8 +12,9 @@ import akka.actor.{ActorRef, Scheduler}
 import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph._
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
-import com.thatdot.quine.persistor.codecs.StandingQueryStateCodec
+import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
@@ -30,11 +31,11 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def wakefulState: AtomicReference[WakefulState]
 
-  protected def pendingStandingQueryWrites: collection.Set[(StandingQueryId, StandingQueryPartId)]
+  protected def pendingMultipleValuesWrites: collection.Set[(StandingQueryId, MultipleValuesStandingQueryPartId)]
 
-  protected def standingQueries: collection.Map[
-    (StandingQueryId, StandingQueryPartId),
-    (StandingQuerySubscribers, cypher.StandingQueryState)
+  protected def multipleValuesStandingQueries: collection.Map[
+    (StandingQueryId, MultipleValuesStandingQueryPartId),
+    (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
   ]
 
   protected def lastWriteMillis: Long
@@ -135,18 +136,19 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 ),
                 context.dispatcher
               )
-              val standingQueryStatesSaved = Future.traverse(pendingStandingQueryWrites) {
+              val multipleValuesStatesSaved = Future.traverse(pendingMultipleValuesWrites) {
                 case key @ (globalId, localId) =>
-                  val serialized = standingQueries.get(key).map(StandingQueryStateCodec.format.write)
+                  val serialized =
+                    multipleValuesStandingQueries.get(key).map(MultipleValuesStandingQueryStateCodec.format.write)
                   serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
                   retryPersistence(
                     metrics.persistorSetStandingQueryStateTimer,
-                    persistor.setStandingQueryState(globalId, qid, localId, serialized),
+                    persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
                     context.dispatcher
                   )
               }(implicitly, context.dispatcher)
 
-              val persistenceFuture = snapshotSaved zip standingQueryStatesSaved
+              val persistenceFuture = snapshotSaved zip multipleValuesStatesSaved
 
               // Schedule an update to the shard
               persistenceFuture.onComplete {

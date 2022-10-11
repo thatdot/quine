@@ -14,7 +14,7 @@ final case class NodeSnapshot(
   edges: Iterable[HalfEdge],
   subscribersToThisNode: MutableMap[
     DomainGraphNodeId,
-    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.Subscription
+    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
   ],
   domainNodeIndex: MutableMap[
     QuineId,

@@ -22,10 +22,10 @@ import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper,
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
+  MultipleValuesStandingQueryPartId,
   NodeEvent,
   StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -144,8 +144,8 @@ final class MapDbPersistor(
     )
     .createOrOpen()
 
-  private val standingQueryStates: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
-    .treeMap("standingQueryStates")
+  private val multipleValuesStandingQueryStates: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+    .treeMap("multipleValuesStandingQueryStates")
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.UUID, // Top-level standing query ID
@@ -171,7 +171,7 @@ final class MapDbPersistor(
   override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future(
-      nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )(ioDispatcher)
 
   def getNodeChangeEventsWithTime(
@@ -349,7 +349,7 @@ final class MapDbPersistor(
     val _ = standingQueries.remove(bytes)
 
     val topLevelId = standingQuery.id.uuid
-    standingQueryStates
+    multipleValuesStandingQueryStates
       .subMap(Array[AnyRef](topLevelId), Array[AnyRef](topLevelId, null))
       .clear()
   }(ioDispatcher)
@@ -360,13 +360,13 @@ final class MapDbPersistor(
       logger.error("getStandingQueries failed.", e); Future.failed(e)
     }(ioDispatcher)
 
-  override def getStandingQueryStates(
+  override def getMultipleValuesStandingQueryStates(
     id: QuineId
-  ): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = Future {
-    val toReturn = Map.newBuilder[(StandingQueryId, StandingQueryPartId), Array[Byte]]
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] = Future {
+    val toReturn = Map.newBuilder[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]
 
     // Loop through each of the top-level standing query IDs
-    var remainingStates = standingQueryStates
+    var remainingStates = multipleValuesStandingQueryStates
     while (!remainingStates.isEmpty) {
       val topLevelId = remainingStates.firstEntry.getKey.apply(0).asInstanceOf[UUID]
       remainingStates
@@ -376,7 +376,7 @@ final class MapDbPersistor(
         )
         .forEach { (key: Array[AnyRef], value: Array[Byte]) =>
           val subQueryId = key(2).asInstanceOf[UUID]
-          toReturn += (StandingQueryId(topLevelId) -> StandingQueryPartId(subQueryId)) -> value
+          toReturn += (StandingQueryId(topLevelId) -> MultipleValuesStandingQueryPartId(subQueryId)) -> value
         }
 
       // Advance to the next top-level standing query
@@ -386,17 +386,21 @@ final class MapDbPersistor(
     toReturn.result()
   }(ioDispatcher)
 
-  override def setStandingQueryState(
+  override def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = Future {
     state match {
       case None =>
-        val _ = standingQueryStates.remove(Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid))
+        val _ =
+          multipleValuesStandingQueryStates.remove(Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid))
       case Some(newValue) =>
-        val _ = standingQueryStates.put(Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid), newValue)
+        val _ = multipleValuesStandingQueryStates.put(
+          Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid),
+          newValue
+        )
     }
   }(ioDispatcher)
 

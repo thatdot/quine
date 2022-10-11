@@ -22,7 +22,7 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
-import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, SqV4}
+import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.{
   GraphService,
   HostQuineMetrics,
@@ -169,8 +169,8 @@ final class QuineApp(graph: GraphService)
             } else {
               if (pattern.distinct)
                 throw InvalidQueryPattern("MultipleValues Standing Queries do not yet support `DISTINCT`") // QU-568
-              val compiledQuery = pattern.compiledCypherStandingQuery(graph.labelsProperty, idProvider)
-              val sqv4Pattern = SqV4(compiledQuery, query.includeCancellations, origin)
+              val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
+              val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
               (sqv4Pattern, None)
             }
         }
@@ -552,7 +552,7 @@ object QuineApp {
   ): RegisteredStandingQuery = {
     val mode = internal.query match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
-      case _: graph.StandingQueryPattern.SqV4 => StandingQueryMode.MultipleValues
+      case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
     }
     val pattern = internal.query.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>

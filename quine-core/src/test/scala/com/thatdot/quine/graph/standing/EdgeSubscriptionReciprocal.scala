@@ -7,19 +7,20 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.StandingQueryId
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{NewCypherResult, ResultId}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{NewMultipleValuesResult, ResultId}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
 class EdgeSubscriptionReciprocalStateTest extends AnyFunSuite {
 
   val andThenAliasedAs: Symbol = Symbol("bar")
-  val andThen: StandingQuery.LocalProperty = StandingQuery
-    .LocalProperty(Symbol("foo"), StandingQuery.LocalProperty.Any, Some(andThenAliasedAs))
-  val query: StandingQuery.EdgeSubscriptionReciprocal = StandingQuery.EdgeSubscriptionReciprocal(
-    halfEdge = HalfEdge(Symbol("an_edge"), EdgeDirection.Outgoing, QuineId(Array(7.toByte))),
-    andThenId = andThen.id
-  )
+  val andThen: MultipleValuesStandingQuery.LocalProperty = MultipleValuesStandingQuery
+    .LocalProperty(Symbol("foo"), MultipleValuesStandingQuery.LocalProperty.Any, Some(andThenAliasedAs))
+  val query: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal =
+    MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
+      halfEdge = HalfEdge(Symbol("an_edge"), EdgeDirection.Outgoing, QuineId(Array(7.toByte))),
+      andThenId = andThen.id
+    )
   val globalId: StandingQueryId = StandingQueryId(new UUID(12L, 34L))
 
   test("edge subscription reciprocal") {
@@ -53,7 +54,7 @@ class EdgeSubscriptionReciprocalStateTest extends AnyFunSuite {
     }
 
     val resId1 = withClue("Report one result back up") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         query.andThenId,
         globalId,
@@ -70,7 +71,7 @@ class EdgeSubscriptionReciprocalStateTest extends AnyFunSuite {
     }
 
     val resId2 = withClue("Report a second result back up") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         query.andThenId,
         globalId,
@@ -99,7 +100,7 @@ class EdgeSubscriptionReciprocalStateTest extends AnyFunSuite {
     }
 
     withClue("Report a third result back up") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         query.andThenId,
         globalId,

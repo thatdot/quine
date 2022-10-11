@@ -3,6 +3,8 @@ include "cypher.fbs";
 
 namespace com.thatdot.quine.persistence;
 
+// TODO the "See" references in this file may not be up to date
+
 // See [[com.thatdot.quine.graph.StandingQueryPattern]]
 union StandingQueryPattern {
   BranchQuery,
@@ -39,15 +41,15 @@ union ReturnColumn {
   ReturnColumnProperty,
 }
 
-// See [[com.thatdot.quine.graph.cypher.StandingQuery]]
-union CypherStandingQuery {
-  CypherUnitStandingQuery,
-  CypherCrossStandingQuery,
-  CypherLocalPropertyStandingQuery,
-  CypherLocalIdStandingQuery,
-  CypherSubscribeAcrossEdgeStandingQuery,
-  CypherEdgeSubscriptionReciprocalStandingQuery,
-  CypherFilterMapStandingQuery,
+// See [[com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery]]
+union MultipleValuesStandingQuery {
+  MultipleValuesUnitStandingQuery,
+  MultipleValuesCrossStandingQuery,
+  MultipleValuesLocalPropertyStandingQuery,
+  MultipleValuesLocalIdStandingQuery,
+  MultipleValuesSubscribeAcrossEdgeStandingQuery,
+  MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
+  MultipleValuesFilterMapStandingQuery,
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.ValueConstraint]]
@@ -88,33 +90,33 @@ table CypherValueConstraintListContains {
 
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.UnitSq]]
-table CypherUnitStandingQuery { }
+table MultipleValuesUnitStandingQuery { }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.Cross]]
-table CypherCrossStandingQuery {
-  queries: [CypherStandingQuery];
+table MultipleValuesCrossStandingQuery {
+  queries: [MultipleValuesStandingQuery];
   emit_subscriptions_lazily: bool;
 }
 
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty]]
-table CypherLocalPropertyStandingQuery {
+table MultipleValuesLocalPropertyStandingQuery {
   property_key: string (required);
   property_constraint: CypherValueConstraint (required);
   aliased_as: string;
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalId]]
-table CypherLocalIdStandingQuery {
+table MultipleValuesLocalIdStandingQuery {
   aliased_as: string (required);
   format_as_string: bool;
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.SubscribeAcrossEdge]]
-table CypherSubscribeAcrossEdgeStandingQuery {
+table MultipleValuesSubscribeAcrossEdgeStandingQuery {
   edge_name: string;
   edge_direction: BoxedEdgeDirection;
-  and_then: CypherStandingQuery;
+  and_then: MultipleValuesStandingQuery;
 }
 
 // Like `EdgeDirection`, but can be null
@@ -123,15 +125,15 @@ table BoxedEdgeDirection {
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.EdgeSubscriptionReciprocal]]
-table CypherEdgeSubscriptionReciprocalStandingQuery {
+table MultipleValuesEdgeSubscriptionReciprocalStandingQuery {
   half_edge: HalfEdge (required);
-  and_then_id: StandingQueryPartId;
+  and_then_id: MultipleValuesStandingQueryPartId;
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.FilterMap]]
-table CypherFilterMapStandingQuery {
+table MultipleValuesFilterMapStandingQuery {
   condition: CypherExpr;
-  to_filter: CypherStandingQuery (required);
+  to_filter: MultipleValuesStandingQuery (required);
   drop_existing: bool;
   to_add: [CypherMapExprEntry];
 }
@@ -145,7 +147,7 @@ table StandingQuery {
   queue_max_size: int;
 }
 
-// See [[com.thatdot.quine.graph.StandingQueryPattern.Branch]]
+// See [[com.thatdot.quine.graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern]]
 table BranchQuery {
   dgn_id: long;
   format_return_as_string: bool;
@@ -175,7 +177,7 @@ table GraphQueryPattern {
 
 // See [[com.thatdot.quine.graph.StandingQueryPattern.SqV4]]
 table SqV4Query {
-  query: CypherStandingQuery (required);
+  query: MultipleValuesStandingQuery (required);
   include_cancellation: bool;
   origin: SqV4Origin (required);
 }

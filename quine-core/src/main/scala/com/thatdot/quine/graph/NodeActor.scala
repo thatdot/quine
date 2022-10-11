@@ -6,17 +6,25 @@ import java.util.concurrent.locks.StampedLock
 import scala.collection.compat._
 import scala.collection.mutable
 import scala.compat.ExecutionContexts
+import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging}
 
 import com.thatdot.quine.graph.NodeChangeEvent._
-import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
+import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{
+  DomainNodeIndex,
+  NodeParentIndex,
+  SubscribersToThisNodeUtil
+}
 import com.thatdot.quine.graph.behavior._
-import com.thatdot.quine.graph.cypher.StandingQueryLookupInfo
+import com.thatdot.quine.graph.cypher.{
+  MultipleValuesStandingQuery,
+  MultipleValuesStandingQueryLookupInfo,
+  MultipleValuesStandingQueryState
+}
 import com.thatdot.quine.graph.edgecollection.EdgeCollection
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
@@ -32,32 +40,28 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.codecs.{SnapshotCodec, StandingQueryStateCodec}
+import com.thatdot.quine.persistor.codecs.{MultipleValuesStandingQueryStateCodec, SnapshotCodec}
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
-// This is just to pass the initial state to construct NodeActor with
 case class NodeActorConstructorArgs(
   properties: Map[Symbol, PropertyValue],
   edges: Iterable[HalfEdge],
-  subscribersToThisNode: mutable.Map[
+  distinctIdSubscribers: mutable.Map[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.Subscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription
   ],
   domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
-  standingQueries: mutable.Map[
-    (StandingQueryId, StandingQueryPartId),
-    (StandingQuerySubscribers, cypher.StandingQueryState)
-  ],
+  multipleValuesStandingQueryStates: NodeActor.MultipleValuesStandingQueries,
   initialJournal: NodeActor.Journal
 )
 object NodeActorConstructorArgs {
   def empty: NodeActorConstructorArgs = NodeActorConstructorArgs(
     properties = Map.empty,
     edges = Iterable.empty,
-    subscribersToThisNode = mutable.Map.empty,
+    distinctIdSubscribers = mutable.Map.empty,
     domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(mutable.Map.empty),
-    standingQueries = mutable.Map.empty,
+    multipleValuesStandingQueryStates = mutable.Map.empty,
     initialJournal = Iterable.empty
   )
 }
@@ -79,21 +83,17 @@ object NodeActorConstructorArgs {
 private[graph] class NodeActor(
   val qidAtTime: QuineIdAtTime,
   val graph: StandingQueryOpsGraph with CypherOpsGraph,
-  protected val persistor: PersistenceAgent,
   costToSleep: CostToSleep,
   protected val wakefulState: AtomicReference[WakefulState],
   protected val actorRefLock: StampedLock,
   protected var properties: Map[Symbol, PropertyValue],
   initialEdges: Iterable[HalfEdge],
-  subscribersToThisNode: mutable.Map[
+  initialDomainGraphSubscribers: mutable.Map[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.Subscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription
   ],
   protected val domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
-  protected val standingQueries: mutable.Map[
-    (StandingQueryId, StandingQueryPartId),
-    (StandingQuerySubscribers, cypher.StandingQueryState)
-  ],
+  protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries,
   initialJournal: NodeActor.Journal
 ) extends Actor
     with ActorLogging
@@ -105,7 +105,7 @@ private[graph] class NodeActor(
     with GoToSleepBehavior
     with PriorityStashingBehavior
     with CypherBehavior
-    with CypherStandingBehavior
+    with MultipleValuesStandingQueryBehavior
     with ActorClock {
 
   def receive: Receive = actorClockBehavior {
@@ -114,7 +114,7 @@ private[graph] class NodeActor(
     case query: CypherQueryInstruction => cypherBehavior(query)
     case command: LiteralCommand => literalCommandBehavior(command)
     case command: DomainNodeSubscriptionCommand => domainNodeIndexBehavior(command)
-    case command: CypherStandingQueryCommand => cypherStandingQueryBehavior(command)
+    case command: MultipleValuesStandingQueryCommand => multipleValuesStandingQueryBehavior(command)
     case command: UpdateStandingQueriesCommand => updateStandingQueriesBehavior(command)
     case msg => log.error("Node received an unknown message (from {}): {}", sender(), msg)
   }
@@ -122,13 +122,12 @@ private[graph] class NodeActor(
   val qid: QuineId = qidAtTime.id
   val atTime: Option[Milliseconds] = qidAtTime.atTime
   implicit val idProvider: QuineIdProvider = graph.idProvider
+  protected val persistor: PersistenceAgent = graph.persistor
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
   protected val edges: EdgeCollection = graph.edgeCollectionFactory.get
-  initialEdges.foreach(edges +=)
   protected val dgnRegistry: DomainGraphNodeRegistry = graph.dgnRegistry
-
-  protected val subscribers: SubscribersToThisNode = SubscribersToThisNode(subscribersToThisNode)
+  protected val domainGraphSubscribers: SubscribersToThisNode = SubscribersToThisNode(initialDomainGraphSubscribers)
 
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
@@ -137,54 +136,129 @@ private[graph] class NodeActor(
     // TODO: should this update `lastWriteMillis` too?
     latestUpdateAfterSnapshot = Some(latestEventTime())
 
-  // here be the side-effects performed by the constructor
-
-  protected var nodeParentIndex: DomainNodeIndexBehavior.NodeParentIndex = {
-    val (nodeIndex, removed) = DomainNodeIndexBehavior.NodeParentIndex.reconstruct(
-      domainNodeIndex,
-      subscribers.subscribersToThisNode.keys,
-      dgnRegistry
-    )
-    subscribers.subscribersToThisNode --= removed
-    nodeIndex
-  }
-
-  applyEventsEffectsInMemory(initialJournal, shouldCauseSideEffects = false)
-
-  {
-    val lookupInfo = StandingQueryLookupInfo(
-      graph.getStandingQueryPart,
-      qid,
-      idProvider
-    )
-    standingQueries.values foreach { case (_, sqState) => sqState.preStart(lookupInfo) }
-  }
-
-  /** Index for efficiently determining which subscribers to standing queries (be they other standing queries or sets
-    * of Notifiables) should be notified for node events
+  /** @see [[StandingQueryLocalEventIndex]]
     */
-  protected val localEventIndex: StandingQueryLocalEventIndex = {
-    val (localIndex, removed) = StandingQueryLocalEventIndex.from(
+  protected var localEventIndex: StandingQueryLocalEventIndex =
+    // NB this initialization is non-authoritative: only after journal restoration is complete can this be
+    // comprehensively reconstructed (see the block below the definition of [[nodeParentIndex]]). However, journal
+    // restoration may access [[localEventIndex]] and/or [[nodeParentIndex]] so they must be at least initialized
+    StandingQueryLocalEventIndex
+      .from(
+        dgnRegistry,
+        domainGraphSubscribers.subscribersToThisNode.keysIterator,
+        multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state }
+      )
+      ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
+
+  /** @see [[NodeParentIndex]]
+    */
+  protected var domainGraphNodeParentIndex: NodeParentIndex =
+    // NB this initialization is non-authoritative: only after journal restoration is complete can this be
+    // comprehensively reconstructed (see the block below the definition of [[nodeParentIndex]]). However, journal
+    // restoration may access [[localEventIndex]] and/or [[nodeParentIndex]] so they must be at least initialized
+    NodeParentIndex
+      .reconstruct(domainNodeIndex, domainGraphSubscribers.subscribersToThisNode.keys, dgnRegistry)
+      ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
+
+  { // here be the side-effects performed by the constructor
+    initialEdges.foreach(edges +=)
+
+    applyEventsEffectsInMemory(initialJournal, shouldCauseSideEffects = false)
+
+    // Once edge map is updated, recompute cost to sleep:
+    costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
+
+    // Make a best-effort attempt at restoring the localEventIndex: This will fail for DGNs that no longer exist,
+    // so also make note of which those are for further cleanup. Now that the journal and snapshot have both been
+    // applied, we know that this reconstruction + removal detection will be as complete as possible
+    val (localEventIndexRestored, locallyWatchedDgnsToRemove) = StandingQueryLocalEventIndex.from(
       dgnRegistry,
-      subscribers.subscribersToThisNode.keysIterator,
-      Iterator.empty //standingQueries.iterator.map { case (handler, (_, sqState)) => handler -> sqState }
+      domainGraphSubscribers.subscribersToThisNode.keysIterator,
+      multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state }
     )
-    subscribers.removeSubscribers(removed)
-    localIndex
+    this.localEventIndex = localEventIndexRestored
+
+    // Phase: The node has caught up to the target time, but some actions locally on the node need to catch up
+    // with what happened with the graph while this node was asleep.
+
+    // stop tracking subscribers of deleted DGNs that were previously watching for local events
+    domainGraphSubscribers.removeSubscribersOf(locallyWatchedDgnsToRemove)
+
+    // determine newly-registered DistinctId SQs and the DGN IDs they track (returns only those DGN IDs that are
+    // potentially-rooted on this node)
+    // see: [[updateDistinctIdStandingQueriesOnNode]]
+    val newDistinctIdSqDgns = for {
+      (sqId, runningSq) <- graph.runningStandingQueries
+      dgnId <- runningSq.query.query match {
+        case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
+        case _ => None
+      }
+      subscriber = Right(sqId)
+      alreadySubscribed = domainGraphSubscribers.containsSubscriber(dgnId, subscriber, sqId)
+      if !alreadySubscribed
+    } yield sqId -> dgnId
+
+    // Make a best-effort attempt at restoring the nodeParentIndex: This will fail for DGNs that no longer exist,
+    // so also make note of which those are for further cleanup.
+    // By doing this after removing `locallyWatchedDgnsToRemove`, we'll have fewer wasted entries in the
+    // reconstructed index. By doing this after journal restoration, we ensure that this reconstruction + removal
+    // detection will be as complete as possible
+    val (nodeParentIndexPruned, propogationDgnsToRemove) =
+      NodeParentIndex.reconstruct(domainNodeIndex, domainGraphSubscribers.subscribersToThisNode.keys, dgnRegistry)
+    this.domainGraphNodeParentIndex = nodeParentIndexPruned
+
+    // stop tracking subscribers of deleted DGNs that were previously propogating messages
+    domainGraphSubscribers.removeSubscribersOf(propogationDgnsToRemove)
+
+    // Now that we have a comprehensive diff of the SQs added/removed, debug-log that diff.
+    if (log.isDebugEnabled) {
+      // serializing DGN collections is potentially nontrivial work, so only do it when the target log level is enabled
+      log.debug(
+        s"""Detected Standing Query changes while asleep. Removed DGNs:
+           |${(propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct}.
+           |Added DGNs: ${newDistinctIdSqDgns}. Catching up now.""".stripMargin.replace('\n', ' ')
+      )
+    }
+
+    // TODO ensure replay related to a dgn is no-op when that dgn is absent
+
+    // TODO clear expired DGN/DistinctId data out of snapshots (at least, avoid re-snapshotting abandoned data,
+    //      but also to avoid reusing expired caches)
+
+    // Conceptually, during this phase we only need to synchronously compute+store initial local state for the
+    // newly-registered SQs. However, in practice this is unnecessary and inefficient, since in order to cause off-node
+    // effects in the final phase, we'll need to re-run most of the computation anyway (in the loop over
+    // `newDistinctIdSqDgns` towards the end of this block). If we wish to make the final phase asynchronous, we'll need
+    // to apply the local effects as follows:
+    //    newDistinctIdSqDgns.foreach { case (sqId, dgnId) =>
+    //      receiveDomainNodeSubscription(Right(sqId), dgnId, Set(sqId), shouldSendReplies = false)
+    //    }
+
+    // Standing query information restored before this point is for state/answers already processed, and so it
+    // caused no effects off this node while restoring itself.
+    // Phase: Having fully caught up with the target time, and applied local effects that occurred while the node
+    // was asleep, we can move on to do other catch-up-work-while-sleeping which does cause effects off this node:
+
+    // Finish computing (and send) initial results for each of the newly-registered DGNs
+    newDistinctIdSqDgns.foreach { case (sqId, dgnId) =>
+      receive(CreateDomainNodeSubscription(dgnId, Right(sqId), Set(sqId)))
+    }
+
+    // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
+    updateMultipleValuesStandingQueriesOnNode()
   }
-  syncStandingQueries()
 
-  // Once edge collection is updated, compute cost to sleep
-  costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
-
-  /** Synchronizes this node's standing queries with those of the current graph
+  /** Synchronizes this node's operating standing queries with those currently active on the thoroughgoing graph.
+    * After a node is woken and restored to the state it was in before sleeping, it may need to catch up on new/deleted
+    * standing queries which changed while it was asleep. This function catches the node up to the current collection
+    * of live standing queries. If called from a historical node, this function is a no-op.
     * - Registers and emits initial results for any standing queries not yet registered on this node
     * - Removes any standing queries defined on this node but no longer known to the graph
     */
   protected def syncStandingQueries(): Unit =
     if (atTime.isEmpty) {
-      updateUniversalQueriesOnWake(shouldSendReplies = true)
-      updateUniversalCypherQueriesOnWake()
+      updateDistinctIdStandingQueriesOnNode(shouldSendReplies = true)
+      updateMultipleValuesStandingQueriesOnNode()
     }
 
   /** Fast check for if a number is a power of 2 */
@@ -292,10 +366,11 @@ private[graph] class NodeActor(
     }
   }
 
-  private[this] def snapshotOnUpdate(): Unit = if (persistenceConfig.snapshotOnUpdate) {
+  private[this] def persistSnapshot(): Unit = {
     val occurredAt: EventTime = nextEventTime()
     val snapshot = toSnapshotBytes(occurredAt)
     metrics.snapshotSize.update(snapshot.length)
+
     def persistSnapshot(): Future[Unit] =
       metrics.persistorPersistSnapshotTimer.time(
         persistor.persistSnapshot(
@@ -304,11 +379,13 @@ private[graph] class NodeActor(
           snapshot
         )
       )
+
     def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Unit] =
       f.recoverWith { case NonFatal(e) =>
         logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
         infinitePersisting(logFunc, persistSnapshot())
       }(cypherEc)
+
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
         infinitePersisting(log.info)
@@ -369,13 +446,13 @@ private[graph] class NodeActor(
         receiveIndexUpdate(from, dgnId, result, shouldSendReplies = shouldCauseSideEffects)
 
       case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
-        cancelSubscription(dgnId, Left(fromSubscriber), shouldSendReplies = shouldCauseSideEffects)
+        cancelSubscription(dgnId, Some(Left(fromSubscriber)), shouldSendReplies = shouldCauseSideEffects)
     }
 
     if (shouldCauseSideEffects) { // `false` when restoring from journals
       latestUpdateAfterSnapshot = Some(latestEventTime())
       lastWriteMillis = latestEventTime().millis
-      snapshotOnUpdate()
+      if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
       val nodeChangeEvents = events.collect { case e: NodeChangeEvent => e }
       runPostActions(nodeChangeEvents)
     }
@@ -391,15 +468,19 @@ private[graph] class NodeActor(
       event,
       {
         case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
-          updateCypherSq(event, cypherSubscriber)
+          updateMultipleValuesSqs(event, cypherSubscriber)
           false
         case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
           dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
             case Some(dgn) =>
               // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
-              ensureSubscriptionToDomainEdges(dgn, subscribers.getRelatedQueries(dgnId), shouldSendReplies = true)
+              ensureSubscriptionToDomainEdges(
+                dgn,
+                domainGraphSubscribers.getRelatedQueries(dgnId),
+                shouldSendReplies = true
+              )
               // inform all subscribers to this node about any relevant changes caused by the recent event
-              subscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
+              domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
               false
             case None =>
               true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
@@ -422,7 +503,7 @@ private[graph] class NodeActor(
         time,
         properties,
         edges.toSerialize,
-        subscribers.subscribersToThisNode,
+        domainGraphSubscribers.subscribersToThisNode,
         domainNodeIndex.index
       )
     )
@@ -436,7 +517,7 @@ private[graph] class NodeActor(
         _.toString
       )
 
-    val subscribersStrings = subscribers.subscribersToThisNode.toList
+    val subscribersStrings = domainGraphSubscribers.subscribersToThisNode.toList
       .map { case (a, c) =>
         a -> c.subscribers.map {
           case Left(q) => q.pretty
@@ -481,7 +562,7 @@ private[graph] class NodeActor(
         includeDomainIndexEvents = false
       )
       .recover { case err =>
-        log.error(err, "failed to get journal for node {}", qid)
+        log.error(err, "failed to get journal for node: {}", qidAtTime.debug)
         Iterable.empty
       }(context.dispatcher)
       .map { journal =>
@@ -494,13 +575,14 @@ private[graph] class NodeActor(
           domainNodeIndexStrings,
           getSqState(),
           dgnLocalEventIndexSummary,
-          standingQueries.view.map { case ((globalId, sqId), (StandingQuerySubscribers(_, _, subs), st)) =>
-            LocallyRegisteredStandingQuery(
-              sqId.toString,
-              globalId.toString,
-              subs.map(_.toString).toSet,
-              st.toString
-            )
+          multipleValuesStandingQueries.view.map {
+            case ((globalId, sqId), (MultipleValuesStandingQuerySubscribers(_, _, subs), st)) =>
+              LocallyRegisteredStandingQuery(
+                sqId.toString,
+                globalId.toString,
+                subs.map(_.toString).toSet,
+                st.toString
+              )
           }.toVector,
           journal.toSet,
           getNodeHashCode().value
@@ -513,7 +595,7 @@ private[graph] class NodeActor(
 
   def getSqState(): SqStateResults =
     SqStateResults(
-      subscribers.subscribersToThisNode.toList.flatMap { case (dgnId, subs) =>
+      domainGraphSubscribers.subscribersToThisNode.toList.flatMap { case (dgnId, subs) =>
         subs.subscribers.toList.collect { case Left(q) => // filters out receivers outside the graph
           SqStateResult(dgnId, q, subs.lastNotification)
         }
@@ -528,65 +610,99 @@ private[graph] class NodeActor(
 
 object NodeActor {
 
-  type Snapshot = Option[Array[Byte]]
   type Journal = Iterable[NodeEvent]
-  type StandingQueryStates = Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]
+  type MultipleValuesStandingQueries = mutable.Map[
+    (StandingQueryId, MultipleValuesStandingQueryPartId),
+    (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
+  ]
+
+  @throws[NodeWakeupFailedException]("When snapshot could not be deserialized")
+  private[this] def deserializeSnapshotBytes(
+    snapshotBytes: Array[Byte],
+    qidForDebugging: QuineIdAtTime
+  )(implicit idProvider: QuineIdProvider): NodeSnapshot =
+    SnapshotCodec.format
+      .read(snapshotBytes)
+      .fold(
+        err =>
+          throw new NodeWakeupFailedException(
+            s"Snapshot could not be loaded for: ${qidForDebugging.debug}",
+            err
+          ),
+        identity
+      )
 
   def create(
     quineIdAtTime: QuineIdAtTime,
-    snapshotBytesOpt: Option[Array[Byte]],
-    persistor: PersistenceAgent,
-    metrics: HostQuineMetrics
-  )(implicit ec: ExecutionContext): Future[NodeActorConstructorArgs] =
-    snapshotBytesOpt match {
-      case Some(bytes) => Future.successful(restoreFromSnapshotBytes(bytes)._2)
-      case None => restoreFromSnapshotAndJournal(quineIdAtTime, persistor, metrics)
+    recoverySnapshotBytes: Option[Array[Byte]],
+    graph: BaseGraph
+  ): Future[NodeActorConstructorArgs] =
+    recoverySnapshotBytes match {
+      case Some(recoverySnapshotBytes) =>
+        val snapshot = deserializeSnapshotBytes(recoverySnapshotBytes, quineIdAtTime)(graph.idProvider)
+        Future.successful(
+          nodeConstructorArgsFromRestoredData(
+            snapshot,
+            journal =
+              None, // this snapshot was created as the node slept, so there are no journal events after the snapshot
+            multipleValuesStandingQueryStates = None // TODO QU-430
+          )
+        )
+      case None => restoreFromSnapshotAndJournal(quineIdAtTime, graph)
     }
 
-  /** Deserialize a binary node snapshot and use it to initialize node state
+  /** Deserialize a binary node snapshot for the thoroughgoing moment and use it to initialize node state
     *
-    * @param snapshotBytes binary node snapshot
+    * @param restored node snapshot
     */
-  @throws("if snapshot bytes cannot be deserialized")
-  private def restoreFromSnapshotBytes(snapshotBytes: Array[Byte]): (EventTime, NodeActorConstructorArgs) = {
-    val restored: NodeSnapshot =
-      SnapshotCodec.format
-        .read(snapshotBytes)
-        .get // Throws! ...because there's nothing better to do...
-
-    restored.time -> NodeActorConstructorArgs(
+  private def nodeConstructorArgsFromRestoredData(
+    restored: NodeSnapshot,
+    journal: Option[Journal],
+    multipleValuesStandingQueryStates: Option[MultipleValuesStandingQueries]
+  ): NodeActorConstructorArgs =
+    NodeActorConstructorArgs(
       properties = restored.properties,
       edges = restored.edges,
-      subscribersToThisNode = restored.subscribersToThisNode,
-      domainNodeIndex = DomainNodeIndexBehavior.DomainNodeIndex(restored.domainNodeIndex),
-      standingQueries = mutable.Map.empty,
-      initialJournal = Iterable.empty
+      distinctIdSubscribers = restored.subscribersToThisNode,
+      domainNodeIndex = DomainNodeIndex(restored.domainNodeIndex),
+      multipleValuesStandingQueryStates = multipleValuesStandingQueryStates.getOrElse(mutable.Map.empty),
+      initialJournal = journal.getOrElse(
+        List.empty
+      )
     )
 
-  }
-
-  /** Read the NodeActor state at the specified time
+  /** Load the state of specified the node at the specified time. The resultant NodeActorConstructorArgs should allow
+    * the node to restore itself to its state prior to sleeping (up to removed Standing Queries) without any additional
+    * persistor calls.
+    *
+    * @param untilOpt load changes made up to and including this time
     */
   private[this] def restoreFromSnapshotAndJournal(
     quineIdAtTime: QuineIdAtTime,
-    persistor: PersistenceAgent,
-    metrics: HostQuineMetrics
-  )(implicit ec: ExecutionContext): Future[NodeActorConstructorArgs] = {
-
-    val persistenceConfig = persistor.persistenceConfig
+    graph: BaseGraph
+  ): Future[NodeActorConstructorArgs] = {
     val QuineIdAtTime(qid, atTime) = quineIdAtTime
+    val persistenceConfig = graph.persistor.persistenceConfig
 
-    def getSnapshot(): Future[Option[Array[Byte]]] = {
-      val upToTime = atTime match {
-        case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
-          EventTime.fromMillis(historicalTime)
-        case _ =>
-          EventTime.MaxValue
+    implicit val idProv: QuineIdProvider = graph.idProvider
+
+    def getSnapshot(): Future[Option[NodeSnapshot]] =
+      if (!persistenceConfig.snapshotEnabled) Future.successful(None)
+      else {
+        val upToTime = atTime match {
+          case Some(historicalTime) if !persistenceConfig.snapshotSingleton =>
+            EventTime.fromMillis(historicalTime)
+          case _ =>
+            EventTime.MaxValue
+        }
+        graph.metrics.persistorGetLatestSnapshotTimer
+          .time {
+            graph.persistor.getLatestSnapshot(qid, upToTime)
+          }
+          .map { maybeBytes =>
+            maybeBytes.map(deserializeSnapshotBytes(_, quineIdAtTime))
+          }(graph.nodeDispatcherEC)
       }
-      metrics.persistorGetLatestSnapshotTimer.time {
-        persistor.getLatestSnapshot(qid, upToTime)
-      }
-    }
 
     def getJournalAfter(after: Option[EventTime], includeDomainIndexEvents: Boolean): Future[Iterable[NodeEvent]] = {
       val startingAt = after.fold(EventTime.MinValue)(_.nextEventTime(None))
@@ -594,39 +710,80 @@ object NodeActor {
         case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
         case None => EventTime.MaxValue
       }
-      metrics.persistorGetJournalTimer.time {
-        persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
+      graph.metrics.persistorGetJournalTimer.time {
+        graph.persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
       }
     }
 
-    val snapshotAndJournal: Future[(Option[NodeActorConstructorArgs], Journal)] = for {
-      latestSnapshotBytesOpt <- if (persistenceConfig.snapshotEnabled) getSnapshot() else Future.successful(None)
-      //(snapshotTime, snapshotArgs) = latestSnapshotOpt.map(restoreFromSnapshotBytes)
-      latestSnapshotOpt = latestSnapshotBytesOpt map restoreFromSnapshotBytes
-      journalAfterSnapshot <-
-        if (persistenceConfig.journalEnabled) getJournalAfter(latestSnapshotOpt.map(_._1), atTime.isEmpty)
-        else Future.successful(Iterable.empty)
-    } yield (latestSnapshotOpt.map(_._2), journalAfterSnapshot)
-    val standingQueryStates: Future[StandingQueryStates] = atTime match {
-      case Some(_) => Future.successful(Map.empty)
-      case None =>
-        metrics.persistorGetStandingQueryStatesTimer.time {
-          persistor.getStandingQueryStates(qid)
-        }
-    }
-    snapshotAndJournal.zipWith(standingQueryStates) {
-      case (
-            (latestSnapshotOpt: Option[NodeActorConstructorArgs], journalAfterSnapshot: Journal),
-            standingQueryStates: StandingQueryStates
-          ) =>
-        val snapshotArgs = latestSnapshotOpt getOrElse NodeActorConstructorArgs.empty
-        snapshotArgs.copy(
-          initialJournal = journalAfterSnapshot,
-          standingQueries = mutable.Map.from(
-            standingQueryStates.view.mapValues(StandingQueryStateCodec.format.read(_).get)
+    // Get the snapshot and journal events
+    val snapshotAndJournal =
+      getSnapshot()
+        .flatMap { latestSnapshotOpt =>
+          val journalAfterSnapshot: Future[Journal] = if (persistenceConfig.journalEnabled) {
+            getJournalAfter(latestSnapshotOpt.map(_.time), includeDomainIndexEvents = atTime.isEmpty)
+            // QU-429 to avoid extra retries, consider unifying the Failure types of `persistor.getJournal`, and adding a
+            // recoverWith here to map any that represent irrecoverable failures to a [[NodeWakeupFailedException]]
+          } else
+            Future.successful(Vector.empty)
+
+          journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(
+            ExecutionContexts.parasitic
           )
-        )
+        }(graph.nodeDispatcherEC)
+
+    // Get the materialized standing query states for MultipleValues.
+    val multipleValuesStandingQueryStates: Future[MultipleValuesStandingQueries] = graph match {
+      case sqGraph: StandingQueryOpsGraph if atTime.isEmpty =>
+        val lookupInfo = new MultipleValuesStandingQueryLookupInfo {
+          def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
+            sqGraph.getStandingQueryPart(queryPartId)
+          val node: QuineId = qid
+          val idProvider: QuineIdProvider = idProv
+        }
+        graph.metrics.persistorGetMultipleValuesStandingQueryStatesTimer
+          .time {
+            graph.persistor.getMultipleValuesStandingQueryStates(qid)
+          }
+          .map { multipleValuesStandingQueryStates =>
+            multipleValuesStandingQueryStates.map { case (sqIdAndPartId, bytes) =>
+              val sqState = MultipleValuesStandingQueryStateCodec.format
+                .read(bytes)
+                .getOrElse(
+                  throw new NodeWakeupFailedException(
+                    s"NodeActor state (Standing Query States) for node: ${qid.debug} could not be loaded"
+                  )
+                )
+              sqState._2.preStart(lookupInfo)
+              sqIdAndPartId -> sqState
+            }
+          }(graph.nodeDispatcherEC)
+          .map(map => mutable.Map.from(map))(graph.nodeDispatcherEC)
+      case _ => Future.successful(mutable.Map.empty)
     }
 
-  }
+    // Will defer all other message processing until the Future is complete.
+    // It is OK to ignore the returned future from `pauseMessageProcessingUntil` because nothing else happens during
+    // initialization of this actor. Additional message processing is deferred by `pauseMessageProcessingUntil`'s
+    // message stashing.
+    snapshotAndJournal
+      .zip(multipleValuesStandingQueryStates)
+      .recoverWith {
+        case nwf: NodeWakeupFailedException => Future.failed(nwf)
+        case err =>
+          Future.failed(
+            new NodeWakeupFailedException(
+              s"""NodeActor state for node: ${qid.debug} could not be loaded because retrieving the journal, snapshot, or
+                 |standing query information failed.""".stripMargin.replace('\n', ' '),
+              err
+            )
+          )
+      }(ExecutionContexts.parasitic)
+  }.map { case ((snapshotOpt, journal), multipleValuesStates) =>
+    snapshotOpt
+      .map(snapshot => nodeConstructorArgsFromRestoredData(snapshot, Some(journal), Some(multipleValuesStates)))
+      .getOrElse(
+        NodeActorConstructorArgs.empty
+          .copy(initialJournal = journal, multipleValuesStandingQueryStates = multipleValuesStates)
+      )
+  }(graph.nodeDispatcherEC)
 }

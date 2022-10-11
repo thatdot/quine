@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, NodeEvent, StandingQuery, StandingQueryId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -55,13 +55,15 @@ class EmptyPersistor(
   def removeStandingQuery(standingQuery: StandingQuery) = Future.unit
   def getStandingQueries: Future[List[StandingQuery]] = Future.successful(List.empty)
 
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     Future.successful(Map.empty)
 
-  def setStandingQueryState(
+  def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = Future.unit
 

@@ -68,6 +68,6 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
         snapshotPartMaxSizeBytes = 1000
       )
     } else {
-      EmptyPersistor
+      InMemoryPersistor.empty
     }
 }

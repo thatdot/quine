@@ -5,7 +5,14 @@ import scala.util.{Failure, Success}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -21,11 +28,11 @@ case class GetLatestSnapshot(id: QuineId, upToTime: EventTime) extends Persistor
 case class PersistStandingQuery(standingQuery: StandingQuery) extends PersistorCall
 case class RemoveStandingQuery(standingQuery: StandingQuery) extends PersistorCall
 case object GetStandingQueries extends PersistorCall
-case class GetStandingQueryStates(id: QuineId) extends PersistorCall
+case class GetMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case class SetStandingQueryState(
   standingQuery: StandingQueryId,
   id: QuineId,
-  standingQueryId: StandingQueryPartId,
+  standingQueryId: MultipleValuesStandingQueryPartId,
   payloadSize: Option[Int]
 ) extends PersistorCall
 case class SetMetaData(key: String, payloadSize: Option[Int]) extends PersistorCall
@@ -110,19 +117,21 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     persistenceAgent.getStandingQueries
   )
 
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = leftMap(
-    new WrappedPersistorException(GetStandingQueryStates(id), _),
-    persistenceAgent.getStandingQueryStates(id)
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] = leftMap(
+    new WrappedPersistorException(GetMultipleValuesStandingQueryStates(id), _),
+    persistenceAgent.getMultipleValuesStandingQueryStates(id)
   )
 
-  def setStandingQueryState(
+  def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = leftMap(
     new WrappedPersistorException(SetStandingQueryState(standingQuery, id, standingQueryId, state.map(_.length)), _),
-    persistenceAgent.setStandingQueryState(standingQuery, id, standingQueryId, state)
+    persistenceAgent.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
   )
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = leftMap(

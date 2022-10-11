@@ -8,24 +8,40 @@ import akka.actor.Actor
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.{EventSubscriber, StandingQueryWithId}
+import com.thatdot.quine.graph.cypher.{
+  MultipleValuesStandingQuery,
+  MultipleValuesStandingQueryEffects,
+  MultipleValuesStandingQueryState
+}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
-import com.thatdot.quine.graph.messaging.StandingQueryMessage._
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  CancelMultipleValuesResult,
+  CancelMultipleValuesSubscription,
+  CreateMultipleValuesStandingQuerySubscription,
+  MultipleValuesStandingQueryCommand,
+  MultipleValuesStandingQuerySubscriber,
+  NewMultipleValuesResult,
+  ResultId,
+  UpdateStandingQueriesCommand,
+  UpdateStandingQueriesNoWake,
+  UpdateStandingQueriesWake
+}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{
   BaseNodeActor,
+  MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   StandingQueryId,
   StandingQueryLocalEvents,
-  StandingQueryPartId,
   StandingQueryPattern,
   TimeFuture,
   cypher
 }
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.codecs.StandingQueryStateCodec
+import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig, PersistenceSchedule}
 
-trait CypherStandingBehavior
+trait MultipleValuesStandingQueryBehavior
     extends Actor
     with BaseNodeActor
     with QuineIdOps
@@ -42,47 +58,49 @@ trait CypherStandingBehavior
     *  - Remove SQs registered on the node but not on the graph by cancelling subscriptions to subqueries as appropriate
     *  - [Re]subscribe to each SQ registered on the graph
     */
-  def updateUniversalCypherQueriesOnWake(): Unit = {
+  def updateMultipleValuesStandingQueriesOnNode(): Unit = {
 
     val runningStandingQueries = graph.runningStandingQueries
 
     // Remove old SQs no longer in graph state
     for {
-      ((sqId, partId), (sqSubscribers, _)) <- standingQueries
+      ((sqId, partId), (sqSubscribers, _)) <- multipleValuesStandingQueries
       if !runningStandingQueries.contains(sqId)
       subscriber <- sqSubscribers.subscribers
-    } self ! CancelCypherSubscription(subscriber, partId)
+    } self ! CancelMultipleValuesSubscription(subscriber, partId)
 
     // Register new universal SQs in graph state
     for {
-      (universalSqId, universalSq) <- runningStandingQueries
-      query <- universalSq.query.query match {
-        case query: StandingQueryPattern.SqV4 => Some(query.compiledQuery)
+      (sqId, runningSQ) <- runningStandingQueries
+      query <- runningSQ.query.query match {
+        case query: StandingQueryPattern.MultipleValuesQueryPattern => Some(query.compiledQuery)
         case _ => None
       }
     } {
-      val subscriber = CypherSubscriber.GlobalSubscriber(universalSqId)
-      self ! CreateCypherSubscription(subscriber, query) // no-op if already registered
+      val subscriber = MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId)
+      // TODO for tighter consistency and possibly increased performance, consider completing this within the startup
+      //      instead of as a self-tell (nontrivial)
+      self ! CreateMultipleValuesStandingQuerySubscription(subscriber, query) // no-op if already registered
     }
   }
 
-  implicit class StandingQuerySubscribersOps(subs: StandingQuerySubscribers)
-      extends cypher.StandingQueryEffects
+  implicit class MultipleValuesStandingQuerySubscribersOps(subs: MultipleValuesStandingQuerySubscribers)
+      extends MultipleValuesStandingQueryEffects
       with LazyLogging {
 
-    def lookupQuery(queryPartId: StandingQueryPartId): cypher.StandingQuery =
+    def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
       graph.getStandingQueryPart(queryPartId)
 
-    def createSubscription(onNode: QuineId, query: cypher.StandingQuery): Unit = {
-      val subscriber = CypherSubscriber.QuerySubscriber(node, subs.globalId, subs.forQuery)
-      onNode ! CreateCypherSubscription(subscriber, query)
+    def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
+      val subscriber = MultipleValuesStandingQuerySubscriber.NodeSubscriber(node, subs.globalId, subs.forQuery)
+      onNode ! CreateMultipleValuesStandingQuerySubscription(subscriber, query)
     }
 
-    def cancelSubscription(onNode: QuineId, queryId: StandingQueryPartId): Unit = {
-      val subscriber = CypherSubscriber.QuerySubscriber(node, subs.globalId, subs.forQuery)
+    def cancelSubscription(onNode: QuineId, queryId: MultipleValuesStandingQueryPartId): Unit = {
+      val subscriber = MultipleValuesStandingQuerySubscriber.NodeSubscriber(node, subs.globalId, subs.forQuery)
       // optimization: only perform cancellations for running top-level queries (or to clear out local state)
       if (qid == onNode || graph.runningStandingQuery(subs.globalId).nonEmpty) {
-        onNode ! CancelCypherSubscription(subscriber, queryId)
+        onNode ! CancelMultipleValuesSubscription(subscriber, queryId)
       } else {
         logger.info(
           s"Declining to process MultipleValues cancellation message on node: $onNode for deleted Standing Query ${subs.globalId}"
@@ -91,55 +109,55 @@ trait CypherStandingBehavior
     }
 
     def reportNewResult(resultId: ResultId, result: cypher.QueryContext): Unit = {
-      val newResult = NewCypherResult(node, subs.forQuery, subs.globalId, _, resultId, result)
+      val newResult = NewMultipleValuesResult(node, subs.forQuery, subs.globalId, _, resultId, result)
       subs.subscribers.foreach {
-        case CypherSubscriber.QuerySubscriber(quineId, _, subscriber) =>
+        case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
           quineId ! newResult(Some(subscriber))
-        case CypherSubscriber.GlobalSubscriber(sqId) =>
+        case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
           graph.reportStandingResult(sqId, newResult(None))
       }
     }
 
     def cancelOldResult(resultId: ResultId): Unit = {
-      val oldResult = CancelCypherResult(node, subs.forQuery, subs.globalId, _, resultId)
+      val oldResult = CancelMultipleValuesResult(node, subs.forQuery, subs.globalId, _, resultId)
       subs.subscribers.foreach {
-        case CypherSubscriber.QuerySubscriber(quineId, _, subscriber) =>
+        case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
           quineId ! oldResult(Some(subscriber))
-        case CypherSubscriber.GlobalSubscriber(sqId) =>
+        case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
           graph.reportStandingResult(sqId, oldResult(None))
       }
     }
 
     val node: QuineId = qid
 
-    val idProvider: QuineIdProvider = CypherStandingBehavior.this.idProvider
+    val idProvider: QuineIdProvider = MultipleValuesStandingQueryBehavior.this.idProvider
   }
 
   /** Locally registered & running standing queries */
-  protected def standingQueries: mutable.Map[
-    (StandingQueryId, StandingQueryPartId),
-    (StandingQuerySubscribers, cypher.StandingQueryState)
+  protected def multipleValuesStandingQueries: mutable.Map[
+    (StandingQueryId, MultipleValuesStandingQueryPartId),
+    (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
   ]
 
   /** When running in [[PersistenceSchedule.OnNodeSleep]], updates
     * will be buffered here and persisted only on node sleep
     */
-  final val pendingStandingQueryWrites: mutable.Set[(StandingQueryId, StandingQueryPartId)] =
-    mutable.Set.empty[(StandingQueryId, StandingQueryPartId)]
+  final val pendingMultipleValuesWrites: mutable.Set[(StandingQueryId, MultipleValuesStandingQueryPartId)] =
+    mutable.Set.empty[(StandingQueryId, MultipleValuesStandingQueryPartId)]
 
   /** Route a node event to exactly the stateful standing queries interested in it
     *
     * @param event new node event
     * @return future that completes once the SQ updates are saved to disk
     */
-  final protected def updateCypherSq(event: NodeChangeEvent, subscriber: StandingQueryWithId): Future[Unit] = {
+  final protected def updateMultipleValuesSqs(event: NodeChangeEvent, subscriber: StandingQueryWithId): Future[Unit] = {
 
     val persisted: Option[Future[Unit]] = for {
-      tup <- standingQueries.get((subscriber.queryId, subscriber.partId))
+      tup <- multipleValuesStandingQueries.get((subscriber.queryId, subscriber.partId))
       (subscribers, sqState) = tup
       somethingChanged = sqState.onNodeEvents(Seq(event), subscribers)
       if somethingChanged
-    } yield persistStandingQueryState(subscriber.queryId, subscriber.partId, Some(tup))
+    } yield persistMultipleValuesStandingQueryState(subscriber.queryId, subscriber.partId, Some(tup))
 
     persisted.getOrElse(Future.unit)
   }
@@ -148,14 +166,15 @@ trait CypherStandingBehavior
     *
     * @param command standing query command to process
     */
-  protected def cypherStandingQueryBehavior(command: CypherStandingQueryCommand): Unit = command match {
-    case CreateCypherSubscription(subscriber, query) =>
+  protected def multipleValuesStandingQueryBehavior(command: MultipleValuesStandingQueryCommand): Unit = command match {
+    case CreateMultipleValuesStandingQuerySubscription(subscriber, query) =>
       val combinedId = subscriber.globalId -> query.id
-      standingQueries.get(combinedId) match {
+      multipleValuesStandingQueries.get(combinedId) match {
         case None =>
           val sqState = query.createState()
-          val subscribers = StandingQuerySubscribers(query.id, subscriber.globalId, mutable.Set(subscriber))
-          standingQueries += combinedId -> (subscribers -> sqState)
+          val subscribers =
+            MultipleValuesStandingQuerySubscribers(query.id, subscriber.globalId, mutable.Set(subscriber))
+          multipleValuesStandingQueries += combinedId -> (subscribers -> sqState)
           sqState.preStart(subscribers)
           sqState.onInitialize(subscribers)
           sqState.relevantEvents.foreach { (event: StandingQueryLocalEvents) =>
@@ -169,7 +188,7 @@ trait CypherStandingBehavior
             // Notify the standing query of events for pre-existing node state
             sqState.onNodeEvents(initialEvents, subscribers)
           }
-          val _ = persistStandingQueryState(subscriber.globalId, query.id, Some(subscribers -> sqState))
+          val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, query.id, Some(subscribers -> sqState))
 
         // SQ is already running on the node
         case Some(tup @ (subscribers, sqState)) =>
@@ -181,21 +200,21 @@ trait CypherStandingBehavior
             // Replay results
             val replayed = sqState.replayResults(properties)
             for ((resultId, result) <- replayed) {
-              val newResult = NewCypherResult(qid, query.id, subscriber.globalId, _, resultId, result)
+              val newResult = NewMultipleValuesResult(qid, query.id, subscriber.globalId, _, resultId, result)
               subscriber match {
-                case CypherSubscriber.QuerySubscriber(quineId, _, subscriber) =>
+                case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
                   quineId ! newResult(Some(subscriber))
-                case CypherSubscriber.GlobalSubscriber(sqId) =>
+                case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
                   graph.reportStandingResult(sqId, newResult(None))
               }
             }
-            val _ = persistStandingQueryState(subscriber.globalId, query.id, Some(tup))
+            val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, query.id, Some(tup))
           }
       }
 
-    case CancelCypherSubscription(subscriber, queryId) =>
+    case CancelMultipleValuesSubscription(subscriber, queryId) =>
       val combinedId = subscriber.globalId -> queryId
-      standingQueries.get(combinedId) match {
+      multipleValuesStandingQueries.get(combinedId) match {
         case None =>
         // TODO: can this happen in non-exceptional cases (ie. should we warn?)
 
@@ -204,40 +223,40 @@ trait CypherStandingBehavior
 
           // Only fully remove the running standing query if no subscribers remain
           if (subscribers.subscribers.isEmpty) {
-            standingQueries -= combinedId
+            multipleValuesStandingQueries -= combinedId
             sqState.onShutdown(subscribers)
             sqState.relevantEvents.foreach { (event: StandingQueryLocalEvents) =>
               localEventIndex.unregisterStandingQuery(EventSubscriber(combinedId), event)
             }
-            val _ = persistStandingQueryState(subscriber.globalId, queryId, None)
+            val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, queryId, None)
           } else {
-            val _ = persistStandingQueryState(subscriber.globalId, queryId, Some(tup))
+            val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, queryId, Some(tup))
           }
       }
 
-    case newResult @ NewCypherResult(_, _, globalId, forQueryIdOpt, _, _) =>
+    case newResult @ NewMultipleValuesResult(_, _, globalId, forQueryIdOpt, _, _) =>
       val interestedLocalQueryId = forQueryIdOpt.get // should never be `None` for node
       // Deliver the result to interested standing query state
-      standingQueries.get(globalId -> interestedLocalQueryId) match {
+      multipleValuesStandingQueries.get(globalId -> interestedLocalQueryId) match {
         case None =>
         // Possible if local shutdown happens right before a result is received
         case Some(tup @ (subscribers, sqState)) =>
           val somethingChanged = sqState.onNewSubscriptionResult(newResult, subscribers)
           if (somethingChanged) {
-            val _ = persistStandingQueryState(globalId, interestedLocalQueryId, Some(tup))
+            val _ = persistMultipleValuesStandingQueryState(globalId, interestedLocalQueryId, Some(tup))
           }
       }
 
-    case cancelledResult @ CancelCypherResult(_, _, globalId, forQueryIdOpt, _) =>
+    case cancelledResult @ CancelMultipleValuesResult(_, _, globalId, forQueryIdOpt, _) =>
       val interestedLocalQueryId = forQueryIdOpt.get // should never be `None` for node
       // Deliver the cancellation to interested standing query state
-      standingQueries.get(globalId -> interestedLocalQueryId) match {
+      multipleValuesStandingQueries.get(globalId -> interestedLocalQueryId) match {
         case None =>
         // Possible if local shutdown happens right before a result is received
         case Some(tup @ (subscribers, sqState)) =>
           val somethingChanged = sqState.onCancelledSubscriptionResult(cancelledResult, subscribers)
           if (somethingChanged) {
-            val _ = persistStandingQueryState(globalId, interestedLocalQueryId, Some(tup))
+            val _ = persistMultipleValuesStandingQueryState(globalId, interestedLocalQueryId, Some(tup))
           }
       }
   }
@@ -251,17 +270,17 @@ trait CypherStandingBehavior
       msg ?! Done
   }
 
-  private[this] def persistStandingQueryState(
+  private[this] def persistMultipleValuesStandingQueryState(
     globalId: StandingQueryId,
-    localId: StandingQueryPartId,
-    state: Option[(StandingQuerySubscribers, cypher.StandingQueryState)]
+    localId: MultipleValuesStandingQueryPartId,
+    state: Option[(MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)]
   ): Future[Unit] =
     persistenceConfig.standingQuerySchedule match {
       case PersistenceSchedule.OnNodeUpdate =>
-        val serialized = state.map(StandingQueryStateCodec.format.write)
+        val serialized = state.map(MultipleValuesStandingQueryStateCodec.format.write)
         serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
         new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
-          persistor.setStandingQueryState(
+          persistor.setMultipleValuesStandingQueryState(
             globalId,
             qid,
             localId,
@@ -271,7 +290,7 @@ trait CypherStandingBehavior
 
       // Don't save now, but record the fact this will need to be saved on sleep
       case PersistenceSchedule.OnNodeSleep =>
-        pendingStandingQueryWrites += globalId -> localId
+        pendingMultipleValuesWrites += globalId -> localId
         updateRelevantToSnapshotOccurred()
         Future.unit
 
@@ -281,8 +300,8 @@ trait CypherStandingBehavior
     }
 }
 
-final case class StandingQuerySubscribers(
-  forQuery: StandingQueryPartId,
+final case class MultipleValuesStandingQuerySubscribers(
+  forQuery: MultipleValuesStandingQueryPartId,
   globalId: StandingQueryId,
-  subscribers: mutable.Set[CypherSubscriber]
+  subscribers: mutable.Set[MultipleValuesStandingQuerySubscriber]
 )

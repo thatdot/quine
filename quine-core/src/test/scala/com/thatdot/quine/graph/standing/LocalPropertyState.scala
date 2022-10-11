@@ -3,16 +3,16 @@ package com.thatdot.quine.graph.standing
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.NodeChangeEvent.{PropertyRemoved, PropertySet}
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
 class LocalPropertyStateTest extends AnyFunSuite {
 
   test("any value constraint, no alias") {
 
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = None
     )
 
@@ -60,9 +60,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
   }
 
   test("null constraint, no alias") {
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.None,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.None,
       aliasedAs = None
     )
 
@@ -116,9 +116,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
   test("null constraint and alias") {
 
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.None,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.None,
       aliasedAs = Some(Symbol("nulled"))
     )
 
@@ -171,9 +171,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
   test("alias but no value constraint") {
 
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = Some(Symbol("interesting"))
     )
 
@@ -224,9 +224,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
   test("value constraint and no alias") {
 
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
       aliasedAs = None
     )
 
@@ -291,9 +291,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
   test("value constraint and alias") {
 
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
       aliasedAs = Some(Symbol("interesting"))
     )
 
@@ -357,9 +357,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
   }
 
   test("non-equal constraint and no alias") {
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
       aliasedAs = None
     )
 
@@ -427,9 +427,9 @@ class LocalPropertyStateTest extends AnyFunSuite {
   }
 
   test("non-equal constraint and alias") {
-    val query = StandingQuery.LocalProperty(
+    val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
-      propConstraint = StandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
       aliasedAs = Some(Symbol("cathy"))
     )
 

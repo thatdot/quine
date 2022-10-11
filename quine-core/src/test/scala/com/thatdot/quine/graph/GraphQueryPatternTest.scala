@@ -4,6 +4,7 @@ import scala.collection.compat.immutable._
 
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model._
 
 class GraphQueryPatternTest extends AnyFunSuite {
@@ -398,7 +399,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
     )
     assert(
       intercept[InvalidQueryPattern](
-        disconnectedPattern.compiledCypherStandingQuery(labelsProp, IdentityIdProvider)
+        disconnectedPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
       ) == expected
     )
   }
@@ -475,76 +476,76 @@ class GraphQueryPatternTest extends AnyFunSuite {
       )
     }
 
-    val expected = cypher.StandingQuery.Cross(
+    val expected = MultipleValuesStandingQuery.Cross(
       ArraySeq(
-        cypher.StandingQuery.LocalProperty(
+        MultipleValuesStandingQuery.LocalProperty(
           Symbol("qux"),
-          cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
+          MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
           None
         ),
-        cypher.StandingQuery
-          .LocalProperty(Symbol("bar"), cypher.StandingQuery.LocalProperty.Any, None),
-        cypher.StandingQuery.FilterMap(
+        MultipleValuesStandingQuery
+          .LocalProperty(Symbol("bar"), MultipleValuesStandingQuery.LocalProperty.Any, None),
+        MultipleValuesStandingQuery.FilterMap(
           Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(Symbol("__local_id")),
               cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get)
             )
           ),
-          cypher.StandingQuery.LocalId(Symbol("__local_id"), false),
+          MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), false),
           true,
           List()
         ),
-        cypher.StandingQuery.LocalId(Symbol("id"), false),
-        cypher.StandingQuery.SubscribeAcrossEdge(
+        MultipleValuesStandingQuery.LocalId(Symbol("id"), false),
+        MultipleValuesStandingQuery.SubscribeAcrossEdge(
           Some(Symbol("c")),
           Some(EdgeDirection.Incoming),
-          cypher.StandingQuery.Cross(
+          MultipleValuesStandingQuery.Cross(
             ArraySeq(
-              cypher.StandingQuery.SubscribeAcrossEdge(
+              MultipleValuesStandingQuery.SubscribeAcrossEdge(
                 Some(Symbol("a")),
                 Some(EdgeDirection.Incoming),
-                cypher.StandingQuery.Cross(
+                MultipleValuesStandingQuery.Cross(
                   ArraySeq(
-                    cypher.StandingQuery
+                    MultipleValuesStandingQuery
                       .LocalProperty(
                         Symbol("foo"),
-                        cypher.StandingQuery.LocalProperty.Any,
+                        MultipleValuesStandingQuery.LocalProperty.Any,
                         None
                       ),
-                    cypher.StandingQuery.LocalProperty(
+                    MultipleValuesStandingQuery.LocalProperty(
                       Symbol("bar"),
-                      cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
+                      MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
                       None
                     ),
-                    cypher.StandingQuery.SubscribeAcrossEdge(
+                    MultipleValuesStandingQuery.SubscribeAcrossEdge(
                       Some(Symbol("b")),
                       Some(EdgeDirection.Outgoing),
-                      cypher.StandingQuery.Cross(
+                      MultipleValuesStandingQuery.Cross(
                         ArraySeq(
-                          cypher.StandingQuery.LocalProperty(
+                          MultipleValuesStandingQuery.LocalProperty(
                             Symbol("qux"),
-                            cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
+                            MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
                             None
                           ),
-                          cypher.StandingQuery.LocalProperty(
+                          MultipleValuesStandingQuery.LocalProperty(
                             Symbol("bar"),
-                            cypher.StandingQuery.LocalProperty.Any,
+                            MultipleValuesStandingQuery.LocalProperty.Any,
                             None
                           ),
-                          cypher.StandingQuery.SubscribeAcrossEdge(
+                          MultipleValuesStandingQuery.SubscribeAcrossEdge(
                             Some(Symbol("f")),
                             Some(EdgeDirection.Outgoing),
-                            cypher.StandingQuery.Cross(
+                            MultipleValuesStandingQuery.Cross(
                               ArraySeq(
-                                cypher.StandingQuery.LocalProperty(
+                                MultipleValuesStandingQuery.LocalProperty(
                                   Symbol("quux"),
-                                  cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
+                                  MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
                                   None
                                 ),
-                                cypher.StandingQuery.LocalProperty(
+                                MultipleValuesStandingQuery.LocalProperty(
                                   Symbol("quz"),
-                                  cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
+                                  MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
                                   None
                                 )
                               ),
@@ -559,36 +560,36 @@ class GraphQueryPatternTest extends AnyFunSuite {
                   emitSubscriptionsLazily = true
                 )
               ),
-              cypher.StandingQuery.SubscribeAcrossEdge(
+              MultipleValuesStandingQuery.SubscribeAcrossEdge(
                 Some(Symbol("d")),
                 Some(EdgeDirection.Outgoing),
-                cypher.StandingQuery.FilterMap(
+                MultipleValuesStandingQuery.FilterMap(
                   Some(
                     cypher.Expr.Equal(
                       cypher.Expr.Variable(Symbol("__local_id")),
                       cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get)
                     )
                   ),
-                  cypher.StandingQuery.LocalId(Symbol("__local_id"), false),
+                  MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), false),
                   true,
                   List()
                 )
               ),
-              cypher.StandingQuery.SubscribeAcrossEdge(
+              MultipleValuesStandingQuery.SubscribeAcrossEdge(
                 Some(Symbol("e")),
                 Some(EdgeDirection.Outgoing),
-                cypher.StandingQuery.Cross(
+                MultipleValuesStandingQuery.Cross(
                   ArraySeq(
-                    cypher.StandingQuery
+                    MultipleValuesStandingQuery
                       .LocalProperty(
                         Symbol("quux"),
-                        cypher.StandingQuery.LocalProperty.Any,
+                        MultipleValuesStandingQuery.LocalProperty.Any,
                         None
                       ),
-                    cypher.StandingQuery
+                    MultipleValuesStandingQuery
                       .LocalProperty(
                         Symbol("quz"),
-                        cypher.StandingQuery.LocalProperty.Any,
+                        MultipleValuesStandingQuery.LocalProperty.Any,
                         None
                       )
                   ),
@@ -603,7 +604,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       emitSubscriptionsLazily = true
     )
 
-    val actual = treePattern.compiledCypherStandingQuery(labelsProp, IdentityIdProvider)
+    val actual = treePattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
 
     assert(expected === actual)
   }
@@ -622,21 +623,21 @@ class GraphQueryPatternTest extends AnyFunSuite {
       distinct = false
     )
 
-    val actual = graphPattern.compiledCypherStandingQuery(labelsProp, IdentityIdProvider)
+    val actual = graphPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
 
-    val expected = cypher.StandingQuery.Cross(
+    val expected = MultipleValuesStandingQuery.Cross(
       ArraySeq(
-        cypher.StandingQuery.LocalProperty(
+        MultipleValuesStandingQuery.LocalProperty(
           Symbol("foo"),
-          cypher.StandingQuery.LocalProperty.Any,
+          MultipleValuesStandingQuery.LocalProperty.Any,
           Some(Symbol("pulledValue"))
         ),
-        cypher.StandingQuery.LocalProperty(
+        MultipleValuesStandingQuery.LocalProperty(
           Symbol("bar"),
-          cypher.StandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
+          MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
           None
         ),
-        cypher.StandingQuery.FilterMap(
+        MultipleValuesStandingQuery.FilterMap(
           Some(
             cypher.Expr.AnyInList(
               Symbol("__label"),
@@ -644,9 +645,9 @@ class GraphQueryPatternTest extends AnyFunSuite {
               cypher.Expr.Equal(cypher.Expr.Variable(Symbol("__label")), cypher.Expr.Str("LABELLED_NODE"))
             )
           ),
-          cypher.StandingQuery.LocalProperty(
+          MultipleValuesStandingQuery.LocalProperty(
             Symbol("_LABEL"),
-            cypher.StandingQuery.LocalProperty.Any,
+            MultipleValuesStandingQuery.LocalProperty.Any,
             Some(Symbol("__label_list"))
           ),
           dropExisting = true,
@@ -681,20 +682,20 @@ class GraphQueryPatternTest extends AnyFunSuite {
       distinct = false
     )
 
-    val actual = graphPattern.compiledCypherStandingQuery(labelsProp, IdentityIdProvider)
+    val actual = graphPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
 
-    val expected = cypher.StandingQuery.Cross(
+    val expected = MultipleValuesStandingQuery.Cross(
       ArraySeq(
-        cypher.StandingQuery.LocalProperty(
+        MultipleValuesStandingQuery.LocalProperty(
           Symbol("name"),
-          cypher.StandingQuery.LocalProperty.Any,
+          MultipleValuesStandingQuery.LocalProperty.Any,
           Some(Symbol("n.name"))
         ),
-        cypher.StandingQuery.LocalId(
+        MultipleValuesStandingQuery.LocalId(
           Symbol("id(n)"),
           formatAsString = false
         ),
-        cypher.StandingQuery.LocalId(
+        MultipleValuesStandingQuery.LocalId(
           Symbol("strId(n)"),
           formatAsString = true
         )

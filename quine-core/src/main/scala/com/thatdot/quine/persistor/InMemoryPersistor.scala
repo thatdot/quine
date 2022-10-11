@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, NodeEvent, StandingQuery, StandingQueryId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -31,8 +31,12 @@ class InMemoryPersistor(
   domainIndexEvents: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
   snapshots: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, Array[Byte]]] = new ConcurrentHashMap(),
   standingQueries: ConcurrentMap[StandingQueryId, StandingQuery] = new ConcurrentHashMap(),
-  standingQueryStates: ConcurrentMap[QuineId, ConcurrentMap[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    new ConcurrentHashMap(),
+  multipleValuesStandingQueryStates: ConcurrentMap[
+    QuineId,
+    ConcurrentMap[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[
+      Byte
+    ]]
+  ] = new ConcurrentHashMap(),
   metaData: ConcurrentMap[String, Array[Byte]] = new ConcurrentHashMap(),
   domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
@@ -40,7 +44,7 @@ class InMemoryPersistor(
 
   override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
-      journals.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && standingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      journals.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )
 
   def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
@@ -131,28 +135,30 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     Future.successful(
       Option
-        .apply(standingQueryStates.get(id))
-        .fold(Map.empty[(StandingQueryId, StandingQueryPartId), Array[Byte]])(m => m.asScala.toMap)
+        .apply(multipleValuesStandingQueryStates.get(id))
+        .fold(Map.empty[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]])(m => m.asScala.toMap)
     )
 
-  def setStandingQueryState(
+  def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = {
     state match {
       case Some(bytes) =>
-        standingQueryStates
+        multipleValuesStandingQueryStates
           .computeIfAbsent(id, (_: QuineId) => new ConcurrentHashMap())
           .put((standingQuery, standingQueryId), bytes)
 
       case None =>
         Option
-          .apply(standingQueryStates.get(id))
+          .apply(multipleValuesStandingQueryStates.get(id))
           .map(states => states.remove((standingQuery, standingQueryId)))
     }
     Future.unit

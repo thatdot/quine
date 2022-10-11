@@ -18,4 +18,4 @@ object StandingQueryId {
   *
   * @param uuid identifier
   */
-final case class StandingQueryPartId(uuid: UUID) extends AnyVal
+final case class MultipleValuesStandingQueryPartId(uuid: UUID) extends AnyVal

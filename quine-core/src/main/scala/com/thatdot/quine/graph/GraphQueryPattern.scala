@@ -6,6 +6,7 @@ import scala.collection.compat._
 import scala.collection.compat.immutable._
 import scala.collection.mutable
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection, QuineId, QuineIdProvider, QuineValue}
 
@@ -151,10 +152,10 @@ final case class GraphQueryPattern(
    * IDs match)
    */
   @throws[InvalidQueryPattern]
-  def compiledCypherStandingQuery(
+  def compiledMultipleValuesStandingQuery(
     labelsProperty: Symbol,
     idProvider: QuineIdProvider
-  ): cypher.StandingQuery = {
+  ): MultipleValuesStandingQuery = {
 
     if (nodes.isEmpty) {
       throw InvalidQueryPattern("Pattern must be non-empty")
@@ -183,8 +184,8 @@ final case class GraphQueryPattern(
     var remainingEdges = edges
 
     // Extract a query rooted at the given pattern
-    def synthesizeQuery(id: NodePatternId): cypher.StandingQuery = {
-      val subQueries = ArraySeq.newBuilder[cypher.StandingQuery]
+    def synthesizeQuery(id: NodePatternId): MultipleValuesStandingQuery = {
+      val subQueries = ArraySeq.newBuilder[MultipleValuesStandingQuery]
 
       val NodePattern(_, labelOpt, qidOpt, props) = remainingNodes.remove(id).getOrElse {
         throw InvalidQueryPattern("Pattern has a cycle")
@@ -195,35 +196,35 @@ final case class GraphQueryPattern(
         val alias = watchedProperties.get(id).flatMap(_.get(propKey))
         propPattern match {
           case PropertyValuePattern.AnyValue =>
-            subQueries += cypher.StandingQuery.LocalProperty(
+            subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
-              cypher.StandingQuery.LocalProperty.Any,
+              MultipleValuesStandingQuery.LocalProperty.Any,
               alias
             )
           case PropertyValuePattern.Value(value) =>
             val cypherValue = cypher.Expr.fromQuineValue(value)
-            subQueries += cypher.StandingQuery.LocalProperty(
+            subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
-              cypher.StandingQuery.LocalProperty.Equal(cypherValue),
+              MultipleValuesStandingQuery.LocalProperty.Equal(cypherValue),
               alias
             )
           case PropertyValuePattern.AnyValueExcept(value) =>
             val cypherValue = cypher.Expr.fromQuineValue(value)
-            subQueries += cypher.StandingQuery.LocalProperty(
+            subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
-              cypher.StandingQuery.LocalProperty.NotEqual(cypherValue),
+              MultipleValuesStandingQuery.LocalProperty.NotEqual(cypherValue),
               alias
             )
           case PropertyValuePattern.NoValue =>
-            subQueries += cypher.StandingQuery.LocalProperty(
+            subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
-              cypher.StandingQuery.LocalProperty.None,
+              MultipleValuesStandingQuery.LocalProperty.None,
               alias
             )
           case PropertyValuePattern.RegexMatch(pattern) =>
-            subQueries += cypher.StandingQuery.LocalProperty(
+            subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
-              cypher.StandingQuery.LocalProperty.Regex(pattern.pattern),
+              MultipleValuesStandingQuery.LocalProperty.Regex(pattern.pattern),
               alias
             )
         }
@@ -233,19 +234,19 @@ final case class GraphQueryPattern(
         (propKey, alias) <- watchedProperties.getOrElse(id, Map.empty)
         if !props.contains(propKey)
       )
-        subQueries += cypher.StandingQuery.LocalProperty(
+        subQueries += MultipleValuesStandingQuery.LocalProperty(
           propKey,
-          cypher.StandingQuery.LocalProperty.Any,
+          MultipleValuesStandingQuery.LocalProperty.Any,
           Some(alias)
         )
 
       // Sub-queries for labels
-      // TODO: add a special case for this in `cypher.StandingQuery.LocalProperty`
+      // TODO: add a special case for this in `MultipleValuesStandingQuery.LocalProperty`
       labelOpt.foreach { label =>
         val labelTempVar = Symbol("__label")
         val labelListTempVar = Symbol("__label_list")
 
-        subQueries += cypher.StandingQuery.FilterMap(
+        subQueries += MultipleValuesStandingQuery.FilterMap(
           condition = Some(
             cypher.Expr.AnyInList(
               variable = labelTempVar,
@@ -257,9 +258,9 @@ final case class GraphQueryPattern(
             )
           ),
           dropExisting = true,
-          toFilter = cypher.StandingQuery.LocalProperty(
+          toFilter = MultipleValuesStandingQuery.LocalProperty(
             propKey = labelsProperty,
-            propConstraint = cypher.StandingQuery.LocalProperty.Any,
+            propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
             aliasedAs = Some(labelListTempVar)
           ),
           toAdd = Nil
@@ -267,7 +268,7 @@ final case class GraphQueryPattern(
       }
       qidOpt.foreach { qid =>
         val nodeIdTempVar = Symbol("__local_id")
-        subQueries += cypher.StandingQuery.FilterMap(
+        subQueries += MultipleValuesStandingQuery.FilterMap(
           condition = Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(nodeIdTempVar),
@@ -275,14 +276,14 @@ final case class GraphQueryPattern(
             )
           ),
           dropExisting = true,
-          toFilter = cypher.StandingQuery.LocalId(nodeIdTempVar, formatAsString = false),
+          toFilter = MultipleValuesStandingQuery.LocalId(nodeIdTempVar, formatAsString = false),
           toAdd = Nil
         )
       }
 
       // Sub-queries for a local ID
       for ((formatAsString, aliasId) <- watchedIds.getOrElse(id, Map.empty))
-        subQueries += cypher.StandingQuery.LocalId(aliasId, formatAsString)
+        subQueries += MultipleValuesStandingQuery.LocalId(aliasId, formatAsString)
 
       // sub-queries for edges
       val (connectedEdges, otherEdges) = remainingEdges.partition(e => e.from == id || e.to == id)
@@ -294,7 +295,7 @@ final case class GraphQueryPattern(
         } else {
           (from, if (isDirected) EdgeDirection.Incoming else EdgeDirection.Undirected)
         }
-        subQueries += cypher.StandingQuery.SubscribeAcrossEdge(
+        subQueries += MultipleValuesStandingQuery.SubscribeAcrossEdge(
           edgeName = Some(label),
           edgeDirection = Some(edgeDir),
           andThen = synthesizeQuery(other)
@@ -302,9 +303,9 @@ final case class GraphQueryPattern(
       }
 
       subQueries.result() match {
-        case ArraySeq() => cypher.StandingQuery.UnitSq()
+        case ArraySeq() => MultipleValuesStandingQuery.UnitSq()
         case ArraySeq(singleQuery) => singleQuery
-        case manyQueries => cypher.StandingQuery.Cross(manyQueries, emitSubscriptionsLazily = true)
+        case manyQueries => MultipleValuesStandingQuery.Cross(manyQueries, emitSubscriptionsLazily = true)
       }
     }
 
@@ -312,7 +313,7 @@ final case class GraphQueryPattern(
 
     // If we filter or map, insert a `FilterMap`
     if (filterCond.nonEmpty || toReturn.nonEmpty) {
-      query = cypher.StandingQuery.FilterMap(
+      query = MultipleValuesStandingQuery.FilterMap(
         filterCond,
         query,
         dropExisting = toReturn.nonEmpty,

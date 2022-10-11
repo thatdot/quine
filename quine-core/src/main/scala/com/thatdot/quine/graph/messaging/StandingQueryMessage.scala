@@ -2,10 +2,11 @@ package com.thatdot.quine.graph.messaging
 
 import com.google.common.hash.Hashing.murmur3_128
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{
+  MultipleValuesStandingQueryPartId,
   StandingQuery,
   StandingQueryId,
-  StandingQueryPartId,
   StandingQueryPattern,
   StandingQueryResult,
   cypher
@@ -23,7 +24,7 @@ sealed abstract class StandingQueryMessage extends QuineMessage
 object StandingQueryMessage {
 
   /** == Cypher standing queries == */
-  sealed abstract class CypherStandingQueryCommand extends StandingQueryMessage
+  sealed abstract class MultipleValuesStandingQueryCommand extends StandingQueryMessage
 
   final case class ResultId(uuid: java.util.UUID) extends AnyVal
   object ResultId {
@@ -32,36 +33,36 @@ object StandingQueryMessage {
       ResultId(Hashable[Array[Byte]].hashToUuid(murmur3_128(), qid.array))
   }
 
-  sealed abstract class CypherSubscriber {
+  sealed abstract class MultipleValuesStandingQuerySubscriber {
     val globalId: StandingQueryId
   }
-  object CypherSubscriber {
-    final case class QuerySubscriber(
+  object MultipleValuesStandingQuerySubscriber {
+    final case class NodeSubscriber(
       onNode: QuineId,
       globalId: StandingQueryId,
-      queryId: StandingQueryPartId
-    ) extends CypherSubscriber
+      queryId: MultipleValuesStandingQueryPartId
+    ) extends MultipleValuesStandingQuerySubscriber
 
     final case class GlobalSubscriber(
       globalId: StandingQueryId
-    ) extends CypherSubscriber
+    ) extends MultipleValuesStandingQuerySubscriber
   }
 
   /** @param subscriber node to which results are sent
     * @param query what to match
     */
-  final case class CreateCypherSubscription(
-    subscriber: CypherSubscriber,
-    query: cypher.StandingQuery
-  ) extends CypherStandingQueryCommand
+  final case class CreateMultipleValuesStandingQuerySubscription(
+    subscriber: MultipleValuesStandingQuerySubscriber,
+    query: MultipleValuesStandingQuery
+  ) extends MultipleValuesStandingQueryCommand
 
   /** @param originalSubscriber node which had created a subscription
     * @param queryId ID of the query passed in when the subscription was made
     */
-  final case class CancelCypherSubscription(
-    originalSubscriber: CypherSubscriber,
-    queryId: StandingQueryPartId
-  ) extends CypherStandingQueryCommand
+  final case class CancelMultipleValuesSubscription(
+    originalSubscriber: MultipleValuesStandingQuerySubscriber,
+    queryId: MultipleValuesStandingQueryPartId
+  ) extends MultipleValuesStandingQueryCommand
 
   /** @param from node delivering the result
     * @param queryId ID of the query passed in when the subscription was made
@@ -69,14 +70,14 @@ object StandingQueryMessage {
     * @param resultId fresh ID that can be used to invalidate the results
     * @param result assumulated value
     */
-  final case class NewCypherResult(
+  final case class NewMultipleValuesResult(
     from: QuineId,
-    queryId: StandingQueryPartId,
+    queryId: MultipleValuesStandingQueryPartId,
     globalId: StandingQueryId,
-    forQueryId: Option[StandingQueryPartId],
+    forQueryId: Option[MultipleValuesStandingQueryPartId],
     resultId: ResultId,
     result: cypher.QueryContext
-  ) extends CypherStandingQueryCommand
+  ) extends MultipleValuesStandingQueryCommand
       with SqResultLike {
     def isPositive = true
 
@@ -94,13 +95,13 @@ object StandingQueryMessage {
     * @param forQueryId when delivering results to another query, what is that query's ID
     * @param resultId ID that was passed with the original results
     */
-  final case class CancelCypherResult(
+  final case class CancelMultipleValuesResult(
     from: QuineId,
-    queryId: StandingQueryPartId,
+    queryId: MultipleValuesStandingQueryPartId,
     globalId: StandingQueryId,
-    forQueryId: Option[StandingQueryPartId],
+    forQueryId: Option[MultipleValuesStandingQueryPartId],
     resultId: ResultId
-  ) extends CypherStandingQueryCommand
+  ) extends MultipleValuesStandingQueryCommand
       with SqResultLike {
     def isPositive = false
 
@@ -132,7 +133,7 @@ object StandingQueryMessage {
       val (formatAsString, aliasedAs) = sq.query match {
         case pat: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
           pat.formatReturnAsStr -> pat.aliasReturnAs.name
-        case _: StandingQueryPattern.SqV4 =>
+        case _: StandingQueryPattern.MultipleValuesQueryPattern =>
           throw new RuntimeException(s"Received branch result $this for SQv4 query $sq")
       }
       StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider)

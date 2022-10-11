@@ -41,10 +41,10 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
+  MultipleValuesStandingQueryPartId,
   NodeEvent,
   StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -90,8 +90,8 @@ object CassandraCodecs {
   implicit val longCodec: TypeCodec[Long] = TypeCodecs.BIGINT.asInstanceOf[TypeCodec[Long]]
   implicit val quineIdCodec: TypeCodec[QuineId] = BLOB_TO_ARRAY.xmap(QuineId(_), _.array)
   implicit val standingQueryIdCodec: TypeCodec[StandingQueryId] = TypeCodecs.UUID.xmap(StandingQueryId(_), _.uuid)
-  implicit val standingQueryPartIdCodec: TypeCodec[StandingQueryPartId] =
-    TypeCodecs.UUID.xmap(StandingQueryPartId(_), _.uuid)
+  implicit val MultipleValuesStandingQueryPartIdCodec: TypeCodec[MultipleValuesStandingQueryPartId] =
+    TypeCodecs.UUID.xmap(MultipleValuesStandingQueryPartId(_), _.uuid)
 
   /** [[EventTime]] is represented using Cassandra's 64-bit `bigint`
     *
@@ -470,13 +470,15 @@ class CassandraPersistor(
   override def getStandingQueries: Future[List[StandingQuery]] =
     standingQueries.getStandingQueries
 
-  override def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    standingQueryStates.getStandingQueryStates(id)
+  override def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
+    standingQueryStates.getMultipleValuesStandingQueryStates(id)
 
-  override def setStandingQueryState(
+  override def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = standingQueryStates.setStandingQueryState(
     standingQuery,

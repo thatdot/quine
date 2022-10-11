@@ -37,7 +37,7 @@ object RecipeInterpreter {
     graphService: CypherOpsGraph,
     quineWebserverUrl: Option[String]
   )(implicit idProvider: QuineIdProvider): Cancellable = {
-    statusLines.info(s"Running Recipe ${recipe.title}")
+    statusLines.info(s"Running Recipe: ${recipe.title}")
 
     if (recipe.nodeAppearances.nonEmpty) {
       statusLines.info(s"Using ${recipe.nodeAppearances.length} node appearances")

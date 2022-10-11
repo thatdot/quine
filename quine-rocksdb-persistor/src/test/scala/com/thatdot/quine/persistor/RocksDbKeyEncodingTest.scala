@@ -9,7 +9,7 @@ import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.graph.{EventTime, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, StandingQueryId}
 import com.thatdot.quine.model.QuineId
 
 class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
@@ -37,9 +37,9 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
       .map(StandingQueryId.apply)
   }
 
-  implicit val standingQueryPartIdArb: Arbitrary[StandingQueryPartId] = Arbitrary {
+  implicit val MultipleValuesStandingQueryPartIdArb: Arbitrary[MultipleValuesStandingQueryPartId] = Arbitrary {
     Arbitrary.arbUuid.arbitrary
-      .map(StandingQueryPartId.apply)
+      .map(MultipleValuesStandingQueryPartId.apply)
   }
 
   // Lexicographic unsigned ordering (like `java.utils.Arrays.compareUnsigned` on JDK 9+)
@@ -88,12 +88,12 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
   val intuitiveOrdering1: Ordering[(QuineId, EventTime)] =
     Ordering.Tuple2[QuineId, EventTime](quineIdOrdering, implicitly)
 
-  // The intuitive ordering we want for `(StandingQueryId, QuineId, StandingQueryPartId)`
-  val intuitiveOrdering2: Ordering[(StandingQueryId, QuineId, StandingQueryPartId)] =
-    Ordering.Tuple3[StandingQueryId, QuineId, StandingQueryPartId](
+  // The intuitive ordering we want for `(StandingQueryId, QuineId, MultipleValuesStandingQueryPartId)`
+  val intuitiveOrdering2: Ordering[(StandingQueryId, QuineId, MultipleValuesStandingQueryPartId)] =
+    Ordering.Tuple3[StandingQueryId, QuineId, MultipleValuesStandingQueryPartId](
       unsignedUuidOrdering.on[StandingQueryId](_.uuid),
       quineIdOrdering,
-      unsignedUuidOrdering.on[StandingQueryPartId](_.uuid)
+      unsignedUuidOrdering.on[MultipleValuesStandingQueryPartId](_.uuid)
     )
 
   "(QuineId, EventTime) key encoding" should "round-trip" in {
@@ -149,8 +149,8 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
     }
   }
 
-  "(StandingQueryId, QuineId, StandingQueryPartId) key encoding" should "round-trip" in {
-    forAll { (sqId1: StandingQueryId, q1: QuineId, sqPartId1: StandingQueryPartId) =>
+  "(StandingQueryId, QuineId, MultipleValuesStandingQueryPartId) key encoding" should "round-trip" in {
+    forAll { (sqId1: StandingQueryId, q1: QuineId, sqPartId1: MultipleValuesStandingQueryPartId) =>
       val k1Ser = RocksDbPersistor.sqIdQidAndSqPartId2Key(sqId1, q1, sqPartId1)
       val (sqId2, q2, sqPartId2) = RocksDbPersistor.key2SqIdQidAndSqPartId(k1Ser)
       sqId1 == sqId2 && q1 == q2 && sqPartId1 == sqPartId2
@@ -164,10 +164,10 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
       (
         sqId1: StandingQueryId,
         q1: QuineId,
-        sqPartId1: StandingQueryPartId,
+        sqPartId1: MultipleValuesStandingQueryPartId,
         sqId2: StandingQueryId,
         q2: QuineId,
-        sqPartId2: StandingQueryPartId
+        sqPartId2: MultipleValuesStandingQueryPartId
       ) =>
         val k1 = (sqId1, q1, sqPartId1)
         val k2 = (sqId2, q2, sqPartId2)

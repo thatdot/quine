@@ -21,6 +21,7 @@ import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
@@ -46,28 +47,31 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   def clearStandingQueries(): Unit = standingQueries.clear()
 
-  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.CypherStandingBehavior])
+  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.MultipleValuesStandingQueryBehavior])
   requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.DomainNodeIndexBehavior])
 
   // NB this initialization needs to occur before we restore standing queries,
   // otherwise a null pointer exception occurs
-  private val standingQueryPartIndex: LoadingCache[StandingQueryPartId, cypher.StandingQuery] = CacheBuilder
+  private val standingQueryPartIndex
+    : LoadingCache[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = CacheBuilder
     .newBuilder()
     .asInstanceOf[CacheBuilder[Any, Any]] // The Java library says this is `AnyRef`, but we want `Any`
     .weakValues()
-    .build(new CacheLoader[StandingQueryPartId, cypher.StandingQuery] {
+    .build(new CacheLoader[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] {
       override def loadAll(
-        keys: lang.Iterable[_ <: StandingQueryPartId]
-      ): util.Map[StandingQueryPartId, cypher.StandingQuery] = {
+        keys: lang.Iterable[_ <: MultipleValuesStandingQueryPartId]
+      ): util.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = {
         logger.info(
           s"Performing a full update of the standingQueryPartIndex because of query for part IDs ${keys.asScala.toList}"
         )
         val runningSqs = runningStandingQueries.values
           .map(_.query.query)
-          .collect { case StandingQueryPattern.SqV4(sq, _, _) => sq }
+          .collect { case StandingQueryPattern.MultipleValuesQueryPattern(sq, _, _) => sq }
           .toVector
         val runningSqParts = runningSqs.toSet
-          .foldLeft(Set.empty[cypher.StandingQuery])((acc, sq) => cypher.StandingQuery.indexableSubqueries(sq, acc))
+          .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
+            MultipleValuesStandingQuery.indexableSubqueries(sq, acc)
+          )
           .map(sq => sq.id -> sq)
           .toMap
         val runningPartsKeys = runningSqParts.keySet
@@ -77,7 +81,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         }
         runningSqParts.asJava
       }
-      def load(k: StandingQueryPartId): cypher.StandingQuery = loadAll(Seq(k).asJava).get(k)
+      def load(k: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = loadAll(Seq(k).asJava).get(k)
     })
 
   /** Report a new result for the specified standing query to this host's results queue for that query
@@ -195,9 +199,14 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
     // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
     pattern match {
-      case runsAsCypher: StandingQueryPattern.SqV4 =>
+      case runsAsCypher: StandingQueryPattern.MultipleValuesQueryPattern =>
         standingQueryPartIndex.putAll(
-          cypher.StandingQuery.indexableSubqueries(runsAsCypher.compiledQuery).view.map(sq => sq.id -> sq).toMap.asJava
+          MultipleValuesStandingQuery
+            .indexableSubqueries(runsAsCypher.compiledQuery)
+            .view
+            .map(sq => sq.id -> sq)
+            .toMap
+            .asJava
         )
       case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
     }
@@ -278,8 +287,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
     }
   }
 
-  @throws[NoSuchElementException]("When a StandingQueryPartId is not known to this graph")
-  def getStandingQueryPart(queryPartId: StandingQueryPartId): cypher.StandingQuery =
+  @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
+  def getStandingQueryPart(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
     try standingQueryPartIndex.get(queryPartId)
     catch {
       case _: ExecutionException => throw new NoSuchElementException(s"No such standing query part: $queryPartId")

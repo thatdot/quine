@@ -6,24 +6,28 @@ import org.scalactic.source.Position
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved}
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CancelCypherResult, NewCypherResult, ResultId}
-import com.thatdot.quine.graph.{StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  CancelMultipleValuesResult,
+  NewMultipleValuesResult,
+  ResultId
+}
+import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, StandingQueryId}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
 class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
 
   def makeState(
-    query: StandingQuery.SubscribeAcrossEdge
-  ): StandingQueryStateWrapper[StandingQuery.SubscribeAcrossEdge] =
+    query: MultipleValuesStandingQuery.SubscribeAcrossEdge
+  ): StandingQueryStateWrapper[MultipleValuesStandingQuery.SubscribeAcrossEdge] =
     new StandingQueryStateWrapper(query) {
 
       override def testInvariants()(implicit pos: Position): Unit =
         withClue("Checking invariants") {
-          val edgesWatchedSet: Set[(StandingQueryPartId, HalfEdge)] = sqState.edgesWatched.toSeq.map {
+          val edgesWatchedSet: Set[(MultipleValuesStandingQueryPartId, HalfEdge)] = sqState.edgesWatched.toSeq.map {
             case (he, (sqId, _)) => sqId -> he
           }.toSet
-          val edgeQueryIdsSet: Set[(StandingQueryPartId, HalfEdge)] = sqState.edgeQueryIds.toSeq.map {
+          val edgeQueryIdsSet: Set[(MultipleValuesStandingQueryPartId, HalfEdge)] = sqState.edgeQueryIds.toSeq.map {
             case ((_, sqId), he) => sqId -> he
           }.toSet
 
@@ -38,11 +42,11 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
   test("subscribe across edge with label and direction") {
 
     val andThenAliasedAs = Symbol("bar")
-    val query = StandingQuery.SubscribeAcrossEdge(
+    val query = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       edgeName = Some(Symbol("myedge")),
       edgeDirection = Some(EdgeDirection.Incoming),
-      andThen = StandingQuery
-        .LocalProperty(Symbol("foo"), StandingQuery.LocalProperty.Any, Some(andThenAliasedAs))
+      andThen = MultipleValuesStandingQuery
+        .LocalProperty(Symbol("foo"), MultipleValuesStandingQuery.LocalProperty.Any, Some(andThenAliasedAs))
     )
     val state = makeState(query)
 
@@ -56,7 +60,7 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
     val reciprocal7Id = withClue("Set a matching half edge") {
       val halfEdge = HalfEdge(query.edgeName.get, query.edgeDirection.get, qid7)
       val otherHalfEdge = halfEdge.reflect(state.effects.node)
-      val reciprocal7 = StandingQuery.EdgeSubscriptionReciprocal(otherHalfEdge, query.andThen.id)
+      val reciprocal7 = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(otherHalfEdge, query.andThen.id)
       val edgeAdded = EdgeAdded(halfEdge)
       state.reportNodeEvents(Seq(edgeAdded), shouldHaveEffects = true) { effects =>
         val (onNode, sq) = effects.subscriptionsCreated.dequeue()
@@ -77,7 +81,7 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
     }
 
     val resId1 = withClue("Report a result for the edge") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         qid7,
         reciprocal7Id,
         globalId,
@@ -94,7 +98,7 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
     }
 
     val (upstreamResId2, resId2) = withClue("Report a second result for the edge") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         qid7,
         reciprocal7Id,
         globalId,
@@ -113,7 +117,7 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
     withClue("Set a second matching edge") {
       val halfEdge = HalfEdge(query.edgeName.get, query.edgeDirection.get, qid8)
       val otherHalfEdge = halfEdge.reflect(state.effects.node)
-      val reciprocal8 = StandingQuery.EdgeSubscriptionReciprocal(otherHalfEdge, query.andThen.id)
+      val reciprocal8 = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(otherHalfEdge, query.andThen.id)
       val edgeAdded = EdgeAdded(halfEdge)
       state.reportNodeEvents(Seq(edgeAdded), shouldHaveEffects = true) { effects =>
         val (onNode, sq) = effects.subscriptionsCreated.dequeue()
@@ -124,7 +128,7 @@ class SubscribeAcrossEdgeStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel a result") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         qid7,
         reciprocal7Id,
         globalId,

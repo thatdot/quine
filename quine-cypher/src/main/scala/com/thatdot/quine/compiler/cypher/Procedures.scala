@@ -430,7 +430,7 @@ object CypherDebugNode extends UserDefinedProcedure {
       "latestUpdateMillisAfterSnapshot" -> Type.Integer,
       "subscribers" -> Type.Str,
       "subscriptions" -> Type.Str,
-      "cypherStandingQueryStates" -> Type.ListOfAnything,
+      "multipleValuesStandingQueryStates" -> Type.ListOfAnything,
       "journal" -> Type.ListOfAnything,
       "graphNodeHashCode" -> Type.Integer
     ),
@@ -493,7 +493,7 @@ object CypherDebugNode extends UserDefinedProcedure {
                 subscriptions,
                 _,
                 _,
-                cypherStandingQueryStates,
+                multipleValuesStandingQueryStates,
                 journal,
                 graphNodeHashCode
               ) =>
@@ -511,7 +511,7 @@ object CypherDebugNode extends UserDefinedProcedure {
               },
               Expr.Str(subscribers.mkString(",")),
               Expr.Str(subscriptions.mkString(",")),
-              Expr.List(cypherStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
+              Expr.List(multipleValuesStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
               Expr.List(journal.map(e => Expr.Str(e.toString)).toVector),
               Expr.Integer(graphNodeHashCode)
             )

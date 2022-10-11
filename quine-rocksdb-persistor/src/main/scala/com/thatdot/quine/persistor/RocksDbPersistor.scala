@@ -17,11 +17,11 @@ import org.rocksdb._
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
+  MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -322,10 +322,10 @@ final class RocksDbPersistor(
     }
   }(ioDispatcher)
 
-  def setStandingQueryState(
+  def setMultipleValuesStandingQueryState(
     sqId: StandingQueryId,
     qid: QuineId,
-    sqPartId: StandingQueryPartId,
+    sqPartId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = Future {
     val keyBytes = sqIdQidAndSqPartId2Key(sqId, qid, sqPartId)
@@ -354,9 +354,11 @@ final class RocksDbPersistor(
     db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
   }(ioDispatcher)
 
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] = Future {
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] = Future {
     withReadLock {
-      val mb = Map.newBuilder[(StandingQueryId, StandingQueryPartId), Array[Byte]]
+      val mb = Map.newBuilder[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]
       val it = db.newIterator(standingQueryStatesCF)
       try {
         it.seekToFirst()
@@ -368,7 +370,7 @@ final class RocksDbPersistor(
           it.seek(sqIdAndQidPrefixKey(sqId, id))
 
           // Collect all the SQ parts for this SQ & QuineId
-          var sqPartId: StandingQueryPartId = StandingQueryPartId(new UUID(0L, 0L))
+          var sqPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(new UUID(0L, 0L))
           while (
             it.isValid && {
               val (sqId2, qid, sqPartId1) = key2SqIdQidAndSqPartId(it.key())
@@ -397,7 +399,6 @@ final class RocksDbPersistor(
       } finally it.close()
       mb.result()
     }
-
   }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
@@ -409,7 +410,6 @@ final class RocksDbPersistor(
     startingAt: EventTime,
     endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = Future {
-
     withReadLock {
       val vb = Iterable.newBuilder[NodeEvent.WithTime]
       // Inclusive start key
@@ -637,7 +637,7 @@ object RocksDbPersistor {
    * We end up having three types of keys to encode:
    *
    *   - `(QuineId, EventTime)` for journals and snapshots
-   *   - `(StandingQueryId, QuineId, StandingQueryPartId)` for standing query states
+   *   - `(StandingQueryId, QuineId, MultipleValuesStandingQueryPartId)` for standing query states
    *   - `String` for standing queries and meta data
    *
    * The various requirements laid out above are check in `RocksDbKeyEncodingTest`
@@ -714,7 +714,7 @@ object RocksDbPersistor {
     }
   }
 
-  /** Encode a [[StandingQueryId]], [[QuineId]], and [[StandingQueryPartId]] into a key
+  /** Encode a [[StandingQueryId]], [[QuineId]], and [[MultipleValuesStandingQueryPartId]] into a key
     *
     * @param sqId standing query ID
     * @param qid node ID
@@ -724,7 +724,7 @@ object RocksDbPersistor {
   final def sqIdQidAndSqPartId2Key(
     sqId: StandingQueryId,
     qid: QuineId,
-    sqPartId: StandingQueryPartId
+    sqPartId: MultipleValuesStandingQueryPartId
   ): Array[Byte] = {
     val sqIdUuid = sqId.uuid
     val qidBytes = qid.array
@@ -741,19 +741,19 @@ object RocksDbPersistor {
       .array
   }
 
-  /** Decode a key into a [[StandingQueryId]], [[QuineId]], and [[StandingQueryPartId]]
+  /** Decode a key into a [[StandingQueryId]], [[QuineId]], and [[MultipleValuesStandingQueryPartId]]
     *
     * Left inverse of [[sqIdQidAndSqPartId2Key]]
     *
     * @param key encoded key
     * @return decoded standing query ID, node ID, and standing query part ID
     */
-  final def key2SqIdQidAndSqPartId(key: Array[Byte]): (StandingQueryId, QuineId, StandingQueryPartId) = {
+  final def key2SqIdQidAndSqPartId(key: Array[Byte]): (StandingQueryId, QuineId, MultipleValuesStandingQueryPartId) = {
     val keyBuf = ByteBuffer.wrap(key)
     val sqId = StandingQueryId(new UUID(keyBuf.getLong, keyBuf.getLong))
     val qidBytes = new Array[Byte](keyBuf.getShort & 0xFFFF)
     keyBuf.get(qidBytes)
-    val sqPartId = StandingQueryPartId(new UUID(keyBuf.getLong, keyBuf.getLong))
+    val sqPartId = MultipleValuesStandingQueryPartId(new UUID(keyBuf.getLong, keyBuf.getLong))
     (sqId, QuineId(qidBytes), sqPartId)
   }
 

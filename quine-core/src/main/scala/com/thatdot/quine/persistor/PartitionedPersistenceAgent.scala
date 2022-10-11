@@ -6,7 +6,14 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -71,15 +78,17 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def getStandingQueries: Future[List[StandingQuery]] =
     rootAgent.getStandingQueries
 
-  override def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    getAgent(id).getStandingQueryStates(id)
+  override def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
+    getAgent(id).getMultipleValuesStandingQueryStates(id)
 
-  override def setStandingQueryState(
+  override def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
-  ): Future[Unit] = getAgent(id).setStandingQueryState(standingQuery, id, standingQueryId, state)
+  ): Future[Unit] = getAgent(id).setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
   override def getMetaData(key: String): Future[Option[Array[Byte]]] = rootAgent.getMetaData(key)
 

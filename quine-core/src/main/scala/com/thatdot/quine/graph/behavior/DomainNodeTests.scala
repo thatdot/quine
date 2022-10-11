@@ -24,7 +24,7 @@ trait DomainNodeTests extends BaseNodeActorView {
   private[this] def hasGenericEdges(requiredEdges: Set[DomainEdge]): Boolean =
     edges.hasUniqueGenEdges(requiredEdges, qid)
 
-  protected def localTestBranch(testBranch: SingleBranch): Boolean =
+  protected[this] def localTestBranch(testBranch: SingleBranch): Boolean =
     testBranch.identification.forall(_ == qid) && localPropsMatch(testBranch.domainNodeEquiv) && hasCircularEdges(
       testBranch.domainNodeEquiv
     ) && hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge])

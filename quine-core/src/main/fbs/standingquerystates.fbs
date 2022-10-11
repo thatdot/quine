@@ -10,36 +10,36 @@ table QueryContext {
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQueryState]]
-union CypherStandingQueryState {
-  CypherUnitStandingQueryState,
-  CypherCrossStandingQueryState,
-  CypherLocalPropertyStandingQueryState,
-  CypherLocalIdStandingQueryState,
-  CypherSubscribeAcrossEdgeStandingQueryState,
-  CypherEdgeSubscriptionReciprocalStandingQueryState,
-  CypherFilterMapStandingQueryState,
+union MultipleValuesStandingQueryState {
+  MultipleValuesUnitStandingQueryState,
+  MultipleValuesCrossStandingQueryState,
+  MultipleValuesLocalPropertyStandingQueryState,
+  MultipleValuesLocalIdStandingQueryState,
+  MultipleValuesSubscribeAcrossEdgeStandingQueryState,
+  MultipleValuesEdgeSubscriptionReciprocalStandingQueryState,
+  MultipleValuesFilterMapStandingQueryState,
 }
 
 // See [[com.thatdot.quine.graph.cypher.UnitState]]
-table CypherUnitStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesUnitStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   result_id: StandingQueryResultId;
 }
 
 
 // See [[com.thatdot.quine.graph.cypher.CrossState]]
-table CypherCrossStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesCrossStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   subscriptions_emitted: int;
   accumulated_results: [AccumulatedResults];
   result_dependency: [ResultDependency];
 }
 
 table AccumulatedResults {
-  result: [CypherStandingQueryResult];
+  result: [MultipleValuesStandingQueryResult];
 }
 
-table CypherStandingQueryResult {
+table MultipleValuesStandingQueryResult {
   result_id: StandingQueryResultId (required);
   result_values: QueryContext (required);
 }
@@ -50,26 +50,26 @@ table ResultDependency {
 }
 
 // See [[com.thatdot.quine.graph.cypher.LocalPropertyState]]
-table CypherLocalPropertyStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesLocalPropertyStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   result_id: StandingQueryResultId;
 }
 
 // See [[com.thatdot.quine.graph.cypher.LocalIdState]]
-table CypherLocalIdStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesLocalIdStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   result_id: StandingQueryResultId;
 }
 
 // See [[com.thatdot.quine.graph.cypher.SubscribeAcrossEdgeState]]
-table CypherSubscribeAcrossEdgeStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesSubscribeAcrossEdgeStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   edges_watched: [EdgeWatched] (required);
 }
 
 table EdgeWatched {
   half_edge: HalfEdge (required);
-  query_part_id: StandingQueryPartId (required);
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   reverse_result_dependency: [ReverseResultDependency];
 }
 
@@ -80,48 +80,48 @@ table ReverseResultDependency {
 }
 
 // See [[com.thatdot.quine.graph.cypher.EdgeSubscriptionReciprocalState]]
-table CypherEdgeSubscriptionReciprocalStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesEdgeSubscriptionReciprocalStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   half_edge: HalfEdge (required);
   currently_matching: bool;
   reverse_result_dependency: [ReverseResultDependency];
-  and_then_id: StandingQueryPartId;
+  and_then_id: MultipleValuesStandingQueryPartId;
 }
 
 // See [[com.thatdot.quine.graph.cypher.FilterMapState]]
-table CypherFilterMapStandingQueryState {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesFilterMapStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   reverse_result_dependency: [ReverseResultDependency];
 }
 
 // See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.CypherSubscriber]]
-union CypherStandingQuerySubscriber {
+union MultipleValuesStandingQuerySubscriber {
   CypherNodeSubscriber,
   CypherGlobalSubscriber,
 }
 
-// See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.CypherSubscriber.QuerySubscriber]]
+// See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.QuerySubscriber]]
 table CypherNodeSubscriber {
   on_node: QuineId (required);
-  query_part_id: StandingQueryPartId (required);
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   global_query_id: StandingQueryId (required);
 }
 
-// See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.CypherSubscriber.GlobalSubscriber]]
+// See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.GlobalSubscriber]]
 table CypherGlobalSubscriber {
   global_query_id: StandingQueryId (required);
 }
 
 // See [[com.thatdot.quine.graph.behavior.StandingQuerySubscribers]]
-table CypherStandingQuerySubscribers {
-  query_part_id: StandingQueryPartId (required);
+table MultipleValuesStandingQuerySubscribers {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
   global_query_id: StandingQueryId (required);
-  subscribers: [CypherStandingQuerySubscriber];
+  subscribers: [MultipleValuesStandingQuerySubscriber];
 }
 
-table CypherStandingQueryStateAndSubscribers {
-  subscribers: CypherStandingQuerySubscribers (required);
-  state: CypherStandingQueryState (required);
+table MultipleValuesStandingQueryStateAndSubscribers {
+  subscribers: MultipleValuesStandingQuerySubscribers (required);
+  state: MultipleValuesStandingQueryState (required);
 }
-root_type CypherStandingQueryStateAndSubscribers;
+root_type MultipleValuesStandingQueryStateAndSubscribers;
 

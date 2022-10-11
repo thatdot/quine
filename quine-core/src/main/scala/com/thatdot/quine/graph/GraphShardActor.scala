@@ -317,7 +317,7 @@ final private[quine] class GraphShardActor(
       val actorRefLock = new StampedLock()
       val props = Props(
         graph.nodeClass,
-        id :: graph :: graph.persistor :: costToSleep :: wakefulState :: actorRefLock :: nodeArgs.productIterator.toList: _*
+        id :: graph :: costToSleep :: wakefulState :: actorRefLock :: nodeArgs.productIterator.toList: _*
       ).withMailbox("akka.quine.node-mailbox")
         .withDispatcher(QuineDispatchers.nodeDispatcherName)
       val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
@@ -449,7 +449,7 @@ final private[quine] class GraphShardActor(
             val ec = graph.nodeDispatcherEC
             nodes(id) = NodeState.WakingNode
             NodeActor
-              .create(id, snapshotOpt, graph.persistor, graph.metrics)(ec)
+              .create(id, snapshotOpt, graph)
               .onComplete {
                 case Success(nodeArgs) =>
                   self.tell(NodeStateRehydrated(id, nodeArgs), self)

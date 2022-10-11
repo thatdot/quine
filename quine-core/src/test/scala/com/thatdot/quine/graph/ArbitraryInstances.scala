@@ -19,8 +19,8 @@ import org.scalacheck.{Arbitrary, Gen}
 import shapeless.cachedImplicit
 
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
-import com.thatdot.quine.graph.behavior.StandingQuerySubscribers
-import com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.{
+import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty.{
   Any,
   Equal,
   ListContains,
@@ -32,12 +32,12 @@ import com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.{
 import com.thatdot.quine.graph.cypher.{
   Expr => CypherExpr,
   Func => CypherFunc,
+  MultipleValuesStandingQuery,
+  MultipleValuesStandingQueryState,
   QueryContext,
-  StandingQuery => CypherStandingQuery,
-  StandingQueryState => CypherStandingQueryState,
   Value => CypherValue
 }
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CypherSubscriber, ResultId}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{MultipleValuesStandingQuerySubscriber, ResultId}
 import com.thatdot.quine.model._
 
 import DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
@@ -421,8 +421,8 @@ trait ArbitraryInstances {
   implicit val arbStandingQueryId: Arbitrary[StandingQueryId] = Arbitrary {
     arbitrary[UUID].map(StandingQueryId(_))
   }
-  implicit val arbStandingQueryPartId: Arbitrary[StandingQueryPartId] = Arbitrary {
-    arbitrary[UUID].map(StandingQueryPartId(_))
+  implicit val arbStandingQueryPartId: Arbitrary[MultipleValuesStandingQueryPartId] = Arbitrary {
+    arbitrary[UUID].map(MultipleValuesStandingQueryPartId(_))
   }
   implicit val arbResultId: Arbitrary[ResultId] = Arbitrary {
     arbitrary[UUID].map(ResultId(_))
@@ -539,18 +539,18 @@ trait ArbitraryInstances {
 
   implicit val arbProperties: Arbitrary[Properties] = cachedImplicit
 
-  implicit val arbSubscription: Arbitrary[SubscribersToThisNodeUtil.Subscription] = Arbitrary {
+  implicit val arbSubscription: Arbitrary[SubscribersToThisNodeUtil.DistinctIdSubscription] = Arbitrary {
     Gen.resultOf[
       Set[Notifiable],
       LastNotification,
       Set[StandingQueryId],
-      SubscribersToThisNodeUtil.Subscription
-    ](SubscribersToThisNodeUtil.Subscription.apply)
+      SubscribersToThisNodeUtil.DistinctIdSubscription
+    ](SubscribersToThisNodeUtil.DistinctIdSubscription.apply)
   }
 
   type IndexSubscribers = MutableMap[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.Subscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription
   ]
   implicit val arbIndexSubscribers: Arbitrary[IndexSubscribers] = cachedImplicit
 
@@ -563,7 +563,7 @@ trait ArbitraryInstances {
   ]
   implicit val arbDomainNodeIndex: Arbitrary[DomainNodeIndex] = cachedImplicit
 
-  implicit val arbValueConstraint: Arbitrary[CypherStandingQuery.LocalProperty.ValueConstraint] = Arbitrary {
+  implicit val arbValueConstraint: Arbitrary[MultipleValuesStandingQuery.LocalProperty.ValueConstraint] = Arbitrary {
     Gen.oneOf(
       Gen.resultOf[CypherValue, ValueConstraint](Equal.apply),
       Gen.resultOf[CypherValue, ValueConstraint](NotEqual.apply),
@@ -574,30 +574,33 @@ trait ArbitraryInstances {
     )
   }
 
-  implicit val arbCypherStandingQuery: Arbitrary[CypherStandingQuery] = Arbitrary {
+  implicit val arbMultipleValuesStandingQuery: Arbitrary[MultipleValuesStandingQuery] = Arbitrary {
     Gen.lzy(
       sizedOneOf(
         small = List(
-          Gen.resultOf[Unit, CypherStandingQuery](_ => CypherStandingQuery.UnitSq())
+          Gen.resultOf[Unit, MultipleValuesStandingQuery](_ => MultipleValuesStandingQuery.UnitSq())
         ),
         other = List(
-          GenApply.resultOf[ArraySeq[CypherStandingQuery], Boolean, CypherStandingQuery](
-            CypherStandingQuery.Cross(_, _)
+          GenApply.resultOf[ArraySeq[MultipleValuesStandingQuery], Boolean, MultipleValuesStandingQuery](
+            MultipleValuesStandingQuery.Cross(_, _)
           ),
           GenApply
-            .resultOf[Symbol, CypherStandingQuery.LocalProperty.ValueConstraint, Option[Symbol], CypherStandingQuery](
-              CypherStandingQuery.LocalProperty(_, _, _)
+            .resultOf[Symbol, MultipleValuesStandingQuery.LocalProperty.ValueConstraint, Option[
+              Symbol
+            ], MultipleValuesStandingQuery](
+              MultipleValuesStandingQuery.LocalProperty(_, _, _)
             ),
-          GenApply.resultOf[Symbol, Boolean, CypherStandingQuery](CypherStandingQuery.LocalId(_, _)),
-          GenApply.resultOf[Option[Symbol], Option[EdgeDirection], CypherStandingQuery, CypherStandingQuery](
-            CypherStandingQuery.SubscribeAcrossEdge(_, _, _)
+          GenApply.resultOf[Symbol, Boolean, MultipleValuesStandingQuery](MultipleValuesStandingQuery.LocalId(_, _)),
+          GenApply
+            .resultOf[Option[Symbol], Option[EdgeDirection], MultipleValuesStandingQuery, MultipleValuesStandingQuery](
+              MultipleValuesStandingQuery.SubscribeAcrossEdge(_, _, _)
+            ),
+          GenApply.resultOf[HalfEdge, MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery](
+            MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(_, _)
           ),
-          GenApply.resultOf[HalfEdge, StandingQueryPartId, CypherStandingQuery](
-            CypherStandingQuery.EdgeSubscriptionReciprocal(_, _)
-          ),
-          GenApply.resultOf[Option[CypherExpr], CypherStandingQuery, Boolean, List[
+          GenApply.resultOf[Option[CypherExpr], MultipleValuesStandingQuery, Boolean, List[
             (Symbol, CypherExpr)
-          ], CypherStandingQuery](CypherStandingQuery.FilterMap(_, _, _, _))
+          ], MultipleValuesStandingQuery](MultipleValuesStandingQuery.FilterMap(_, _, _, _))
         )
       )
     )
@@ -695,11 +698,11 @@ trait ArbitraryInstances {
         StandingQueryPattern
       ](StandingQueryPattern.DomainGraphNodeStandingQueryPattern.apply),
       Gen.resultOf[
-        CypherStandingQuery,
+        MultipleValuesStandingQuery,
         Boolean,
         PatternOrigin.SqV4Origin,
         StandingQueryPattern
-      ](StandingQueryPattern.SqV4.apply)
+      ](StandingQueryPattern.MultipleValuesQueryPattern.apply)
     )
   }
 
@@ -711,44 +714,64 @@ trait ArbitraryInstances {
     Gen.resultOf[Map[Symbol, CypherValue], QueryContext](QueryContext.apply)
   }
 
-  implicit val arbStandingQueryState: Arbitrary[CypherStandingQueryState] = Arbitrary {
+  implicit val arbStandingQueryState: Arbitrary[MultipleValuesStandingQueryState] = Arbitrary {
     import com.thatdot.quine.graph.cypher._
     Gen.oneOf(
-      Gen.resultOf[StandingQueryPartId, Option[ResultId], CypherStandingQueryState](UnitState.apply),
-      Gen.resultOf[StandingQueryPartId, Int, ArraySeq[MutableMap[ResultId, QueryContext]], MutableMap[ResultId, List[
-        ResultId
-      ]], CypherStandingQueryState](CrossState.apply),
-      Gen.resultOf[StandingQueryPartId, Option[ResultId], CypherStandingQueryState](LocalPropertyState.apply),
-      Gen.resultOf[StandingQueryPartId, Option[ResultId], CypherStandingQueryState](LocalIdState.apply),
-      Gen.resultOf[StandingQueryPartId, MutableMap[
+      Gen.resultOf[MultipleValuesStandingQueryPartId, Option[ResultId], MultipleValuesStandingQueryState](
+        UnitState.apply
+      ),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, Int, ArraySeq[MutableMap[ResultId, QueryContext]], MutableMap[
+        ResultId,
+        List[
+          ResultId
+        ]
+      ], MultipleValuesStandingQueryState](CrossState.apply),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, Option[ResultId], MultipleValuesStandingQueryState](
+        LocalPropertyState.apply
+      ),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, Option[ResultId], MultipleValuesStandingQueryState](
+        LocalIdState.apply
+      ),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, MutableMap[
         HalfEdge,
-        (StandingQueryPartId, MutableMap[ResultId, (ResultId, QueryContext)])
-      ], CypherStandingQueryState](SubscribeAcrossEdgeState.apply),
-      Gen.resultOf[StandingQueryPartId, HalfEdge, Boolean, MutableMap[
+        (MultipleValuesStandingQueryPartId, MutableMap[ResultId, (ResultId, QueryContext)])
+      ], MultipleValuesStandingQueryState](SubscribeAcrossEdgeState.apply),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, HalfEdge, Boolean, MutableMap[
         ResultId,
         (ResultId, QueryContext)
-      ], StandingQueryPartId, CypherStandingQueryState](EdgeSubscriptionReciprocalState.apply),
-      Gen.resultOf[StandingQueryPartId, MutableMap[ResultId, (ResultId, QueryContext)], CypherStandingQueryState](
+      ], MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
+        EdgeSubscriptionReciprocalState.apply
+      ),
+      Gen.resultOf[MultipleValuesStandingQueryPartId, MutableMap[
+        ResultId,
+        (ResultId, QueryContext)
+      ], MultipleValuesStandingQueryState](
         FilterMapState.apply
       )
     )
   }
 
-  implicit val arbCypherSubscriber: Arbitrary[CypherSubscriber] = Arbitrary {
-    Gen.oneOf[CypherSubscriber](
-      Gen.resultOf[QuineId, StandingQueryId, StandingQueryPartId, CypherSubscriber](
-        CypherSubscriber.QuerySubscriber.apply
+  implicit val arbCypherSubscriber: Arbitrary[MultipleValuesStandingQuerySubscriber] = Arbitrary {
+    Gen.oneOf[MultipleValuesStandingQuerySubscriber](
+      Gen.resultOf[QuineId, StandingQueryId, MultipleValuesStandingQueryPartId, MultipleValuesStandingQuerySubscriber](
+        MultipleValuesStandingQuerySubscriber.NodeSubscriber.apply
       ),
-      Gen.resultOf[StandingQueryId, CypherSubscriber](CypherSubscriber.GlobalSubscriber.apply)
+      Gen.resultOf[StandingQueryId, MultipleValuesStandingQuerySubscriber](
+        MultipleValuesStandingQuerySubscriber.GlobalSubscriber.apply
+      )
     )
   }
 
-  implicit val arbStandingQuerySubscribers: Arbitrary[StandingQuerySubscribers] = Arbitrary {
-    Gen.resultOf[StandingQueryPartId, StandingQueryId, MutableSet[
-      CypherSubscriber
-    ], StandingQuerySubscribers](
-      StandingQuerySubscribers
-        .apply(_: StandingQueryPartId, _: StandingQueryId, _: MutableSet[CypherSubscriber])
+  implicit val arbStandingQuerySubscribers: Arbitrary[MultipleValuesStandingQuerySubscribers] = Arbitrary {
+    Gen.resultOf[MultipleValuesStandingQueryPartId, StandingQueryId, MutableSet[
+      MultipleValuesStandingQuerySubscriber
+    ], MultipleValuesStandingQuerySubscribers](
+      MultipleValuesStandingQuerySubscribers
+        .apply(
+          _: MultipleValuesStandingQueryPartId,
+          _: StandingQueryId,
+          _: MutableSet[MultipleValuesStandingQuerySubscriber]
+        )
     )
   }
   implicit val arbNodeSnapshot: Arbitrary[NodeSnapshot] = Arbitrary {

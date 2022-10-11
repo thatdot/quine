@@ -5,8 +5,12 @@ import java.util.UUID
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.StandingQueryId
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CancelCypherResult, NewCypherResult, ResultId}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  CancelMultipleValuesResult,
+  NewMultipleValuesResult,
+  ResultId
+}
 import com.thatdot.quine.model.QuineId
 
 class FilterMapStateTest extends AnyFunSuite {
@@ -16,12 +20,12 @@ class FilterMapStateTest extends AnyFunSuite {
 
   test("no-op filter") {
     // using upstreamQuery from LocalPropertyState's "alias but no value constraint"
-    val upstreamQuery = StandingQuery.LocalProperty(
+    val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = Some(Symbol("fooValue"))
     )
-    val query = StandingQuery.FilterMap(
+    val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(Expr.True),
       dropExisting = false,
@@ -41,7 +45,7 @@ class FilterMapStateTest extends AnyFunSuite {
     val (upstreamResId1, resId1) = withClue("upstream creating a result creates a result") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid1,
           upstreamQuery.id,
           globalId,
@@ -66,7 +70,7 @@ class FilterMapStateTest extends AnyFunSuite {
     withClue("upstream creating additional results creates additional results") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid2,
           upstreamQuery.id,
           globalId,
@@ -91,7 +95,7 @@ class FilterMapStateTest extends AnyFunSuite {
 
     withClue("upstream cancelling a result cancels the corresponding result but not others") {
       state.reportCancelledSubscriptionResult(
-        CancelCypherResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
+        CancelMultipleValuesResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
         shouldHaveEffects = true
       ) { effects =>
         assert(effects.resultsCancelled.nonEmpty)
@@ -110,12 +114,12 @@ class FilterMapStateTest extends AnyFunSuite {
   }
 
   test("impassible filter") {
-    val upstreamQuery = StandingQuery.LocalProperty(
+    val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = Some(Symbol("fooValue"))
     )
-    val query = StandingQuery.FilterMap(
+    val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(Expr.False),
       dropExisting = false,
@@ -134,7 +138,7 @@ class FilterMapStateTest extends AnyFunSuite {
     val upstreamResId1 = withClue("upstream creating a result has no effect") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid1,
           upstreamQuery.id,
           globalId,
@@ -154,7 +158,7 @@ class FilterMapStateTest extends AnyFunSuite {
     }
     withClue("upstream cancelling a result has no effect") {
       state.reportCancelledSubscriptionResult(
-        CancelCypherResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
+        CancelMultipleValuesResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
         shouldHaveEffects = false
       ) { effects =>
         assert(effects.isEmpty)
@@ -171,12 +175,12 @@ class FilterMapStateTest extends AnyFunSuite {
   }
 
   test("doubling map") {
-    val upstreamQuery = StandingQuery.LocalProperty(
+    val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = Some(Symbol("fooValue"))
     )
-    val query = StandingQuery.FilterMap(
+    val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(Expr.True),
       dropExisting = true,
@@ -201,7 +205,7 @@ class FilterMapStateTest extends AnyFunSuite {
     val (upstreamResId1, resId1) = withClue("upstream creating a result creates a result") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid1,
           upstreamQuery.id,
           globalId,
@@ -226,7 +230,7 @@ class FilterMapStateTest extends AnyFunSuite {
     withClue("upstream creating additional results creates additional results") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid2,
           upstreamQuery.id,
           globalId,
@@ -250,7 +254,7 @@ class FilterMapStateTest extends AnyFunSuite {
     }
     withClue("upstream cancelling a result cancels the corresponding result but not others") {
       state.reportCancelledSubscriptionResult(
-        CancelCypherResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
+        CancelMultipleValuesResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
         shouldHaveEffects = true
       ) { effects =>
         assert(effects.resultsCancelled.nonEmpty)
@@ -268,12 +272,12 @@ class FilterMapStateTest extends AnyFunSuite {
     }
   }
   test("add tripled odd values filter+map") {
-    val upstreamQuery = StandingQuery.LocalProperty(
+    val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
-      propConstraint = StandingQuery.LocalProperty.Any,
+      propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
       aliasedAs = Some(Symbol("fooValue"))
     )
-    val query = StandingQuery.FilterMap(
+    val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(
         Expr.Equal(
@@ -305,7 +309,7 @@ class FilterMapStateTest extends AnyFunSuite {
     val (upstreamResId1, resId1) = withClue("upstream creating a result creates a result") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid1,
           upstreamQuery.id,
           globalId,
@@ -331,7 +335,7 @@ class FilterMapStateTest extends AnyFunSuite {
     withClue("upstream creating additional results creates additional results") {
       val upstreamResultId = ResultId.fresh()
       state.reportNewSubscriptionResult(
-        NewCypherResult(
+        NewMultipleValuesResult(
           qid2,
           upstreamQuery.id,
           globalId,
@@ -356,7 +360,7 @@ class FilterMapStateTest extends AnyFunSuite {
     }
     withClue("upstream cancelling a result cancels the corresponding result but not others") {
       state.reportCancelledSubscriptionResult(
-        CancelCypherResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
+        CancelMultipleValuesResult(qid1, upstreamQuery.id, globalId, Some(query.id), upstreamResId1),
         shouldHaveEffects = true
       ) { effects =>
         assert(effects.resultsCancelled.nonEmpty)

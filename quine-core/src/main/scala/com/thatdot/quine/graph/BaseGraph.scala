@@ -52,14 +52,8 @@ trait BaseGraph extends StrictLogging {
 
   /** Class of nodes in the graph
     *
-    * This must have a constructor that has the following arguments (in order):
-    *
-    *   - `QuineIdAtTime`: node and time being tracked
-    *   - `_ <: BaseGraph`: handle to the graph
-    *   - `CostToSleep`: shard/node shared notion of how costly the node is to sleep
-    *   - `AtomicReference[WakefulState]`: shard/node shared notion of node state
-    *   - `StampedLock`: lock used to safely send messages to the actor
-    *   - `Option[Array[Byte]]`: optional snapshot from which to restore
+    * INV: This class must have a constructor that has the same arguments (in order) as [[NodeActor]]
+    * INV: the constructor arguments must end with the same types in the same order as [[NodeActorConstructorArgs]]
     *
     * The handle to the graph is usually a more specific type than `BaseGraph`,
     * constrained by behaviors that are mixed into the node class.

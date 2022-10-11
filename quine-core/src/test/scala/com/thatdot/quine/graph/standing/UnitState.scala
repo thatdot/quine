@@ -2,12 +2,12 @@ package com.thatdot.quine.graph.standing
 
 import org.scalatest.funsuite.AnyFunSuite
 
-import com.thatdot.quine.graph.cypher.{QueryContext, StandingQuery}
+import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QueryContext}
 
 class UnitSqStateTest extends AnyFunSuite {
 
   def freshState() = new StandingQueryStateWrapper(
-    StandingQuery.UnitSq()
+    MultipleValuesStandingQuery.UnitSq()
   )
 
   test("Unit state") {

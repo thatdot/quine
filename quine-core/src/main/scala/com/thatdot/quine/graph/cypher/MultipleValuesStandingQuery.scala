@@ -7,16 +7,16 @@ import scala.collection.mutable
 
 import com.google.common.hash.Hashing.murmur3_128
 
-import com.thatdot.quine.graph.StandingQueryPartId
+import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineValue}
 import com.thatdot.quine.util.Hashable
 
 /** AST for a `MultipleValues` standing query */
-sealed abstract class StandingQuery extends Product with Serializable {
+sealed abstract class MultipleValuesStandingQuery extends Product with Serializable {
 
   /** Type of associated standing query states */
-  type State <: StandingQueryState
+  type State <: MultipleValuesStandingQueryState
 
   /** Create a new associated standing query state
     *
@@ -33,22 +33,24 @@ sealed abstract class StandingQuery extends Product with Serializable {
     * structural, not by reference). In order to maximize sharing of standing query state, it is
     * also desirable that `q1 == q2 implies `q1.id == q2.id` whenever possible.
     */
-  val id: StandingQueryPartId = StandingQueryPartId(StandingQuery.hashable.hashToUuid(murmur3_128(), this))
+  val id: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
+    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128(), this)
+  )
 
   /** Direct children of this query
     *
     * Doesn't include the receiver (`this`) or any further descendants.
     */
-  def children: Seq[StandingQuery]
+  def children: Seq[MultipleValuesStandingQuery]
 
   /** Which columns do we expect this query to return at runtime? */
   def columns: Columns
 }
 
-object StandingQuery {
+object MultipleValuesStandingQuery {
 
   /** Produces exactly one result, as soon as initialized, with no columns */
-  final case class UnitSq() extends StandingQuery {
+  final case class UnitSq() extends MultipleValuesStandingQuery {
 
     type State = UnitState
 
@@ -60,21 +62,21 @@ object StandingQuery {
         resultId = None
       )
 
-    val children: Seq[StandingQuery] = Seq.empty
+    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
   /** Produces a cross-product of queries, with columns that are the concatenation of the columns of
     * sub-queries in the product
     *
-    * @param queries (non-empty) sub queries to cross together (if empty use [[UnitState]] instead)
+    * @param queries                 (non-empty) sub queries to cross together (if empty use [[UnitState]] instead)
     * @param emitSubscriptionsLazily emit subscriptions to subqueries lazily (left to right) only
     *                                once the previous query has _some_ results
     */
   final case class Cross(
-    queries: ArraySeq[StandingQuery],
+    queries: ArraySeq[MultipleValuesStandingQuery],
     emitSubscriptionsLazily: Boolean,
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = CrossState
 
@@ -88,7 +90,7 @@ object StandingQuery {
         resultDependency = mutable.Map.empty
       )
 
-    def children: Seq[StandingQuery] = queries
+    def children: Seq[MultipleValuesStandingQuery] = queries
   }
 
   /*
@@ -163,7 +165,7 @@ object StandingQuery {
     propConstraint: LocalProperty.ValueConstraint,
     aliasedAs: Option[Symbol],
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = LocalPropertyState
 
@@ -173,7 +175,7 @@ object StandingQuery {
         currentResult = None
       )
 
-    val children: Seq[StandingQuery] = Seq.empty
+    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
   /** Produces exactly one result, as soon as initialized, with one column: the node ID
@@ -185,7 +187,7 @@ object StandingQuery {
     aliasedAs: Symbol,
     formatAsString: Boolean,
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = LocalIdState
 
@@ -195,7 +197,7 @@ object StandingQuery {
         resultId = None
       )
 
-    val children: Seq[StandingQuery] = Seq.empty
+    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
   /** Watch for an edge pattern and match however many edges fit that pattern.
@@ -207,9 +209,9 @@ object StandingQuery {
   final case class SubscribeAcrossEdge(
     edgeName: Option[Symbol],
     edgeDirection: Option[EdgeDirection],
-    andThen: StandingQuery,
+    andThen: MultipleValuesStandingQuery,
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = SubscribeAcrossEdgeState
 
@@ -219,7 +221,7 @@ object StandingQuery {
         edgesWatched = mutable.Map.empty
       )
 
-    val children: Seq[StandingQuery] = Seq(andThen)
+    val children: Seq[MultipleValuesStandingQuery] = Seq(andThen)
   }
 
   /** Watch for an edge reciprocal and relay the recursive standing query only if the reciprocal
@@ -231,9 +233,9 @@ object StandingQuery {
     */
   final case class EdgeSubscriptionReciprocal(
     halfEdge: HalfEdge,
-    andThenId: StandingQueryPartId,
+    andThenId: MultipleValuesStandingQueryPartId,
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = EdgeSubscriptionReciprocalState
 
@@ -247,7 +249,7 @@ object StandingQuery {
       )
 
     // NB andThenId is technically the child of the [[SubscribeAcrossEdge]] query, NOT the reciprocal
-    val children: Seq[StandingQuery] = Seq.empty
+    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
   /** Filter and map over results of another query
@@ -259,11 +261,11 @@ object StandingQuery {
     */
   final case class FilterMap(
     condition: Option[Expr],
-    toFilter: StandingQuery,
+    toFilter: MultipleValuesStandingQuery,
     dropExisting: Boolean,
     toAdd: List[(Symbol, Expr)],
     columns: Columns = Columns.Omitted
-  ) extends StandingQuery {
+  ) extends MultipleValuesStandingQuery {
 
     type State = FilterMapState
 
@@ -273,7 +275,7 @@ object StandingQuery {
         keptResults = mutable.Map.empty
       )
 
-    val children: Seq[StandingQuery] = Seq(toFilter)
+    val children: Seq[MultipleValuesStandingQuery] = Seq(toFilter)
   }
 
   /** Enumerate all globally indexable subqueries in a standing query
@@ -285,7 +287,10 @@ object StandingQuery {
     * @param acc accumulator of subqueries
     * @return set of globally indexable subqueries
     */
-  def indexableSubqueries(sq: StandingQuery, acc: Set[StandingQuery] = Set.empty): Set[StandingQuery] =
+  def indexableSubqueries(
+    sq: MultipleValuesStandingQuery,
+    acc: Set[MultipleValuesStandingQuery] = Set.empty
+  ): Set[MultipleValuesStandingQuery] =
     // EdgeSubscriptionReciprocal are not useful to index -- they're ephemeral, fully owned/created/used by 1 node
     if (sq.isInstanceOf[EdgeSubscriptionReciprocal]) acc
     // Since subqueries can be duplicated, try not to traverse already-traversed subqueries
@@ -293,5 +298,5 @@ object StandingQuery {
     // otherwise, traverse
     else sq.children.foldLeft(acc + sq)((acc, child) => indexableSubqueries(child, acc))
 
-  val hashable: Hashable[StandingQuery] = implicitly[Hashable[StandingQuery]]
+  val hashable: Hashable[MultipleValuesStandingQuery] = implicitly[Hashable[MultipleValuesStandingQuery]]
 }

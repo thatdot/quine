@@ -118,7 +118,7 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     * @param onComplete action to run on the actor thread right after the computation finishes
     *
     * @return The `Future` returned from this function will be completed after the effects in `onComplete` have been
-    *         applied. The Success/Failure of the returned future will correspond to that of teh `until` Future. Note
+    *         applied. The Success/Failure of the returned future will correspond to that of the `until` Future. Note
     *         that this means that if the provided `onComplete` callback successfully applies effects when the `until`
     *         Future fails, then the returned Future will also have a `Failure` status after successfully applying the
     *         `onComplete` callback.

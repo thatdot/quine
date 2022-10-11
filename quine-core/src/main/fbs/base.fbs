@@ -191,7 +191,7 @@ table StandingQueryId {
 }
 
 // See [[com.thatdot.quine.graph.StandingQueryPartId]]
-table StandingQueryPartId {
+table MultipleValuesStandingQueryPartId {
   low_bytes: long;
   high_bytes: long;
 }

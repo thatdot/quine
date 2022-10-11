@@ -14,10 +14,10 @@ import com.thatdot.quine.graph.{
   BaseGraph,
   EventTime,
   MemberIdx,
+  MultipleValuesStandingQueryPartId,
   NodeEvent,
   StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -39,7 +39,7 @@ object BloomFilteredPersistor {
 }
 
 /** [[PersistenceAgent]] wrapper that short-circuits read calls to[[getNodeChangeEventsWithTime]],
-  * [[getLatestSnapshot]], and [[getStandingQueryStates]] regarding
+  * [[getLatestSnapshot]], and [[getMultipleValuesStandingQueryStates]] regarding
   * QuineIds assigned to this position that the persistor knows not to exist with empty results.
   *
   * @param wrappedPersistor The persistor implementation to wrap
@@ -125,20 +125,22 @@ private class BloomFilteredPersistor(
 
   override def getStandingQueries: Future[List[StandingQuery]] = wrappedPersistor.getStandingQueries
 
-  override def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
+  override def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     if (mightContain(id))
-      wrappedPersistor.getStandingQueryStates(id)
+      wrappedPersistor.getMultipleValuesStandingQueryStates(id)
     else
       Future.successful(Map.empty)
 
-  override def setStandingQueryState(
+  override def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = {
     bloomFilter.put(id)
-    wrappedPersistor.setStandingQueryState(standingQuery, id, standingQueryId, state)
+    wrappedPersistor.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
   }
 
   override def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrappedPersistor.getAllMetaData()

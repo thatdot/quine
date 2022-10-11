@@ -129,7 +129,7 @@ object LiteralMessage {
     subscriptions: List[String], // TODO: make this string more informative
     sqStateResults: SqStateResults,
     dgnLocalEventIndex: DgnLocalEventIndexSummary,
-    cypherStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
+    multipleValuesStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
     journal: Set[NodeEvent.WithTime],
     graphNodeHashCode: Long
   ) extends LiteralMessage

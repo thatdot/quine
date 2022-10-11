@@ -7,7 +7,14 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{BaseGraph, EventTime, NodeEvent, StandingQuery, StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -92,8 +99,10 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
 
   def getStandingQueries: Future[List[StandingQuery]] = wrapped.getStandingQueries
 
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    wrapped.getStandingQueryStates(id)
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
+    wrapped.getMultipleValuesStandingQueryStates(id)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrapped.getAllMetaData()
   def getMetaData(key: String): Future[Option[Array[Byte]]] = wrapped.getMetaData(key)
@@ -106,12 +115,12 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
   )
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = wrapped.getDomainGraphNodes()
 
-  override def setStandingQueryState(
+  override def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
-  ): Future[Unit] = wrapped.setStandingQueryState(standingQuery, id, standingQueryId, state)
+  ): Future[Unit] = wrapped.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
   override def ready(graph: BaseGraph): Unit = wrapped.ready(graph)
 

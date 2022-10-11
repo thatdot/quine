@@ -8,12 +8,18 @@ import org.scalactic.source.Position
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.StandingQueryId
-import com.thatdot.quine.graph.cypher.{Expr, QueryContext, StandingQuery}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{CancelCypherResult, NewCypherResult, ResultId}
+import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
+  CancelMultipleValuesResult,
+  NewMultipleValuesResult,
+  ResultId
+}
 
 class CrossStateTest extends AnyFunSuite {
 
-  def makeState(query: StandingQuery.Cross): StandingQueryStateWrapper[StandingQuery.Cross] =
+  def makeState(
+    query: MultipleValuesStandingQuery.Cross
+  ): StandingQueryStateWrapper[MultipleValuesStandingQuery.Cross] =
     new StandingQueryStateWrapper(query) {
       override def testInvariants()(implicit pos: Position): Unit = {
 
@@ -38,12 +44,16 @@ class CrossStateTest extends AnyFunSuite {
   test("eager cross state with 1 subquery") {
 
     val aliasedAs = Symbol("bar")
-    val reqQuery = StandingQuery.SubscribeAcrossEdge(
+    val reqQuery = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       None,
       None,
-      StandingQuery.LocalProperty(Symbol("foo"), StandingQuery.LocalProperty.Any, Some(aliasedAs))
+      MultipleValuesStandingQuery.LocalProperty(
+        Symbol("foo"),
+        MultipleValuesStandingQuery.LocalProperty.Any,
+        Some(aliasedAs)
+      )
     )
-    val query = StandingQuery.Cross(
+    val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery),
       emitSubscriptionsLazily = false
     )
@@ -60,7 +70,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResId1, resId1) = withClue("Report a result for the sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery.id,
         globalId,
@@ -77,7 +87,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResId2 @ _, resId2 @ _) = withClue("Report a second result for the sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery.id,
         globalId,
@@ -94,7 +104,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel the first result for the sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery.id,
         globalId,
@@ -112,20 +122,28 @@ class CrossStateTest extends AnyFunSuite {
   test("eager cross state with 2 subqueries") {
 
     val aliasedAs1 = Symbol("bar")
-    val reqQuery1 = StandingQuery.SubscribeAcrossEdge(
+    val reqQuery1 = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       None,
       None,
-      StandingQuery.LocalProperty(Symbol("foo"), StandingQuery.LocalProperty.Any, Some(aliasedAs1))
+      MultipleValuesStandingQuery.LocalProperty(
+        Symbol("foo"),
+        MultipleValuesStandingQuery.LocalProperty.Any,
+        Some(aliasedAs1)
+      )
     )
 
     val aliasedAs2 = Symbol("baz")
-    val reqQuery2 = StandingQuery.SubscribeAcrossEdge(
+    val reqQuery2 = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       None,
       None,
-      StandingQuery.LocalProperty(Symbol("qux"), StandingQuery.LocalProperty.Any, Some(aliasedAs2))
+      MultipleValuesStandingQuery.LocalProperty(
+        Symbol("qux"),
+        MultipleValuesStandingQuery.LocalProperty.Any,
+        Some(aliasedAs2)
+      )
     )
 
-    val query = StandingQuery.Cross(
+    val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery1, reqQuery2),
       emitSubscriptionsLazily = false
     )
@@ -144,7 +162,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val upstreamResIdA = withClue("Report a first result for the first sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -160,7 +178,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResIdB, resId1) = withClue("Report a first result for the second sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery2.id,
         globalId,
@@ -178,7 +196,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResIdC @ _, resId2) = withClue("Report a second result for the first sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -197,7 +215,7 @@ class CrossStateTest extends AnyFunSuite {
 
     val (upstreamResIdD @ _, resId3, resId4 @ _) =
       withClue("Report a seconds result for the second sub-query") {
-        val result = NewCypherResult(
+        val result = NewMultipleValuesResult(
           state.effects.node,
           reqQuery2.id,
           globalId,
@@ -218,7 +236,7 @@ class CrossStateTest extends AnyFunSuite {
       }
 
     withClue("Cancel the first result from the second sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery2.id,
         globalId,
@@ -235,7 +253,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel the first result from the first sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -250,7 +268,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel the second result from the first sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -268,20 +286,28 @@ class CrossStateTest extends AnyFunSuite {
   test("lazy cross state with 2 subqueries") {
 
     val aliasedAs1 = Symbol("bar")
-    val reqQuery1 = StandingQuery.SubscribeAcrossEdge(
+    val reqQuery1 = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       None,
       None,
-      StandingQuery.LocalProperty(Symbol("foo"), StandingQuery.LocalProperty.Any, Some(aliasedAs1))
+      MultipleValuesStandingQuery.LocalProperty(
+        Symbol("foo"),
+        MultipleValuesStandingQuery.LocalProperty.Any,
+        Some(aliasedAs1)
+      )
     )
 
     val aliasedAs2 = Symbol("baz")
-    val reqQuery2 = StandingQuery.SubscribeAcrossEdge(
+    val reqQuery2 = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       None,
       None,
-      StandingQuery.LocalProperty(Symbol("qux"), StandingQuery.LocalProperty.Any, Some(aliasedAs2))
+      MultipleValuesStandingQuery.LocalProperty(
+        Symbol("qux"),
+        MultipleValuesStandingQuery.LocalProperty.Any,
+        Some(aliasedAs2)
+      )
     )
 
-    val query = StandingQuery.Cross(
+    val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery1, reqQuery2),
       emitSubscriptionsLazily = true
     )
@@ -298,7 +324,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val upstreamResIdA = withClue("Report a first result for the first sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -317,7 +343,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResIdB, resId1) = withClue("Report a first result for the second sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery2.id,
         globalId,
@@ -335,7 +361,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     val (upstreamResIdC @ _, resId2) = withClue("Report a second result for the first sub-query") {
-      val result = NewCypherResult(
+      val result = NewMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -354,7 +380,7 @@ class CrossStateTest extends AnyFunSuite {
 
     val (upstreamResIdD @ _, resId3, resId4 @ _) =
       withClue("Report a seconds result for the second sub-query") {
-        val result = NewCypherResult(
+        val result = NewMultipleValuesResult(
           state.effects.node,
           reqQuery2.id,
           globalId,
@@ -375,7 +401,7 @@ class CrossStateTest extends AnyFunSuite {
       }
 
     withClue("Cancel the first result from the second sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery2.id,
         globalId,
@@ -392,7 +418,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel the first result from the first sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,
@@ -407,7 +433,7 @@ class CrossStateTest extends AnyFunSuite {
     }
 
     withClue("Cancel the second result from the first sub-query") {
-      val cancelled = CancelCypherResult(
+      val cancelled = CancelMultipleValuesResult(
         state.effects.node,
         reqQuery1.id,
         globalId,

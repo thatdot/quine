@@ -28,7 +28,7 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
     metricRegistry.timer(MetricRegistry.name("persistor", "get-latest-snapshot"))
   val persistorSetStandingQueryStateTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "set-standing-query-state"))
-  val persistorGetStandingQueryStatesTimer: Timer =
+  val persistorGetMultipleValuesStandingQueryStatesTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
 
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard

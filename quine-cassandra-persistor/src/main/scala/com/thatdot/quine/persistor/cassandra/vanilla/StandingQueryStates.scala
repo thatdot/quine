@@ -15,7 +15,7 @@ import com.datastax.dse.driver.api.core.cql.reactive.ReactiveRow
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 
-import com.thatdot.quine.graph.{StandingQueryId, StandingQueryPartId}
+import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, StandingQueryId}
 import com.thatdot.quine.model.QuineId
 
 trait StandingQueryStatesColumnNames {
@@ -23,8 +23,8 @@ trait StandingQueryStatesColumnNames {
   final protected val standingQueryIdColumn: CassandraColumn[StandingQueryId] =
     CassandraColumn[StandingQueryId]("standing_query_id")
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
-  final protected val standingQueryPartIdColumn: CassandraColumn[StandingQueryPartId] =
-    CassandraColumn[StandingQueryPartId]("standing_query_part_id")
+  final protected val MultipleValuesStandingQueryPartIdColumn: CassandraColumn[MultipleValuesStandingQueryPartId] =
+    CassandraColumn[MultipleValuesStandingQueryPartId]("standing_query_part_id")
   final protected val dataColumn: CassandraColumn[Array[Byte]] = CassandraColumn[Array[Byte]]("data")
 }
 
@@ -32,7 +32,8 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
   val tableName = "standing_query_states"
   //protected val indexName = "standing_query_states_idx"
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
-  protected val clusterKeys: List[CassandraColumn[_]] = List(standingQueryIdColumn, standingQueryPartIdColumn)
+  protected val clusterKeys: List[CassandraColumn[_]] =
+    List(standingQueryIdColumn, MultipleValuesStandingQueryPartIdColumn)
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(dataColumn)
 
   private val createTableStatement: SimpleStatement =
@@ -47,9 +48,9 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
       .build()
    */
 
-  private val getStandingQueryStates =
+  private val getMultipleValuesStandingQueryStates =
     select
-      .columns(standingQueryIdColumn.name, standingQueryPartIdColumn.name, dataColumn.name)
+      .columns(standingQueryIdColumn.name, MultipleValuesStandingQueryPartIdColumn.name, dataColumn.name)
       .where(quineIdColumn.is.eq)
       .build()
 
@@ -58,7 +59,7 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
       .where(
         quineIdColumn.is.eq,
         standingQueryIdColumn.is.eq,
-        standingQueryPartIdColumn.is.eq
+        MultipleValuesStandingQueryPartIdColumn.is.eq
       )
       .build()
       .setIdempotent(true)
@@ -109,7 +110,9 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
     createdSchema.flatMap(_ =>
       (
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(getStandingQueryStates.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
+        prepare(
+          getMultipleValuesStandingQueryStates.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
+        ),
         prepare(removeStandingQueryState.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
         prepare(getIdsForStandingQuery.setTimeout(insertTimeout.toJava).setConsistencyLevel(readConsistency)),
         prepare(removeStandingQuery.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
@@ -121,7 +124,7 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
 class StandingQueryStates(
   session: CqlSession,
   insertStatement: PreparedStatement,
-  getStandingQueryStatesStatement: PreparedStatement,
+  getMultipleValuesStandingQueryStatesStatement: PreparedStatement,
   removeStandingQueryStateStatement: PreparedStatement,
   getIdsForStandingQueryStatement: PreparedStatement,
   removeStandingQueryStatement: PreparedStatement
@@ -132,20 +135,20 @@ class StandingQueryStates(
 
   def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueryStates.arbitraryRowStatement)
 
-  def getStandingQueryStates(
+  def getMultipleValuesStandingQueryStates(
     id: QuineId
-  ): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]] =
-    executeSelect[((StandingQueryId, StandingQueryPartId), Array[Byte]), Map[
-      (StandingQueryId, StandingQueryPartId),
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
+    executeSelect[((StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]), Map[
+      (StandingQueryId, MultipleValuesStandingQueryPartId),
       Array[Byte]
-    ]](getStandingQueryStatesStatement.bindColumns(quineIdColumn.set(id)))(row =>
-      (standingQueryIdColumn.get(row) -> standingQueryPartIdColumn.get(row)) -> dataColumn.get(row)
+    ]](getMultipleValuesStandingQueryStatesStatement.bindColumns(quineIdColumn.set(id)))(row =>
+      (standingQueryIdColumn.get(row) -> MultipleValuesStandingQueryPartIdColumn.get(row)) -> dataColumn.get(row)
     )
 
   def setStandingQueryState(
     standingQuery: StandingQueryId,
     qid: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] =
     executeFuture(
@@ -154,14 +157,14 @@ class StandingQueryStates(
           removeStandingQueryStateStatement.bindColumns(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
-            standingQueryPartIdColumn.set(standingQueryId)
+            MultipleValuesStandingQueryPartIdColumn.set(standingQueryId)
           )
 
         case Some(bytes) =>
           insertStatement.bindColumns(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
-            standingQueryPartIdColumn.set(standingQueryId),
+            MultipleValuesStandingQueryPartIdColumn.set(standingQueryId),
             dataColumn.set(bytes)
           )
       }

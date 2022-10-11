@@ -8,6 +8,7 @@ import akka.actor.{Actor, ActorLogging}
 import akka.event.LoggingAdapter
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
+import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelDomainNodeSubscription,
   CreateDomainNodeSubscription,
@@ -65,22 +66,33 @@ object DomainNodeIndexBehavior {
       dgnId: DomainGraphNodeId
     ): Boolean = index.get(id).exists(_.contains(dgnId))
 
-    /** Create an index into the state of a downstream node at the provided node
+    /** Ensure an index into the state of a downstream node at the provided node is tracked
       *
-      * @param id          the node whose results this index will cache
-      * @param dgnId  the downstream node to be rooted at [[id]]
-      * @return whether an update was applied
+      * @param downstreamQid the node whose results this index will cache
+      * @param dgnId         the downstream DGN to be queried against [[downstreamQid]]
+      *                      note: dgnId will refer to a child of a DGN rooted on this node
+      * @return true when the index is tracked but not yet populated,
+      *         false when the index is tracked and already populated
+      *         (That is, the return answers "could I use the index of `downstreamQid+dgnId` to answer queries without
+      *         additional messages to downstreamQid)
       */
     def newIndex(
-      id: QuineId,
+      downstreamQid: QuineId,
       dgnId: DomainGraphNodeId
-    ): Boolean = if (
-      !contains(id, dgnId) // don't duplicate subscriptions
-    ) {
-      if (index.contains(id)) index(id) += (dgnId -> None)
-      else index += (id -> mutable.Map(dgnId -> None))
-      true
-    } else false
+    ): Boolean =
+      if (
+        !contains(downstreamQid, dgnId) // don't duplicate subscriptions
+      ) {
+        // add dgnId to the sub-index at downstreamQid (or initialize that sub-index if it does not exist)
+        if (index.contains(downstreamQid)) index(downstreamQid) += (dgnId -> None)
+        else index += (downstreamQid -> mutable.Map(dgnId -> None))
+        // downstreamQid's sub-index was just initialized, so we definitely need to poll it to answer queries about it
+        true
+      } else {
+        // we only need more information to answer queries about `downstreamQid+dgnId` if we haven't yet cached a result
+        // for that pair -- that is, if the LastNotification (from downstreamQid about dgnId) isEmpty
+        index(downstreamQid)(dgnId).isEmpty
+      }
 
     /** Remove the index tracking [[testBranch]] on [[id]], if any
       *
@@ -272,32 +284,32 @@ object DomainNodeIndexBehavior {
       * @param lastNotification the last notification sent to subscribers
       * @param relatedQueries the top-level query IDs for which this subscription may be used to calculate answers
       */
-    final case class Subscription(
+    final case class DistinctIdSubscription(
       subscribers: Set[Notifiable] = Set.empty,
       lastNotification: LastNotification = None,
       relatedQueries: Set[StandingQueryId] = Set.empty
     ) {
-      def addSubscriber(subscriber: Notifiable): Subscription =
+      def addSubscriber(subscriber: Notifiable): DistinctIdSubscription =
         copy(subscribers = subscribers + subscriber)
-      def removeSubscriber(subscriber: Notifiable): Subscription =
+      def removeSubscriber(subscriber: Notifiable): DistinctIdSubscription =
         copy(subscribers = subscribers - subscriber)
 
-      def addRelatedQueries(newRelatedQueries: Set[StandingQueryId]): Subscription =
+      def addRelatedQueries(newRelatedQueries: Set[StandingQueryId]): DistinctIdSubscription =
         copy(relatedQueries = relatedQueries union newRelatedQueries)
-      def addRelatedQuery(relatedQuery: StandingQueryId): Subscription =
+      def addRelatedQuery(relatedQuery: StandingQueryId): DistinctIdSubscription =
         addRelatedQueries(Set(relatedQuery))
-      def removeRelatedQuery(relatedQuery: StandingQueryId): Subscription =
+      def removeRelatedQuery(relatedQuery: StandingQueryId): DistinctIdSubscription =
         copy(relatedQueries = relatedQueries - relatedQuery)
 
       // Infix sugaring support
-      def +(subscriber: Notifiable): Subscription = addSubscriber(subscriber)
-      def -(subscriber: Notifiable): Subscription = removeSubscriber(subscriber)
+      def +(subscriber: Notifiable): DistinctIdSubscription = addSubscriber(subscriber)
+      def -(subscriber: Notifiable): DistinctIdSubscription = removeSubscriber(subscriber)
 
-      def ++(newRelatedQueries: Set[StandingQueryId]): Subscription = addRelatedQueries(newRelatedQueries)
-      def +(relatedQuery: StandingQueryId): Subscription = addRelatedQuery(relatedQuery)
-      def -(relatedQuery: StandingQueryId): Subscription = removeRelatedQuery(relatedQuery)
+      def ++(newRelatedQueries: Set[StandingQueryId]): DistinctIdSubscription = addRelatedQueries(newRelatedQueries)
+      def +(relatedQuery: StandingQueryId): DistinctIdSubscription = addRelatedQuery(relatedQuery)
+      def -(relatedQuery: StandingQueryId): DistinctIdSubscription = removeRelatedQuery(relatedQuery)
 
-      def notified(notification: Boolean): Subscription = copy(lastNotification = Some(notification))
+      def notified(notification: Boolean): DistinctIdSubscription = copy(lastNotification = Some(notification))
     }
   }
 }
@@ -316,7 +328,7 @@ trait DomainNodeIndexBehavior
 
   /** @see [[SubscribersToThisNode]]
     */
-  protected def subscribers: SubscribersToThisNode
+  protected def domainGraphSubscribers: SubscribersToThisNode
 
   /** @see [[DomainNodeIndex]]
     */
@@ -324,41 +336,35 @@ trait DomainNodeIndexBehavior
 
   /** @see [[NodeParentIndex]]
     */
-  protected var nodeParentIndex: NodeParentIndex
+  protected var domainGraphNodeParentIndex: NodeParentIndex
 
-  /** Called once on node wakeup, this updates universal SQs.
-    *
-    *    - adds new universal SQs not already in the subscribers
-    *    - removes SQs no longer in the graph state (must've been universal
-    *      otherwise their cancellation would've involved notifying this node)
+  /** Called once on node wakeup, this updates DistinctID SQs.
+    *  - adds new DistinctID SQs not already in the subscribers
+    *  - removes SQs no longer in the graph state
     */
-  protected def updateUniversalQueriesOnWake(shouldSendReplies: Boolean): Unit = {
-
-    // Register new universal SQs in graph state but not in the subscribers
-    // NOTE: we cannot use `+=` because if already registered we want to avoid
-    //       duplicating the result
+  protected def updateDistinctIdStandingQueriesOnNode(shouldSendReplies: Boolean): Unit = {
+    // Register new SQs in graph state but not in the subscribers
+    // NOTE: we cannot use `+=` because if already registered we want to avoid duplicating the result
     for {
-      (universalSqId, universalSq) <- graph.runningStandingQueries
-      query <- universalSq.query.query match {
+      (sqId, runningSq) <- graph.runningStandingQueries
+      query <- runningSq.query.query match {
         case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
         case _ => None
       }
     } {
-      val subscriber = Right(universalSqId)
-      val alreadySubscribed = subscribers.containsSubscriber(query, subscriber, universalSqId)
-
+      val subscriber = Right(sqId)
+      val alreadySubscribed = domainGraphSubscribers.containsSubscriber(query, subscriber, sqId)
       if (!alreadySubscribed) {
-        receiveDomainNodeSubscription(subscriber, query, Set(universalSqId), shouldSendReplies)
+        receiveDomainNodeSubscription(subscriber, query, Set(sqId), shouldSendReplies = true)
       }
     }
 
     // Remove old SQs in subscribers but no longer present in graph state
     for {
-      (query, SubscribersToThisNodeUtil.Subscription(subscribers, _, sqIds)) <-
-        subscribers.subscribersToThisNode
+      (query, DistinctIdSubscription(subscribers, _, sqIds)) <- domainGraphSubscribers.subscribersToThisNode
       if sqIds.forall(graph.runningStandingQuery(_).isEmpty)
       subscriber <- subscribers
-    } cancelSubscription(query, subscriber, shouldSendReplies)
+    } cancelSubscription(query, Some(subscriber), shouldSendReplies = true)
   }
 
   protected def domainNodeIndexBehavior(command: DomainNodeSubscriptionCommand): Unit = {
@@ -394,7 +400,7 @@ trait DomainNodeIndexBehavior
       else List(domainEdge -> edgeResults)
     } toList
 
-  private[this] def edgesSatisfiedByIndex(
+  protected[this] def edgesSatisfiedByIndex(
     testBranch: DomainGraphNode.Single
   ): Option[Boolean] = {
 
@@ -446,8 +452,8 @@ trait DomainNodeIndexBehavior
     relatedQueries: Set[StandingQueryId],
     shouldSendReplies: Boolean
   ): Unit = {
-    subscribers.add(from, dgnId, relatedQueries)
-    val existingAnswerOpt = subscribers.getAnswer(dgnId)
+    domainGraphSubscribers.add(from, dgnId, relatedQueries)
+    val existingAnswerOpt = domainGraphSubscribers.getAnswer(dgnId)
     existingAnswerOpt match {
       case Some(result) =>
         conditionallyReplyToAll(
@@ -457,7 +463,7 @@ trait DomainNodeIndexBehavior
         )
       case None =>
         dgnRegistry.withIdentifiedDomainGraphNode(dgnId)(
-          subscribers.updateAnswerAndNotifySubscribers(_, shouldSendReplies)
+          domainGraphSubscribers.updateAnswerAndNotifySubscribers(_, shouldSendReplies)
         )
         ()
     }
@@ -509,7 +515,7 @@ trait DomainNodeIndexBehavior
     // register each new parental relationship
     for {
       childNodeDgnId <- childNodes
-    } nodeParentIndex += ((childNodeDgnId, dgn.dgnId))
+    } domainGraphNodeParentIndex += ((childNodeDgnId, dgn.dgnId))
   }
 
   protected[this] def receiveIndexUpdate(
@@ -519,11 +525,11 @@ trait DomainNodeIndexBehavior
     shouldSendReplies: Boolean
   ): Unit = {
     val relatedQueries =
-      nodeParentIndex.parentNodesOf(otherDgnId) flatMap { dgnId =>
-        subscribers.getRelatedQueries(dgnId)
+      domainGraphNodeParentIndex.parentNodesOf(otherDgnId) flatMap { dgnId =>
+        domainGraphSubscribers.getRelatedQueries(dgnId)
       }
     domainNodeIndex.updateResult(fromOther, otherDgnId, result, relatedQueries)(graph, log)
-    subscribers.updateAnswerAndPropagateToRelevantSubscribers(otherDgnId, shouldSendReplies)
+    domainGraphSubscribers.updateAnswerAndPropagateToRelevantSubscribers(otherDgnId, shouldSendReplies)
     updateRelevantToSnapshotOccurred()
   }
 
@@ -531,19 +537,19 @@ trait DomainNodeIndexBehavior
     * Notifiable interested in `dgnId`, remove all state used to track `dgnId`'s completion from this node
     * and propagate the cancellation.
     *
-    * State removed might include upstream subscriptions to this node (from [[subscribers]]), downstream subscriptions
+    * State removed might include upstream subscriptions to this node (from [[domainGraphSubscribers]]), downstream subscriptions
     * from this node (from [[domainNodeIndex]]), child->parent mappings tracking children of `dgnId` (from
-    * [[nodeParentIndex]]), and local events watched by the SQ (from [[localEventIndex]])
+    * [[domainGraphNodeParentIndex]]), and local events watched by the SQ (from [[localEventIndex]])
     *
     * This always propagates "down" a standing query (ie, from the global subscriber to the node at the root of the SQ)
     */
   protected[this] def cancelSubscription(
     dgnId: DomainGraphNodeId,
-    subscriber: Notifiable,
+    subscriber: Option[Notifiable], // TODO just move this to the caller only
     shouldSendReplies: Boolean
   ): Unit = {
     // update [[subscribers]]
-    val abandoned = subscribers.removeSubscriber(subscriber, dgnId)
+    val abandoned = subscriber.map(s => domainGraphSubscribers.removeSubscriber(s, dgnId)).getOrElse(Map.empty)
 
     val _ = dgnRegistry.withDomainGraphNode(dgnId) { dgn =>
       val nextNodesToRemove = abandoned match {
@@ -557,19 +563,19 @@ trait DomainNodeIndexBehavior
         case wrongNodesRemoved =>
           // indicates a bug in [[subscribers.remove]]: we removed more nodes than the one we intended to
           log.info(
-            s"""Expected to clear a specific DGB from this node, instead started deleting multiple. Re-subscribing the
-               |inadvertently removed nodes. Expected $dgn but found ${wrongNodesRemoved.size} node[s]:
+            s"""Expected to clear a specific DGN from this node, instead started deleting multiple. Re-subscribing the
+               |inadvertently removed DGNs. Expected: $dgn but found: ${wrongNodesRemoved.size} node[s]:
                |${wrongNodesRemoved.toList}""".stripMargin.replace('\n', ' ')
           )
           // re-subscribe any extra nodes removed
           (wrongNodesRemoved - dgnId).foreach {
             case (
                   resubNode,
-                  SubscribersToThisNodeUtil.Subscription(resubSubscribers, _, relatedQueries)
+                  SubscribersToThisNodeUtil.DistinctIdSubscription(resubSubscribers, _, relatedQueries)
                 ) =>
               for {
                 resubSubscriber <- resubSubscribers
-              } subscribers.add(resubSubscriber, resubNode, relatedQueries)
+              } domainGraphSubscribers.add(resubSubscriber, resubNode, relatedQueries)
           }
 
           // if the correct node was among those originally removed, then continue removing it despite the bug
@@ -590,8 +596,11 @@ trait DomainNodeIndexBehavior
           for {
             downstreamNode <- downstreamNodes
           } {
-            nodeParentIndex -= (downstreamNode -> dgnId)
+            domainGraphNodeParentIndex -= (downstreamNode -> dgnId)
             val lastDownstreamResults = domainNodeIndex.removeAllIndicesInefficiently(downstreamNode)
+
+            // TODO: DON'T send messages to cancel subscriptions from individual nodes. This should be done from the
+            //       shard exactly once to all awake nodes when the SQ is removed.
             // propagate the cancellation to any awake nodes representing potential children of this DGB
             // see [[NodeActorMailbox.shouldIgnoreWhenSleeping]]
             if (shouldSendReplies) for {
@@ -635,10 +644,10 @@ trait DomainNodeIndexBehavior
   case class SubscribersToThisNode(
     subscribersToThisNode: mutable.Map[
       DomainGraphNodeId,
-      SubscribersToThisNodeUtil.Subscription
+      SubscribersToThisNodeUtil.DistinctIdSubscription
     ] = mutable.Map.empty
   ) {
-    import SubscribersToThisNodeUtil.Subscription
+    import SubscribersToThisNodeUtil.DistinctIdSubscription
     def containsSubscriber(
       dgnId: DomainGraphNodeId,
       subscriber: Notifiable,
@@ -646,7 +655,7 @@ trait DomainNodeIndexBehavior
     ): Boolean =
       subscribersToThisNode
         .get(dgnId)
-        .collect { case Subscription(subscribers, _, relatedQueries) =>
+        .collect { case DistinctIdSubscription(subscribers, _, relatedQueries) =>
           subscribers.contains(subscriber) && relatedQueries.contains(forQuery)
         }
         .getOrElse(false)
@@ -684,7 +693,7 @@ trait DomainNodeIndexBehavior
             }
         }
         subscribersToThisNode(dgnId) =
-          Subscription(subscribers = Set(from), lastNotification = None, relatedQueries = relatedQueries)
+          DistinctIdSubscription(subscribers = Set(from), lastNotification = None, relatedQueries = relatedQueries)
         ()
       }
 
@@ -692,21 +701,21 @@ trait DomainNodeIndexBehavior
     private[DomainNodeIndexBehavior] def removeSubscriber(
       subscriber: Notifiable,
       dgnId: DomainGraphNodeId
-    ): Map[DomainGraphNodeId, Subscription] =
+    ): Map[DomainGraphNodeId, DistinctIdSubscription] =
       subscribersToThisNode
         .get(dgnId)
-        .map { case subscription @ Subscription(notifiables, _, _) =>
+        .map { case subscription @ DistinctIdSubscription(notifiables, _, _) =>
           if (notifiables == Set(subscriber)) {
             subscribersToThisNode -= dgnId // remove the whole node if no more subscriptions (no one left to tell)
             Map(dgnId -> subscription)
           } else {
             subscribersToThisNode(dgnId) -= subscriber // else remove just the requested subscriber
-            Map.empty[DomainGraphNodeId, Subscription]
+            Map.empty[DomainGraphNodeId, DistinctIdSubscription]
           }
         }
         .getOrElse(Map.empty)
 
-    def removeSubscribers(
+    def removeSubscribersOf(
       dgnIds: Iterable[DomainGraphNodeId]
     ): Unit = subscribersToThisNode --= dgnIds
 
@@ -726,14 +735,14 @@ trait DomainNodeIndexBehavior
       downstreamNode: DomainGraphNodeId,
       shouldSendReplies: Boolean
     ): Unit = {
-      val parentNodes = nodeParentIndex.parentNodesOf(downstreamNode)
+      val parentNodes = domainGraphNodeParentIndex.parentNodesOf(downstreamNode)
       // this should always be the case: we shouldn't be getting subscription results for DGBs that we don't track
       // a parent of
       if (parentNodes.nonEmpty) {
         parentNodes foreach { dgnId =>
           dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
             case Some(dgn) => updateAnswerAndNotifySubscribers(dgn, shouldSendReplies)
-            case None => nodeParentIndex - ((downstreamNode, dgnId))
+            case None => domainGraphNodeParentIndex - ((downstreamNode, dgnId))
           }
         }
       } else {
@@ -744,28 +753,41 @@ trait DomainNodeIndexBehavior
         val (recoveredIndex, removed) =
           NodeParentIndex.reconstruct(
             domainNodeIndex,
-            subscribers.subscribersToThisNode.keys,
+            domainGraphSubscribers.subscribersToThisNode.keys,
             dgnRegistry
           )
-        subscribers.subscribersToThisNode --= removed
+        domainGraphSubscribers.subscribersToThisNode --= removed
         val parentsAfterRecovery = recoveredIndex.parentNodesOf(downstreamNode)
         if (parentsAfterRecovery.nonEmpty) {
           // recovery succeeded -- add recovered entries to nodeParentIndex and continue, logging an INFO-level notice
           // no data was lost, but this is a bug
           log.info(
-            s"""Found out-of-sync nodeParentIndex while propagating a DGB. Previously-untracked child was
-               |$downstreamNode. Previously only tracking children ${nodeParentIndex.knownChildren.toList}.
+            s"""Found out-of-sync nodeParentIndex while propagating a DGN result. Previously-untracked DGN ID was:
+               |$downstreamNode. Previously only tracking children: ${domainGraphNodeParentIndex.knownChildren.toList}.
                |""".stripMargin.replace('\n', ' ')
           )
-          nodeParentIndex = recoveredIndex
+          domainGraphNodeParentIndex = recoveredIndex
         } else {
-          // recovery failed -- there is either data loss, or a bug in [[NodeParentIndex.reconstruct]], or both
-          log.error(
-            s"""While propagating a result a DGB Standing Query, found no upstream subscribers that might care about
-               |an update in the provided downstream node. This may indicate a bug in the node registration/indexing
-               |logic. Falling back to trying all nodes. Orphan (downstream) node is $downstreamNode
-               |""".stripMargin.replace('\n', ' ')
-          )
+          // recovery failed -- there is either data loss, or a bug in [[NodeParentIndex.reconstruct]], or the usage of
+          // [[NodeParentIndex.reconstruct]] (or any combination thereof).
+          if (shouldSendReplies)
+            log.error(
+              s"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+                 |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
+                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is: $downstreamNode
+                 |""".trim.stripMargin.replace('\n', ' ')
+            )
+          else {
+            // if shouldSendReplies == false, we're probably restoring a node from sleep via journals. In this case,
+            // an incomplete nodeParentIndex is not surprising
+            log.debug(
+              s"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+                 |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
+                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is: $downstreamNode.
+                 |However, this is expected during initial journal replay on a node after wake when snapshots are
+                 |disabled or otherwise missing.""".stripMargin.replace('\n', ' ')
+            )
+          }
           updateAnswerAndNotifySubscribersInefficiently(shouldSendReplies): @nowarn
         }
       }
@@ -786,11 +808,16 @@ trait DomainNodeIndexBehavior
             }
             .getOrElse(false)
           val edgesSatisfied = edgesSatisfiedByIndex(single)
+          // if no subscribers found for the DGN, clear out expired state from other (non-`subscribers`) bookkeeping
+          if (!subscribersToThisNode.contains(dgnId)) {
+            cancelSubscription(dgnId, None, shouldSendReplies)
+          }
+
           subscribersToThisNode.get(dgnId) foreach {
-            case subscription @ Subscription(notifiables, lastNotification, relatedQueries) =>
+            case subscription @ DistinctIdSubscription(notifiables, lastNotification, relatedQueries) =>
               (matchesLocal, edgesSatisfied) match {
                 // If the query doesn't locally match, don't bother issuing recursive subscriptions
-                case (false, _) if !lastNotification.contains(false) =>
+                case (false, _) if !lastNotification.contains(false) && shouldSendReplies =>
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result = false),
@@ -800,7 +827,7 @@ trait DomainNodeIndexBehavior
                   updateRelevantToSnapshotOccurred()
 
                 // If the query locally matches and we've already got edge results, reply with those
-                case (true, Some(result)) if !lastNotification.contains(result) =>
+                case (true, Some(result)) if !lastNotification.contains(result) && shouldSendReplies =>
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result),
@@ -843,7 +870,7 @@ trait DomainNodeIndexBehavior
             }
 
           subscribersToThisNode.get(dgnId).foreach {
-            case subscription @ Subscription(notifiables, lastNotification, _) =>
+            case subscription @ DistinctIdSubscription(notifiables, lastNotification, _) =>
               andMatches match {
                 case Some(result) if !lastNotification.contains(result) =>
                   conditionallyReplyToAll(
@@ -885,7 +912,7 @@ trait DomainNodeIndexBehavior
             }
 
           subscribersToThisNode.get(dgnId).foreach {
-            case subscription @ Subscription(notifiables, lastNotification, _) =>
+            case subscription @ DistinctIdSubscription(notifiables, lastNotification, _) =>
               orMatches match {
                 case Some(result) if !lastNotification.contains(result) =>
                   conditionallyReplyToAll(
@@ -918,7 +945,7 @@ trait DomainNodeIndexBehavior
               )
 
           subscribersToThisNode.get(dgnId).foreach {
-            case subscription @ Subscription(notifiables, lastNotification, _) =>
+            case subscription @ DistinctIdSubscription(notifiables, lastNotification, _) =>
               notMatches match {
                 case Some(result) if !lastNotification.contains(result) =>
                   conditionallyReplyToAll(

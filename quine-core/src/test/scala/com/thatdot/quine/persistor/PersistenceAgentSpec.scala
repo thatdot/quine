@@ -16,11 +16,11 @@ import com.thatdot.quine.graph.{
   ArbitraryInstances,
   DomainIndexEvent,
   EventTime,
+  MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   NodeEvent,
   QuineUUIDProvider,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
 
@@ -76,10 +76,14 @@ abstract class PersistenceAgentSpec
   val sqId3: StandingQueryId = StandingQueryId(new UUID(-2866009460452510937L, 8633904949869711978L))
   val sqId4: StandingQueryId = StandingQueryId(new UUID(-1L, -1L)) // max unsigned representation
 
-  val sqPartId1: StandingQueryPartId = StandingQueryPartId(new UUID(0L, 0L))
-  val sqPartId2: StandingQueryPartId = StandingQueryPartId(new UUID(1096520000288222086L, 748609736042323025L))
-  val sqPartId3: StandingQueryPartId = StandingQueryPartId(new UUID(-1613026160293696877L, 6732331004029745690L))
-  val sqPartId4: StandingQueryPartId = StandingQueryPartId(new UUID(-1L, -1L))
+  val sqPartId1: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(new UUID(0L, 0L))
+  val sqPartId2: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
+    new UUID(1096520000288222086L, 748609736042323025L)
+  )
+  val sqPartId3: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
+    new UUID(-1613026160293696877L, 6732331004029745690L)
+  )
+  val sqPartId4: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(new UUID(-1L, -1L))
 
   // arbitrary byte arrays
   val sqState1: Array[Byte] = Array[Byte]()
@@ -487,35 +491,35 @@ abstract class PersistenceAgentSpec
   describe("setStandingQueryState") {
     it("can set multiple states for one node") {
       allOfConcurrent(
-        persistor.setStandingQueryState(sqId1, qid1, sqPartId1, Some(sqState1)),
-        persistor.setStandingQueryState(sqId1, qid1, sqPartId2, Some(sqState2)),
-        persistor.setStandingQueryState(sqId1, qid1, sqPartId3, Some(sqState3)),
-        persistor.setStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4))
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId1, Some(sqState1)),
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId2, Some(sqState2)),
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId3, Some(sqState3)),
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4))
       )
     }
 
     it("can set the same state on multiple nodes") {
       allOfConcurrent(
-        persistor.setStandingQueryState(sqId1, qid2, sqPartId1, Some(sqState1)),
-        persistor.setStandingQueryState(sqId1, qid3, sqPartId1, Some(sqState2)),
-        persistor.setStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3))
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid2, sqPartId1, Some(sqState1)),
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid3, sqPartId1, Some(sqState2)),
+        persistor.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3))
       )
     }
 
     it("can set states on various nodes") {
       allOfConcurrent(
-        persistor.setStandingQueryState(sqId2, qid4, sqPartId4, Some(sqState1)),
-        persistor.setStandingQueryState(sqId4, qid3, sqPartId1, Some(sqState3)),
-        persistor.setStandingQueryState(sqId2, qid1, sqPartId3, Some(sqState4)),
-        persistor.setStandingQueryState(sqId2, qid1, sqPartId4, Some(sqState3)),
-        persistor.setStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1))
+        persistor.setMultipleValuesStandingQueryState(sqId2, qid4, sqPartId4, Some(sqState1)),
+        persistor.setMultipleValuesStandingQueryState(sqId4, qid3, sqPartId1, Some(sqState3)),
+        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, Some(sqState4)),
+        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId4, Some(sqState3)),
+        persistor.setMultipleValuesStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1))
       )
     }
 
     it("can remove states") {
       allOfConcurrent(
-        persistor.setStandingQueryState(sqId2, qid1, sqPartId3, None),
-        persistor.setStandingQueryState(sqId3, qid2, sqPartId1, None)
+        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
+        persistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
       )
     }
   }
@@ -523,7 +527,7 @@ abstract class PersistenceAgentSpec
   describe("getStandingQueryState") {
     it("can return an empty set of states") {
       allOfConcurrent(
-        persistor.getStandingQueryStates(qid0).map { sqStates =>
+        persistor.getMultipleValuesStandingQueryStates(qid0).map { sqStates =>
           assert(sqStates === Map.empty)
         }
       )
@@ -531,7 +535,7 @@ abstract class PersistenceAgentSpec
 
     it("can find a single state associated with a node") {
       allOfConcurrent(
-        persistor.getStandingQueryStates(qid2).map { sqStates =>
+        persistor.getMultipleValuesStandingQueryStates(qid2).map { sqStates =>
           assert(sqStates.size === 1)
           assert(sqStates(sqId1 -> sqPartId1) === sqState1)
         }
@@ -540,7 +544,7 @@ abstract class PersistenceAgentSpec
 
     it("can find states associated with multiple queries") {
       allOfConcurrent(
-        persistor.getStandingQueryStates(qid1).map { sqStates =>
+        persistor.getMultipleValuesStandingQueryStates(qid1).map { sqStates =>
           assert(sqStates.size === 5)
           assert(sqStates(sqId1 -> sqPartId1) === sqState1)
           assert(sqStates(sqId1 -> sqPartId2) === sqState2)
@@ -548,12 +552,12 @@ abstract class PersistenceAgentSpec
           assert(sqStates(sqId2 -> sqPartId4) === sqState3)
           assert(sqStates(sqId1 -> sqPartId4) === sqState4)
         },
-        persistor.getStandingQueryStates(qid3).map { sqStates =>
+        persistor.getMultipleValuesStandingQueryStates(qid3).map { sqStates =>
           assert(sqStates.size === 2)
           assert(sqStates(sqId1 -> sqPartId1) === sqState2)
           assert(sqStates(sqId4 -> sqPartId1) === sqState3)
         },
-        persistor.getStandingQueryStates(qid4).map { sqStates =>
+        persistor.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
           assert(sqStates.size === 3)
           assert(sqStates(sqId1 -> sqPartId1) === sqState3)
           assert(sqStates(sqId2 -> sqPartId4) === sqState1)

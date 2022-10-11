@@ -4,7 +4,7 @@ import scala.collection.mutable
 
 import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
-import com.thatdot.quine.graph.cypher.StandingQueryState
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -92,6 +92,7 @@ object StandingQueryLocalEvents {
   * @param watchingForEdge mapping of edge key to interested SQs
   * @param watchingForAnyEdge set of SQs interested in any edge
   */
+
 final case class StandingQueryLocalEventIndex(
   watchingForProperty: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForEdge: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
@@ -184,7 +185,7 @@ object StandingQueryLocalEventIndex {
     */
   sealed trait EventSubscriber
   object EventSubscriber {
-    def apply(sqIdTuple: (StandingQueryId, StandingQueryPartId)): StandingQueryWithId =
+    def apply(sqIdTuple: (StandingQueryId, MultipleValuesStandingQueryPartId)): StandingQueryWithId =
       StandingQueryWithId(sqIdTuple._1, sqIdTuple._2)
     def apply(
       dgnId: DomainGraphNodeId
@@ -193,16 +194,18 @@ object StandingQueryLocalEventIndex {
   }
 
   /** A single SQv4 standing query part -- this handles events by passing them to the SQ's state's "onNodeEvents" hook
+    *
     * @param queryId
     * @param partId
-    * @see [[behavior.CypherStandingBehavior.standingQueries]]
-    * @see [[behavior.CypherStandingBehavior.updateCypherSq]]
+    * @see [[behavior.MultipleValuesStandingQueryBehavior.multipleValuesStandingQueries]]
+    * @see [[behavior.MultipleValuesStandingQueryBehavior.updateMultipleValuesSqs]]
     */
-  final case class StandingQueryWithId(queryId: StandingQueryId, partId: StandingQueryPartId) extends EventSubscriber
+  final case class StandingQueryWithId(queryId: StandingQueryId, partId: MultipleValuesStandingQueryPartId)
+      extends EventSubscriber
 
   /** A DGB subscription -- this handles events by routing them to multiple other nodes, ie, [[Notifiable]]s
     * @param branch
-    * @see [[behavior.DomainNodeIndexBehavior.subscribers]]
+    * @see [[behavior.DomainNodeIndexBehavior.domainGraphSubscribers]]
     * @see [[behavior.DomainNodeIndexBehavior.SubscribersToThisNode.updateAnswerAndNotifySubscribers]]
     */
   final case class DomainNodeIndexSubscription(dgnId: DomainGraphNodeId) extends EventSubscriber
@@ -216,13 +219,15 @@ object StandingQueryLocalEventIndex {
   /** Rebuild the part of the event index based on the provided query states and subscribers
     *
     * @param dgnSubscribers
-    * @param standingQueryStates currently set states
+    * @param multipleValuesStandingQueryStates currently set states
     * @return tuple containing rebuilt index and [[DomainGraphNodeId]]s that are not in the registry
     */
   def from(
     dgnRegistry: DomainGraphNodeRegistry,
     dgnSubscribers: Iterator[DomainGraphNodeId],
-    standingQueryStates: Iterator[((StandingQueryId, StandingQueryPartId), StandingQueryState)]
+    multipleValuesStandingQueryStates: Iterator[
+      ((StandingQueryId, MultipleValuesStandingQueryPartId), MultipleValuesStandingQueryState)
+    ]
   ): (StandingQueryLocalEventIndex, Iterable[DomainGraphNodeId]) = {
     val toReturn = StandingQueryLocalEventIndex.empty
     val removed = Iterable.newBuilder[DomainGraphNodeId]
@@ -237,9 +242,9 @@ object StandingQueryLocalEventIndex {
       event <- StandingQueryLocalEvents.extractWatchableEvents(branch)
     } yield event -> EventSubscriber(dgnId)
     val sqStateEvents = for {
-      (handler, queryState) <- standingQueryStates
+      (sqIdAndPartId, queryState) <- multipleValuesStandingQueryStates
       event <- queryState.relevantEvents
-    } yield event -> EventSubscriber(handler)
+    } yield event -> EventSubscriber(sqIdAndPartId)
 
     (dgnEvents ++ sqStateEvents).foreach { case (event, handler) =>
       event match {

@@ -14,10 +14,10 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MemberIdx,
+  MultipleValuesStandingQueryPartId,
   NodeEvent,
   StandingQuery,
-  StandingQueryId,
-  StandingQueryPartId
+  StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -251,7 +251,9 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param id node
     * @return standing query states, keyed by the top-level standing query and sub-query
     */
-  def getStandingQueryStates(id: QuineId): Future[Map[(StandingQueryId, StandingQueryPartId), Array[Byte]]]
+  def getMultipleValuesStandingQueryStates(
+    id: QuineId
+  ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]]
 
   /** Set the intermediate standing query state associated with a node
     *
@@ -260,10 +262,10 @@ abstract class PersistenceAgent extends StrictLogging {
     * @param standingQueryId sub-query ID
     * @param state           what to store ([[None]] corresponds to clearing out the state)
     */
-  def setStandingQueryState(
+  def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
-    standingQueryId: StandingQueryPartId,
+    standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit]
 
@@ -418,5 +420,3 @@ trait MultipartSnapshotPersistenceAgent {
     upToTime: EventTime
   ): Future[Option[MultipartSnapshot]]
 }
-
-final case class PersistorTerminatedException(msg: String) extends RuntimeException(msg)

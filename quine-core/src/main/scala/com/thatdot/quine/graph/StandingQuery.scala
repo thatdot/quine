@@ -12,6 +12,7 @@ import akka.{Done, NotUsed}
 import com.codahale.metrics.{Counter, Meter}
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 
 /** Information about a standing query that gets persisted and reloaded on startup
@@ -115,8 +116,8 @@ object StandingQueryPattern extends LazyLogging {
     * @param includeCancellations should result cancellations be reported?
     * @param origin how did the user specify this query?
     */
-  final case class SqV4(
-    compiledQuery: cypher.StandingQuery,
+  final case class MultipleValuesQueryPattern(
+    compiledQuery: MultipleValuesStandingQuery,
     includeCancellation: Boolean,
     origin: PatternOrigin.SqV4Origin
   ) extends StandingQueryPattern

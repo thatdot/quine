@@ -3,8 +3,8 @@ package com.thatdot.quine.graph
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.graph.behavior.StandingQuerySubscribers
-import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, StandingQueryState => CypherStandingQueryState}
+import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
+import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, MultipleValuesStandingQueryState}
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.codecs.NodeEventCodec.eventWithTimeFormat
 import com.thatdot.quine.persistor.codecs._
@@ -74,8 +74,12 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
   }
 
   it should "roundtrip StandingQueryState" in {
-    forAll { (subs: StandingQuerySubscribers, sq: CypherStandingQueryState) =>
-      assert(StandingQueryStateCodec.format.read(StandingQueryStateCodec.format.write(subs -> sq)).get == subs -> sq)
+    forAll { (subs: MultipleValuesStandingQuerySubscribers, sq: MultipleValuesStandingQueryState) =>
+      assert(
+        MultipleValuesStandingQueryStateCodec.format
+          .read(MultipleValuesStandingQueryStateCodec.format.write(subs -> sq))
+          .get == subs -> sq
+      )
     }
 
   }
