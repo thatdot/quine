@@ -332,8 +332,9 @@ object IncrementCounter extends UserDefinedProcedure {
   val canContainAllNodeScan = false
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "amount" -> Type.Integer),
-    outputs = Vector.empty,
-    description = "Atomically increment an integer property on a node by a certain amount"
+    outputs = Vector("count" -> Type.Integer),
+    description =
+      "Atomically increment an integer property on a node by a certain amount, returning the resultant value"
   )
 
   def call(
@@ -357,7 +358,7 @@ object IncrementCounter extends UserDefinedProcedure {
       nodeId
         .?(IncrementProperty(Symbol(propertyKey), incrementQuantity, _))
         .map {
-          case IncrementProperty.Success(_) => Vector.empty
+          case IncrementProperty.Success(newCount) => Vector(Expr.Integer(newCount))
           case IncrementProperty.Failed(valueFound) =>
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Integer),
