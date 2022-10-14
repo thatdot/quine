@@ -107,8 +107,8 @@ object ReifyTime extends UserDefinedProcedure {
       parentPeriod: Option[Period]
     ): (QuineId, Future[Unit]) = {
       val periodTruncatedDate = period.truncate(sourceTime)
-      val previousPeriodSourceTime = period.previous(sourceTime)
-      val nextPeriodSourceTime = period.next(sourceTime)
+      val previousPeriodSourceTime = period.truncate(period.previous(sourceTime))
+      val nextPeriodSourceTime = period.truncate(period.next(sourceTime))
       val nodeId = timeNodeId(sourceTime, period)
       val previousNodeId = timeNodeId(previousPeriodSourceTime, period)
       val nextNodeId = timeNodeId(nextPeriodSourceTime, period)
@@ -116,12 +116,20 @@ object ReifyTime extends UserDefinedProcedure {
       val effects = Future
         .sequence(
           List(
+            // set a label on each of prev, this, next
             graph.literalOps.setLabel(nodeId, period.name + ":" + period.labelFormat.format(sourceTime)),
             graph.literalOps
               .setLabel(previousNodeId, period.name + ":" + period.labelFormat.format(previousPeriodSourceTime)),
             graph.literalOps.setLabel(nextNodeId, period.name + ":" + period.labelFormat.format(nextPeriodSourceTime)),
+            // set each of prev.period, this.period, next.period
             graph.literalOps.setProp(nodeId, "period", QuineValue.Str(period.name)),
+            graph.literalOps.setProp(previousNodeId, "period", QuineValue.Str(period.name)),
+            graph.literalOps.setProp(nextNodeId, "period", QuineValue.Str(period.name)),
+            // set each of prev.start, this.start, next.period
             graph.literalOps.setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toInstant)),
+            graph.literalOps.setProp(previousNodeId, "start", QuineValue.DateTime(previousPeriodSourceTime.toInstant)),
+            graph.literalOps.setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toInstant)),
+            // edges (prev)->(this)->(next)
             graph.literalOps.addEdge(nodeId, nextNodeId, "NEXT"),
             graph.literalOps.addEdge(previousNodeId, nodeId, "NEXT")
           ) ::: (parentNodeId match {
