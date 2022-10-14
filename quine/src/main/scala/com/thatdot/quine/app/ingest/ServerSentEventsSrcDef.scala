@@ -13,6 +13,7 @@ import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 
 final case class ServerSentEventsSrcDef(
+  override val name: String,
   url: String,
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
@@ -24,7 +25,7 @@ final case class ServerSentEventsSrcDef(
       initialSwitchMode,
       parallelism,
       maxPerSecond,
-      "SSE"
+      s"$name (SSE ingest)"
     ) {
 
   type InputType = ServerSentEvent

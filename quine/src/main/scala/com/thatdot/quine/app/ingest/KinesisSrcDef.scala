@@ -32,14 +32,16 @@ import com.thatdot.quine.routes.{AwsCredentials, KinesisIngest}
 
 /** The definition of a source stream from Amazon Kinesis
   *
-  * @param streamName The Kinesis stream name
-  * @param shardIds The Kinesis shard IDs, or Set.empty to use all shards in the stream. Each probably start "shardId-" Note that this [[KinesisSrcDef]]
-  *                 will be invalidated if the stream rescales
-  * @param format The [[ImportFormat]] to use to ingest bytes from Kinesis
-  * @param parallelism How many concurrent writes should be performed on the database
+  * @param name           The unique, human-facing name of the ingest stream
+  * @param streamName     The Kinesis stream name
+  * @param shardIds       The Kinesis shard IDs, or Set.empty to use all shards in the stream. Each probably start "shardId-" Note that this [[KinesisSrcDef]]
+  *                       will be invalidated if the stream rescales
+  * @param format         The [[ImportFormat]] to use to ingest bytes from Kinesis
+  * @param parallelism    How many concurrent writes should be performed on the database
   * @param credentialsOpt The AWS credentials to access the stream
   */
 final case class KinesisSrcDef(
+  override val name: String,
   streamName: String,
   shardIds: Option[Set[String]],
   format: ImportFormat,
@@ -55,7 +57,7 @@ final case class KinesisSrcDef(
       initialSwitchMode,
       parallelism,
       maxPerSecond,
-      s"kinesis-$streamName"
+      s"$name (Kinesis ingest)"
     ) {
 
   type InputType = kinesisModel.Record

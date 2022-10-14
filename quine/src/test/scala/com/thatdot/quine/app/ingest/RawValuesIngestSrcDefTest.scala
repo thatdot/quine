@@ -42,7 +42,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
     type InputType = ByteString
 
     /** Define a way to extract raw bytes from a single input event */
-    override def rawBytes(value: ByteString): Array[Byte] = value.toArray[Byte]
+    def rawBytes(value: ByteString): Array[Byte] = value.toArray[Byte]
 
     def newlineDelimited(maximumLineSize: Int): Flow[ByteString, ByteString, NotUsed] = Framing
       .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)

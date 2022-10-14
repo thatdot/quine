@@ -19,10 +19,13 @@ import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
 
+/** Ingest source runtime that requires managing its own record delimitation -- for example, line-based ingests or CSV
+  */
 abstract class ContentDelimitedIngestSrcDef(
   initialSwitchMode: SwitchMode,
   format: CypherImportFormat,
   src: Source[ByteString, NotUsed],
+  encodingString: String,
   parallelism: Int,
   maximumLineSize: Int,
   startAtOffset: Long,
@@ -32,26 +35,55 @@ abstract class ContentDelimitedIngestSrcDef(
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
 
-  type InputType = ByteString
+  val (charset, transcode) = IngestSrcDef.getTranscoder(encodingString)
 
   def bounded[A]: Flow[A, A, NotUsed] = ingestLimit match {
     case None => Flow[A].drop(startAtOffset)
     case Some(limit) => Flow[A].drop(startAtOffset).take(limit)
   }
+}
+
+/** Ingest source runtime that delimits its records by newline characters in the input stream
+  */
+abstract class LineDelimitedIngestSrcDef(
+  initialSwitchMode: SwitchMode,
+  format: CypherImportFormat,
+  src: Source[ByteString, NotUsed],
+  encodingString: String,
+  parallelism: Int,
+  maximumLineSize: Int,
+  startAtOffset: Long,
+  ingestLimit: Option[Long],
+  maxPerSecond: Option[Int],
+  name: String
+)(implicit graph: CypherOpsGraph)
+    extends ContentDelimitedIngestSrcDef(
+      initialSwitchMode,
+      format,
+      src,
+      encodingString,
+      parallelism,
+      maximumLineSize,
+      startAtOffset,
+      ingestLimit,
+      maxPerSecond,
+      name
+    ) {
+
+  type InputType = ByteString
 
   val newLineDelimited: Flow[ByteString, ByteString, NotUsed] = Framing
     .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)
     .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
 
-  override def rawBytes(value: ByteString): Array[Byte] = value.toArray
-
+  def rawBytes(value: ByteString): Array[Byte] = value.toArray
 }
 
 case class CsvIngestSrcDef(
   initialSwitchMode: SwitchMode,
   format: FileIngestFormat.CypherCsv,
   src: Source[ByteString, NotUsed],
-  charset: String,
+  encodingString: String,
   parallelism: Int,
   maximumLineSize: Int,
   startAtOffset: Long,
@@ -63,6 +95,7 @@ case class CsvIngestSrcDef(
       initialSwitchMode,
       new CypherRawInputFormat(format.query, format.parameter),
       src,
+      encodingString,
       parallelism,
       maximumLineSize,
       startAtOffset,
@@ -71,7 +104,13 @@ case class CsvIngestSrcDef(
       name
     ) {
 
-  override def source(): Source[ByteString, NotUsed] = src.via(bounded)
+  type InputType = List[ByteString] // csv row
+
+  def source(): Source[List[ByteString], NotUsed] = src
+    .via(
+      CsvParsing.lineScanner(format.delimiter.byte, format.quoteChar.byte, format.escapeChar.byte, maximumLineSize)
+    )
+    .via(bounded)
 
   def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =
     headerDef match {
@@ -88,24 +127,40 @@ case class CsvIngestSrcDef(
           .map(l => cypher.Expr.List(l.map(bs => cypher.Expr.Str(bs.decodeString(charset))).toVector))
     }
 
-  override val deserializeAndMeter: Flow[ByteString, TryDeserialized, NotUsed] =
-    Flow[ByteString]
-      .wireTap(bs => meter.mark(bs.length))
-      .via(
-        CsvParsing.lineScanner(format.delimiter.char, format.quoteChar.char, format.escapeChar.char, maximumLineSize)
-      )
+  override val deserializeAndMeter: Flow[List[ByteString], TryDeserialized, NotUsed] =
+    Flow[List[ByteString]]
+      // NB when using headers, the record count here will consider the header-defining row as a "record". Since Quine
+      // metrics are only heuristic, this is an acceptable trade-off for simpler code.
+      .wireTap(bs => meter.mark(bs.map(_.length).sum))
       .via(csvHeadersFlow(format.headers))
-      // Here the empty bytestring is a placeholder the original
+      // Here the empty list is a placeholder for the original
       // value in the TryDeserialized response value. Since this
       // is only used in errors and this is a success response,
       // it's not necessary to populate it.
-      .map((t: Value) => (Success(t), ByteString.empty))
+      .map((t: Value) => (Success(t), Nil))
+
+  /** Define a way to extract raw bytes from a single input event */
+  def rawBytes(value: List[ByteString]): Array[Byte] = {
+    // inefficient, but should never be used anyways since csv defines its own deserializeAndMeter
+    logger.debug(
+      s"${getClass.getSimpleName}.rawBytes was called: this function has an inefficient implementation but should not" +
+      s"be accessible during normal operation."
+    )
+    value.reduce { (l, r) =>
+      val bs = ByteString.createBuilder
+      bs ++= l
+      bs += format.delimiter.byte
+      bs ++= r
+      bs.result()
+    }.toArray
+  }
 }
 
 case class StringIngestSrcDef(
   initialSwitchMode: SwitchMode,
   format: CypherStringInputFormat,
   src: Source[ByteString, NotUsed],
+  encodingString: String,
   parallelism: Int,
   maximumLineSize: Int,
   startAtOffset: Long,
@@ -113,10 +168,11 @@ case class StringIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String
 )(implicit graph: CypherOpsGraph)
-    extends ContentDelimitedIngestSrcDef(
+    extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,
       src,
+      encodingString,
       parallelism,
       maximumLineSize,
       startAtOffset,
@@ -125,13 +181,14 @@ case class StringIngestSrcDef(
       name
     ) {
 
-  override def source(): Source[ByteString, NotUsed] = src
-    .via(bounded)
+  def source(): Source[ByteString, NotUsed] = src
+    .via(transcode)
     .via(newLineDelimited)
+    .via(bounded)
 
 }
 
-case class JsonIngestSrcDef(
+case class JsonLinesIngestSrcDef(
   initialSwitchMode: SwitchMode,
   format: CypherJsonInputFormat,
   src: Source[ByteString, NotUsed],
@@ -143,10 +200,11 @@ case class JsonIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String
 )(implicit graph: CypherOpsGraph)
-    extends ContentDelimitedIngestSrcDef(
+    extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,
       src,
+      encodingString,
       parallelism,
       maximumLineSize,
       startAtOffset,
@@ -155,12 +213,10 @@ case class JsonIngestSrcDef(
       name
     ) {
 
-  val (charset, transcode) = IngestSrcDef.getTranscoder(encodingString)
-
   def source(): Source[ByteString, NotUsed] = src
-    .via(bounded)
     .via(transcode)
     .via(newLineDelimited)
+    .via(bounded)
 
   override def rawBytes(value: ByteString): Array[Byte] = value.toArray
 
@@ -186,6 +242,7 @@ object ContentDelimitedIngestSrcDef {
           initialSwitchMode,
           new CypherStringInputFormat(query, parameter, encodingString),
           src,
+          encodingString,
           parallelism,
           maximumLineSize,
           startAtOffset,
@@ -194,7 +251,7 @@ object ContentDelimitedIngestSrcDef {
           name
         )
       case CypherJson(query, parameter) =>
-        JsonIngestSrcDef(
+        JsonLinesIngestSrcDef(
           initialSwitchMode,
           new CypherJsonInputFormat(query, parameter),
           src,

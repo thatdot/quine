@@ -20,6 +20,7 @@ import com.thatdot.quine.routes.PulsarSubscriptionType
   * parameters for future expansion, e.g. authentication, parallelism, threading...
   */
 case class PulsarSrcDef(
+  override val name: String,
   pulsarUrl: String,
   topics: Seq[String],
   subscriptionName: String,

@@ -28,6 +28,7 @@ object WebsocketSimpleStartupSrcDef {
 }
 
 final case class WebsocketSimpleStartupSrcDef(
+  override val name: String,
   format: ImportFormat,
   wsUrl: String,
   initMessages: Seq[String],
@@ -36,7 +37,7 @@ final case class WebsocketSimpleStartupSrcDef(
   encoding: String,
   initialSwitchMode: SwitchMode
 )(implicit graph: CypherOpsGraph)
-    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, "WS") {
+    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, s"$name (WS ingest)") {
 
   type InputType = ByteString
 

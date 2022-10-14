@@ -69,6 +69,7 @@ object KafkaSrcDef {
   }
 
   def apply(
+    name: String,
     topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
     bootstrapServers: String,
     groupId: String,
@@ -109,6 +110,7 @@ object KafkaSrcDef {
         )
 
         NonCommitting(
+          name,
           format,
           initialSwitchMode,
           parallelism,
@@ -120,6 +122,7 @@ object KafkaSrcDef {
         val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
 
         NonCommitting(
+          name,
           format,
           initialSwitchMode,
           parallelism,
@@ -132,6 +135,7 @@ object KafkaSrcDef {
           Consumer.committableSource(consumerSettings, subscription)
 
         Committing(
+          name,
           format,
           initialSwitchMode,
           parallelism,
@@ -145,6 +149,7 @@ object KafkaSrcDef {
 
   /** Kafka type that does not ack offset information. */
   case class NonCommitting(
+    override val name: String,
     format: ImportFormat,
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
@@ -152,7 +157,7 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int]
   )(implicit graph: CypherOpsGraph)
-      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, "kafka") {
+      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
 
     type InputType = NoOffset
 
@@ -167,6 +172,7 @@ object KafkaSrcDef {
 
   /** Kafka type with ack. */
   case class Committing(
+    override val name: String,
     format: ImportFormat,
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
@@ -175,7 +181,7 @@ object KafkaSrcDef {
     maxPerSecond: Option[Int],
     koc: KafkaOffsetCommitting.ExplicitCommit
   )(implicit graph: CypherOpsGraph)
-      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, "kafka") {
+      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
     type InputType = WithOffset
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =
       endingOffset

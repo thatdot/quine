@@ -219,6 +219,7 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond
         ) =>
       KafkaSrcDef(
+        name,
         topics,
         bootstrapServers,
         groupId.getOrElse(name),
@@ -243,6 +244,7 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond
         ) =>
       KinesisSrcDef(
+        name,
         streamName,
         shardIds,
         importFormatFor(format),
@@ -263,6 +265,7 @@ object IngestSrcDef extends LazyLogging {
           maximumPerSecond
         ) =>
       PulsarSrcDef(
+        name,
         serviceUrl,
         topics,
         subscriptionName,
@@ -275,6 +278,7 @@ object IngestSrcDef extends LazyLogging {
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond) =>
       ServerSentEventsSrcDef(
+        name,
         url,
         importFormatFor(format),
         initialSwitchMode,
@@ -292,6 +296,7 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond
         ) =>
       SqsStreamSrcDef(
+        name,
         queueURL,
         importFormatFor(format),
         initialSwitchMode,
@@ -304,6 +309,7 @@ object IngestSrcDef extends LazyLogging {
 
     case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
       WebsocketSimpleStartupSrcDef(
+        name,
         importFormatFor(format),
         wsUrl,
         initMessages,
@@ -335,7 +341,7 @@ object IngestSrcDef extends LazyLogging {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          s"File: $path"
+          name
         )
 
     case StandardInputIngest(
@@ -356,7 +362,7 @@ object IngestSrcDef extends LazyLogging {
           startAtOffset = 0L,
           ingestLimit = None,
           maxPerSecond,
-          "STDIN"
+          name
         )
 
     case NumberIteratorIngest(format, startAt, ingestLimit, throttlePerSecond, parallelism) =>
@@ -371,7 +377,7 @@ object IngestSrcDef extends LazyLogging {
           0,
           ingestLimit,
           throttlePerSecond,
-          "NumberIterator"
+          name
         )
   }
 

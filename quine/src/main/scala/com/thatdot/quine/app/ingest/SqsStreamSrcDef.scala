@@ -23,6 +23,7 @@ import com.thatdot.quine.routes.AwsCredentials
 
 /** The definition of an incoming AWS SQS stream.
   *
+  * @param name               the unique, human-facing name of the ingest stream
   * @param queueURL           the URL of the SQS queue from which to read
   * @param format             the [[ImportFormat]] to use in deserializing and writing records from the queue
   * @param initialSwitchMode  is the ingest stream initially paused or not?
@@ -33,6 +34,7 @@ import com.thatdot.quine.routes.AwsCredentials
   *                           causing SQS to delete that message from the queue
   */
 final case class SqsStreamSrcDef(
+  override val name: String,
   queueURL: String,
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
@@ -47,7 +49,7 @@ final case class SqsStreamSrcDef(
       initialSwitchMode,
       writeParallelism,
       maxPerSecond,
-      "SQS"
+      s"$name (SQS ingest)"
     ) {
 
   type InputType = Message

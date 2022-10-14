@@ -489,10 +489,10 @@ object FileIngestFormat {
   /** Create using a cypher query, passing each line in as a string */
   @title("CypherLine")
   @unnamed()
-  @docs("""For every line in the file, the  received, given Cypher query will be
+  @docs("""For every line (LF/CRLF delimited) in the source, the given Cypher query will be
   |re-executed with the parameter in the query set equal to a string matching
   |the new line value. The newline is not included in this string.
-  """.stripMargin)
+  """.stripMargin.replace('\n', ' '))
   final case class CypherLine(
     @docs("Cypher query to execute on each line") query: String,
     @docs("name of the Cypher parameter holding the string line value") parameter: String = "that"
@@ -504,7 +504,7 @@ object FileIngestFormat {
   @docs("""Lines in the file should be JSON values. For every value received, the
   |given Cypher query will be re-executed with the parameter in the query set
   |equal to the new JSON value.
-  """.stripMargin)
+  """.stripMargin.replace('\n', ' '))
   final case class CypherJson(
     @docs("Cypher query to execute on each record") query: String,
     @docs("name of the Cypher parameter holding the JSON value") parameter: String = "that"
@@ -515,7 +515,7 @@ object FileIngestFormat {
   @unnamed()
   @docs("""For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
           |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether
-          |`headers` are available.""".stripMargin)
+          |`headers` are available.""".stripMargin.replace('\n', ' '))
   final case class CypherCsv(
     @docs("Cypher query to execute on each record") query: String,
     @docs("name of the Cypher parameter holding the parsed CSV value as a list or map, depending on `headers`")
@@ -564,15 +564,15 @@ object PulsarSubscriptionType {
   val values: Seq[PulsarSubscriptionType] = Seq(Exclusive, Shared, Failover, KeyShared)
 }
 
-sealed trait CsvCharacter { def char: Byte }
+sealed trait CsvCharacter { def byte: Byte }
 object CsvCharacter {
-  case object Backslash extends CsvCharacter { def char: Byte = '\\' }
-  case object Comma extends CsvCharacter { def char: Byte = ',' }
-  case object Semicolon extends CsvCharacter { def char: Byte = ';' }
-  case object Colon extends CsvCharacter { def char: Byte = ':' }
-  case object Tab extends CsvCharacter { def char: Byte = '\t' }
-  case object Pipe extends CsvCharacter { def char: Byte = '|' }
-  case object DoubleQuote extends CsvCharacter { def char: Byte = '"' }
+  case object Backslash extends CsvCharacter { def byte: Byte = '\\' }
+  case object Comma extends CsvCharacter { def byte: Byte = ',' }
+  case object Semicolon extends CsvCharacter { def byte: Byte = ';' }
+  case object Colon extends CsvCharacter { def byte: Byte = ':' }
+  case object Tab extends CsvCharacter { def byte: Byte = '\t' }
+  case object Pipe extends CsvCharacter { def byte: Byte = '|' }
+  case object DoubleQuote extends CsvCharacter { def byte: Byte = '"' }
   val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe, DoubleQuote)
 }
 
