@@ -79,6 +79,8 @@ class EmptyPersistor(
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = Future.successful(Map.empty)
 
+  def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = Future.unit
+
   def shutdown(): Future[Unit] = Future.unit
 }
 

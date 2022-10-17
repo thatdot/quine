@@ -337,6 +337,12 @@ abstract class PersistenceAgent extends StrictLogging {
     */
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]]
 
+  /** Delete all [DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
+    * this may be an extremely slow operation.
+    * @param dgnId
+    */
+  def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit]
+
   /** Close this persistence agent
     *
     * TODO: perhaps we should make this wait until all pending writes finish?

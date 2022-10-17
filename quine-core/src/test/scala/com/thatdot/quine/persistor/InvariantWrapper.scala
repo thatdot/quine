@@ -127,4 +127,12 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
   def shutdown(): Future[Unit] = wrapped.shutdown()
 
   def persistenceConfig: PersistenceConfig = wrapped.persistenceConfig
+
+  /** Delete all [DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
+    * this may be an extremely slow operation.
+    *
+    * @param dgnId
+    */
+  override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+    wrapped.deleteDomainIndexEventsByDgnId(dgnId)
 }

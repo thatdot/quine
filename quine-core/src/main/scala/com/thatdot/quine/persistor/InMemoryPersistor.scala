@@ -8,7 +8,14 @@ import scala.jdk.CollectionConverters._
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, NodeEvent, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -22,7 +29,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   * @param journals map storing all node events
   * @param snapshots map storing all snapshots
   * @param standingQueries set storing all standing queries
-  * @param standingQueryStayes map storing all standing query states
+  * @param multipleValuesStandingQueryStates map storing all standing query states
   * @param metaData map storing all meta data
   * @param persistenceConfig persistence options
   */
@@ -99,6 +106,21 @@ class InMemoryPersistor(
           .flatMap(a => Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey)))
           .toSeq
     )
+  }
+
+  def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = {
+
+    domainIndexEvents.asScala.map { case (_: QuineId, m: ConcurrentNavigableMap[EventTime, NodeEvent]) =>
+      m.entrySet()
+        .removeIf(entry =>
+          entry.getValue match {
+            case event: DomainIndexEvent if event.dgnId == dgnId => true
+            case _ => false
+          }
+        )
+    }
+
+    Future.unit
   }
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
@@ -187,7 +209,9 @@ class InMemoryPersistor(
   }
 
   def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = {
+
     for { domainGraphNodesId <- domainGraphNodes } this.domainGraphNodes.remove(domainGraphNodesId)
+
     Future.unit
   }
 

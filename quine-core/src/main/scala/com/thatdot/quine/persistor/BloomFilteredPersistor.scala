@@ -191,6 +191,9 @@ private class BloomFilteredPersistor(
   override def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
     wrappedPersistor.getDomainGraphNodes()
 
+  override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+    wrappedPersistor.deleteDomainIndexEventsByDgnId(dgnId)
+
   override def shutdown(): Future[Unit] =
     wrappedPersistor.shutdown()
 }

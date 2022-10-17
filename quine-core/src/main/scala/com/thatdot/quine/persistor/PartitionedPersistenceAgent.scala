@@ -109,6 +109,9 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
     rootAgent.getDomainGraphNodes()
 
+  def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+    Future(getAgents.foreach(_.deleteDomainIndexEventsByDgnId(dgnId)))(ExecutionContexts.parasitic)
+
   override def shutdown(): Future[Unit] =
     Future
       .traverse(getAgents.toSeq)(_.shutdown())(implicitly, ExecutionContexts.parasitic)

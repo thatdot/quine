@@ -2,9 +2,10 @@ package com.thatdot.quine.persistor
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.StampedLock
-import java.util.{Arrays, UUID}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -348,7 +349,7 @@ final class RocksDbPersistor(
         try {
           it.seekToLast()
           val lastKey = it.key()
-          Arrays.copyOf(lastKey, lastKey.length + 1) // a key that is bigger than the last key
+          util.Arrays.copyOf(lastKey, lastKey.length + 1) // a key that is bigger than the last key
         } finally it.close()
     }
     db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
@@ -580,7 +581,7 @@ final class RocksDbPersistor(
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = Future {
     withReadLock {
       val mb = Map.newBuilder[DomainGraphNodeId, DomainGraphNode]
-      val it = db.newIterator(domainGraphNodesCF)
+      val it: RocksIterator = db.newIterator(domainGraphNodesCF)
       try {
         it.seekToFirst()
         while (it.isValid) {
@@ -591,6 +592,34 @@ final class RocksDbPersistor(
       mb.result()
     }
   }(ioDispatcher)
+
+  override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = {
+
+    /** Return iterable of matching keys. */
+
+    def filter(f: DomainIndexEvent => Boolean): Iterable[Array[Byte]] = {
+      val vb = Iterable.newBuilder[Array[Byte]]
+      val it = db.newIterator(domainIndexEventsCF)
+      try {
+        it.seekToFirst()
+        while (it.isValid) {
+
+          val event = DomainIndexEventCodec.format.read(it.value()).get
+          if (f(event)) {
+            vb += it.key()
+          }
+          it.next()
+        }
+      } finally it.close()
+      vb.result()
+    }
+
+    Future(withReadLock {
+      val deletable = filter(e => e.dgnId == dgnId)
+      deletable.foreach(k => db.delete(domainIndexEventsCF, k))
+    })(ioDispatcher)
+
+  }
 
   def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)
 

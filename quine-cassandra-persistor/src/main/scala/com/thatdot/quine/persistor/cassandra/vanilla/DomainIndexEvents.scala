@@ -7,6 +7,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 import akka.stream.Materializer
+import akka.stream.scaladsl.Sink
 
 import cats.Monad
 import cats.implicits._
@@ -41,7 +42,9 @@ class DomainIndexEvents(
   selectWithTimeByQuineIdSinceTimestamp: PreparedStatement,
   selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
   selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
-  insert: PreparedStatement
+  insert: PreparedStatement,
+  selectByDgnId: PreparedStatement,
+  deleteByQuineIdTimestamp: PreparedStatement
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
     with DomainIndexEventColumnNames
@@ -131,6 +134,19 @@ class DomainIndexEvents(
     },
     dataColumn
   )
+
+  def deleteByDgnId(id: DomainGraphNodeId): Future[Unit] = {
+    /* TODO - testing for a proper value here; This is only a guess as to
+     a reasonable default for delete parallelism */
+    val deleteParallelism = 10
+    executeSource(selectByDgnId.bindColumns(dgnIdColumn.set(id)))
+      .map(row => (quineIdColumn.get(row), timestampColumn.get(row)))
+      .mapAsyncUnordered(deleteParallelism)(t =>
+        executeFuture(deleteByQuineIdTimestamp.bindColumns(quineIdColumn.set(t._1), timestampColumn.set(t._2)))
+      )
+      .runWith(Sink.last)
+  }
+
 }
 
 object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnNames {
@@ -191,6 +207,14 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
       )
       .build()
 
+  val selectByDgnId: SimpleStatement =
+    select.columns(quineIdColumn.name, timestampColumn.name).where(dgnIdColumn.is.eq).allowFiltering().build()
+
+  val deleteStatement: SimpleStatement =
+    delete
+      .where(quineIdColumn.is.eq, timestampColumn.is.eq)
+      .build()
+
   def create(
     session: CqlSession,
     readConsistency: ConsistencyLevel,
@@ -201,53 +225,40 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
   )(implicit materializer: Materializer, futureMonad: Monad[Future]): Future[DomainIndexEvents] = {
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
+    def prepare(
+      statement: SimpleStatement,
+      timeout: FiniteDuration = selectTimeout,
+      consistencyLevel: ConsistencyLevel = readConsistency
+    ): Future[PreparedStatement] = {
       logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
+      session.prepareAsync(statement.setTimeout(timeout.toJava).setConsistencyLevel(consistencyLevel)).toScala
     }
 
-    val createdSchema =
+    val createdSchema = {
+
       if (shouldCreateTables)
         session.executeAsync(createTableStatement).toScala
       else
         Future.unit
+    }
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.
     // Even though there is no "explicit" dependency being passed between the two parts.
     createdSchema.flatMap(_ =>
       (
-        //prepare(selectAllQuineIds.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(selectByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(
-          selectByQuineIdSinceTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectByQuineIdUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectByQuineIdSinceUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdSinceTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdUntilTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdSinceUntilTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new DomainIndexEvents(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _))
+        prepare(selectByQuineIdQuery.build()),
+        prepare(selectByQuineIdSinceTimestampQuery),
+        prepare(selectByQuineIdUntilTimestampQuery),
+        prepare(selectByQuineIdSinceUntilTimestampQuery),
+        prepare(selectWithTimeByQuineIdQuery.build()),
+        prepare(selectWithTimeByQuineIdSinceTimestampQuery),
+        prepare(selectWithTimeByQuineIdUntilTimestampQuery),
+        prepare(selectWithTimeByQuineIdSinceUntilTimestampQuery),
+        prepare(insertStatement, insertTimeout, writeConsistency),
+        prepare(selectByDgnId, insertTimeout, writeConsistency),
+        prepare(deleteStatement, insertTimeout, writeConsistency)
+      ).mapN(new DomainIndexEvents(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }

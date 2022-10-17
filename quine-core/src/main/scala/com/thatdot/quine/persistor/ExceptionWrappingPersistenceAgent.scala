@@ -40,6 +40,7 @@ case class GetMetaData(key: String) extends PersistorCall
 case object GetAllMetaData extends PersistorCall
 case class PersistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]) extends PersistorCall
 case class RemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]) extends PersistorCall
+case class RemoveDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId) extends PersistorCall
 case object GetDomainGraphNodes extends PersistorCall
 
 class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
@@ -164,6 +165,11 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = leftMap(
     new WrappedPersistorException(GetDomainGraphNodes, _),
     persistenceAgent.getDomainGraphNodes()
+  )
+
+  def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = leftMap(
+    new WrappedPersistorException(RemoveDomainIndexEventsByDgnId(dgnId), _),
+    persistenceAgent.deleteDomainIndexEventsByDgnId(dgnId)
   )
 
   def shutdown(): Future[Unit] = persistenceAgent.shutdown()

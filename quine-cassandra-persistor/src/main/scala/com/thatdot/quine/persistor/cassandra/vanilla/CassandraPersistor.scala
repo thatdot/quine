@@ -510,7 +510,6 @@ class CassandraPersistor(
     startingAt: EventTime,
     endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime]] = journals.getJournalWithTime(id, startingAt, endingAt)
-
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
@@ -523,4 +522,6 @@ class CassandraPersistor(
   override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
     domainIndexEvents.persistEvents(id, events)
 
+  override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+    domainIndexEvents.deleteByDgnId(dgnId)
 }

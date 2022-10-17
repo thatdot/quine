@@ -2,8 +2,9 @@ package com.thatdot.quine.persistor
 
 import java.io.{File, IOException}
 import java.nio.file.{Files, Paths}
+import java.util
 import java.util.concurrent.ConcurrentNavigableMap
-import java.util.{AbstractSet, Comparator, Map => JavaMap, UUID}
+import java.util.{Comparator, Map => JavaMap, UUID}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
@@ -120,10 +121,10 @@ final class MapDbPersistor(
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.BYTE_ARRAY, // QuineId
-        MapDbPersistor.SerializerUnsignedLong // DomainIndexEvent timestamp
+        MapDbPersistor.SerializerUnsignedLong // Node event timestamp
       )
     )
-    .valueSerializer(Serializer.BYTE_ARRAY) // DomainIndexEvent
+    .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
 
   private val snapshots: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
@@ -137,7 +138,7 @@ final class MapDbPersistor(
     .valueSerializer(new SerializerCompressionWrapper(Serializer.BYTE_ARRAY)) // SerializedNodeSnapshot
     .createOrOpen()
 
-  private val standingQueries: AbstractSet[Array[Byte]] = db
+  private val standingQueries: util.AbstractSet[Array[Byte]] = db
     .hashSet(s"standingQueries")
     .serializer(
       Serializer.BYTE_ARRAY // Standing query
@@ -247,7 +248,7 @@ final class MapDbPersistor(
     }
     val _ = nodeChangeEvents.putAll((eventsMap toMap).asJava)
   }(ioDispatcher).recoverWith { case e =>
-    logger.error("persisting NodeChangeEvents failed.", e); Future.failed(e)
+    logger.error("persist NodeChangeEvent failed.", e); Future.failed(e)
   }(ioDispatcher)
 
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
@@ -259,7 +260,7 @@ final class MapDbPersistor(
     }
     val _ = domainIndexEvents.putAll((eventsMap toMap).asJava)
   }(ioDispatcher).recoverWith { case e =>
-    logger.error("persisting DomainIndexEvents failed.", e); Future.failed(e)
+    logger.error("persist DomainIndexEvent failed.", e); Future.failed(e)
   }(ioDispatcher)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
@@ -465,6 +466,15 @@ final class MapDbPersistor(
           logger.error("Failed to delete DB file {} ({})", file, err)
       }
   }
+
+  /** Delete all [[DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
+    * this may be an extremely slow operation.
+    */
+  override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+    Future {
+      domainIndexEvents.entrySet().removeIf(e => DomainIndexEventCodec.format.read(e.getValue).get.dgnId == dgnId)
+      ()
+    }(ioDispatcher)
 
 }
 

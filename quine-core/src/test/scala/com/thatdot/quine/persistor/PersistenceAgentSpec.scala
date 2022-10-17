@@ -3,15 +3,18 @@ package com.thatdot.quine.persistor
 import java.util.UUID
 
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.Random
 
 import akka.actor.ActorSystem
 
+import org.scalatest.concurrent.Eventually.eventually
+import org.scalatest.concurrent.Futures.{interval, timeout}
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 
-import com.thatdot.quine.graph.Generators.generateN
+import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
+import com.thatdot.quine.graph.Generators.{generate1, generateN}
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
   DomainIndexEvent,
@@ -22,6 +25,7 @@ import com.thatdot.quine.graph.{
   QuineUUIDProvider,
   StandingQueryId
 }
+import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
 
 /** Abstract test suite that can be implemented just by specifying `persistor`.
@@ -39,18 +43,27 @@ abstract class PersistenceAgentSpec
 
   implicit val system: ActorSystem = ActorSystem()
 
+  // shadow the test runner's EC so that we don't deadlock
+  implicit val ec: ExecutionContextExecutor = system.dispatcher
+
   // Override this if tests need to be skipped
   def runnable: Boolean = true
 
   def persistor: PersistenceAgent
 
+  def withRandomTime[T <: NodeEvent](events: Seq[T]): Seq[NodeEvent.WithTime] =
+    events.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(Random.nextLong())))
+
+  def sortedByTime(events: Seq[NodeEvent.WithTime]): Seq[NodeEvent.WithTime] = events.sorted(Ordering.by {
+    e: NodeEvent.WithTime => e.atTime
+  })
   override def afterAll(): Unit = {
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)
     ()
   }
 
-  val idProvider = QuineUUIDProvider
+  val idProvider: QuineUUIDProvider.type = QuineUUIDProvider
 
   val qid0: QuineId = idProvider.customIdStringToQid("00000000-0000-0000-0000-000000000000").get
   val qid1: QuineId = idProvider.customIdStringToQid("00000000-0000-0000-0000-000000000001").get
@@ -713,19 +726,12 @@ abstract class PersistenceAgentSpec
   }
 
   describe("persistNodeChangeEvents") {
-
-    val r = new Random()
-
-    val qid = idProvider.customIdStringToQid(UUID.randomUUID().toString).get
+//Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
+    val qid = idProvider.newQid()
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
-    val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, r.nextInt(10) + 1)
-    val withTimeUnsorted: Seq[NodeEvent.WithTime] =
-      generated.toSeq.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(r.nextLong())))
-
-    val sorted = withTimeUnsorted.sorted(Ordering.by { e: NodeEvent.WithTime => e.atTime })
-
-    val minTime = sorted.head.atTime
-    val maxTime = sorted.last.atTime
+    val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, Random.nextInt(10) + 1)
+    val withTimeUnsorted = withRandomTime(generated.toIndexedSeq)
+    val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
       //we should be able to write events without worrying about sort order
@@ -735,24 +741,19 @@ abstract class PersistenceAgentSpec
     }
 
     it("read") {
+      val minTime = sorted.head.atTime
+      val maxTime = sorted.last.atTime
       persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
     }
   }
 
   describe("persistDomainIndexEvents") {
-
-    val r = new Random()
-
-    val qid = idProvider.customIdStringToQid(UUID.randomUUID().toString).get
+    //Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
+    val qid = idProvider.newQid()
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
-    val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, r.nextInt(10) + 1)
-    val withTimeUnsorted: Seq[NodeEvent.WithTime] =
-      generated.toSeq.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(r.nextLong())))
-
-    val sorted: Seq[NodeEvent.WithTime] = withTimeUnsorted.sorted(Ordering.by { e: NodeEvent.WithTime => e.atTime })
-
-    val minTime = sorted.head.atTime
-    val maxTime = sorted.last.atTime
+    val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, Random.nextInt(10) + 1)
+    val withTimeUnsorted = withRandomTime(generated.toIndexedSeq)
+    val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
       //we should be able to write events without worrying about sort order
@@ -761,9 +762,70 @@ abstract class PersistenceAgentSpec
       }
     }
     it("read") {
+      val minTime = sorted.head.atTime
+      val maxTime = sorted.last.atTime
       persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
     }
+  }
 
+  describe("deleteDomainIndexEventsByDgnId") {
+
+    val dgnIds = generateN[DomainGraphNodeId](2, 10)
+    // a map of (randomQuineId -> (DomainIndexEvent(randomDgnId(0), DomainIndexEvent(randomDgnId(1))
+    val events = 1
+      .to(5)
+      .map(_ =>
+        idProvider.newQid() -> withRandomTime(
+          Seq(
+            CancelDomainNodeSubscription(dgnIds(0), generate1[QuineId](1)),
+            CancelDomainNodeSubscription(dgnIds(1), generate1[QuineId](1))
+          )
+        )
+      )
+
+    /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
+    def eventCount(): Future[Int] = {
+      val v = Future.sequence(
+        events.map(t =>
+          persistor
+            .getDomainIndexEventsWithTime(t._1, EventTime.MinValue, EventTime.MaxValue)
+            .map(_.toSeq.size)
+        )
+      )
+      v.map(_.sum)
+
+    }
+
+    def deleteForDgnId(dgnId: DomainGraphNodeId): Unit = {
+      Await.result(persistor.deleteDomainIndexEventsByDgnId(dgnId), 2.seconds)
+      /*
+      This is required because the cassandra persistor deletes async, and without it
+      deletes are still being processed as the test runs, so we get test failures.
+       */
+      Thread.sleep(500)
+    }
+
+    it("write") {
+      Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2)).map(_ => assert(true))
+    }
+
+    it("read") {
+      eventCount().map(c => assert(c == 10))
+    }
+
+    it("read after delete") {
+      deleteForDgnId(dgnIds(0))
+      eventually(timeout(3 seconds), interval(100 millis)) {
+        assert(Await.result(eventCount(), 1.seconds) == 5)
+      }
+    }
+
+    it("read after second delete") {
+      deleteForDgnId(dgnIds(1))
+      eventually(timeout(3 seconds), interval(100 millis)) {
+        assert(Await.result(eventCount(), 1.seconds) == 0)
+      }
+    }
   }
 
 }

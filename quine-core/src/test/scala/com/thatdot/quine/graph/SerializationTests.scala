@@ -22,7 +22,7 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     }
   }
 
-  it should "roundtrip NodeEvent.WithTime" in {
+  it should "eventWithTime format safely encapsulates event" in {
     forAll { (event: NodeEvent.WithTime) =>
       assert(eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event)
     }
