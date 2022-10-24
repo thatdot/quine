@@ -132,9 +132,13 @@ private[graph] class NodeActor(
   protected var latestUpdateAfterSnapshot: Option[EventTime] = None
   protected var lastWriteMillis: Long = 0
 
-  protected def updateRelevantToSnapshotOccurred(): Unit =
+  protected def updateRelevantToSnapshotOccurred(): Unit = {
+    if (atTime.nonEmpty) {
+      log.warning("Attempted to flag a historical node as being updated -- this update will not be persisted.")
+    }
     // TODO: should this update `lastWriteMillis` too?
     latestUpdateAfterSnapshot = Some(latestEventTime())
+  }
 
   /** @see [[StandingQueryLocalEventIndex]]
     */
@@ -240,12 +244,20 @@ private[graph] class NodeActor(
     // was asleep, we can move on to do other catch-up-work-while-sleeping which does cause effects off this node:
 
     // Finish computing (and send) initial results for each of the newly-registered DGNs
-    newDistinctIdSqDgns.foreach { case (sqId, dgnId) =>
-      receive(CreateDomainNodeSubscription(dgnId, Right(sqId), Set(sqId)))
-    }
+    // as this can cause off-node effects (notably: SQ results may be issued to a user), we opt out of this stage on
+    // historical nodes.
+    //
+    // By corollary, a thoroughgoing node at time X may have a more complete DistinctId Standing Query index than a
+    // reconstruction of that same node as a historical (atTime=Some(X)) node. This is acceptable, as historical nodes
+    // should not receive updates and therefore should not propogate standing query effects.
+    if (atTime.isEmpty) {
+      newDistinctIdSqDgns.foreach { case (sqId, dgnId) =>
+        receive(CreateDomainNodeSubscription(dgnId, Right(sqId), Set(sqId)))
+      }
 
-    // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
-    updateMultipleValuesStandingQueriesOnNode()
+      // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
+      updateMultipleValuesStandingQueriesOnNode()
+    }
   }
 
   /** Synchronizes this node's operating standing queries with those currently active on the thoroughgoing graph.
@@ -316,8 +328,7 @@ private[graph] class NodeActor(
 
   protected def persistAndApplyEventsEffectsInMemory(
     dedupedEffectingEvents: Seq[NodeEvent.WithTime]
-  ): Future[Done.type] = {
-
+  ): Future[Done.type] = if (atTime.isEmpty) {
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Done.type] =
       if (persistenceConfig.journalEnabled) {
@@ -364,9 +375,12 @@ private[graph] class NodeActor(
           }
         ).map(_ => Done)(ExecutionContexts.parasitic)
     }
+  } else {
+    log.debug("persistAndApplyEventsEffectsInMemory called on historical node: This indicates programmer error.")
+    Future.successful(Done)
   }
 
-  private[this] def persistSnapshot(): Unit = {
+  private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
     val occurredAt: EventTime = nextEventTime()
     val snapshot = toSnapshotBytes(occurredAt)
     metrics.snapshotSize.update(snapshot.length)
@@ -396,6 +410,8 @@ private[graph] class NodeActor(
         val _ = pauseMessageProcessingUntil(infinitePersisting(log.warning))
     }
     latestUpdateAfterSnapshot = None
+  } else {
+    log.debug("persistSnapshot called on historical node: This indicates programmer error.")
   }
 
   /** Apply the in-memory effects of the provided events.
