@@ -22,9 +22,12 @@ case class GraphNodeHashCode(value: Long) extends QuineMessage
   */
 object GraphNodeHashCode {
   def apply(qid: QuineId, properties: Map[Symbol, PropertyValue], edges: Iterable[HalfEdge]): GraphNodeHashCode =
-    if (properties.isEmpty && edges.isEmpty)
+    if (properties.isEmpty && edges.isEmpty) {
+      // nodes with [a quineid but] neither properties nor edges are deliberately hashed to the same value: they may
+      // have interesting histories, or they may not, but their current materialized state is definitely uninteresting.
+      // The value is 0 because the graph-level implementation of getGraphHashCode combines node hashes by summing them.
       GraphNodeHashCode(0L)
-    else {
+    } else {
       // hash function implementing the 128-bit murmur3 algorithm
       def newHasher() = Hashing.murmur3_128.newHasher()
 
@@ -65,7 +68,7 @@ object GraphNodeHashCode {
 
   // TODO refactor to eliminate duplicated code below and in DomainGraphNode.scala
   private def putPropertyValue(v: PropertyValue, h: Hasher): Hasher =
-    h.putBytes(v.serialized) // this is stable because serialized is stable
+    h.putBytes(v.serialized) // serialized is stable within a Quine version because serialization is stable + versioned
 
   private def putUnordered[T](iter: Iterable[T], into: Hasher, putElement: T => HashCode): Hasher = {
     val seq = iter.toList

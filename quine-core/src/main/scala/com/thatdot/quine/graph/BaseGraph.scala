@@ -340,7 +340,7 @@ trait BaseGraph extends StrictLogging {
     * at the optionally specified time. Caller should ensure the graph is
     * sufficiently stable and consistent before calling this function.
     */
-  def getGraphHashCode(atTime: Option[Milliseconds] = None): Future[Long] =
+  def getGraphHashCode(atTime: Option[Milliseconds]): Future[Long] =
     enumerateAllNodeIds()
       .mapAsyncUnordered(parallelism = 16) { qid =>
         val timeout = 1 second

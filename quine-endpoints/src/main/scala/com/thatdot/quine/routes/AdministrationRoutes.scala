@@ -270,6 +270,12 @@ trait AdministrationRoutes
       response = ok(jsonResponse[GraphHashCode]),
       docs = EndpointDocs()
         .withSummary(Some("request graph hash code"))
+        .withDescription(
+          Some("""Materialize readonly/historical versions of all nodes at a particular timestamp (defaults to the
+                 |server's current clock time) and generate a checksum based on their (serialized) properties and edges.
+                 |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
+                 |journals disabled.""".stripMargin.replace('\n', ' '))
+        )
         .withTags(List(adminTag))
     )
 }
