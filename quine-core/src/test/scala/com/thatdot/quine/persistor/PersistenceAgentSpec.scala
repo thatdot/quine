@@ -3,13 +3,13 @@ package com.thatdot.quine.persistor
 import java.util.UUID
 
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
+import scala.concurrent.{Await, Future}
 import scala.util.Random
 
 import akka.actor.ActorSystem
 
-import org.scalatest.concurrent.Eventually.eventually
-import org.scalatest.concurrent.Futures.{interval, timeout}
+import org.scalacheck.Arbitrary.arbitrary
+import org.scalacheck.Gen
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 
@@ -42,9 +42,6 @@ abstract class PersistenceAgentSpec
     with ArbitraryInstances {
 
   implicit val system: ActorSystem = ActorSystem()
-
-  // shadow the test runner's EC so that we don't deadlock
-  implicit val ec: ExecutionContextExecutor = system.dispatcher
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
@@ -769,8 +766,10 @@ abstract class PersistenceAgentSpec
   }
 
   describe("deleteDomainIndexEventsByDgnId") {
-
-    val dgnIds = generateN[DomainGraphNodeId](2, 10)
+    // Note that this test has occasionally failed in CI for MapDB or RocksDB datastores.
+    // The larger list seems to mitigate these failures. The delete works correctly but
+    // this should be investigated if intermittent failures are seen in testing.
+    val dgnIds = Gen.listOfN(20, arbitrary[DomainGraphNodeId]).sample.get
     // a map of (randomQuineId -> (DomainIndexEvent(randomDgnId(0), DomainIndexEvent(randomDgnId(1))
     val events = 1
       .to(5)
@@ -789,43 +788,31 @@ abstract class PersistenceAgentSpec
         events.map(t =>
           persistor
             .getDomainIndexEventsWithTime(t._1, EventTime.MinValue, EventTime.MaxValue)
-            .map(_.toSeq.size)
+            .map(_.size)
         )
       )
       v.map(_.sum)
 
     }
 
-    def deleteForDgnId(dgnId: DomainGraphNodeId): Unit = {
-      Await.result(persistor.deleteDomainIndexEventsByDgnId(dgnId), 2.seconds)
-      /*
-      This is required because the cassandra persistor deletes async, and without it
-      deletes are still being processed as the test runs, so we get test failures.
-       */
-      Thread.sleep(500)
-    }
+    def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+      persistor.deleteDomainIndexEventsByDgnId(dgnId)
 
-    it("write") {
-      Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2)).map(_ => assert(true))
-    }
-
-    it("read") {
-      eventCount().map(c => assert(c == 10))
-    }
-
-    it("read after delete") {
-      deleteForDgnId(dgnIds(0))
-      eventually(timeout(3 seconds), interval(100 millis)) {
-        assert(Await.result(eventCount(), 1.seconds) == 5)
+    it("should read back domain index events, and support deletes") {
+      for {
+        _ <- Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2))
+        firstCount <- eventCount()
+        _ <- deleteForDgnId(dgnIds(0))
+        postDeleteCount <- eventCount()
+        _ <- deleteForDgnId(dgnIds(1))
+        postSecondDeleteCount <- eventCount()
+      } yield {
+        assert(firstCount == 10)
+        assert(postDeleteCount == 5)
+        assert(postSecondDeleteCount == 0)
       }
     }
 
-    it("read after second delete") {
-      deleteForDgnId(dgnIds(1))
-      eventually(timeout(3 seconds), interval(100 millis)) {
-        assert(Await.result(eventCount(), 1.seconds) == 0)
-      }
-    }
   }
 
 }
