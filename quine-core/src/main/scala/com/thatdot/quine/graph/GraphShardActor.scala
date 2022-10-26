@@ -93,6 +93,8 @@ final private[quine] class GraphShardActor(
     */
   private[this] val name = self.path.name
 
+  private[this] val messagesDeduplicatedCounter = graph.metrics.shardMessagesDeduplicatedCounter(name)
+
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard
   private[this] val nodesWokenUpCounter = graph.metrics.shardNodesWokenUpCounter(name)
   private[this] val nodesSleptSuccessCounter = graph.metrics.shardNodesSleptSuccessCounter(name)
@@ -303,7 +305,7 @@ final private[quine] class GraphShardActor(
       if (needsAck) sender() ! Ack
       Option(msgDedupCache.put(dedupId, None)) match { // `.put` returns `null` if key is not present
         case None => this.receive(msg) // Not a duplicate
-        case Some(_) => () // It is a duplicate. Ignore.
+        case Some(_) => messagesDeduplicatedCounter.inc() // It is a duplicate. Ignore.
       }
 
     case LocalMessageDelivery(msg, target, originalSender) =>
