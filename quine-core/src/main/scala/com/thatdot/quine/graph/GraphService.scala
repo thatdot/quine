@@ -12,7 +12,6 @@ import akka.actor._
 
 import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
-import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection}
 import com.thatdot.quine.graph.messaging.LocalShardRef
@@ -34,8 +33,7 @@ class GraphService(
   val labelsProperty: Symbol,
   val edgeCollectionFactory: Supplier[EdgeCollection],
   val metrics: HostQuineMetrics
-) extends StrictLogging
-    with StaticShardGraph
+) extends StaticShardGraph
     with LiteralOpsGraph
     with CypherOpsGraph
     with StandingQueryOpsGraph {
@@ -125,8 +123,8 @@ object GraphService {
       val baseConfig = ConfigFactory
         .load()
         .withValue(
-          "akka.jvm-shutdown-hooks",
-          ConfigValueFactory.fromAnyRef(false)
+          "akka.coordinated-shutdown.exit-jvm",
+          ConfigValueFactory.fromAnyRef(true)
         )
         .withValue(
           "akka.actor.provider",

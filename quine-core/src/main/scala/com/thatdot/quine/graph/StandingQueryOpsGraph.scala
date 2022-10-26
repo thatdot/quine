@@ -136,7 +136,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       implicitly,
       shardDispatcherEC
     )
-    .map(_ => ())(shardDispatcherEC)
+    .map(_ => ())(ExecutionContexts.parasitic)
 
   /** Register a new standing query
     *

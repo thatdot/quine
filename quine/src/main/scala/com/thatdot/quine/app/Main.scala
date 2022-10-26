@@ -6,11 +6,12 @@ import java.text.NumberFormat
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import akka.actor.{ActorSystem, Cancellable}
+import akka.Done
+import akka.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
 import akka.util.Timeout
 
 import ch.qos.logback.classic.LoggerContext
@@ -206,35 +207,37 @@ object Main extends App with LazyLogging {
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, timeout)
       .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
       .onComplete {
-        case Success(_) => statusLines.info(s"Quine web server available at $url")
+        case Success(binding) =>
+          binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
+          statusLines.info(s"Quine web server available at $url")
         case Failure(_) => // akka will have logged a stacktrace to the debug logger
       }(ec)
   }
 
-  sys.addShutdownHook {
+  CoordinatedShutdown(system).addTask(CoordinatedShutdown.PhaseBeforeClusterShutdown, "Shutdown") { () =>
     statusLines.info("Quine is shutting down... ")
     try recipeInterpreterTask.foreach(_.cancel())
     catch {
       case NonFatal(e) =>
         statusLines.error("Graceful shutdown of Recipe interpreter encountered an error:", e)
     }
-    try {
-      Await.result(appState.shutdown(), timeout.duration)
-      Metrics.stopReporters()
-    } catch {
-      case NonFatal(e) =>
-        statusLines.error("Graceful shutdown of Quine App encountered an error:", e)
+    implicit val ec = ExecutionContexts.parasitic
+    for {
+      _ <- appState.shutdown()
+      _ <- graph.shutdown()
+    } yield {
+      statusLines.info("Shutdown complete.")
+      Done
     }
-    try Await.result(graph.shutdown(), timeout.duration)
-    catch {
-      case NonFatal(e) =>
-        statusLines.error(s"Graceful shutdown of Quine encountered an error", e)
-    }
-    statusLines.info("Shutdown complete")
+  }
+
+  CoordinatedShutdown(system).addTask(CoordinatedShutdown.PhaseActorSystemTerminate, "Cleanup of reporters") { () =>
+    Metrics.stopReporters()
     LoggerFactory.getILoggerFactory match {
       case context: LoggerContext => context.stop()
       case _ => ()
     }
+    Future.successful(Done)
   }
 
   // Block the main thread for as long as the ActorSystem is running.

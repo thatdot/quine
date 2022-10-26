@@ -173,7 +173,7 @@ final private[quine] class GraphShardActor(
         }
 
       case Some(NodeState.WakingNode) =>
-        log.warning("Ignoring instruction to sleep a node not yet awake: {}", target)
+        log.info("Ignoring instruction to sleep a node not yet awake: {}", target)
 
       case None =>
         log.warning("sleepActor: cannot find actor for: {}", target)

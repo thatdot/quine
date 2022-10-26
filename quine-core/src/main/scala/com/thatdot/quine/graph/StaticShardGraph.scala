@@ -1,16 +1,15 @@
 package com.thatdot.quine.graph
 
-import java.util.concurrent.{Callable, ConcurrentHashMap}
+import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.compat.immutable._
 import scala.collection.concurrent
-import scala.concurrent._
 import scala.concurrent.duration._
+import scala.concurrent.{Future, Promise}
 import scala.jdk.CollectionConverters._
 
-import akka.actor._
+import akka.actor.{ActorRef, Props}
 import akka.dispatch.Envelope
-import akka.pattern._
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.messaging.ShardMessage._
@@ -26,7 +25,7 @@ import com.thatdot.quine.graph.messaging.{
   WrappedActorRef
 }
 import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.QuineDispatchers
+import com.thatdot.quine.util.{QuineDispatchers, Retry}
 
 /** Graph implementation that assumes a basic static topology of shards. */
 trait StaticShardGraph extends BaseGraph {
@@ -158,31 +157,25 @@ trait StaticShardGraph extends BaseGraph {
   }
 
   def shutdown(): Future[Unit] = {
-    val MaxPollAttemps = 100
-    val DelayBetweenPollAttempts = 250.millis
+    val maxPollAttempts = 100
+    val delayBetweenPollAttempts = 250.millis
 
     // Send all shards a signal to shutdown nodes and get back a progress update
-    val pollShutdownProgress: Callable[Future[Unit]] = () => {
-      Future
-        .traverse(shards) { (shard: LocalShardRef) =>
-          relayAsk(shard.quineRef, InitiateShardShutdown(_))(5.seconds, implicitly)
-        }(implicitly, shardDispatcherEC)
-        .map(_.view.map(_.remainingNodeActorCount).sum)(shardDispatcherEC)
-        .filter(_ == 0)(shardDispatcherEC)
-        .map(_ => ())(shardDispatcherEC)
-    }
-    Patterns
-      .retry(
-        pollShutdownProgress,
-        MaxPollAttemps,
-        DelayBetweenPollAttempts,
-        system.scheduler,
-        system.dispatcher
-      )
+    def pollShutdownProgress(): Future[Int] = Future
+      .traverse(shards) { (shard: LocalShardRef) =>
+        relayAsk(shard.quineRef, InitiateShardShutdown(_))(5.seconds, implicitly)
+      }(implicitly, shardDispatcherEC)
+      .map(_.view.map(_.remainingNodeActorCount).sum)(shardDispatcherEC)
+    Retry
+      .until[Int](
+        pollShutdownProgress(),
+        _ == 0,
+        maxPollAttempts,
+        delayBetweenPollAttempts,
+        system.scheduler
+      )(shardDispatcherEC)
       .flatMap(_ => persistor.syncVersion())(shardDispatcherEC)
       .flatMap(_ => persistor.shutdown())(shardDispatcherEC)
-      .flatMap(_ => system.terminate())(shardDispatcherEC)
-      .map(_ => ())(shardDispatcherEC)
   }
 
   def isOnThisHost(quineRef: QuineRef): Boolean = true

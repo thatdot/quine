@@ -128,9 +128,8 @@ trait AdministrationRoutesImpl
 
   // Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
   private val shutdownRoute = shutdown.implementedBy { _ =>
-    graph.shardDispatcherEC.execute(() =>
-      Runtime.getRuntime().exit(0)
-    ) // `ec.execute` ensures the shutdown request is answered
+    graph.shutdown()
+    ()
   }
 
   private val metaDataRoute = metaData.implementedByAsync { _ =>
