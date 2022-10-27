@@ -429,12 +429,12 @@ private[graph] class NodeActor(
     import DomainIndexEvent._
     events.foreach {
       case PropertySet(propKey, propValue) =>
+        metrics.nodePropertyCounter.increment(previousCount = properties.size)
         properties = properties + (propKey -> propValue)
-        metrics.nodePropertyCounter.increment(properties.size)
 
       case PropertyRemoved(propKey, _) =>
+        metrics.nodePropertyCounter.decrement(previousCount = properties.size)
         properties = properties - propKey
-        metrics.nodePropertyCounter.decrement(properties.size)
 
       case EdgeAdded(edge) =>
         // The more edges you get, the worse it is to sleep
@@ -445,12 +445,12 @@ private[graph] class NodeActor(
         if (log.isWarningEnabled && (len + 1) % edgeCollectionSizeWarningInterval == 0)
           log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
 
+        metrics.nodeEdgesCounter.increment(previousCount = len)
         edges += edge
-        metrics.nodeEdgesCounter.increment(edges.size)
 
       case EdgeRemoved(edge) =>
+        metrics.nodeEdgesCounter.decrement(previousCount = edges.size)
         edges -= edge
-        metrics.nodeEdgesCounter.decrement(edges.size)
 
       case CreateDomainNodeSubscription(dgnId, nodeId, forQuery) =>
         receiveDomainNodeSubscription(Left(nodeId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
