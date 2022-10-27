@@ -330,7 +330,7 @@ trait PartitionSensitiveFunction extends UserDefinedFunction {
 
 object CypherLocIdFrom extends UserDefinedFunction with PartitionSensitiveFunction {
   val name = "locIdFrom"
-  val isPure = true
+  val isPure = true // TODO this is only pure when called with 2 or more arguments
   // as with [[CypherIdFrom]], we emulate a variadic argument, this time in the second position
   val signatures: Vector[UserDefinedFunctionSignature] = Vector.tabulate(15) { (i: Int) =>
     UserDefinedFunctionSignature(
