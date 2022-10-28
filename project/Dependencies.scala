@@ -24,7 +24,7 @@ object Dependencies {
   val endpoints4sHttpServerV = "7.0.0"
   val endpoints4sOpenapiV = "4.2.0"
   val endpoints4sXhrClientV = "5.1.0"
-  val flatbuffersV = "2.0.8" // when incrementing this, also bump the version in FlatcPlugin
+  val flatbuffersV = "22.10.26"
   val guavaV = "31.1-jre"
   val ioniconsV = "2.0.1"
   val jnrPosixV = "3.1.15"

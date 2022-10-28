@@ -12,7 +12,8 @@ import org.opencypher.v9_0.{ast, expressions}
 
 import com.thatdot.quine.compiler.cypher.QueryPart.IdFunc
 import com.thatdot.quine.graph.GraphQueryPattern
-import com.thatdot.quine.graph.cypher.{CypherException, Expr, Query, SourceText}
+import com.thatdot.quine.graph.cypher.Expr.toQuineValue
+import com.thatdot.quine.graph.cypher.{CypherException, Expr, Query, SourceText, UserDefinedFunction}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 
 object StandingQueryPatterns extends LazyLogging {
@@ -357,10 +358,10 @@ object StandingQueryPatterns extends LazyLogging {
         // Rewrite `strId(nodeVariable)` to a fresh variable
         case idFunc @ expressions.FunctionInvocation(
               _,
-              expressions.FunctionName("strId"),
+              expressions.FunctionName(functionName),
               false,
               Vector(variable: expressions.LogicalVariable)
-            ) =>
+            ) if functionName.toLowerCase == CypherStrId.name.toLowerCase =>
           idsWatched.getOrElseUpdate(
             true -> variable,
             expressions.Variable(variableNamer(idFunc))(idFunc.position)
@@ -556,11 +557,89 @@ object StandingQueryPatterns extends LazyLogging {
         }
     }
 
+    /** Extractor for deterministic invocations of id predicate functions (ie, idFrom and locIdFrom)
+      *
+      * Current implementation is limited to invocations with only literal arguments
+      *
+      * @example idFrom(100, 200, 201) should match and return the equivalent QuineId
+      * @example idFrom(rand()) should not match (nondeterministic)
+      * @example locIdFrom("part1") should not match (nondeterministic)
+      * @example locIdFrom("part1", 100) should match
+      * @example idFrom(1+2) should not match (non-literal argument) TODO support pure but non-literal expressions like this
+      */
+    object FunctionBasedIdPredicate {
+      def unapply(expr: expressions.Expression): Option[QuineId] = {
+        // Ensure there is the correct number of arguments to make the function deterministic
+        val funcAndArgs: Option[(UserDefinedFunction, Seq[expressions.Expression])] = expr match {
+          // IdFrom
+          case expressions.FunctionInvocation(
+                _,
+                expressions.FunctionName(functionName),
+                false,
+                args
+              ) if functionName.toLowerCase == CypherIdFrom.name.toLowerCase =>
+            Some(CypherIdFrom -> args)
+          // locIdFrom with at least 2 args
+          case expressions.FunctionInvocation(
+                _,
+                expressions.FunctionName(functionName),
+                false,
+                args
+              ) if functionName.toLowerCase == CypherLocIdFrom.name.toLowerCase && args.length >= 2 =>
+            Some(CypherLocIdFrom -> args)
+          case _ => None
+        }
+        // ensure all arguments to the function are QuineValue-compatible literals
+        val funcWithLiteralArgs = funcAndArgs.flatMap { case (udf, args) =>
+          val quineValueArgs = args.collect { case QuineValueLiteral(qv) => qv }
+          if (quineValueArgs.length == args.length) Some(udf -> quineValueArgs)
+          else None
+        }
+        // [statically] compute the actual id represented by invoking the relevant UDF
+        val returnValue = funcWithLiteralArgs.map { case (udf, qvArgs) =>
+          val cypherValueArgs = qvArgs.map(Expr.fromQuineValue).toVector
+          udf.call(cypherValueArgs)
+        }
+        // Convert the computed cypher ID value to a QuineId (must be kept in sync with [[Expr.toQuineValue]])
+        returnValue.flatMap { result =>
+          val parsedViaIdProvider = idProvider.valueToQid(toQuineValue(result))
+
+          // NB the below cases indicate a bad return value from (ie, a bug in) [[CypherIdFrom]] or [[CypherLocIdFrom]]
+          // or somewhere the QuineValue<->cypher.Value<->QuineId<->customIdType conversions are losing information
+          parsedViaIdProvider.orElse {
+            result match {
+              case Expr.Bytes(qidBytes, representsId @ false) =>
+                logger.info(
+                  "Precomputing ID predicate in Standing Query returned bytes not tagged as an ID. Using as an ID anyways"
+                )
+                Some(QuineId(qidBytes))
+              case Expr.Bytes(qidBytes, representsId @ true) =>
+                logger.debug(
+                  """Precomputing ID predicate in Standing Query returned ID-tagged bytes, but idProvider didn't
+                    |recognize the value as a QuineId. This is most likely a bug in toQuineValue or
+                    |idProvider.valueToQid""".stripMargin.replace('\n', ' ')
+                )
+                Some(QuineId(qidBytes))
+              case cantBeUsedAsId =>
+                logger.warn(
+                  s"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom). Precomputing
+                     |the ID predicate produced a constraint with type: ${cantBeUsedAsId.typ}""".stripMargin
+                    .replace('\n', ' ')
+                )
+                None
+            }
+          }
+        }
+      }
+    }
+
     object IdConstraint {
       def unapply(expr: expressions.Expression): Option[(expressions.LogicalVariable, QuineId)] =
         Some(expr match {
           case expressions.Equals(IdFunc(n), QuineValueLiteral(QuineIdConstant(qid))) => (n, qid)
           case expressions.Equals(QuineValueLiteral(QuineIdConstant(qid)), IdFunc(n)) => (n, qid)
+          case expressions.Equals(IdFunc(n), FunctionBasedIdPredicate(qid)) => (n, qid)
+          case expressions.Equals(FunctionBasedIdPredicate(qid), IdFunc(n)) => (n, qid)
           case _ => return None
         })
     }

@@ -52,6 +52,8 @@ Standing queries must only contain a `MATCH` and a `RETURN`, with an optional `W
      * `exists(nodeName.property)` - the property must exist
      * `NOT exists(nodeName.property)` - the property must not exist
      * `nodeName.property =~ "regex"` - the property must be a string matching the regex
+     * `id(nodeName) = 1234` - the ID of the node must be exactly the literal value on the right
+     * `id(nodeName) = idFrom('values', 'to', 'hash')` - the ID of the node must match exactly the `idFrom()` computed from the literal values on the right
 
   7. Exactly one value may be returned, and it must be either the (`DISTINCT`) `id` or `strId` of a node bound in the `MATCH`. For example, `RETURN DISTINCT strId(n)` or `RETURN DISTINCT id(n) as nId` are OK, but not `RETURN n.name` or `RETURN id(n) AS nId`. The node whose id is returned is the "root" node - the location where the pattern starts being incrementally matched.
 
