@@ -1,5 +1,9 @@
 package com.thatdot.quine.app.ingest
 
+import java.io.ByteArrayOutputStream
+import java.util.Base64
+import java.util.zip.{DeflaterOutputStream, GZIPOutputStream}
+
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
@@ -16,7 +20,7 @@ import akka.util.ByteString
 import org.scalatest.funsuite.AnyFunSuite
 import ujson.Obj
 
-import com.thatdot.quine.app.ingest.serialization.CypherJsonInputFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
@@ -27,7 +31,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
   /** An ingest class that accepts data from a piped input stream
     * so that bytes can be directly written in tests.
     */
-  case class TestJsonIngest(label: String, maxPerSecond: Option[Int] = None)
+  case class TestJsonIngest(label: String, maxPerSecond: Option[Int] = None, decoders: Seq[ContentDecoder] = Seq())
       extends RawValuesIngestSrcDef(
         new CypherJsonInputFormat(
           s"""MATCH (p) WHERE id(p) = idFrom('test','$label', $$that.$label) SET p.value = $$that RETURN (p)""",
@@ -36,6 +40,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
         SwitchMode.Open,
         10,
         maxPerSecond,
+        decoders,
         label
       )(IngestTestGraph.graph) {
 
@@ -49,11 +54,13 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
       .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
 
     /** Define a newline-delimited data source */
-    override def source(): Source[ByteString, NotUsed] =
+    def undelimitedSource(): Source[ByteString, NotUsed] =
       StreamConverters
         .fromInputStream(() => dataSource.in)
         .mapMaterializedValue(_ => NotUsed)
-        .via(newlineDelimited(10000))
+
+    /** Define a newline-delimited data source */
+    override def source(): Source[ByteString, NotUsed] = undelimitedSource().via(newlineDelimited(10000))
 
     val dataSource = new WritableInputStream
 
@@ -80,6 +87,67 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
 
     def close(): Unit = ingest.dataSource.close()
 
+  }
+
+  test("decompress gzip base64") {
+
+    /** Gzipped, base64 encoded */
+    def base64GzipEncode(bytes: Array[Byte]): Array[Byte] = {
+      val out = new ByteArrayOutputStream
+      val gzip = new GZIPOutputStream(out)
+      gzip.write(bytes)
+      gzip.close()
+      return Base64.getEncoder.encode(out.toByteArray)
+    }
+
+    val ctx = IngestTestContext(
+      TestJsonIngest("deserialize", None, Seq(ContentDecoder.Base64Decoder, ContentDecoder.GzipDecoder)),
+      i => i.undelimitedSource().via(i.deserializeAndMeter)
+    )
+
+    //  Values are properly deserialized from json objects.
+    ctx.values(10).foreach { obj =>
+      val expected = s"$obj".getBytes()
+      val encoded = base64GzipEncode(expected)
+      val decoded = ContentDecoder.GzipDecoder.decode(ContentDecoder.Base64Decoder.decode(encoded))
+      assert(decoded sameElements expected)
+      ctx.ingest.write(encoded)
+      val next: (Try[Value], ByteString) = ctx.probe.requestNext(5.seconds)
+      assert(next._1 == Success(Value.fromJson(obj)))
+      assert(next._2 == ByteString(encoded))
+    }
+
+    ctx.close()
+  }
+
+  test("decompress zlib base64") {
+
+    /** Gzipped, base64 encoded */
+    def base64ZlibEncode(bytes: Array[Byte]): Array[Byte] = {
+      val out = new ByteArrayOutputStream
+      val zlib = new DeflaterOutputStream(out)
+      zlib.write(bytes)
+      zlib.close()
+      return Base64.getEncoder.encode(out.toByteArray)
+    }
+
+    val ctx = IngestTestContext(
+      TestJsonIngest("deserialize", None, Seq(ContentDecoder.Base64Decoder, ContentDecoder.ZlibDecoder)),
+      i => i.undelimitedSource().via(i.deserializeAndMeter)
+    )
+
+    //  Values are properly deserialized from json objects.
+    ctx.values(10).foreach { obj =>
+      val expected = s"$obj".getBytes()
+      val encoded = base64ZlibEncode(expected)
+      val decoded = ContentDecoder.ZlibDecoder.decode(ContentDecoder.Base64Decoder.decode(encoded))
+      assert(decoded sameElements expected)
+      ctx.ingest.write(encoded)
+      val next: (Try[Value], ByteString) = ctx.probe.requestNext(5.seconds)
+      assert(next._1 == Success(Value.fromJson(obj)))
+      assert(next._2 == ByteString(encoded))
+    }
+    ctx.close()
   }
 
   test("map deserialize") {

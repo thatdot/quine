@@ -27,7 +27,7 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
 import com.thatdot.quine.app.KafkaKillSwitch
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
@@ -46,11 +46,13 @@ object KafkaSrcDef {
     bootstrapServers: String,
     groupId: String,
     autoOffsetReset: KafkaAutoOffsetReset,
-    securityProtocol: KafkaSecurityProtocol
+    securityProtocol: KafkaSecurityProtocol,
+    decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
     val deserializer: Deserializer[Try[Value]] =
-      (_: String, data: Array[Byte]) => format.importMessageSafeBytes(data, isSingleHost)
+      (_: String, data: Array[Byte]) =>
+        format.importMessageSafeBytes(ContentDecoder.decode(decoders, data), isSingleHost)
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
@@ -80,7 +82,8 @@ object KafkaSrcDef {
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset,
     endingOffset: Option[Long],
-    maxPerSecond: Option[Int]
+    maxPerSecond: Option[Int],
+    decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): IngestSrcDef = {
     val isSingleHost: Boolean = graph.isSingleHost
     val subscription: Subscription = topics.fold(
@@ -97,7 +100,15 @@ object KafkaSrcDef {
     )
 
     val consumerSettings: ConsumerSettings[Array[Byte], Try[Value]] =
-      buildConsumerSettings(format, isSingleHost, bootstrapServers, groupId, autoOffsetReset, securityProtocol)
+      buildConsumerSettings(
+        format,
+        isSingleHost,
+        bootstrapServers,
+        groupId,
+        autoOffsetReset,
+        securityProtocol,
+        decoders
+      )
 
     offsetCommitting match {
       case Some(KafkaOffsetCommitting.AutoCommit(commitIntervalMs)) =>
@@ -116,7 +127,8 @@ object KafkaSrcDef {
           parallelism,
           consumer,
           endingOffset,
-          maxPerSecond
+          maxPerSecond,
+          decoders
         )
       case None =>
         val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
@@ -128,7 +140,8 @@ object KafkaSrcDef {
           parallelism,
           consumer,
           endingOffset,
-          maxPerSecond
+          maxPerSecond,
+          decoders
         )
       case Some(koc @ KafkaOffsetCommitting.ExplicitCommit(_, _, _, _)) =>
         val consumer: Source[WithOffset, Consumer.Control] =
@@ -142,7 +155,8 @@ object KafkaSrcDef {
           consumer,
           endingOffset,
           maxPerSecond,
-          koc
+          koc,
+          decoders
         )
     }
   }
@@ -155,9 +169,10 @@ object KafkaSrcDef {
     parallelism: Int = 2,
     kafkaConsumer: Source[NoOffset, Consumer.Control],
     endingOffset: Option[Long],
-    maxPerSecond: Option[Int]
+    maxPerSecond: Option[Int],
+    decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph)
-      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
+      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, decoders, s"$name (Kafka ingest)") {
 
     type InputType = NoOffset
 
@@ -179,9 +194,10 @@ object KafkaSrcDef {
     kafkaConsumer: Source[WithOffset, Consumer.Control],
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
-    koc: KafkaOffsetCommitting.ExplicitCommit
+    koc: KafkaOffsetCommitting.ExplicitCommit,
+    decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph)
-      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
+      extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, decoders, s"$name (Kafka ingest)") {
     type InputType = WithOffset
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =
       endingOffset

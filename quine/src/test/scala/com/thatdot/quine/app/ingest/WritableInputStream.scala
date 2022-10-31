@@ -1,6 +1,6 @@
 package com.thatdot.quine.app
 
-import java.io.{PipedInputStream, PipedOutputStream}
+import java.io.{InputStream, PipedInputStream, PipedOutputStream}
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext}
@@ -31,7 +31,7 @@ class WritableInputStream() extends AutoCloseable {
 /** Wrap stdin in a [[WritableInputStream]]. Reset stdin on close. */
 class StdInStream extends WritableInputStream() {
 
-  val original = System.in
+  val original: InputStream = System.in
   System.setIn(in)
 
   override def close(): Unit = {
@@ -49,21 +49,15 @@ object IngestTestGraph {
     Metrics.meter("test_bytes")
   )
 
-  def makeGraph(): CypherOpsGraph = {
-    val t = System.currentTimeMillis()
-    val g = Await.result(
-      GraphService(
-        "test-service",
-        effectOrder = EventEffectOrder.MemoryFirst,
-        persistor = _ => InMemoryPersistor.empty,
-        idProvider = QuineIdLongProvider()
-      ),
-      5.seconds
-    )
-    val t2 = System.currentTimeMillis()
-    println(s"built graph in ${t2 - t} ms")
-    g
-  }
+  def makeGraph(): CypherOpsGraph = Await.result(
+    GraphService(
+      "test-service",
+      effectOrder = EventEffectOrder.MemoryFirst,
+      persistor = _ => InMemoryPersistor.empty,
+      idProvider = QuineIdLongProvider()
+    ),
+    5.seconds
+  )
 
   implicit val timeout: Timeout = 10.seconds
   implicit val graph: CypherOpsGraph = makeGraph()

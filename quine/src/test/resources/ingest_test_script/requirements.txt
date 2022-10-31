@@ -5,6 +5,7 @@ charset-normalizer==2.1.1
 idna==3.4
 jmespath==1.0.1
 kazoo==2.5.0
+multidict==6.0.2
 pulsar-client==2.10.1
 pykafka==2.8.0
 python-dateutil==2.8.2

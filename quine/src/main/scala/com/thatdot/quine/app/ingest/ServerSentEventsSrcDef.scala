@@ -8,7 +8,7 @@ import akka.stream.alpakka.sse.scaladsl.EventSource
 import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 
@@ -18,13 +18,15 @@ final case class ServerSentEventsSrcDef(
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
   parallelism: Int,
-  maxPerSecond: Option[Int]
+  maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder]
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,
       parallelism,
       maxPerSecond,
+      decoders,
       s"$name (SSE ingest)"
     ) {
 

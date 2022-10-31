@@ -108,6 +108,7 @@ final case class RatesSummary(
   @docs("approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
   @docs("approximate rate per second since the meter was started") overall: Double
 )
+
 trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
   implicit lazy val ratesSummarySchema: JsonSchema[RatesSummary] =
     genericJsonSchema[RatesSummary]
@@ -177,6 +178,20 @@ object KafkaIngest {
   // Takes a set of partition numbers for each topic name.
   type PartitionAssignments = Map[String, Set[Int]]
 }
+@title("Record encoding")
+@docs("Record encoding format")
+sealed abstract class RecordDecodingType
+object RecordDecodingType {
+  @docs("Zlib compression")
+  case object Zlib extends RecordDecodingType
+  @docs("Gzip compression")
+  case object Gzip extends RecordDecodingType
+  @docs("Base64 encoding")
+  case object Base64 extends RecordDecodingType
+
+  val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
+
+}
 
 /** Kafka ingest stream configuration
   *
@@ -209,7 +224,10 @@ final case class KafkaIngest(
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
   ) endingOffset: Option[Long],
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  @unnamed
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
 object KinesisIngest {
@@ -265,7 +283,9 @@ final case class PulsarIngest(
   @docs("Pulsar subscription type") subscriptionType: PulsarSubscriptionType,
   @docs("maximum number of records to write simultaneously")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
 @title("Kinesis Ingest Stream")
@@ -284,7 +304,9 @@ final case class KinesisIngest(
   credentials: Option[AwsCredentials],
   @docs("shard iterator type") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
   @docs("number of retries to attempt on Kineses error") numRetries: Int = 3,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
 @title("Server Sent Events Stream")
@@ -298,7 +320,10 @@ final case class ServerSentEventsIngest(
   @docs("URL of the server sent event stream") url: String,
   @docs("maximum number of records to ingest simultaneously")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs(
+    "list of encodings that have been applied to each input. Decoding of each type is applied in order."
+  ) recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
 @title("Simple Queue Service Queue")
@@ -314,7 +339,9 @@ final case class SQSIngest(
   credentials: Option[AwsCredentials],
   @docs("whether the queue consumer should acknowledge receipt of in-flight messages")
   deleteReadMessages: Boolean = true,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int]
+  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
 object WebsocketSimpleStartupIngest {
@@ -578,6 +605,9 @@ object CsvCharacter {
 
 trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsSchemas with MetricsSummarySchemas {
 
+  implicit lazy val recordEncodingTypeFormatSchema: JsonSchema[RecordDecodingType] =
+    stringEnumeration(RecordDecodingType.values)(_.toString)
+
   implicit lazy val csvHeaderOptionFormatSchema: JsonSchema[Either[Boolean, List[String]]] =
     orFallbackToJsonSchema[Boolean, List[String]](implicitly, implicitly)
 
@@ -659,7 +689,7 @@ object IngestRoutes {
   val defaultWriteParallelism: Int = 16
   val defaultMaximumLineSize: Int = 128 * 1024 * 1024 // 128MB
   val defaultStreamedRecordFormat: StreamedRecordFormat.CypherJson = StreamedRecordFormat.CypherJson("CREATE ($that)")
-  val defaultFileRecordFormat: FileIngestFormat.CypherJson = FileIngestFormat.CypherJson("CREATE ($that)", "that")
+  val defaultFileRecordFormat: FileIngestFormat.CypherJson = FileIngestFormat.CypherJson("CREATE ($that)")
   val defaultNumberFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
     "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)"
   )

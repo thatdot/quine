@@ -12,7 +12,52 @@ import boto3
 import time
 import pulsar
 
+import gzip
+import zlib
+import base64
+
 logging.basicConfig(level=logging.INFO)
+
+ENCODINGS = ["Gzip", "Zlib", "Base64"]
+
+
+class Encoding:
+
+    @classmethod
+    def parse_csv(cls, encoding_csv: str):
+        encoding_strings = encoding_csv and [s.strip() for s in encoding_csv.split(',')] or []
+        return list(filter(lambda e: e in ENCODINGS, encoding_strings))
+
+    @classmethod
+    def encode_value(cls, encoding: str, value: Any):
+        if encoding == "Gzip":
+            return gzip.compress(value)
+        elif encoding == "Zlib":
+            return zlib.compress(value)
+        elif encoding == "Base64":
+            return base64.b64encode(value)
+
+    @classmethod
+    def decode_value(cls, encoding: str, value: Any):
+        if encoding == "Gzip":
+            return gzip.decompress(value)
+        elif encoding == "Zlib":
+            return zlib.decompress(value)
+        elif encoding == "Base64":
+            return base64.b64decode(value)
+
+    @classmethod
+    def encode(cls, encodings: List[str], value: str) ->str:
+        bytes = value.encode("utf-8")
+        for e in encodings[::-1]:
+            bytes = cls.encode_value(e, bytes)
+        return bytes.decode("utf-8")
+
+    @classmethod
+    def decode(cls, encodings: List[str], value: str) ->str:
+        for e in encodings:
+            value = cls.decode_value(e, value)
+        return value
 
 
 def random_string(ct: int = 10):
@@ -21,23 +66,26 @@ def random_string(ct: int = 10):
 
 class TestConfig:
 
-    def __init__(self, count: int, quine_url: str):
+    def __init__(self, count: int, quine_url: str, encodings: List[str]):
         self.name = random_string()
         self.quine_url = quine_url
         self.count = count
+        self.encodings = encodings
 
     def recipe(self):
         pass
 
     def generate_values(self):
-        return [{"test_name": self.name, "counter": i} for i in range(self.count)]
+        raw_values = [{"test_name": self.name, "counter": i} for i in range(self.count)]
+        return list(map(lambda rec: Encoding.encode(self.encodings, json.dumps(rec)), raw_values))
 
     def write_values(self, values: List[Any]) -> None:
         pass
 
     def create_recipe(self):
         self.req("post", f'/api/v1/ingest/{self.name}',
-                 json=self.recipe())  # , headers={"Content-type":"application/json"})
+                 json=self.recipe() | {
+                     "recordDecoding": self.encodings})  # , headers={"Content-type":"application/json"})
 
     def retrieve_values(self):
         return self.req("post", f'/api/v1/query/cypher/nodes',
@@ -62,13 +110,18 @@ class TestConfig:
 
         else:
             print(colored(f"Expected {self.count} values, got {len(returned_values)}", "red"))
+
+        for r in returned_values:
+            assert(r["properties"]["test_name"] == self.name)
+
+        print(colored(f"returned values are in the correct form: {returned_values[0]}", "green"))
         assert len(returned_values) == self.count
 
     def req(self, method: str, path: str, **kwargs) -> Optional[Response]:
         url = f'http://{self.quine_url}{path}'
-        # logging.debug(f"call %s:%s:%s", method, url, kwargs)
         print(colored(f"call {method} {url} {kwargs}", "blue"))
         response = requests.request(method, f'http://{self.quine_url}{path}', **kwargs)
+
         if response.ok:
             print(colored(f"Success: {method} {url} {response.status_code}", "green"))
             # logging.debug("%s %s %s", method, url, response.status_code)
@@ -85,8 +138,8 @@ class TestConfig:
 
 class KinesisConfig(TestConfig):
 
-    def __init__(self, count: int, quine_url: str, stream_name: str, creds: Dict[str, str]):
-        super().__init__(count, quine_url)
+    def __init__(self, count: int, quine_url: str, stream_name: str, encodings: List[str], creds: Dict[str, str]):
+        super().__init__(count, quine_url, encodings)
         self.stream_name = stream_name
         self.creds = creds
 
@@ -99,17 +152,16 @@ class KinesisConfig(TestConfig):
                                 "accessKeyId": self.creds["key"],
                                 "secretAccessKey": self.creds["secret"]}}
 
-    def write_values(self, values):
+    def write_values(self, values: List[str]):
         kinesis_client = boto3.client('kinesis')
         kinesis_client.put_records(StreamName=self.stream_name,
-                                   Records=[{"Data": str.encode(json.dumps(v)), "PartitionKey": "test_name"} for v in
-                                            values])
+                                   Records=[{"Data": v, "PartitionKey": "test_name"} for v in values])
 
 
 class SQSConfig(TestConfig):
-    def __init__(self, count: int, quine_url: str, queue_url:str, creds: Dict[str, str]):
-        super().__init__(count, quine_url)
-        self.queue_url=queue_url
+    def __init__(self, count: int, quine_url: str, queue_url: str, encodings: List[str], creds: Dict[str, str]):
+        super().__init__(count, quine_url, encodings)
+        self.queue_url = queue_url
         self.creds = creds
 
     def recipe(self):
@@ -121,22 +173,22 @@ class SQSConfig(TestConfig):
                                 "accessKeyId": self.creds["key"],
                                 "secretAccessKey": self.creds["secret"]}}
 
-
-    def write_values(self, values: List[Any]) -> None:
+    def write_values(self, values: List[str]) -> None:
         sqs_client = boto3.client("sqs", region_name=self.creds["region"])
 
         for value in values:
             response = sqs_client.send_message(
                 QueueUrl=self.queue_url,
-                MessageBody=json.dumps(value)
+                MessageBody=value
             )
+            print(f"sent {value} -> {response}")
             logging.debug(response)
 
 
 class KafkaConfig(TestConfig):
 
-    def __init__(self, count: int, quine_url: str, topic: str, kafka_url: str, commit):
-        super().__init__(count, quine_url)
+    def __init__(self, count: int, quine_url: str, topic: str, kafka_url: str, commit, encodings: List[str]):
+        super().__init__(count, quine_url, encodings)
         self.topic = topic
         self.kafka_url = kafka_url
         self.commit = commit
@@ -149,42 +201,44 @@ class KafkaConfig(TestConfig):
                 "offsetCommitting": {"type": self.commit},
                 "bootstrapServers": self.kafka_url}
 
-    def write_values(self, values: List):
+    def write_values(self, values: List[str]):
         client = KafkaClient(hosts=self.kafka_url)
         topic = client.topics[self.topic]
 
         with topic.get_sync_producer() as producer:
             for value in self.generate_values():
-                message = json.dumps(value)
-                logging.debug(f"writing to {self.topic} [{message}]")
-                producer.produce(message.encode("utf-8"))
+                logging.debug(f"writing to {self.topic} [{value}]")
+                producer.produce(value.encode("utf-8"))
+
 
 class PulsarConfig(TestConfig):
-    def __init__(self, count:int, quine_url: str, topic:str, pulsar_url:str, subscription_name:str):
-        super().__init__(count, quine_url)
+    def __init__(self, count: int, quine_url: str, topic: str, pulsar_url: str, subscription_name: str,
+                 encodings: List[str]):
+        super().__init__(count, quine_url, encodings)
         self.topic = topic
-        self.pulsar_url=pulsar_url
-        self.subscription_name=subscription_name
+        self.pulsar_url = pulsar_url
+        self.subscription_name = subscription_name
 
     def recipe(self):
-        return {"name":self.name,
+        return {"name": self.name,
                 "type": "PulsarIngest",
                 "format": {"query": "CREATE ($that)", "type": "CypherJson"},
                 "topics": [self.topic],
-                "pulsarUrl":self.pulsar_url,
+                "pulsarUrl": self.pulsar_url,
                 "subscriptionName": self.subscription_name,
-                "subscriptionType":"Shared"}
+                "subscriptionType": "Shared"}
 
-    def write_values(self, values: List):
+    def write_values(self, values: List[str]):
         client = pulsar.Client(self.pulsar_url)
         producer = client.create_producer(self.topic)
 
         for value in self.generate_values():
-            message = json.dumps(value)
-            logging.debug(f"writing to {self.topic} [{message}]")
-            producer.send(message.encode("utf-8"))
+            print(value)
+            logging.debug(f"writing to {self.topic} [{value}]")
+            producer.send(value.encode("utf-8"))
 
         client.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -192,6 +246,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-q", "--quine_url", default="0.0.0.0:8080", help="quine api url. Default '0.0.0.0:8080'")
     parser.add_argument("-c", "--count", type=int, default=10, help="number of values to send. Default 10")
+    parser.add_argument("-e", "--encodings", type=str, help=f"csv list of encodings from {ENCODINGS}")
     subparsers = parser.add_subparsers(dest="type")
     #
     # kafka args
@@ -200,7 +255,7 @@ if __name__ == "__main__":
     kafka_parser.add_argument(
         "-k", "--kafka_url", default="localhost:9092", help="kafka url. Default 'localhost:9092'"
     )
-    kafka_parser.add_argument("-C","--commit", default="AutoCommit", help ="AutoCommit or ExplicitCommit")
+    kafka_parser.add_argument("-C", "--commit", default="AutoCommit", help="AutoCommit or ExplicitCommit")
     kafka_parser.add_argument("-t", "--topic", help="kafka topic")
     #
     # kinesis args
@@ -226,17 +281,28 @@ if __name__ == "__main__":
     pulsar_parser.add_argument("-u", "--pulsar_url", help="pulsar service url", default="pulsar://localhost:6650")
     pulsar_parser.add_argument("-n", "--subscription_name", help="subscription name", default="my_subscription")
 
-
     args = parser.parse_args()
 
+    encodings: List[str] = Encoding.parse_csv(args.encodings)
     if args.type == "kafka":
-        config = KafkaConfig(args.count, args.quine_url, args.topic, args.kafka_url, args.commit)
+        config = KafkaConfig(args.count, args.quine_url, args.topic, args.kafka_url, args.commit, encodings)
     elif args.type == "kinesis":
-        config = KinesisConfig(args.count, args.quine_url, args.name,
+        config = KinesisConfig(args.count, args.quine_url, args.name, encodings,
                                {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "sqs":
-        config = SQSConfig(args.count, args.quine_url, args.queue_url,
-                               {"region": args.region, "key": args.key, "secret": args.secret})
+        config = SQSConfig(args.count, args.quine_url, args.queue_url, encodings,
+                           {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "pulsar":
-        config = PulsarConfig(args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name)
+        config = PulsarConfig(args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name,
+                              encodings)
     config.run_test(sleep_time_ms=1000)
+
+    # v = "abcdefghijklmnop".encode("ascii")
+    # # base64 = YWJjZGVmZ2hpamtsbW5vcA==
+    # vvv = Encoding.encode(Encoding.parse_encoding_csv("Base64, Zlib"), v)
+    # print(vvv)
+    # vv = Encoding.encode(Encoding.parse_encoding_csv("Base64, Gzip"), v)
+    # print(vv)
+    # vv2 = Encoding.decode(Encoding.parse_encoding_csv("Base64, Gzip"), vv)
+    # print(vv2)
+    # print(vv2)

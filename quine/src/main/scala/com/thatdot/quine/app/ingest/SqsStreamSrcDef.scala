@@ -13,7 +13,7 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sqs.SqsAsyncClient
 import software.amazon.awssdk.services.sqs.model.Message
 
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.CypherOpsGraph
@@ -42,13 +42,15 @@ final case class SqsStreamSrcDef(
   writeParallelism: Int,
   credentialsOpt: Option[AwsCredentials],
   deleteReadMessages: Boolean,
-  maxPerSecond: Option[Int]
+  maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder]
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,
       writeParallelism,
       maxPerSecond,
+      decoders,
       s"$name (SQS ingest)"
     ) {
 

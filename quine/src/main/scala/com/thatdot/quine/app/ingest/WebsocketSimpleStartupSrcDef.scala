@@ -37,11 +37,11 @@ final case class WebsocketSimpleStartupSrcDef(
   encoding: String,
   initialSwitchMode: SwitchMode
 )(implicit graph: CypherOpsGraph)
-    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, s"$name (WS ingest)") {
+    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, Seq(), s"$name (WS ingest)") {
 
   type InputType = ByteString
 
-  val (charset, transcoder) = IngestSrcDef.getTranscoder(encoding)
+  val (charset, _) = IngestSrcDef.getTranscoder(encoding)
 
   val baseHttpClientSettings: ClientConnectionSettings = ClientConnectionSettings(system)
 

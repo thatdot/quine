@@ -27,13 +27,12 @@ abstract class ContentDelimitedIngestSrcDef(
   src: Source[ByteString, NotUsed],
   encodingString: String,
   parallelism: Int,
-  maximumLineSize: Int,
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   name: String
 )(implicit graph: CypherOpsGraph)
-    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
+    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, Seq(), name) {
 
   val (charset, transcode) = IngestSrcDef.getTranscoder(encodingString)
 
@@ -63,7 +62,6 @@ abstract class LineDelimitedIngestSrcDef(
       src,
       encodingString,
       parallelism,
-      maximumLineSize,
       startAtOffset,
       ingestLimit,
       maxPerSecond,
@@ -97,7 +95,6 @@ case class CsvIngestSrcDef(
       src,
       encodingString,
       parallelism,
-      maximumLineSize,
       startAtOffset,
       ingestLimit,
       maxPerSecond,

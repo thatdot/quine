@@ -10,7 +10,7 @@ import com.sksamuel.pulsar4s._
 import com.sksamuel.pulsar4s.akka.streams.{source => pulsarSource}
 import org.apache.pulsar.client.api.{Schema, SubscriptionType}
 
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.{PulsarKillSwitch, ShutdownSwitch}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
@@ -28,13 +28,15 @@ case class PulsarSrcDef(
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
   parallelism: Int = 2,
-  maxPerSecond: Option[Int]
+  maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder]
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,
       parallelism,
       maxPerSecond,
+      decoders,
       s"pulsar"
     ) {
   type InputType = ConsumerMessage[Array[Byte]]

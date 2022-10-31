@@ -173,7 +173,8 @@ object Recipe {
               autoCommitIntervalMs,
               autoOffsetReset,
               endingOffset,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             ) =>
           (
             bootstrapServers.subs
@@ -188,7 +189,8 @@ object Recipe {
               autoCommitIntervalMs,
               autoOffsetReset,
               endingOffset,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             )
           )
         case KinesisIngest(
@@ -199,7 +201,8 @@ object Recipe {
               credentials,
               iteratorType,
               numRetries,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             ) =>
           (
             streamName.subs,
@@ -213,19 +216,38 @@ object Recipe {
               _,
               iteratorType,
               numRetries,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             )
           )
 
-        case PulsarIngest(format, topic, url, subscriptionName, subscriptionType, parallelism, maximumPerSecond) =>
+        case PulsarIngest(
+              format,
+              topic,
+              url,
+              subscriptionName,
+              subscriptionType,
+              parallelism,
+              maximumPerSecond,
+              recordEncodingTypes
+            ) =>
           (url.subs).map(
-            PulsarIngest(format, topic, _, subscriptionName, subscriptionType, parallelism, maximumPerSecond)
+            PulsarIngest(
+              format,
+              topic,
+              _,
+              subscriptionName,
+              subscriptionType,
+              parallelism,
+              maximumPerSecond,
+              recordEncodingTypes
+            )
           )
 
-        case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond) =>
+        case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond, recordEncodingTypes) =>
           (
             url.subs
-          ).map(ServerSentEventsIngest(format, _, parallelism, maximumPerSecond))
+          ).map(ServerSentEventsIngest(format, _, parallelism, maximumPerSecond, recordEncodingTypes))
         case SQSIngest(
               format,
               queueUrl,
@@ -233,7 +255,8 @@ object Recipe {
               writeParallelism,
               credentials,
               deleteReadMessages,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             ) =>
           (
             queueUrl.subs,
@@ -246,10 +269,18 @@ object Recipe {
               writeParallelism,
               _,
               deleteReadMessages,
-              maximumPerSecond
+              maximumPerSecond,
+              recordEncodingTypes
             )
           )
-        case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
+        case WebsocketSimpleStartupIngest(
+              format,
+              wsUrl,
+              initMessages,
+              keepAliveProtocol,
+              parallelism,
+              encoding
+            ) =>
           (
             wsUrl.subs,
             initMessages.toList.traverse(_.subs)

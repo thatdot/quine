@@ -9,10 +9,10 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
+import akka.stream.KillSwitches
 import akka.stream.alpakka.text.scaladsl.TextFlow
 import akka.stream.contrib.{SwitchMode, Valve, ValveSwitch}
 import akka.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
-import akka.stream.{KillSwitches, Materializer, UniqueKillSwitch}
 import akka.util.ByteString
 import akka.{Done, NotUsed}
 
@@ -22,7 +22,7 @@ import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{AkkaKillSwitch, ControlSwitches, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.CypherOpsGraph
-import com.thatdot.quine.graph.MasterStream.{IngestSrcExecToken, IngestSrcType}
+import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
@@ -49,6 +49,7 @@ abstract class IngestSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int,
   maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder],
   val name: String
 )(implicit graph: CypherOpsGraph)
     extends LazyLogging {
@@ -69,11 +70,9 @@ abstract class IngestSrcDef(
     */
   type TryDeserialized = (Try[CypherValue], InputType)
 
-  type Switches = (UniqueKillSwitch, Future[ValveSwitch])
-
-  /**  A source of deserialized values along with a control. Ingest types
-    *  that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
-    *  instead of this class.
+  /** A source of deserialized values along with a control. Ingest types
+    * that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
+    * instead of this class.
     */
   def sourceWithShutdown(): Source[TryDeserialized, ShutdownSwitch]
 
@@ -126,9 +125,10 @@ abstract class RawValuesIngestSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int,
   maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder],
   name: String
 )(implicit graph: CypherOpsGraph)
-    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
+    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, decoders, name) {
 
   /** Try to deserialize a value of InputType into a CypherValue.  This method
     * also meters the raw byte length of the input.
@@ -137,7 +137,8 @@ abstract class RawValuesIngestSrcDef(
     Flow[InputType].map { input: InputType =>
       val bytes = rawBytes(input)
       meter.mark(bytes.length)
-      (format.importMessageSafeBytes(bytes, graph.isSingleHost), input)
+      val decoded = ContentDecoder.decode(decoders, bytes)
+      (format.importMessageSafeBytes(decoded, graph.isSingleHost), input)
     }
 
   /** Define a way to extract raw bytes from a single input event */
@@ -216,7 +217,8 @@ object IngestSrcDef extends LazyLogging {
           autoCommitIntervalMs,
           autoOffsetReset,
           endingOffset,
-          maxPerSecond
+          maxPerSecond,
+          recordEncodings
         ) =>
       KafkaSrcDef(
         name,
@@ -230,7 +232,8 @@ object IngestSrcDef extends LazyLogging {
         autoCommitIntervalMs,
         autoOffsetReset,
         endingOffset,
-        maxPerSecond
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
       )
 
     case KinesisIngest(
@@ -241,7 +244,8 @@ object IngestSrcDef extends LazyLogging {
           creds,
           iteratorType,
           numRetries,
-          maxPerSecond
+          maxPerSecond,
+          recordEncodings
         ) =>
       KinesisSrcDef(
         name,
@@ -253,7 +257,8 @@ object IngestSrcDef extends LazyLogging {
         creds,
         iteratorType,
         numRetries,
-        maxPerSecond
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
       )
     case PulsarIngest(
           format,
@@ -262,7 +267,8 @@ object IngestSrcDef extends LazyLogging {
           subscriptionName,
           subscriptionType,
           parallelism,
-          maximumPerSecond
+          maximumPerSecond,
+          recordEncodings
         ) =>
       PulsarSrcDef(
         name,
@@ -273,17 +279,19 @@ object IngestSrcDef extends LazyLogging {
         importFormatFor(format),
         initialSwitchMode,
         parallelism,
-        maximumPerSecond
+        maximumPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
       )
 
-    case ServerSentEventsIngest(format, url, parallelism, maxPerSecond) =>
+    case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
       ServerSentEventsSrcDef(
         name,
         url,
         importFormatFor(format),
         initialSwitchMode,
         parallelism,
-        maxPerSecond
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
       )
 
     case SQSIngest(
@@ -293,7 +301,8 @@ object IngestSrcDef extends LazyLogging {
           writeParallelism,
           credentials,
           deleteReadMessages,
-          maxPerSecond
+          maxPerSecond,
+          recordEncodings
         ) =>
       SqsStreamSrcDef(
         name,
@@ -304,10 +313,18 @@ object IngestSrcDef extends LazyLogging {
         writeParallelism,
         credentials,
         deleteReadMessages,
-        maxPerSecond
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
       )
 
-    case WebsocketSimpleStartupIngest(format, wsUrl, initMessages, keepAliveProtocol, parallelism, encoding) =>
+    case WebsocketSimpleStartupIngest(
+          format,
+          wsUrl,
+          initMessages,
+          keepAliveProtocol,
+          parallelism,
+          encoding
+        ) =>
       WebsocketSimpleStartupSrcDef(
         name,
         importFormatFor(format),
@@ -380,24 +397,5 @@ object IngestSrcDef extends LazyLogging {
           name
         )
   }
-
-  /** Create (and start) and ingest stream from the configuration
-    *
-    * @param name              the human-friendly name of the stream
-    * @param settings          ingest stream config
-    * @param initialSwitchMode is the ingest stream initially paused or not?
-    * @param graph             graph into which to ingest
-    * @param materializer
-    * @return a valve switch to toggle the ingest stream, a shutdown function, and a termination signal
-    */
-  def createIngestStream(
-    name: String,
-    settings: IngestStreamConfiguration,
-    initialSwitchMode: SwitchMode
-  )(implicit
-    graph: CypherOpsGraph,
-    materializer: Materializer
-  ): IngestSrcType[QuineAppIngestControl] =
-    createIngestSrcDef(name, settings, initialSwitchMode).stream()
 
 }

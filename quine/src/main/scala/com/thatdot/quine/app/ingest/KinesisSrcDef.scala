@@ -23,7 +23,7 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
-import com.thatdot.quine.app.ingest.serialization.ImportFormat
+import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.CypherOpsGraph
@@ -50,13 +50,15 @@ final case class KinesisSrcDef(
   credentialsOpt: Option[AwsCredentials],
   iteratorType: KinesisIngest.IteratorType,
   numRetries: Int,
-  maxPerSecond: Option[Int]
+  maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder]
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,
       parallelism,
       maxPerSecond,
+      decoders,
       s"$name (Kinesis ingest)"
     ) {
 
