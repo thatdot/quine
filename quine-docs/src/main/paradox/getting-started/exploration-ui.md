@@ -70,7 +70,7 @@ Queries are issued in one of three ways:
 
 @@@ warning
 
-The Exploration UI in Quine can make it feel like a database, but it is a streaming graph interpreter meant for working with infinite streams of data. Quine is run without indices by default. If Quine is managing a large amount of data, some queries which require scanning all nodes can take a very long time and slow down other functionality. It is strongly recommended to use a node ID in each query or use built in functions like `idFrom(…)` or `recentNodes()` to efficiently pull out small amounts of data. @ref:[See this page for more guidance on querying infinite data](../core-concepts/querying-infinite-data.md).
+Because the Exploration UI generates a snapshot of the graph, it can give Quine the appearance of database. This is just a convenient way to explore the data structures but make no mistake: Quine is a streaming graph interpreter designed to process what are effectively infinite streams of data. Quine is run without indices by default. If Quine is managing a large amount of data, some queries which require scanning all nodes can take a very long time and slow down other functionality. It is strongly recommended to use a node ID in each query or use built in functions like `idFrom(…)` or `recentNodes()` to efficiently pull out small amounts of data. @ref:[See this page for more guidance on querying infinite data](../components/id-provider.md).
 
 @@@
 

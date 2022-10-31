@@ -9,7 +9,7 @@ Quine has full support for reading records from Apache Kafka topics. The means b
 
 ### Example
 
-In this example we will ingest messages from a Kafka topic as nodes in the graph.
+In this example we will ingest messages from a Kafka topic and store them as nodes in the graph.
 
 #### Preparation
 

@@ -7,9 +7,9 @@ description: Quine has special considerations when an ingest query returns multi
 
 This feature is still in preview mode. It may
 
-  * use significantly more RAM
-  * use significantly more disk space
-  * degrade throughput of the system overall
+* use significantly more RAM
+* use significantly more disk space
+* degrade throughput of the system overall
 
 @@@
 
@@ -54,4 +54,4 @@ Since there isn't exactly one ID being returned, the root of the Standing Query 
 
 The output is structurally the same as in the `DistinctId` mode. However, it is now possible for the Query data to contain multiple fields, since multiple values can be returned. For example, a `RETURN` clause such as `RETURN n.name AS personName, strId(m) AS friendId` would produce data containing a `personName` and `friendId` field.
 
-Also, unlike `DistinctId` queries, multiple results can be emitted from each "root" node. This means that the "Find people with friends" example, if run in the `MultipleValues` mode would produce two results (one for each friend) unlike the single result produced in the `DistinctId` mode.
+Also, unlike `DistinctId` queries, multiple results can be emitted from each "root" node. This means that the "Find people with friends" example, if run in the `MultipleValues` mode, would produce two results (one for each friend) unlike the single result produced in the `DistinctId` mode.

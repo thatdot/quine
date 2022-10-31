@@ -7,7 +7,7 @@ Files are a stream of data. It's easy to think of a file as a singular chunk, bu
 
 ## File Ingest Format
 
-Each file has one special feature which distinguishes it from a normal stream of data: it has an end. When ingesting data from one of these file types, the stream will continue until the end-of-file signal is reached. When the end-of-file signal is reached, the stream will finish and be marked by Quine as `COMPLETED`.
+Each file has one special feature which distinguishes it from a normal stream of data: *it has an end*. When ingesting data from one of these file types, the stream will continue until the end-of-file signal is reached. When the end-of-file signal is reached, the stream will finish and be marked by Quine as `COMPLETED`.
 
 ### JSON[L]
 

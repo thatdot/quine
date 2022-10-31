@@ -56,24 +56,3 @@ Quine can be monitored and controlled live using JMX. There is a wide array of t
 <!--
 ### InfluxDB
 -->
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

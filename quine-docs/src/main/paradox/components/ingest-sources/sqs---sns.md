@@ -23,12 +23,12 @@ In this example, we will register an SQS queue as a data source, creating a sing
 
 For the purposes of this tutorial, you will need @link:[an SQS queue](https://console.aws.amazon.com/sqs/v2/home#/create-queue){ open=new } and credentials (an access key ID and secret access key) for an @link:[IAM User](https://console.aws.amazon.com/iam/home?#/users$new?step=details){ open=new } with the following @link:[privileges](https://docs.aws.amazon.com/IAM/latest/UserGuide/list-amazonsqs.html){ open=new } for that queue:
 
- - sqs:ReceiveMessage
- - sqs:DeleteMessage
- - sqs:DeleteMessageBatch
- - sqs:ChangeMessageVisibility
- - sqs:ChangeMessageVisibilityBatch
- - sqs:GetQueueAttributes
+- sqs:ReceiveMessage
+- sqs:DeleteMessage
+- sqs:DeleteMessageBatch
+- sqs:ChangeMessageVisibility
+- sqs:ChangeMessageVisibilityBatch
+- sqs:GetQueueAttributes
 
 For our example, we'll assume there is such a user with access to the `json-events` stream with access key ID `AKIAMYACCESSKEY` and secret `AWSScRtACCessKeyAWS/ScRtACCessKey`. These will be used to register the data source with Quine. We'll assume the queue has the URL `https://sqs.us-west-2.amazonaws.com/507123456123/json-events` and contains JSON-encoded data.
 

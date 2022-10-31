@@ -8,14 +8,15 @@ Welcome. If you're new to Quine, or just want a refresher on the fundamentals, y
 Want to get coding right away? Quine recipes provide useful examples to help get you started.
 
 @@@index
+
 * @ref:[Main Concepts](core-concepts.md)
 * @ref:[Architecture](architecture.md)
-* @ref:[Querying Infinite Data](querying-infinite-data.md)
 * @ref:[Streaming Systems](streaming-systems.md)
 * @ref:[Querying 3D Data Tutorial](3d-data-ingest-sq.md)
-* @ref:[REST API](rest-api.md)
 * @ref:[Recipes](about-recipes.md)
 * @ref:[Operational Considerations](operational-considerations.md)
+* @ref:[REST API](rest-api.md)
+
 @@@
 
 @@toc { depth=1 }

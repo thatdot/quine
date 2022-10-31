@@ -10,7 +10,7 @@ description: A standing query matches some graph structure incrementally while n
 
 @@@
 
-A standing query is a query that matches some graph structure incrementally while new data is written in. Standing queries report results when the full pattern has been found.
+A standing query is a Cypher query that matches some graph structure incrementally while new data is written in. Standing queries report results when the full pattern has been found.
 
 Seeing which standing queries are currently running, or adding/removing a standing query is all done through the REST API, by the endpoints under the "Standing Queries" section in the docs pages shipped with each instance of Quine.
 
@@ -127,12 +127,12 @@ CREATE (peter)-[:friend]->(james)
 
 There are pre-built output adapters for at least the following (this list is continually growing—refer to the standing query section of the @ref:[REST API](../reference/rest-api.md) for an exhaustive list):
 
-  * publishing to a Kafka topic
-  * publishing to an AWS Kinesis stream
-  * publishing to AWS SQS and SNS
-  * logging to a file
-  * `POST`-ing results to an HTTP endpoint
-  * executing another Cypher query
+* Publishing to a [Kafka topic](https://docs.quine.io/core-concepts/streaming-systems.html#output-to-a-kafka-topic)
+* Publishing to an [AWS Kinesis stream](https://docs.quine.io/core-concepts/streaming-systems.html#output-to-a-kinesis-topic)
+* Publishing to [AWS SQS and SNS](https://docs.quine.io/components/standing-query-outputs.html#publish-to-sns-topic)
+* Logging to a [file](https://docs.quine.io/components/standing-query-outputs.html#log-json-to-a-file)
+* `POST`-ing results to an [HTTP endpoint](https://docs.quine.io/components/standing-query-outputs.html#post-to-webhook)
+* Executing another [Cypher query](https://docs.quine.io/components/standing-query-outputs.html#run-cypher-query)
 
 The last of these options is particularly powerful, since it makes it possible to mutate the graph in a way that can trigger another standing query result into any other output adapter. This makes it possible to post-process results to collect more information from the graph or to filter out matches that don't meet some requirement.
 
@@ -142,7 +142,7 @@ The Cypher query output is defined in terms of a regular Cypher query that is ru
 
 ## Inspecting Running Queries
 
-Since standing queries use a subset of regular Cypher query syntax, the standing query itself can be run as a regular query either to see what data already in the graph would have been matched by the query or to understand why a particular node in the graph is not a match. When doing so, you should constrain the starting points of the query if there is already a large amount of data in the system (see @ref:[querying infinite data](../core-concepts/querying-infinite-data.md)).
+Since standing queries use a subset of regular Cypher query syntax, the standing query itself can be run as a regular query either to see what data already in the graph would have been matched by the query or to understand why a particular node in the graph is not a match. When doing so, you should constrain the starting points of the query if there is already a large amount of data in the system (see @ref:[Using IDs in a Query](id-provider.md)).
 
 In addition, there are a couple ways to "wiretap" results as they are being produced and inspect them live. These are meant primarily as debug mechanisms - not substitutes for outputs.
 
@@ -202,4 +202,4 @@ MATCH (person)<-[:has-mother|:has-father]-(child) WHERE id(person) = personId
 RETURN person.name, child.name, child.yearBorn
 ```
 
-Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the standing query and if that second query modifies the data—for instance, adding an edge connected to the node.
+Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the standing query and if that second query modifies the data —- for instance, adding an edge connected to the node.

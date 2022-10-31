@@ -32,11 +32,11 @@ While Quine is running, a web user interface is available at [localhost:8080](ht
 
 ## Creating a Recipe
 
-A Recipe is a JSON or YAML file. The following is a template Recipe YAML file that can be used to start building a new Recipe:
+A Recipe is a YAML file. The following is a an example Recipe YAML file that can be used as a starting point when building a new Recipe.
 
 @@snip [template-recipe.yaml]($quine$/recipes/template-recipe.yaml)
 
-Please see @ref:[Recipe Reference ](../reference/recipe-ref-manual.md) for information about Recipe document content.
+Learn how to create a recipe in the @ref:[Recipe Tutorial](../getting-started/recipes-tutorial.md) or the @ref:[Recipe Reference](../reference/recipe-ref-manual.md) for information about Recipe document content.
 
 ## How to Contribute a Recipe
 
