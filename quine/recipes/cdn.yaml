@@ -1,204 +1,280 @@
 version: 1
 title: CDN Cache Efficiency By Segment
 contributor: https://www.linkedin.com/in/alokaggarwal2
-summary: Real-time computation of CDN cache node efficiency from Fastly CDN logs,
-# with graph association of each log to it’s serving PoP, ASN, asset and cache server,
-# to identify potential root cause of issues.
-description: Raw CDN Log data is imported from a .json file via a file ingest, and a 
-# node is created for each line. Standing queries map log data into the Quine streaming
-# graph data model, creating graph nodes for each PoP, ASN, cache server and asset.
-# Each of those nodes increments with a counter to track the number of cache hits and
-# misses and calculates hit/miss ratios as data is ingested. Selecting any node (PoP,
-# ASN…) allows you to query for associated ASNs and CDN cache servers to identify
-# potential root cause of poor performance. Thresholds are set to create qualitative
-# ‘state’ properties on each node indicating the health of the component as ‘good,’
-# ‘warn,’ or ‘alarm.’ Node appearance properties are set to add icons and colors to
-# represent the type of node and it’s ‘state,’ respectively, in the exploration UI.
-# Note: Sample data file for this recipe is in the file 'cdn_data_50k.json' which can
-# be accessed at: https://that.re/cdn-data
-# Note: This recipe includes numerical thresholds for the hit/miss ratios in each node
-# creation standing query. Change the thresholds as needed to provide the right color
-# indicators for your data!
-# Single ingest of line by line data to create individual event nodes for each .json line.
+summary:
+  Real-time computation of CDN cache node efficiency from pseudonymized Fastly
+  CDN logs, with graph association of each log entry to serving PoP, cache server,
+  client, client ASN, asset and origin to identify potential root cause of issues.
+description:
+  Raw CDN Log data is imported from a .json file via a file ingest, and a
+  node is manifested for the elements of each line.
+
+  Each of the manifested nodes increments a counter to track the number of cache
+  hits and misses and calculates hit/miss ratios as data is ingested.
+
+  Selecting any node allows you to query for the associated ASNs and CDN cache servers
+  to identify potential root cause of poor performance. Thresholds are set to create
+  qualitative ‘state’ properties on each node indicating the health of the component
+  as ‘good,’ ‘warn,’ or ‘alarm.’
+
+  Node appearance properties are set to add icons and colors to represent the type of
+  node and it’s state, respectively, in the exploration UI.
+
+  Lastly, a standing query is defined to match consecutive cache misses within a
+  configurable fixed period of time for the purpose of alerting.
+
+  ------------------------------------------------------------------------------
+  Note 1
+  Sample data file for this recipe is in the file 'cdn_data_50k.json' which can
+  be accessed at https://that.re/cdn-data
+
+  Note 2
+  This recipe includes numerical thresholds for the hit/miss ratios in each node
+  creation ingest query. Change the thresholds as needed to provide the right color
+  indicators for your data!
 ingestStreams:
   - type: FileIngest
     path: $in_file
     format:
       type: CypherJson
       query: |-
-        // SET IDs for nodes //
-        MATCH (event), (client), (asset), (asn), (server), (pop)  
-        WHERE id(event) = idFrom('event', $that.timestamp, $that.request_id)
+        ////////////////////////////////////////////////////////
+        // Manifest nodes from each log entry
+        ////////////////////////////////////////////////////////
+        // Quickly match nodes with specific IDs using `idFrom(...)` for the purpose of defining
+        // deterministic derived IDs for referencing nodes in future queries
+        // A more detailed description is provided in this blog post:
+        // https://www.thatdot.com/blog/kafka-data-deduping-made-easy-using-quines-idfrom-function
+        MATCH (event), (client), (asset), (asn), (server), (pop), (origin), (clientGeo)
+        WHERE $that.cache_status IS NOT NULL
+          AND id(event) = idFrom('event', $that.timestamp, $that.request_id)
           AND id(client) = idFrom('client', $that.client_ip, $that.business_unit)
           AND id(asset) = idFrom('asset', $that.path)
-          AND id(asn) = idFrom('asn', $that.client_asn)
+          AND id(asn) = idFrom('asn', toString($that.client_asn))
           AND id(server) = idFrom('server', $that.pop, $that.server_id)
           AND id(pop) = idFrom('pop', $that.pop)
-          AND $that.cache_status IS NOT NULL
+          AND id(origin) = idFrom('origin', $that.backend_ip)
+          AND id(clientGeo) = idFrom('clientGeo', $that.client_geo_country)
 
-        //////////////////////////////
+        ////////////////////////////////////////
         //Bucketing for HITs and MISSes counters
-        //////////////////////////////
+        ////////////////////////////////////////
         // RegEx deets here: https://regex101.com/r/uP0KMm/1
         WITH *, text.regexFirstMatch($that.cache_status, '(HIT|MISS(?!.*HIT)).*') AS hmp WHERE hmp[1] IS NOT NULL
 
-        //////////////////////////////
+        ////////////////////////////////////////
         // Bucketing for node type counters
-        //////////////////////////////
-        CALL incrementCounter(event, "count")
-        CALL incrementCounter(client, "count")
-        CALL incrementCounter(asset, "count")
-        CALL incrementCounter(asn, "count")
-        CALL incrementCounter(server, "count")
-        CALL incrementCounter(pop, "count")
-        
-        // Name the counter hmp[1], which will always be either HIT or MISS //
-        CALL incrementCounter(client, toLower(hmp[1]))
-        CALL incrementCounter(asn, toLower(hmp[1]))
-        CALL incrementCounter(server, toLower(hmp[1]))
-        CALL incrementCounter(pop, toLower(hmp[1]))
-        CALL incrementCounter(asset, toLower(hmp[1]))
+        ////////////////////////////////////////
+        CALL incrementCounter(client, "count",1) YIELD count AS clientCount
+        CALL incrementCounter(client, toLower(hmp[1]),1) YIELD count AS clientHitMissCount
+        CALL incrementCounter(asset, "count",1) YIELD count AS assetCount
+        CALL incrementCounter(asset, toLower(hmp[1]),1) YIELD count AS assetHitMissCount
+        CALL incrementCounter(asn, "count",1) YIELD count AS asnCount
+        CALL incrementCounter(asn, toLower(hmp[1]),1) YIELD count AS asnHitMissCount
+        CALL incrementCounter(server, "count",1) YIELD count AS serverCount
+        CALL incrementCounter(server, toLower(hmp[1]),1) YIELD count AS serverHitMissCount
+        CALL incrementCounter(pop, "count",1) YIELD count AS popCount
+        CALL incrementCounter(pop, toLower(hmp[1]),1) YIELD count AS popHitMissCount
+        CALL incrementCounter(clientGeo, "count",1) YIELD count AS clientGeoCount
+        CALL incrementCounter(clientGeo, toLower(hmp[1]),1) YIELD count AS clientGeoHitMissCount
+        CALL incrementCounter(origin, "count",1) YIELD count AS originGeoCount
+        CALL incrementCounter(origin, toLower(hmp[1]),1) YIELD count AS originGeoHitMissCount
 
-        // Create timeNode node to provide day/hour/minute bucketing and counting of events //
-        CALL reify.time(datetime({date: localdatetime($that.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS")}), ["minute"]) YIELD node AS timeNode
-        
-        // Count events in buckets //
-        CALL incrementCounter(timeNode, "events")
-
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
         // Event
-        //////////////////////////////
-        SET event = $that, event.cache_class = hmp[1], event: event
-       
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
+        SET event = $that,
+            event.cache_class = hmp[1], 
+            event: event
+
+        ////////////////////////////////////////////////////////
+        // Origin
+        ////////////////////////////////////////////////////////
+        SET origin.backend_ip = $that.backend_ip, 
+            origin: origin,
+            origin.MISS_Percent = coalesce((tofloat(origin.miss))/(tofloat(origin.count))*100.0, 0.0),
+            origin.HIT_Percent = coalesce((tofloat(origin.hit))/(tofloat(origin.count))*100.0, 0.0),
+            origin.state = CASE
+              // Set threshold ratios below for each of three cases
+              WHEN origin.HIT_Percent >= 80 THEN 'good'
+              WHEN origin.HIT_Percent >= 25 AND origin.HIT_Percent < 80 THEN 'warn'
+              WHEN origin.HIT_Percent < 25 THEN 'alarm'
+              ELSE 'alarm'
+            END
+
+        ////////////////////////////////////////////////////////
         // Client
-        //////////////////////////////
-        SET client.client_geo_country = $that.client_geo_country, client.client_ip = $that.client_ip, client.user_agent = $that.user_agent, client: client
-        SET client.MISS_Percent = coalesce((tofloat(client.miss))/(tofloat(client.count))*100.0, 0.0)
-        SET client.HIT_Percent = coalesce((tofloat(client.hit))/(tofloat(client.count))*100.0, 0.0)
-        SET client.state = CASE
-              //Set threshold ratios below for each of three cases
+        ////////////////////////////////////////////////////////
+        SET client.client_geo_country = $that.client_geo_country, 
+            client.client_ip = $that.client_ip, 
+            client.user_agent = $that.user_agent, 
+            client: client,
+            client.MISS_Percent = coalesce((tofloat(client.miss))/(tofloat(client.count))*100.0, 0.0),
+            client.HIT_Percent = coalesce((tofloat(client.hit))/(tofloat(client.count))*100.0, 0.0),
+            client.state = CASE
+              // Set threshold ratios below for each of three cases
               WHEN client.HIT_Percent >= 80 THEN 'good'
               WHEN client.HIT_Percent >= 25 AND client.HIT_Percent < 80 THEN 'warn'
               WHEN client.HIT_Percent < 25 THEN 'alarm'
               ELSE 'alarm'
             END
 
-        // Extract Browser and Version //
-        WITH *, text.regexFirstMatch($that.user_agent, '(MSIE|(?!Gecko.+)Firefox|(?!AppleWebKit.+Chrome.+)Safari|(?!AppleWebKit.+)Chrome|AppleWebKit(?!.+Chrome|.+Safari)|Gecko(?!.+Firefox))(?: |\\/)([\\d\\.apre]+)') AS cb
-        SET client.browser = cb[1], client.browserVer = cb[2], client.first_seen = coll.min([$that.timestamp, coalesce(client.first_seen, $that.timestamp)]), client.last_seen = coll.max([$that.timestamp, coalesce(client.last_seen, $that.timestamp)])
-        
-        //////////////////////////////
+        // Extract Browser and Version
+        // RegEx here: https://regex101.com/r/T0MThZ/2
+        WITH *, text.regexFirstMatch($that.user_agent, '\\((.*?)\\)(\\s|$)|(.*?)\\/(.*?)(\\s|$)') AS cb
+        SET client.browser = cb[3], 
+            client.browserVer = cb[4], 
+            client.first_seen = coll.min([$that.timestamp, coalesce(client.first_seen, $that.timestamp)]), 
+            client.last_seen = coll.max([$that.timestamp, coalesce(client.last_seen, $that.timestamp)])
+
+        ////////////////////////////////////////////////////////
+        // Client Geo
+        ////////////////////////////////////////////////////////
+        SET clientGeo.client_geo_country = $that.client_geo_country,
+            clientGeo: clientGeo,
+            clientGeo.MISS_Percent = coalesce((tofloat(clientGeo.miss))/(tofloat(clientGeo.count))*100.0, 0.0),
+            clientGeo.HIT_Percent = coalesce((tofloat(clientGeo.hit))/(tofloat(clientGeo.count))*100.0, 0.0),
+            clientGeo.state = CASE
+              // Set threshold ratios below for each of three cases
+              WHEN clientGeo.HIT_Percent >= 80 THEN 'good'
+              WHEN clientGeo.HIT_Percent >= 25 AND clientGeo.HIT_Percent < 80 THEN 'warn'
+              WHEN clientGeo.HIT_Percent < 25 THEN 'alarm'
+              ELSE 'alarm'
+            END        
+
+        ////////////////////////////////////////////////////////
         // Asset
-        //////////////////////////////
-        // RegEx here: https://regex101.com/r/tB8cd4/1 //
+        ////////////////////////////////////////////////////////
+        // RegEx here: https://regex101.com/r/tB8cd4/1
         WITH *, text.regexFirstMatch($that.path, '^(.+\\/)([^\\/]+)$') AS ap
-        SET asset.path = ap[1], asset.name = ap[2], asset.full_path = $that.path, asset.if_modified_since = coll.max([$that.timestamp, coalesce(asset.if_modified_since, $that.timestamp)]), asset: asset
-        SET asset.MISS_Percent = coalesce((tofloat(asset.miss))/(tofloat(asset.count))*100.0, 0.0)
-        SET asset.HIT_Percent = coalesce((tofloat(asset.hit))/(tofloat(asset.count))*100.0, 0.0)
-        SET asset.state = CASE
-              //Set threshold ratios below for each of three cases //
+        SET asset.path = ap[1], 
+            asset.name = ap[2], 
+            asset.full_path = $that.path, 
+            asset.if_modified_since = coll.max([$that.timestamp, coalesce(asset.if_modified_since, $that.timestamp)]), 
+            asset: asset,
+            asset.MISS_Percent = coalesce((tofloat(asset.miss))/(tofloat(asset.count))*100.0, 0.0),
+            asset.HIT_Percent = coalesce((tofloat(asset.hit))/(tofloat(asset.count))*100.0, 0.0),
+            asset.state = CASE
+              // Set threshold ratios below for each of three cases
               WHEN asset.HIT_Percent >= 80 THEN 'good'
               WHEN asset.HIT_Percent >= 25 AND asset.HIT_Percent < 80 THEN 'warn'
               WHEN asset.HIT_Percent < 25 THEN 'alarm'
               ELSE 'alarm'
             END
 
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
         // ASN
-        //////////////////////////////
-        SET asn.asn_id = $that.client_asn, asn: asn
-        SET asn.MISS_Percent = coalesce((tofloat(asn.miss))/(tofloat(asn.count))*100.0, 0.0)
-        SET asn.HIT_Percent = coalesce((tofloat(asn.hit))/(tofloat(asn.count))*100.0, 0.0)
-        SET asn.state = CASE
-              //Set threshold ratios below for each of three cases
+        ////////////////////////////////////////////////////////
+        SET asn.asn_id = toString($that.client_asn),
+            asn: asn,
+            asn.MISS_Percent = coalesce((tofloat(asn.miss))/(tofloat(asn.count))*100.0, 0.0),
+            asn.HIT_Percent = coalesce((tofloat(asn.hit))/(tofloat(asn.count))*100.0, 0.0),
+            asn.state = CASE
+              // Set threshold ratios below for each of three cases
               WHEN asn.HIT_Percent >= 80 THEN 'good'
               WHEN asn.HIT_Percent >= 25 AND asn.HIT_Percent < 80 THEN 'warn'
               WHEN asn.HIT_Percent < 25 THEN 'alarm'
               ELSE 'alarm'
             END
 
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
         // Server
-        //////////////////////////////
-        SET server.server_id = $that.server_id, server.server_ip = $that.server_ip, server.cache_shield = $that.cache_shield, server.environment = $that.environment, server.host = $that.host, server.role = $that.role, server.pop = $that.pop, server: server
-        SET server.MISS_Percent = coalesce((tofloat(server.miss))/(tofloat(server.count))*100.0, 0.0)
-        SET server.HIT_Percent = coalesce((tofloat(server.hit))/(tofloat(server.count))*100.0, 0.0)
-        SET server.state = CASE
-              //Set threshold ratios below for each of three cases
+        ////////////////////////////////////////////////////////
+        SET server.server_id = $that.server_id, 
+            server.server_ip = $that.server_ip, 
+            server.cache_shield = $that.cache_shield, 
+            server.environment = $that.environment, 
+            server.host = $that.host, 
+            server.role = $that.role, 
+            server.pop = $that.pop, 
+            server: server,
+            server.MISS_Percent = coalesce((tofloat(server.miss))/(tofloat(server.count))*100.0, 0.0),
+            server.HIT_Percent = coalesce((tofloat(server.hit))/(tofloat(server.count))*100.0, 0.0),
+            server.state = CASE
+              // Set threshold ratios below for each of three cases
               WHEN server.HIT_Percent >= 80 THEN 'good'
               WHEN server.HIT_Percent >= 25 AND server.HIT_Percent < 80 THEN 'warn'
               WHEN server.HIT_Percent < 25 THEN 'alarm'
               ELSE 'alarm'
             END
 
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
         // PoP
-        //////////////////////////////
-        SET pop.source = $that.pop, pop.environment = $that.environment, pop: pop
-        SET pop.MISS_Percent = coalesce((tofloat(pop.miss))/(tofloat(pop.count))*100.0, 0.0)
-        SET pop.HIT_Percent = coalesce((tofloat(pop.hit))/(tofloat(pop.count))*100.0, 0.0)
-        SET pop.state = CASE
-              //Set threshold ratios below for each of three cases
+        ////////////////////////////////////////////////////////
+        SET pop.source = $that.pop, 
+            pop.environment = $that.environment, 
+            pop: pop,
+            pop.MISS_Percent = coalesce((tofloat(pop.miss))/(tofloat(pop.count))*100.0, 0.0),
+            pop.HIT_Percent = coalesce((tofloat(pop.hit))/(tofloat(pop.count))*100.0, 0.0),
+            pop.state = CASE
+              // Set threshold ratios for each of three cases
               WHEN pop.HIT_Percent >= 80 THEN 'good'
               WHEN pop.HIT_Percent >= 25 AND pop.HIT_Percent < 80 THEN 'warn'
               WHEN pop.HIT_Percent < 25 THEN 'alarm'
               ELSE 'alarm'
             END
 
-        //////////////////////////////
+        ////////////////////////////////////////////////////////
         // Create relationship between nodes
-        ////////////////////////////// 
-        CREATE (event:event)-[:AT]->(timeNode:timeNode)
-        CREATE (event:event)-[:REQUESTED_OVER]->(asn:asn)
-        CREATE (event:event)<-[:ORIGINATED]-(client:client)-[:REQUESTED_OVER]->(asn:asn)
-        CREATE (event:event)-[:TARGETED]->(server:server)
-        CREATE (event:event)-[:REQUESTED]->(asset:asset)
-        CREATE (server:server)-[:IN]->(pop:pop)
-        //CREATE (event:event)-[:TARGETED]->(pop:pop)
-standingQueries: []
+        ////////////////////////////////////////////////////////
+        CREATE (asset)<-[:REQUESTED]-(event)-[:REQUESTED_OVER]->(asn)-[:IN_CLIENT_GEO]->(clientGeo),
+               (origin)<-[:FROM]-(pop)<-[:WITHIN]-(server)<-[:TARGETED]-(event)<-[:ORIGINATED]-(client)
+
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: |-
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Subquery to look for 10 consecutive cache MISS events involving the same server and asset pair within a defined duration
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Look for consecutive cache MISS events involving the same server and asset pair
+        MATCH (server1:server)<-[:TARGETED]-(event1 {cache_class:"MISS"})-[:REQUESTED]->(asset)<-[:REQUESTED]-(event2 {cache_class:"MISS"})-[:TARGETED]->(server2:server)
+        RETURN DISTINCT id(event1) AS event1
+    outputs:
+      cacheMissAlert:
+        type: CypherQuery
+        query: |-
+          // Add constraints to the cache MISS events match involving the same server and asset pair.
+          MATCH (server1:server)<-[:TARGETED]-(event1 {cache_class:"MISS"})-[:REQUESTED]->(asset)<-[:REQUESTED]-(event2 {cache_class:"MISS"})-[:TARGETED]->(server2:server)
+          WHERE id(event1) = $that.data.event1
+            // Time between consecutive cache MISSes between 5-45 minutes expressed in ISO 8601 duration format (https://en.wikipedia.org/wiki/ISO_8601#Durations)
+            // Feel free to alter the range to meet your requirements
+            AND duration("PT45M") > duration.between(localdatetime(event1.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS"), localdatetime(event2.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS")) > duration("PT5M")
+            AND event1.client_asn = event2.client_asn
+            AND id(server1) = id(server2)
+            AND id(event1) <> id(event2)
+
+          ////////////////////////////////////////////////////////
+          // missEvents
+          ////////////////////////////////////////////////////////
+          // Manifest missEvents node to track metadata relative to consecutive cache MISSes that match the previous constraints
+          MATCH (missEvents) 
+          WHERE id(missEvents) = idFrom('missEvents', server1.server_id, asset.full_path)
+          SET missEvents.asset = event1.path, 
+              missEvents.server = event1.server_id, 
+              missEvents.pop = event1.pop, 
+              missEvents.firstMiss = coll.min([event1.timestamp, coalesce(missEvents.firstMiss, event1.timestamp)]), 
+              missEvents.latestMiss = coll.max([event1.timestamp, coalesce(missEvents.latestMiss, event1.timestamp)]), 
+              missEvents: missEvents
+
+          // Create subgraph from consecutive cache MISS events to provide a visualization in the Quine Exploration UI
+          CREATE (asset)-[:HAD]->(missEvents)-[:FROM]->(server1)<-[:TARGETED]-(event1),
+                 (server1)<-[:TARGETED]-(event2)
+
+          // Increment the missEvents counter for the purpose of triggering an alert at a specified threshold
+          WITH missEvents CALL incrementCounter(missEvents, "cumulativeCount", 1) YIELD count AS cumulativeCount
+
+          // Trigger alert (RETURN clause) that prints URL to local running Quine instance
+          MATCH (missEvents)
+          // Threshold at which to emit alert
+          // Feel free to alter it to meet your requirements
+          WHERE missEvents.cumulativeCount = 10
+          RETURN 'http://localhost:8080/#' + text.urlencode('MATCH(missEvents:missEvents) WHERE id(missEvents)="' + toString(strId(missEvents)) + '" MATCH (event {cache_class:"MISS"})-[:TARGETED]->(server)<-[:FROM]-(missEvents)<-[:HAD]-(asset)<-[:REQUESTED]-(event {cache_class:"MISS"}) RETURN DISTINCT missEvents, event, server, asset LIMIT 10') AS Alert
+        andThen:
+          type: PrintToStandardOut
+
 nodeAppearances:
-  #Pop Icon/color *******************
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "good"
-      dbLabel: pop
-    icon: arrow-shrink
-    color: "#32a852"
-    size: 40.00
-    label:
-      type: Property
-      key: source
-      prefix: "PoP: "
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "warn"
-      dbLabel: pop
-    icon: arrow-shrink
-    color: "#d68400"
-    size: 40.00
-    label:
-      type: Property
-      key: source
-      prefix: "PoP: "
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "alarm"
-      dbLabel: pop
-    icon: arrow-shrink
-    color: "#cf151e"
-    size: 40.00
-    label:
-      type: Property
-      key: source
-      prefix: "PoP: "
-  #ASN Icon/color *********************
+  # ASN Icon/color *********************
   - predicate:
       propertyKeys:
         - state
@@ -238,47 +314,7 @@ nodeAppearances:
       type: Property
       key: asn_id
       prefix: "asn: "
-  #Server Icon/color *********************
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "good"
-      dbLabel: server
-    icon: navicon-round
-    color: "#32a852"
-    size: 40.00
-    label:
-      type: Property
-      key: server_id
-      prefix:
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "warn"
-      dbLabel: server
-    icon: navicon-round
-    color: "#d68400"
-    size: 40.00
-    label:
-      type: Property
-      key: server_id
-      prefix:
-  - predicate:
-      propertyKeys:
-        - state
-      knownValues:
-        state: "alarm"
-      dbLabel: server
-    icon: navicon-round
-    color: "#cf151e"
-    size: 40.00
-    label:
-      type: Property
-      key: server_id
-      prefix:
-  #Asset Icon/color *********************
+  # Asset Icon/color *********************
   - predicate:
       propertyKeys:
         - state
@@ -318,13 +354,106 @@ nodeAppearances:
       type: Property
       key: name
       prefix: "asset: "
-  #Event Icon/color *********************
+  # Client Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "good"
+      dbLabel: client
+    icon: ion-ios-contact-outline
+    color: "#32a852"
+    size: 30.00
+    label:
+      type: Property
+      key: client_ip
+      prefix: "client: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "warn"
+      dbLabel: client
+    icon: ion-ios-contact-outline
+    color: "#d68400"
+    size: 30.00
+    label:
+      type: Property
+      key: client_ip
+      prefix: "client: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "alarm"
+      dbLabel: client
+    icon: ion-ios-contact-outline
+    color: "#cf151e"
+    size: 30.00
+    label:
+      type: Property
+      key: client_ip
+      prefix: "client: "
+  # Date/Time Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "year"
+      dbLabel:
+    icon: ion-android-calendar
+    color:
+    size: 30
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "month"
+      dbLabel:
+    icon: ion-android-calendar
+    color:
+    size: 25
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "day"
+      dbLabel:
+    icon: ion-android-calendar
+    color:
+    size: 20
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "hour"
+      dbLabel:
+    icon: ion-clock
+    color:
+    size: 30
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "minute"
+      dbLabel:
+    icon: ion-clock
+    color:
+    size: 25
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "second"
+      dbLabel:
+    icon: ion-clock
+    color:
+    size: 20
+  # Event Icon/color *********************
   - predicate:
       propertyKeys:
         - cache_class
-      knownValues: {
-        cache_class: "HIT"
-      }
+      knownValues: { cache_class: "HIT" }
       dbLabel: event
     icon: checkmark-circled
     color: "#32a852"
@@ -336,9 +465,7 @@ nodeAppearances:
   - predicate:
       propertyKeys:
         - cache_class
-      knownValues: {
-        cache_class: "MISS"
-      }
+      knownValues: { cache_class: "MISS" }
       dbLabel: event
     icon: close-circled
     color: "#cf151e"
@@ -347,77 +474,182 @@ nodeAppearances:
       type: Property
       key: timestamp
       prefix: "event: "
-  #Client Icon/color *********************
+  # Pop Icon/color *******************
   - predicate:
       propertyKeys:
         - state
       knownValues:
         state: "good"
-      dbLabel: client
-    icon: ion-ios-contact-outline
+      dbLabel: pop
+    icon: arrow-shrink
     color: "#32a852"
-    size: 30.00
+    size: 40.00
     label:
       type: Property
-      key: client_ip
-      prefix: "client: "
+      key: source
+      prefix: "PoP: "
   - predicate:
       propertyKeys:
         - state
       knownValues:
         state: "warn"
-      dbLabel: client
-    icon: ion-ios-contact-outline
+      dbLabel: pop
+    icon: arrow-shrink
     color: "#d68400"
-    size: 30.00
+    size: 40.00
     label:
       type: Property
-      key: client_ip
-      prefix: "client: "
+      key: source
+      prefix: "PoP: "
   - predicate:
       propertyKeys:
         - state
       knownValues:
         state: "alarm"
-      dbLabel: client
-    icon: ion-ios-contact-outline
+      dbLabel: pop
+    icon: arrow-shrink
     color: "#cf151e"
-    size: 30.00
+    size: 40.00
     label:
       type: Property
-      key: client_ip
-      prefix: "client: "
-  # Date/Time
+      key: source
+      prefix: "PoP: "
+  # missEvent Icon/color *********************
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: missEvents
+    icon: ion-ios-bolt
+    color: "#cf151e"
+    size: 50.00
+    label:
+      type: Property
+      key: lastestMiss
+      prefix: "Miss Events: "
+  # Server Icon/color *********************
   - predicate:
       propertyKeys:
-        - period
+        - state
       knownValues:
-        period: "day"
-      dbLabel:
-    icon: ion-android-calendar
-    color: 
-    size:
+        state: "good"
+      dbLabel: server
+    icon: navicon-round
+    color: "#32a852"
+    size: 40.00
+    label:
+      type: Property
+      key: server_id
+      prefix:
   - predicate:
       propertyKeys:
-        - period
+        - state
       knownValues:
-        period: "hour"
-      dbLabel:
-    icon: ion-clock
-    color: 
-    size: 32
+        state: "warn"
+      dbLabel: server
+    icon: navicon-round
+    color: "#d68400"
+    size: 40.00
+    label:
+      type: Property
+      key: server_id
+      prefix:
   - predicate:
       propertyKeys:
-        - period
+        - state
       knownValues:
-        period: "minute"
-      dbLabel:
-    icon: ion-clock
-    color: 
-    size: 24
+        state: "alarm"
+      dbLabel: server
+    icon: navicon-round
+    color: "#cf151e"
+    size: 40.00
+    label:
+      type: Property
+      key: server_id
+      prefix:
+  # Client/Geo Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "good"
+      dbLabel: clientGeo
+    icon: ion-android-globe
+    color: "#32a852"
+    size: 40.00
+    label:
+      type: Property
+      key: client_geo_country
+      prefix: "Country: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "warn"
+      dbLabel: clientGeo
+    icon: ion-android-globe
+    color: "#d68400"
+    size: 40.00
+    label:
+      type: Property
+      key: client_geo_country
+      prefix: "Country: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "alarm"
+      dbLabel: clientGeo
+    icon: ion-android-globe
+    color: "#cf151e"
+    size: 40.00
+    label:
+      type: Property
+      key: client_geo_country
+      prefix: "Country: "
+  # Origin Icon/color *********************
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "good"
+      dbLabel: origin
+    icon: ion-ios-home
+    color: "#32a852"
+    size: 40.00
+    label:
+      type: Property
+      key: backend_ip
+      prefix: "Origin: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "warn"
+      dbLabel: origin
+    icon: ion-ios-home
+    color: "#d68400"
+    size: 40.00
+    label:
+      type: Property
+      key: backend_ip
+      prefix: "Origin: "
+  - predicate:
+      propertyKeys:
+        - state
+      knownValues:
+        state: "alarm"
+      dbLabel: origin
+    icon: ion-ios-home-outline
+    color: "#cf151e"
+    size: 40.00
+    label:
+      type: Property
+      key: backend_ip
+      prefix: "Origin: "
+
 quickQueries:
   - predicate:
-      propertyKeys: [ ]
+      propertyKeys: []
       knownValues: {}
     quickQuery:
       name: Adjacent Nodes
@@ -446,7 +678,16 @@ quickQueries:
       dbLabel: server
     quickQuery:
       name: Server PoP
-      querySuffix: MATCH (n:server)-[:IN]->(m:pop) RETURN DISTINCT m
+      querySuffix: MATCH (n:server)-[:WITHIN]->(m:pop) RETURN DISTINCT m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: asn
+    quickQuery:
+      name: Client Geo
+      querySuffix: MATCH (n:asn)-[:IN_CLIENT_GEO]->(m:clientGeo) RETURN DISTINCT m
       queryLanguage: Cypher
       sort: Node
   - predicate:
@@ -455,7 +696,25 @@ quickQueries:
       dbLabel: server
     quickQuery:
       name: Cache Hit/Miss Percentage
-      querySuffix: MATCH (m:event)-[r:TARGETED]->(n:server) WHERE m.cache_class = 'HIT' RETURN n.server_id AS CACHE, tofloat(count(r))/tofloat(n.count)*100 AS HIT_Percentage, (tofloat(n.count) - tofloat(count(r)))/tofloat(n.count)*100 AS MISS_Percentage
+      querySuffix: MATCH (m:event)-[r:TARGETED]->(n:server) RETURN DISTINCT n.server_id AS CACHE, n.state AS State, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: client
+    quickQuery:
+      name: Client Hit/Miss Percentage
+      querySuffix: MATCH (n:client) RETURN DISTINCT n.client_id AS CLIENT, n.state AS State, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: origin
+    quickQuery:
+      name: Origin Hit/Miss Percentage
+      querySuffix: MATCH (n:origin) RETURN DISTINCT n.backend_ip AS ORIGIN, n.state AS State, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
       queryLanguage: Cypher
       sort: Text
   - predicate:
@@ -464,7 +723,25 @@ quickQueries:
       dbLabel: pop
     quickQuery:
       name: PoP Hit/Miss Percentage
-      querySuffix: MATCH (m:event)-[r:TARGETED]->(p:server)-[s:IN]->(n:pop) WHERE m.cache_class = 'HIT' RETURN n.source AS POP, tofloat(count(s))/tofloat(n.count)*100 AS HIT_Percentage, (tofloat(n.count) - tofloat(count(s)))/tofloat(n.count)*100 AS MISS_Percentage
+      querySuffix: MATCH (m:event)-[r:TARGETED]->(p:server)-[s:WITHIN]->(n:pop) RETURN DISTINCT n.source AS POP, n.state AS State, n.count AS COUNT, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: pop
+    quickQuery:
+      name: PoP Origins
+      querySuffix: MATCH (n)-[:FROM]->(origin) RETURN DISTINCT origin
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: asset
+    quickQuery:
+      name: Asset Hit/Miss Percentage
+      querySuffix: MATCH (p:pop)<-[:WITHIN]-(o:server)<-[:TARGETED]-(m:event)-[r:REQUESTED]->(n:asset) RETURN DISTINCT n.name AS ASSET, n.state AS State, coalesce(n.miss, 0) AS MISSES,  coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
       queryLanguage: Cypher
       sort: Text
   - predicate:
@@ -473,20 +750,156 @@ quickQueries:
       dbLabel: asn
     quickQuery:
       name: ASN Hit/Miss Percentage
-      querySuffix: MATCH (m:event)-[r:REQUESTED_OVER]->(n:asn) WHERE m.cache_class = 'HIT' RETURN n.asn_id AS ASN, tofloat(count(r))/tofloat(n.count)*100 AS HIT_Percentage, (tofloat(n.count) - tofloat(count(r)))/tofloat(n.count)*100 AS MISS_Percentage
+      querySuffix: MATCH (m:event)-[r:REQUESTED_OVER]->(n:asn) RETURN DISTINCT n.asn_id AS ASN, n.state AS State, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
       queryLanguage: Cypher
       sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: clientGeo
+    quickQuery:
+      name: clientGeo Hit/Miss Percentage
+      querySuffix: MATCH (m:asn)-[r:IN_CLIENT_GEO]->(n:clientGeo) RETURN DISTINCT n.client_geo_country AS Geo, n.state AS State, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: missEvents
+    quickQuery:
+      name: Reset Counter
+      querySuffix: DETACH DELETE n
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: client
+    quickQuery:
+      name: Create Timeline of Events
+      querySuffix: >
+        MATCH (n)-[:ORIGINATED]->(event)
+        WITH event
+        ORDER BY event.timestamp ASC
+        WITH collect(event) as events
+        FOREACH (i in range(0, size(events) - 2) |
+          FOREACH (node1 in [events[i]] |
+            FOREACH (node2 in [events[i+1]] |
+              CREATE (node1)-[:NEXT]->(node2))))
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: client
+    quickQuery:
+      name: Show Timeline of Events
+      querySuffix: MATCH (n)-[:ORIGINATED]->(event1:event)-[:NEXT*0..]->(event2:event) RETURN event1,event2
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: event
+    quickQuery:
+      name: Show Client
+      querySuffix: MATCH (n)<-[:ORIGINATED]-(client) RETURN DISTINCT client
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues: {}
+      dbLabel:
+    quickQuery:
+      name: Period Hit/Miss Percentage
+      querySuffix: MATCH (n) RETURN DISTINCT n.start AS Time, coalesce(n.miss, 0) AS MISSES, coalesce(n.hit, 0) AS HITS, coalesce(tofloat(coalesce(n.hit, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS HIT_Percentage, coalesce(tofloat(coalesce(n.miss, 0.0))/tofloat(coalesce(n.count, 0.0))*100.0, 0.0) AS MISS_Percentage
+      queryLanguage: Cypher
+      sort: Text
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "second"
+      dbLabel:
+    quickQuery:
+      name: Time Linked List
+      querySuffix: MATCH (n)<-[:second]-(m)<-[:minute]-(l)<-[:hour]-(k)<-[:day]-(j)<-[:month]-(i) RETURN distinct i,j,k,l,m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "second"
+      dbLabel:
+    quickQuery:
+      name: Previous TimeNode
+      querySuffix: MATCH (n)<-[:second]-(m) RETURN distinct m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "minute"
+      dbLabel:
+    quickQuery:
+      name: Previous TimeNode
+      querySuffix: MATCH (n)<-[:minute]-(m) RETURN distinct m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "hour"
+      dbLabel:
+    quickQuery:
+      name: Previous TimeNode
+      querySuffix: MATCH (n)<-[:hour]-(m) RETURN distinct m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "day"
+      dbLabel:
+    quickQuery:
+      name: Previous TimeNode
+      querySuffix: MATCH (n)<-[:day]-(m) RETURN distinct m
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys:
+        - period
+      knownValues:
+        period: "month"
+      dbLabel:
+    quickQuery:
+      name: Previous TimeNode
+      querySuffix: MATCH (n)<-[:month]-(m) RETURN distinct m
+      queryLanguage: Cypher
+      sort: Node
+
 sampleQueries:
-  # provide easy access to node types in the exploration ui
+  # Provide easy access to node types in the Exploration UI
   - name: Last 10 Nodes
     query: CALL recentNodes(10)
-  - name: PoP Node
-    query: MATCH (pop:pop) RETURN pop LIMIT 1
-  - name: ASN Node
-    query: MATCH (asn:asn) RETURN asn LIMIT 1
-  - name: Server Node
-    query: MATCH (server:server) RETURN server LIMIT 1
-  - name: Asset Node
-    query: MATCH (asset:asset) RETURN asset LIMIT 1
-  - name: Client Node
+  - name: Legend
+    query: MATCH (n) WHERE labels(n) IS NOT NULL WITH labels(n) AS kind, collect(n) AS legend RETURN legend[0]
+  - name: One Client Node
     query: MATCH (client:client) RETURN client LIMIT 1
+  - name: One Client Node with more than Ten Events
+    query: MATCH (client:client) WHERE client.count > 10 RETURN client LIMIT 1
+  - name: One Source ASN Node
+    query: MATCH (asn:asn) RETURN asn LIMIT 1
+  - name: One Server Node
+    query: MATCH (server:server) RETURN server LIMIT 1
+  - name: One PoP Node
+    query: MATCH (pop:pop) RETURN pop LIMIT 1
+  - name: One Asset Node
+    query: MATCH (asset:asset) RETURN asset LIMIT 1
+  - name: One Origin Node
+    query: MATCH (origin:origin) RETURN origin LIMIT 1

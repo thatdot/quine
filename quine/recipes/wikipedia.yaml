@@ -1,10 +1,11 @@
 version: 1
-title: Ingest Wikipedia page create stream
+title: Ingest Wikipedia Page Create stream
 contributor: https://github.com/landon9720
-summary: Consume events about new Wikipedia pages to build a timeseries reified graph
+summary: Consume events about new Wikipedia pages to build a time series reified graph
 description: |-
-  Wikipedia page creation events are instantiated in the graph with relationships to a refied time model.
+  Wikipedia page creation events are instantiated in the graph with relationships to a reified time model.
   Additionally, page creation event comments are echoed to standard output.
+
   Data source documentation: https://stream.wikimedia.org/?doc#/streams/get_v2_stream_page_create
 ingestStreams:
   - type: ServerSentEventsIngest
@@ -16,18 +17,30 @@ ingestStreams:
         WHERE id(revNode) = idFrom("revision", $that.rev_id)
           AND id(dbNode) = idFrom("db", $that.database)
           AND id(userNode) = idFrom("id", $that.performer.user_id)
-        SET revNode = $that, revNode.type = "rev"
-        SET dbNode.database = $that.database, dbNode.type = "db"
-        SET userNode = $that.performer, userNode.type = "user"
-        WITH *, datetime($that.rev_timestamp) AS d
+
+        // Set labels for nodes //
         CALL create.setLabels(revNode, ["rev:" + $that.page_title])
         CALL create.setLabels(dbNode, ["db:" + $that.database])
         CALL create.setLabels(userNode, ["user:" + $that.performer.user_text])
-        CALL reify.time(d, ["year", "month", "day", "hour", "minute"]) YIELD node AS timeNode
-        CALL incrementCounter(timeNode, "count")
-        CREATE (revNode)-[:at]->(timeNode)
-        CREATE (revNode)-[:db]->(dbNode)
-        CREATE (revNode)-[:by]->(userNode)
+
+        // Create timeNode node to provide day/hour/minute bucketing and counting of revNodes //
+        CALL reify.time(datetime($that.rev_timestamp), ["year", "month", "day", "hour", "minute", "second"]) YIELD node AS timeNode
+        CALL incrementCounter(timeNode, "count", 1) YIELD count AS timeNodeCount
+
+        // Set properties for nodes //
+        SET revNode = $that,
+            revNode.type = "rev"
+
+        SET dbNode.database = $that.database,
+            dbNode.type = "db"
+
+        SET userNode = $that.performer,
+            userNode.type = "user"
+
+        // Create edges between nodes //
+        CREATE (revNode)-[:DB]->(dbNode),
+               (revNode)-[:BY]->(userNode),
+               (revNode)-[:AT]->(timeNode)
 standingQueries:
   - pattern:
       type: Cypher
@@ -47,22 +60,22 @@ standingQueries:
 nodeAppearances: []
 quickQueries: []
 sampleQueries:
-  - name: time nodes
+  - name: Show time nodes
     query: >
       MATCH (n)
       WHERE EXISTS(n.period)
       RETURN n
-  - name: revision nodes
+  - name: Show revision nodes
     query: >
       MATCH (n)
       WHERE n.type = "rev"
       RETURN n
-  - name: database nodes
+  - name: Show database nodes
     query: >
       MATCH (n)
       WHERE n.type = "db"
       RETURN n
-  - name: user nodes
+  - name: Show user nodes
     query: >
       MATCH (n)
       WHERE n.type = "user"

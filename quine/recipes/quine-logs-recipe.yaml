@@ -12,8 +12,7 @@ ingestStreams:
       type: CypherLine
       query: |-
         // Quine log pattern "%date %level [%mdc{akkaSource:-NotFromActor}] [%thread] %logger - %msg%n%ex"
-        WITH text.regexFirstMatch($that, "(^\\d{4}-\\d{2}-\\d{2} \\d{1,2}:\\d{2}:\\d{2},\\d{3}) (FATAL|ERROR|WARN|INFO|DEBUG) \\[(\\S*)\\] \\[(\\S*)\\] (\\S*) - (.*)") AS r 
-        WHERE r IS NOT NULL 
+        WITH text.regexFirstMatch($that, "(^\\d{4}-\\d{2}-\\d{2} \\d{1,2}:\\d{2}:\\d{2},\\d{3}) (FATAL|ERROR|WARN|INFO|DEBUG) \\[(\\S*)\\] \\[(\\S*)\\] (\\S*) - (.*)") AS r WHERE r IS NOT NULL 
         // 0: whole matched line
         // 1: date time string
         // 2: log level
@@ -21,22 +20,41 @@ ingestStreams:
         // 4: thread name
         // 5: logging class
         // 6: Message
-        WITH *, split(r[3], "/") as path, split(r[6], "(") as msgPts
-        WITH *, replace(COALESCE(split(path[2], "@")[-1], 'No host'),")","") as qh
+        WITH r, split(r[3], "/") as path,
+                split(r[6], "(") as msgPts
+        WITH r, path, msgPts, replace(COALESCE(split(path[2], "@")[-1], 'No host'),")","") as qh
+
         MATCH (actor), (msg), (class), (host)
         WHERE id(host)  = idFrom("host", qh)
           AND id(actor) = idFrom("actor", r[3])
           AND id(msg)   = idFrom("msg", r[0])
           AND id(class) = idFrom("class", r[5])
-        SET host: Host, host.address = split(qh, ":")[0], host.port = split(qh, ":")[-1], host.host = qh,
-            actor: Actor, actor.address = r[3], actor.id = replace(path[-1],")",""), actor.shard = path[-2], actor.type = path[-3],
-            msg: Message, msg.msg = r[6], msg.type = split(msgPts[0], " ")[0], msg.level = r[2],
-            class: Class, class.class = r[5]
+
+        SET host.address = split(qh, ":")[0],
+            host.port = split(qh, ":")[-1],
+            host.host = qh,
+            host: Host
+
+        SET actor.address = r[3],
+            actor.id = replace(path[-1],")",""),
+            actor.shard = path[-2],
+            actor.type = path[-3],
+            actor: Actor
+
+        SET msg.msg = r[6],
+            msg.path = path[0],
+            msg.type = split(msgPts[0], " ")[0],
+            msg.level = r[2],
+            msg: Message
+
+        SET class.class = r[5],
+        class: Class
+
         WITH * CALL reify.time(datetime({date: localdatetime(r[1], "yyyy-MM-dd HH:mm:ss,SSS")})) YIELD node AS time
-        CREATE (actor)-[:sent]->(msg),
-               (actor)-[:of_class]->(class),
-               (actor)-[:on_host]->(host),
-               (msg)-[:at_time]->(time)
+
+        CREATE (host)<-[:ON_HOST]-(actor)-[:SENT]->(msg),
+               (actor)-[:OF_CLASS]->(class),
+               (msg)-[:AT_TIME]->(time)
 standingQueries: []
 nodeAppearances:
   - predicate:
@@ -44,29 +62,33 @@ nodeAppearances:
       knownValues: {}
       dbLabel: Actor
     label:
-      key: id
       type: Property
+      key: id
+      prefix: "Actor: "
   - predicate:
       propertyKeys: []
       knownValues: {}
       dbLabel: Message
     label:
-      key: type
       type: Property
+      key: type
+      prefix: "Message: "
   - predicate:
       propertyKeys: []
       knownValues: {}
       dbLabel: Host
     label:
-      key: host
       type: Property
+      key: host
+      prefix: "Host: "
   - predicate:
       propertyKeys: []
       knownValues: {}
       dbLabel: Class
     label:
-      key: class
       type: Property
+      key: class
+      prefix: "Class: "
 quickQueries:
   - predicate:
       propertyKeys: []
@@ -76,16 +98,6 @@ quickQueries:
       querySuffix: MATCH (n)--(m) RETURN DISTINCT m
       queryLanguage: Cypher
       sort: Node
-  - predicate:
-      propertyKeys: []
-      knownValues: {}
-      dbLabel: Actor
-    quickQuery:
-      name: Host
-      querySuffix: MATCH (n)-[:on_host]->(m) RETURN DISTINCT m
-      queryLanguage: Cypher
-      sort: Node
-      edgeLable: On Host
   - predicate:
       propertyKeys: []
       knownValues: {}
@@ -102,7 +114,55 @@ quickQueries:
       querySuffix: RETURN id(n), properties(n)
       queryLanguage: Cypher
       sort: Text
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Actor
+    quickQuery:
+      name: Associated Host
+      querySuffix: MATCH (n)-[:ON_HOST]->(host) RETURN DISTINCT host
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Actor
+    quickQuery:
+      name: One Associated Message
+      querySuffix: MATCH (n)-[:SENT]->(msg) RETURN DISTINCT msg LIMIT 1
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Actor
+    quickQuery:
+      name: Associated Class
+      querySuffix: MATCH (n)-[:OF_CLASS]->(class) RETURN DISTINCT class LIMIT 1
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Message
+    quickQuery:
+      name: Associated Actor
+      querySuffix: MATCH (actor)-[:SENT]->(n) RETURN DISTINCT actor LIMIT 1
+      queryLanguage: Cypher
+      sort: Node
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Message
+    quickQuery:
+      name: Associated Host
+      querySuffix: MATCH (host)<-[:ON_HOST]-(actor)-[:SENT]->(n) RETURN DISTINCT host LIMIT 1
+      queryLanguage: Cypher
+      sort: Node
+      edgeLabel: ON_HOST
 sampleQueries:
+  - name: Last 10 Nodes
+    query: CALL recentNodes(10)
   - name: Get Actors
     query: "MATCH (a: Actor) RETURN a"
 statusQuery:

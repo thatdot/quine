@@ -40,14 +40,15 @@ ingestStreams:
             user.name = $that.reviewerName, user:User,
             review.ok = $that.overall > 4
         WITH review, product, user
-        CALL incrementCounter(user, "reviewsPosted")
-        CALL incrementCounter(product, "reviews")
-        CALL incrementCounter(product, "total_score", $that.overall)
+        CALL incrementCounter(user, "reviewsPosted") YIELD count AS reviewsPosted
+        CALL incrementCounter(product, "reviews") YIELD count AS reviews
+        CALL incrementCounter(product, "total_score", $that.overall) YIELD count AS total_score
         CREATE (product)<-[:REVIEWED]-(review)<-[:POSTED]-(user)
         WITH $that.asin AS asin
         MATCH (p) WHERE id(p) = idFrom("Product", asin)
         SET p.avg = tofloat(p.total_score) / tofloat(p.reviews)
-standingQueries:        
+
+standingQueries:
   - pattern:
       type: Cypher
       query: |-
@@ -65,11 +66,11 @@ standingQueries:
           RETURN p2.id as product_id, ct, timestamp, date
         andThen:
           type: PrintToStandardOut
-          
+
 sampleQueries:
   - name: Most Active User
     query: |-
-       MATCH (u:User) WITH u ORDER BY u.reviewsPosted DESC LIMIT 1 MATCH (u)--(m) RETURN u, m
+      MATCH (u:User) WITH u ORDER BY u.reviewsPosted DESC LIMIT 1 MATCH (u)--(m) RETURN u, m
     queryLanguage: Cypher
     sort: Node
   - name: Most Reviewed Book
@@ -98,9 +99,7 @@ nodeAppearances:
     icon: ion-person
   - predicate:
       propertyKeys: []
-      knownValues: {
-        ok: false
-      }
+      knownValues: { ok: false }
       dbLabel: Review
     color: "#c70039"
     size: 40.00
@@ -111,9 +110,7 @@ nodeAppearances:
       prefix: ""
   - predicate:
       propertyKeys: []
-      knownValues: {
-        ok: true
-      }
+      knownValues: { ok: true }
       dbLabel: Review
     color: "#32a139"
     size: 40.00
