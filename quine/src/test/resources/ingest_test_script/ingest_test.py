@@ -85,7 +85,7 @@ class TestConfig:
     def create_recipe(self):
         self.req("post", f'/api/v1/ingest/{self.name}',
                  json=self.recipe() | {
-                     "recordDecoding": self.encodings})  # , headers={"Content-type":"application/json"})
+                     "recordDecoders": self.encodings})  # , headers={"Content-type":"application/json"})
 
     def retrieve_values(self):
         return self.req("post", f'/api/v1/query/cypher/nodes',
@@ -297,12 +297,3 @@ if __name__ == "__main__":
                               encodings)
     config.run_test(sleep_time_ms=1000)
 
-    # v = "abcdefghijklmnop".encode("ascii")
-    # # base64 = YWJjZGVmZ2hpamtsbW5vcA==
-    # vvv = Encoding.encode(Encoding.parse_encoding_csv("Base64, Zlib"), v)
-    # print(vvv)
-    # vv = Encoding.encode(Encoding.parse_encoding_csv("Base64, Gzip"), v)
-    # print(vv)
-    # vv2 = Encoding.decode(Encoding.parse_encoding_csv("Base64, Gzip"), vv)
-    # print(vv2)
-    # print(vv2)

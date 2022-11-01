@@ -51,7 +51,7 @@ Each ingest stream performs four primary operations:
 
 1. **Consume a stream of bytes** - e.g. Open local file on disk, or connect to a Kafka topic.
 2. **Delimit into a sequence of finite byte arrays** - e.g. Use newlines to separate individual lines from a file. Kafka provides delimiting records by its design.
-3. **Parse byte array into an object** - e.g. Parse as a string into JSON, or use a provided [protobuf](https://developers.google.com/protocol-buffers) schema to deserialize each object.
+3. **Parse byte array into an object** - e.g. Parse as a string into JSON, or use a provided [protobuf](https://developers.google.com/protocol-buffers) schema to deserialize each object. Bytes will first be decoded if the ingest has specified **recordDecoders**.
 4. **Ingest query constructs the graph** - e.g. Provide the parsed object as `$that` to a user-defined Cypher query which creates any graph structure desired.
 
 When a new ingest stream is configured, Quine will connect to the source and follow the steps described above to use the incoming data stream to update the internal graph. Not all ingest configurations require distinct choices for each step. For instance, a file ingest can define its source as a CSV (Comma Separated Values) file, and the line-delimiting and field parsing are done automatically.
@@ -105,6 +105,28 @@ ingestStreams:
         SET n.line = $that
 ```
 
+#### Record Decoding
+
+An Ingest may specify a list of decoders to support decompression. Decoders are applied in the order they are
+specified and are applied per-record.
+- Decoding is applied in the order specified in the **recordDecoders** array.
+- **recordDecoders** are currently supported _only_ for **Kafka**, **Pulsar**, **Kinesis**, **ServerSentEvents**, and **SQS** ingests.
+- Decoding types currently supported are **Base64**, **Gzip**, and **Zlib**.
+- The **recordDecoders** member is optional.
+
+The following ingest stream specifies that each record is Gzipped, then Base64 encoded:
+
+```json
+{
+  "type": "KinesisIngest",
+  "format": {
+    "query": "CREATE ($that)",
+    "type": "CypherJson"
+  },
+  "recordDecoders":["Base64","Gzip"],
+   ...
+}
+```
 ## Inspecting Ingest Streams via the API
 
 Quine exposes a series of API endpoints that enable you to monitor and manage ingest streams while in operation. The complete endpoint definitions are available in the API documentation.
