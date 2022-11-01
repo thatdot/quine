@@ -705,12 +705,26 @@ object CypherTextUrlEncode extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str),
       output = Type.List(Type.Str),
-      description = "URL-encodes (RFC 3986) the provided string, "
+      description =
+        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces"
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "usePlusForSpace" -> Type.Bool),
       output = Type.List(Type.Str),
-      description = "URL-encodes (RFC 3986) the provided string, optionally using `+` for spaces instead"
+      description =
+        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces; optionally using `+` for spaces instead of `%20`"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("text" -> Type.Str, "encodeExtraChars" -> Type.Str),
+      output = Type.List(Type.Str),
+      description =
+        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("text" -> Type.Str, "usePlusForSpace" -> Type.Bool, "encodeExtraChars" -> Type.Str),
+      output = Type.List(Type.Str),
+      description =
+        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`, optionally using `+` for spaces instead of `%20`"
     )
   )
   val category = Category.STRING
@@ -720,23 +734,40 @@ object CypherTextUrlEncode extends UserDefinedFunction {
   private val rfcReservedChars: Array[Byte] =
     Array(':', '/', '?', '#', '[', ']', '@', '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=').map(_.toByte)
 
+  /** Additional URL-safe characters to percent-encode by default: "{}<>
+    * NB these are somewhat arbitrary, but chosen based on best UX in cases we encountered while testing
+    */
+  private val extraPlayNiceCharacters: Array[Byte] = Array('"', '{', '}', '<', '>').map(_.toByte)
+
+  private val spaceChar: Byte = ' '.toByte
+
+  // true iff the provided string's characters can each be safely represented as a single byte
+  private def stringIsSafeBytewise(str: String): Boolean = str.forall((c: Char) => c.isValidByte)
+
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
-    val (str, usePlus) = args match {
-      case Vector(Expr.Str(str)) => str -> false
-      case Vector(Expr.Str(str), Expr.Bool(usePlus)) => str -> usePlus
+    val (str, usePlus, extraChars) = args match {
+      // unary versions
+      case Vector(Expr.Str(str)) => (str, false, extraPlayNiceCharacters :+ spaceChar)
+      // binary versions w/bool
+      case Vector(Expr.Str(str), Expr.True) => (str, true, extraPlayNiceCharacters)
+      case Vector(Expr.Str(str), Expr.False) => (str, false, extraPlayNiceCharacters :+ spaceChar)
+      // binary versions w/str
+      case Vector(Expr.Str(str), Expr.Str(extraCharsStr)) if stringIsSafeBytewise(extraCharsStr) =>
+        (str, false, (extraCharsStr.getBytes(StandardCharsets.UTF_8) :+ spaceChar).distinct)
+      // ternary versions
+      case Vector(Expr.Str(str), Expr.True, Expr.Str(extraCharsStr)) if stringIsSafeBytewise(extraCharsStr) =>
+        (str, true, extraCharsStr.getBytes(StandardCharsets.UTF_8).distinct)
+      case Vector(Expr.Str(str), Expr.False, Expr.Str(extraCharsStr)) if stringIsSafeBytewise(extraCharsStr) =>
+        (str, false, (extraCharsStr.getBytes(StandardCharsets.UTF_8) :+ spaceChar).distinct)
+      // errors
       case other =>
         throw wrongSignature(other)
     }
 
-    if (usePlus) {
-      val encodedBytes = new PercentCodec(rfcReservedChars, true).encode(str.getBytes(StandardCharsets.UTF_8))
-      Expr.Str(new String(encodedBytes, StandardCharsets.US_ASCII))
-    } else {
-      val encodedBytes =
-        new PercentCodec(rfcReservedChars :+ ' '.toByte, false).encode(str.getBytes(StandardCharsets.UTF_8))
-      Expr.Str(new String(encodedBytes, StandardCharsets.US_ASCII))
-    }
+    val encodedBytes =
+      new PercentCodec(rfcReservedChars ++ extraChars, usePlus).encode(str.getBytes(StandardCharsets.UTF_8))
 
+    Expr.Str(new String(encodedBytes, StandardCharsets.US_ASCII))
   }
 }
 

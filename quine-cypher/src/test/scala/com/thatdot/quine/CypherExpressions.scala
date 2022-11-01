@@ -255,21 +255,53 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
   }
 
   describe("url encoding") {
-    // RFC3986
+    // RFC3986 + "{}
     testExpression("""text.urlencode("hello, world")""", Expr.Str("hello%2C%20world"))
+    testExpression(
+      """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle')""",
+      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2212345678%2F54321%22%20RETURN%20n.foo%20AS%20fiddle")
+    )
+    testExpression("""text.urlencode("%")""", Expr.Str("%25"))
+    testExpression(
+      """text.urlencode('MATCH(missEvents:missEvents) WHERE id(missEvents)="d75db269-41cb-3439-8810-085a8fe85c2e" MATCH (event {cache_class:"MISS"})-[:TARGETED]->(server) RETURN server, event LIMIT 10')""",
+      Expr.Str(
+        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D%22d75db269-41cb-3439-8810-085a8fe85c2e%22%20MATCH%20%28event%20%7Bcache_class%3A%22MISS%22%7D%29-%5B%3ATARGETED%5D-%3E%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010"""
+      )
+    )
+
+    // RFC3986
     testExpression(
       """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle")""",
       Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2712345678%2F54321%27%20RETURN%20n.foo%20AS%20fiddle")
     )
-    testExpression("""text.urlencode("%")""", Expr.Str("%25"))
+    testExpression(
+      """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', '')""",
+      Expr.Str("""MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20"12345678%2F54321"%20RETURN%20n.foo%20AS%20fiddle""")
+    )
+    testExpression(
+      """text.urlencode('MATCH(missEvents:missEvents) WHERE id(missEvents)="d75db269-41cb-3439-8810-085a8fe85c2e" MATCH (event {cache_class:"MISS"})-[:TARGETED]->(server) RETURN server, event LIMIT 10', '')""",
+      Expr.Str(
+        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D"d75db269-41cb-3439-8810-085a8fe85c2e"%20MATCH%20%28event%20{cache_class%3A"MISS"}%29-%5B%3ATARGETED%5D->%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010"""
+      )
+    )
+
+    // x-www-form-urlencoded + "{}
+    testExpression("""text.urlencode("hello, world", true)""", Expr.Str("hello%2C+world"))
+    testExpression("""text.urlencode("%", true)""", Expr.Str("%25"))
+    testExpression(
+      """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', true)""",
+      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2212345678%2F54321%22+RETURN+n.foo+AS+fiddle")
+    )
 
     // x-www-form-urlencoded
-    testExpression("""text.urlencode("hello, world", true)""", Expr.Str("hello%2C+world"))
     testExpression(
       """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle", true)""",
       Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2712345678%2F54321%27+RETURN+n.foo+AS+fiddle")
     )
-    testExpression("""text.urlencode("%", true)""", Expr.Str("%25"))
+    testExpression(
+      """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', true, '')""",
+      Expr.Str("""MATCH+%28n%29+WHERE+strId%28n%29+%3D+"12345678%2F54321"+RETURN+n.foo+AS+fiddle""")
+    )
   }
 
   describe("map projections") {
