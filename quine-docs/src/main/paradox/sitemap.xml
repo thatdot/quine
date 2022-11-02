@@ -1,215 +1,225 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+<urlset
+      xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
             http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
-
-
-  <url>
-    <loc>https://docs.quine.io/</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>1.00</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/docs.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/getting-started/index.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/index.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/core-concepts.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/architecture.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/querying-infinite-data.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/rest-api.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/core-concepts/about-recipes.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/getting-started/quick-start.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/getting-started/exploration-ui.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/getting-started/3d-data-ingest-sq.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/getting-started/operational-considerations.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/index.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/id-provider.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/ingest-sources.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/files-and-named-pipes.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/kafka.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/kinesis.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/sqs---sns.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/ingest-sources/stdin.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/writing-standing-queries.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/multiple-values.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/standing-query-outputs.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/persistors/persistor.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/components/persistors/cassandra-setup.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/index.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/configuration.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/recipe-ref-manual.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/rest-api.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/cypher/cypher-language.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/cypher/cypher-functions.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/cypher/cypher-procedures.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/gremlin-language.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/glossary.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/reference/reify-time.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/community/index.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/community/code-of-conduct.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/community/contributing.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/community/writing-a-recipe.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.64</priority>
-  </url>
-  <url>
-    <loc>https://docs.quine.io/download.html</loc>
-    <lastmod>2022-07-22T13:27:57+00:00</lastmod>
-    <priority>0.51</priority>
-  </url>
+<url>
+  <loc>https://docs.quine.io/</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>1.00</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/docs.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/index.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/quick-start.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/installing-quine-tutorial.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/ingest-streams-tutorial.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/standing-queries-tutorial.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/recipes-tutorial.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/getting-started/exploration-ui.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/index.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/core-concepts.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/architecture.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/streaming-systems.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/3d-data-ingest-sq.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/about-recipes.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/operational-considerations.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/core-concepts/rest-api.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/index.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/id-provider.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/ingest-sources.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/files-and-named-pipes.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/kafka.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/kinesis.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/sqs---sns.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/ingest-sources/stdin.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/writing-standing-queries.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/multiple-values.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/standing-query-outputs.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/persistors/persistor.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/components/persistors/cassandra-setup.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/index.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/configuration.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/recipe-ref-manual.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/rest-api.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/cypher/cypher-language.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/cypher/cypher-functions.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/cypher/cypher-procedures.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/gremlin-language.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/glossary.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/reference/reify-time.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/community/index.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/community/code-of-conduct.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.quine.io/community/contributing.html</loc>
+  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
 
 
 </urlset>

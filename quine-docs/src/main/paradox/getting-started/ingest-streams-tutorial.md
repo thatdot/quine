@@ -47,7 +47,7 @@ The first step when defining an ingest stream is to understand the patterns you 
 
 This is no different than designing a SQL database except that Quine's graph data structure conforms to the familiar *subject-predicate-object* structure found in most human languages. Properly structuring your Quine graph is an important step in making standing queries and quick queries productive and performant.
 
-An ingest query is defined by setting a `type` as described by the @link:[API documentation](https://docs.quine.io//reference/rest-api.html#/paths/api-v1-ingest-name/post) { open=new }. Quine supports many types of ingest streams. Each type has a unique form and requires a specific structure to configure properly.
+An ingest query is defined by setting a `type` as described by the @link:[API documentation](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-ingest-name/post) { open=new }. Quine supports many types of ingest streams. Each type has a unique form and requires a specific structure to configure properly.
 
 For example, we can use a "server sent events" ingest stream to connect the live stream of page revisions on Wikipedia; @link:[mediawiki.revision-create](https://stream.wikimedia.org/?doc#/streams/get_v2_stream_mediawiki_revision_create) { open=new }.
 
