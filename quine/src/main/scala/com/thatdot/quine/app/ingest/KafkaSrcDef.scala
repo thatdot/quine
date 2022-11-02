@@ -202,7 +202,7 @@ object KafkaSrcDef {
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =
       endingOffset
         .fold(kafkaConsumer)(o => kafkaConsumer.takeWhile(r => r.record.offset() <= o))
-        .wireTap((o: WithOffset) => meter.mark(o.record.key().length))
+        .wireTap((o: WithOffset) => meter.mark(o.record.serializedValueSize()))
         .mapMaterializedValue(KafkaKillSwitch)
         .map((o: WithOffset) => (o.record.value(), o))
 
