@@ -30,14 +30,14 @@ object Docker extends AutoPlugin {
       new Dockerfile {
         /* Our public mirror of this docker image from docker hub to avoid:
          * "toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit"
-         * Published by docker/alpine_jvm/publish.sh in our opstools repo to https://us-west-2.console.aws.amazon.com/ecr/repositories/public/507566592123/eclipse-temurin
+         * Published by docker/update_cached_jvm_base_image.sh in our opstools repo to https://us-west-2.console.aws.amazon.com/ecr/repositories/public/507566592123/eclipse-temurin
          */
         from(
           ImageName(
             registry = Some("public.ecr.aws"),
-            namespace = Some("p0a2o6c9"),
+            namespace = Some("thatdot"),
             repository = "eclipse-temurin",
-            tag = Some("18.0.1_10-jre-alpine-curl-libstdcpp")
+            tag = Some("19_36-jre-jammy")
           )
         )
         expose(8080)
