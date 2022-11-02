@@ -28,7 +28,12 @@ MATCH (n) WHERE id(n) = idFrom($that) SET n.line = $that
 ```
 
 @@@ note { title=Hint }
-Select nodes, don't search for nodes, since statically the ID of a node is usually not known. Quine adds an `idFrom` function to Cypher that takes any number of arguments and deterministically produces a node ID from that data.
+Select nodes, don't search for nodes. If your ingest query involves traversing nodes not by edges but e.g. a `WHERE` condition filtering on nodes matching a specific property value, the execution of this involves scanning all nodes. If we detect that the query provided may entail this behavior, we will log a warning:
+```
+Cypher query may contain full node scan; for improved performance, re-write without full node scan."
+```
+
+Quine adds an `idFrom` function to Cypher that takes any number of arguments and deterministically produces a node ID from that data.
 
 This is similar to a consistent-hashing approach where a collection of values are hashed together to produce a unique result that can be used for an ID.
 
