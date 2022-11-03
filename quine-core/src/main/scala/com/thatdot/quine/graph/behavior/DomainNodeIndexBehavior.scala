@@ -3,12 +3,14 @@ package com.thatdot.quine.graph.behavior
 import scala.annotation.nowarn
 import scala.collection.compat._
 import scala.collection.mutable
+import scala.concurrent.Future
 
 import akka.actor.{Actor, ActorLogging}
 import akka.event.LoggingAdapter
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelDomainNodeSubscription,
   CreateDomainNodeSubscription,
@@ -337,6 +339,10 @@ trait DomainNodeIndexBehavior
   /** @see [[NodeParentIndex]]
     */
   protected var domainGraphNodeParentIndex: NodeParentIndex
+
+  protected def processDomainIndexEvent(
+    event: DomainIndexEvent
+  ): Future[Done.type]
 
   /** Called once on node wakeup, this updates DistinctID SQs.
     *  - adds new DistinctID SQs not already in the subscribers

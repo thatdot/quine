@@ -51,10 +51,6 @@ trait BaseNodeActor extends BaseNodeActorView {
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type]
 
-  protected def processDomainIndexEvent(
-    event: DomainIndexEvent
-  ): Future[Done.type]
-
   /** Set the labels on the node
     *
     * @param labels new labels for this node (overwriting previously set labels)
