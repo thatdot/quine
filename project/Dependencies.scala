@@ -64,5 +64,5 @@ object Dependencies {
   val stoplightElementsV = "7.5.18"
   val ujsonV = "1.6.0"
   val visNetworkV = "8.2.0"
-  val webjarsLocatorV = "0.45"
+  val webjarsLocatorV = "0.46"
 }
