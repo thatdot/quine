@@ -312,7 +312,7 @@ final private[quine] class GraphShardActor(
       // Note: This does nothing with the sender of this `LocalMessageDelivery`
       deliverLocalMessage(msg, target, originalSender)
 
-    case NodeStateRehydrated(id, nodeArgs) =>
+    case NodeStateRehydrated(id, nodeArgs, remaining, errorCount) =>
       // Will be re-calcuated from edge count later.
       val costToSleep = new CostToSleep(0L)
       val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake)
@@ -322,10 +322,26 @@ final private[quine] class GraphShardActor(
         id :: graph :: costToSleep :: wakefulState :: actorRefLock :: nodeArgs.productIterator.toList: _*
       ).withMailbox("akka.quine.node-mailbox")
         .withDispatcher(QuineDispatchers.nodeDispatcherName)
-      val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
-      nodes(id) = NodeState.LiveNode(costToSleep, actorRef, actorRefLock, wakefulState)
-      inMemoryActorList.update(id)
-      nodesWokenUpCounter.inc()
+      try {
+        val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
+        nodes(id) = NodeState.LiveNode(costToSleep, actorRef, actorRefLock, wakefulState)
+        inMemoryActorList.update(id)
+        nodesWokenUpCounter.inc()
+      } catch {
+        // Akka may not have finished freeing the name even if the actor is shut down.
+        case InvalidActorNameException(_) =>
+          nodes.remove(id)
+          unlikelyActorNameRsvdCounter.inc()
+          val eKey = WakeUpErrorStates.ActorNameStillReserved
+          val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
+          val msgToDeliver = WakeUp(id, None, remaining - 1, newErrorCount)
+          LocalMessageDelivery.slidingDelay(remaining) match {
+            case None => self ! msgToDeliver
+            case Some(delay) =>
+              context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
+              ()
+          }
+      }
 
     case msg: GetShardStats => msg ?! shardStats()
 
@@ -454,20 +470,8 @@ final private[quine] class GraphShardActor(
               .create(id, snapshotOpt, graph)
               .onComplete {
                 case Success(nodeArgs) =>
-                  self.tell(NodeStateRehydrated(id, nodeArgs), self)
-                case Failure(_: InvalidActorNameException) =>
-                  nodes.remove(id)
-                  unlikelyActorNameRsvdCounter.inc()
-                  val eKey = WakeUpErrorStates.ActorNameStillReserved
-                  val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
-                  val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
-                  LocalMessageDelivery.slidingDelay(remaining) match {
-                    case None => self ! msgToDeliver
-                    case Some(delay) =>
-                      context.system.scheduler.scheduleOnce(delay)(self ! msgToDeliver)(context.dispatcher)
-                      ()
-                  }
-                case Failure(error) =>
+                  self.tell(NodeStateRehydrated(id, nodeArgs, remaining, errorCount), self)
+                case Failure(error) => // Some persistor error, likely
                   nodes.remove(id)
                   unlikelyUnexpectedWakeUpErrCounter.inc()
                   if (log.isInfoEnabled) log.info(s"$remaining retries remaining. Retrying because of a $error")
@@ -790,8 +794,12 @@ final private[quine] case class WakeUp(
 ) extends ShardControlMessage
 
 /** Sent to a shard to tell it the state for a waking Node has been read from persistence */
-final private[quine] case class NodeStateRehydrated(id: QuineIdAtTime, nodeArgs: NodeActorConstructorArgs)
-    extends ShardControlMessage
+final private[quine] case class NodeStateRehydrated(
+  id: QuineIdAtTime,
+  nodeArgs: NodeActorConstructorArgs,
+  remainingRetries: Int,
+  errorCount: Map[WakeUpErrorStates, Int]
+) extends ShardControlMessage
 
 /** Possible failures encountered when waking up nodes. Tracking how often these errors occur can aid understanding
   * of some protocol failure conditions.
