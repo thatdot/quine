@@ -2,11 +2,13 @@ package com.thatdot.quine.graph.behavior
 
 import scala.annotation.nowarn
 import scala.collection.compat._
-import scala.collection.mutable
+import scala.collection.{immutable, mutable}
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
 import akka.actor.{Actor, ActorLogging}
 import akka.event.LoggingAdapter
+import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
@@ -283,6 +285,7 @@ object DomainNodeIndexBehavior {
   object SubscribersToThisNodeUtil {
 
     /** @param subscribers the places (nodes and top-level result buffers) to which results should be reported
+      *                    NB on a supernode, subscribers may be extremely large!
       * @param lastNotification the last notification sent to subscribers
       * @param relatedQueries the top-level query IDs for which this subscription may be used to calculate answers
       */
@@ -467,6 +470,7 @@ trait DomainNodeIndexBehavior
           DomainNodeSubscriptionResult(qid, dgnId, result),
           shouldSendReplies
         )
+        ()
       case None =>
         dgnRegistry.withIdentifiedDomainGraphNode(dgnId)(
           domainGraphSubscribers.updateAnswerAndNotifySubscribers(_, shouldSendReplies)
@@ -621,17 +625,24 @@ trait DomainNodeIndexBehavior
     }
   }
 
+  /** If [[shouldSendReplies]], begin asynchronously notifying all [[notifiables]] of [[msg]]
+    * @return a future that completes when all notifications have been sent (though not necessarily received yet)
+    */
   private[this] def conditionallyReplyToAll(
-    notifiables: Iterable[Notifiable],
+    notifiables: immutable.Iterable[Notifiable],
     msg: SqResultLike,
     shouldSendReplies: Boolean
-  ): Unit =
-    (if (shouldSendReplies) notifiables else Iterable.empty)
-      .foreach {
-        case Left(quineId) => quineId ! msg
-        case Right(sqId) =>
-          graph.reportStandingResult(sqId, msg) // TODO should this really be suppressed by shouldSendReplies?
-      }
+  ): Future[Unit] =
+    if (!shouldSendReplies) Future.unit
+    else
+      Source(notifiables)
+        .runForeach {
+          case Left(quineId) => quineId ! msg
+          case Right(sqId) =>
+            graph.reportStandingResult(sqId, msg) // TODO should this really be suppressed by shouldSendReplies?
+            ()
+        }
+        .map(_ => ())(ExecutionContexts.parasitic)
 
   /** An index of upstream subscribers to this node for a given DGB. Keys are DGBs registered on this node, values are
     * the [[Notifiable]]s (eg, nodes or global SQ result queues) subscribed to this node, paired with the last result
