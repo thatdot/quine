@@ -547,25 +547,27 @@ private[graph] class NodeActor(
       .map(_.toString)
 
     val dgnLocalEventIndexSummary = {
-      val propsIdx = localEventIndex.watchingForProperty.toList.flatMap { case (k, v) =>
-        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
-          k.name -> dgnId
+      val propsIdx = localEventIndex.watchingForProperty.view.map { case (propertyName, notifiables) =>
+        propertyName.name -> notifiables.toList.collect {
+          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+            dgnId
         }
-      }
-      val edgesIdx = localEventIndex.watchingForEdge.toList.flatMap { case (k, v) =>
-        v.toList.collect { case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
-          k.name -> dgnId
+      }.toMap
+      val edgesIdx = localEventIndex.watchingForEdge.view.map { case (edgeLabel, notifiables) =>
+        edgeLabel.name -> notifiables.toList.collect {
+          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+            dgnId
         }
-      }
-      val anyEdgesIdx = localEventIndex.watchingForAnyEdge.toList.collect {
+      }.toMap
+      val anyEdgesIdx = localEventIndex.watchingForAnyEdge.collect {
         case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
           dgnId
       }
 
       DgnLocalEventIndexSummary(
-        propsIdx.toMap,
-        edgesIdx.toMap,
-        anyEdgesIdx.distinct
+        propsIdx,
+        edgesIdx,
+        anyEdgesIdx.toList
       )
     }
 

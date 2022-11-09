@@ -111,9 +111,15 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
+  /** Debug (non-authoritative) summary of the LocalEventIndex entries that relate to DGN queries
+    *
+    * List is used for its relatively nice default toString
+    *
+    * INV: [[anyEdgeIdx]] must be distinct
+    */
   final case class DgnLocalEventIndexSummary(
-    propIdx: Map[String, DomainGraphNodeId],
-    edgeIdx: Map[String, DomainGraphNodeId],
+    propIdx: Map[String, List[DomainGraphNodeId]],
+    edgeIdx: Map[String, List[DomainGraphNodeId]],
     anyEdgeIdx: List[DomainGraphNodeId]
   ) extends QuineMessage
 
