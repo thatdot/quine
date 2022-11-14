@@ -5,6 +5,8 @@ addCommandAlias("scala212", "++" + scalaV212)
 addCommandAlias("scala213", "++" + scalaV213)
 addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
 
+import scala.sys.process._
+
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
@@ -198,6 +200,7 @@ lazy val `quine-browser`: Project = project
       "react-plotly.js" -> reactPlotlyV,
       "@stoplight/elements" -> stoplightElementsV
     ),
+    webpackNodeArgs := (if (Seq("node", "--version").!!.trim >= "v17") Seq("--openssl-legacy-provider") else Seq()),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
@@ -367,3 +370,4 @@ lazy val `paradox-overlay`: Project = project
 // Spurious warnings
 Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationExpandDepth
 Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationDepth
+Global / excludeLintKeys += `quine-browser` / webpackNodeArgs
