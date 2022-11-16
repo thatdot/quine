@@ -6,7 +6,6 @@ import sbt._
 object Packaging extends AutoPlugin {
 
   override def requires = AssemblyPlugin
-  override def trigger = noTrigger
 
   // Assembly merge strategy
   private val reverseConcat: MergeStrategy = CustomMergeStrategy("reverseConcat") { conflicts =>

@@ -221,7 +221,6 @@ lazy val `quine`: Project = project
     `quine-rocksdb-persistor`
   )
   .settings(
-    version := quineAppV,
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
@@ -293,7 +292,6 @@ lazy val `quine-docs`: Project = {
     .settings(`scala 2.12`)
     .enablePlugins(ParadoxThatdot, GhpagesPlugin)
     .settings(
-      version := quineAppV,
       projectName := "Quine",
       git.remoteRepo := "git@github.com:thatdot/quine.io.git",
       ghpagesBranch := "main",

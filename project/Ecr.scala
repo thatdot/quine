@@ -17,7 +17,6 @@ object Ecr extends AutoPlugin {
   import autoImport._
 
   override def requires = Docker
-  override def trigger = noTrigger
 
   override lazy val projectSettings = Seq(
     publishToEcr := true,
