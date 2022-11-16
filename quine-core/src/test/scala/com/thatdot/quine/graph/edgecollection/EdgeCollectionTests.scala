@@ -10,6 +10,16 @@ import org.scalatest.{Assertion, Inspectors, LoneElement}
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.graph.HalfEdgeGen
+import com.thatdot.quine.model.{
+  DependsUpon,
+  DomainEdge,
+  DomainGraphBranch,
+  EdgeDirection,
+  FetchConstraint,
+  GenericEdge,
+  HalfEdge,
+  QuineId
+}
 
 abstract class EdgeCollectionTests
     extends AnyFlatSpec
@@ -113,6 +123,129 @@ abstract class EdgeCollectionTests
 
     }
 
+  }
+
+  "hasUniqueGenEdges" should "be sufficient to match" in {
+    def checkContains(localEdges: Seq[HalfEdge], domainEdges: Seq[DomainEdge], qid: QuineId): Boolean = {
+      val ec = newEdgeCollection
+      localEdges.foreach(edge => ec += edge)
+      ec.hasUniqueGenEdges(domainEdges.toSet, qid)
+    }
+
+    val qid1 = QuineId.fromInternalString("01")
+    val qid2 = QuineId.fromInternalString("02")
+    val qid3 = QuineId.fromInternalString("03")
+    val qid4 = QuineId.fromInternalString("04")
+
+    def domainEdge(sym: Symbol, dir: EdgeDirection, circularMatchAllowed: Boolean, constraintMin: Int) =
+      DomainEdge(
+        GenericEdge(sym, dir),
+        DependsUpon,
+        DomainGraphBranch.empty,
+        circularMatchAllowed,
+        FetchConstraint(constraintMin, None)
+      )
+
+    assert(
+      checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
+        ),
+        qid3
+      ),
+      "Base case - matching edges, circularMatchAllowed = false"
+    )
+
+    //addition of 1 more input edge fails
+    assert(
+      !checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 3)
+        ),
+        qid3
+      ),
+      "domain edges > collection size"
+    )
+
+    //different direction is not matched
+    assert(
+      !checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 2)
+        ),
+        qid3
+      ),
+      "Different direction is not matched"
+    )
+
+    assert(
+      !checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
+        ),
+        qid2
+      ),
+      "Qid match added totals"
+    )
+
+    //with matching circular edges
+    assert(
+      !checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid3)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 3),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 4)
+        ),
+        qid4
+      ),
+      "Matching circAllowed and non-circAllowed edges"
+    )
+
+    // with only circular edges as input always succeeds
+    assert(
+      checkContains(
+        Seq(
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid3)
+        ),
+        Seq(
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 1),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 2),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 3),
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 4)
+        ),
+        qid4
+      ),
+      "Only circAllowedEdges always succeeds"
+    )
   }
 
 }

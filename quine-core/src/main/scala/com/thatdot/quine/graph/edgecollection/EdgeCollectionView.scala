@@ -48,7 +48,16 @@ abstract class EdgeCollectionView {
 
   def contains(edge: HalfEdge): Boolean
 
-  // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
+  /** Test for the presence of all required edges, without allowing one existing edge to match
+    * more than one required edge.
+    *
+    * Returns true if for any [[GenericEdge]] in the input set, the total HalfEdges in
+    * this edge collection can contain the values in the input set.
+    *
+    * - We count domainEdges marked constraints.min > 0 and circularMatchAllowed == false.
+    * - If there are additional edges marked circularMatchAllowed, we count those as well.
+    * - If there is not, and a circular edge is detected, we also add 1 if there is an edge to the supplied [[QuineId]] (to prevent this disallowed edge from counting)
+    */
   def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean
 
 }
