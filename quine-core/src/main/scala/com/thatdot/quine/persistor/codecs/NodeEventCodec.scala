@@ -64,7 +64,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         val halfEdge = HalfEdge(
           Symbol(event.edgeType),
           byte2EdgeDirection(event.direction),
-          new QuineId(event.otherIdAsByteBuffer.remainingBytes)
+          QuineId(event.otherIdAsByteBuffer.remainingBytes)
         )
         NodeChangeEvent.EdgeAdded(halfEdge)
 
@@ -73,7 +73,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         val halfEdge = HalfEdge(
           Symbol(event.edgeType),
           byte2EdgeDirection(event.direction),
-          new QuineId(event.otherIdAsByteBuffer.remainingBytes)
+          QuineId(event.otherIdAsByteBuffer.remainingBytes)
         )
         NodeChangeEvent.EdgeRemoved(halfEdge)
 

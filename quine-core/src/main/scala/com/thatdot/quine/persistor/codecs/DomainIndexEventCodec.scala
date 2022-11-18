@@ -77,7 +77,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
         val event = makeEvent(new persistence.CreateDomainNodeSubscription())
           .asInstanceOf[persistence.CreateDomainNodeSubscription]
         val dgnId = event.testDgnId()
-        val replyTo = new QuineId(event.replyToAsByteBuffer.remainingBytes)
+        val replyTo = QuineId(event.replyToAsByteBuffer.remainingBytes)
         val relatedQueries = Set.newBuilder[StandingQueryId]
         var i = 0
         val length = event.relatedQueriesLength
@@ -104,7 +104,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
       case persistence.DomainIndexEventUnion.DomainNodeSubscriptionResult =>
         val event = makeEvent(new persistence.DomainNodeSubscriptionResult())
           .asInstanceOf[persistence.DomainNodeSubscriptionResult]
-        val from = new QuineId(event.fromIdAsByteBuffer.remainingBytes)
+        val from = QuineId(event.fromIdAsByteBuffer.remainingBytes)
         val dgnId = event.testDgnId()
         val result = event.result()
         DomainIndexEvent.DomainNodeSubscriptionResult(from, dgnId, result)
@@ -113,7 +113,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
         val event = makeEvent(new persistence.CancelDomainNodeSubscription())
           .asInstanceOf[persistence.CancelDomainNodeSubscription]
         val dgnId = event.testDgnId()
-        val subscriber = new QuineId(event.alreadyCancelledSubscriberAsByteBuffer.remainingBytes)
+        val subscriber = QuineId(event.alreadyCancelledSubscriberAsByteBuffer.remainingBytes)
         DomainIndexEvent.CancelDomainNodeSubscription(dgnId, subscriber)
 
       case other =>

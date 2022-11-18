@@ -157,7 +157,7 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
 
   protected[this] def readQuineId(qid: persistence.QuineId): QuineId =
-    new QuineId(qid.idAsByteBuffer.remainingBytes)
+    QuineId(qid.idAsByteBuffer.remainingBytes)
 
   import org.msgpack.core.MessagePack
 

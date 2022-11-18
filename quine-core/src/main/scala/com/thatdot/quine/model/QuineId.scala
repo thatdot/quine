@@ -4,6 +4,8 @@ import java.util.Arrays
 
 import scala.util.hashing.MurmurHash3
 
+import com.google.common.collect.{Interner, Interners}
+
 import com.thatdot.quine.util.HexConversions
 import com.thatdot.quine.util.TypeclassInstances.ByteArrOrdering
 
@@ -12,8 +14,8 @@ import com.thatdot.quine.util.TypeclassInstances.ByteArrOrdering
   * @note the underlying array should not be mutated (maybe it should be a read-only bytebuffer)
   * @param array bytes that constitute the ID
   */
-final case class QuineId(array: Array[Byte]) extends Ordered[QuineId] {
-  override def hashCode: Int = MurmurHash3.bytesHash(array, MurmurHash3.seqSeed)
+final case class QuineId private (array: Array[Byte]) extends Ordered[QuineId] {
+  override val hashCode: Int = MurmurHash3.bytesHash(array, MurmurHash3.seqSeed)
 
   override def equals(that: Any): Boolean = that match {
     case QuineId(other) => Arrays.equals(array, other)
@@ -48,12 +50,17 @@ final case class QuineId(array: Array[Byte]) extends Ordered[QuineId] {
 }
 object QuineId {
 
+  private val quineIdInterner: Interner[QuineId] = Interners.newWeakInterner[QuineId]
+  def apply(array: Array[Byte]): QuineId = quineIdInterner.intern(new QuineId(array))
+
   /** Recover an ID from a string produced by [[toInternalString]].
     *
     * @see [[QuineId.toInternalString]]
     */
   @throws[IllegalArgumentException]("if the input string is not a valid internal ID")
   def fromInternalString(str: String): QuineId =
-    if (str == "empty") new QuineId(Array.emptyByteArray)
+    if (str == "empty") empty
     else QuineId(HexConversions.parseHexBinary(str))
+
+  private val empty = QuineId(Array.emptyByteArray)
 }

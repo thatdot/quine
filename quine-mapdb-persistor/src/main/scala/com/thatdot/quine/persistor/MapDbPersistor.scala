@@ -266,7 +266,7 @@ final class MapDbPersistor(
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
       .fromJavaStream(() => nodeChangeEvents.navigableKeySet().parallelStream())
-      .map(x => new QuineId(x.head.asInstanceOf[Array[Byte]]))
+      .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
       .statefulMapConcat { () =>
         var previous: Option[QuineId] = None
         (qid: QuineId) =>
@@ -281,7 +281,7 @@ final class MapDbPersistor(
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
       .fromJavaStream(() => snapshots.navigableKeySet().parallelStream())
-      .map(x => new QuineId(x.head.asInstanceOf[Array[Byte]]))
+      .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
       .statefulMapConcat { () =>
         var previous: Option[QuineId] = None
         (qid: QuineId) =>
