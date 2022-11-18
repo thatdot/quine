@@ -20,7 +20,7 @@ object Docker extends AutoPlugin {
   import autoImport._
   override lazy val projectSettings = Seq(
     dockerVolume := file("/var/quine"),
-    dockerTags := sys.props.get("docker.tag").fold(Seq(version.value.replace("+", "-"), "latest"))(Seq(_)),
+    dockerTags := sys.props.get("docker.tag").fold(Seq(version.value, "latest"))(Seq(_)),
     docker / imageNames := dockerTags.value.map(t =>
       ImageName(namespace = Some("thatdot"), repository = name.value, tag = Some(t))
     ),
