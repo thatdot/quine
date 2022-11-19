@@ -23,7 +23,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   *   - for every node: every event occurs at a unique time
   *   - for every node: every snapshot occurs at a unique time
   */
-class InvariantWrapper(wrapped: PersistenceAgent) extends PersistenceAgent {
+class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgent(wrapped) {
 
   private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeEvent]]
   private val snapshots = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, Array[Byte]]]

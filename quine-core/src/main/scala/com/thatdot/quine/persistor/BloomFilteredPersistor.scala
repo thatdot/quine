@@ -52,7 +52,7 @@ private class BloomFilteredPersistor(
   val persistenceConfig: PersistenceConfig,
   falsePositiveRate: Double = 0.1
 )(implicit materializer: Materializer)
-    extends PersistenceAgent {
+    extends WrappedPersistenceAgent(wrappedPersistor) {
 
   private val bloomFilter: BloomFilter[QuineId] =
     BloomFilter.create[QuineId](QuineIdFunnel, bloomFilterSize, falsePositiveRate)
