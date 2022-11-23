@@ -2,7 +2,9 @@ import sbt._
 import sbt.Keys._
 import org.portablescala.sbtplatformdeps.PlatformDepsPlugin.autoImport._
 import scalajsbundler.sbtplugin.ScalaJSBundlerPlugin.autoImport._
+
 import scala.sys.process._
+import scala.util.Try
 
 object QuineSettings {
 
@@ -18,9 +20,10 @@ object QuineSettings {
   )
 
   val nodeLegacySslArg = "--openssl-legacy-provider"
-  // See if node acceps this arg. Give it an expression to evaluate {} so it returns instead of entering the repl
+  // See if node accepts this arg. Give it an expression to evaluate {} so it returns instead of entering the repl
   def nodeLegacySslIfAvailable: Seq[String] =
-    if (Seq("node", nodeLegacySslArg, "-e", "{}").! == 0) Seq(nodeLegacySslArg) else Seq()
+    Try(if (Seq("node", nodeLegacySslArg, "-e", "{}").! == 0) Seq(nodeLegacySslArg) else Seq())
+      .getOrElse(Seq())
 
   val commonSettings: Seq[Setting[_]] = Seq(
     organization := "com.thatdot",
