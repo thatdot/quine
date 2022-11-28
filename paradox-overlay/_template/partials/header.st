@@ -1,4 +1,4 @@
-<header class="md-header" data-md-component="header">
+<header class="md-header" data-md-component="header" data-md-state="shadow">
   <nav class="md-header-nav md-grid">
     <div class="md-flex">
       <div class="md-flex__cell md-flex__cell--shrink">

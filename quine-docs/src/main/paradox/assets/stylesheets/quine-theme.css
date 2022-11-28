@@ -36,15 +36,56 @@ button[data-md-color-accent="quine-blue"],
   background-color: rgba(121, 128, 137, 0.1);
 }
 
+.sl-px-24 {
+  padding-left: 10px !important;
+  padding-right: 0px !important;
+}
+
+.md-logo img {
+  border-style: none;
+  height: 24px;
+  max-width: none;
+}
+
+.container {
+  overflow: visible;
+  max-width: 1200px;
+  margin-right: auto;
+  margin-left: auto;
+  padding-right: 5%;
+  padding-left: 5%;
+  font-size: 16px;
+  line-height: 24px;
+  -o-object-fit: contain;
+  object-fit: contain;
+}
+
+.w-list-unstyled {
+  padding-left: 0;
+  list-style: none;
+}
+
 .md-footer-nav {
   background-color: #1e609d;
 }
 
 .footer {
   overflow: hidden;
-  padding: 20px 5% 40px;
-  background-image: -webkit-gradient(linear, left top, left bottom, from(#1e609d), to(#003b94));
+  padding: 0px 5% 40px;
+  background-image: -webkit-gradient(
+    linear,
+    left top,
+    left bottom,
+    from(#1e609d),
+    to(#003b94)
+  );
   background-image: linear-gradient(180deg, #1e609d, #003b94);
+}
+
+.footer img {
+  max-width: 100%;
+  vertical-align: middle;
+  display: inline-block;
 }
 
 .footer-columns {
@@ -53,7 +94,7 @@ button[data-md-color-accent="quine-blue"],
   display: -ms-flexbox;
   display: flex;
   margin-right: auto;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
   margin-left: auto;
   -webkit-box-pack: center;
   -webkit-justify-content: center;
@@ -85,6 +126,8 @@ button[data-md-color-accent="quine-blue"],
 }
 
 .h3-footer {
+  margin-top: 0px;
+  margin-bottom: 10px;
   color: #fff;
   font-size: 20px;
 }
@@ -164,7 +207,6 @@ button[data-md-color-accent="quine-blue"],
 }
 
 @media screen and (max-width: 991px) {
-
   .footer-list {
     margin-right: 10px;
     margin-bottom: 20px;
@@ -188,11 +230,9 @@ button[data-md-color-accent="quine-blue"],
     padding-right: 20px;
     padding-left: 20px;
   }
-
 }
 
 @media screen and (max-width: 767px) {
-
   .footer-columns {
     display: -ms-grid;
     display: grid;
@@ -239,13 +279,12 @@ button[data-md-color-accent="quine-blue"],
   .copyright-text {
     margin-top: 40px;
   }
-
 }
 
 @media screen and (max-width: 479px) {
-
   .footer-columns {
-    grid-template-areas: ". ."
+    grid-template-areas:
+      ". ."
       ". ."
       ". Area";
     -ms-grid-columns: 1fr 1fr;
@@ -302,5 +341,4 @@ button[data-md-color-accent="quine-blue"],
   .footer-heading {
     margin-top: 20px;
   }
-
 }

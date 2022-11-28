@@ -37,83 +37,78 @@
     $endif$
 </footer>
 <div class="footer wf-section">
-    <div class="container">
-      <div class="w-layout-grid footer-columns">
-        <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec0f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
-          <li class="footer-list-item">
-            <h3 class="h3-footer"><strong>About</strong></h3>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/about" class="footer-link">What is Quine?</a>
-          </li>
-        </ul>
-        <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec1f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
-          <li class="footer-list-item">
-            <h3 class="h3-footer"><strong>Docs</strong></h3>
-          </li>
-          <li class="footer-list-item">
-            <a href="/core-concepts/architecture.html" class="footer-link">Architecture</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://docs.quine.io/core-concepts/streaming-systems.html" class="footer-link">Quine and Event Streams</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="/getting-started/standing-queries-tutorial.html" class="footer-link">Standing Query Tutorial</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="/getting-started/ingest-streams-tutorial.html" class="footer-link">Ingest Streams Tutorial</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="/getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
-          </li>
-        </ul>
-        <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec2f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
-          <li class="footer-list-item">
-            <h3 class="h3-footer"><strong>Setup</strong></h3>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/download" class="footer-link">Download</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="/getting-started/index.html" class="footer-link">Getting Started</a>
-          </li>
-        </ul>
-        <div id="w-node-_972d8002-2611-e260-929c-6645d914b4d5-8e70ec0c" class="div-block-22"></div>
-        <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec3f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
-          <li class="footer-list-item">
-            <h3 class="h3-footer"><strong>Recipes</strong></h3>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://docs.quine.io/getting-started/recipes-tutorial.html" class="footer-link">Recipes Overview</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/recipes/ethereum-tag-propagation" class="footer-link">Ethereum</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/recipes/cdn-cache-efficiency-by-segment" class="footer-link">CDN Cache Efficiency</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/recipes/apache-log-analytics" class="footer-link">Apache Log Analytics</a>
-          </li>
-        </ul>
-        <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec4f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
-          <li class="footer-list-item">
-            <h3 class="h3-footer"><strong>Community</strong></h3>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://github.com/thatdot/quine" target="_blank" class="footer-link">GitHub</a>
-          </li>
-          <li class="footer-list-item">
-            <a data-ctegory="Slack Signup" data-action="Link click" data-label="quine slack footer" href="https://that.re/quine-slack" target="_blank" class="footer-link">Slack</a>
-          </li>
-          <li class="footer-list-item">
-            <a href="https://quine.io/code-of-conduct" class="footer-link">Code of Conduct</a>
-          </li>
-        </ul>
-      </div>
-      <div class="w-layout-grid footer-legal-grid">
-        <div class="copyright-text"></div>
-        <a href="https://quine.io/" aria-current="page" class="w-inline-block w--current"><img src="/assets/images/Quine-Logo-White.svg" loading="lazy" width="257.5" alt=""></a>
+  <div class="container">
+    <div class="w-layout-grid footer-columns">
+      <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec1f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
+        <li class="footer-list-item">
+          <h3 class="h3-footer"><strong>Docs</strong></h3>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/core-concepts/architecture.html" class="footer-link">Architecture</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/core-concepts/streaming-systems.html" class="footer-link">Quine and Event Streams</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/getting-started/standing-queries-tutorial.html" class="footer-link">Standing Query Overview</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/getting-started/ingest-streams-tutorial.html" class="footer-link">Ingest Streams Overview</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/getting-started/exploration-ui.html" class="footer-link">Exploration UI</a>
+        </li>
+      </ul>
+      <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec3f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
+        <li class="footer-list-item">
+          <h3 class="h3-footer"><strong>Recipes</strong></h3>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/getting-started/recipes-tutorial.html" class="footer-link">Recipes Overview</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://quine.io/recipes/ethereum-tag-propagation" class="footer-link">Ethereum</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://quine.io/recipes/cdn-cache-efficiency-by-segment" class="footer-link">CDN Cache Efficiency</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://quine.io/recipes/apache-log-analytics" class="footer-link">Apache Log Analytics</a>
+        </li>
+      </ul>
+      <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec2f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
+        <li class="footer-list-item">
+          <h3 class="h3-footer"><strong>Setup</strong></h3>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://quine.io/download" class="footer-link">Download</a>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://docs.quine.io/getting-started/quick-start.html" class="footer-link">Getting Started</a>
+        </li>
+      </ul>
+      <ul id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec4f-8e70ec0c" role="list" class="footer-list w-list-unstyled">
+        <li class="footer-list-item">
+          <h3 class="h3-footer"><strong>Community</strong></h3>
+        </li>
+        <li class="footer-list-item">
+          <a href="https://github.com/thatdot/quine" target="_blank" class="footer-link">GitHub</a>
+        </li>
+        <li class="footer-list-item">
+          <a data-label="quine slack footer" data-ctegory="Slack Signup" data-action="Link click" href="https://that.re/quine-slack" target="_blank" class="footer-link">Slack</a>
+        </li>
+      </ul>
+    </div>
+    <div class="w-layout-grid footer-legal-grid">
+      <div id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec6b-8e70ec0c" class="copyright-text">© 2022 thatDot, Inc.</div>
+      <a href="index.html" aria-current="page" class="footer-logo-link w-inline-block w--current"><img src="https://uploads-ssl.webflow.com/61d5ee2c68a4d5d61588037b/621eca801bbf60a31b20a6b4_Quine%20Logo%20-%20White.svg" loading="lazy" width="257.5" alt="The Quine logo - a Q with an arrow, like a graph edge, as the stroke in the Q. White version."></a>
+      <div class="legal-links">
+        <a href="code-of-conduct.html" class="footer-link">Code of Conduct</a>
       </div>
     </div>
+  </div>
 </div>
+<script src="https://d3e54v103j8qbb.cloudfront.net/js/jquery-3.5.1.min.dc5e7f18c8.js?site=61d5ee2c68a4d5d61588037b" type="text/javascript" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+<script src="https://quine.io/js/webflow.js" type="text/javascript"></script>
+<!-- [if lte IE 9]><script src="https://cdnjs.cloudflare.com/ajax/libs/placeholders/3.0.2/placeholders.min.js"></script><![endif] -->
+<script type="text/javascript">
