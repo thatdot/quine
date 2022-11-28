@@ -277,6 +277,11 @@ lazy val `quine`: Project = project
     buildInfoPackage := "com.thatdot.quine.app"
   )
 
+// Files under quine-docs/src/main/paradox/lib have been manually added. When we moved from
+// the  sbt-paradox-material-theme (see plugins.sbt) to a fork, the
+// forked library omitted this directory, so those files have been
+// copied from the original plugin library, however, they should _not_ be
+// included in the paradox theme.
 lazy val `quine-docs`: Project = {
   val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
   val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
