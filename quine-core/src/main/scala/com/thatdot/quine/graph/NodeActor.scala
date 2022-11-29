@@ -64,6 +64,21 @@ object NodeActorConstructorArgs {
     multipleValuesStandingQueryStates = mutable.Map.empty,
     initialJournal = Iterable.empty
   )
+
+  /** Create NodeActorConstructorArgs from a NodeSnapshot
+    *
+    * @param snapshot node snapshot
+    */
+  def fromSnapshot(snapshot: NodeSnapshot): NodeActorConstructorArgs =
+    NodeActorConstructorArgs(
+      properties = snapshot.properties,
+      edges = snapshot.edges,
+      distinctIdSubscribers = snapshot.subscribersToThisNode,
+      domainNodeIndex = DomainNodeIndex(snapshot.domainNodeIndex),
+      multipleValuesStandingQueryStates = mutable.Map.empty,
+      initialJournal = Iterable.empty
+    )
+
 }
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
@@ -658,46 +673,24 @@ object NodeActor {
     recoverySnapshotBytes match {
       case Some(recoverySnapshotBytes) =>
         val snapshot = deserializeSnapshotBytes(recoverySnapshotBytes, quineIdAtTime)(graph.idProvider)
-        val multipleValuesStandingQueryStatesFut: Future[Option[MultipleValuesStandingQueries]] =
+        val multipleValuesStandingQueryStatesFut: Future[MultipleValuesStandingQueries] =
           getMultipleValuesStandingQueryStates(quineIdAtTime, graph)
         multipleValuesStandingQueryStatesFut.map(multipleValuesStandingQueryStates =>
-          nodeConstructorArgsFromRestoredData(
-            snapshot,
-            journal =
-              None, // this snapshot was created as the node slept, so there are no journal events after the snapshot
-            multipleValuesStandingQueryStates = multipleValuesStandingQueryStates
-          )
+          // this snapshot was created as the node slept, so there are no journal events after the snapshot
+          NodeActorConstructorArgs
+            .fromSnapshot(snapshot)
+            .copy(multipleValuesStandingQueryStates = multipleValuesStandingQueryStates)
         )(graph.nodeDispatcherEC)
 
       case None => restoreFromSnapshotAndJournal(quineIdAtTime, graph)
     }
 
-  /** Deserialize a binary node snapshot for the thoroughgoing moment and use it to initialize node state
-    *
-    * @param restored node snapshot
-    */
-  private def nodeConstructorArgsFromRestoredData(
-    restored: NodeSnapshot,
-    journal: Option[Journal],
-    multipleValuesStandingQueryStates: Option[MultipleValuesStandingQueries]
-  ): NodeActorConstructorArgs =
-    NodeActorConstructorArgs(
-      properties = restored.properties,
-      edges = restored.edges,
-      distinctIdSubscribers = restored.subscribersToThisNode,
-      domainNodeIndex = DomainNodeIndex(restored.domainNodeIndex),
-      multipleValuesStandingQueryStates = multipleValuesStandingQueryStates.getOrElse(mutable.Map.empty),
-      initialJournal = journal.getOrElse(
-        List.empty
-      )
-    )
-
   private[this] def getMultipleValuesStandingQueryStates(
     qidAtTime: QuineIdAtTime,
     graph: BaseGraph
-  ): Future[Option[MultipleValuesStandingQueries]] = (graph -> qidAtTime) match {
+  ): Future[MultipleValuesStandingQueries] = (graph -> qidAtTime) match {
     case (sqGraph: StandingQueryOpsGraph, QuineIdAtTime(qid, None)) =>
-      implicit val idProv: QuineIdProvider = sqGraph.idProvider
+      val idProv: QuineIdProvider = sqGraph.idProvider
       val lookupInfo = new MultipleValuesStandingQueryLookupInfo {
         def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
           sqGraph.getStandingQueryPart(queryPartId)
@@ -715,7 +708,7 @@ object NodeActor {
               .fold(
                 err =>
                   throw new NodeWakeupFailedException(
-                    s"NodeActor state (Standing Query States) for node: ${qidAtTime.debug} could not be loaded",
+                    s"NodeActor state (Standing Query States) for node: ${qidAtTime.debug(idProv)} could not be loaded",
                     err
                   ),
                 identity
@@ -724,14 +717,14 @@ object NodeActor {
             sqIdAndPartId -> sqState
           }
         }(sqGraph.nodeDispatcherEC)
-        .map(map => Some(mutable.Map.from(map)))(sqGraph.nodeDispatcherEC)
+        .map(map => mutable.Map.from(map))(sqGraph.nodeDispatcherEC)
     case (_: StandingQueryOpsGraph, QuineIdAtTime(_, hasHistoricalTimestamp @ _)) =>
       // this is the right kind of graph, but by definition, historical nodes (ie, atTime != None)
       // have no multipleValues states
-      Future.successful(None)
+      Future.successful(mutable.Map.empty)
     case (nonStandingQueryGraph @ _, _) =>
       // wrong kind of graph: only [[StandingQueryOpsGraph]]s can manage MultipleValues Standing Queries
-      Future.successful(None)
+      Future.successful(mutable.Map.empty)
 
   }
 
@@ -748,8 +741,6 @@ object NodeActor {
     val QuineIdAtTime(qid, atTime) = quineIdAtTime
     val persistenceConfig = graph.persistor.persistenceConfig
 
-    implicit val idProv: QuineIdProvider = graph.idProvider
-
     def getSnapshot(): Future[Option[NodeSnapshot]] =
       if (!persistenceConfig.snapshotEnabled) Future.successful(None)
       else {
@@ -764,7 +755,7 @@ object NodeActor {
             graph.persistor.getLatestSnapshot(qid, upToTime)
           }
           .map { maybeBytes =>
-            maybeBytes.map(deserializeSnapshotBytes(_, quineIdAtTime))
+            maybeBytes.map(deserializeSnapshotBytes(_, quineIdAtTime)(graph.idProvider))
           }(graph.nodeDispatcherEC)
       }
 
@@ -796,7 +787,7 @@ object NodeActor {
         }(graph.nodeDispatcherEC)
 
     // Get the materialized standing query states for MultipleValues.
-    val multipleValuesStandingQueryStates: Future[Option[MultipleValuesStandingQueries]] =
+    val multipleValuesStandingQueryStates: Future[MultipleValuesStandingQueries] =
       getMultipleValuesStandingQueryStates(quineIdAtTime, graph)
 
     // Will defer all other message processing until the Future is complete.
@@ -805,26 +796,12 @@ object NodeActor {
     // message stashing.
     snapshotAndJournal
       .zip(multipleValuesStandingQueryStates)
-      .recoverWith {
-        case nwf: NodeWakeupFailedException => Future.failed(nwf)
-        case err =>
-          Future.failed(
-            new NodeWakeupFailedException(
-              s"""NodeActor state for node: ${qid.debug} could not be loaded because retrieving the journal, snapshot, or
-                 |standing query information failed.""".stripMargin.replace('\n', ' '),
-              err
-            )
-          )
-      }(ExecutionContexts.parasitic)
   }.map { case ((snapshotOpt, journal), multipleValuesStates) =>
     snapshotOpt
-      .map(snapshot => nodeConstructorArgsFromRestoredData(snapshot, Some(journal), multipleValuesStates))
-      .getOrElse(
-        NodeActorConstructorArgs.empty
-          .copy(
-            initialJournal = journal,
-            multipleValuesStandingQueryStates = multipleValuesStates.getOrElse(mutable.Map.empty)
-          )
+      .fold(NodeActorConstructorArgs.empty)(NodeActorConstructorArgs.fromSnapshot)
+      .copy(
+        initialJournal = journal,
+        multipleValuesStandingQueryStates = multipleValuesStates
       )
   }(graph.nodeDispatcherEC)
 }
