@@ -5,10 +5,10 @@ summary: Small graph of connected nodes
 description: |-
   This Recipe loads a small graph of connected nodes.
   Before running this Recipe, download the dataset using
-  curl https://docs.thatdot.com/tutorials/harry_potter.json.log -o harry_potter.json.log
+  curl https://docs.thatdot.com/tutorials/harry_potter_data.json -o harry_potter_data.json
 ingestStreams:
   - type: FileIngest
-    path: harry_potter.json.log
+    path: harry_potter_data.json
     format:
       type: CypherJson
       query: |-
