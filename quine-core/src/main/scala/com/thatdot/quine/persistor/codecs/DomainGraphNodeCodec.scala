@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
 import com.thatdot.quine.graph.ByteBufferOps
-import com.thatdot.quine.model.DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model.{
   CircularEdge,
   DependencyDirection,
@@ -205,7 +205,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
 
   private[this] def writeDomainEdge(
     builder: FlatBufferBuilder,
-    de: DomainGraphNodeEdge
+    de: DomainGraphEdge
   ): Offset = {
 
     val depDirection: Byte = de.depDirection match {
@@ -236,7 +236,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     )
   }
 
-  private[this] def readDomainEdge(de: persistence.DomainEdge): DomainGraphNodeEdge = {
+  private[this] def readDomainEdge(de: persistence.DomainEdge): DomainGraphEdge = {
 
     val depDirection: DependencyDirection = de.dependency match {
       case persistence.DependencyDirection.DependsUpon => DependsUpon
@@ -255,7 +255,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
         throw new InvalidUnionType(other, persistence.EdgeMatchConstraints.names)
     }
 
-    DomainGraphNodeEdge(
+    DomainGraphEdge(
       readGenericEdge(de.edge),
       depDirection,
       de.dgnId,
@@ -352,7 +352,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
         val domainNodeEquiv: DomainNodeEquiv = readDomainNodeEquiv(single.domainNodeEquiv)
         val identification = Option(single.identification).map(ident => readQuineId(ident.id))
         val nextNodes = {
-          val builder = Seq.newBuilder[DomainGraphNodeEdge]
+          val builder = Seq.newBuilder[DomainGraphEdge]
           var i: Int = 0
           val nextNodesLength = single.nextNodesLength
           while (i < nextNodesLength) {

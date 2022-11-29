@@ -23,7 +23,7 @@ object DomainGraphNode {
   final case class Single(
     domainNodeEquiv: DomainNodeEquiv,
     identification: Option[QuineId] = None,
-    nextNodes: Seq[DomainGraphNodeEdge],
+    nextNodes: Seq[DomainGraphEdge],
     comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset
   ) extends DomainGraphNode(nextNodes.map(_.dgnId))
 
@@ -40,7 +40,7 @@ object DomainGraphNode {
 
   final case class MuVar(variable: MuVariableName) extends DomainGraphNode(Seq.empty)
 
-  final case class DomainGraphNodeEdge(
+  final case class DomainGraphEdge(
     edge: GenericEdge,
     depDirection: DependencyDirection,
     dgnId: DomainGraphNodeId,
@@ -187,8 +187,8 @@ object DGNHash {
     )
   }
 
-  private def putDomainGraphNodeEdge(edge: DomainGraphNodeEdge, into: Hasher): Hasher = {
-    val DomainGraphNodeEdge(
+  private def putDomainGraphNodeEdge(edge: DomainGraphEdge, into: Hasher): Hasher = {
+    val DomainGraphEdge(
       GenericEdge(edgeType, edgeDirection),
       depDirection,
       dgnId,
@@ -233,7 +233,7 @@ object DGNHash {
           into,
           newHasher.putBytes(_).hash
         )
-        putOrdered[DomainGraphNodeEdge](
+        putOrdered[DomainGraphEdge](
           nextNodes,
           into,
           putDomainGraphNodeEdge(_, newHasher).hash

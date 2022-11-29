@@ -32,7 +32,7 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   StandingQueryPattern
 }
-import com.thatdot.quine.model.DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, QuineId, SingleBranch}
 
 /** Conceptual note:
@@ -396,7 +396,7 @@ trait DomainNodeIndexBehavior
     */
   private[this] def resolveDomainEdgesWithIndex(
     testDgn: DomainGraphNode.Single
-  ): List[(DomainGraphNodeEdge, Set[(HalfEdge, Option[Boolean])])] =
+  ): Seq[(DomainGraphEdge, Set[(HalfEdge, Option[Boolean])])] =
     testDgn.nextNodes.flatMap { domainEdge =>
       val edgeResults: Set[(HalfEdge, Option[Boolean])] = edges
         .matching(domainEdge.edge)
@@ -405,28 +405,36 @@ trait DomainNodeIndexBehavior
         }
         .toSet
       val maxAllowedMatches = domainEdge.constraints.maxMatch.getOrElse(Int.MaxValue)
-      if (edgeResults.size < domainEdge.constraints.min || edgeResults.size > maxAllowedMatches) List.empty
-      else List(domainEdge -> edgeResults)
-    } toList
+      if (edgeResults.size < domainEdge.constraints.min || edgeResults.size > maxAllowedMatches) Seq.empty
+      else Seq(domainEdge -> edgeResults)
+    }
 
   protected[this] def edgesSatisfiedByIndex(
     testBranch: DomainGraphNode.Single
   ): Option[Boolean] = {
-
-    /* For each edge required in `testBranch`, find all matching edges in the
-     * data and collect their `QuineId`'s
-     */
     var missingInformation = false
-    val edgeResolutions: List[(DomainGraphNodeEdge, Set[QuineId])] =
+    // Keys are domain edges, values are all node IDs reachable via Quine [half-]edges satisfying the domain edges
+    val edgeResolutions: Seq[(DomainGraphEdge, Set[QuineId])] =
       resolveDomainEdgesWithIndex(testBranch)
         .map { case (domainEdge, halfEdges) =>
-          val qids = halfEdges.collect { case (HalfEdge(_, _, qid), Some(true)) => qid }
-          if (qids.isEmpty && halfEdges.forall { case (_, m) => m.isEmpty })
+          // Neighboring QuineIds that match both the [[DomainGraphEdge]] and the DGB across that edge
+          val matchingQids = halfEdges.collect { case (HalfEdge(_, _, qid), Some(true)) => qid }
+          // if all half edges matching this domain edge have not yet returned an answer, we are missing
+          // information and will need to poll those nodes to update the DomainNodeIndex
+          // TODO by corollary: If there exists a negative-answering edge and no positive-answering edge,
+          //      we consider the DomainGraphEdge to necessarily *not* exist, regardless of what other half edges
+          //      may be left unresolved
+          if (matchingQids.isEmpty && halfEdges.forall { case (_, m) => m.isEmpty })
             missingInformation = true
-          domainEdge -> qids
+          domainEdge -> matchingQids
         }
-
+    // If all half-edges matching any domain edge have not yet returned an answer, we must poll those edges to update
+    // our DomainNodeIndex
     if (missingInformation) return None
+    // If no half-edges were resolved, this means either no DomainGraphEdges supplied had constraints for which we
+    // could match the desired multiplicity constraints, or else no DomainGraphEdges were supplied at all.
+    // TODO if we can remove edge multiplicity constraints, this should be the first case, and instead be "if the
+    //      testBranch has no next edges"
     else if (edgeResolutions.isEmpty) return Some(true)
 
     /* Build up an iterator of the sets of nodes that match the edges. During

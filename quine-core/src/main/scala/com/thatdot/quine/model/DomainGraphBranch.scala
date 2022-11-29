@@ -5,7 +5,7 @@ import java.util.regex.Pattern
 import scala.collection.compat._
 
 import com.thatdot.quine.model
-import com.thatdot.quine.model.DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 
 /** A generic query instruction
   *
@@ -61,7 +61,7 @@ object DomainGraphBranch {
     getDomainGraphNode(dgnId) flatMap {
       case DomainGraphNode.Single(domainNodeEquiv, identification, nextNodes, comparisonFunc) =>
         val edges = nextNodes.toList.flatMap {
-          case DomainGraphNodeEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
+          case DomainGraphEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
             f(edgeDgnId).map {
               model.DomainEdge(edge, depDirection, _, circularMatchAllowed, constraints)
             }
@@ -126,7 +126,7 @@ final case class SingleBranch(
   def toDomainGraphNodePackage: DomainGraphNodePackage = {
     val edges = nextBranches map { case DomainEdge(e, depDirection, branch, circularMatchAllowed, constraints) =>
       val DomainGraphNodePackage(childDgnId, population) = branch.toDomainGraphNodePackage
-      val edge = DomainGraphNodeEdge(e, depDirection, childDgnId, circularMatchAllowed, constraints)
+      val edge = DomainGraphEdge(e, depDirection, childDgnId, circularMatchAllowed, constraints)
       (edge, population)
     }
     val dgn = DomainGraphNode.Single(domainNodeEquiv, identification, edges.map(_._1), comparisonFunc)
@@ -440,6 +440,7 @@ final case class GenericEdge(edgeType: Symbol, direction: EdgeDirection) {
   override def toString: String = s"GenericEdge(${edgeType.name},$direction)"
 }
 
+// TODO unify with [[DomainGraphEdge]], if possible: these differ only in that one uses a DGB and one uses a DGN ID
 final case class DomainEdge(
   edge: GenericEdge,
   depDirection: DependencyDirection,

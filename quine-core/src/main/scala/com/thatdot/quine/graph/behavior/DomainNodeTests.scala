@@ -24,8 +24,20 @@ trait DomainNodeTests extends BaseNodeActorView {
   private[this] def hasGenericEdges(requiredEdges: Set[DomainEdge]): Boolean =
     edges.hasUniqueGenEdges(requiredEdges, qid)
 
-  protected[this] def localTestBranch(testBranch: SingleBranch): Boolean =
-    testBranch.identification.forall(_ == qid) && localPropsMatch(testBranch.domainNodeEquiv) && hasCircularEdges(
+  /** Tests the local parts of the provided DGB against this node. Returns true iff all parts of the branch that can be
+    * tested match this Quine node.
+    *
+    * A match on a localTestBranch call is not sufficient to indicate this node is a valid root instance of the provided
+    * testBranch. A localTestBranch call matching does mean that if all subtrees of the testBranch are also satisfied
+    * (potentially by other nodes), THEN this node is a valid root instance of the provided testBranch.
+    */
+  protected[this] def localTestBranch(testBranch: SingleBranch): Boolean = {
+    val idMatchesDgn = testBranch.identification.forall(_ == qid)
+    lazy val propsMatchDgn = localPropsMatch(testBranch.domainNodeEquiv)
+    lazy val circularEdgesMatchDgn = hasCircularEdges(
       testBranch.domainNodeEquiv
-    ) && hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge])
+    )
+    lazy val nonCircularHalfEdgesMatchDgn = hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge])
+    idMatchesDgn && propsMatchDgn && circularEdgesMatchDgn && nonCircularHalfEdgesMatchDgn
+  }
 }

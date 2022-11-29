@@ -94,17 +94,41 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
   // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
   override def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean = {
     val (circAlloweds, circDisalloweds) = requiredEdges.filter(_.constraints.min > 0).partition(_.circularMatchAllowed)
-    val circAllowed = circAlloweds.groupMapReduce(_.edge)(_ => 1)(_ + _)
+
+    // keys are edge specifications, values are how many edges matching that specification are necessary.
+    val circAllowed =
+      circAlloweds.groupMapReduce(_.edge)(_ => 1)(_ + _) // how many edge requirements allow circularity?
     val circDisallowed = circDisalloweds.groupMapReduce(_.edge)(_ => 1)(_ + _)
 
-    circDisallowed.forall { case (genEdge, count) =>
-      val otherSet = typeIndex(genEdge.edgeType) intersect directionIndex(genEdge.direction)
-      // if circularAllowed is non-zero, then we can ignore the distinction about thisQid being present and simply compare the size with the combined total
-      val ca = circAllowed.getOrElse(
-        genEdge,
-        if (otherSet contains genEdge.toHalfEdge(thisQid)) 1 else 0
-      )
-      otherSet.sizeIs >= count + ca
+    // For each required (non-circular) edge, check if we have half-edges satisfying the requirement.
+    // NB circular edges have already been checked by this point, so we are only concerned with them insofar as they
+    // interfere with counting noncircular half-edges
+    circDisallowed.forall { case (genEdge, requiredNoncircularCount) =>
+      // the set of half-edges matching this edge requirement, potentially including circular half-edges
+      val edgesMatchingRequirement = typeIndex(genEdge.edgeType) intersect directionIndex(genEdge.direction)
+
+      // number of circular edges allowed to count towards this edge requirement. If no entry exists in [[circAllowed]] for this
+      // requirement, 0 edges may
+      val numberOfCircularEdgesPermitted = circAllowed.getOrElse(genEdge, 0)
+
+      /** NB a half-edge is (type, direction, remoteQid) == ((type, direction), qid) == (GenericEdge, qid)
+        * Because of this, for each requirement and qid, there is either 0 or 1 half-edge that matches the requirement.
+        * In particular, there is either 0 or 1 *circular* half-edge that matches the requirement
+        */
+      lazy val oneOfTheMatchingEdgesIsCircular = edgesMatchingRequirement.contains(genEdge.toHalfEdge(thisQid))
+      if (numberOfCircularEdgesPermitted == 0) {
+        if (oneOfTheMatchingEdgesIsCircular)
+          // No circular edges allowed, but 1 is circular: discount that 1 from [[edgesMatchingRequirement]] before
+          // comparing to the count requirement.
+          edgesMatchingRequirement.size - 1 >= requiredNoncircularCount
+        else
+          // No circular edges allowed, and none are circular: We satisfy this requirement by the natural condition
+          // against the count requirement
+          edgesMatchingRequirement.size >= requiredNoncircularCount
+      } else
+        // Some number of circular edges are allowed -- we must have at least enough edges matching the requirement to
+        // cover both the circular and noncircular requirements
+        edgesMatchingRequirement.size >= requiredNoncircularCount + numberOfCircularEdgesPermitted
     }
   }
 

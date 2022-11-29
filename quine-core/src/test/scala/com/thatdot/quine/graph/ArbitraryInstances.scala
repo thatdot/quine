@@ -40,7 +40,7 @@ import com.thatdot.quine.graph.cypher.{
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{MultipleValuesStandingQuerySubscriber, ResultId}
 import com.thatdot.quine.model._
 
-import DomainGraphNode.{DomainGraphNodeEdge, DomainGraphNodeId}
+import DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 
 /** The derived [[Arbitrary]] instances for some types get big fast. If the
   * serialization tests ever start being too slow, you can get scalacheck to
@@ -437,15 +437,15 @@ trait ArbitraryInstances {
     ](DomainNodeEquiv.apply)
   }
 
-  implicit val arbDomainGraphNodeEdge: Arbitrary[DomainGraphNodeEdge] = Arbitrary {
+  implicit val arbDomainGraphNodeEdge: Arbitrary[DomainGraphEdge] = Arbitrary {
     GenApply.resultOf[
       GenericEdge,
       DependencyDirection,
       DomainGraphNodeId,
       Boolean,
       EdgeMatchConstraints,
-      DomainGraphNodeEdge
-    ](DomainGraphNodeEdge.apply)
+      DomainGraphEdge
+    ](DomainGraphEdge.apply)
   }
 
   implicit val arbDomainGraphNode: Arbitrary[DomainGraphNode] = Arbitrary {
@@ -455,7 +455,7 @@ trait ArbitraryInstances {
           DomainGraphNode.Single(
             _: DomainNodeEquiv,
             _: Option[QuineId],
-            _: Seq[DomainGraphNodeEdge],
+            _: Seq[DomainGraphEdge],
             _: NodeLocalComparisonFunc
           )
         ),
