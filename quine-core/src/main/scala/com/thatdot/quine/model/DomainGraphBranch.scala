@@ -4,6 +4,8 @@ import java.util.regex.Pattern
 
 import scala.collection.compat._
 
+import com.google.common.cache.{Cache, CacheBuilder}
+
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 
@@ -52,35 +54,56 @@ object DomainGraphBranch {
     NodeLocalComparisonFunctions.Wildcard
   )
 
+  /** Cache domainGraphBranch values for re-use. */
+  private val domainGraphBranchCache: Cache[DomainGraphNodeId, Option[DomainGraphBranch]] = CacheBuilder
+    .newBuilder()
+    .asInstanceOf[CacheBuilder[Any, Any]]
+    .weakKeys()
+    .build[DomainGraphNodeId, Option[DomainGraphBranch]]()
+
   /** Produces a [[DomainGraphBranch]] from the provided [[DomainGraphNodeId]]. */
   def fromDomainGraphNodeId(
     dgnId: DomainGraphNodeId,
     getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
   ): Option[DomainGraphBranch] = {
-    val f = fromDomainGraphNodeId(_, getDomainGraphNode)
-    getDomainGraphNode(dgnId) flatMap {
-      case DomainGraphNode.Single(domainNodeEquiv, identification, nextNodes, comparisonFunc) =>
-        val edges = nextNodes.toList.flatMap {
-          case DomainGraphEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
-            f(edgeDgnId).map {
-              model.DomainEdge(edge, depDirection, _, circularMatchAllowed, constraints)
-            }
-        }
-        Option.when(nextNodes.size == edges.size)(
-          model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc)
-        )
-      case DomainGraphNode.Or(disjuncts) =>
-        val disjunctDgbs = disjuncts.flatMap(f(_))
-        Option.when(disjunctDgbs.size == disjuncts.size)(model.Or(disjunctDgbs.toList))
-      case DomainGraphNode.And(conjuncts) =>
-        val conjunctsDgbs = conjuncts.flatMap(f(_))
-        Option.when(conjunctsDgbs.size == conjuncts.size)(model.And(conjunctsDgbs.toList))
-      case DomainGraphNode.Not(negated) =>
-        f(negated) map model.Not
-      case DomainGraphNode.Mu(variable, dgnId) =>
-        f(dgnId) map (model.Mu(variable, _))
-      case DomainGraphNode.MuVar(variable) =>
-        Some(model.MuVar(variable))
+
+    def retrieveValue(
+      dgnId: DomainGraphNodeId,
+      getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
+    ): Option[DomainGraphBranch] = {
+      val f = fromDomainGraphNodeId(_, getDomainGraphNode)
+      getDomainGraphNode(dgnId) flatMap {
+        case DomainGraphNode.Single(domainNodeEquiv, identification, nextNodes, comparisonFunc) =>
+          val edges = nextNodes.toList.flatMap {
+            case DomainGraphEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
+              f(edgeDgnId).map {
+                model.DomainEdge(edge, depDirection, _, circularMatchAllowed, constraints)
+              }
+          }
+          Option.when(nextNodes.size == edges.size)(
+            model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc)
+          )
+        case DomainGraphNode.Or(disjuncts) =>
+          val disjunctDgbs = disjuncts.flatMap(f(_))
+          Option.when(disjunctDgbs.size == disjuncts.size)(model.Or(disjunctDgbs.toList))
+        case DomainGraphNode.And(conjuncts) =>
+          val conjunctsDgbs = conjuncts.flatMap(f(_))
+          Option.when(conjunctsDgbs.size == conjuncts.size)(model.And(conjunctsDgbs.toList))
+        case DomainGraphNode.Not(negated) =>
+          f(negated) map model.Not
+        case DomainGraphNode.Mu(variable, dgnId) =>
+          f(dgnId) map (model.Mu(variable, _))
+        case DomainGraphNode.MuVar(variable) =>
+          Some(model.MuVar(variable))
+      }
+    }
+
+    domainGraphBranchCache.getIfPresent(dgnId) match {
+      case b @ Some(_) => b
+      case _ =>
+        val branch = retrieveValue(dgnId, getDomainGraphNode)
+        domainGraphBranchCache.put(dgnId, branch)
+        branch
     }
   }
 }
@@ -452,12 +475,12 @@ final case class DomainEdge(
   def toString(indent: Int = 0): String = {
     def indents(count: Int) = "\t" * count
     s"""${indents(indent)}DomainEdge(
-        |${indents(indent + 1)}$edge,
-        |${indents(indent + 1)}$depDirection,
-        |${indents(indent + 1)}circularMatchAllowed = $circularMatchAllowed,
-        |${indents(indent + 1)}$constraints,
-        |${branch.pretty(indent + 1)}
-        |${indents(indent)})""".stripMargin
+       |${indents(indent + 1)}$edge,
+       |${indents(indent + 1)}$depDirection,
+       |${indents(indent + 1)}circularMatchAllowed = $circularMatchAllowed,
+       |${indents(indent + 1)}$constraints,
+       |${branch.pretty(indent + 1)}
+       |${indents(indent)})""".stripMargin
   }
 }
 
