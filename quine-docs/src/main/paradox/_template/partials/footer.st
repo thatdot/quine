@@ -101,7 +101,7 @@
     </div>
     <div class="w-layout-grid footer-legal-grid">
       <div id="w-node-_7c1f1a51-ff8c-c157-7617-ee9e8e70ec6b-8e70ec0c" class="copyright-text">© 2022 thatDot, Inc.</div>
-      <a href="index.html" aria-current="page" class="footer-logo-link w-inline-block w--current"><img src="https://uploads-ssl.webflow.com/61d5ee2c68a4d5d61588037b/621eca801bbf60a31b20a6b4_Quine%20Logo%20-%20White.svg" loading="lazy" width="257.5" alt="The Quine logo - a Q with an arrow, like a graph edge, as the stroke in the Q. White version."></a>
+      <a href="https://quine.io" aria-current="page" class="footer-logo-link w-inline-block w--current"><img src="https://uploads-ssl.webflow.com/61d5ee2c68a4d5d61588037b/621eca801bbf60a31b20a6b4_Quine%20Logo%20-%20White.svg" loading="lazy" width="257.5" alt="The Quine logo"></a>
       <div class="legal-links">
         <a href="/community/code-of-conduct.html" class="footer-link">Code of Conduct</a>
       </div>
