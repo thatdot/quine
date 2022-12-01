@@ -26,7 +26,7 @@ object Dependencies {
   val flatbuffersV = "22.10.26"
   val guavaV = "31.1-jre"
   val ioniconsV = "2.0.1"
-  val jnrPosixV = "3.1.15"
+  val jnrPosixV = "3.1.16"
   val jqueryV = "3.6.1"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.4.4"
