@@ -19,7 +19,7 @@ object Dependencies {
   val commonsIoV = "2.11.0"
   val dropwizardMetricsV = "4.2.12"
   val embeddedCassandraV = "4.0.7"
-  val endpoints4sDefaultV = "1.8.0"
+  val endpoints4sDefaultV = "1.9.0"
   val endpoints4sHttpServerV = "7.0.0"
   val endpoints4sOpenapiV = "4.3.0"
   val endpoints4sXhrClientV = "5.1.0"
