@@ -21,7 +21,7 @@ object Dependencies {
   val embeddedCassandraV = "4.0.7"
   val endpoints4sDefaultV = "1.8.0"
   val endpoints4sHttpServerV = "7.0.0"
-  val endpoints4sOpenapiV = "4.2.0"
+  val endpoints4sOpenapiV = "4.3.0"
   val endpoints4sXhrClientV = "5.1.0"
   val flatbuffersV = "22.10.26"
   val guavaV = "31.1-jre"
