@@ -30,12 +30,13 @@ import com.datastax.oss.driver.api.core.`type`.codec.ExtraTypeCodecs.BLOB_TO_ARR
 import com.datastax.oss.driver.api.core.`type`.codec.{MappingCodec, PrimitiveLongCodec, TypeCodec, TypeCodecs}
 import com.datastax.oss.driver.api.core.`type`.reflect.GenericType
 import com.datastax.oss.driver.api.core.cql._
-import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{bindMarker, deleteFrom, insertInto, selectFrom}
+import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{bindMarker, deleteFrom, insertInto, literal, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.{createKeyspace, createTable}
 import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection
 import com.datastax.oss.driver.api.querybuilder.relation.{ColumnRelationBuilder, Relation}
 import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
+import com.datastax.oss.driver.api.querybuilder.term.Term
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{
@@ -47,7 +48,7 @@ import com.thatdot.quine.graph.{
   StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.model.{DomainGraphNode, EdgeDirection, QuineId}
 import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, DomainIndexEventCodec, NodeEventCodec}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, PersistenceAgent, PersistenceConfig}
 
@@ -86,9 +87,16 @@ object CassandraCodecs {
   import syntax._
   implicit val byteArrayCodec: TypeCodec[Array[Byte]] = BLOB_TO_ARRAY
   implicit val stringCodec: TypeCodec[String] = TypeCodecs.TEXT
+  implicit val symbolCodec: TypeCodec[Symbol] = TypeCodecs.TEXT.xmap(Symbol(_), _.name)
   implicit val intCodec: TypeCodec[Int] = TypeCodecs.INT.asInstanceOf[TypeCodec[Int]]
   implicit val longCodec: TypeCodec[Long] = TypeCodecs.BIGINT.asInstanceOf[TypeCodec[Long]]
+  implicit def listCodec[A](implicit elemCodec: TypeCodec[A]): TypeCodec[Seq[A]] =
+    TypeCodecs.listOf(elemCodec).xmap(_.asScala.toSeq, _.asJava)
+  implicit def setCodec[A](implicit elemCodec: TypeCodec[A]): TypeCodec[Set[A]] =
+    TypeCodecs.setOf(elemCodec).xmap(_.asScala.toSet, _.asJava)
   implicit val quineIdCodec: TypeCodec[QuineId] = BLOB_TO_ARRAY.xmap(QuineId(_), _.array)
+  implicit val edgeDirectionCodec: TypeCodec[EdgeDirection] =
+    TypeCodecs.TINYINT.xmap(b => EdgeDirection.values(b.intValue), _.index)
   implicit val standingQueryIdCodec: TypeCodec[StandingQueryId] = TypeCodecs.UUID.xmap(StandingQueryId(_), _.uuid)
   implicit val MultipleValuesStandingQueryPartIdCodec: TypeCodec[MultipleValuesStandingQueryPartId] =
     TypeCodecs.UUID.xmap(MultipleValuesStandingQueryPartId(_), _.uuid)
@@ -119,11 +127,16 @@ object CassandraCodecs {
     DomainGraphNodeCodec.format.read(_).get,
     DomainGraphNodeCodec.format.write
   )
+
 }
 final case class CassandraColumn[A](name: CqlIdentifier, codec: TypeCodec[A]) {
   def cqlType: DataType = codec.getCqlType
-  def set(bindMarker: CqlIdentifier, value: A)(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
+  private def set(bindMarker: CqlIdentifier, value: A)(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
     statementBuilder.set(bindMarker, value, codec)
+  def setSeq(values: Seq[A])(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
+    statementBuilder.set(name, values, CassandraCodecs.listCodec(codec))
+  def setSet(values: Set[A])(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
+    statementBuilder.set(name, values, CassandraCodecs.setCodec(codec))
   def set(value: A)(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
     set(name, value)(statementBuilder)
   def setLt(value: A)(statementBuilder: BoundStatementBuilder): BoundStatementBuilder =
@@ -143,6 +156,10 @@ final case class CassandraColumn[A](name: CqlIdentifier, codec: TypeCodec[A]) {
     def eq: Relation = relBuilder.isEqualTo(bindMarker(name))
     def lte: Relation = relBuilder.isLessThanOrEqualTo(bindMarker(ltMarker))
     def gte: Relation = relBuilder.isGreaterThanOrEqualTo(bindMarker(gtMarker))
+    // The usual "templated" prepared statement variant
+    def in: Relation = relBuilder.in(bindMarker(name))
+    // The inline literal variant - to put a literal into the statement instead of a bindMarker.
+    def in(values: Iterable[A]): Relation = relBuilder.in(values.map(v => literal(v, codec): Term).asJava)
   }
 }
 object CassandraColumn {
@@ -321,7 +338,7 @@ class CassandraPersistor(
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
   // Technically only Apply[Future] is required, but people might not be familiar with that,
   // and Applicative[Future] is too long to type.
-  implicit private val futureMonad: Monad[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+  implicit protected val futureMonad: Monad[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
 
   // This is mutable, so needs to be a def to get a new one w/out prior settings.
   private def sessionBuilder: CqlSessionBuilder = CqlSession.builder
@@ -333,7 +350,7 @@ class CassandraPersistor(
     .withKeyspace(keyspace)
     .build()
 
-  private val session: CqlSession =
+  protected val session: CqlSession =
     try {
       val session = createQualifiedSession
       // Log a warning if the Cassandra keyspace replication factor does not match Quine configuration
@@ -407,13 +424,13 @@ class CassandraPersistor(
     5.seconds
   )
 
-  override def emptyOfQuineData(): Future[Boolean] = {
-    val dataTables = Seq(journals, domainIndexEvents, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
-    // then combine them -- if any have results, then the system is not empty of quine data
+  protected def dataTables: List[CassandraTable] =
+    List(journals, domainIndexEvents, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
+  // then combine them -- if any have results, then the system is not empty of quine data
+  override def emptyOfQuineData(): Future[Boolean] =
     Future
       .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
       .map(_.exists(identity))(ExecutionContexts.parasitic)
-  }
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = journals.enumerateAllNodeIds()
 

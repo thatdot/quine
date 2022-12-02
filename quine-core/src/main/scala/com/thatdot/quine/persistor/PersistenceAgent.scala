@@ -33,7 +33,7 @@ object PersistenceAgent {
 }
 
 /** Interface for a Quine storage layer */
-abstract class PersistenceAgent extends StrictLogging {
+trait PersistenceAgent extends StrictLogging {
 
   /** Returns `true` if this persistor definitely contains no Quine-core data
     * May return `true` even when the persistor contains application (eg Quine) metadata

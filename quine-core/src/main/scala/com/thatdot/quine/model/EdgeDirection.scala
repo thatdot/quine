@@ -1,24 +1,21 @@
 package com.thatdot.quine.model
 
-sealed abstract class EdgeDirection {
+sealed abstract class EdgeDirection(val index: Byte) {
   def reverse: EdgeDirection
 
-  def isDirected: Boolean
 }
 
 object EdgeDirection {
-  case object Outgoing extends EdgeDirection {
+  case object Outgoing extends EdgeDirection(0) {
     def reverse = Incoming
-    def isDirected = true
   }
-  case object Incoming extends EdgeDirection {
+  case object Incoming extends EdgeDirection(1) {
     def reverse = Outgoing
-    def isDirected = true
   }
-  case object Undirected extends EdgeDirection {
+  case object Undirected extends EdgeDirection(2) {
     def reverse = Undirected
-    def isDirected = false
   }
 
-  val values: Seq[EdgeDirection] = Seq(Outgoing, Incoming, Undirected)
+  val values: IndexedSeq[EdgeDirection] = Vector(Outgoing, Incoming, Undirected)
+  assert(values.zipWithIndex.forall { case (d, i) => d.index == i })
 }
