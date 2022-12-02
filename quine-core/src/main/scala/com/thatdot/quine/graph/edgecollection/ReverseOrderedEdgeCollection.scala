@@ -44,13 +44,6 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
     this
   }
 
-  override def clear(): Unit = {
-    edges.clear()
-    typeIndex.clear()
-    directionIndex.clear()
-    otherIndex.clear()
-  }
-
   protected[graph] def toSerialize: Iterable[HalfEdge] = edges
 
   /** Matches the direction of iterator returned by [[matching]] methods

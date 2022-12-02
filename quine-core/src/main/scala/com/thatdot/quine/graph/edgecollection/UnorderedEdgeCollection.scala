@@ -58,11 +58,6 @@ final class UnorderedEdgeCollection extends EdgeCollection {
     this
   }
 
-  override def clear(): Unit = {
-    edgeMap.clear()
-    totalSize = 0
-  }
-
   override def all: Iterator[HalfEdge] = for {
     (edgeTyp, dirMap) <- edgeMap.iterator
     (dir, qids) <- dirMap.iterator

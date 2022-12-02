@@ -7,6 +7,4 @@ abstract class EdgeCollection extends EdgeCollectionView {
   def +=(edge: HalfEdge): EdgeCollection
 
   def -=(edge: HalfEdge): EdgeCollection
-
-  def clear(): Unit
 }
