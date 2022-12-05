@@ -1,0 +1,156 @@
+version: 1
+title: APT Demo
+contributor: https://github.com/thatdot
+summary: APT Detection
+description: |-
+  This APT (Advanced Persistent Threat) detection use case simulates ingesting data from EDR (Endpoint Detection and Response) logs and network monitoring sources then looking for an IoB (Indicator of Behavior) pattern that matches typical data exfiltration activity.
+
+  In this scenario, malware is delivered as an Excel macro via email. Using a standing query, the recipe matches a WRITE->READ->SEND->DELETE pattern of events in a graph constructed in real-time from the combined source files.
+
+  Sample Data:
+
+  Download the sample data and move the files into a working directory then launch Quine from the command line in the same directory. 
+
+  endpoint.json: https://drive.google.com/uc?export=download&id=1cgze3w_LX_DdQbAe_F3clMOqmygnItiJ
+  network.json:  https://drive.google.com/uc?export=download&id=1K0fnuEa93lwAt032N6Lb6Pip0SOue7nG
+
+  The recipe manifests a graph with the following node types from two ingest streams:
+  
+  EDR data in endpoint.json:
+  - Process
+  - Endpoint Event
+  - Object
+
+  Network monitoring data in network.json:
+  - Network Element
+  - Network Event
+
+  When the standing query detects a WRITE->READ->SEND->DELETE it outputs a link to the console that can be copied and pasted into a browser to explore the event in the Quine Exploration UI. 
+
+ingestStreams:
+  - type: FileIngest
+    path: endpoint.json
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (proc), (event), (object)
+        WHERE id(proc) = idFrom($that.pid)
+          AND id(event) = idFrom($that)
+          AND id(object) = idFrom($that.object)
+
+        SET proc.id = $that.pid,
+            proc: Process
+            
+        SET event.type = $that.event_type,
+            event.time = $that.time,
+            event: EndpointEvent
+            
+        SET object.data = $that.object
+
+        CREATE (proc)-[:EVENT]->(event)-[:EVENT]->(object)
+
+  - type: FileIngest
+    path: network.json
+    format:
+      type: CypherJson
+      query: |-
+        MATCH (src), (dst), (event)
+        WHERE id(src) = idFrom($that.src_ip+":"+$that.src_port)
+          AND id(dst) = idFrom($that.dst_ip+":"+$that.dst_port)
+          AND id(event) = idFrom('network_event', $that)
+        
+        SET src.ip = $that.src_ip+":"+$that.src_port,
+            src: IP
+        
+        SET dst.ip = $that.dst_ip+":"+$that.dst_port,
+            dst: IP
+
+        SET event.proto = $that.proto,
+            event.time = $that.time,
+            event.detail = $that.detail,
+            event: NetTraffic
+            
+        CREATE (src)-[:NET_TRAFFIC]->(event)-[:NET_TRAFFIC]->(dst)
+
+standingQueries:
+  - pattern:
+      type: Cypher
+      query: |-
+        MATCH (e1)-[:EVENT]->(f)<-[:EVENT]-(e2), 
+              (f)<-[:EVENT]-(e3)<-[:EVENT]-(p2)-[:EVENT]->(e4)
+        WHERE e1.type = "WRITE"
+          AND e2.type = "READ"
+          AND e3.type = "DELETE"
+          AND e4.type = "SEND"
+        
+        RETURN DISTINCT id(f) as id
+    
+    outputs:
+      stolen-data:
+        type: CypherQuery
+        query: |-
+          MATCH (p1)-[:EVENT]->(e1)-[:EVENT]->(f)<-[:EVENT]-(e2)<-[:EVENT]-(p2), 
+                (f)<-[:EVENT]-(e3)<-[:EVENT]-(p2)-[:EVENT]->(e4)-[:EVENT]->(ip)
+          WHERE id(f) = $that.data.id
+            AND e1.type = "WRITE"
+            AND e2.type = "READ"
+            AND e3.type = "DELETE"
+            AND e4.type = "SEND"
+            AND e1.time < e2.time
+            AND e2.time < e3.time
+            AND e2.time < e4.time
+
+          WITH e1, e2, e3, e4, p1, p2, f, ip, "http://localhost:8080/#MATCH" + text.urlencode(" (e1),(e2),(e3),(e4),(p1),(p2),(f),(ip) WHERE id(p1)='"+strId(p1)+"' AND id(e1)='"+strId(e1)+"' AND id(f)='"+strId(f)+"' AND id(e2)='"+strId(e2)+"' AND id(p2)='"+strId(p2)+"' AND id(e3)='"+strId(e3)+"' AND id(e4)='"+strId(e4)+"' AND id(ip)='"+strId(ip)+"' RETURN e1, e2, e3, e4, p1, p2, f, ip") as URL
+          RETURN URL
+        andThen:
+          type: PrintToStandardOut
+
+# Basic node formatting for graph exploration
+nodeAppearances: 
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: Process
+    icon: ion-load-a
+    label:
+      type: Property
+      key: id
+      prefix: "Process: "
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: IP
+    icon: ion-ios-world
+    label:
+      type: Property
+      key: ip
+      prefix: ""
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: EndpointEvent
+    icon: ion-android-checkmark-circle
+    label:
+      type: Property
+      key: type
+      prefix: ""
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+      dbLabel: NetTraffic
+    icon: ion-network
+    label:
+      type: Property
+      key: proto
+      prefix: ""
+  - predicate:
+      propertyKeys: []
+      knownValues: {}
+    icon: ion-ios-copy
+    label:
+      type: Property
+      key: data
+      prefix: ""
+
+quickQueries: []
+sampleQueries: []
