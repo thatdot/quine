@@ -680,10 +680,9 @@ trait DomainNodeIndexBehavior
     ): Boolean =
       subscribersToThisNode
         .get(dgnId)
-        .collect { case DistinctIdSubscription(subscribers, _, relatedQueries) =>
+        .exists { case DistinctIdSubscription(subscribers, _, relatedQueries) =>
           subscribers.contains(subscriber) && relatedQueries.contains(forQuery)
         }
-        .getOrElse(false)
 
     def tracksNode(dgnId: DomainGraphNodeId): Boolean = subscribersToThisNode.contains(dgnId)
 

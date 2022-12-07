@@ -108,8 +108,8 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
         * Because of this, for each requirement and qid, there is either 0 or 1 half-edge that matches the requirement.
         * In particular, there is either 0 or 1 *circular* half-edge that matches the requirement
         */
-      lazy val oneOfTheMatchingEdgesIsCircular = edgesMatchingRequirement.contains(genEdge.toHalfEdge(thisQid))
       if (numberOfCircularEdgesPermitted == 0) {
+        val oneOfTheMatchingEdgesIsCircular = edgesMatchingRequirement.contains(genEdge.toHalfEdge(thisQid))
         if (oneOfTheMatchingEdgesIsCircular)
           // No circular edges allowed, but 1 is circular: discount that 1 from [[edgesMatchingRequirement]] before
           // comparing to the count requirement.
