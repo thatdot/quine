@@ -3,21 +3,20 @@ summary: Endpoint logs and network traffic data merge to auto-detect exfiltratio
 contributor: https://github.com/rrwright
 version: 1
 description: |-
-  This Advanced Persistent Threat (APT) detection recipe ingests EDR (Endpoint 
-  Detection and Response)logs and network traffic logs, while monitoring 
-  for an IoB (Indicator of Behavior) that matches malicious data 
-  exfiltration patterns.
+  This APT (Advanced Persistent Threat) detection recipe ingests EDR (Endpoint 
+  Detection and Response) and network traffic logs, while monitoring for an IoB 
+  (Indicator of Behavior) that matches malicious data exfiltration patterns.
 
   SCENARIO:
   Using a standing query, the recipe monitors for covert interprocess
   communication using a file to pass data. When that pattern exists with a
   network SEND event, we have our smoking gun and a URL is logged linking to
-  where the full activity and context can be investigated.
+  the Quine Exploration UI with the full activity and context for investigation.
   
   In this scenario, a malicious Excel macro collects personal data and stores 
   it in a temporary file. The APT process "ntclean" infiltrated the system 
   previously through an SSH exploit, and now reads from that temporary file 
-  and exfiltrates data out of the network--hiding it as a GET request--before
+  and exfiltrates data out of the network--hiding it as an HTTP GET request--before
   deleting the temporary file to cover its tracks. 
 
   The source of the SSH exploit that planted the APT and the destination 
