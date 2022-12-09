@@ -1,27 +1,26 @@
 title: APT Detection
-summary: Endpoint logs and network flow data merge to auto-detect exfiltration
+summary: Endpoint logs and network traffic data merge to auto-detect exfiltration
 contributor: https://github.com/rrwright
 version: 1
 description: |-
-  This Advanced Persistent Threat (APT) detection recipe ingests EDR logs 
-  (Endpoint Detection and Response) and Network Flow logs, while monitoring 
-  for an Indicator of Behavior (IoB) that matches malicious data 
-  exfiltration patterns.
+  This APT (Advanced Persistent Threat) detection recipe ingests EDR (Endpoint 
+  Detection and Response) and network traffic logs, while monitoring for an IoB 
+  (Indicator of Behavior) that matches malicious data exfiltration patterns.
 
   SCENARIO:
   Using a standing query, the recipe monitors for covert interprocess
-  communication using a file to pass data. When that pattern exists with a
-  network SEND event, we have our smoking gun and a URL is logged linkiong to
-  where the full activity and context can be investigated.
+  communication using a file to pass data. When that pattern is matched, with a
+  network SEND event, we have our smoking gun and a URL is logged linking to
+  the Quine Exploration UI with the full activity and context for investigation.
   
   In this scenario, a malicious Excel macro collects personal data and stores 
   it in a temporary file. The APT process "ntclean" infiltrated the system 
   previously through an SSH exploit, and now reads from that temporary file 
-  and exfiltrates data out of the network--hiding it as a GET request--before
-  deleting the temporary file to cover its tracks. 
+  and exfiltrates data from the network--hiding it as an HTTP GET request--
+  before deleting the temporary file to cover its tracks. 
 
-  The public IP of the SSH exploit that planted the APT and the destination 
-  of exfiltration are the same IP address.
+  The source of the SSH exploit that planted the APT and the destination 
+  for exfiltrated data utilize the same IP address.
 
   SAMPLE DATA:
     endpoint.json - https://recipes.quine.io/apt-detection/endpoint-json
@@ -31,8 +30,8 @@ description: |-
 
   RESULTS:
   When the standing query detects the WRITE->READ->SEND->DELETE pattern, it 
-  will output link to the console that can be copied and pasted into a browser
-  to explore the event in the Quine Exploration UI.
+  will output a link to the console that can be copied and pasted into a 
+  browser to explore the event in the Quine Exploration UI.
 
 ingestStreams:
   - type: FileIngest
@@ -44,10 +43,14 @@ ingestStreams:
         WHERE id(proc) = idFrom($that.pid)
           AND id(event) = idFrom($that)
           AND id(object) = idFrom($that.object)
-        SET proc.id = $that.pid, proc: Process,
-            event.type = $that.event_type, event: EndpointEvent,
+        
+        SET proc.id = $that.pid,
+            proc: Process,
+            event.type = $that.event_type,
+            event: EndpointEvent,
             event.time = $that.time,
             object.data = $that.object
+        
         CREATE (proc)-[:EVENT]->(event)-[:EVENT]->(object)
 
   - type: FileIngest
@@ -59,12 +62,16 @@ ingestStreams:
         WHERE id(src) = idFrom($that.src_ip+":"+$that.src_port)
           AND id(dst) = idFrom($that.dst_ip+":"+$that.dst_port)
           AND id(event) = idFrom('network_event', $that)
-        SET src.ip = $that.src_ip+":"+$that.src_port, src: IP,
-            dst.ip = $that.dst_ip+":"+$that.dst_port, dst: IP,
+        
+        SET src.ip = $that.src_ip+":"+$that.src_port,
+            src: IP,
+            dst.ip = $that.dst_ip+":"+$that.dst_port,
+            dst: IP,
             event.proto = $that.proto,
             event.time = $that.time,
             event.detail = $that.detail,
             event: NetTraffic
+        
         CREATE (src)-[:NET_TRAFFIC]->(event)-[:NET_TRAFFIC]->(dst)
 
 standingQueries:
@@ -92,6 +99,9 @@ standingQueries:
             AND e1.time < e2.time
             AND e2.time < e3.time
             AND e2.time < e4.time
+          
+          CREATE (e1)-[:NEXT]->(e2)-[:NEXT]->(e4)-[:NEXT]->(e3)
+          
           WITH e1, e2, e3, e4, p1, p2, f, ip, "http://localhost:8080/#MATCH" + text.urlencode(" (e1),(e2),(e3),(e4),(p1),(p2),(f),(ip) WHERE id(p1)='"+strId(p1)+"' AND id(e1)='"+strId(e1)+"' AND id(f)='"+strId(f)+"' AND id(e2)='"+strId(e2)+"' AND id(p2)='"+strId(p2)+"' AND id(e3)='"+strId(e3)+"' AND id(e4)='"+strId(e4)+"' AND id(ip)='"+strId(ip)+"' RETURN e1, e2, e3, e4, p1, p2, f, ip") as URL
           RETURN URL
         andThen:
