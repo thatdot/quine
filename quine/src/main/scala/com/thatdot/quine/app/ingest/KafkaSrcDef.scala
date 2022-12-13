@@ -30,7 +30,7 @@ import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
+import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol, KafkaJaasConfig}
 
 object KafkaSrcDef {
 
@@ -47,6 +47,7 @@ object KafkaSrcDef {
     groupId: String,
     autoOffsetReset: KafkaAutoOffsetReset,
     securityProtocol: KafkaSecurityProtocol,
+    jaasConfig: Option[KafkaJaasConfig],
     decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
@@ -56,18 +57,36 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
-    ConsumerSettings(graph.system, keyDeserializer, deserializer)
-      .withBootstrapServers(bootstrapServers)
-      .withGroupId(groupId)
-      // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
-      // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
-      // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
-      // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
-      .withStopTimeout(Duration.Zero)
-      .withProperties(
-        AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-        SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-      )
+    // Configure consumer with JAAS config if exists
+    jaasConfig match {
+      case Some(KafkaJaasConfig.JaasConfig(config)) => 
+        ConsumerSettings(graph.system, keyDeserializer, deserializer)
+          .withBootstrapServers(bootstrapServers)
+          .withGroupId(groupId)
+          // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
+          // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
+          // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
+          // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
+          .withStopTimeout(Duration.Zero)
+          .withProperties(
+            "sasl.jaas.config" -> config,
+            AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
+            SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+          )
+      case None =>
+        ConsumerSettings(graph.system, keyDeserializer, deserializer)
+          .withBootstrapServers(bootstrapServers)
+          .withGroupId(groupId)
+          // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
+          // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
+          // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
+          // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
+          .withStopTimeout(Duration.Zero)
+          .withProperties(
+            AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
+            SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+          )
+    }
   }
 
   def apply(
@@ -79,6 +98,7 @@ object KafkaSrcDef {
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
     securityProtocol: KafkaSecurityProtocol,
+    jaasConfig: Option[KafkaJaasConfig],
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset,
     endingOffset: Option[Long],
@@ -107,6 +127,7 @@ object KafkaSrcDef {
         groupId,
         autoOffsetReset,
         securityProtocol,
+        jaasConfig,
         decoders
       )
 
