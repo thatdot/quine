@@ -60,10 +60,12 @@ abstract class EdgeCollectionTests
       Inspectors.forAll(byEdgeType) { case (edgeType, typeSet) =>
         assertEdgeCollection(edgeCollection.matching(edgeType).toSeq, typeSet.toSeq)
       }
+
       // Querying the EdgeCollection by a given direction should return all edges of that direction
       Inspectors.forAll(byDirection) { case (direction, directionSet) =>
         assertEdgeCollection(edgeCollection.matching(direction).toSeq, directionSet.toSeq)
       }
+
       // Querying the EdgeCollection by a given node should return all edges linked to that node
       Inspectors.forAll(byOther) { case (other, otherSet) =>
         assertEdgeCollection(edgeCollection.matching(other).toSeq, otherSet.toSeq)
@@ -228,7 +230,12 @@ abstract class EdgeCollectionTests
       "Matching circAllowed and non-circAllowed edges"
     )
 
-    // with only circular edges as input always succeeds
+    /* With only circular edge requirements as input, the behavior is undefined:
+       hasUniqueGenEdges may or may not succeed; it doesn't matter as hasUniqueGenEdges is always called _after_
+       circular edges have been checked.
+
+       If we wanted to assert that circular edges are entirely unchecked, we could do so with:
+
     assert(
       checkContains(
         Seq(
@@ -246,6 +253,7 @@ abstract class EdgeCollectionTests
       ),
       "Only circAllowedEdges always succeeds"
     )
+     */
   }
 
 }
