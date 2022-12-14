@@ -693,7 +693,8 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
     genericJsonSchema[KafkaOffsetCommitting]
   implicit lazy val wsKeepaliveSchema: JsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
     genericJsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol]
-  implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] = genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
+  implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] =
+    genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
   implicit lazy val ingestStreamStatsSchema: JsonSchema[IngestStreamStats] =
     genericJsonSchema[IngestStreamStats].withExample(exampleIngestStreamInfo.stats)
   implicit lazy val ingestStreamInfoSchema: JsonSchema[IngestStreamInfo] =
