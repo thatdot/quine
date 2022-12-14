@@ -63,7 +63,7 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
-    // Configure consumer with JAAS config if exists
+    // Configure consumer with SASL auth if exists
     saslAuthentication match {
       case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) => { 
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
