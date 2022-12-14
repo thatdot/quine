@@ -47,32 +47,6 @@ object ShardMessage {
       extends ShardMessage
       with AskableQuineMessage[BaseMessage.Done.type]
 
-  /** Instruct the shard to snapshot all in-memory nodes and reply with how that
-    * operation went
-    *
-    * @param replyTo return address for outcome of snapshotting
-    */
-  final case class SnapshotInMemoryNodes(replyTo: QuineRef)
-      extends ShardMessage
-      with AskableQuineMessage[SnapshotInMemoryNodesResult]
-
-  sealed abstract class SnapshotInMemoryNodesResult extends ShardMessage
-
-  /** The shard failed to make a snapshot
-    *
-    * @param shardId which shard it is that failed to snapshot
-    * @param error underlying error that caused the failure
-    */
-  final case class SnapshotFailed(
-    shardId: Int,
-    error: Throwable
-  ) extends SnapshotInMemoryNodesResult
-
-  // Map of the nodes that failed to save and their error
-  final case class SnapshotSucceeded(
-    nodeFailures: Map[QuineId, Throwable]
-  ) extends SnapshotInMemoryNodesResult
-
   /** Send to a shard to ask for some sample of awake nodes
     *
     * @param limit max number of nodes to send back (none means no maximum, so all awake nodes)

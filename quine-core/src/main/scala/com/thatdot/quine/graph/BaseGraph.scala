@@ -263,24 +263,6 @@ trait BaseGraph extends StrictLogging {
       .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
   }
 
-  /** Snapshot nodes that are currently awake
-    */
-  def snapshotInMemoryNodes()(implicit timeout: Timeout): Future[Unit] = {
-    requiredGraphIsReady()
-    Future
-      .traverse(shards) { (shard: ShardRef) =>
-        relayAsk(shard.quineRef, ShardMessage.SnapshotInMemoryNodes)
-      }(implicitly, shardDispatcherEC)
-      .map(_.foreach {
-        case ShardMessage.SnapshotFailed(shardId, msg) =>
-          logger.error(s"Shard: $shardId failed to snapshot nodes: $msg")
-
-        case ShardMessage.SnapshotSucceeded(idFailures) =>
-          for ((id, msg) <- idFailures)
-            logger.error(s"Node ${id.debug(idProvider)} failed to snapshot: $msg")
-      })(shardDispatcherEC)
-  }
-
   /** Get the in-memory limits for all the shards of this graph, possibly
     * updating some of those limits along the way
     *

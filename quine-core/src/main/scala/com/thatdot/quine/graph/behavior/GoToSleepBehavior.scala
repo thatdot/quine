@@ -65,22 +65,6 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
      */
     case ProcessMessages => ()
 
-    case SaveSnapshot =>
-      val saveFuture = latestUpdateAfterSnapshot match {
-        case Some(latestUpdateTime) if persistenceConfig.snapshotEnabled =>
-          val snapshotTime = if (!persistenceConfig.snapshotSingleton) latestUpdateTime else EventTime.MaxValue
-          val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
-          metrics.snapshotSize.update(snapshot.length)
-          retryPersistence(
-            metrics.persistorPersistSnapshotTimer,
-            persistor.persistSnapshot(qid, snapshotTime, snapshot),
-            context.dispatcher
-          )(context.system.scheduler)
-
-        case _ => Future.unit
-      }
-      sender() ! saveFuture
-
     case GoToSleep =>
       val shardActor: ActorRef = sender()
       // promise tracking updates to shard in-memory map of nodes (completed by the shard)
