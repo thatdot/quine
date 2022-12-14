@@ -63,36 +63,29 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
-    // Configure consumer with SASL auth if exists
+    val consumer = ConsumerSettings(graph.system, keyDeserializer, deserializer)
+      .withBootstrapServers(bootstrapServers)
+      .withGroupId(groupId)
+      // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
+      // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
+      // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
+      // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
+      .withStopTimeout(Duration.Zero)
+      .withProperties(
+        AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
+        SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+      )
+
+    // Configure kafka consumer with SASL auth if exists
     saslAuthentication match {
       case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) =>
-        ConsumerSettings(graph.system, keyDeserializer, deserializer)
-          .withBootstrapServers(bootstrapServers)
-          .withGroupId(groupId)
-          // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
-          // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
-          // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
-          // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
-          .withStopTimeout(Duration.Zero)
+        consumer
           .withProperties(
             "sasl.jaas.config" -> jaasConfig,
-            "sasl.mechanism" -> saslMechanism,
-            AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-            SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+            "sasl.mechanism" -> saslMechanism
           )
       case None =>
-        ConsumerSettings(graph.system, keyDeserializer, deserializer)
-          .withBootstrapServers(bootstrapServers)
-          .withGroupId(groupId)
-          // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
-          // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
-          // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
-          // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
-          .withStopTimeout(Duration.Zero)
-          .withProperties(
-            AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-            SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-          )
+        consumer
     }
   }
 
