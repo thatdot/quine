@@ -156,10 +156,12 @@ object KafkaSecurityProtocol {
 sealed abstract class KafkaSaslAuthentication
 object KafkaSaslAuthentication {
   @title("Kafka SASL PLAIN Authentication")
-  @docs("See [SASL PLAIN authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#plain).")
+  @docs(
+    "See [SASL PLAIN authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#plain)."
+  )
   final case class Plain(
     jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
-    saslMechanism: String = "PLAIN",
+    saslMechanism: String = "PLAIN"
   ) extends KafkaSaslAuthentication
 }
 

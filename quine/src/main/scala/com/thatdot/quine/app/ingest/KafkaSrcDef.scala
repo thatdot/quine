@@ -30,13 +30,7 @@ import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.{
-  KafkaAutoOffsetReset,
-  KafkaIngest,
-  KafkaOffsetCommitting,
-  KafkaSecurityProtocol,
-  KafkaSaslAuthentication
-}
+import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol, KafkaSaslAuthentication}
 
 object KafkaSrcDef {
 
@@ -65,7 +59,7 @@ object KafkaSrcDef {
 
     // Configure consumer with SASL auth if exists
     saslAuthentication match {
-      case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) => { 
+      case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) =>
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -79,8 +73,8 @@ object KafkaSrcDef {
             "sasl.mechanism" -> saslMechanism,
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-          )}
-      case None => {
+          )
+      case None =>
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -92,7 +86,7 @@ object KafkaSrcDef {
           .withProperties(
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-          )}
+          )
     }
   }
 
