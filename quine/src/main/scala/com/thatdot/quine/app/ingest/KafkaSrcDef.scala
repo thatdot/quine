@@ -30,7 +30,13 @@ import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol, KafkaSaslAuthentication}
+import com.thatdot.quine.routes.{
+  KafkaAutoOffsetReset,
+  KafkaIngest,
+  KafkaOffsetCommitting,
+  KafkaSaslAuthentication,
+  KafkaSecurityProtocol
+}
 
 object KafkaSrcDef {
 
