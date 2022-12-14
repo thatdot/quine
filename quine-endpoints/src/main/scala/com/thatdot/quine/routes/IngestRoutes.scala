@@ -149,24 +149,27 @@ object KafkaSecurityProtocol {
   val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
-@title("Kafka JAAS Configuration")
-@docs(
-  "See [`sasl.jaas.config` in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#jaas-configurations)."
-)
-sealed abstract class KafkaJaasConfig
-object KafkaJaasConfig {
-  final case class JaasConfig(config: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';") extends KafkaJaasConfig
-}
-
-// @title("Kafka SASL Mechanism")
+// @title("Kafka JAAS Configuration")
 // @docs(
-//   "See [`sasl.jaas.config` in the Kafka documentation](https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#sasl-mechanism)."
+//   "See [`sasl.jaas.config` in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#jaas-configurations)."
 // )
-// sealed abstract class KafkaSaslMechanism
-// object KafkaSaslMechanism {
-//   final case class JaasConfig(config: String = "PLAIN") extends KafkaJaasConfig
+// sealed abstract class KafkaJaasConfig
+// object KafkaJaasConfig {
+//   final case class JaasConfig(config: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';") extends KafkaJaasConfig
 // }
 
+@title("Kafka SASL Authentication")
+@docs(
+  "See [SASL authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html)."
+)
+sealed abstract class KafkaSaslAuthentication
+object KafkaSaslAuthentication {
+  final case class Plain(
+    jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
+    saslMechanism: String = "PLAIN",
+    // kerberosServiceName: String = "quine",
+  ) extends KafkaSaslAuthentication
+}
 
 @title("Kafka offset tracking mechanism")
 @docs(
@@ -240,7 +243,7 @@ final case class KafkaIngest(
   ) groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
-  jaasConfig: Option[KafkaJaasConfig],
+  saslAuthentication: Option[KafkaSaslAuthentication],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
@@ -673,7 +676,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
       bootstrapServers = "localhost:9092",
       groupId = Some("quine-e1-ingester"),
       offsetCommitting = None,
-      jaasConfig = None,
+      saslAuthentication = None,
       endingOffset = None,
       maximumPerSecond = None
     ),
@@ -689,8 +692,8 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
   implicit lazy val kafkaSecurityProtocolSchema: JsonSchema[KafkaSecurityProtocol] =
     stringEnumeration(KafkaSecurityProtocol.values)(_.name)
-  implicit lazy val kafkaJaasSchema: JsonSchema[KafkaJaasConfig] =
-    genericJsonSchema[KafkaJaasConfig]
+  implicit lazy val KafkaSaslAuthenticationSchema: JsonSchema[KafkaSaslAuthentication] =
+    genericJsonSchema[KafkaSaslAuthentication]
   implicit lazy val kafkaAutoOffsetResetSchema: JsonSchema[KafkaAutoOffsetReset] =
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
   implicit lazy val kafkaOffsetCommittingSchema: JsonSchema[KafkaOffsetCommitting] =

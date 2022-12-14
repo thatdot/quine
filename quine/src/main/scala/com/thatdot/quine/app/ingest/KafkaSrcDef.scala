@@ -30,7 +30,13 @@ import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol, KafkaJaasConfig}
+import com.thatdot.quine.routes.{
+  KafkaAutoOffsetReset,
+  KafkaIngest,
+  KafkaOffsetCommitting,
+  KafkaSecurityProtocol,
+  KafkaSaslAuthentication
+}
 
 object KafkaSrcDef {
 
@@ -47,7 +53,7 @@ object KafkaSrcDef {
     groupId: String,
     autoOffsetReset: KafkaAutoOffsetReset,
     securityProtocol: KafkaSecurityProtocol,
-    jaasConfig: Option[KafkaJaasConfig],
+    saslAuthentication: Option[KafkaSaslAuthentication],
     decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
@@ -58,9 +64,9 @@ object KafkaSrcDef {
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
     // Configure consumer with JAAS config if exists
-    jaasConfig match {
-      case Some(KafkaJaasConfig.JaasConfig(config)) => { 
-        println(config)
+    saslAuthentication match {
+      case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) => { 
+        println("with config")
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -70,14 +76,14 @@ object KafkaSrcDef {
           // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
           .withStopTimeout(Duration.Zero)
           .withProperties(
-            "sasl.mechanism" -> "PLAIN",
-            "sasl.kerberos.service.name" -> "kafka",
-            "sasl.jaas.config" -> config,
+            "sasl.jaas.config" -> jaasConfig,
+            "sasl.mechanism" -> saslMechanism,
+            // "sasl.kerberos.service.name" -> "kafka",
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
           )}
       case None => {
-        println("noconfig")
+        println("no config")
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -102,7 +108,7 @@ object KafkaSrcDef {
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
     securityProtocol: KafkaSecurityProtocol,
-    jaasConfig: Option[KafkaJaasConfig],
+    saslAuthentication: Option[KafkaSaslAuthentication],
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset,
     endingOffset: Option[Long],
@@ -131,7 +137,7 @@ object KafkaSrcDef {
         groupId,
         autoOffsetReset,
         securityProtocol,
-        jaasConfig,
+        saslAuthentication,
         decoders
       )
 
