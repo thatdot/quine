@@ -66,7 +66,6 @@ object KafkaSrcDef {
     // Configure consumer with JAAS config if exists
     saslAuthentication match {
       case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) => { 
-        println("with config")
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -83,7 +82,6 @@ object KafkaSrcDef {
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
           )}
       case None => {
-        println("no config")
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
