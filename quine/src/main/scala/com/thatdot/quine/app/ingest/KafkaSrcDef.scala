@@ -77,7 +77,6 @@ object KafkaSrcDef {
           .withProperties(
             "sasl.jaas.config" -> jaasConfig,
             "sasl.mechanism" -> saslMechanism,
-            // "sasl.kerberos.service.name" -> "kafka",
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
           )}
