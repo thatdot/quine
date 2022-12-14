@@ -160,7 +160,6 @@ object KafkaSaslAuthentication {
   final case class Plain(
     jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
     saslMechanism: String = "PLAIN",
-    // kerberosServiceName: String = "quine",
   ) extends KafkaSaslAuthentication
 }
 
