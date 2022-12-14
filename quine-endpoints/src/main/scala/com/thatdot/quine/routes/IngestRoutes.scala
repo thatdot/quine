@@ -149,21 +149,14 @@ object KafkaSecurityProtocol {
   val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
-// @title("Kafka JAAS Configuration")
-// @docs(
-//   "See [`sasl.jaas.config` in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#jaas-configurations)."
-// )
-// sealed abstract class KafkaJaasConfig
-// object KafkaJaasConfig {
-//   final case class JaasConfig(config: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';") extends KafkaJaasConfig
-// }
-
 @title("Kafka SASL Authentication")
 @docs(
   "See [SASL authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html)."
 )
 sealed abstract class KafkaSaslAuthentication
 object KafkaSaslAuthentication {
+  @title("Kafka SASL PLAIN Authentication")
+  @docs("See [SASL PLAIN authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#plain).")
   final case class Plain(
     jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
     saslMechanism: String = "PLAIN",
