@@ -59,7 +59,8 @@ object KafkaSrcDef {
 
     // Configure consumer with JAAS config if exists
     jaasConfig match {
-      case Some(KafkaJaasConfig.JaasConfig(config)) => 
+      case Some(KafkaJaasConfig.JaasConfig(config)) => { 
+        println(config)
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -69,11 +70,14 @@ object KafkaSrcDef {
           // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
           .withStopTimeout(Duration.Zero)
           .withProperties(
+            "sasl.mechanism" -> "PLAIN",
+            "sasl.kerberos.service.name" -> "kafka",
             "sasl.jaas.config" -> config,
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-          )
-      case None =>
+          )}
+      case None => {
+        println("noconfig")
         ConsumerSettings(graph.system, keyDeserializer, deserializer)
           .withBootstrapServers(bootstrapServers)
           .withGroupId(groupId)
@@ -85,7 +89,7 @@ object KafkaSrcDef {
           .withProperties(
             AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
             SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
-          )
+          )}
     }
   }
 

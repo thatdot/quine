@@ -146,7 +146,7 @@ object KafkaSecurityProtocol {
   case object PlainText extends KafkaSecurityProtocol("PLAINTEXT")
   case object Ssl extends KafkaSecurityProtocol("SSL")
   case object Sasl_Ssl extends KafkaSecurityProtocol("SASL_SSL")
-  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl)
+  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
 @title("Kafka JAAS Configuration")
@@ -155,8 +155,17 @@ object KafkaSecurityProtocol {
 )
 sealed abstract class KafkaJaasConfig
 object KafkaJaasConfig {
-  final case class JaasConfig(config: String) extends KafkaJaasConfig
+  final case class JaasConfig(config: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';") extends KafkaJaasConfig
 }
+
+// @title("Kafka SASL Mechanism")
+// @docs(
+//   "See [`sasl.jaas.config` in the Kafka documentation](https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#sasl-mechanism)."
+// )
+// sealed abstract class KafkaSaslMechanism
+// object KafkaSaslMechanism {
+//   final case class JaasConfig(config: String = "PLAIN") extends KafkaJaasConfig
+// }
 
 
 @title("Kafka offset tracking mechanism")
