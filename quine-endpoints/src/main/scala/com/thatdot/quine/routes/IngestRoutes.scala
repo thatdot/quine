@@ -145,7 +145,23 @@ sealed abstract class KafkaSecurityProtocol(val name: String)
 object KafkaSecurityProtocol {
   case object PlainText extends KafkaSecurityProtocol("PLAINTEXT")
   case object Ssl extends KafkaSecurityProtocol("SSL")
-  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl)
+  case object Sasl_Ssl extends KafkaSecurityProtocol("SASL_SSL")
+  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
+}
+
+@title("Kafka SASL Authentication")
+@docs(
+  "See [SASL authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html)."
+)
+sealed abstract class KafkaSaslAuthentication
+object KafkaSaslAuthentication {
+  @title("Kafka SASL PLAIN Authentication")
+  @docs("See [SASL PLAIN authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#plain).")
+  final case class Plain(
+    jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
+    saslMechanism: String = "PLAIN",
+    // kerberosServiceName: String = "quine",
+  ) extends KafkaSaslAuthentication
 }
 
 @title("Kafka offset tracking mechanism")
@@ -220,6 +236,7 @@ final case class KafkaIngest(
   ) groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
+  saslAuthentication: Option[KafkaSaslAuthentication],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
@@ -652,6 +669,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
       bootstrapServers = "localhost:9092",
       groupId = Some("quine-e1-ingester"),
       offsetCommitting = None,
+      saslAuthentication = None,
       endingOffset = None,
       maximumPerSecond = None
     ),
@@ -667,14 +685,15 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
   implicit lazy val kafkaSecurityProtocolSchema: JsonSchema[KafkaSecurityProtocol] =
     stringEnumeration(KafkaSecurityProtocol.values)(_.name)
+  implicit lazy val KafkaSaslAuthenticationSchema: JsonSchema[KafkaSaslAuthentication] =
+    genericJsonSchema[KafkaSaslAuthentication]
   implicit lazy val kafkaAutoOffsetResetSchema: JsonSchema[KafkaAutoOffsetReset] =
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
   implicit lazy val kafkaOffsetCommittingSchema: JsonSchema[KafkaOffsetCommitting] =
     genericJsonSchema[KafkaOffsetCommitting]
   implicit lazy val wsKeepaliveSchema: JsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
     genericJsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol]
-  implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] =
-    genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
+  implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] = genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
   implicit lazy val ingestStreamStatsSchema: JsonSchema[IngestStreamStats] =
     genericJsonSchema[IngestStreamStats].withExample(exampleIngestStreamInfo.stats)
   implicit lazy val ingestStreamInfoSchema: JsonSchema[IngestStreamInfo] =
