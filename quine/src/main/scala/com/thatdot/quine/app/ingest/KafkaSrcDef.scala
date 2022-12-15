@@ -78,8 +78,6 @@ object KafkaSrcDef {
       .withProperties(
         properties: _*
       )
-
-    // Configure kafka consumer with any additional kafka properties passed
   }
 
   def apply(
