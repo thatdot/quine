@@ -171,8 +171,8 @@ object Recipe {
               groupId,
               securityProtocol,
               autoCommitIntervalMs,
-              saslAuthentication,
               autoOffsetReset,
+              kafkaProperties,
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes
@@ -188,8 +188,8 @@ object Recipe {
               groupId,
               securityProtocol,
               autoCommitIntervalMs,
-              saslAuthentication,
               autoOffsetReset,
+              kafkaProperties,
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes
