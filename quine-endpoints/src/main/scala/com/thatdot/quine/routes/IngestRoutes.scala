@@ -145,7 +145,8 @@ sealed abstract class KafkaSecurityProtocol(val name: String)
 object KafkaSecurityProtocol {
   case object PlainText extends KafkaSecurityProtocol("PLAINTEXT")
   case object Ssl extends KafkaSecurityProtocol("SSL")
-  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl)
+  case object Sasl_Ssl extends KafkaSecurityProtocol("SASL_SSL")
+  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
 @title("Kafka offset tracking mechanism")
@@ -172,11 +173,12 @@ object KafkaOffsetCommitting {
 sealed abstract class IngestStreamConfiguration
 
 object KafkaIngest {
-
   // Takes a set of topic names
   type Topics = Set[String]
   // Takes a set of partition numbers for each topic name.
   type PartitionAssignments = Map[String, Set[Int]]
+  // Takes a map of kafka properties
+  type KafkaProperties = Map[String, String]
 }
 @title("Record encoding")
 @docs("Record encoding format")
@@ -200,6 +202,7 @@ object RecordDecodingType {
   * @param parallelism maximum number of records to process at once
   * @param bootstrapServers comma-separated list of host/port pairs
   * @param groupId consumer group this consumer belongs to
+  * @param kafkaProperties kafka client properties
   */
 @title("Kafka Ingest Stream")
 @unnamed
@@ -221,6 +224,10 @@ final case class KafkaIngest(
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
+  @docs(
+    "Map of Kakfa client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
+  )
+  kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
   ) endingOffset: Option[Long],

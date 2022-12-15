@@ -172,6 +172,7 @@ object Recipe {
               securityProtocol,
               autoCommitIntervalMs,
               autoOffsetReset,
+              kafkaProperties,
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes
@@ -188,6 +189,7 @@ object Recipe {
               securityProtocol,
               autoCommitIntervalMs,
               autoOffsetReset,
+              kafkaProperties,
               endingOffset,
               maximumPerSecond,
               recordEncodingTypes

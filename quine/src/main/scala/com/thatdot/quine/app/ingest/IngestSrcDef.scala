@@ -216,6 +216,7 @@ object IngestSrcDef extends LazyLogging {
           securityProtocol,
           autoCommitIntervalMs,
           autoOffsetReset,
+          kafkaProperties,
           endingOffset,
           maxPerSecond,
           recordEncodings
@@ -231,6 +232,7 @@ object IngestSrcDef extends LazyLogging {
         securityProtocol,
         autoCommitIntervalMs,
         autoOffsetReset,
+        kafkaProperties,
         endingOffset,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply)
