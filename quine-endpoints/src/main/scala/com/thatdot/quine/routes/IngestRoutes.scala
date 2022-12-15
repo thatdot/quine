@@ -227,7 +227,7 @@ final case class KafkaIngest(
   @docs(
     "Map of Kakfa client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
   )
-  kafkaProperties: Option[KafkaIngest.KafkaProperties],
+  kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
   ) endingOffset: Option[Long],
@@ -659,7 +659,6 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
       bootstrapServers = "localhost:9092",
       groupId = Some("quine-e1-ingester"),
       offsetCommitting = None,
-      kafkaProperties = None,
       endingOffset = None,
       maximumPerSecond = None
     ),

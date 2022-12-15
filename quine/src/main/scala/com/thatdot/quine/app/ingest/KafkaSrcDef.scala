@@ -46,7 +46,7 @@ object KafkaSrcDef {
     bootstrapServers: String,
     groupId: String,
     autoOffsetReset: KafkaAutoOffsetReset,
-    kafkaProperties: Option[KafkaIngest.KafkaProperties],
+    kafkaProperties: KafkaIngest.KafkaProperties,
     securityProtocol: KafkaSecurityProtocol,
     decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
@@ -57,12 +57,12 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
-    // Create Seq of kafka properties: combination of user passed properties from `kafkaProperties`
+    // Create Map of kafka properties: combination of user passed properties from `kafkaProperties`
     // as well as those templated by `KafkaAutoOffsetReset` and `KafkaSecurityProtocol`
-    // NOTE: This diveragance between how kafka properties are set should be resolved, most likely by removing
+    // NOTE: This diveragence between how kafka properties are set should be resolved, most likely by removing
     // `KafkaAutoOffsetReset`, `KafkaSecurityProtocol`, and `KafkaOffsetCommitting.AutoCommit`
     // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
-    val properties = kafkaProperties.map(_.toSeq).getOrElse(Seq.empty[(String, String)]) ++ Seq(
+    val properties = kafkaProperties ++ Map(
       AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
       SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
     )
@@ -75,9 +75,7 @@ object KafkaSrcDef {
       // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
       // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
       .withStopTimeout(Duration.Zero)
-      .withProperties(
-        properties: _*
-      )
+      .withProperties(properties)
   }
 
   def apply(
@@ -91,7 +89,7 @@ object KafkaSrcDef {
     securityProtocol: KafkaSecurityProtocol,
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset,
-    kafkaProperties: Option[KafkaIngest.KafkaProperties],
+    kafkaProperties: KafkaIngest.KafkaProperties,
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
