@@ -30,13 +30,7 @@ import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.{
-  KafkaAutoOffsetReset,
-  KafkaIngest,
-  KafkaOffsetCommitting,
-  KafkaSaslAuthentication,
-  KafkaSecurityProtocol
-}
+import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
 
 object KafkaSrcDef {
 
@@ -52,8 +46,8 @@ object KafkaSrcDef {
     bootstrapServers: String,
     groupId: String,
     autoOffsetReset: KafkaAutoOffsetReset,
+    kafkaProperties: Option[KafkaIngest.KafkaProperties],
     securityProtocol: KafkaSecurityProtocol,
-    saslAuthentication: Option[KafkaSaslAuthentication],
     decoders: Seq[ContentDecoder]
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
@@ -63,7 +57,17 @@ object KafkaSrcDef {
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
-    val consumer = ConsumerSettings(graph.system, keyDeserializer, deserializer)
+    // Create Seq of kafka properties: combination of user passed properties from `kafkaProperties`
+    // as well as those templated by `KafkaAutoOffsetReset` and `KafkaSecurityProtocol`
+    // NOTE: This diveragance between how kafka properties are set should be resolved, most likely by removing
+    // `KafkaAutoOffsetReset`, `KafkaSecurityProtocol`, and `KafkaOffsetCommitting.AutoCommit`
+    // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
+    val properties = kafkaProperties.map(_.toSeq).getOrElse(Seq.empty[(String, String)]) ++ Seq(
+      AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
+      SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+    )
+
+    ConsumerSettings(graph.system, keyDeserializer, deserializer)
       .withBootstrapServers(bootstrapServers)
       .withGroupId(groupId)
       // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
@@ -72,21 +76,10 @@ object KafkaSrcDef {
       // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
       .withStopTimeout(Duration.Zero)
       .withProperties(
-        AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-        SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+        properties: _*
       )
 
-    // Configure kafka consumer with SASL auth if exists
-    saslAuthentication match {
-      case Some(KafkaSaslAuthentication.Plain(jaasConfig, saslMechanism)) =>
-        consumer
-          .withProperties(
-            "sasl.jaas.config" -> jaasConfig,
-            "sasl.mechanism" -> saslMechanism
-          )
-      case None =>
-        consumer
-    }
+    // Configure kafka consumer with any additional kafka properties passed
   }
 
   def apply(
@@ -98,9 +91,9 @@ object KafkaSrcDef {
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
     securityProtocol: KafkaSecurityProtocol,
-    saslAuthentication: Option[KafkaSaslAuthentication],
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset,
+    kafkaProperties: Option[KafkaIngest.KafkaProperties],
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
@@ -126,8 +119,8 @@ object KafkaSrcDef {
         bootstrapServers,
         groupId,
         autoOffsetReset,
+        kafkaProperties,
         securityProtocol,
-        saslAuthentication,
         decoders
       )
 

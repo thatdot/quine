@@ -149,22 +149,6 @@ object KafkaSecurityProtocol {
   val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
-@title("Kafka SASL Authentication")
-@docs(
-  "See [SASL authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html)."
-)
-sealed abstract class KafkaSaslAuthentication
-object KafkaSaslAuthentication {
-  @title("Kafka SASL PLAIN Authentication")
-  @docs(
-    "See [SASL PLAIN authentication in the Kafka documentation](https://docs.confluent.io/4.1.3/kafka/authentication_sasl.html#plain)."
-  )
-  final case class Plain(
-    jaasConfig: String = "org.apache.kafka.common.security.plain.PlainLoginModule required username='' password='';",
-    saslMechanism: String = "PLAIN"
-  ) extends KafkaSaslAuthentication
-}
-
 @title("Kafka offset tracking mechanism")
 @docs(
   "How to keep track of current offset when consuming from Kafka, if at all."
@@ -189,11 +173,12 @@ object KafkaOffsetCommitting {
 sealed abstract class IngestStreamConfiguration
 
 object KafkaIngest {
-
   // Takes a set of topic names
   type Topics = Set[String]
   // Takes a set of partition numbers for each topic name.
   type PartitionAssignments = Map[String, Set[Int]]
+  // Takes a map of kafka properties
+  type KafkaProperties = Map[String, String]
 }
 @title("Record encoding")
 @docs("Record encoding format")
@@ -217,6 +202,7 @@ object RecordDecodingType {
   * @param parallelism maximum number of records to process at once
   * @param bootstrapServers comma-separated list of host/port pairs
   * @param groupId consumer group this consumer belongs to
+  * @param kafkaProperties kafka client properties
   */
 @title("Kafka Ingest Stream")
 @unnamed
@@ -237,8 +223,11 @@ final case class KafkaIngest(
   ) groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
-  saslAuthentication: Option[KafkaSaslAuthentication],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
+  @docs(
+    "Map of Kakfa client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
+  )
+  kafkaProperties: Option[KafkaIngest.KafkaProperties],
   @docs(
     "offset at which this stream should complete; offsets are sequential integers starting at 0"
   ) endingOffset: Option[Long],
@@ -670,7 +659,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
       bootstrapServers = "localhost:9092",
       groupId = Some("quine-e1-ingester"),
       offsetCommitting = None,
-      saslAuthentication = None,
+      kafkaProperties = None,
       endingOffset = None,
       maximumPerSecond = None
     ),
@@ -686,8 +675,6 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsS
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
   implicit lazy val kafkaSecurityProtocolSchema: JsonSchema[KafkaSecurityProtocol] =
     stringEnumeration(KafkaSecurityProtocol.values)(_.name)
-  implicit lazy val KafkaSaslAuthenticationSchema: JsonSchema[KafkaSaslAuthentication] =
-    genericJsonSchema[KafkaSaslAuthentication]
   implicit lazy val kafkaAutoOffsetResetSchema: JsonSchema[KafkaAutoOffsetReset] =
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
   implicit lazy val kafkaOffsetCommittingSchema: JsonSchema[KafkaOffsetCommitting] =
