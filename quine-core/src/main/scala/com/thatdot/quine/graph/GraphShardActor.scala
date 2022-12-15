@@ -11,9 +11,7 @@ import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, Timers}
 import akka.dispatch.Envelope
-import akka.pattern.{AskTimeoutException, ask}
 import akka.stream.scaladsl.Source
-import akka.util.Timeout
 
 import com.thatdot.quine.graph.GraphShardActor.LivenessStatus
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
@@ -29,13 +27,10 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
   SampleAwakeNodes,
   ShardShutdownProgress,
   ShardStats,
-  SnapshotFailed,
-  SnapshotInMemoryNodes,
-  SnapshotSucceeded,
   UpdateInMemoryLimits
 }
 import com.thatdot.quine.graph.messaging.{NodeActorMailboxExtension, QuineIdAtTime, QuineMessage, QuineRefOps}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 
 /** Shard in the Quine graph
@@ -498,45 +493,6 @@ final private[quine] class GraphShardActor(
           }
       }
 
-    case s @ SnapshotInMemoryNodes(_) =>
-      implicit val timeout = Timeout(10 minutes)
-
-      /* TODO: Since `SaveSnapshot` is one of the message types we discard when
-       * cleaning up a node mailbox, we can't differentiate an ask timeout (due
-       * to the node being too busy or crashing) from a timeout due to the node
-       * sleeping first. For now, we assume a timeout can be ignored.
-       */
-      val toSnapshotFutures = nodes.iterator
-        .collect[Future[Option[(QuineId, Throwable)]]] {
-          case (QuineIdAtTime(id, None), NodeState.LiveNode(_, actorRef, _, _)) =>
-            (actorRef ? SaveSnapshot)
-              .mapTo[Future[Unit]]
-              .recover { case _: AskTimeoutException =>
-                Future.unit
-              }(context.dispatcher) // this timeout is most likel the node going to sleep
-              .flatten
-              .transform {
-                case Success(()) => Success(None)
-                case Failure(err) => Success(Some(id -> err))
-              }(context.dispatcher)
-        }
-        .toVector
-
-      Future
-        .foldLeft(toSnapshotFutures)(Map.empty[QuineId, Throwable]) { (map, outcome) =>
-          outcome match {
-            case None => map
-            case Some((id, err)) => map + (id -> err)
-          }
-        }(context.dispatcher)
-        .onComplete {
-          case Success(failureMap) =>
-            s ?! SnapshotSucceeded(failureMap)
-
-          case Failure(err) =>
-            s ?! SnapshotFailed(shardId, err)
-        }(context.dispatcher)
-
     case msg @ RemoveNodesIf(LocalPredicate(predicate), _) =>
       var wakingNodesExist = false
       for ((nodeId, nodeState) <- nodes; if predicate(nodeId))
@@ -719,11 +675,6 @@ private[quine] case object GoToSleep extends NodeControlMessage
   * that the dispatcher knows that the actor has messages to process.
   */
 private[quine] case object ProcessMessages extends NodeControlMessage
-
-/** Message sent by a shard to one of the nodes it owns telling it to save a
-  * snapshot of its state to disk. Response should be a `Future[Unit]`
-  */
-private[quine] case object SaveSnapshot extends NodeControlMessage
 
 /** Sent by the node to the shard right before the node's actor is stopped. This
   * allows the shard to remove the node from the map and possibly also take

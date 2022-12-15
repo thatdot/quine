@@ -13,14 +13,7 @@ import com.typesafe.config.Config
 
 import com.thatdot.quine.graph.behavior.StashedMessage
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.CancelDomainNodeSubscription
-import com.thatdot.quine.graph.{
-  BinaryHistogramCounter,
-  GoToSleep,
-  HostQuineMetrics,
-  ProcessMessages,
-  SaveSnapshot,
-  WakeUp
-}
+import com.thatdot.quine.graph.{BinaryHistogramCounter, GoToSleep, HostQuineMetrics, ProcessMessages, WakeUp}
 
 /** Mailbox used for node actors
   *
@@ -60,7 +53,7 @@ object NodeActorMailbox {
     * @return whether the message should be ignored
     */
   def shouldIgnoreWhenSleeping(msg: Any): Boolean = msg match {
-    case GoToSleep | SaveSnapshot =>
+    case GoToSleep =>
       // redundant messages when already asleep
       true
     case ProcessMessages | BaseMessage.Ack | StandingQueryMessage.UpdateStandingQueriesNoWake =>

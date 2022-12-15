@@ -69,7 +69,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
         _ <- pause()
         _ = (t2 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.snapshotInMemoryNodes()
+        _ <- graph.requestNodeSleep(qid)
         _ <- pause()
         _ = (t3 = Milliseconds.currentTime())
         _ <- pause()
@@ -77,7 +77,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
         _ <- pause()
         _ = (t4 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.snapshotInMemoryNodes()
+        _ <- graph.requestNodeSleep(qid)
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
@@ -88,21 +88,21 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
   override def afterAll(): Unit =
     Await.result(graph.shutdown(), timeout.duration * 2L)
 
-  test("query before any events or snapshots") {
+  test("query before any events or sleeps") {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t0)).map { props =>
       assert(props == Map.empty)
     }
   }
 
-  test("logState properties before any events or snapshots") {
+  test("logState properties before any events or sleeps") {
     assume(runnable)
     graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
       assert(s.properties.isEmpty)
     }
   }
 
-  test("logState journal before any events or snapshots") {
+  test("logState journal before any events or sleeps") {
     assume(runnable)
     graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
       assert(s.journal.isEmpty)
@@ -130,7 +130,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     }
   }
 
-  test("query after first snapshot") {
+  test("query after first sleep") {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t3)).map { props =>
       val expected = Map(
@@ -141,7 +141,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     }
   }
 
-  test("query after first event after snapshot") {
+  test("query after first event after sleep") {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t4)).map { props =>
       val expected = Map(
@@ -153,7 +153,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     }
   }
 
-  test("query after last snapshot") {
+  test("query after last sleep") {
     assume(runnable)
     graph.literalOps.getProps(qid, atTime = Some(t5)).map { props =>
       val expected = Map(

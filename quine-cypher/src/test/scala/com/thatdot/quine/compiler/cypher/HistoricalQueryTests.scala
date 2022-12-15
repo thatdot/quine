@@ -49,7 +49,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
         _ <- pause()
         _ = (t2 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.snapshotInMemoryNodes()
+        _ <- graph.requestNodeSleep(qid)
         _ <- pause()
         _ = (t3 = Milliseconds.currentTime())
         _ <- pause()
@@ -57,7 +57,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
         _ <- pause()
         _ = (t4 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.snapshotInMemoryNodes()
+        _ <- graph.requestNodeSleep(qid)
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
@@ -76,7 +76,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
       .map(r => assert(r == Vector(Vector(Expr.Node(qid, Set.empty, expected)))))
   }
 
-  it("query before any events or snapshots") {
+  it("query before any events or sleeps") {
     assertPropertiesAtTime(t0, Map.empty)
   }
 
@@ -99,7 +99,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     )
   }
 
-  it("query after first snapshot") {
+  it("query after first sleep") {
     assertPropertiesAtTime(
       t3,
       Map(
@@ -109,7 +109,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     )
   }
 
-  it("query after first event after snapshot") {
+  it("query after first event after sleep") {
     assertPropertiesAtTime(
       t4,
       Map(
@@ -120,7 +120,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     )
   }
 
-  it("query after last snapshot") {
+  it("query after last sleep") {
     assertPropertiesAtTime(
       t5,
       Map(
