@@ -22,8 +22,9 @@ object QuineSettings {
   val nodeLegacySslArg = "--openssl-legacy-provider"
   // See if node accepts this arg. Give it an expression to evaluate {} so it returns instead of entering the repl
   def nodeLegacySslIfAvailable: Seq[String] =
-    Try(if (Seq("node", nodeLegacySslArg, "-e", "{}").! == 0) Seq(nodeLegacySslArg) else Seq())
-      .getOrElse(Seq())
+    if (Try(Seq("node", nodeLegacySslArg, "-e", "{}") ! ProcessLogger(_ => ())).toOption.contains(0))
+      Seq(nodeLegacySslArg)
+    else Seq()
 
   val commonSettings: Seq[Setting[_]] = Seq(
     organization := "com.thatdot",

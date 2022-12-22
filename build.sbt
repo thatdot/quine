@@ -94,9 +94,7 @@ lazy val `quine-cassandra-persistor`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
-      "net.jcip" % "jcip-annotations" % "1.0",
-      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations")
     )
   )
 
@@ -127,7 +125,6 @@ lazy val `quine-cypher`: Project = project
       "org.opencypher" % "parser-9.0" % openCypherV,
       "org.opencypher" % "util-9.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
-      "io.github.classgraph" % "classgraph" % "4.8.151",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
     ),
