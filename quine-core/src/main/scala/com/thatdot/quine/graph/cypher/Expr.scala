@@ -15,6 +15,7 @@ import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
 import com.google.common.hash.{HashCode, Hasher, Hashing}
+import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
@@ -2789,6 +2790,19 @@ object Value {
     case ujson.Arr(jvs) => Expr.List(jvs.view.map(fromJson).toVector)
     case ujson.Obj(jkvs) => Expr.Map(jkvs.view.mapValues(fromJson).toMap)
   }
+
+  def fromCirceJson(jvalue: Json): Value = jvalue.fold(
+    Expr.Null,
+    b => Expr.Bool(b),
+    (n: JsonNumber) =>
+      n.toLong match {
+        case Some(l: Long) => Expr.Integer(l)
+        case None => Expr.Floating(n.toDouble)
+      },
+    (s: String) => Expr.Str(s),
+    (u: Seq[Json]) => Expr.List(u.map(fromCirceJson): _*),
+    (m: JsonObject) => Expr.Map(m.toMap.view.mapValues(fromCirceJson))
+  )
 
   /** Encode a Cypher value into JSON
     *

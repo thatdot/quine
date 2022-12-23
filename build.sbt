@@ -21,6 +21,7 @@ lazy val `quine-core`: Project = project
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "com.lihaoyi" %% "ujson" % ujsonV,
+      "com.lihaoyi" %% "ujson-circe" % "0.9.6",
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
       "commons-codec" % "commons-codec" % commonsCodecV,

@@ -10,6 +10,7 @@ import akka.stream.scaladsl.Sink
 
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
+import ujson.circe.CirceJson
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
@@ -106,8 +107,10 @@ class CypherJsonInputFormat(query: String, parameter: String) extends CypherImpo
 
   override def importBytes(data: Array[Byte]): Try[cypher.Value] = Try {
     // deserialize bytes into JSON without going through string
-    val json: ujson.Value = ujson.read(data)
-    cypher.Value.fromJson(json)
+    // val json: ujson.Value = ujson.read(data)
+    //val json : Json = CirceJson(data)
+    // cypher.Value.fromJson(ujson.read(data) )
+    cypher.Value.fromCirceJson(CirceJson(data))
   }
 
 }
