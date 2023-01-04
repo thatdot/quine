@@ -11,36 +11,34 @@ import com.thatdot.quine.model.Milliseconds
 /** Mix this in last to build in a monotonic [[EventTime]] clock to the actor.
   *
   * The clocks logical time is advanced every time a new message is processed.
-  * While processing of a message, [[nextEventTime]] can be used to generate a fresh event time.
+  * While processing of a message, [[tickEventSequence]] can be used to generate a fresh event time.
   */
 trait ActorClock extends ActorLogging with PriorityStashingBehavior {
 
   this: BaseNodeActorView =>
 
   private var currentTime: EventTime = EventTime.fromMillis(Milliseconds.currentTime())
-  private var previousMillis: Long = 0
   private var eventOccurred: Boolean = false
 
   /** @returns fresh event time (still at the actor's current logical time) */
-  final protected def nextEventTime(): EventTime = {
+  final protected def tickEventSequence(): EventTime = {
+    // don't tick the event sequence on the first event for a message,
+    // since we want the event sequence to be zero-based, not one-based
+    if (eventOccurred) currentTime = currentTime.tickEventSequence(Some(log))
     eventOccurred = true
-    val current = currentTime
-    currentTime = currentTime.nextEventTime(Some(log))
-    current
+    currentTime
   }
 
-  /** @returns event time produced by the most recent call to [[nextEventTime]]
+  /** @returns event time produced by the next call to [[tickEventSequence]]
     * @note do not use this for creating times which must be ordered!
     */
-  final protected def latestEventTime(): EventTime = currentTime
+  final protected def peekEventSequence(): EventTime = currentTime.tickEventSequence(Some(log))
 
-  /** @returns millisecond of the last time the actor clock ticked (so not the
-    * _current_ time, but the one before)
-    */
-  final protected def previousMillisTime(): Long = previousMillis
+  /** @returns the millisecond of the most recent received message [[actorClockBehavior]] */
+  final protected def previousMessageMillis(): Long = currentTime.millis
 
   protected def actorClockBehavior(inner: Receive): Receive = { case message: Any =>
-    previousMillis = currentTime.millis
+    val previousMillis = currentTime.millis
     val systemMillis = System.currentTimeMillis()
     val atSysDiff = atTime.map(systemMillis - _.millis)
 

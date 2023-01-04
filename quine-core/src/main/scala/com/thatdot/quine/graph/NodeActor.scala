@@ -152,7 +152,7 @@ private[graph] class NodeActor(
       log.warning("Attempted to flag a historical node as being updated -- this update will not be persisted.")
     }
     // TODO: should this update `lastWriteMillis` too?
-    latestUpdateAfterSnapshot = Some(latestEventTime())
+    latestUpdateAfterSnapshot = Some(peekEventSequence())
   }
 
   /** @see [[StandingQueryLocalEventIndex]]
@@ -314,7 +314,7 @@ private[graph] class NodeActor(
       persistAndApplyEventsEffectsInMemory {
         if (events.isEmpty) Seq.empty
         else if (events.size == 1 && hasEffect(events.head))
-          Seq(NodeEvent.WithTime(events.head, atTimeOverride.getOrElse(nextEventTime())))
+          Seq(NodeEvent.WithTime(events.head, atTimeOverride.getOrElse(tickEventSequence())))
         else {
           /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
            * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
@@ -331,7 +331,7 @@ private[graph] class NodeActor(
               case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
             }
             .reverse
-            .map(e => NodeEvent.WithTime(e, atTimeOverride.getOrElse(nextEventTime())))
+            .map(e => NodeEvent.WithTime(e, atTimeOverride.getOrElse(tickEventSequence())))
           // TODO: It should be possible to do all this in only two passes over the collection with no reverses.
         }
       }
@@ -339,7 +339,7 @@ private[graph] class NodeActor(
   protected def processDomainIndexEvent(
     event: DomainIndexEvent
   ): Future[Done.type] =
-    persistAndApplyEventsEffectsInMemory(Seq(NodeEvent.WithTime(event, nextEventTime())))
+    persistAndApplyEventsEffectsInMemory(Seq(NodeEvent.WithTime(event, tickEventSequence())))
 
   protected def persistAndApplyEventsEffectsInMemory(
     dedupedEffectingEvents: Seq[NodeEvent.WithTime]
@@ -396,7 +396,7 @@ private[graph] class NodeActor(
   }
 
   private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
-    val occurredAt: EventTime = nextEventTime()
+    val occurredAt: EventTime = tickEventSequence()
     val snapshot = toSnapshotBytes(occurredAt)
     metrics.snapshotSize.update(snapshot.length)
 
@@ -481,8 +481,8 @@ private[graph] class NodeActor(
     }
 
     if (shouldCauseSideEffects) { // `false` when restoring from journals
-      latestUpdateAfterSnapshot = Some(latestEventTime())
-      lastWriteMillis = latestEventTime().millis
+      latestUpdateAfterSnapshot = Some(peekEventSequence())
+      lastWriteMillis = previousMessageMillis()
       if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
       val nodeChangeEvents = events.collect { case e: NodeChangeEvent => e }
       runPostActions(nodeChangeEvents)
@@ -760,7 +760,7 @@ object NodeActor {
       }
 
     def getJournalAfter(after: Option[EventTime], includeDomainIndexEvents: Boolean): Future[Iterable[NodeEvent]] = {
-      val startingAt = after.fold(EventTime.MinValue)(_.nextEventTime(None))
+      val startingAt = after.fold(EventTime.MinValue)(_.tickEventSequence(None))
       val endingAt = atTime match {
         case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
         case None => EventTime.MaxValue

@@ -61,12 +61,12 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
     * @note this is supposed to almost always have the same logical time, but if the event sequence
     * number overflows, it'll increment the logical time too.
     */
-  def nextEventTime(logOpt: Option[LoggingAdapter]): EventTime = {
+  def tickEventSequence(logOpt: Option[LoggingAdapter]): EventTime = {
     val nextTime = new EventTime(eventTime + 1L)
     logOpt.foreach { log =>
       if (nextTime.millis != millis) {
         log.warning(
-          """Too many operations on this node caused nextEventTime to overflow
+          """Too many operations on this node caused tickEventSequence to overflow
             |milliseconds from: {} to: {}. Historical queries for the overflowed
             |millisecond may not reflect all updates.""".stripMargin.replace('\n', ' '),
           millis,
@@ -75,7 +75,7 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
       }
       if (nextTime.timestampSequence != timestampSequence) {
         log.warning(
-          "Too many operations on this node caused nextEventTime to overflow timestampSequence from: {} to: {}",
+          "Too many operations on this node caused tickEventSequence to overflow timestampSequence from: {} to: {}",
           timestampSequence,
           nextTime.timestampSequence
         )

@@ -77,9 +77,9 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
       val newState: WakefulState = wakefulState.updateAndGet {
         case WakefulState.ConsideringSleep(deadline) =>
-          val millisNow = latestEventTime().millis
+          val millisNow = System.currentTimeMillis()
           val tooRecentAccess = graph.declineSleepWhenAccessWithinMillis > 0 &&
-            graph.declineSleepWhenAccessWithinMillis > millisNow - previousMillisTime()
+            graph.declineSleepWhenAccessWithinMillis > millisNow - previousMessageMillis()
           val tooRecentWrite = graph.declineSleepWhenWriteWithinMillis > 0 &&
             graph.declineSleepWhenWriteWithinMillis > millisNow - lastWriteMillis
           if (deadline.hasTimeLeft() && !tooRecentAccess && !tooRecentWrite) {

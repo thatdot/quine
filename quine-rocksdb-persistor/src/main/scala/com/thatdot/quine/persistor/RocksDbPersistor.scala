@@ -419,7 +419,7 @@ final class RocksDbPersistor(
       // Non-inclusive end key (see ReadOptions.setIterateUpperBound)
       val endKey = endingAt match {
         case EventTime.MaxValue => qidBytes2NextKey(id.array)
-        case _ => qidAndTime2Key(id, endingAt.nextEventTime(logOpt = None))
+        case _ => qidAndTime2Key(id, endingAt.tickEventSequence(logOpt = None))
       }
 
       val readOptions = new ReadOptions().setIterateUpperBound(new Slice(endKey))
@@ -456,7 +456,7 @@ final class RocksDbPersistor(
       // Non-inclusive end key (see ReadOptions.setIterateUpperBound)
       val endKey = endingAt match {
         case EventTime.MaxValue => qidBytes2NextKey(id.array)
-        case _ => qidAndTime2Key(id, endingAt.nextEventTime(logOpt = None))
+        case _ => qidAndTime2Key(id, endingAt.tickEventSequence(logOpt = None))
       }
 
       val readOptions = new ReadOptions().setIterateUpperBound(new Slice(endKey))
