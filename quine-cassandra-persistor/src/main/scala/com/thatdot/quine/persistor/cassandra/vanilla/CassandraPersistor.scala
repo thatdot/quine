@@ -211,7 +211,7 @@ abstract class TableDefinition extends LazyLogging {
   /** Gets an arbitrary row from this table
     * @return an ordinary CQL statement to get a single row from this table, if any exists.
     */
-  def arbitraryRowStatement: SimpleStatement = selectFrom(tableName).column(partitionKey.name).limit(1).build()
+  def arbitraryRowStatement: SimpleStatement = selectFrom(tableName).column(partitionKey.name).limit(1).build
 }
 
 abstract class CassandraTable(session: CqlSession) {

@@ -11,12 +11,12 @@ import akka.stream.scaladsl.Sink
 
 import cats.Monad
 import cats.implicits._
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
-import com.typesafe.scalalogging.StrictLogging
+import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -48,7 +48,7 @@ class DomainIndexEvents(
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
     with DomainIndexEventColumnNames
-    with StrictLogging {
+    with LazyLogging {
 
   import syntax._
 
@@ -58,7 +58,7 @@ class DomainIndexEvents(
     executeFuture(
       BatchStatement
         .newInstance(
-          DefaultBatchType.UNLOGGED,
+          BatchType.UNLOGGED,
           //TODO this filter is temporary until NodeEvent.WithTime is split into
           // separate types for NodeChangeEvent and DomainIndexEvent
           events.collect { case NodeEvent.WithTime(event: DomainIndexEvent, atTime) =>
@@ -141,10 +141,10 @@ class DomainIndexEvents(
     val deleteParallelism = 10
     executeSource(selectByDgnId.bindColumns(dgnIdColumn.set(id)))
       .map(row => (quineIdColumn.get(row), timestampColumn.get(row)))
-      .mapAsyncUnordered(deleteParallelism)(t =>
-        executeFuture(deleteByQuineIdTimestamp.bindColumns(quineIdColumn.set(t._1), timestampColumn.set(t._2)))
-      )
-      .runWith(Sink.last)
+      .runWith(Sink.foreachAsync(deleteParallelism) { case (id, timestamp) =>
+        executeFuture(deleteByQuineIdTimestamp.bindColumns(quineIdColumn.set(id), timestampColumn.set(timestamp)))
+      })
+      .map(_ => ())(ExecutionContexts.parasitic)
   }
 
 }
@@ -256,7 +256,7 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
         prepare(selectWithTimeByQuineIdUntilTimestampQuery),
         prepare(selectWithTimeByQuineIdSinceUntilTimestampQuery),
         prepare(insertStatement, insertTimeout, writeConsistency),
-        prepare(selectByDgnId, insertTimeout, writeConsistency),
+        prepare(selectByDgnId, selectTimeout, readConsistency),
         prepare(deleteStatement, insertTimeout, writeConsistency)
       ).mapN(new DomainIndexEvents(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)

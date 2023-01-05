@@ -12,7 +12,7 @@ import akka.stream.scaladsl.Source
 
 import cats.Monad
 import cats.implicits._
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
@@ -55,7 +55,7 @@ class Journals(
     executeFuture(
       BatchStatement
         .newInstance(
-          DefaultBatchType.UNLOGGED,
+          BatchType.UNLOGGED,
           events map { case NodeEvent.WithTime(event, atTime) =>
             insert.bindColumns(
               quineIdColumn.set(id),

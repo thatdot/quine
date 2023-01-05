@@ -10,7 +10,7 @@ import akka.stream.Materializer
 
 import cats.Monad
 import cats.implicits._
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 
 import com.thatdot.quine.model.DomainGraphNode
@@ -34,13 +34,12 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
   private val selectAllStatement: SimpleStatement = select
     .columns(domainGraphNodeIdColumn.name, dataColumn.name)
-    .build()
+    .build
 
   private val deleteStatement: SimpleStatement =
     delete
-      .where(domainGraphNodeIdColumn.is.eq)
-      .build()
-      .setIdempotent(true)
+      .where(domainGraphNodeIdColumn.is.in)
+      .build
 
   def create(
     session: CqlSession,
@@ -70,7 +69,7 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
       (
         prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
         prepare(selectAllStatement.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(deleteStatement.setConsistencyLevel(readConsistency))
+        prepare(deleteStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
       ).mapN(new DomainGraphNodes(session, _, _, _))
     )(ExecutionContexts.parasitic)
   }
@@ -92,7 +91,7 @@ class DomainGraphNodes(
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     executeFuture(
       BatchStatement.newInstance(
-        DefaultBatchType.LOGGED,
+        BatchType.LOGGED,
         domainGraphNodes.toSeq map { case (domainGraphNodeId, domainGraphNode) =>
           insertStatement.bindColumns(
             domainGraphNodeIdColumn.set(domainGraphNodeId),
@@ -104,14 +103,7 @@ class DomainGraphNodes(
 
   def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
     executeFuture(
-      BatchStatement.newInstance(
-        DefaultBatchType.LOGGED,
-        domainGraphNodeIds.toSeq map { domainGraphNodeId =>
-          deleteStatement.bindColumns(
-            domainGraphNodeIdColumn.set(domainGraphNodeId)
-          )
-        }: _*
-      )
+      deleteStatement.bindColumns(domainGraphNodeIdColumn.setSet(domainGraphNodeIds))
     )
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
