@@ -6,6 +6,12 @@
 }
 */
 
+/** Hide the weird "copy" button in snippets */
+
+[data-md-color-accent="quine-blue"] .snippet-button.copy-snippet {
+  visibility: hidden;
+}
+
 /** Material theme override */
 
 button[data-md-color-accent="quine-blue"],
