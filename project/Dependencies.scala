@@ -49,7 +49,9 @@ object Dependencies {
   val scalaCollectionCompatV = "2.9.0"
   val scalaJavaTimeV = "2.5.0"
   val scalaLoggingV = "3.9.5"
-  val scalaParserCombinatorsV = "1.1.2"
+  // scalaParserCombinatorsV could be at 2.1.1 (or higher), but doing so conflicts with akka 2.6. Due to licensing
+  // concerns, we cannot further upgrade akkaV, so we cannot easily upgrade scalaParserCombinatorsV
+  val scalaParserCombinatorsV = "1.1.2" // scala-steward:off
   val scalaTestScalaCheckV = "3.2.11.0"
   val scalaTestV = "3.2.14"
   val scalajsDomV = "2.3.0"
