@@ -4,12 +4,14 @@ import java.io.File
 import java.net.HttpURLConnection.{HTTP_MOVED_PERM, HTTP_MOVED_TEMP}
 import java.net.{HttpURLConnection, MalformedURLException, URL, URLEncoder}
 
+import scala.collection.Iterable
 import scala.util.Using
 import scala.util.control.Exception.catching
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits._
 import endpoints4s.generic.docs
+import ujson.Obj
 
 import com.thatdot.quine.app.yaml.parseToJson
 import com.thatdot.quine.routes._
@@ -19,21 +21,21 @@ import StandingQueryResultOutputUserDef._
 
 @docs("A specification of a Quine Recipe")
 final case class Recipe(
-  @docs("Schema version (only supported value is 1)") version: Int,
-  @docs("Identifies the Recipe but is not necessarily unique") title: String,
+  @docs("Schema version (only supported value is 1)") version: Int = Recipe.currentVersion,
+  @docs("Identifies the Recipe but is not necessarily unique") title: String = "RECIPE",
   @docs(
     "URL to social profile of the person or organization responsible for this Recipe"
   ) contributor: Option[String],
   @docs("Brief copy about this Recipe") summary: Option[String],
   @docs("Longer form copy about this Recipe") description: Option[String],
   @docs("URL to image asset for this Recipe") iconImage: Option[String],
-  @docs("Ingest Streams that load data into the graph") ingestStreams: List[IngestStreamConfiguration],
+  @docs("Ingest Streams that load data into the graph") ingestStreams: List[IngestStreamConfiguration] = List(),
   @docs(
     "Standing Queries that respond to graph updates by computing aggregates and trigger actions"
-  ) standingQueries: List[StandingQueryDefinition],
-  @docs("For web UI customization") nodeAppearances: List[UiNodeAppearance],
-  @docs("For web UI customization") quickQueries: List[UiNodeQuickQuery],
-  @docs("For web UI customization") sampleQueries: List[SampleQuery],
+  ) standingQueries: List[StandingQueryDefinition] = List(),
+  @docs("For web UI customization") nodeAppearances: List[UiNodeAppearance] = List(),
+  @docs("For web UI customization") quickQueries: List[UiNodeQuickQuery] = List(),
+  @docs("For web UI customization") sampleQueries: List[SampleQuery] = List(),
   @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery]
 )
 
@@ -61,8 +63,10 @@ object Recipe {
 
   def fromJson(json: ujson.Value): Either[Seq[String], Recipe] = for {
     jsonObj <- json.objOpt.map(ujson.Obj(_)) toRight Seq("Recipe must be an object, got: " + json)
-    recipe <- recipeSchema.decoder.decode(jsonObj).toEither
-  } yield recipe
+    withValidatedFieldNames <- validateFieldNames(jsonObj)
+    recipe <- recipeSchema.decoder.decode(withValidatedFieldNames).toEither
+    validatedRecipe <- isCurrentVersion(recipe)
+  } yield validatedRecipe
 
   /** Indicates an error due to a missing recipe variable.
     *
@@ -416,8 +420,7 @@ object Recipe {
       }
       json <- Using(urlToRecipeContent.openStream)(parseToJson).toEither.left.map(e => Seq(e.toString))
       recipe <- Recipe.fromJson(json)
-      validatedRecipe <- isCurrentVersion(recipe)
-    } yield validatedRecipe
+    } yield recipe
   }
 
   /** Fetch the recipe using the identifying string and then apply substitutions
@@ -432,12 +435,30 @@ object Recipe {
       substitutedRecipe <- applySubstitutions(recipe, values).toEither.left
         .map(_.toList.distinct.map(e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}="))
     } yield substitutedRecipe
-
-  private val version = 1
+  final val currentVersion = 1
 
   private def isCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
-    recipe.version == version,
+    recipe.version == currentVersion,
     recipe,
-    Seq(s"The only supported Recipe version number is $version")
+    Seq(s"The only supported Recipe version number is $currentVersion")
   )
+
+  /** Return a list of field names that are not part of the recipe spec. */
+  private def validateFieldNames(value: ujson.Obj): Either[Seq[String], Obj] = {
+
+    import scala.reflect.runtime.universe._
+    val fieldNames: Iterable[String] = typeOf[Recipe].members
+      .collect {
+        case m: MethodSymbol if m.isCaseAccessor => m
+      }
+      .map(_.name.toString)
+
+    value.objOpt.map(m => m.keySet.toSet.diff(fieldNames.toSet)) match {
+      case Some(values) if values.isEmpty => Right(value)
+      case Some(values) => Left(values.map(name => f"The field '$name' is not part of the recipe specification").toSeq)
+      case None => Right(value)
+    }
+
+  }
+
 }

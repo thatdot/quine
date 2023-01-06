@@ -8,16 +8,7 @@ import org.scalatest.EitherValues
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.routes.FileIngestFormat.CypherJson
-import com.thatdot.quine.routes.{
-  FileIngest,
-  IngestStreamConfiguration,
-  SampleQuery,
-  StandingQueryDefinition,
-  StandingQueryPattern,
-  StandingQueryResultOutputUserDef,
-  UiNodeAppearance,
-  UiNodeQuickQuery
-}
+import com.thatdot.quine.routes._
 
 class RecipeTest extends AnyFunSuite with EitherValues {
   def loadYamlString(s: String): Either[Seq[String], Recipe] =
@@ -49,29 +40,42 @@ class RecipeTest extends AnyFunSuite with EitherValues {
   }
   test("empty object") {
     assert(
-      loadYamlString("{}").left.value ==
-        List(
-          "Missing property 'version' in JSON object: {}",
-          "Missing property 'title' in JSON object: {}",
-          "Missing property 'ingestStreams' in JSON object: {}",
-          "Missing property 'standingQueries' in JSON object: {}",
-          "Missing property 'nodeAppearances' in JSON object: {}",
-          "Missing property 'quickQueries' in JSON object: {}",
-          "Missing property 'sampleQueries' in JSON object: {}"
-        )
+      loadYamlString("{}") == Right(
+        Recipe(Recipe.currentVersion, "RECIPE", None, None, None, None, List(), List(), List(), List(), List(), None)
+      )
     )
+  }
+
+  test("invalid keys") {
+
+    val recipe = loadYamlString("""
+          |version: 11
+          |not_a_key: 2
+          |also_not_a_key: 3
+      """.stripMargin)
+
+    assert(
+      recipe.left.value.toSet == Set(
+        "The field 'not_a_key' is not part of the recipe specification",
+        "The field 'also_not_a_key' is not part of the recipe specification"
+      )
+    )
+  }
+
+  test("validation") {
+
+    val recipe = loadYamlString("""
+        |version: 2
+      """.stripMargin)
+
+    assert(recipe.left.value == Seq("The only supported Recipe version number is 1"))
+
   }
   test("wrong type") {
     assert(
       loadYamlString("version: foo").left.value ==
         List(
-          """Invalid integer value: "foo"""",
-          """Missing property 'title' in JSON object: {"version":"foo"}""",
-          """Missing property 'ingestStreams' in JSON object: {"version":"foo"}""",
-          """Missing property 'standingQueries' in JSON object: {"version":"foo"}""",
-          """Missing property 'nodeAppearances' in JSON object: {"version":"foo"}""",
-          """Missing property 'quickQueries' in JSON object: {"version":"foo"}""",
-          """Missing property 'sampleQueries' in JSON object: {"version":"foo"}"""
+          """Invalid integer value: "foo""""
         )
     )
   }
