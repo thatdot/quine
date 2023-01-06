@@ -163,10 +163,10 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
     }
 
     /* Values that are not valid json properly return Failures */
-    ctx.ingest.write("this is not value json\n".getBytes)
+    ctx.ingest.write("this is not valid json\n".getBytes)
     val next: (Try[Value], ByteString) = ctx.probe.requestNext(5.seconds)
     next._1 match {
-      case Failure(_: ujson.ParseException) => ()
+      case Failure(_: org.typelevel.jawn.ParseException) => ()
       case e: Any => assert(false, s"bad value is not parse-able as json $e")
     }
 
