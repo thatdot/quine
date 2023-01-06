@@ -20,7 +20,7 @@ object EdgeDirection {
 @title("Node Data")
 @docs("Data locally available on a node in the graph.")
 final case class LiteralNode[Id, BStr](
-  @docs("properties on the node; note that values are the base64-encoded serialized bytes")
+  @docs("Properties on the node; note that values are the base64-encoded serialized bytes")
   properties: Map[String, BStr],
   edges: Seq[RestHalfEdge[Id]]
 )
@@ -38,9 +38,9 @@ the two nodes at the edge's endpoints contain half edges that:
     or else both sides are undirected)
 """)
 final case class RestHalfEdge[Id](
-  @docs("name of the edge") edgeType: String,
+  @docs("Label of the edge") edgeType: String,
   direction: EdgeDirection,
-  @docs("id of node at the other end of the edge") other: Id
+  @docs("Id of node at the other end of the edge") other: Id
 )
 
 trait LiteralRoutes
@@ -56,7 +56,7 @@ trait LiteralRoutes
   implicit final lazy val edgeDirectionSchema: JsonSchema[EdgeDirection] =
     stringEnumeration[EdgeDirection](EdgeDirection.values)(_.toString)
       .withTitle("Edge direction")
-      .withDescription("direction of an edge in the graph")
+      .withDescription("Direction of an edge in the graph")
 
   implicit final lazy val restHalfEdgeSchema: JsonSchema[RestHalfEdge[Id]] =
     genericJsonSchema[RestHalfEdge[Id]]
@@ -81,20 +81,20 @@ trait LiteralRoutes
     )
 
   final val limit: QueryString[Option[Int]] =
-    qs[Option[Int]]("limit", docs = Some("maximum number of results to return"))
+    qs[Option[Int]]("limit", docs = Some("Maximum number of results to return"))
   final val edgeDir: QueryString[EdgeDirection] = qs[EdgeDirection](
     "direction",
-    docs = Some("edge direction. One of: Incoming, Outgoing, Undirected")
+    docs = Some("Edge direction. One of: Incoming, Outgoing, Undirected")
   )
   final val edgeDirOpt: QueryString[Option[EdgeDirection]] = qs[Option[EdgeDirection]](
     "direction",
-    docs = Some("edge direction. One of: Incoming, Outgoing, Undirected")
+    docs = Some("Edge direction. One of: Incoming, Outgoing, Undirected")
   )
-  final val edgeType: QueryString[String] = qs[String]("type", docs = Some("edge type"))
-  final val edgeTypeOpt: QueryString[Option[String]] = qs[Option[String]]("type", docs = Some("edge type"))
-  final val propKey: QueryString[String] = qs[String]("key", docs = Some("name of a property"))
-  final val other: QueryString[Id] = qs[Id]("other", docs = Some("other edge endpoint"))
-  final val otherOpt: QueryString[Option[Id]] = qs[Option[Id]]("other", docs = Some("other edge endpoint"))
+  final val edgeType: QueryString[String] = qs[String]("type", docs = Some("Edge type"))
+  final val edgeTypeOpt: QueryString[Option[String]] = qs[Option[String]]("type", docs = Some("Edge type"))
+  final val propKey: QueryString[String] = qs[String]("key", docs = Some("Name of a property"))
+  final val other: QueryString[Id] = qs[Id]("other", docs = Some("Other edge endpoint"))
+  final val otherOpt: QueryString[Option[Id]] = qs[Option[Id]]("other", docs = Some("Other edge endpoint"))
 
   private val api = path / "api" / "v1"
   private val literalPrefix = api / "query" / "literal"
@@ -112,11 +112,10 @@ trait LiteralRoutes
       request = get(literal /? atTime),
       response = ok(jsonResponse[LiteralNode[Id, BStr]]),
       docs = EndpointDocs()
-        .withSummary(Some("fetch properties and edges of a node"))
+        .withSummary(Some("get node properties and edges"))
         .withDescription(
           Some(
-            "Fetch off of a graph node all of the local information it has " +
-            "stored about properties and edges."
+            "Retrieve a nodes list of properties and list of edges"
           )
         )
         .withTags(List(literalTag))
@@ -131,6 +130,11 @@ trait LiteralRoutes
       ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("add or update properties and edges"))
+        .withDescription(Some("""Add or update properties and edges.
+            |
+            |Any properties or edges that do not already exist on the node will replace existing values.
+            |Any new properties or edges will be appended to existing values.
+            |Properties must be specified as Base64 values.""".stripMargin))
         .withTags(List(literalTag))
     )
 
@@ -139,7 +143,8 @@ trait LiteralRoutes
       request = delete(literal),
       response = ok(emptyResponse),
       docs = EndpointDocs()
-        .withSummary(Some("clear all properties and edges"))
+        .withSummary(Some("delete all properties and edges"))
+        .withDescription(Some("Delete all properties and edges from a node"))
         .withTags(List(literalTag))
     )
 
@@ -149,6 +154,9 @@ trait LiteralRoutes
       response = ok(jsonResponse(anySchema(None))),
       docs = EndpointDocs()
         .withSummary(Some("inspect internal node state"))
+        .withDescription(Some("""Returns information relating to the nodes internal state.
+                          The information returned by this endpoint is intended to be used for debugging.
+                          It is implementation-dependent and subject to change."""))
         .withTags(List(literalTag))
     )
 
@@ -160,7 +168,8 @@ trait LiteralRoutes
       request = get(literal / "edges" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
-        .withSummary(Some("fetch edges associated with a node"))
+        .withSummary(Some("get edges associated with a node"))
+        .withDescription(Some("Retrieve all node edges"))
         .withTags(List(literalTag))
     )
 
@@ -185,7 +194,8 @@ trait LiteralRoutes
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
-        .withSummary(Some("remove full edges"))
+        .withSummary(Some("delete full edges"))
+        .withDescription(Some("Delete the specified full edges from this node"))
         .withTags(List(literalTag))
     )
 
@@ -197,7 +207,8 @@ trait LiteralRoutes
       request = get(literal / "edges" / "half" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
-        .withSummary(Some("fetch half edges associated with a node"))
+        .withSummary(Some("get half edges associated with a node"))
+        .withDescription(Some("Retrieve all half edges associated with a node"))
         .withTags(List(literalTag))
     )
 
@@ -206,7 +217,9 @@ trait LiteralRoutes
       request = get(literal / "props" /? (propKey & atTime)),
       response = wheneverFound(ok(jsonResponse[BStr])),
       docs = EndpointDocs()
-        .withSummary(Some("fetch a property on a node"))
+        .withSummary(Some("get a property on a node"))
+        .withDescription(Some("""Retrieve a single named property on a node.
+            |The property value returned will be Base64 encoded.""".stripMargin))
         .withTags(List(literalTag))
     )
 
@@ -219,6 +232,7 @@ trait LiteralRoutes
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("set a property on a node"))
+        .withDescription(Some("Set a single named property on a node"))
         .withTags(List(literalTag))
     )
 
@@ -227,7 +241,7 @@ trait LiteralRoutes
       request = delete(literal / "props" /? propKey),
       response = ok(emptyResponse),
       docs = EndpointDocs()
-        .withSummary(Some("remove a property on a node"))
+        .withSummary(Some("delete a property on a node"))
         .withTags(List(literalTag))
     )
 }

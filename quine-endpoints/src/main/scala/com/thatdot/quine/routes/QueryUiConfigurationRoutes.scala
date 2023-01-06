@@ -5,8 +5,8 @@ import endpoints4s.generic.{docs, title, unnamed}
 @title("Sample Query")
 @docs("A query that appears as an option in the dropdown under the query bar.")
 final case class SampleQuery(
-  @docs("text description of the query") name: String,
-  @docs("Cypher or Gremlin query") query: String
+  @docs("A descriptive label for the query.") name: String,
+  @docs("The Cypher or Gremlin query to be run on selection.") query: String
 )
 object SampleQuery {
   def recentNodes: SampleQuery = SampleQuery(
@@ -24,15 +24,15 @@ object SampleQuery {
 
 /** Abstract predicate for filtering nodes */
 @title("UI Node Predicate")
-@docs("Predicate by which nodes may be filtered")
+@docs("Predicate by which nodes to apply this style to may be filtered")
 @unnamed()
 final case class UiNodePredicate(
-  @docs("properties the node must have") propertyKeys: Vector[String],
-  @docs("properties with known constant values the node must have") knownValues: Map[
+  @docs("Properties the node must have to apply this style") propertyKeys: Vector[String],
+  @docs("Properties with known constant values the node must have to apply this style") knownValues: Map[
     String,
     ujson.Value
   ],
-  @docs("label the node must have") dbLabel: Option[String]
+  @docs("Label the node must have to apply this style") dbLabel: Option[String]
 ) {
   def matches(node: UiNode[String]): Boolean = {
     def hasRightLabel = dbLabel.forall(_ == node.label)
@@ -51,9 +51,15 @@ object UiNodePredicate {
 @docs("Instructions for how to style the appearance of a node.")
 final case class UiNodeAppearance(
   predicate: UiNodePredicate,
+  @docs("(Optional) size of this icon in pixels")
   size: Option[Double],
+  @docs(
+    "(Optional) name of the icon character to use. For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)"
+  )
   icon: Option[String],
+  @docs("(Optional) color to use, specified as a hex value")
   color: Option[String],
+  @docs("(Optional) node label to use")
   label: Option[UiNodeLabel]
 )
 
@@ -93,7 +99,7 @@ object UiNodeLabel {
   ) extends UiNodeLabel
 
   @title("Property Value Label")
-  @docs("Use the value of a property as a label, with an optional prefix.")
+  @docs("Use the value of a property as a label, with an optional prefix")
   @unnamed()
   final case class Property(
     key: String,
@@ -102,11 +108,11 @@ object UiNodeLabel {
 }
 
 @title("Quick Query")
-@docs("A query that can show up in the context menu brought up by right-clicking a node.")
+@docs("A query that can show up in the context menu brought up by right-clicking a node")
 final case class UiNodeQuickQuery(
-  @docs("condition that a node must satisfy for this query to be in the context menu")
+  @docs("Condition that a node must satisfy for this query to be in the context menu")
   predicate: UiNodePredicate,
-  @docs("query to run when the context menu entry gets clicked")
+  @docs("Query to run when the context menu entry is selected")
   quickQuery: QuickQuery
 )
 object UiNodeQuickQuery {
@@ -175,8 +181,7 @@ trait QueryUiConfigurationRoutes
         .withSummary(Some("starting queries suggested in the query bar"))
         .withDescription(
           Some(
-            "These are the queries that are suggested (via `datalist`) when " +
-            "clicking on the query bar in the UI."
+            """Queries provided here will be available via a drop-down menu from the Quine UI search bar.""".stripMargin
           )
         )
         .withTags(List(queryUiTag))
@@ -191,6 +196,13 @@ trait QueryUiConfigurationRoutes
       response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("update collection of starting queries suggested in the query bar"))
+        .withDescription(
+          Some(
+            """Queries provided here will be available via a drop-down menu from the Quine UI search bar.
+              |
+              |Queries applied here will replace any currently existing sample queries.""".stripMargin
+          )
+        )
         .withTags(List(queryUiTag))
     )
 
@@ -240,12 +252,10 @@ trait QueryUiConfigurationRoutes
       docs = EndpointDocs()
         .withSummary(Some("ranked list of possible quick queries"))
         .withDescription(
-          Some(
-            "When right-clicking on a node in the UI, the list of quick " +
-            "queries to show in the context menu is populated by filtering " +
-            "this full list and keeping only queries whose `predicate` field " +
-            "matches the node that was right-clicked."
-          )
+          Some("""Quick queries are queries that appear when right-clicking
+                 |a node in the UI.
+                 |Nodes will only display quick queries that satisfy any
+                 |provided predicates.""".stripMargin)
         )
         .withTags(List(queryUiTag))
     )
@@ -259,6 +269,10 @@ trait QueryUiConfigurationRoutes
       response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("update list of possible quick queries"))
+        .withDescription(Some("""Quick queries are queries that appear when right-clicking
+            |a node in the UI.
+            |Queries applied here will replace any currently existing quick queries.
+            |""".stripMargin))
         .withTags(List(queryUiTag))
     )
 }

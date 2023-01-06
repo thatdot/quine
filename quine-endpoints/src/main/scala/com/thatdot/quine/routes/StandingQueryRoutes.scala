@@ -16,13 +16,13 @@ composite structure exists.
 """)
 final case class StandingQueryDefinition(
   pattern: StandingQueryPattern,
-  @docs(s"a map of named standing query outs - see ${StandingQueryResultOutputUserDef.title} schema for the values")
+  @docs(s"A map of named standing query outs - see ${StandingQueryResultOutputUserDef.title} schema for the values")
   outputs: Map[String, StandingQueryResultOutputUserDef],
-  @docs("whether or not to include cancellations in the results of this query")
+  @docs("Whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean = false,
-  @docs("how many standing query results to buffer before backpressuring")
+  @docs("How many standing query results to buffer before backpressuring")
   inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
-  @docs("for debug and test only")
+  @docs("For debug and test only")
   shouldCalculateResultHashCode: Boolean = false
 )
 
@@ -30,18 +30,18 @@ final case class StandingQueryDefinition(
 @docs("A Standing Query which has been issued.")
 final case class RegisteredStandingQuery(
   name: String,
-  @docs("unique identifier for the query, generated when the query is registered")
+  @docs("Unique identifier for the query, generated when the query is registered")
   internalId: UUID,
-  @docs("query or pattern to answer in a standing fashion")
+  @docs("Query or pattern to answer in a standing fashion")
   pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
   @docs(
     s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}"
   )
   outputs: Map[String, StandingQueryResultOutputUserDef],
   includeCancellations: Boolean,
-  @docs("how many standing query results to buffer on each host before backpressuring")
+  @docs("How many standing query results to buffer on each host before backpressuring")
   inputBufferSize: Int,
-  @docs(s"statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
+  @docs(s"Statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
   stats: Map[String, StandingQueryStats]
 )
 
@@ -73,15 +73,15 @@ object StandingQueryPattern {
 
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(
-  @docs("results per second over different time periods")
+  @docs("Results per second over different time periods")
   rates: RatesSummary,
-  @docs("time (in ISO-8601 UTC time) when the standing query was started")
+  @docs("Time (in ISO-8601 UTC time) when the standing query was started")
   startTime: Instant,
-  @docs("time (in milliseconds) that that the standing query has been running")
+  @docs("Time (in milliseconds) that that the standing query has been running")
   totalRuntime: Long,
-  @docs("how many standing query results are buffered and waiting to be emitted")
+  @docs("How many standing query results are buffered and waiting to be emitted")
   bufferSize: Int,
-  @docs("accumulated output hash code")
+  @docs("Accumulated output hash code")
   outputHashCode: Long
 )
 
@@ -242,7 +242,7 @@ object StandingQueryResultOutputUserDef {
   final case class PostToSlack(
     hookUrl: String,
     onlyPositiveMatchData: Boolean = false,
-    @docs("number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20
+    @docs("Number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20
   ) extends StandingQueryResultOutputUserDef
 
   /** Each result is passed into a Cypher query as a parameter
@@ -262,23 +262,23 @@ object StandingQueryResultOutputUserDef {
   )
   final case class CypherQuery(
     @docs("Cypher query to execute on standing query result") query: String,
-    @docs("name of the Cypher parameter holding the standing query result") parameter: String = "that",
+    @docs("Name of the Cypher parameter holding the standing query result") parameter: String = "that",
     @docs(
       "maximum number of standing query results being processed at once"
     )
     parallelism: Int = IngestRoutes.defaultWriteParallelism,
     @docs(
-      """send the result of the Cypher query to another standing query output (in order to provide chained
+      """Send the result of the Cypher query to another standing query output (in order to provide chained
         |transformation and actions). The data returned by this query will be passed as the `data` object
         |of the new StandingQueryResult (see \"Standing Query Result Output\")""".stripMargin.replace('\n', ' ')
     )
     andThen: Option[StandingQueryResultOutputUserDef],
     @docs(
-      "to prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true"
+      "To prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true"
     )
     allowAllNodeScan: Boolean = false,
     @docs(
-      """whether queries that raise a potentially-recoverable error should be retried. If set to true (the default),
+      """Whether queries that raise a potentially-recoverable error should be retried. If set to true (the default),
       |such errors will be retried until they succeed. Additionally, if the query is not idempotent, the query's
       |effects may occur multiple times in the case of external system failure. Query idempotency
       |can be checked with the EXPLAIN keyword. If set to false, results and effects will not be duplicated,
@@ -438,24 +438,38 @@ trait StandingQueryRoutes
     )
 
   val standingName: Path[String] =
-    segment[String]("standing-query-name", docs = Some("unique name for a standing query"))
+    segment[String]("standing-query-name", docs = Some("Unique name for a standing query"))
   val standingOutputName: Path[String] = segment[String](
     "standing-query-output-name",
-    docs = Some("unique name for a standing query output")
+    docs = Some("Unique name for a standing query output")
   )
 
-  val standingIssue: Endpoint[(String, StandingQueryDefinition), Either[ClientErrors, Unit]] =
+  val standingIssue: Endpoint[(String, StandingQueryDefinition), Either[ClientErrors, Unit]] = {
+    val sq: StandingQueryDefinition = StandingQueryDefinition(
+      StandingQueryPattern.Cypher(
+        "MATCH (n)-[:has_father]->(m) WHERE exists(n.name) AND exists(m.name) RETURN DISTINCT strId(n) AS kidWithDad"
+      ),
+      Map(
+        "endpoint" -> StandingQueryResultOutputUserDef.PostToEndpoint("http://myendpoint"),
+        "stdout" -> StandingQueryResultOutputUserDef.PrintToStandardOut()
+      ),
+      includeCancellations = true,
+      32,
+      shouldCalculateResultHashCode = true
+    )
     endpoint(
       request = post(
         url = standing / standingName,
-        entity = jsonRequest[StandingQueryDefinition]
+        entity = jsonRequestWithExample[StandingQueryDefinition](sq)
       ),
       response = badRequest(docs = Some("Standing query exists already"))
         .orElse(created()),
       docs = EndpointDocs()
         .withSummary(Some("create a new standing query"))
+        .withDescription(Some("Create a standing query"))
         .withTags(List(standingTag))
     )
+  }
 
   val standingAddOut: Endpoint[(String, String, StandingQueryResultOutputUserDef), Option[Either[ClientErrors, Unit]]] =
     endpoint(
@@ -485,7 +499,7 @@ trait StandingQueryRoutes
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
-        .withSummary(Some("cancel a standing query"))
+        .withSummary(Some("delete a standing query"))
         .withTags(List(standingTag))
     )
 

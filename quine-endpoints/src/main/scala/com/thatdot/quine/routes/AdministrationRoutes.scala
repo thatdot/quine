@@ -10,11 +10,11 @@ import endpoints4s.{Valid, Validated}
 @title("System Build Information")
 @docs("Information collected when this version of the system was compiled.")
 final case class QuineInfo(
-  @docs("version of the system") version: String,
-  @docs("commit associated with this build") gitCommit: Option[String],
-  @docs("date associated with the commit") gitCommitDate: Option[String],
-  @docs("version of Java used during compilation") javaVersion: String,
-  @docs("version of the persisted data format written by this build") persistenceWriteVersion: String
+  @docs("Quine version") version: String,
+  @docs("Current build git commit") gitCommit: Option[String],
+  @docs("Current build commit date") gitCommitDate: Option[String],
+  @docs("Java compilation version") javaVersion: String,
+  @docs("Persistence data format version") persistenceWriteVersion: String
 )
 
 @title("Metrics Counter")
@@ -40,7 +40,7 @@ final case class TimerSummary(
   mean: Double,
   q1: Double,
   q3: Double,
-  @docs("one-minute moving average rate at which events have occurred") oneMinuteRate: Double,
+  @docs("One-minute moving average rate at which events have occurred") oneMinuteRate: Double,
   @docs("90th percentile time; representative of heavy load") `90`: Double,
   @docs("99th percentile time; representative of worst case or peak load") `99`: Double,
   // pareto principle thresholds
@@ -55,17 +55,17 @@ object MetricsReport {
 }
 
 final case class MetricsReport(
-  @docs("a UTC Instant at which these metrics are accurate") atTime: java.time.Instant,
-  @docs("all registered counters from this instance's metrics") counters: Seq[Counter],
-  @docs("all registered timers from this instance's metrics") timers: Seq[TimerSummary],
-  @docs("all registered numerical gauges from this instance's metrics") gauges: Seq[NumericGauge]
+  @docs("A UTC Instant at which these metrics are accurate") atTime: java.time.Instant,
+  @docs("All registered counters from this instance's metrics") counters: Seq[Counter],
+  @docs("All registered timers from this instance's metrics") timers: Seq[TimerSummary],
+  @docs("All registered numerical gauges from this instance's metrics") gauges: Seq[NumericGauge]
 )
 
 @title("Shard In-Memory Limits")
 @unnamed
 final case class ShardInMemoryLimit(
-  @docs("number of in-memory nodes past which shards will try to shut down nodes") softLimit: Int,
-  @docs("number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int
+  @docs("Number of in-memory nodes past which shards will try to shut down nodes") softLimit: Int,
+  @docs("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int
 )
 
 @title("Graph hash code")
@@ -87,8 +87,8 @@ trait AdministrationRoutes
       .withExample(
         QuineInfo(
           version = "0.1",
-          gitCommit = None,
-          gitCommitDate = None,
+          gitCommit = Some("b416b354bd4d5d2a9fe39bc55153afd312260f29"),
+          gitCommitDate = Some("2022-12-29T15:09:32-0500"),
           javaVersion = "OpenJDK 64-Bit Server VM 1.8.0_312 (Azul Systems, Inc.)",
           persistenceWriteVersion = "10.1.0"
         )
@@ -118,16 +118,65 @@ trait AdministrationRoutes
       request = get(admin / "build-info"),
       response = ok(jsonResponse[QuineInfo]),
       docs = EndpointDocs()
-        .withSummary(Some("information about how the system was compiled"))
+        .withSummary(Some("Build Information"))
+        .withDescription(Some("""Returns a JSON object containing information about how Quine was built"""))
         .withTags(List(adminTag))
     )
 
-  final val config: Endpoint[Unit, ujson.Value] =
+  final val config: Endpoint[Unit, ujson.Value] = {
+    val configExample = ujson.read("""
+        |{
+        |  "quine": {
+        |    "decline-sleep-when-access-within": "0",
+        |    "decline-sleep-when-write-within": "100ms",
+        |    "dump-config": false,
+        |    "edge-iteration": "reverse-insertion",
+        |    "id": {
+        |      "partitioned": false,
+        |      "type": "uuid"
+        |    },
+        |    "in-memory-hard-node-limit": 75000,
+        |    "in-memory-soft-node-limit": 10000,
+        |    "labels-property": "__LABEL",
+        |    "max-catch-up-sleep": "2s",
+        |    "metrics-reporters": [
+        |      {
+        |        "type": "jmx"
+        |      }
+        |    ],
+        |    "persistence": {
+        |      "effect-order": "persistor-first",
+        |      "journal-enabled": true,
+        |      "snapshot-schedule": "on-node-sleep",
+        |      "snapshot-singleton": false,
+        |      "standing-query-schedule": "on-node-sleep"
+        |    },
+        |    "shard-count": 4,
+        |    "should-resume-ingest": false,
+        |    "store": {
+        |      "create-parent-dir": false,
+        |      "filepath": "/var/folders/4y/_h4gzktd5vv8m3cz583wv8v80000gn/T/quine-4872917559272367011.db",
+        |      "sync-all-writes": false,
+        |      "type": "rocks-db",
+        |      "write-ahead-log": true
+        |    },
+        |    "timeout": "2m",
+        |    "webserver": {
+        |      "address": "0.0.0.0",
+        |      "enabled": true,
+        |      "port": 8080
+        |    }
+        |  }
+        |}
+        |
+        |
+        |""".stripMargin)
+
     endpoint(
       request = get(admin / "config"),
-      response = ok(jsonResponse[ujson.Value](anySchema(None))),
+      response = ok(jsonResponseWithExample[ujson.Value](configExample)(anySchema(None))),
       docs = EndpointDocs()
-        .withSummary(Some("current configuration settings (set at startup)"))
+        .withSummary(Some("Running Configuration"))
         .withDescription(
           Some(
             """Fetch the full configuration of the running system. "Full" means that this
@@ -143,6 +192,7 @@ trait AdministrationRoutes
         )
         .withTags(List(adminTag))
     )
+  }
 
   final val livenessProbe: Endpoint[Unit, Boolean] =
     endpoint(
@@ -151,13 +201,13 @@ trait AdministrationRoutes
         .orElse(serviceUnavailable(docs = Some("System is not live")))
         .xmap(_.isLeft)(isReady => if (isReady) Left(()) else Right(())),
       docs = EndpointDocs()
-        .withSummary(Some("Check whether the system is live"))
+        .withSummary(Some("Container Liveness"))
         .withDescription(
           Some(
             """This is for integrating with liveness probes when containerizing the system (eg. in
-              |Kubernetes or Docker). The question being answered with the status code response is
-              |whether the container is alive.
-              |""".stripMargin
+              |Kubernetes or Docker).
+              |
+              |A 204 response indicates that the container is alive.""".stripMargin
           )
         )
         .withTags(List(adminTag))
@@ -170,7 +220,7 @@ trait AdministrationRoutes
         .orElse(serviceUnavailable(docs = Some("System is not ready")))
         .xmap(_.isLeft)(isReady => if (isReady) Left(()) else Right(())),
       docs = EndpointDocs()
-        .withSummary(Some("Check whether the system is ready"))
+        .withSummary(Some("Container Readiness"))
         .withDescription(
           Some(
             """This is for integrating with liveness probes when containerizing the system (eg. in
@@ -187,7 +237,7 @@ trait AdministrationRoutes
       request = get(admin / "metrics"),
       response = ok(jsonResponse[MetricsReport]),
       docs = EndpointDocs()
-        .withSummary(Some("Gets current metrics about the running quine core."))
+        .withSummary(Some("Metrics Summary"))
         .withTags(List(adminTag))
     )
 
@@ -197,11 +247,11 @@ trait AdministrationRoutes
       response = accepted(docs = Some("Shutdown initiated")),
       docs = EndpointDocs()
         .withSummary(
-          Some("graceful shutdown of the graph")
+          Some("Graceful Shutdown")
         )
         .withDescription(
           Some(
-            "Initiate graph shutdown. Final shutdown may a little longer."
+            "Initiate a graceful graph shutdown. Final shutdown may take a little longer."
           )
         )
         .withTags(List(adminTag))
@@ -219,6 +269,8 @@ trait AdministrationRoutes
     )
 
   final val shardSizes: Endpoint[Map[Int, ShardInMemoryLimit], Map[Int, ShardInMemoryLimit]] = {
+
+    val exampleShardMap = (0 to 3).map(_ -> ShardInMemoryLimit(10000, 75000)).toMap
     implicit val shardMapLimitSchema: JsonSchema[Map[Int, ShardInMemoryLimit]] = mapJsonSchema[ShardInMemoryLimit]
       .xmapPartial { (map: Map[String, ShardInMemoryLimit]) =>
         map.foldLeft[Validated[Map[Int, ShardInMemoryLimit]]](Valid(Map.empty)) { case (accV, (strKey, limit)) =>
@@ -234,20 +286,20 @@ trait AdministrationRoutes
       .withDescription("A map of shard IDs to shard in-memory node limits")
 
     endpoint(
-      request = post(admin / "shard-sizes", jsonRequestWithExample[Map[Int, ShardInMemoryLimit]](Map.empty)),
+      request = post(admin / "shard-sizes", jsonRequestWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)),
       response = ok(
-        jsonResponseWithExample[Map[Int, ShardInMemoryLimit]](
-          (0 to 3).map(_ -> ShardInMemoryLimit(10000, 75000)).toMap
-        )
+        jsonResponseWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)
       ),
       docs = EndpointDocs()
-        .withSummary(Some("update the in-memory node limits of non-historical shards"))
+        .withSummary(Some("Shard Sizes"))
         .withDescription(
           Some(
-            """Get the in-memory node limits non-historical shards, after updating the limits
-              |specified in the request body. If you do not know what the current in-memory limits
-              |are, start by querying this endpoint with and empty object, then issue a second
-              |request with a modified version of the limits returned from the first request.
+            """Get and update the in-memory node limits.
+              |
+              |Sending a request containing an empty json object will return the current in-memory node settings.
+              |
+              |To apply different values, apply your edits to the returned document and sent those values in
+              |a new POST request.
               |""".stripMargin
           )
         )
@@ -260,7 +312,10 @@ trait AdministrationRoutes
       request = post(admin / "request-node-sleep" / nodeIdSegment, emptyRequest),
       response = accepted(emptyResponse),
       docs = EndpointDocs()
-        .withSummary(Some("request node sleep"))
+        .withSummary(Some("Sleep Node"))
+        .withDescription(Some("""Attempt to put the specified node to sleep.
+            |
+            |This behavior is not guaranteed. Activity on the node will supercede this request""".stripMargin))
         .withTags(List(adminTag))
     )
 
@@ -269,12 +324,17 @@ trait AdministrationRoutes
       request = get(admin / "graph-hash-code" /? atTime),
       response = ok(jsonResponse[GraphHashCode]),
       docs = EndpointDocs()
-        .withSummary(Some("request graph hash code"))
+        .withSummary(Some("Graph Hash Code"))
         .withDescription(
-          Some("""Materialize readonly/historical versions of all nodes at a particular timestamp (defaults to the
-                 |server's current clock time) and generate a checksum based on their (serialized) properties and edges.
+          Some("""Generate a hash of the state of the graph at the provided timestamp.
+                 |
+                 |This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
+                 |generating a checksum based on their (serialized) properties and edges.
+                 |
+                 |The timestamp defaults to the server's current clock time if not provided.
+                 |
                  |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
-                 |journals disabled.""".stripMargin.replace('\n', ' '))
+                 |journals disabled.""".stripMargin)
         )
         .withTags(List(adminTag))
     )

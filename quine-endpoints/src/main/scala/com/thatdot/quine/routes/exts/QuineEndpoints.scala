@@ -105,14 +105,14 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
       .xmapWithCodec(byteStringCodec)
   }
 
-  final val nodeIdSegment: Path[Id] = segment[Id]("id", docs = Some("node id"))
+  final val nodeIdSegment: Path[Id] = segment[Id]("id", docs = Some("Node id"))
   final val atTime: QueryString[AtTime] = qs[AtTime](
     "at-time",
-    docs = Some("timestamp representing the historical moment to query")
+    docs = Some("Timestamp representing the historical moment to query")
   )
   final val reqTimeout: QueryString[Option[FiniteDuration]] = qs[Option[FiniteDuration]](
     "timeout",
-    docs = Some("milliseconds to wait before the HTTP request times out")
+    docs = Some("Milliseconds to wait before the HTTP request times out")
   )(
     optionalQueryStringParam(longQueryString.xmap(_.millis)(_.toMillis))
   )

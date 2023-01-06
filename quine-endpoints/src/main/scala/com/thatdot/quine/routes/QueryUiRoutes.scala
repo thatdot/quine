@@ -34,10 +34,10 @@ final case class UiNode[Id](
 @title("Graph Edge")
 @docs("Information needed by the Query UI to display an edge in the graph.")
 final case class UiEdge[Id](
-  @docs("node at the start of the edge") from: Id,
-  @docs("name of the edge") edgeType: String,
-  @docs("node at the end of the edge") to: Id,
-  @docs("whether the edge is directed or undirected") isDirected: Boolean = true
+  @docs("Node at the start of the edge") from: Id,
+  @docs("Name of the edge") edgeType: String,
+  @docs("Node at the end of the edge") to: Id,
+  @docs("Whether the edge is directed or undirected") isDirected: Boolean = true
 )
 
 /** Result of issuing a generic Cypher query
@@ -53,8 +53,8 @@ final case class UiEdge[Id](
         |`columns` array.
         |""".stripMargin)
 final case class CypherQueryResult(
-  @docs("return values of the Cypher query") columns: Seq[String],
-  @docs("rows of results") results: Seq[Seq[ujson.Value]]
+  @docs("Return values of the Cypher query") columns: Seq[String],
+  @docs("Rows of results") results: Seq[Seq[ujson.Value]]
 )
 
 /** A (possibly-parameterized) cypher query
@@ -63,8 +63,8 @@ final case class CypherQueryResult(
   */
 @title("Cypher Query")
 final case class CypherQuery(
-  @docs("the text of the query to execute") text: String,
-  @docs("parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
+  @docs("Text of the query to execute") text: String,
+  @docs("Parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
 )
 
 /** A (possibly-parameterized) gremlin query
@@ -73,8 +73,8 @@ final case class CypherQuery(
   */
 @title("Gremlin Query")
 final case class GremlinQuery(
-  @docs("text of the query to execute") text: String,
-  @docs("parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
+  @docs("Text of the query to execute") text: String,
+  @docs("Parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
 )
 
 trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with exts.IdSchema {
@@ -136,6 +136,8 @@ trait QueryUiRoutes
 
   final type QueryInputs[A] = (AtTime, Option[FiniteDuration], A)
 
+  val gremlinLanguageUrl = "https://tinkerpop.apache.org/gremlin.html"
+  val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
   val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, CypherQueryResult]] =
     endpoint(
       request = post(
@@ -155,12 +157,7 @@ trait QueryUiRoutes
         ),
       docs = EndpointDocs()
         .withSummary(Some("issue a Cypher query"))
-        .withDescription(
-          Some {
-            val link = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
-            s"Make an arbitrary [Cypher]($link) query"
-          }
-        )
+        .withDescription(Some(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query"))
         .withTags(List(cypherTag))
     )
 
@@ -180,12 +177,8 @@ trait QueryUiRoutes
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("issue a Cypher query that returns nodes"))
-        .withDescription(
-          Some(
-            "Make a Cypher query that returns nodes. " +
-            "Queries that do not return nodes will fail with a type error."
-          )
-        )
+        .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
+               |Queries that do not return nodes will fail with a type error.""".stripMargin))
         .withTags(List(cypherTag))
     )
 
@@ -205,12 +198,8 @@ trait QueryUiRoutes
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("issue a Cypher query that returns edges"))
-        .withDescription(
-          Some(
-            "Make a Cypher query that returns edges. " +
-            "Queries that do not return edges will fail with a type error."
-          )
-        )
+        .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
+              |Queries that do not return edges will fail with a type error.""".stripMargin))
         .withTags(List(cypherTag))
     )
 
@@ -242,10 +231,9 @@ trait QueryUiRoutes
         ),
       docs = EndpointDocs()
         .withSummary(Some("issue a Gremlin query"))
-        .withDescription(Some {
-          val link = "https://tinkerpop.apache.org/gremlin.html"
-          s"Make a [Gremlin]($link) query. Note that we only support a simple subset of Gremlin."
-        })
+        .withDescription(
+          Some(s"Execute a [Gremlin]($gremlinLanguageUrl) query. Note that we only support a simple subset of Gremlin.")
+        )
         .withTags(List(gremlinTag))
     )
   }
@@ -265,12 +253,8 @@ trait QueryUiRoutes
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("issue a Gremlin query returning nodes"))
-        .withDescription(
-          Some(
-            "Make a Gremlin query that returns nodes. " +
-            "Queries that do not return nodes will fail with a type error."
-          )
-        )
+        .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns nodes.
+              |Queries that do not return nodes will fail with a type error.""".stripMargin))
         .withTags(List(gremlinTag))
     )
 
@@ -289,12 +273,8 @@ trait QueryUiRoutes
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("issue a Gremlin query returning edges"))
-        .withDescription(
-          Some(
-            "Make a Gremlin query that returns edges. " +
-            "Queries that do not return edges will fail with a type error."
-          )
-        )
+        .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns edges.
+               |Queries that do not return edges will fail with a type error.""".stripMargin))
         .withTags(List(gremlinTag))
     )
 }

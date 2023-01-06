@@ -40,24 +40,24 @@ object IngestStreamStatus {
 @title("Named Ingest Stream")
 @docs("An active stream of data being ingested paired with a name for the stream.")
 final case class IngestStreamInfoWithName(
-  @docs("unique name to identify the ingest stream") name: String,
+  @docs("Unique name identifying the ingest stream") name: String,
   @docs(
-    "indicator of whether the ingest is still running, completed, etc."
+    "Indicator of whether the ingest is still running, completed, etc."
   ) status: IngestStreamStatus,
-  @docs("error message about the ingest, if any") message: Option[String],
-  @docs("configuration of the ingest stream") settings: IngestStreamConfiguration,
-  @docs("statistics on progress of running ingest stream") stats: IngestStreamStats
+  @docs("Error message about the ingest, if any") message: Option[String],
+  @docs("Configuration of the ingest stream") settings: IngestStreamConfiguration,
+  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats
 )
 
 @title("Ingest Stream")
 @docs("An active stream of data being ingested.")
 final case class IngestStreamInfo(
   @docs(
-    "indicator of whether the ingest is still running, completed, etc."
+    "Indicator of whether the ingest is still running, completed, etc."
   ) status: IngestStreamStatus,
-  @docs("error message about the ingest, if any") message: Option[String],
-  @docs("configuration of the ingest stream") settings: IngestStreamConfiguration,
-  @docs("statistics on progress of running ingest stream") stats: IngestStreamStats
+  @docs("Error message about the ingest, if any") message: Option[String],
+  @docs("Configuration of the ingest stream") settings: IngestStreamConfiguration,
+  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats
 ) {
   def withName(name: String): IngestStreamInfoWithName = IngestStreamInfoWithName(
     name = name,
@@ -71,11 +71,11 @@ final case class IngestStreamInfo(
 @title("Statistics About a Running Ingest Stream")
 final case class IngestStreamStats(
   // NB this is duplicated by rates.count -- maybe remove one?
-  @docs("number of source records (or lines) ingested so far") ingestedCount: Long,
-  @docs("records per second over different time periods") rates: RatesSummary,
-  @docs("bytes per second over different time periods") byteRates: RatesSummary,
-  @docs("time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
-  @docs("time (in milliseconds) that that the ingest has been running") totalRuntime: Long
+  @docs("Number of source records (or lines) ingested so far") ingestedCount: Long,
+  @docs("Records/second over different time periods") rates: RatesSummary,
+  @docs("Bytes/second over different time periods") byteRates: RatesSummary,
+  @docs("Time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
+  @docs("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long
 )
 object IngestStreamStats {
   val example: IngestStreamStats = IngestStreamStats(
@@ -102,11 +102,11 @@ object IngestStreamStats {
 @title("Rates Summary")
 @docs("Summary statistics about a metered rate (ie, count per second).")
 final case class RatesSummary(
-  @docs("number of items metered") count: Long,
-  @docs("approximate rate per second in the last minute") oneMinute: Double,
-  @docs("approximate rate per second in the last five minutes") fiveMinute: Double,
-  @docs("approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
-  @docs("approximate rate per second since the meter was started") overall: Double
+  @docs("Number of items metered") count: Long,
+  @docs("Approximate rate per second in the last minute") oneMinute: Double,
+  @docs("Approximate rate per second in the last five minutes") fiveMinute: Double,
+  @docs("Approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
+  @docs("Approximate rate per second since the meter was started") overall: Double
 )
 
 trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
@@ -452,26 +452,26 @@ object StreamedRecordFormat {
 @docs("An active stream of data being ingested from a file on this Quine host.")
 final case class FileIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
-  @docs("path to the file")
+  @docs("Path to the file")
   path: String,
   @docs(
     "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
     "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
   )
   encoding: String = "UTF-8",
-  @docs("maximum number of records being processed at once")
+  @docs("Maximum number of records being processed at once")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum size (in bytes) of any line in the file")
+  @docs("Maximum size (in bytes) of any line in the file")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(s"""start at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
            |resuming ingest from a partially consumed file""".stripMargin)
   startAtOffset: Long = 0L,
-  @docs(s"optionally limit how many records are ingested from this file.")
+  @docs(s"Optionally limit how many records are ingested from this file.")
   ingestLimit: Option[Long],
-  @docs("maximum records to process per second")
+  @docs("Maximum number of records to process per second")
   maximumPerSecond: Option[Int],
   @docs(
-    "enables behaviors required for ingesting from a non-regular file type; default is to auto-detect if file is named pipe"
+    "Enables behaviors required for ingesting from a non-regular file type; default is to auto-detect if file is named pipe"
   ) fileIngestMode: Option[FileIngestMode]
 ) extends IngestStreamConfiguration
 
@@ -581,9 +581,9 @@ object FileIngestFormat {
 @docs("Determines behaviors required for ingesting from a non-regular file type")
 sealed abstract class FileIngestMode
 object FileIngestMode {
-  @docs("ordinary file to be open and read once")
+  @docs("Ordinary file to be open and read once")
   case object Regular extends FileIngestMode
-  @docs("named pipe to be regularly reopened and polled for more data")
+  @docs("Named pipe to be regularly reopened and polled for more data")
   case object NamedPipe extends FileIngestMode
 
   val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
@@ -713,7 +713,7 @@ trait IngestRoutes
     .withDescription(Some("Sources of streaming data ingested into the graph interpreter."))
 
   val ingestStreamName: Path[String] =
-    segment[String]("name", docs = Some("unique name for an ingest stream"))
+    segment[String]("name", docs = Some("Unique name for the ingest stream"))
 
   val ingestStreamStart: Endpoint[(String, IngestStreamConfiguration), Either[ClientErrors, Unit]] =
     endpoint(
@@ -742,7 +742,7 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("cancel a running ingest stream"))
+        .withSummary(Some("delete an ingest stream"))
         .withDescription(
           Some(
             """Cancel an already running ingest stream, where the name is the one that was given when
@@ -764,7 +764,7 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("look up a running ingest stream"))
+        .withSummary(Some("get the status of an ingest stream"))
         .withDescription(
           Some(
             """|Look up a running ingest stream, using the name that was given when the ingest stream
@@ -783,6 +783,7 @@ trait IngestRoutes
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
         .withSummary(Some("pause a running ingest stream"))
+        .withDescription(Some("Pause the named ingest stream"))
         .withTags(List(ingestStreamTag))
     )
 
@@ -795,6 +796,7 @@ trait IngestRoutes
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
         .withSummary(Some("unpause a paused ingest stream"))
+        .withDescription(Some("Resume the named ingest stream"))
         .withTags(List(ingestStreamTag))
     )
 
@@ -809,10 +811,10 @@ trait IngestRoutes
         )
       ),
       docs = EndpointDocs()
-        .withSummary(Some("list all running ingest streams"))
+        .withSummary(Some("list all ingest streams"))
         .withDescription(
           Some(
-            """|List all currently running ingest streams, keyed by the names under which they were
+            """|List all ingest streams, keyed by the names under which they were
                |registered.""".stripMargin
           )
         )

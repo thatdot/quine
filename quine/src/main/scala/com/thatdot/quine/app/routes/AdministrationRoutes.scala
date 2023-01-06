@@ -11,6 +11,7 @@ import akka.util.{ByteString, Timeout}
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.app.routes.exts.ServerQuineEndpoints
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 import com.thatdot.quine.persistor.PersistenceAgent
@@ -26,7 +27,7 @@ trait AdministrationRoutesImpl
     extends AdministrationRoutes
     with endpoints4s.akkahttp.server.Endpoints
     with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints { self: LazyLogging =>
+    with ServerQuineEndpoints { self: LazyLogging =>
 
   def graph: BaseGraph
   implicit def timeout: Timeout

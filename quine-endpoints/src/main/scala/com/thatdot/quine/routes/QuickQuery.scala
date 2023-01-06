@@ -29,15 +29,16 @@ object QueryLanguage {
 @title("Quick Query Action")
 @docs("Query that gets executed starting at some node (eg. by double-clicking or right-clicking).")
 final case class QuickQuery(
+  @docs("Name of the quick query. This is the name that will appear in the node drop-down menu")
   name: String,
-  @docs("suffix of a traversal query (eg, `.values('someKey')` for Gremlin or `RETURN n.someKey` for Cypher)")
+  @docs("Suffix of a traversal query (eg, `.values('someKey')` for Gremlin or `RETURN n.someKey` for Cypher)")
   querySuffix: String,
-  @docs("query language used in the query suffix")
+  @docs("Query language used in the query suffix")
   queryLanguage: QueryLanguage,
-  @docs("whether the query returns node or text results")
+  @docs("Whether the query returns node or text results")
   sort: QuerySort,
   @docs(
-    """if this label is set and the query is configured to return nodes, each of the nodes returned
+    """If this label is set and the query is configured to return nodes, each of the nodes returned
       |will have an additional dotted edge which connect to the source node of the quick query""".stripMargin
   )
   edgeLabel: Option[String]
