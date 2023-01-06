@@ -61,7 +61,7 @@ object Dependencies {
   val sugarV = "2.0.6"
   val stoplightElementsV = "7.5.18"
   val ujsonV = "1.6.0"
-  val ujsonCirceV = "0.9.9"
+  val circeV = "0.14.3"
   val visNetworkV = "8.2.0"
   val webjarsLocatorV = "0.46"
 }
