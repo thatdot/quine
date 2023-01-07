@@ -36,5 +36,5 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
   def queryProtocolClient(): WebSocketQueryClient =
     new WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v1/query"))
 
-  def ServiceUnavailable: StatusCode = 503
+  val ServiceUnavailable: StatusCode = 503
 }
