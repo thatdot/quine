@@ -123,10 +123,6 @@ object GraphService {
       val baseConfig = ConfigFactory
         .load()
         .withValue(
-          "akka.coordinated-shutdown.exit-jvm",
-          ConfigValueFactory.fromAnyRef(true)
-        )
-        .withValue(
           "akka.actor.provider",
           ConfigValueFactory.fromAnyRef("local")
         )
