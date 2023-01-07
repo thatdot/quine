@@ -1,10 +1,7 @@
-import scala.util.Using
 import sbt.{AutoPlugin, SettingKey}
-import sbt.Keys.{baseDirectory, version}
+import sbt.Keys.version
 
-import org.eclipse.jgit.lib.RepositoryBuilder
-import org.eclipse.jgit.api.Git
-import com.typesafe.sbt.SbtGit.GitKeys.gitReader
+import com.github.sbt.git.SbtGit.GitKeys.gitReader
 
 object GitVersion extends AutoPlugin {
 
