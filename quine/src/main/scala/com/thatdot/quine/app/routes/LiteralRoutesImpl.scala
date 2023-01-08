@@ -154,8 +154,7 @@ trait LiteralRoutesImpl
   }
 
   private val literalPropertyDeleteRoute = literalPropertyDelete.implementedByAsync { case (qid, propKey) =>
-    graph.literalOps
-      .removeProp(qid, propKey)
+    graph.literalOps.removeProp(qid, propKey)
   }
 
   final val literalRoutes: Route = {

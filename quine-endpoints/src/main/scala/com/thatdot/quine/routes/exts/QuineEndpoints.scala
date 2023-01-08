@@ -106,16 +106,19 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
   }
 
   final val nodeIdSegment: Path[Id] = segment[Id]("id", docs = Some("Node id"))
+
   final val atTime: QueryString[AtTime] = qs[AtTime](
     "at-time",
     docs = Some("Timestamp representing the historical moment to query")
   )
+
   final val reqTimeout: QueryString[Option[FiniteDuration]] = qs[Option[FiniteDuration]](
     "timeout",
     docs = Some("Milliseconds to wait before the HTTP request times out")
   )(
     optionalQueryStringParam(longQueryString.xmap(_.millis)(_.toMillis))
   )
+
   // NB this should be used for _write_ parallelism
   final val parallelism: QueryString[Int] = qs[Option[Int]](
     name = "parallelism",

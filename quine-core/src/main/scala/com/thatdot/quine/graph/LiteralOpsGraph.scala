@@ -21,7 +21,7 @@ trait LiteralOpsGraph extends BaseGraph {
     /** Assemble together debugging information about a node's internal state
       *
       * @note this is only meant for debugging system internals
-      * @param node which node to query
+      * @param node   which node to query
       * @param atTime the historical moment to query, or None for the moving present
       * @return internal node state
       */
@@ -54,7 +54,7 @@ trait LiteralOpsGraph extends BaseGraph {
 
     /** Get all properties and labels of a node
       *
-      * @param node which node to query
+      * @param node   which node to query
       * @param atTime the historical moment to query, or None for the moving present
       * @return map of all of the properties and set of all of the labels
       */
@@ -80,7 +80,7 @@ trait LiteralOpsGraph extends BaseGraph {
 
     /** Set node label to multiple values
       *
-      * @param node on which node the label should be set
+      * @param node   on which node the label should be set
       * @param labels labels to set
       */
     def setLabels(node: QuineId, labels: Set[String])(implicit
@@ -93,7 +93,7 @@ trait LiteralOpsGraph extends BaseGraph {
 
     /** Set node label to a single value
       *
-      * @param node on which node the label should be set
+      * @param node  on which node the label should be set
       * @param label label to set
       */
     def setLabel(node: QuineId, label: String)(implicit
@@ -102,8 +102,8 @@ trait LiteralOpsGraph extends BaseGraph {
 
     /** Set a single property on a node
       *
-      * @param node on which node the property should be set
-      * @param key key of the property to set
+      * @param node  on which node the property should be set
+      * @param key   key of the property to set
       * @param value property value to set
       */
     def setProp(node: QuineId, key: String, value: QuineValue)(implicit

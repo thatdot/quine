@@ -15,6 +15,7 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
     with QueryUiConfigurationRoutes
     with AdministrationRoutes
     with LiteralRoutes
+    with AlgorithmRoutes
     with endpoints4s.xhr.JsonEntitiesFromSchemas
     with endpoints4s.xhr.future.Endpoints
     with endpoints4s.ujson.JsonSchemas

@@ -25,7 +25,7 @@ import com.thatdot.quine.model.QuineId
   * @param timeout timeout
   */
 class QuineAppRoutes(
-  val graph: LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph,
+  val graph: LiteralOpsGraph with AlgorithmGraph with CypherOpsGraph with StandingQueryOpsGraph,
   val serviceState: AdministrationRoutesState
     with QueryUiConfigurationState
     with StandingQueryStore
@@ -37,6 +37,7 @@ class QuineAppRoutes(
     with WebSocketQueryProtocolServer
     with QueryUiConfigurationRoutesImpl
     with LiteralRoutesImpl
+    with AlgorithmRoutesImpl
     with AdministrationRoutesImpl
     with IngestRoutesImpl
     with StandingQueryRoutesImpl
@@ -83,6 +84,7 @@ class QuineAppRoutes(
     queryProtocolWS ~
     queryUiConfigurationRoutes ~
     literalRoutes ~
+    algorithmRoutes ~
     administrationRoutes ~
     ingestRoutes ~
     standingQueryRoutes

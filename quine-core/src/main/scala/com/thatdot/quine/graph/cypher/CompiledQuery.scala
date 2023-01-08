@@ -36,16 +36,19 @@ final case class CompiledQuery(
 
   /** Run this query on a graph
     *
-    * @param parameters constants referred to in the query
+    * @param parameters          constants referred to in the query
     * @param initialColumnValues variables that should be in scope for the query
-    * @param atTime moment in time to query ([[None]] represents the present)
-    *
+    * @param atTime              moment in time to query ([[None]] represents the present)
+    * @param initialInterpreter  Some(interpreter that will be used to run the [[query]]) or None to use the
+    *                            default AnchoredInterpreter for the provided atTime. Note that certain queries may
+    *                            cause other interpreters to be invoked as the query propagates through the graph
     * @return query and its results
     */
   def run(
     parameters: Map[String, Value] = Map.empty,
     initialColumnValues: Map[String, Value] = Map.empty,
-    atTime: Option[Milliseconds] = None
+    atTime: Option[Milliseconds] = None,
+    initialInterpreter: Option[CypherInterpreter[Location.Anywhere]] = None
   )(implicit
     graph: CypherOpsGraph
   ): QueryResults = {
@@ -73,7 +76,14 @@ final case class CompiledQuery(
       )
     }
 
-    val results = graph.cypherOps.query(query, params, atTime, initialContext)
+    val results = graph.cypherOps.query(
+      query,
+      params,
+      atTime,
+      initialContext,
+      bypassSkipOptimization = false,
+      initialInterpreter = initialInterpreter
+    )
     QueryResults(this, resultContexts = results)
   }
 }

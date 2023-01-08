@@ -22,6 +22,9 @@ sealed abstract class QuineValue {
   def quineType: QuineType
 
   def underlyingJvmValue: JvmType
+
+  /** Return a presentable string representation */
+  def pretty(implicit idProvider: QuineIdProvider): String
 }
 object QuineValue {
   def apply(v: Str#JvmType): QuineValue = Str(v)
@@ -44,6 +47,8 @@ object QuineValue {
 
     def quineType = QuineType.Str
     def underlyingJvmValue = string
+
+    def pretty(implicit idProvider: QuineIdProvider): String = string
   }
 
   final case class Integer private (long: Long) extends QuineValue {
@@ -51,6 +56,8 @@ object QuineValue {
 
     def quineType = QuineType.Integer
     def underlyingJvmValue = long
+
+    def pretty(implicit idProvider: QuineIdProvider): String = long.toString
   }
   object Integer {
 
@@ -77,6 +84,8 @@ object QuineValue {
 
     def quineType = QuineType.Floating
     def underlyingJvmValue = double
+
+    def pretty(implicit idProvider: QuineIdProvider): String = double.toString
   }
 
   case object True extends QuineValue {
@@ -84,6 +93,8 @@ object QuineValue {
 
     def quineType = QuineType.Boolean
     def underlyingJvmValue = true
+
+    def pretty(implicit idProvider: QuineIdProvider): String = "true"
   }
 
   case object False extends QuineValue {
@@ -91,6 +102,8 @@ object QuineValue {
 
     def quineType = QuineType.Boolean
     def underlyingJvmValue = false
+
+    def pretty(implicit idProvider: QuineIdProvider): String = "false"
   }
 
   case object Null extends QuineValue {
@@ -98,6 +111,8 @@ object QuineValue {
 
     def quineType = QuineType.Null
     def underlyingJvmValue = ()
+
+    def pretty(implicit idProvider: QuineIdProvider): String = "null"
   }
 
   final case class Bytes(bytes: Array[Byte]) extends QuineValue {
@@ -112,6 +127,8 @@ object QuineValue {
 
     def quineType = QuineType.Bytes
     def underlyingJvmValue = bytes
+
+    def pretty(implicit idProvider: QuineIdProvider): String = bytes.mkString("<", ",", ">")
   }
 
   final case class List(list: Vector[QuineValue]) extends QuineValue {
@@ -119,6 +136,8 @@ object QuineValue {
 
     def quineType = QuineType.List
     def underlyingJvmValue: JvmType = list.map(_.underlyingJvmValue)
+
+    def pretty(implicit idProvider: QuineIdProvider): String = list.map(_.pretty).mkString("[", ",", "]")
   }
 
   final case class Map private (map: SortedMap[String, QuineValue]) extends QuineValue {
@@ -126,6 +145,9 @@ object QuineValue {
 
     def quineType = QuineType.Map
     def underlyingJvmValue: SortedMap[String, Any] = SortedMap.from(map.view.mapValues(_.underlyingJvmValue))
+
+    def pretty(implicit idProvider: QuineIdProvider): String =
+      map.map { case (k, v) => s"$k : ${v.pretty}" }.mkString("{", ",", "}")
   }
   object Map {
     def apply(entries: IterableOnce[(String, QuineValue)]): Map = new Map(SortedMap.from(entries))
@@ -136,6 +158,8 @@ object QuineValue {
 
     def quineType = QuineType.DateTime
     def underlyingJvmValue = timestamp
+
+    def pretty(implicit idProvider: QuineIdProvider): String = timestamp.toString
   }
 
   object Id {
@@ -148,6 +172,8 @@ object QuineValue {
 
     def quineType: QuineType = QuineType.Id
     def underlyingJvmValue: JvmType = id
+
+    def pretty(implicit idProvider: QuineIdProvider): String = idProvider.qidToPrettyString(id)
   }
 
   /** Attempt to decoded a Quine value from a JSON-encoded value

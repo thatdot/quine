@@ -72,10 +72,16 @@ trait CypherOpsGraph extends BaseGraph {
 
     /** Issue a compiled Cypher query for a point in time
       *
-      * @param query compiled Cypher query
-      * @param parameters constants in the query
-      * @param atTime historical moment to query
-      * @param context variables already bound going into the query
+      * @param query                  compiled Cypher query
+      * @param parameters             constants in the query
+      * @param atTime                 historical moment to query
+      * @param context                variables already bound going into the query
+      * @param bypassSkipOptimization if true and the query+atTime are otherwise elligible for skip optimizations (@see
+      *                               [[SkipOptimizingActor]]), the query will be run without using any available
+      *                               [[SkipOptimizingActor]] for orchestration
+      * @param initialInterpreter     Some(interpreter that will be used to run the provided Query) or None to use the
+      *                               default AnchoredInterpreter for the provided atTime. Note that certain queries may
+      *                               cause other interpreters to be invoked as the query propagates through the graph
       * @return rows of results
       */
     def query(
@@ -83,13 +89,18 @@ trait CypherOpsGraph extends BaseGraph {
       parameters: Parameters = Parameters.empty,
       atTime: Option[Milliseconds] = None,
       context: QueryContext = QueryContext.empty,
-      bypassSkipOptimization: Boolean = false
+      bypassSkipOptimization: Boolean = false,
+      initialInterpreter: Option[CypherInterpreter[Location.Anywhere]] = None
     ): Source[QueryContext, NotUsed] = {
       requiredGraphIsReady()
-      val interpreter = atTime match {
+      require(
+        initialInterpreter.forall(_.atTime == atTime),
+        "Refusing to execute a query at a different timestamp than requested by the caller"
+      )
+      val interpreter = initialInterpreter.getOrElse(atTime match {
         case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
         case None => currentMomentInterpreter
-      }
+      })
 
       interpreter
         .interpret(query, context)(parameters)

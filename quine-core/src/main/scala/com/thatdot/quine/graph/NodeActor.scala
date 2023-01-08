@@ -37,7 +37,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   SqStateResults
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
-import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
+import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.{MultipleValuesStandingQueryStateCodec, SnapshotCodec}
@@ -116,6 +116,7 @@ private[graph] class NodeActor(
     with QuineRefOps
     with QuineIdOps
     with LiteralCommandBehavior
+    with AlgorithmBehavior
     with DomainNodeIndexBehavior
     with GoToSleepBehavior
     with PriorityStashingBehavior
@@ -128,6 +129,7 @@ private[graph] class NodeActor(
     case StashedMessage(message) => receive(message)
     case query: CypherQueryInstruction => cypherBehavior(query)
     case command: LiteralCommand => literalCommandBehavior(command)
+    case command: AlgorithmCommand => algorithmBehavior(command)
     case command: DomainNodeSubscriptionCommand => domainNodeIndexBehavior(command)
     case command: MultipleValuesStandingQueryCommand => multipleValuesStandingQueryBehavior(command)
     case command: UpdateStandingQueriesCommand => updateStandingQueriesBehavior(command)

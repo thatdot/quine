@@ -17,6 +17,7 @@ import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewriter, bottomUp}
 
+import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.{
   CypherException,
   Expr,
@@ -33,7 +34,13 @@ import com.thatdot.quine.graph.cypher.{
   Value
 }
 import com.thatdot.quine.graph.messaging.LiteralMessage._
-import com.thatdot.quine.graph.{LiteralOpsGraph, StandingQueryId, StandingQueryOpsGraph, StandingQueryResult}
+import com.thatdot.quine.graph.{
+  AlgorithmGraph,
+  LiteralOpsGraph,
+  StandingQueryId,
+  StandingQueryOpsGraph,
+  StandingQueryResult
+}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId, QuineIdProvider, QuineValue}
 
 /** Like [[UnresolvedCall]] but where the procedure has been resolved
@@ -88,7 +95,8 @@ case object resolveCalls extends StatementRewriter {
     CypherGetDistinctIDSqSubscriberResults,
     CypherGetDistinctIdSqSubscriptionResults,
     CypherDebugSleep,
-    ReifyTime
+    ReifyTime,
+    RandomWalk
   )
 
   /** This map is only meant to maintain backward compatibility for a short time. */
@@ -1185,5 +1193,73 @@ class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) ext
         val metaMap = Expr.fromQuineValue(QuineValue.Map(meta.toMap))
         Vector(dataMap, metaMap)
       }
+  }
+}
+
+object RandomWalk extends UserDefinedProcedure {
+  val name = "random.walk"
+  val canContainUpdates = false
+  val isIdempotent = false
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector(
+      "start" -> Type.Anything,
+      "depth" -> Type.Integer,
+      "return" -> Type.Floating,
+      "in-out" -> Type.Floating,
+      "seed" -> Type.Str
+    ),
+    outputs = Vector("walk" -> Type.List(Type.Str)),
+    description = "Randomly walk edges from a starting node for a chosen depth. " +
+      "Returns a list of node IDs in the order they were encountered."
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+
+    val atTime = location.atTime
+    val graph = AlgorithmGraph.getOrThrow(s"`$name` procedure", location.graph)
+
+    def toQid(nodeLike: Value): QuineId = UserDefinedProcedure
+      .extractQuineId(nodeLike)(graph.idProvider)
+      .getOrElse(
+        throw CypherException.Runtime(s"`$name` expects a node or node ID as the first argument, but got: $nodeLike")
+      )
+
+    val compiledQuery = cypher.compile(AlgorithmGraph.defaults.walkQuery, unfixedParameters = List("n"))
+
+    val (startNode, depth: Long, returnParam, inOutParam, randSeedOpt: Option[String]) = arguments match {
+      case Seq(nodelike) => (toQid(nodelike), 1L, 1d, 1d, None)
+      case Seq(nodelike, Expr.Integer(t)) => (toQid(nodelike), if (t >= 0) t else 0L, 1d, 1d, None)
+      case Seq(nodelike, Expr.Integer(t), Expr.Floating(p)) => (toQid(nodelike), if (t >= 0) t else 0L, p, 1d, None)
+      case Seq(nodelike, Expr.Integer(t), Expr.Floating(p), Expr.Floating(q)) =>
+        (toQid(nodelike), if (t >= 0) t else 0L, p, q, None)
+      case Seq(nodelike, Expr.Integer(t), Expr.Floating(p), Expr.Floating(q), Expr.Str(s)) =>
+        (toQid(nodelike), if (t >= 0) t else 0L, p, q, Some(s))
+      case other => throw wrongSignature(other)
+    }
+
+    Source.future(
+      graph.algorithms
+        .randomWalk(
+          startNode,
+          compiledQuery,
+          depth.toInt,
+          returnParam,
+          inOutParam,
+          None,
+          randSeedOpt,
+          atTime
+        )
+        .map { l =>
+          Vector(Expr.List(l.acc.toVector.map(q => Expr.Str(q))))
+        }(graph.nodeDispatcherEC)
+    )
   }
 }

@@ -29,7 +29,7 @@ object QuineSettings {
   val commonSettings: Seq[Setting[_]] = Seq(
     organization := "com.thatdot",
     organizationName := "thatDot Inc.",
-    organizationHomepage := Some(url("http://thatdot.com")),
+    organizationHomepage := Some(url("https://www.thatdot.com")),
     scalacOptions ++= Seq(
       "-language:implicitConversions",
       "-language:postfixOps",

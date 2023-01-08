@@ -5,7 +5,6 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Success
 
-import akka.actor.Actor
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
@@ -16,7 +15,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineValue}
 
-trait LiteralCommandBehavior extends Actor with BaseNodeActor with QuineIdOps with QuineRefOps {
+trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps {
 
   def debugNodeInternalState(): Future[NodeInternalState]
 

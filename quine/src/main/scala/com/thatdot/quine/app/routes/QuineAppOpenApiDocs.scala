@@ -16,6 +16,7 @@ import com.thatdot.quine.routes._
   */
 final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     extends LiteralRoutes
+    with AlgorithmRoutes
     with AdministrationRoutes
     with QueryUiRoutes
     with QueryUiConfigurationRoutes
@@ -48,6 +49,8 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     literalPropertyGet,
     literalPropertyPut,
     literalPropertyDelete,
+    algorithmSaveRandomWalks,
+    algorithmRandomWalk,
     cypherPost,
     cypherNodesPost,
     cypherEdgesPost,

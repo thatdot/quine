@@ -35,6 +35,7 @@ class GraphService(
   val metrics: HostQuineMetrics
 ) extends StaticShardGraph
     with LiteralOpsGraph
+    with AlgorithmGraph
     with CypherOpsGraph
     with StandingQueryOpsGraph {
 

@@ -200,6 +200,16 @@ trait OnNodeInterpreter
   // opt out of reusing SKIP-ed over queries when interpreting the thoroughgoing present
   def bypassSkipOptimization: Boolean = atTime.isEmpty
 
+  /** Executes/interprets a `Query` AST.
+    *
+    * WARNING: `interpret` should never be called from a `Source` or a `Future`. See also `interpretRecursive`.
+    *          The concern here is that this some variants of `Query` manipulate node local state (e.g. SetProperties)
+    *
+    * @param query Compiled cypher query AST.
+    * @param context variables in scope
+    * @param parameters query constants in scope
+    * @return back-pressured source of results
+    */
   final def interpret(
     query: Query[Location.OnNode],
     context: QueryContext
