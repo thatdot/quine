@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.edgecollection
 
 import scala.collection.mutable
 
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
+import com.thatdot.quine.model.HalfEdge
 import com.thatdot.quine.util.ReversibleLinkedHashSet
 
 /** A wrapper for interacting with ordered sets by key ([[ReversibleLinkedHashSet]]s).
@@ -53,32 +53,4 @@ final class EdgeIndex[K](
   override def clear(): Unit =
     index.clear()
 
-}
-
-final class DirectionEdgeIndex extends AbstractEdgeIndex[EdgeDirection] {
-  private[this] val outgoingEdges = ReversibleLinkedHashSet.empty[HalfEdge]
-  private[this] val incomingEdges = ReversibleLinkedHashSet.empty[HalfEdge]
-  private[this] val undirectedEdges = ReversibleLinkedHashSet.empty[HalfEdge]
-
-  override def toString: String =
-    s"DirectionEdgeIndex(outgoingEdges = $outgoingEdges, incomingEdges = $incomingEdges, undirectedEdges = $undirectedEdges)"
-  @inline
-  private[this] def collectionForDirection(direction: EdgeDirection): ReversibleLinkedHashSet[HalfEdge] =
-    direction match {
-      case EdgeDirection.Outgoing => outgoingEdges
-      case EdgeDirection.Incoming => incomingEdges
-      case EdgeDirection.Undirected => undirectedEdges
-    }
-
-  override def +=(edge: HalfEdge): ReversibleLinkedHashSet[HalfEdge] = collectionForDirection(edge.direction) += edge
-
-  override def -=(edge: HalfEdge): ReversibleLinkedHashSet[HalfEdge] = collectionForDirection(edge.direction) -= edge
-
-  override def apply(key: EdgeDirection): ReversibleLinkedHashSet[HalfEdge] = collectionForDirection(key)
-
-  override def clear(): Unit = {
-    outgoingEdges.clear()
-    incomingEdges.clear()
-    undirectedEdges.clear()
-  }
 }

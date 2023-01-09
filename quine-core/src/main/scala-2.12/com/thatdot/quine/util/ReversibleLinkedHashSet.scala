@@ -7,7 +7,7 @@ import scala.collection.{Iterator, mutable}
   * Subclassing is necessary, as `lastEntry` is marked protected.
   * @tparam A
   */
-class ReversibleLinkedHashSet[A]
+final class ReversibleLinkedHashSet[A]
     extends mutable.LinkedHashSet[A]
     with GenericSetTemplate[A, ReversibleLinkedHashSet]
     with mutable.SetLike[A, ReversibleLinkedHashSet[A]] {
