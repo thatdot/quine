@@ -324,7 +324,13 @@ final private[quine] class GraphShardActor(
         nodesWokenUpCounter.inc()
       } catch {
         // Akka may not have finished freeing the name even if the actor is shut down.
-        case InvalidActorNameException(_) =>
+        // InvalidActorNameException is thrown for a variety of different reasons, see
+        // https://github.com/akka/akka/search?q=%22throw+InvalidActorNameException%22
+        // Here we're only interested in catching the case where the actor name is syntactically
+        // valid, but at runtime Akka still thinks there's another Actor with that same name.
+        // e.g. specifically:
+        // https://github.com/akka/akka/blob/7abc41cf4e7e8827393b181cd06c5f8ea684e696/akka-actor/src/main/scala/akka/actor/dungeon/ChildrenContainer.scala#L134
+        case InvalidActorNameException(msg) if msg endsWith "is not unique!" =>
           nodes.remove(id)
           unlikelyActorNameRsvdCounter.inc()
           val eKey = WakeUpErrorStates.ActorNameStillReserved
@@ -440,7 +446,7 @@ final private[quine] class GraphShardActor(
         case badOutcome if remaining <= 0 =>
           unlikelyWakeupFailed.inc()
           val stats = shardStats()
-          if (log.isWarningEnabled)
+          if (log.isErrorEnabled)
             log.error(
               s"No more retries waking up: ${id.debug} " +
               s"with sleep status: ${nodes.get(id)} " +
