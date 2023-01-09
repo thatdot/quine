@@ -44,7 +44,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
   describe("Load some test data") {
 
     it("should insert some people and their parents") {
-      import idProv.ImplicitConverters._
+      import QuineIdImplicitConversions._
 
       Future.traverse(people) { (person: Person) =>
         val mother = person.hasMother.getOrElse(person.id)

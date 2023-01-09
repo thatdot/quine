@@ -3,6 +3,7 @@ package com.thatdot.quine.compiler.cypher
 import scala.collection.immutable.HashSet
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
+import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
 import akka.stream.scaladsl.{Keep, Sink}
@@ -15,9 +16,17 @@ import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.CompiledQuery
+import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
 class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
+
+  object QuineIdImplicitConversions {
+    implicit def toQid[A](typed: A)(implicit idProvider: QuineIdProvider.Aux[A]): QuineId =
+      idProvider.customIdToQid(typed)
+    implicit def fromQid(qid: QuineId)(implicit idProvider: QuineIdProvider): idProvider.CustomIdType =
+      idProvider.customIdFromQid(qid).get
+  }
 
   val timeout: Timeout = Timeout(10.seconds)
   // Used for e.g. literal ops that insert data - they use this as the timeout on relayAsk invocations.

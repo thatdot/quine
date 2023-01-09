@@ -164,10 +164,6 @@ abstract class QuineIdProvider extends StrictLogging {
   def nodeLocation(node: QuineId): QuineGraphLocation =
     QuineIdProvider.defaultNodeDistribution(node)
 
-  object ImplicitConverters {
-    implicit def toQid(typed: CustomIdType): QuineId = customIdToQid(typed)
-    implicit def fromQid(qid: QuineId): CustomIdType = customIdFromQid(qid).get
-  }
 }
 
 /** A QuineIdProvider that is "position-aware" by supporting allocation of IDs for a particular position index.

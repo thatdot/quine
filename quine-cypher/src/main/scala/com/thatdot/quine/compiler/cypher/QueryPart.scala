@@ -1,7 +1,7 @@
 package com.thatdot.quine.compiler.cypher
 
 import cats.implicits._
-import org.opencypher.v9_0.expressions.functions
+import org.opencypher.v9_0.expressions.{LogicalVariable, functions}
 import org.opencypher.v9_0.{ast, expressions, util}
 
 import com.thatdot.quine.graph.cypher
@@ -98,7 +98,7 @@ object QueryPart {
       .traverse { (mapping: ast.Union.UnionMapping) =>
         CompM
           .getVariable(getInVariable(mapping), astNode)
-          .map(e => (mapping.unionVariable: Symbol) -> e)
+          .map(e => (logicalVariable2Symbol(mapping.unionVariable)) -> e)
       }
   }
 
@@ -127,7 +127,7 @@ object QueryPart {
             expressions.Expression
           ](
             other.toList,
-            (lv: expressions.LogicalVariable) => cols.contains(lv),
+            (lv: expressions.LogicalVariable) => cols.contains(logicalVariable2Symbol(lv)),
             (exp: expressions.Expression) => exp.dependencies
           )
 
@@ -986,12 +986,12 @@ object QueryPart {
      * @param fullExpr the whole predicate
      */
     def visitPossibleConstraint(
-      v: Symbol,
+      v: LogicalVariable,
       arg: expressions.Expression,
       fullExpr: expressions.Expression
     ): Unit =
       Expression.compileM(arg).run(paramIdx, source, scopeInfo) match {
-        case Right(WithQuery(expr, cypher.Query.Unit(_))) => constraints += (v -> expr)
+        case Right(WithQuery(expr, cypher.Query.Unit(_))) => constraints += (logicalVariable2Symbol(v) -> expr)
         case _ => conjuncts += fullExpr
       }
 

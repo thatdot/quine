@@ -9,7 +9,7 @@ import com.thatdot.quine.graph.cypher.{Expr, Value}
 
 class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
 
-  import idProv.ImplicitConverters._
+  import QuineIdImplicitConversions._
 
   private val n1 = Expr.Node(1L, Set.empty, Map.empty)
   private val n2 = Expr.Node(2L, Set.empty, Map.empty)

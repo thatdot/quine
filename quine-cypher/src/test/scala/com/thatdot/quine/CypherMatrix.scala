@@ -4,7 +4,7 @@ import com.thatdot.quine.graph.cypher.Expr
 
 class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
 
-  import idProv.ImplicitConverters._
+  import QuineIdImplicitConversions._
 
   val neoNode: Expr.Node = Expr.Node(0L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Neo")))
   val morpheusNode: Expr.Node = Expr.Node(1L, Set(Symbol("Crew")), Map(Symbol("name") -> Expr.Str("Morpheus")))

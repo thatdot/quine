@@ -103,7 +103,7 @@ final case class Graph(
      * we need to check that this really is the same node).
      */
     (returnQuery, constraints1, remainingNodes) <- (
-      scopeInfo.getVariable(atNode),
+      scopeInfo.getVariable(logicalVariable2Symbol(atNode)),
       nodes.get(atNode)
     ) match {
 
@@ -305,7 +305,7 @@ final case class Graph(
     /* If we haven't visited the node, we need to set/create its properties and
      * add it to the context.
      */
-    (returnQueryM, remainingNodes) = (scopeInfo.getVariable(atNode), nodes.get(atNode)) match {
+    (returnQueryM, remainingNodes) = (scopeInfo.getVariable(logicalVariable2Symbol(atNode)), nodes.get(atNode)) match {
       // Avoid re-creating a node (since it is already aliased)
       case (Some(cypherVar @ _), nodePatOpt @ _) =>
         val returnQuery = identity[cypher.Query[cypher.Location.OnNode]](_)

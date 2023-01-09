@@ -4,6 +4,8 @@ import scala.util.parsing.combinator._
 
 import com.thatdot.quine.model.QuineValue
 
+import language.implicitConversions
+
 /** Trait which encapsulates all of the parsing functionality for the supported subset of Gremlin */
 // format: off
 private[gremlin] trait GremlinParser extends PackratParsers {

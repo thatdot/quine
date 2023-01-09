@@ -1,5 +1,7 @@
 package com.thatdot.quine.compiler.cypher
 
+import org.opencypher.v9_0.expressions.LogicalVariable
+
 import com.thatdot.quine.graph.cypher.Expr
 
 /** Tracks information related to variables in scope
@@ -41,8 +43,10 @@ final case class QueryScopeInfo(
     * @param variable variable whose node we want to jumpt to
     * @return expression that evaluates to the node or its address
     */
-  def getAnchor(variable: Symbol): Option[Expr] =
-    getVariable(variable) orElse anchoredNodes.get(variable)
+  def getAnchor(variable: LogicalVariable): Option[Expr] = {
+    val sym = logicalVariable2Symbol(variable)
+    getVariable(sym) orElse anchoredNodes.get(sym)
+  }
 
   /** Add some anchor nodes to the context
     *

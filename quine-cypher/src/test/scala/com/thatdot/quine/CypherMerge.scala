@@ -4,7 +4,7 @@ import com.thatdot.quine.graph.cypher.Expr
 
 class CypherMerge extends CypherHarness("cypher-merge-tests") {
 
-  import idProv.ImplicitConverters._
+  import QuineIdImplicitConversions._
 
   testQuery(
     "match (n0) return n0",

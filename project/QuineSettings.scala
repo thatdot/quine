@@ -31,7 +31,6 @@ object QuineSettings {
     organizationName := "thatDot Inc.",
     organizationHomepage := Some(url("https://www.thatdot.com")),
     scalacOptions ++= Seq(
-      "-language:implicitConversions",
       "-language:postfixOps",
       "-encoding",
       "utf8",

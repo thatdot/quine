@@ -3,6 +3,7 @@ package com.thatdot.quine.compiler.cypher
 import cats._
 import cats.arrow.FunctionK
 import cats.data.{EitherT, IndexedReaderWriterStateT, ReaderWriterState}
+import org.opencypher.v9_0.expressions.LogicalVariable
 import org.opencypher.v9_0.util
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, SourceText}
@@ -104,6 +105,9 @@ object CompM {
       }
     } yield variableExpr
 
+  def getVariable(variable: LogicalVariable, astNode: util.ASTNode): CompM[Expr.Variable] =
+    getVariable(logicalVariable2Symbol(variable), astNode)
+
   /** @return original query source text */
   val getSourceText: CompM[SourceText] = liftRWS(ReaderWriterState.ask.map(_._2))
 
@@ -137,6 +141,8 @@ object CompM {
         ((), newScope, varExpr)
       }
     )
+
+  def addColumn(variable: LogicalVariable): CompM[Expr.Variable] = addColumn(logicalVariable2Symbol(variable))
 
   /** Check if a variable is in the current query scope
     *

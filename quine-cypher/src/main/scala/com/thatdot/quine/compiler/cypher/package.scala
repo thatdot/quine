@@ -526,8 +526,8 @@ package object cypher {
     Proc.userDefinedProcedures += udp.name.toLowerCase -> udp
 
   /** Convert an openCypher variable into what our compilation APIs want */
-  implicit private[cypher] def logicalVariable2Symbol(lv: expressions.LogicalVariable): Symbol =
-    Symbol.apply(lv.name)
+  private[cypher] def logicalVariable2Symbol(lv: expressions.LogicalVariable): Symbol =
+    Symbol(lv.name)
 
   def position(input: InputPosition)(implicit source: SourceText): Position = Position(
     input.line,

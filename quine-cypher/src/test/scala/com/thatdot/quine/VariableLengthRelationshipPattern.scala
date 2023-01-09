@@ -43,7 +43,7 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
   // if this setup test fails, nothing else in this suite is expected to pass
   describe("Load some test data") {
     it("should insert some people and their parents") {
-      import idProv.ImplicitConverters._
+      import QuineIdImplicitConversions._
       Future.traverse(people) { (person: Person) =>
         graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first)) zip
         person.parent.traverse(parent => graph.literalOps.addEdge(person.id, parent, "parent"))

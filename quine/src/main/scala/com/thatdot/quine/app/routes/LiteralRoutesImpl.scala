@@ -26,13 +26,13 @@ trait LiteralRoutesImpl
     with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
-  implicit def toEdgeDirection(dir: model.EdgeDirection): EdgeDirection = dir match {
+  private def toEdgeDirection(dir: model.EdgeDirection): EdgeDirection = dir match {
     case model.EdgeDirection.Outgoing => Outgoing
     case model.EdgeDirection.Incoming => Incoming
     case model.EdgeDirection.Undirected => Undirected
   }
 
-  implicit def fromEdgeDirection(dir: EdgeDirection): model.EdgeDirection = dir match {
+  private def fromEdgeDirection(dir: EdgeDirection): model.EdgeDirection = dir match {
     case Outgoing => model.EdgeDirection.Outgoing
     case Incoming => model.EdgeDirection.Incoming
     case Undirected => model.EdgeDirection.Undirected
@@ -75,7 +75,7 @@ trait LiteralRoutesImpl
       .map { case (props, edges) =>
         LiteralNode(
           props.map { case (k, v) => k.name -> ByteString(v.serialized) },
-          edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) }
+          edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) }
         )
       }(graph.shardDispatcherEC)
   }
@@ -106,7 +106,9 @@ trait LiteralRoutesImpl
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })(graph.shardDispatcherEC)
+        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
+          graph.shardDispatcherEC
+        )
   }
 
   private val literalEdgePutRoute = literalEdgePut.implementedByAsync { case (qid, edges) =>
@@ -139,7 +141,9 @@ trait LiteralRoutesImpl
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
-        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, d, o) })(graph.shardDispatcherEC)
+        .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
+          graph.shardDispatcherEC
+        )
   }
 
   private val literalPropertyGetRoute = literalPropertyGet.implementedByAsync { case (qid, propKey, atTime) =>

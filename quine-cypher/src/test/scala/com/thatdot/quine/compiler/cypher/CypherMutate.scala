@@ -4,7 +4,7 @@ import com.thatdot.quine.graph.cypher.Expr
 
 class CypherMutate extends CypherHarness("cypher-mutate-tests") {
 
-  import idProv.ImplicitConverters._
+  import QuineIdImplicitConversions._
 
   describe("`CREATE` query clause") {
     testQuery(

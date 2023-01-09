@@ -322,7 +322,8 @@ object StandingQueryPatterns extends LazyLogging {
      */
 
     // First compilation pass
-    val initialScope = nodesInScope.foldLeft(QueryScopeInfo.empty)((scope, colLv) => scope.addColumn(colLv)._1)
+    val initialScope =
+      nodesInScope.foldLeft(QueryScopeInfo.empty)((scope, colLv) => scope.addColumn(logicalVariable2Symbol(colLv))._1)
     Expression.compileM(expr).run(paramsIdx, source, initialScope) match {
       case Left(err) => throw err
       case Right(_) => // do nothing - the compilation output we use is from the second pass
@@ -378,7 +379,7 @@ object StandingQueryPatterns extends LazyLogging {
 
     // Second compilation pass
     val rewrittenScope = (propertiesWatched.values.toSet | idsWatched.values.toSet)
-      .foldLeft(QueryScopeInfo.empty)((scope, col) => scope.addColumn(col)._1)
+      .foldLeft(QueryScopeInfo.empty)((scope, col) => scope.addColumn(logicalVariable2Symbol(col))._1)
     Expression.compileM(rewritten).run(paramsIdx, source, rewrittenScope) match {
       case Left(err) =>
         throw err
