@@ -3,16 +3,14 @@ package com.thatdot.quine.util
 import scala.concurrent.duration.DurationInt
 
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.tagobjects.Retryable
-import org.scalatest.time.{Seconds, Span}
-import org.scalatest.{Outcome, Retries}
 
-class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
-  override def withFixture(test: NoArgTest): Outcome =
-    if (isRetryable(test))
-      withRetryOnFailure(Span(5, Seconds))(super.withFixture(test))
-    else
-      super.withFixture(test)
+class TestTimeProvider(initialTime: Long) extends NanoTimeSource {
+  private var currentTime: Long = initialTime
+  def advanceByMillis(millis: Long): Unit = currentTime += millis * 1000L * 1000L
+
+  def nanoTime(): Long = currentTime
+}
+class SizeAndTimeBoundedCacheTest extends AnyFlatSpec {
 
   "A SizeAndTimeBounded" should "evict elements when it exceeds its maximum capacity" in {
     val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](3, 3, Long.MaxValue) {
@@ -67,8 +65,9 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
     assert(lru.iterator.toList == List(0, 2))
   }
 
-  it should "evict elements based on time expiry" taggedAs Retryable in {
-    val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](10, 10, 150.milliseconds.toNanos) {
+  it should "evict elements based on time expiry" in {
+    val time = new TestTimeProvider(0)
+    val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](10, 10, 150.milliseconds.toNanos, time) {
       def shouldExpire(elem: Int) = ExpiringLruSet.ExpiryDecision.ShouldRemove
       def expiryListener(cause: ExpiringLruSet.RemovalCause, elem: Int) = ()
     }
@@ -83,7 +82,7 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
     assert(lru.size == 2)
     assert(lru.iterator.toList == List(0, 1))
 
-    Thread.sleep(100)
+    time.advanceByMillis(100)
 
     lru.update(0)
     assert(lru.size == 2)
@@ -93,14 +92,14 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
     assert(lru.size == 3)
     assert(lru.iterator.toList == List(1, 0, 2))
 
-    Thread.sleep(100)
+    time.advanceByMillis(100)
 
     // 1 is evicted since it hasn't been accessed for 200ms
     lru.doExpiration()
     assert(lru.size == 2)
     assert(lru.iterator.toList == List(0, 2))
 
-    Thread.sleep(200)
+    time.advanceByMillis(200)
 
     // all are evicted
     lru.doExpiration()
@@ -108,8 +107,9 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
     assert(lru.iterator.toList == List())
   }
 
-  it should "support declining an eviction" taggedAs Retryable in {
-    val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](3, 3, 150.milliseconds.toNanos) {
+  it should "support declining an eviction" in {
+    val time = new TestTimeProvider(0)
+    val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](3, 3, 150.milliseconds.toNanos, time) {
       def shouldExpire(elem: Int): ExpiringLruSet.ExpiryDecision =
         if (elem != 0) ExpiringLruSet.ExpiryDecision.ShouldRemove // never evict 0!
         else ExpiringLruSet.ExpiryDecision.RejectRemoval(false)
@@ -135,7 +135,7 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec with Retries {
     assert(lru.size == 3)
     assert(lru.iterator.toList == List(2, 3, 0))
 
-    Thread.sleep(200)
+    time.advanceByMillis(200)
 
     // Decline evicting `0` on time constraint
     lru.doExpiration()

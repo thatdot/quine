@@ -7,6 +7,13 @@ import scala.jdk.CollectionConverters._
 
 import com.typesafe.scalalogging.LazyLogging
 
+abstract class NanoTimeSource {
+  def nanoTime(): Long
+}
+object SystemNanoTime extends NanoTimeSource {
+  @inline
+  final def nanoTime(): Long = System.nanoTime()
+}
 sealed abstract private[quine] class ExpiringLruSet[A] {
 
   /** Number of entries in the set */
@@ -122,13 +129,34 @@ private[quine] object ExpiringLruSet {
     *
     * @note time-based cleanup still only happens when [[doExpiration]] is called
     * @note this is not threadsafe, and therefore should only be used when managed (eg by a GraphShardActor)
+    * @param initialCapacity initial capacity of the underlying map
+    * @param initialMaximumSize maximum number of elements to allow before expiring
+    * @param initialNanosExpiry nanoseconds after accessing before expiring
     */
-  abstract class SizeAndTimeBounded[A] private (
-    private[this] val linkedMap: JavaLinkedHashMap[A, Long],
-    private[this] var _maximumSize: Int,
-    private[this] var _maximumNanosExpiry: Long
+  abstract class SizeAndTimeBounded[A](
+    initialCapacity: Int,
+    initialMaximumSize: Int,
+    initialNanosExpiry: Long,
+    nanoTimeSource: NanoTimeSource = SystemNanoTime
   ) extends ExpiringLruSet[A]
       with LazyLogging {
+    private[this] var _maximumSize: Int = initialMaximumSize
+    private[this] var _maximumNanosExpiry: Long = initialNanosExpiry
+
+    /* Map from element in the set to the (system nano-)time at which it was
+     * added. The iteration order matches the order in which elements will get
+     * expired.
+     *
+     * NOTE: we are using the `LinkedHashMap` constructor variant to override
+     * the ordering to be _access order_ and not the default _insertion order_.
+     * This option doesn't exist on Scala's `LinkedHashMap` (at time of writing)
+     */
+    private[this] val linkedMap: JavaLinkedHashMap[A, Long] =
+      new JavaLinkedHashMap[A, Long](
+        initialCapacity,
+        0.75F, // default from other `JavaLinkedHashMap` constructors
+        true // use access order, not insertion order
+      )
 
     final def maximumSize: Int = _maximumSize
     final def maximumSize_=(newSize: Int): Unit = {
@@ -142,35 +170,7 @@ private[quine] object ExpiringLruSet {
       doExpiration()
     }
 
-    /** @param initialCapacity initial capacity of the underlying map
-      * @param initialMaximumSize maximum number of elements to allow before expiring
-      * @param initialNanosExpiry nanoseconds after accessing before expiring
-      */
-    def this(
-      initialCapacity: Int,
-      initialMaximumSize: Int,
-      initialNanosExpiry: Long
-    ) =
-      this(
-        /* Map from element in the set to the (system nano-)time at which it was
-         * added. The iteration order matches the order in which elements will get
-         * expired.
-         *
-         * NOTE: we are using the `LinkedHashMap` constructor variant to override
-         * the ordering to be _access order_ and not the default _insertion order_.
-         * This option doesn't exist on Scala's `LinkedHashMap` (at time of writing)
-         */
-        new JavaLinkedHashMap[A, Long](
-          initialCapacity,
-          0.75F, // default from other `JavaLinkedHashMap` constructors
-          true // use access order, not insertion order
-        ),
-        initialMaximumSize,
-        initialNanosExpiry
-      )
-
     final def iterator: Iterator[A] = linkedMap.keySet().iterator.asScala
-
     final def contains(elem: A): Boolean = linkedMap.containsKey(elem)
 
     final def size = linkedMap.size
@@ -183,7 +183,7 @@ private[quine] object ExpiringLruSet {
     }
 
     final def update(elem: A): Unit = {
-      linkedMap.put(elem, System.nanoTime())
+      linkedMap.put(elem, nanoTimeSource.nanoTime())
       doExpiration()
     }
 
@@ -197,7 +197,7 @@ private[quine] object ExpiringLruSet {
     final def doExpiration(): Unit = {
       val reinsert = mutable.ListBuffer.empty[A]
       val entrySet = linkedMap.entrySet()
-      val now: Long = System.nanoTime()
+      val now: Long = nanoTimeSource.nanoTime()
 
       // How many elements to remove due to size constraints (if negative, constraint satisfied)
       var oversizedBy: Int = linkedMap.size - maximumSize
