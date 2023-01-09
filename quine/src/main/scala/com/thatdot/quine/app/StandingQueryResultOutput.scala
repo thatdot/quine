@@ -133,7 +133,8 @@ object StandingQueryResultOutput extends LazyLogging {
           .map(_ => execToken)
 
       case WriteToKinesis(
-            credentials,
+            credentialsOpt,
+            regionOpt,
             streamName,
             format,
             kinesisParallelism,
@@ -143,7 +144,8 @@ object StandingQueryResultOutput extends LazyLogging {
           ) =>
         val builder = KinesisAsyncClient
           .builder()
-          .credentials(credentials)
+          .credentials(credentialsOpt)
+          .region(regionOpt)
           .httpClient(NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build())
         val kinesisAsyncClient: KinesisAsyncClient =
           builder
@@ -175,10 +177,11 @@ object StandingQueryResultOutput extends LazyLogging {
           )
           .map(_ => execToken)
 
-      case WriteToSNS(credentials, topic) =>
+      case WriteToSNS(credentialsOpt, regionOpt, topic) =>
         val awsSnsClient = SnsAsyncClient
           .builder()
-          .credentials(credentials)
+          .credentials(credentialsOpt)
+          .region(regionOpt)
           .httpClient(
             NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
           )

@@ -28,7 +28,7 @@ import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
-import com.thatdot.quine.routes.{AwsCredentials, KinesisIngest}
+import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
 
 /** The definition of a source stream from Amazon Kinesis
   *
@@ -48,6 +48,7 @@ final case class KinesisSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int = 2,
   credentialsOpt: Option[AwsCredentials],
+  regionOpt: Option[AwsRegion],
   iteratorType: KinesisIngest.IteratorType,
   numRetries: Int,
   maxPerSecond: Option[Int],
@@ -73,6 +74,7 @@ final case class KinesisSrcDef(
     val builder = KinesisAsyncClient
       .builder()
       .credentials(credentialsOpt)
+      .region(regionOpt)
       .httpClient(
         NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
       )

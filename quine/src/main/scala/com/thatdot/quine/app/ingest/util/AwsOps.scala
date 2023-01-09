@@ -11,31 +11,12 @@ import software.amazon.awssdk.auth.credentials.{
 import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
 
-import com.thatdot.quine.routes.AwsCredentials
+import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
 
 case object AwsOps extends LazyLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
   // invariant: all AWS clients using HTTP will set this as a maximum concurrency value
   val httpConcurrencyPerClient = 100
-
-  def buildWith[Client: ClassTag, Builder <: AwsClientBuilder[Builder, Client]](
-    builder: AwsClientBuilder[Builder, Client],
-    credsOpt: Option[AwsCredentials]
-  ): Builder =
-    credsOpt.fold {
-      logger.info(
-        s"No AWS credentials provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental credentials."
-      )
-      builder.credentialsProvider(DefaultCredentialsProvider.create())
-    } { credentials =>
-      builder
-        .credentialsProvider(
-          StaticCredentialsProvider.create(
-            AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey)
-          )
-        )
-        .region(Region.of(credentials.region))
-    }
 
   implicit class AwsBuilderOps[Client: ClassTag, Builder <: AwsClientBuilder[Builder, Client]](
     builder: AwsClientBuilder[Builder, Client]
@@ -56,6 +37,27 @@ case object AwsOps extends LazyLogging {
       * @param credsOpt if set, aws credentials to use explicitly
       * @return
       */
-    def credentials(credsOpt: Option[AwsCredentials]): Builder = buildWith(builder, credsOpt)
+    def credentials(credsOpt: Option[AwsCredentials]): Builder =
+      credsOpt.fold {
+        logger.info(
+          s"No AWS credentials provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental credentials."
+        )
+        builder.credentialsProvider(DefaultCredentialsProvider.create())
+      } { credentials =>
+        builder
+          .credentialsProvider(
+            StaticCredentialsProvider.create(
+              AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey)
+            )
+          )
+      }
+
+    def region(regionOpt: Option[AwsRegion]): Builder =
+      regionOpt.fold {
+        logger.info(
+          s"No AWS region provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental settings."
+        )
+        builder.applyMutation(_ => ()) // return the builder unmodified
+      }(region => builder.region(Region.of(region.region)))
   }
 }

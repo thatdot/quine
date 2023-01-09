@@ -116,13 +116,19 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
 
 @title("AWS Credentials")
 @docs(
-  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>."
+  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>."
 )
-final case class AwsCredentials(region: String, accessKeyId: String, secretAccessKey: String)
+final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
-trait AwsCredentialsSchemas extends endpoints4s.generic.JsonSchemas {
-  implicit lazy val awsCredentialsSchema: JsonSchema[AwsCredentials] =
-    genericJsonSchema[AwsCredentials]
+@title("AWS Region")
+@docs(
+  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>."
+)
+final case class AwsRegion(region: String)
+
+trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
+  implicit lazy val awsCredentialsSchema: JsonSchema[AwsCredentials] = genericJsonSchema[AwsCredentials]
+  implicit val awsRegionSchema: JsonSchema[AwsRegion] = genericJsonSchema[AwsRegion]
 }
 
 @title("Kafka Auto Offset Reset")
@@ -309,6 +315,7 @@ final case class KinesisIngest(
   @docs("maximum number of records to write simultaneously")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   credentials: Option[AwsCredentials],
+  region: Option[AwsRegion],
   @docs("shard iterator type") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
   @docs("number of retries to attempt on Kineses error") numRetries: Int = 3,
   @docs("maximum records to process per second") maximumPerSecond: Option[Int],
@@ -344,6 +351,7 @@ final case class SQSIngest(
   @docs("maximum number of records to ingest simultaneously")
   writeParallelism: Int = IngestRoutes.defaultWriteParallelism,
   credentials: Option[AwsCredentials],
+  region: Option[AwsRegion],
   @docs("whether the queue consumer should acknowledge receipt of in-flight messages")
   deleteReadMessages: Boolean = true,
   @docs("maximum records to process per second") maximumPerSecond: Option[Int],
@@ -610,7 +618,7 @@ object CsvCharacter {
   val values: Seq[CsvCharacter] = Seq(Backslash, Comma, Semicolon, Colon, Tab, Pipe, DoubleQuote)
 }
 
-trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsCredentialsSchemas with MetricsSummarySchemas {
+trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfigurationSchemas with MetricsSummarySchemas {
 
   implicit lazy val recordEncodingTypeFormatSchema: JsonSchema[RecordDecodingType] =
     stringEnumeration(RecordDecodingType.values)(_.toString)

@@ -167,6 +167,7 @@ object StandingQueryResultOutputUserDef {
   )
   final case class WriteToKinesis(
     credentials: Option[AwsCredentials],
+    region: Option[AwsRegion],
     streamName: String,
     format: OutputFormat = OutputFormat.JSON,
     kinesisParallelism: Option[Int],
@@ -188,6 +189,7 @@ object StandingQueryResultOutputUserDef {
   )
   final case class WriteToSNS(
     credentials: Option[AwsCredentials],
+    region: Option[AwsRegion],
     @docs("ARN of the topic to publish to") topic: String
   ) extends StandingQueryResultOutputUserDef
 
@@ -314,7 +316,7 @@ object OutputFormat {
 trait StandingQuerySchemas
     extends endpoints4s.generic.JsonSchemas
     with exts.AnySchema
-    with AwsCredentialsSchemas
+    with AwsConfigurationSchemas
     with MetricsSummarySchemas {
 
   import StandingQueryPattern._

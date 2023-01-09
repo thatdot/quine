@@ -93,11 +93,15 @@ object Recipe {
     implicit class SubCreds(c: AwsCredentials) {
       def subs: ValidatedNel[UnboundVariableError, AwsCredentials] =
         (
-          c.region.subs,
           c.accessKeyId.subs,
           c.secretAccessKey.subs
-        ).mapN(AwsCredentials(_, _, _))
+        ).mapN(AwsCredentials(_, _))
     }
+    implicit class SubRegion(r: AwsRegion) {
+      def subs: ValidatedNel[UnboundVariableError, AwsRegion] =
+        (r.region.subs).map(AwsRegion(_))
+    }
+
     implicit class SubStandingQueryOutputSubs(soo: StandingQueryResultOutputUserDef) {
       def subs: ValidatedNel[UnboundVariableError, StandingQueryResultOutputUserDef] = soo match {
         case Drop => Validated.valid(Drop)
@@ -110,11 +114,12 @@ object Recipe {
             topic.subs,
             bootstrapServers.subs
           ).mapN(WriteToKafka(_, _, format))
-        case WriteToSNS(credentials, topic) =>
+        case WriteToSNS(credentialsOpt, regionOpt, topic) =>
           (
-            credentials.traverse(_.subs),
+            credentialsOpt.traverse(_.subs),
+            regionOpt.traverse(_.subs),
             topic.subs
-          ).mapN(WriteToSNS(_, _))
+          ).mapN(WriteToSNS(_, _, _))
         case PrintToStandardOut(logLevel, logMode) =>
           Validated.valid(PrintToStandardOut(logLevel, logMode))
         case WriteToFile(path) =>
@@ -141,7 +146,8 @@ object Recipe {
             )
           )
         case WriteToKinesis(
-              credentials,
+              credentialsOpt,
+              regionOpt,
               streamName,
               format,
               kinesisParallelism,
@@ -150,10 +156,12 @@ object Recipe {
               kinesisMaxBytesPerSecond
             ) =>
           (
-            credentials.traverse(_.subs),
+            credentialsOpt.traverse(_.subs),
+            regionOpt.traverse(_.subs),
             streamName.subs
           ).mapN(
             WriteToKinesis(
+              _,
               _,
               _,
               format,
@@ -205,6 +213,7 @@ object Recipe {
               shardIds,
               parallelism,
               credentials,
+              region,
               iteratorType,
               numRetries,
               maximumPerSecond,
@@ -212,13 +221,15 @@ object Recipe {
             ) =>
           (
             streamName.subs,
-            credentials.traverse(_.subs)
+            credentials.traverse(_.subs),
+            region.traverse(_.subs)
           ).mapN(
             KinesisIngest(
               format,
               _,
               shardIds,
               parallelism,
+              _,
               _,
               iteratorType,
               numRetries,
@@ -259,20 +270,23 @@ object Recipe {
               queueUrl,
               readParallelism,
               writeParallelism,
-              credentials,
+              credentialsOpt,
+              regionOpt,
               deleteReadMessages,
               maximumPerSecond,
               recordEncodingTypes
             ) =>
           (
             queueUrl.subs,
-            credentials.traverse(_.subs)
+            credentialsOpt.traverse(_.subs),
+            regionOpt.traverse(_.subs)
           ).mapN(
             SQSIngest(
               format,
               _,
               readParallelism,
               writeParallelism,
+              _,
               _,
               deleteReadMessages,
               maximumPerSecond,

@@ -19,7 +19,7 @@ import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.routes.AwsCredentials
+import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
 
 /** The definition of an incoming AWS SQS stream.
   *
@@ -41,6 +41,7 @@ final case class SqsStreamSrcDef(
   readParallelism: Int,
   writeParallelism: Int,
   credentialsOpt: Option[AwsCredentials],
+  regionOpt: Option[AwsRegion],
   deleteReadMessages: Boolean,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder]
@@ -59,6 +60,7 @@ final case class SqsStreamSrcDef(
   implicit val client: SqsAsyncClient = SqsAsyncClient
     .builder()
     .credentials(credentialsOpt)
+    .region(regionOpt)
     .httpClient(
       NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
     )
