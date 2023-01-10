@@ -191,7 +191,7 @@ trait QueryUiConfigurationRoutes
     endpoint(
       request = put(
         url = sampleQueries,
-        entity = jsonRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults)
       ),
       response = noContent(),
       docs = EndpointDocs()
@@ -230,7 +230,7 @@ trait QueryUiConfigurationRoutes
     endpoint(
       request = put(
         url = nodeAppearances,
-        entity = jsonRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults)
       ),
       response = noContent(),
       docs = EndpointDocs()
@@ -264,7 +264,7 @@ trait QueryUiConfigurationRoutes
     endpoint(
       request = put(
         url = quickQueries,
-        entity = jsonRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults)
       ),
       response = noContent(),
       docs = EndpointDocs()

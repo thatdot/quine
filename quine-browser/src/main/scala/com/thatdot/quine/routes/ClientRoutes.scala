@@ -3,7 +3,7 @@ package com.thatdot.quine.routes
 import scala.scalajs.js
 
 import endpoints4s.xhr.EndpointsSettings
-import org.scalajs.dom.{WebSocket, window}
+import org.scalajs.dom.{WebSocket, XMLHttpRequest, window}
 
 /** Client for calling Quine's API server endpoints
   *
@@ -33,6 +33,12 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
     xhr.setRequestHeader("Content-type", "text/plain; charset=utf8")
     renderCsv(body)
   }
+
+  def yamlRequest[A](implicit codec: JsonCodec[A]): RequestEntity[A] =
+    (a: A, xhr: XMLHttpRequest) => {
+      xhr.setRequestHeader("Content-Type", "application/yaml")
+      stringCodec(codec).encode(a)
+    }
 
   def queryProtocolClient(): WebSocketQueryClient =
     new WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v1/query"))

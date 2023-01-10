@@ -286,7 +286,8 @@ trait AdministrationRoutes
       .withDescription("A map of shard IDs to shard in-memory node limits")
 
     endpoint(
-      request = post(admin / "shard-sizes", jsonRequestWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)),
+      request =
+        post(admin / "shard-sizes", jsonOrYamlRequestWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)),
       response = ok(
         jsonResponseWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)
       ),

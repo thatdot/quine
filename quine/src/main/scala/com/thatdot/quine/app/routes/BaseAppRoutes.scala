@@ -4,8 +4,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.model.headers._
+import akka.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Route, StandardRoute}
 import akka.stream.Materializer
@@ -16,6 +16,9 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 
+object MediaTypes {
+  val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
+}
 trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoints {
 
   val graph: BaseGraph
@@ -60,7 +63,11 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
     val route = mainRoute
     Http()
       .newServerAt(interface, port)
-      .adaptSettings(_.mapWebsocketSettings(_.withPeriodicKeepAliveMaxIdle(10.seconds)))
+      .adaptSettings(
+        // See https://doc.akka.io/docs/akka-http/10.0/common/http-model.html#registering-custom-media-types
+        _.mapWebsocketSettings(_.withPeriodicKeepAliveMaxIdle(10.seconds))
+          .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`))
+      )
       .bind(route)
   }
 }

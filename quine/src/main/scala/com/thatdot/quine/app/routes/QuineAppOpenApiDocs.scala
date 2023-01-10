@@ -108,7 +108,7 @@ final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph)
 
   val doc = new QuineAppOpenApiDocs(graph.idProvider)
 
-  final val route: Route = {
+  val route: Route = {
     val docEndpoint = endpoint(
       get(path / "docs" / "openapi.json"),
       ok(jsonResponse[endpoints4s.openapi.model.OpenApi](OpenApiRenderer.stringEncoder))

@@ -462,7 +462,7 @@ trait StandingQueryRoutes
     endpoint(
       request = post(
         url = standing / standingName,
-        entity = jsonRequestWithExample[StandingQueryDefinition](sq)
+        entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq)
       ),
       response = badRequest(docs = Some("Standing query exists already"))
         .orElse(created()),
@@ -477,7 +477,7 @@ trait StandingQueryRoutes
     endpoint(
       request = post(
         url = standing / standingName / "output" / standingOutputName,
-        entity = jsonRequestWithExample[StandingQueryResultOutputUserDef](additionalSqOutput)
+        entity = jsonOrYamlRequestWithExample[StandingQueryResultOutputUserDef](additionalSqOutput)
       ),
       response = wheneverFound(badRequest() orElse created()),
       docs = EndpointDocs()

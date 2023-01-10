@@ -8,10 +8,18 @@ package com.thatdot.quine.routes.exts
 trait EntitiesWithExamples extends endpoints4s.algebra.JsonEntities with endpoints4s.algebra.JsonSchemas {
 
   /** Like [[jsonResponse]], but includes an example */
-  def jsonResponseWithExample[A](example: A)(implicit codec: JsonResponse[A]): ResponseEntity[A]
+  def jsonResponseWithExample[A: JsonResponse](example: A): ResponseEntity[A]
 
   /** Like [[jsonRequest]] but includes an example */
-  def jsonRequestWithExample[A](example: A)(implicit codec: JsonRequest[A]): RequestEntity[A]
+  def jsonRequestWithExample[A: JsonRequest](example: A): RequestEntity[A]
+
+  def yamlRequest[A: JsonRequest]: RequestEntity[A]
+  def yamlRequestWithExample[A: JsonRequest](example: A): RequestEntity[A]
+  def jsonOrYamlRequest[A: JsonRequest]: RequestEntity[A] =
+    yamlRequest[A].orElse(jsonRequest[A]).xmap(_.merge)(Right(_))
+
+  def jsonOrYamlRequestWithExample[A: JsonRequest](example: A): RequestEntity[A] =
+    yamlRequestWithExample[A](example).orElse(jsonRequestWithExample[A](example)).xmap(_.merge)(Right(_))
 
   /** Like [[textResponse]], but includes an example */
   def textResponseWithExample(example: String): ResponseEntity[String]
@@ -35,8 +43,10 @@ trait EntitiesWithExamples extends endpoints4s.algebra.JsonEntities with endpoin
 /** Mix-in that make the example-annotating endpoints no-ops */
 trait NoopEntitiesWithExamples extends EntitiesWithExamples {
 
-  def jsonResponseWithExample[A](example: A)(implicit codec: JsonResponse[A]): ResponseEntity[A] = jsonResponse[A]
-  def jsonRequestWithExample[A](example: A)(implicit codec: JsonRequest[A]): RequestEntity[A] = jsonRequest[A]
+  def jsonResponseWithExample[A: JsonResponse](example: A): ResponseEntity[A] = jsonResponse[A]
+  def jsonRequestWithExample[A: JsonRequest](example: A): RequestEntity[A] = jsonRequest[A]
+
+  def yamlRequestWithExample[A: JsonRequest](example: A): RequestEntity[A] = yamlRequest[A]
 
   def textResponseWithExample(example: String) = textResponse
   def textRequestWithExample(example: String) = textRequest
@@ -53,6 +63,9 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
     jsonResponse[A](codec.withExample(example))
   def jsonRequestWithExample[A](example: A)(implicit codec: JsonSchema[A]): RequestEntity[A] =
     jsonRequest[A](codec.withExample(example))
+
+  def yamlRequestWithExample[A](example: A)(implicit codec: JsonSchema[A]): RequestEntity[A] =
+    yamlRequest[A](codec.withExample(example))
 
   def textResponseWithExample(example: String): Map[String, MediaType] =
     Map(
@@ -83,6 +96,10 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
         )
       )
     )
+
+  def yamlRequest[A](implicit codec: JsonSchema[A]): Map[String, MediaType] = Map(
+    "application/yaml" -> MediaType(Some(toSchema(codec.docs)))
+  )
 
   def csvRequest: Map[String, MediaType] =
     Map(

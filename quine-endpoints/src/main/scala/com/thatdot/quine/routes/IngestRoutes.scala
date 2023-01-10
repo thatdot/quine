@@ -698,6 +698,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     genericJsonSchema[IngestStreamInfoWithName].withExample(exampleIngestStreamInfoWithName)
   implicit lazy val fileIngestModeSchema: JsonSchema[FileIngestMode] =
     stringEnumeration(FileIngestMode.values)(_.toString)
+
 }
 
 object IngestRoutes {
@@ -727,7 +728,7 @@ trait IngestRoutes
     endpoint(
       request = post(
         url = ingest / ingestStreamName,
-        entity = jsonRequest[IngestStreamConfiguration]
+        entity = jsonOrYamlRequest[IngestStreamConfiguration]
       ),
       response = badRequest(docs = Some("Ingest stream exists already"))
         .orElse(ok(emptyResponse)),

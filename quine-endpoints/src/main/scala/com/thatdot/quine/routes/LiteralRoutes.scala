@@ -125,7 +125,7 @@ trait LiteralRoutes
     endpoint(
       request = post(
         url = literal,
-        entity = jsonRequest[LiteralNode[Id, BStr]]
+        entity = jsonOrYamlRequest[LiteralNode[Id, BStr]]
       ),
       ok(emptyResponse),
       docs = EndpointDocs()
@@ -177,7 +177,7 @@ trait LiteralRoutes
     endpoint(
       request = put(
         url = literal / "edges",
-        entity = jsonRequest[Seq[RestHalfEdge[Id]]]
+        entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
@@ -190,7 +190,7 @@ trait LiteralRoutes
       request = request(
         Delete,
         url = literal / "edges",
-        entity = jsonRequest[Seq[RestHalfEdge[Id]]]
+        entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
@@ -227,7 +227,7 @@ trait LiteralRoutes
     endpoint(
       request = put(
         url = literal / "props" /? propKey,
-        entity = jsonRequest[BStr]
+        entity = jsonOrYamlRequest[BStr]
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()

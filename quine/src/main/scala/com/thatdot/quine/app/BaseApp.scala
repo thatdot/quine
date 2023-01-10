@@ -24,9 +24,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
     * @param key name of the setting
     * @param value setting value
     */
-  final protected def storeLocalMetaData[A](key: String, localMemberId: MemberIdx, value: A)(implicit
-    schema: JsonSchema[A]
-  ): Future[Unit] =
+  final protected def storeLocalMetaData[A: JsonSchema](key: String, localMemberId: MemberIdx, value: A): Future[Unit] =
     graph.persistor.setLocalMetaData(key, localMemberId, Some(encodeMetaData(value)))
 
   /** Store a key-value pair that is relevant for the entire graph
@@ -35,7 +33,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
     * @param key name of the setting
     * @param value setting value
     */
-  final protected def storeGlobalMetaData[A](key: String, value: A)(implicit schema: JsonSchema[A]): Future[Unit] =
+  final protected def storeGlobalMetaData[A: JsonSchema](key: String, value: A): Future[Unit] =
     graph.persistor.setMetaData(key, Some(encodeMetaData(value)))
 
   /** Serialize a value intended to be stored as metadata

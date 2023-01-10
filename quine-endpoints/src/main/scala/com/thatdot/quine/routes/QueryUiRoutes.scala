@@ -142,7 +142,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "cypher" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[CypherQuery](
+        entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery("RETURN $x+$y AS three", Map(("x" -> ujson.Num(1)), ("y" -> ujson.Num(2))))
         ).orElse(textRequestWithExample("RETURN 1 + 2 AS three"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
@@ -165,7 +165,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "cypher" / "nodes" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[CypherQuery](
+        entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH (n) RETURN n LIMIT $lim",
             Map(("lim" -> ujson.Num(1)))
@@ -186,7 +186,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "cypher" / "edges" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[CypherQuery](
+        entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH ()-[e]->() RETURN e LIMIT $lim",
             Map(("lim" -> ujson.Num(1)))
@@ -208,7 +208,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "gremlin" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[GremlinQuery](
+        entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> ujson.Num(1)))
         ).orElse(textRequestWithExample("g.V().valueMap().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
@@ -242,7 +242,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "gremlin" / "nodes" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[GremlinQuery](
+        entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().limit(lim)", Map("lim" -> ujson.Num(1)))
         ).orElse(textRequestWithExample("g.V().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
@@ -262,7 +262,7 @@ trait QueryUiRoutes
     endpoint(
       request = post(
         url = query / "gremlin" / "edges" /? (atTime & reqTimeout),
-        entity = jsonRequestWithExample[GremlinQuery](
+        entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> ujson.Num(1)))
         ).orElse(textRequestWithExample("g.V().outE().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>

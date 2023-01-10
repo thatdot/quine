@@ -21,6 +21,8 @@ import endpoints4s.openapi.model.{
   SecurityRequirement,
   SecurityScheme
 }
+
+import com.thatdot.quine.app.yaml
 object OpenApiRenderer {
 
   val openApiVersion = "3.0.0"
@@ -210,7 +212,7 @@ object OpenApiRenderer {
     new ujson.Obj(fields)
   }
 
-  def mediaTypeJson(mediaType: MediaType): ujson.Value =
+  def mediaTypeJson(mediaType: MediaType): ujson.Obj =
     mediaType.schema match {
       case Some(schema) => ujson.Obj("schema" -> schemaJson(schema))
       case None => ujson.Obj()
@@ -279,9 +281,22 @@ object OpenApiRenderer {
       case In.Cookie => ujson.Str("cookie")
     }
 
+  private def getExample(schema: Schema): Option[ujson.Value] = schema match {
+    case reference: Schema.Reference => reference.example orElse reference.original.flatMap(_.example)
+    case other => other.example
+  }
   private def requestBodyJson(body: RequestBody): ujson.Value = {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "content" -> mapJson(body.content)(mediaTypeJson)
+      "content" -> ujson.Obj.from(body.content map { case (k, v) =>
+        val schemaJson = mediaTypeJson(v)
+        // TODO: Add support for an optional example field to endpoints4s.openapi.model.MediaType upstream,
+        // besides just its current schema field. That way we can do this in `def yamlRequest` and the `mediaTypeJson`
+        // method, instead of special-casing "application/yaml" here.
+        if (k == "application/yaml") {
+          schemaJson.value ++= v.schema.flatMap(getExample).map(ex => "example" -> ujson.Str(yaml.renderFromJson(ex)))
+        }
+        k -> schemaJson
+      })
     )
     body.description.foreach { description =>
       fields += "description" -> ujson.Str(description)
