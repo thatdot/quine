@@ -83,10 +83,13 @@ object QuineSettings {
     webpackEmitSourceMaps := false,
     Test / requireJsDomEnv := true,
     Compile / npmDevDependencies ++= Seq(
-      "css-loader" -> "3.5.3",
-      "style-loader" -> "1.2.1",
-      "url-loader" -> "4.1.0",
-      "webpack-merge" -> "4.1.2"
+      "buffer" -> "6.0.3",
+      "path-browserify" -> "1.0.1",
+      "stream-browserify" -> "3.0.0",
+      "process" -> "0.11.10",
+      "css-loader" -> "6.5.1",
+      "style-loader" -> "3.3.1",
+      "webpack-merge" -> "5.8.0"
     ),
     Compile / npmDependencies ++= Seq(
       "react" -> Dependencies.reactV,

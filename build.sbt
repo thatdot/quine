@@ -197,6 +197,10 @@ lazy val `quine-browser`: Project = project
       "@stoplight/elements" -> stoplightElementsV
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
+    // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
+    // an entrypoint -- therefore webpack emits an error saying effectively, "no entrypoint" that we must ignore.
+    // This aggressively ignores all warnings from webpack, which is more than necessary, but trivially works
+    webpackExtraArgs := Seq("--ignore-warnings-message", "/.*/"),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
@@ -371,3 +375,4 @@ lazy val `paradox-overlay`: Project = project
 Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationExpandDepth
 Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationDepth
 Global / excludeLintKeys += `quine-browser` / webpackNodeArgs
+Global / excludeLintKeys += `quine-browser` / webpackExtraArgs
