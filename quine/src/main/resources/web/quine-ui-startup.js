@@ -26,6 +26,8 @@ window.onload = function() {
         onNetworkCreate: function(n) {
             network = n;
         },
-        documentationUrl: window.location.origin + "/docs/openapi.json"
+        documentationUrl: document.baseURI + "docs/openapi.json",
+        baseURI: document.baseURI,
+        serverUrl: document.baseURI.replace(/\/$/, "")
     });
 };

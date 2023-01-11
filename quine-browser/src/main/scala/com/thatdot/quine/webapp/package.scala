@@ -9,7 +9,7 @@ import slinky.core.facade.ReactInstance
 
 import com.thatdot.quine.Util.{DashboardIcon, DocumentationIcon, ExplorerIcon}
 import com.thatdot.quine.routes.ClientRoutes
-import com.thatdot.quine.webapp.components._
+import com.thatdot.quine.webapp.components.{MetricsDashboard, PageWithSideBar, StoplightElements, Tab, VisData}
 import com.thatdot.quine.webapp.queryui.{NetworkLayout, QueryMethod, QueryUi}
 import com.thatdot.{visnetwork => vis}
 
@@ -65,9 +65,15 @@ package object webapp {
       makeQueryUi(options, clientRoutes)
     } else {
       PageWithSideBar(
-        Tab(ExplorerIcon, "Graph Explorer", "/", makeQueryUi(options, clientRoutes)),
-        Tab(DocumentationIcon, "Interactive Docs", "/docs", StoplightElements(options.documentationUrl)),
-        Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes))
+        Tab(ExplorerIcon, "Graph Explorer", "/", makeQueryUi(options, clientRoutes), options.baseURI),
+        Tab(
+          DocumentationIcon,
+          "Interactive Docs",
+          "/docs",
+          StoplightElements(options.documentationUrl, logo = options.baseURI + "favicon.svg"),
+          options.baseURI
+        ),
+        Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI)
       )
     }
 
@@ -82,6 +88,9 @@ package webapp {
 
     /** URL for loading the OpenAPI documentation */
     val documentationUrl: String
+
+    /** Initial baseURI of page */
+    val baseURI: String
   }
 
   /** Configuration for making an instance of the Query UI */

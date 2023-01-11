@@ -22,7 +22,8 @@ final case class Tab(
   icon: String,
   name: String,
   path: String,
-  page: facade.ReactElement
+  page: facade.ReactElement,
+  baseURI: String
 )
 
 /** Page which has a (fixed) side bar on the left. The side bar can be used to
@@ -87,7 +88,8 @@ final case class Tab(
             val pageIndexState = new PageIndexState {
               val pageIdx = idx
             }
-            window.history.pushState(pageIndexState, "", props.children(idx).path)
+            window.history
+              .pushState(pageIndexState, "", props.children(idx).baseURI.stripSuffix("/") + props.children(idx).path)
             s.switchToTab(idx)
           }
         ),
