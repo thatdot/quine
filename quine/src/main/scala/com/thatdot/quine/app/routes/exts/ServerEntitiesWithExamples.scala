@@ -14,6 +14,7 @@ import akka.stream.scaladsl.{Sink, StreamConverters}
 import endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
 import endpoints4s.{Invalid, Valid, Validated}
 
+import com.thatdot.quine.app.routes.{MediaTypes => QuineMediaTypes}
 import com.thatdot.quine.app.yaml
 import com.thatdot.quine.routes.exts.NoopEntitiesWithExamples
 import com.thatdot.quine.util.QuineDispatchers
@@ -24,42 +25,49 @@ trait ServerEntitiesWithExamples
     with endpoints4s.akkahttp.server.EndpointsWithCustomErrors {
 
   def csvRequest: RequestEntity[List[List[String]]] = {
-    implicit val um: FromEntityUnmarshaller[List[List[String]]] =
-      Unmarshaller
-        .withMaterializer { _ => implicit mat => (entity: HttpEntity) =>
-          val charset = Unmarshaller.bestUnmarshallingCharsetFor(entity).nioCharset
-          entity.dataBytes
-            .via(CsvParsing.lineScanner())
-            .map(_.view.map(_.decodeString(charset)).toList)
-            .named("csv-unmarshaller")
-            .runWith(Sink.collection[List[String], List[List[String]]])
-        }
-        .forContentTypes(MediaTypes.`text/csv`)
+    val csvUnmarshaller: FromRequestUnmarshaller[List[List[String]]] = {
+      implicit val entityUnmarshaller: FromEntityUnmarshaller[List[List[String]]] =
+        Unmarshaller
+          .withMaterializer { _ => implicit mat => (entity: HttpEntity) =>
+            val charset = Unmarshaller.bestUnmarshallingCharsetFor(entity).nioCharset
+            entity.dataBytes
+              .via(CsvParsing.lineScanner())
+              .map(_.view.map(_.decodeString(charset)).toList)
+              .named("csv-unmarshaller")
+              .runWith(Sink.collection[List[String], List[List[String]]])
+          }
+          .forContentTypes(MediaTypes.`text/csv`)
+      implicitly
+    }
 
     Directives
-      .entity[List[List[String]]](implicitly)
+      .entity[List[List[String]]](csvUnmarshaller)
   }
 
   private def requestEntityAsInputStream(entity: HttpEntity)(implicit materializer: Materializer): InputStream =
     entity.dataBytes.runWith(StreamConverters.asInputStream())(materializer)
 
   def yamlRequest[A](implicit schema: JsonSchema[A]): RequestEntity[A] = {
-    val yamlUnmarshaller: FromRequestUnmarshaller[Validated[A]] =
-      Unmarshaller
-        .withMaterializer(_ =>
-          implicit mat =>
-            request =>
-              Future {
-                // While the conversion from Akka Stream Source to a java.io.InputStream
-                // does not block, the subsequent use of the InputStream (yaml.parseToJson)
-                // does involve blocking "io", hence that is done on a blocking thread.
-                // "the users of the materialized value, InputStream, [...] will block" - akka/akka#30831
-                val requestInputStream = requestEntityAsInputStream(request.entity)
-                schema.decoder.decode(
-                  yaml.parseToJson(requestInputStream)
-                )
-              }(new QuineDispatchers(mat.system).blockingDispatcherEC)
-        )
+    val yamlUnmarshaller: FromRequestUnmarshaller[Validated[A]] = {
+      implicit val entityUnmarshaller: FromEntityUnmarshaller[Validated[A]] =
+        Unmarshaller
+          .withMaterializer(_ =>
+            implicit mat =>
+              (entity: HttpEntity) =>
+                Future {
+                  // While the conversion from Akka Stream Source to a java.io.InputStream
+                  // does not block, the subsequent use of the InputStream (yaml.parseToJson)
+                  // does involve blocking "io", hence that is done on a blocking thread.
+                  // "the users of the materialized value, InputStream, [...] will block" - akka/akka#30831
+                  val requestInputStream = requestEntityAsInputStream(entity)
+                  schema.decoder.decode(
+                    yaml.parseToJson(requestInputStream)
+                  )
+                }(new QuineDispatchers(mat.system).blockingDispatcherEC)
+          )
+          .forContentTypes(QuineMediaTypes.`application/yaml`, MediaTypes.`application/json`)
+      implicitly
+    }
 
     Directives.entity[Validated[A]](yamlUnmarshaller).flatMap {
       case Valid(a) => Directives.provide(a)
