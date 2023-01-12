@@ -34,7 +34,9 @@ object EntryPoint {
    */
 }
 
-/** Represents a location from which a query (or sub-query) can be executed */
+/** Represents a location from which a query (or sub-query) can be executed
+  * See the scaladoc on Query for more information.
+  */
 sealed abstract class Location
 object Location {
 
@@ -57,7 +59,12 @@ object Location {
   * Furthermore, any subquery that needs to be passed along (to be executed
   * elsewhere) should also be a field.
   *
-  * @tparam Start location from which the query can be executed
+  * @tparam Start requirement of from where the query must be run. A Query[OnNode] must only be initiated on a node
+  *               (i.e., via a `CypherInterpreter[OnNode]`, while a Query[Anywhere] may run on or off-node (e.g.,
+  *               via the graph's global AtTimeInterpreter for a given timestamp). Descendants/ancestors of a query may
+  *               have different Location requirements, and this is common -- for example, an [[ArgumentEntry]] is a
+  *               Query that can run from Anywhere whose purpose is to make its child ([[ArgumentEntry.andThen]]) run
+  *               in an OnNode interpreter.
   */
 sealed abstract class Query[+Start <: Location] extends Product with Serializable {
 

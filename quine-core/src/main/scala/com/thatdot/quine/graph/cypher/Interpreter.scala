@@ -31,7 +31,7 @@ import com.thatdot.quine.model.{
   QuineValue
 }
 
-// Knows what to do with index anchored queries
+// Only knows what to do with index anchored queries, cannot access node-local state
 // INV: Thread-safe
 trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] with LazyLogging {
 
@@ -648,7 +648,11 @@ trait OnNodeInterpreter
   }
 }
 
-trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
+/** @tparam Start the most specific Location this interpreter can handle. That is, if this interpreter runs on a node
+  *               thread, [[Location.OnNode]] (see: OnNodeInterpreter). If this interpreter runs off-node,
+  *               [[Location.Anywhere]] (see: AnchoredInterpreter).
+  */
+trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   import Query._
 
@@ -837,8 +841,8 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
     lhsResult orElse rhsResult
   }
 
-  final private[quine] def interpretSemiApply(
-    query: SemiApply[Start],
+  final private[quine] def interpretSemiApply[NextLocation <: Start](
+    query: SemiApply[NextLocation],
     context: QueryContext
   )(implicit
     parameters: Parameters
@@ -887,8 +891,8 @@ trait CypherInterpreter[Start <: Location] extends ProcedureExecutionLocation {
       }
   }
 
-  final private[quine] def interpretOptional(
-    query: Optional[Start],
+  final private[quine] def interpretOptional[NextLocation <: Start](
+    query: Optional[NextLocation],
     context: QueryContext
   )(implicit
     parameters: Parameters

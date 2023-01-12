@@ -66,9 +66,7 @@ trait AlgorithmBehavior
           edgeChoiceWeight -> e
       }.toList
 
-      // TODO: Remove this cast after `Location` types get fixed.
       val selfInterpreter: CypherInterpreter[Location.OnNode] = this
-      val selfInterpreterAsAnywhere = selfInterpreter.asInstanceOf[CypherInterpreter[Location.Anywhere]]
 
       def getCypherWalkValues(query: CompiledQuery): Future[List[String]] =
         query
@@ -76,7 +74,7 @@ trait AlgorithmBehavior
             Map("n" -> Expr.Bytes(qid)),
             Map.empty,
             atTime,
-            Some(selfInterpreterAsAnywhere)
+            Some(selfInterpreter)
           )(graph)
           .results
           .mapConcat { row =>
