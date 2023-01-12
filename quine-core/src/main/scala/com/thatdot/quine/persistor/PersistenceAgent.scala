@@ -60,12 +60,11 @@ trait PersistenceAgent extends StrictLogging {
     versionMetaDataKey: String,
     currentVersion: Version,
     isDataEmpty: () => Future[Boolean]
-  ): Future[Version] =
+  ): Future[Unit] =
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
         logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
         setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
-          .map(_ => currentVersion)(ExecutionContexts.parasitic)
 
       case Some(persistedVBytes) =>
         Version.fromBytes(persistedVBytes) match {
@@ -77,13 +76,12 @@ trait PersistenceAgent extends StrictLogging {
               logger.info(
                 s"Persistence backend for: $context is at: $compatibleV, this is usable as-is by: $currentVersion"
               )
-              Future.successful(compatibleV)
+              Future.unit
             } else {
               logger.info(
                 s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
               )
               setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
-                .map(_ => currentVersion)(ExecutionContexts.parasitic)
             }
           case Some(incompatibleV) =>
             isDataEmpty().flatMap {
@@ -92,7 +90,6 @@ trait PersistenceAgent extends StrictLogging {
                   s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
                 )
                 setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
-                  .map(_ => currentVersion)(ExecutionContexts.parasitic)
               case false =>
                 Future.failed(new IncompatibleVersion(context, incompatibleV, currentVersion))
             }(ExecutionContexts.parasitic)
@@ -109,13 +106,16 @@ trait PersistenceAgent extends StrictLogging {
     *
     * The default implementation defers to the metadata storage API
     */
-  def syncVersion(): Future[Version] =
+  def syncVersion(): Future[Unit] =
     syncVersion(
       "core quine data",
       PersistenceAgent.VersionMetadataKey,
       CurrentVersion,
       () => emptyOfQuineData()
     )
+
+  protected def ifNonEmpty[A](seq: Seq[A], action: Seq[A] => Future[Unit]): Future[Unit] =
+    if (seq.nonEmpty) action(seq) else Future.unit
 
   /** Persist a series of [[NodeEvent]]s affecting a node's state.
     *
@@ -125,11 +125,9 @@ trait PersistenceAgent extends StrictLogging {
     */
   final def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
     val (domainIndexEvents, nodeChangeEvents) = events.partition(e => e.event.isInstanceOf[DomainIndexEvent])
-    implicit val ctx: ExecutionContext = ExecutionContexts.parasitic
-    for {
-      _ <- persistDomainIndexEvents(id, domainIndexEvents)
-      _ <- persistNodeChangeEvents(id, nodeChangeEvents)
-    } yield ()
+    ifNonEmpty(domainIndexEvents, persistDomainIndexEvents(id, _)).zipWith(
+      ifNonEmpty(nodeChangeEvents, persistNodeChangeEvents(id, _))
+    )((_, _) => ())(ExecutionContexts.parasitic)
   }
 
   /** Persist [[NodeChangeEvent]] values. */
