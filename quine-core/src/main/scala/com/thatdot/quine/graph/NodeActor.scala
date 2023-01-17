@@ -142,7 +142,7 @@ private[graph] class NodeActor(
   protected val persistor: PersistenceAgent = graph.persistor
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
-  protected val edges: EdgeCollection = graph.edgeCollectionFactory.get
+  protected val edges: EdgeCollection = graph.edgeCollectionFactory()
   protected val dgnRegistry: DomainGraphNodeRegistry = graph.dgnRegistry
   protected val domainGraphSubscribers: SubscribersToThisNode = SubscribersToThisNode(initialDomainGraphSubscribers)
 

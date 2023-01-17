@@ -1,7 +1,5 @@
 package com.thatdot.quine.graph
 
-import java.util.function.Supplier
-
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
@@ -61,7 +59,7 @@ trait BaseGraph extends StrictLogging {
   def nodeClass: Class[_]
 
   /** Method for initializing edge collections */
-  val edgeCollectionFactory: Supplier[EdgeCollection]
+  val edgeCollectionFactory: () => EdgeCollection
 
   // TODO: put this in some other class which is a field here
   val ingestValve: SharedValve = new SharedValve("ingest")

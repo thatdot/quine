@@ -174,7 +174,7 @@ object PersistenceAgentType {
   }
 
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
-    import Implicits._
+    import PureconfigInstances._
 
     // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
     @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =

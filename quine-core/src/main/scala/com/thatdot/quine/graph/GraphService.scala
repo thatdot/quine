@@ -1,7 +1,5 @@
 package com.thatdot.quine.graph
 
-import java.util.function.Supplier
-
 import scala.collection.compat.immutable.ArraySeq
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
@@ -31,7 +29,7 @@ class GraphService(
   val declineSleepWhenAccessWithinMillis: Long,
   val maxCatchUpSleepMillis: Long,
   val labelsProperty: Symbol,
-  val edgeCollectionFactory: Supplier[EdgeCollection],
+  val edgeCollectionFactory: () => EdgeCollection,
   val metrics: HostQuineMetrics
 ) extends StaticShardGraph
     with LiteralOpsGraph
@@ -114,7 +112,7 @@ object GraphService {
     declineSleepWhenAccessWithinMillis: Long = 0L,
     maxCatchUpSleepMillis: Long = 2000L,
     labelsProperty: Symbol = Symbol("__LABEL"),
-    edgeCollectionFactory: Supplier[EdgeCollection] = () => new ReverseOrderedEdgeCollection,
+    edgeCollectionFactory: () => EdgeCollection = () => new ReverseOrderedEdgeCollection,
     metricRegistry: MetricRegistry = new MetricRegistry
   ): Future[GraphService] =
     try {

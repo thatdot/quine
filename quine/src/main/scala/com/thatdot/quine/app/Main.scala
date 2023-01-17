@@ -1,9 +1,11 @@
 package com.thatdot.quine.app
 
 import java.io.File
+import java.net.URL
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
+import scala.collection.compat._
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -25,6 +27,7 @@ import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
+import com.thatdot.quine.util.Port
 
 object Main extends App with LazyLogging {
 
@@ -71,7 +74,7 @@ object Main extends App with LazyLogging {
     // Override webserver options
     val withWebserverOverrides = withoutOverrides.copy(
       webserver = withoutOverrides.webserver.copy(
-        port = cmdArgs.port.getOrElse(withoutOverrides.webserver.port),
+        port = cmdArgs.port.fold(withoutOverrides.webserver.port)(Port(_)),
         enabled = !cmdArgs.disableWebservice && withoutOverrides.webserver.enabled
       )
     )
@@ -173,11 +176,7 @@ object Main extends App with LazyLogging {
   statusLines.info("Graph is ready")
 
   // The web service is started unless it was disabled.
-  val quineWebserverUrl: Option[String] = if (config.webserver.enabled) {
-    Some(s"http://${config.webserver.address}:${config.webserver.port}")
-  } else {
-    None
-  }
+  val quineWebserverUrl: Option[URL] = Option.when(config.webserver.enabled)(config.webserver.toURL)
 
   @volatile
   var recipeInterpreterTask: Option[Cancellable] = None
@@ -205,7 +204,7 @@ object Main extends App with LazyLogging {
 
   quineWebserverUrl foreach { url =>
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, timeout)
-      .bindWebServer(interface = config.webserver.address, port = config.webserver.port)
+      .bindWebServer(interface = url.getHost, port = url.getPort)
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)

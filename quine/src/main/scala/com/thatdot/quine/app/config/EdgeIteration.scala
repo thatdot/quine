@@ -1,7 +1,5 @@
 package com.thatdot.quine.app.config
 
-import java.util.function.Supplier
-
 import pureconfig.ConfigConvert
 import pureconfig.generic.semiauto.deriveEnumerationConvert
 
@@ -11,15 +9,15 @@ import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdg
 sealed abstract class EdgeIteration {
 
   /** Create a supplier of edge collections */
-  def edgeCollectionFactory: Supplier[EdgeCollection]
+  def edgeCollectionFactory: () => EdgeCollection
 }
 object EdgeIteration {
   case object Unordered extends EdgeIteration {
-    def edgeCollectionFactory: Supplier[EdgeCollection] = () => new UnorderedEdgeCollection
+    def edgeCollectionFactory: () => EdgeCollection = () => new UnorderedEdgeCollection
   }
 
   case object ReverseInsertion extends EdgeIteration {
-    def edgeCollectionFactory: Supplier[EdgeCollection] = () => new ReverseOrderedEdgeCollection
+    def edgeCollectionFactory: () => EdgeCollection = () => new ReverseOrderedEdgeCollection
   }
 
   implicit val edgeIterationConfigConvert: ConfigConvert[EdgeIteration] =

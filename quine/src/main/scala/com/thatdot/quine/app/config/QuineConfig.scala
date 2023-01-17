@@ -12,6 +12,7 @@ import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 
 import com.thatdot.quine.persistor.PersistenceConfig
+import com.thatdot.quine.util.{Host, Port}
 
 /** Top-level config for Quine
   *
@@ -25,7 +26,7 @@ final case class QuineConfig(
   declineSleepWhenWriteWithin: FiniteDuration = 100.millis,
   declineSleepWhenAccessWithin: FiniteDuration = Duration.Zero,
   maxCatchUpSleep: FiniteDuration = 2000.millis,
-  webserver: WebServerConfig = WebServerConfig("0.0.0.0", 8080),
+  webserver: WebServerConfig = WebServerConfig(Host("0.0.0.0"), Port(8080)),
   shouldResumeIngest: Boolean = false,
   shardCount: Int = 4,
   id: IdProviderType = IdProviderType.UUID(),
@@ -42,7 +43,7 @@ final case class QuineConfig(
 object QuineConfig {
 
   implicit val configConvert: ConfigConvert[QuineConfig] = {
-    import Implicits._
+    import PureconfigInstances._
 
     @nowarn implicit val configConvert = deriveConvert[QuineConfig]
 

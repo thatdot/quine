@@ -1,5 +1,6 @@
 package com.thatdot.quine.util
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -21,5 +22,13 @@ object Retry {
     else
       Future.failed(new NoSuchElementException("Ran out of attempts trying to retry; last value was: " + result))
   )(ec)
+
+  def untilDefined[T](
+    attempt: => Future[Option[T]],
+    attempts: Int,
+    delay: FiniteDuration,
+    scheduler: Scheduler
+  )(ec: ExecutionContext): Future[T] =
+    until[Option[T]](attempt, _.isDefined, attempts, delay, scheduler)(ec).map(_.get)(ExecutionContexts.parasitic)
 
 }

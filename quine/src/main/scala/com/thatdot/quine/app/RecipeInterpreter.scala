@@ -1,6 +1,7 @@
 package com.thatdot.quine.app
 
 import java.lang.System.lineSeparator
+import java.net.URL
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -35,7 +36,7 @@ object RecipeInterpreter {
     recipe: Recipe,
     appState: RecipeState,
     graphService: CypherOpsGraph,
-    quineWebserverUrl: Option[String]
+    quineWebserverUrl: Option[URL]
   )(implicit idProvider: QuineIdProvider): Cancellable = {
     statusLines.info(s"Running Recipe: ${recipe.title}")
 
