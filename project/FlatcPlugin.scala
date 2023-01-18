@@ -110,6 +110,7 @@ object FlatcPlugin extends AutoPlugin {
 
         cachedGen(flatcSources.value.toSet).toSeq
       },
+      Compile / managedSourceDirectories += flatcOutput.value,
       libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % flatbuffersV
     )
 
