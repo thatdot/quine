@@ -29,6 +29,9 @@ abstract class EdgeCollectionTests
 
   import HalfEdgeGen.{halfEdgeGen, intToQuineId}
 
+  // Override this if tests need to be skipped
+  def runnable: Boolean = true
+
   /** The EdgeCollection impl to use.
     * @return
     */
@@ -42,6 +45,7 @@ abstract class EdgeCollectionTests
   def assertEdgeCollection[A](actual: Seq[A], expected: Seq[A]): Assertion
 
   "The EdgeCollection" should "return the appropriate edges when variously queried" in {
+    assume(runnable)
     forAll(Gen.listOfN(100, halfEdgeGen)) { edges =>
       // Given a bunch of edges coming in sequentially
       val edgeCollection = newEdgeCollection
@@ -128,6 +132,7 @@ abstract class EdgeCollectionTests
   }
 
   "hasUniqueGenEdges" should "be sufficient to match" in {
+    assume(runnable)
     def checkContains(localEdges: Seq[HalfEdge], domainEdges: Seq[DomainEdge], qid: QuineId): Boolean = {
       val ec = newEdgeCollection
       localEdges.foreach(edge => ec += edge)

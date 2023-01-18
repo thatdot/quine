@@ -95,7 +95,8 @@ lazy val `quine-cassandra-persistor`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations")
+      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
     )
   )
 
