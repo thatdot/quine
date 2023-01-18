@@ -7,16 +7,10 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
 @title("Standing Query")
-@docs("""
-A query which gets issued once and for which results will continue to be
-produced as new data gets written into the system and new matches get created.
-Compared to regular queries, they are less imperative and more declarative - it
-doesn't matter as much in what order parts of the pattern match, only that the
-composite structure exists.
-""")
+@docs("Standing Query")
 final case class StandingQueryDefinition(
   pattern: StandingQueryPattern,
-  @docs(s"A map of named standing query outs - see ${StandingQueryResultOutputUserDef.title} schema for the values")
+  @docs(s"A map of named standing query outs - see the ${StandingQueryResultOutputUserDef.title} schema for the values")
   outputs: Map[String, StandingQueryResultOutputUserDef],
   @docs("Whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean = false,
@@ -27,7 +21,7 @@ final case class StandingQueryDefinition(
 )
 
 @title("Registered Standing Query")
-@docs("A Standing Query which has been issued.")
+@docs("Registered Standing Query.")
 final case class RegisteredStandingQuery(
   name: String,
   @docs("Unique identifier for the query, generated when the query is registered")
@@ -45,6 +39,7 @@ final case class RegisteredStandingQuery(
   stats: Map[String, StandingQueryStats]
 )
 
+@unnamed
 @title("Standing Query Pattern")
 @docs("A declarative structural graph pattern.")
 sealed abstract class StandingQueryPattern
@@ -71,6 +66,7 @@ object StandingQueryPattern {
   }
 }
 
+@unnamed
 @title(StandingQueryStats.title)
 final case class StandingQueryStats(
   @docs("Results per second over different time periods")
@@ -294,9 +290,11 @@ object StandingQueryResultOutputUserDef {
   final case object Drop extends StandingQueryResultOutputUserDef
 }
 
+@unnamed
 @title("Standing Query Result Output Format")
 sealed abstract class OutputFormat
 
+@unnamed
 object OutputFormat {
   @unnamed
   @title("JSON")
@@ -467,8 +465,21 @@ trait StandingQueryRoutes
       response = badRequest(docs = Some("Standing query exists already"))
         .orElse(created()),
       docs = EndpointDocs()
-        .withSummary(Some("create a new standing query"))
-        .withDescription(Some("Create a standing query"))
+        .withSummary(Some("Create Standing Query"))
+        .withDescription(
+          Some(
+            """|Individual standing queries are issued into the graph one time; 
+               |result outputs are produced as new data is written into Quine and matches are found. 
+               |
+               |Compared to traditional queries, standing queries are less imperative 
+               |and more declarative - it doesn't matter what order parts of the pattern match, 
+               |only that the composite structure exists.
+               |
+               |Learn more about writing 
+               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html) 
+               |in the docs.""".stripMargin
+          )
+        )
         .withTags(List(standingTag))
     )
   }
@@ -481,7 +492,12 @@ trait StandingQueryRoutes
       ),
       response = wheneverFound(badRequest() orElse created()),
       docs = EndpointDocs()
-        .withSummary(Some("register an additional output to a running standing query"))
+        .withSummary(Some("Create Standing Query Output"))
+        .withDescription(
+          Some(
+            "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed."
+          )
+        )
         .withTags(List(standingTag))
     )
 
@@ -490,7 +506,12 @@ trait StandingQueryRoutes
       request = delete(standing / standingName / "output" / standingOutputName),
       response = wheneverFound(ok(jsonResponse[StandingQueryResultOutputUserDef])),
       docs = EndpointDocs()
-        .withSummary(Some("remove an output from a running standing query"))
+        .withSummary(Some("Delete Standing Query Output"))
+        .withDescription(
+          Some(
+            "Remove an output from a standing query."
+          )
+        )
         .withTags(List(standingTag))
     )
 
@@ -501,7 +522,14 @@ trait StandingQueryRoutes
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
-        .withSummary(Some("delete a standing query"))
+        .withSummary(Some("Delete Standing Query"))
+        .withDescription(
+          Some(
+            """Immediately halt and remove the named standing query from Quine.
+              | 
+              |The standing query will complete any pending operations before exiting.""".stripMargin
+          )
+        )
         .withTags(List(standingTag))
     )
 
@@ -512,7 +540,10 @@ trait StandingQueryRoutes
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
-        .withSummary(Some("get a standing query"))
+        .withSummary(Some("Standing Query Status"))
+        .withDescription(
+          Some("Return the status information for a configured standing query by name.")
+        )
         .withTags(List(standingTag))
     )
 
@@ -523,7 +554,14 @@ trait StandingQueryRoutes
       ),
       response = ok(jsonResponse[List[RegisteredStandingQuery]]),
       docs = EndpointDocs()
-        .withSummary(Some("list all standing queries"))
+        .withSummary(Some("List Standing Queries"))
+        .withDescription(
+          Some(
+            """|Return a JSON array containing the configured 
+               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html) 
+               |and their associated metrics keyed by standing query name. """.stripMargin
+          )
+        )
         .withTags(List(standingTag))
     )
 
@@ -551,20 +589,20 @@ trait StandingQueryRoutes
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
-        .withSummary(Some("ensure standing queries are propagated to existing nodes"))
+        .withSummary(Some("Propagate Standing Queries"))
         .withTags(List(standingTag))
         .withDescription(
           Some(
             """When a new standing query is registered in the system, it gets automatically
               |registered on new nodes (or old nodes that are loaded back into the cache). This
-              |behaviour is the default because pro-actively setting the standing query on all
+              |behavior is the default because pro-actively setting the standing query on all
               |existing data might be quite costly depending on how much historical data there is.
               |
-              |However, sometimes there is a legitimate use-case for eagerly propogating standing
+              |However, sometimes there is a legitimate use-case for eagerly propagating standing
               |queries across the graph, for instance:
               |
-              |  * when interactively constructing a standing query for already-ingested data
-              |  * when creating a new standing query that needs to be applied to recent data
+              |  * When interactively constructing a standing query for already-ingested data
+              |  * When creating a new standing query that needs to be applied to recent data
               |""".stripMargin
           )
         )

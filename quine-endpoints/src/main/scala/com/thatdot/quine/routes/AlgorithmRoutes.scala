@@ -1,7 +1,7 @@
 package com.thatdot.quine.routes
 
 import endpoints4s.algebra.Tag
-import endpoints4s.generic.{docs, title}
+import endpoints4s.generic.{docs, title, unnamed}
 
 trait AlgorithmRoutes
     extends endpoints4s.algebra.Endpoints
@@ -73,12 +73,16 @@ trait AlgorithmRoutes
     docs = Some("Optionally specify a random seed for generating walks")
   )
 
+  @unnamed
+  @title("Save Location")
   sealed trait SaveLocation
+  @unnamed
   @title("Local File")
   case class LocalFile(
     @docs("Optional name of the file to save in the working directory") fileName: Option[String]
   ) extends SaveLocation
 
+  @unnamed
   @title("S3 Bucket")
   case class S3Bucket(
     @docs("S3 bucket name") bucketName: String,
@@ -113,7 +117,7 @@ trait AlgorithmRoutes
       response = badRequest(docs = Some("Invalid file"))
         .orElse(accepted(textResponse)),
       docs = EndpointDocs()
-        .withSummary(Some("Save random walks to a file"))
+        .withSummary(Some("Save Random Walks"))
         .withDescription(
           Some(
             """Generate random walks from all nodes in the graph (optionally: at a specific historical time), and save
@@ -146,7 +150,12 @@ trait AlgorithmRoutes
       ),
       response = badRequest().orElse(ok(jsonResponse[List[String]])),
       docs = EndpointDocs()
-        .withSummary(Some("Generate a random walk"))
+        .withSummary(Some("Generate Random Walk"))
+        .withDescription(
+          Some(
+            "Generate a random walk from a node in the graph and return the results."
+          )
+        )
         .withTags(List(algorithmTag))
     )
 }

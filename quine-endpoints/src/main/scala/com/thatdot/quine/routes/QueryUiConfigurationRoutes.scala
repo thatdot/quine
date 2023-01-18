@@ -86,6 +86,7 @@ object UiNodeAppearance {
   val defaults: Vector[UiNodeAppearance] = Vector(person, file)
 }
 
+@unnamed
 @title("UI Node Label")
 @docs("Instructions for how to label a node in the UI.")
 sealed abstract class UiNodeLabel
@@ -111,8 +112,10 @@ object UiNodeLabel {
 @docs("A query that can show up in the context menu brought up by right-clicking a node")
 final case class UiNodeQuickQuery(
   @docs("Condition that a node must satisfy for this query to be in the context menu")
+  @unnamed
   predicate: UiNodePredicate,
   @docs("Query to run when the context menu entry is selected")
+  @unnamed
   quickQuery: QuickQuery
 )
 object UiNodeQuickQuery {
@@ -178,7 +181,7 @@ trait QueryUiConfigurationRoutes
       ),
       response = ok(jsonResponseWithExample[Vector[SampleQuery]](SampleQuery.defaults)),
       docs = EndpointDocs()
-        .withSummary(Some("starting queries suggested in the query bar"))
+        .withSummary(Some("List Sample Queries"))
         .withDescription(
           Some(
             """Queries provided here will be available via a drop-down menu from the Quine UI search bar.""".stripMargin
@@ -195,7 +198,7 @@ trait QueryUiConfigurationRoutes
       ),
       response = noContent(),
       docs = EndpointDocs()
-        .withSummary(Some("update collection of starting queries suggested in the query bar"))
+        .withSummary(Some("Replace Sample Queries"))
         .withDescription(
           Some(
             """Queries provided here will be available via a drop-down menu from the Quine UI search bar.
@@ -215,7 +218,7 @@ trait QueryUiConfigurationRoutes
         jsonResponseWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults)
       ),
       docs = EndpointDocs()
-        .withSummary(Some("ranked list of ways of styling nodes"))
+        .withSummary(Some("List Node Appearances"))
         .withDescription(
           Some(
             "When rendering a node in the UI, a node's style is decided by " +
@@ -234,7 +237,7 @@ trait QueryUiConfigurationRoutes
       ),
       response = noContent(),
       docs = EndpointDocs()
-        .withSummary(Some("update list of ways of styling nodes"))
+        .withSummary(Some("Replace Node Appearances"))
         .withDescription(
           Some(
             "For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)"
@@ -250,7 +253,7 @@ trait QueryUiConfigurationRoutes
       ),
       response = ok(jsonResponseWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults)),
       docs = EndpointDocs()
-        .withSummary(Some("ranked list of possible quick queries"))
+        .withSummary(Some("List Quick Queries"))
         .withDescription(
           Some("""Quick queries are queries that appear when right-clicking
                  |a node in the UI.
@@ -268,7 +271,7 @@ trait QueryUiConfigurationRoutes
       ),
       response = noContent(),
       docs = EndpointDocs()
-        .withSummary(Some("update list of possible quick queries"))
+        .withSummary(Some("Replace Quick Queries"))
         .withDescription(Some("""Quick queries are queries that appear when right-clicking
             |a node in the UI.
             |Queries applied here will replace any currently existing quick queries.

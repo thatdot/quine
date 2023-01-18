@@ -18,18 +18,21 @@ final case class QuineInfo(
 )
 
 @title("Metrics Counter")
+@unnamed
 final case class Counter(
   name: String,
   count: Long
 )
 
 @title("Metrics Numeric Gauge")
+@unnamed
 final case class NumericGauge(
   name: String,
   value: Double
 )
 
 @title("Metrics Timer Summary")
+@unnamed
 @docs("A rough cumulative histogram of times recorded by a timer. All times in milliseconds.")
 final case class TimerSummary(
   name: String,
@@ -54,6 +57,7 @@ object MetricsReport {
     MetricsReport(java.time.Instant.now(), Vector.empty, Vector.empty, Vector.empty)
 }
 
+@title("Metrics Report")
 final case class MetricsReport(
   @docs("A UTC Instant at which these metrics are accurate") atTime: java.time.Instant,
   @docs("All registered counters from this instance's metrics") counters: Seq[Counter],
@@ -238,6 +242,13 @@ trait AdministrationRoutes
       response = ok(jsonResponse[MetricsReport]),
       docs = EndpointDocs()
         .withSummary(Some("Metrics Summary"))
+        .withDescription(
+          Some(
+            """Returns a JSON object containing metrics data used in the Quine 
+              |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring) 
+              |dashboard.""".stripMargin
+          )
+        )
         .withTags(List(adminTag))
     )
 

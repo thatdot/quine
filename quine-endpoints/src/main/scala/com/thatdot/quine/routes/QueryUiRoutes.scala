@@ -3,7 +3,7 @@ package com.thatdot.quine.routes
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.algebra.Tag
-import endpoints4s.generic.{docs, title}
+import endpoints4s.generic.{docs, title, unnamed}
 
 /** Nodes in the UI
   *
@@ -14,6 +14,7 @@ import endpoints4s.generic.{docs, title}
   * @param label sort of node (this gets displayed under the node)
   * @param properties key values on the node
   */
+@unnamed
 @title("Graph Node")
 @docs("Information needed by the Query UI to display a node in the graph.")
 final case class UiNode[Id](
@@ -31,6 +32,7 @@ final case class UiNode[Id](
   * @param edgeType sort of edge (this gets displayed under the edge)
   * @param direction direction of the edge
   */
+@unnamed
 @title("Graph Edge")
 @docs("Information needed by the Query UI to display an edge in the graph.")
 final case class UiEdge[Id](
@@ -45,6 +47,7 @@ final case class UiEdge[Id](
   * @param columns variables returned by the query
   * @param results rows returned, where each row has the same length as `columns`
   */
+@unnamed
 @title("Cypher Query Result")
 @docs("""Cypher queries are designed to return data in a table format. This gets
         |encoded into JSON with `columns` as the header row and each element in `results`
@@ -156,7 +159,7 @@ trait QueryUiRoutes
           )
         ),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Cypher query"))
+        .withSummary(Some("Cypher Query"))
         .withDescription(Some(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query"))
         .withTags(List(cypherTag))
     )
@@ -176,7 +179,7 @@ trait QueryUiRoutes
       response = badRequest(docs = Some("runtime error in the query"))
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Cypher query that returns nodes"))
+        .withSummary(Some("Cypher Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
                |Queries that do not return nodes will fail with a type error.""".stripMargin))
         .withTags(List(cypherTag))
@@ -197,7 +200,7 @@ trait QueryUiRoutes
       response = badRequest(docs = Some("runtime error in the query"))
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Cypher query that returns edges"))
+        .withSummary(Some("Cypher Query Return Edges"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
               |Queries that do not return edges will fail with a type error.""".stripMargin))
         .withTags(List(cypherTag))
@@ -230,7 +233,7 @@ trait QueryUiRoutes
           )
         ),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Gremlin query"))
+        .withSummary(Some("Gremlin Query"))
         .withDescription(
           Some(s"Execute a [Gremlin]($gremlinLanguageUrl) query. Note that we only support a simple subset of Gremlin.")
         )
@@ -252,7 +255,7 @@ trait QueryUiRoutes
       response = badRequest(docs = Some("runtime error in the query"))
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Gremlin query returning nodes"))
+        .withSummary(Some("Gremlin Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns nodes.
               |Queries that do not return nodes will fail with a type error.""".stripMargin))
         .withTags(List(gremlinTag))
@@ -272,7 +275,7 @@ trait QueryUiRoutes
       response = badRequest(docs = Some("runtime error in the query"))
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
-        .withSummary(Some("issue a Gremlin query returning edges"))
+        .withSummary(Some("Gremlin Query Return Edges"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns edges.
                |Queries that do not return edges will fail with a type error.""".stripMargin))
         .withTags(List(gremlinTag))

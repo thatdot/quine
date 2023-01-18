@@ -38,6 +38,7 @@ object IngestStreamStatus {
   * @param stats ingest progress stats
   */
 @title("Named Ingest Stream")
+@unnamed
 @docs("An active stream of data being ingested paired with a name for the stream.")
 final case class IngestStreamInfoWithName(
   @docs("Unique name identifying the ingest stream") name: String,
@@ -49,7 +50,7 @@ final case class IngestStreamInfoWithName(
   @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats
 )
 
-@title("Ingest Stream")
+@title("Ingest Stream Info")
 @docs("An active stream of data being ingested.")
 final case class IngestStreamInfo(
   @docs(
@@ -69,6 +70,7 @@ final case class IngestStreamInfo(
 }
 
 @title("Statistics About a Running Ingest Stream")
+@unnamed
 final case class IngestStreamStats(
   // NB this is duplicated by rates.count -- maybe remove one?
   @docs("Number of source records (or lines) ingested so far") ingestedCount: Long,
@@ -99,6 +101,7 @@ object IngestStreamStats {
   )
 }
 
+@unnamed
 @title("Rates Summary")
 @docs("Summary statistics about a metered rate (ie, count per second).")
 final case class RatesSummary(
@@ -114,12 +117,14 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
     genericJsonSchema[RatesSummary]
 }
 
+@unnamed
 @title("AWS Credentials")
 @docs(
   "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>."
 )
 final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
+@unnamed
 @title("AWS Region")
 @docs(
   "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>."
@@ -131,6 +136,7 @@ trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
   implicit val awsRegionSchema: JsonSchema[AwsRegion] = genericJsonSchema[AwsRegion]
 }
 
+@unnamed
 @title("Kafka Auto Offset Reset")
 @docs(
   "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset)."
@@ -143,6 +149,7 @@ object KafkaAutoOffsetReset {
   val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
 }
 
+@unnamed
 @title("Kafka Security Protocol")
 @docs(
   "See [`security.protocol` in the Kafka documentation](https://kafka.apache.org/24/javadoc/org/apache/kafka/common/security/auth/SecurityProtocol.html)."
@@ -155,15 +162,19 @@ object KafkaSecurityProtocol {
   val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
 }
 
+@unnamed
 @title("Kafka offset tracking mechanism")
 @docs(
   "How to keep track of current offset when consuming from Kafka, if at all."
 )
 sealed abstract class KafkaOffsetCommitting
 object KafkaOffsetCommitting {
+  @unnamed
   @title("Auto Commit")
   @docs("Set Kafka's enable.auto.commit and auto.commit.interval.ms settings")
   final case class AutoCommit(commitIntervalMillis: Int = 5000) extends KafkaOffsetCommitting
+
+  @unnamed
   @title("Explicit Commit")
   @docs("Don't auto commit, only explicitly commit to consumer group on successful execution of ingest query to graph")
   final case class ExplicitCommit(
@@ -210,8 +221,9 @@ object RecordDecodingType {
   * @param groupId consumer group this consumer belongs to
   * @param kafkaProperties kafka client properties
   */
-@title("Kafka Ingest Stream")
+
 @unnamed
+@title("Kafka Ingest Stream")
 @docs("A stream of data being ingested from Kafka.")
 final case class KafkaIngest(
   @docs("format used to decode each Kafka record")
@@ -397,6 +409,7 @@ final case class WebsocketSimpleStartupIngest(
 ) extends IngestStreamConfiguration
 
 @title("Streamed Record Format")
+@unnamed
 @docs("Format by which streamed records are decoded.")
 sealed abstract class StreamedRecordFormat
 object StreamedRecordFormat {
@@ -503,6 +516,7 @@ final case class StandardInputIngest(
 ) extends IngestStreamConfiguration
 
 /** Number iterator ingest source for easy testing */
+@unnamed
 @title("Number Iterator Ingest")
 @docs(
   "An infinite ingest stream which requires no data source and just produces new sequential numbers" +
@@ -523,6 +537,7 @@ case class NumberIteratorIngest(
   parallelism: Int = IngestRoutes.defaultWriteParallelism
 ) extends IngestStreamConfiguration
 
+@unnamed
 @title("File Ingest Format")
 @docs("Format by which a file will be interpreted as a stream of elements for ingest.")
 sealed abstract class FileIngestFormat
@@ -677,7 +692,6 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
 
   implicit lazy val pulsarSubscriptTypeSchema: JsonSchema[PulsarSubscriptionType] =
     stringEnumeration(PulsarSubscriptionType.values)(_.toString)
-
   implicit lazy val kafkaSubscriptionSchema: JsonSchema[Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments]] =
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
   implicit lazy val kafkaSecurityProtocolSchema: JsonSchema[KafkaSecurityProtocol] =
@@ -733,12 +747,15 @@ trait IngestRoutes
       response = badRequest(docs = Some("Ingest stream exists already"))
         .orElse(ok(emptyResponse)),
       docs = EndpointDocs()
-        .withSummary(Some("create a new ingest stream"))
+        .withSummary(Some("Create Ingest Stream"))
         .withDescription(
           Some(
-            """Start up a new ingest stream, built up based on the settings passed in. The name
-              |given to the stream just needs to be a unique identifier that can be then used to
-              |identify the ingest stream (for example, to cancel it).""".stripMargin
+            """Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html) 
+              |that connects a streaming event source to Quine and loads data into the graph.
+              |
+              |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`, 
+              |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate 
+              |on the event stream data to create nodes and relationships in the graph.""".stripMargin
           )
         )
         .withTags(List(ingestStreamTag))
@@ -751,16 +768,13 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("delete an ingest stream"))
+        .withSummary(Some("Delete Ingest Stream"))
         .withDescription(
           Some(
-            """Cancel an already running ingest stream, where the name is the one that was given when
-            |the stream was started. If this successfully returns, it means that the stream is no
-            |longer ingesting (in other words: the request will stay pending as the ingest stream
-            |shuts down).
-            |
-            |The information returned describes the ingest stream that was just cancelled.
-            |""".stripMargin
+            """Immediately halt and remove the named ingest stream from Quine.
+              | 
+              |The ingest stream will complete any pending operations and return stream information 
+              |once the operation is complete.""".stripMargin
           )
         )
         .withTags(List(ingestStreamTag))
@@ -773,12 +787,9 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("get the status of an ingest stream"))
+        .withSummary(Some("Ingest Stream Status"))
         .withDescription(
-          Some(
-            """|Look up a running ingest stream, using the name that was given when the ingest stream
-               |was initially started.""".stripMargin
-          )
+          Some("Return the ingest stream status information for a configured ingest stream by name.")
         )
         .withTags(List(ingestStreamTag))
     )
@@ -791,8 +802,8 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("pause a running ingest stream"))
-        .withDescription(Some("Pause the named ingest stream"))
+        .withSummary(Some("Pause Ingest Stream"))
+        .withDescription(Some("Temporarily pause processing new events by the named ingest stream."))
         .withTags(List(ingestStreamTag))
     )
 
@@ -804,8 +815,8 @@ trait IngestRoutes
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
-        .withSummary(Some("unpause a paused ingest stream"))
-        .withDescription(Some("Resume the named ingest stream"))
+        .withSummary(Some("Unpause Ingest Stream"))
+        .withDescription(Some("Resume processing new events by the named ingest stream."))
         .withTags(List(ingestStreamTag))
     )
 
@@ -820,11 +831,11 @@ trait IngestRoutes
         )
       ),
       docs = EndpointDocs()
-        .withSummary(Some("list all ingest streams"))
+        .withSummary(Some("List Ingest Streams"))
         .withDescription(
           Some(
-            """|List all ingest streams, keyed by the names under which they were
-               |registered.""".stripMargin
+            """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
+              |and their associated stream metrics keyed by the stream name. """.stripMargin
           )
         )
         .withTags(List(ingestStreamTag))
