@@ -10,6 +10,7 @@ import pureconfig._
 import pureconfig.generic.ProductHint
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
+import shapeless.{Lens, lens}
 
 import com.thatdot.quine.persistor.PersistenceConfig
 import com.thatdot.quine.util.{Host, Port}
@@ -41,6 +42,10 @@ final case class QuineConfig(
 }
 
 object QuineConfig {
+
+  val webserverLens: Lens[QuineConfig, WebServerConfig] = lens[QuineConfig] >> Symbol("webserver")
+  val webserverPortLens: Lens[QuineConfig, Int] = webserverLens >> Symbol("port") >> Symbol("asInt")
+  val webserverEnabledLens: Lens[QuineConfig, Boolean] = webserverLens >> Symbol("enabled")
 
   implicit val configConvert: ConfigConvert[QuineConfig] = {
     import PureconfigInstances._

@@ -16,6 +16,7 @@ import akka.Done
 import akka.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
 import akka.util.Timeout
 
+import cats.syntax.either._
 import ch.qos.logback.classic.LoggerContext
 import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.slf4j.LoggerFactory
@@ -27,7 +28,6 @@ import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
-import com.thatdot.quine.util.Port
 
 object Main extends App with LazyLogging {
 
@@ -52,32 +52,24 @@ object Main extends App with LazyLogging {
 
   // If there's a recipe URL or file path, block and read it, apply substitutions, and fail fast.
   val recipe: Option[Recipe] = cmdArgs.recipe.map { (recipeIdentifyingString: String) =>
-    Recipe.getAndSubstitute(recipeIdentifyingString, cmdArgs.recipeValues) match {
-      case Left(messages) =>
-        messages.foreach(l => Console.err.println(l))
-        sys.exit(1)
-      case Right(recipe) => recipe
+    Recipe.getAndSubstitute(recipeIdentifyingString, cmdArgs.recipeValues) valueOr { messages =>
+      messages foreach Console.err.println
+      sys.exit(1)
     }
   }
 
   // Parse config for Quine and apply command line overrides.
   val config: QuineConfig = {
     // Regular HOCON loading of options (from java properties and `conf` files)
-    val withoutOverrides = ConfigSource.default.load[QuineConfig] match {
-      case Right(config) => config
-      case Left(failures) =>
-        Console.err.println(new ConfigReaderException[QuineConfig](failures).getMessage())
-        Console.err.println("Did you forget to pass in a config file?")
-        Console.err.println("  $ java -Dconfig.file=your-conf-file.conf -jar quine.jar")
-        sys.exit(1)
+    val withoutOverrides = ConfigSource.default.load[QuineConfig] valueOr { failures =>
+      Console.err.println(new ConfigReaderException[QuineConfig](failures).getMessage)
+      sys.exit(1)
     }
     // Override webserver options
-    val withWebserverOverrides = withoutOverrides.copy(
-      webserver = withoutOverrides.webserver.copy(
-        port = cmdArgs.port.fold(withoutOverrides.webserver.port)(Port(_)),
-        enabled = !cmdArgs.disableWebservice && withoutOverrides.webserver.enabled
-      )
-    )
+    import QuineConfig.{webserverEnabledLens, webserverPortLens}
+    val withPortOverride = cmdArgs.port.fold(withoutOverrides)(webserverPortLens.set(withoutOverrides))
+    val withWebserverOverrides =
+      if (cmdArgs.disableWebservice) withPortOverride else webserverEnabledLens.set(withPortOverride)(true)
 
     // Recipe overrides (unless --force-config command line flag is used)
     if (recipe.isDefined && !cmdArgs.forceConfig) {
