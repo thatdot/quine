@@ -5,7 +5,7 @@ summary: Small graph of connected nodes
 description: |-
   This Recipe loads a small graph of connected nodes.
   Before running this Recipe, download the dataset using
-  curl https://docs.thatdot.com/tutorials/harry_potter_data.json -o harry_potter_data.json
+  curl https://recipes.quine.io/harry-potter-json -o harry_potter_data.json
 ingestStreams:
   - type: FileIngest
     path: harry_potter_data.json
