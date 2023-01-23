@@ -99,7 +99,7 @@ trait StandingQueryRoutesImpl
                   Sink.ignore,
                   source
                     .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
-                    .map((r: StandingQueryResult) => ws.TextMessage(ujson.write(r.toJson)))
+                    .map((r: StandingQueryResult) => ws.TextMessage(r.toJson.noSpaces))
                 )
                 .named(s"sq-results-websocket-for-$name")
             )
@@ -120,7 +120,7 @@ trait StandingQueryRoutesImpl
               source
                 .map(sqResult =>
                   ServerSentEvent(
-                    data = ujson.write(sqResult.toJson),
+                    data = sqResult.toJson.noSpaces,
                     eventType = Some(if (sqResult.meta.isPositiveMatch) "result" else "cancellation"),
                     id = Some(sqResult.meta.resultId.uuid.toString)
                   )

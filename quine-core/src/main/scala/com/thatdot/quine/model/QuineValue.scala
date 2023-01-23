@@ -6,6 +6,7 @@ import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
+import io.circe.Json
 import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
 import org.msgpack.core.{MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
@@ -223,6 +224,25 @@ object QuineValue {
     case QuineValue.Bytes(byteArray) => ujson.Arr.from(byteArray)
     case QuineValue.DateTime(instant) => ujson.Str(instant.toString)
     case QuineValue.Id(qid) => ujson.Str(qid.pretty)
+  }
+
+  /* TODO this replication of toJson is a temporary artifact of switching incrementatly to circe handing
+   of json values because of their better support for larger long values. Eventually the ujson method
+   should be removed when no longer in use by API endpoints.
+
+   */
+  def toCirceJson(value: QuineValue)(implicit idProvider: QuineIdProvider): Json = value match {
+    case QuineValue.Null => Json.Null
+    case QuineValue.Str(str) => Json.fromString(str)
+    case QuineValue.False => Json.False
+    case QuineValue.True => Json.True
+    case QuineValue.Integer(lng) => Json.fromLong(lng)
+    case QuineValue.Floating(dbl) => Json.fromDoubleOrString(dbl)
+    case QuineValue.List(vs) => Json.fromValues(vs.map(toCirceJson))
+    case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toCirceJson).toSeq)
+    case QuineValue.Bytes(byteArray) => Json.fromValues(byteArray.map(b => Json.fromInt(b.intValue())))
+    case QuineValue.DateTime(instant) => Json.fromString(instant.toString)
+    case QuineValue.Id(qid) => Json.fromString(qid.pretty)
   }
 
   // Message pack extension tags

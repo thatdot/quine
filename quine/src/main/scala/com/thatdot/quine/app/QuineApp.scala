@@ -20,7 +20,6 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.app.ingest.IngestSrcDef
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
-import com.thatdot.quine.graph
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.{

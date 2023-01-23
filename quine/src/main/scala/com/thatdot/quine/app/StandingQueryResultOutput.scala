@@ -28,7 +28,6 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry
 import software.amazon.awssdk.services.sns.SnsAsyncClient
-import ujson.BytesRenderer
 
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
@@ -79,9 +78,8 @@ object StandingQueryResultOutput extends LazyLogging {
               uri = url,
               entity = HttpEntity(
                 contentType = `application/json`,
-                ujson.write(
-                  if (onlyPositiveMatchData) QuineValue.toJson(QuineValue.Map(result.data)) else result.toJson
-                )
+                if (onlyPositiveMatchData) QuineValue.toCirceJson(QuineValue.Map(result.data)).noSpaces
+                else result.toJson.noSpaces
               )
             )
 
@@ -194,7 +192,7 @@ object StandingQueryResultOutput extends LazyLogging {
         // TODO: FIXME if any request to SNS errors, that thread (of the aforementioned 10) will retry its request
         // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
         Flow[StandingQueryResult]
-          .map(result => result.toJson(graph.idProvider).toString + "\n")
+          .map(result => result.toJson(graph.idProvider).noSpaces + "\n")
           .viaMat(SnsPublisher.flow(topic)(awsSnsClient).named(s"sq-output-sns-producer-for-$name"))(Keep.right)
           .map(_ => execToken)
 
@@ -204,7 +202,7 @@ object StandingQueryResultOutput extends LazyLogging {
           case LogMode.Complete => printLogger
           case LogMode.FastSampling => printLoggerNonBlocking
         }
-        val logFn: (String => Unit) =
+        val logFn: String => Unit =
           logLevel match {
             case LogLevel.Trace => resultLogger.trace(_)
             case LogLevel.Debug => resultLogger.debug(_)
@@ -214,13 +212,13 @@ object StandingQueryResultOutput extends LazyLogging {
           }
 
         Flow[StandingQueryResult].map { result =>
-          logFn(s"Standing query `$name` match: ${result.toJson(graph.idProvider)}")
+          logFn(s"Standing query `$name` match: ${result.toJson(graph.idProvider).noSpaces}")
           execToken
         }
 
       case WriteToFile(path) =>
         Flow[StandingQueryResult]
-          .map(result => ByteString(result.toJson(graph.idProvider).toString + "\n"))
+          .map(result => ByteString(result.toJson(graph.idProvider).noSpaces + "\n"))
           .alsoTo(
             FileIO
               .toPath(
@@ -370,7 +368,7 @@ object StandingQueryResultOutput extends LazyLogging {
           )
           .via(andThenFlow)
     }
-  }.named(s"sq-output-${name}")
+  }.named(s"sq-output-$name")
 
   private def serialized(
     name: String,
@@ -379,7 +377,7 @@ object StandingQueryResultOutput extends LazyLogging {
   ): Flow[StandingQueryResult, Array[Byte], NotUsed] =
     format match {
       case OutputFormat.JSON =>
-        Flow[StandingQueryResult].map(_.toJson(graph.idProvider).transform(BytesRenderer()).toByteArray)
+        Flow[StandingQueryResult].map(_.toJson(graph.idProvider).noSpaces.getBytes)
       case OutputFormat.Protobuf(schemaUrl, typeName) =>
         val serializer = new QuineValueToProtobuf(filenameOrUrl(schemaUrl), typeName)
         Flow[StandingQueryResult]
@@ -444,7 +442,7 @@ object StandingQueryResultOutput extends LazyLogging {
         "type" -> "section",
         "text" -> ujson.Obj(
           "type" -> "mrkdwn",
-          "text" -> s"```${dataPrettyJson}```"
+          "text" -> s"```$dataPrettyJson```"
         )
       ),
       ujson.Obj(

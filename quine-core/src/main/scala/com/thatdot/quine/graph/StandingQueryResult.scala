@@ -4,6 +4,7 @@ import scala.jdk.CollectionConverters._
 
 import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
 import com.google.common.hash.{HashCode, Hasher, Hashing}
+import io.circe.Json
 
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
@@ -29,10 +30,13 @@ final case class StandingQueryResult(
     )
   )
 
-  def toJson(implicit idProvider: QuineIdProvider): ujson.Value = ujson.Obj(
-    "meta" -> meta.toJson,
-    "data" -> QuineValue.toJson(QuineValue.Map(data))
-  )
+  def toJson(implicit idProvider: QuineIdProvider): Json =
+    Json.fromFields(
+      Seq(
+        ("meta", meta.toJson),
+        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toCirceJson(v)) }.toSeq))
+      )
+    )
 
   // TODO eliminate duplicated code below and in DomainGraphNode.scala
 
@@ -162,9 +166,11 @@ object StandingQueryResult {
       "resultId" -> QuineValue.Str(resultId.uuid.toString)
     )
 
-    def toJson: ujson.Value = ujson.Obj(
-      "isPositiveMatch" -> ujson.Bool(isPositiveMatch),
-      "resultId" -> ujson.Str(resultId.uuid.toString)
+    def toJson: Json = Json.fromFields(
+      Seq(
+        ("isPositiveMatch", Json.fromBoolean(isPositiveMatch)),
+        ("resultId", Json.fromString(resultId.uuid.toString))
+      )
     )
   }
 }

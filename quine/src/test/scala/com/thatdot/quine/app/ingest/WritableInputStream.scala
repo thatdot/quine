@@ -49,7 +49,7 @@ object IngestTestGraph {
     Metrics.meter("test_bytes")
   )
 
-  def makeGraph(): CypherOpsGraph = Await.result(
+  def makeGraph(): GraphService = Await.result(
     GraphService(
       "test-service",
       effectOrder = EventEffectOrder.MemoryFirst,

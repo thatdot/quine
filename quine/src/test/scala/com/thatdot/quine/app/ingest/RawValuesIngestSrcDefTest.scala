@@ -97,7 +97,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
       val gzip = new GZIPOutputStream(out)
       gzip.write(bytes)
       gzip.close()
-      return Base64.getEncoder.encode(out.toByteArray)
+      Base64.getEncoder.encode(out.toByteArray)
     }
 
     val ctx = IngestTestContext(
@@ -128,7 +128,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
       val zlib = new DeflaterOutputStream(out)
       zlib.write(bytes)
       zlib.close()
-      return Base64.getEncoder.encode(out.toByteArray)
+      Base64.getEncoder.encode(out.toByteArray)
     }
 
     val ctx = IngestTestContext(
