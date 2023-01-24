@@ -3,6 +3,7 @@ package com.thatdot.quine.app
 import java.nio.file.{Paths, StandardOpenOption}
 
 import scala.concurrent.duration._
+import scala.language.implicitConversions
 import scala.util.{Failure, Random, Success, Try}
 
 import akka.NotUsed
@@ -21,6 +22,7 @@ import akka.util.ByteString
 
 import cats.syntax.either._
 import com.typesafe.scalalogging.{LazyLogging, Logger}
+import io.circe.Json
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import software.amazon.awssdk.core.SdkBytes
@@ -52,9 +54,9 @@ object StandingQueryResultOutput extends LazyLogging {
 
   /** Construct a destination to which results are output
     *
-    * @param name name of the Standing Query Output
+    * @param name   name of the Standing Query Output
     * @param output configuration for handling the results
-    * @param graph reference to the graph
+    * @param graph  reference to the graph
     */
   def resultHandlingFlow(
     name: String,
@@ -401,7 +403,10 @@ object StandingQueryResultOutput extends LazyLogging {
 
   sealed abstract class SlackSerializable {
     def slackJson: String
+    implicit def stringToJson(s: String): Json = Json.fromString(s)
+
   }
+
   object SlackSerializable {
     def apply(positiveOnly: Boolean, results: Seq[StandingQueryResult])(implicit
       idProvider: QuineIdProvider
@@ -434,81 +439,72 @@ object StandingQueryResultOutput extends LazyLogging {
       extends SlackSerializable {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
-    val dataPrettyJson: String = ujson.write(QuineValue.toJson(QuineValue.Map(data)), 2)
+    val dataPrettyJson: String =
+      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toCirceJson(v)) }.toSeq).spaces2
 
     // slack message blocks
-    def slackBlocks: Vector[ujson.Obj] = Vector(
-      ujson.Obj(
-        "type" -> "section",
-        "text" -> ujson.Obj(
-          "type" -> "mrkdwn",
-          "text" -> s"```$dataPrettyJson```"
-        )
-      ),
-      ujson.Obj(
+    def slackBlocks: Vector[Json] = Vector(
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdown", "text" -> s"```$dataPrettyJson```")),
+      Json.obj(
         "type" -> "context",
-        "elements" -> ujson.Arr(
-          ujson.Obj(
-            "type" -> "mrkdwn",
-            "text" -> s"*Result ID:* ${resultId.uuid.toString}"
-          )
-        )
+        "elements" ->
+        Json.obj("type" -> "mrkdwn", "text" -> s"*Result ID:* ${resultId.uuid.toString}")
       )
     )
 
-    override def slackJson: String = ujson
-      .Obj(
+    override def slackJson: String = Json
+      .obj(
         "text" -> "New Standing Query Result",
-        "blocks" -> ujson.Arr.from(
-          ujson.Obj(
-            "type" -> "header",
-            "text" -> ujson.Obj(
-              "type" -> "plain_text",
-              "text" -> "New Standing Query Result"
-            )
-          ) +: slackBlocks
+        "blocks" -> Json.arr(
+          Json
+            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result")),
+          slackBlocks(0),
+          slackBlocks(1)
         )
       )
-      .render()
+      .noSpaces
   }
 
   final case class CancelledResult(resultId: ResultId) extends SlackSerializable {
-    val slackBlock: Vector[ujson.Obj] = Vector(
-      ujson.Obj(
-        "type" -> "context",
-        "elements" -> ujson.Arr(
-          ujson.Obj(
-            "type" -> "mrkdwn",
-            "text" -> s"*Result ID:* ${resultId.uuid.toString}"
-          )
+
+    val slackBlock: Json = Json.obj(
+      "type" -> "context",
+      "elements" -> Json.arr(
+        Json.obj(
+          "type" -> "mrkdwn",
+          "text" -> s"*Result ID:* ${resultId.uuid.toString}"
         )
       )
     )
-    override def slackJson: String = ujson
-      .Obj(
+
+    override def slackJson: String = Json
+      .obj(
         "text" -> "Standing Query Result Cancelled",
-        "blocks" -> ujson.Arr.from(
-          ujson.Obj(
+        "blocks" ->
+
+        Json.arr(
+          Json.obj(
             "type" -> "header",
-            "text" -> ujson.Obj(
+            "text" -> Json.obj(
               "type" -> "plain_text",
               "text" -> "Standing Query Result Cancelled"
             )
-          ) +: slackBlock
+          ),
+          slackBlock
         )
       )
-      .render()
+      .noSpaces
   }
 
   final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[ResultId])(implicit
     idProvider: QuineIdProvider
   ) extends SlackSerializable {
-    val newResultsBlocks: Vector[ujson.Obj] = newResults match {
+    val newResultsBlocks: Vector[Json] = newResults match {
       case Seq() => Vector.empty
       case Seq(result) =>
-        ujson.Obj(
+        Json.obj(
           "type" -> "header",
-          "text" -> ujson.Obj(
+          "text" -> Json.obj(
             "type" -> "plain_text",
             "text" -> "New Standing Query Result"
           )
@@ -520,50 +516,53 @@ object StandingQueryResultOutput extends LazyLogging {
           else excessResultIds.take(9) :+ s"(${excessResultIds.length - 9} more)"
 
         Vector(
-          ujson.Obj(
+          Json.obj(
             "type" -> "header",
-            "text" -> ujson.Obj(
+            "text" -> Json.obj(
               "type" -> "plain_text",
               "text" -> "New Standing Query Results"
             )
           ),
-          ujson.Obj(
+          Json.obj(
             "type" -> "section",
-            "text" -> ujson.Obj(
+            "text" -> Json.obj(
               "type" -> "mrkdwn",
               "text" -> "Latest result:"
             )
           )
         ) ++ NewResult(result.meta.resultId, result.data).slackBlocks ++ Vector(
-          ujson.Obj(
+          Json.obj(
             "type" -> "section",
-            "text" -> ujson.Obj(
+            "text" -> Json.obj(
               "type" -> "mrkdwn",
               "text" -> "*Other New Result IDs:*"
             )
           ),
-          ujson.Obj(
+          Json.obj(
             "type" -> "section",
-            "fields" -> excessResultItems.map { str =>
-              ujson.Obj(
+            "fields" -> Json.fromValues(excessResultItems.map { str =>
+              Json.obj(
                 "type" -> "mrkdwn",
                 "text" -> str
               )
-            }
+            })
           )
         )
     }
 
-    val cancellationBlocks: Vector[ujson.Obj] = newCancellations match {
+    val cancellationBlocks: Vector[Json] = newCancellations match {
       case Seq() => Vector.empty
       case Seq(cancellation) =>
-        ujson.Obj(
-          "type" -> "header",
-          "text" -> ujson.Obj(
-            "type" -> "plain_text",
-            "text" -> "Standing Query Result Cancelled"
-          )
-        ) +: CancelledResult(cancellation).slackBlock
+        Vector(
+          Json.obj(
+            "type" -> "header",
+            "text" -> Json.obj(
+              "type" -> "plain_text",
+              "text" -> "Standing Query Result Cancelled"
+            )
+          ),
+          CancelledResult(cancellation).slackBlock
+        )
       case cancellations =>
         val cancelledIds = cancellations.map(_.uuid.toString)
         val itemsCancelled: Seq[String] =
@@ -571,30 +570,31 @@ object StandingQueryResultOutput extends LazyLogging {
           else cancelledIds.take(9) :+ s"(${cancellations.length - 9} more)"
 
         Vector(
-          ujson.Obj(
+          Json.obj(
             "type" -> "header",
-            "text" -> ujson.Obj(
+            "text" -> Json.obj(
               "type" -> "plain_text",
               "text" -> "Standing Query Results Cancelled"
             )
           ),
-          ujson.Obj(
+          Json.obj(
             "type" -> "section",
-            "fields" -> itemsCancelled.map { str =>
-              ujson.Obj(
+            "fields" -> Json.fromValues(itemsCancelled.map { str =>
+              Json.obj(
                 "type" -> "mrkdwn",
                 "text" -> str
               )
-            }
+            })
           )
         )
     }
 
-    override def slackJson: String = ujson
-      .Obj(
+    override def slackJson: String = Json
+      .obj(
         "text" -> "New Standing Query Updates",
-        "blocks" -> ujson.Arr.from(newResultsBlocks ++ cancellationBlocks)
+        "blocks" -> Json.fromValues(newResultsBlocks ++ cancellationBlocks)
       )
-      .render()
+      .noSpaces
   }
+
 }
