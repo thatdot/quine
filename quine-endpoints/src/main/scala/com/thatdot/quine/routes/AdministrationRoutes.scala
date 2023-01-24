@@ -6,6 +6,8 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import endpoints4s.{Valid, Validated}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 /** Build information exposed to the user */
 @title("System Build Information")
 @docs("Information collected when this version of the system was compiled.")
@@ -80,7 +82,7 @@ final case class GraphHashCode(
 )
 
 trait AdministrationRoutes
-    extends endpoints4s.algebra.Endpoints
+    extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints

@@ -2,6 +2,8 @@ package com.thatdot.quine.routes
 
 import endpoints4s.generic.{docs, title, unnamed}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 @title("Sample Query")
 @docs("A query that appears as an option in the dropdown under the query bar.")
 final case class SampleQuery(
@@ -153,7 +155,7 @@ trait QueryUiConfigurationSchemas extends endpoints4s.generic.JsonSchemas with e
 
 trait QueryUiConfigurationRoutes
     extends QueryUiConfigurationSchemas
-    with endpoints4s.algebra.Endpoints
+    with EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with exts.QuineEndpoints {
 

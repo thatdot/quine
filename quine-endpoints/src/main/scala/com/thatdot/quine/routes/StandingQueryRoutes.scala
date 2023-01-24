@@ -6,6 +6,8 @@ import java.util.UUID
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 @title("Standing Query")
 @docs("Standing Query")
 final case class StandingQueryDefinition(
@@ -420,7 +422,7 @@ trait StandingQuerySchemas
 
 trait StandingQueryRoutes
     extends StandingQuerySchemas
-    with endpoints4s.algebra.Endpoints
+    with EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints {
@@ -462,7 +464,7 @@ trait StandingQueryRoutes
         url = standing / standingName,
         entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq)
       ),
-      response = badRequest(docs = Some("Standing query exists already"))
+      response = customBadRequest("Standing query exists already")
         .orElse(created()),
       docs = EndpointDocs()
         .withSummary(Some("Create Standing Query"))

@@ -3,8 +3,10 @@ package com.thatdot.quine.routes
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 trait AlgorithmRoutes
-    extends endpoints4s.algebra.Endpoints
+    extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints
@@ -114,7 +116,7 @@ trait AlgorithmRoutes
           inOutParameter & randomSeedOpt & atTime & parallelism),
         entity = jsonRequestWithExample[SaveLocation](example = S3Bucket("your-s3-bucket-name", None))
       ),
-      response = badRequest(docs = Some("Invalid file"))
+      response = customBadRequest("Invalid file")
         .orElse(accepted(textResponse)),
       docs = EndpointDocs()
         .withSummary(Some("Save Random Walks"))

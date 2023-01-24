@@ -5,6 +5,8 @@ import java.time.Instant
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 sealed abstract class IngestStreamStatus(val isTerminal: Boolean)
 
 object IngestStreamStatus {
@@ -725,7 +727,7 @@ object IngestRoutes {
   )
 }
 trait IngestRoutes
-    extends endpoints4s.algebra.Endpoints
+    extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with IngestSchemas
     with exts.QuineEndpoints {
@@ -744,7 +746,7 @@ trait IngestRoutes
         url = ingest / ingestStreamName,
         entity = jsonOrYamlRequest[IngestStreamConfiguration]
       ),
-      response = badRequest(docs = Some("Ingest stream exists already"))
+      response = customBadRequest("Ingest stream exists already")
         .orElse(ok(emptyResponse)),
       docs = EndpointDocs()
         .withSummary(Some("Create Ingest Stream"))

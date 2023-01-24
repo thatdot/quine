@@ -5,6 +5,8 @@ import scala.concurrent.duration.FiniteDuration
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
+import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+
 /** Nodes in the UI
   *
   * This is the expected format to return for endpoints serving up nodes
@@ -112,7 +114,7 @@ trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema w
 }
 
 trait QueryUiRoutes
-    extends endpoints4s.algebra.Endpoints
+    extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints
@@ -150,7 +152,7 @@ trait QueryUiRoutes
         ).orElse(textRequestWithExample("RETURN 1 + 2 AS three"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(
           ok(
             jsonResponseWithExample[CypherQueryResult](
@@ -176,7 +178,7 @@ trait QueryUiRoutes
         ).orElse(textRequestWithExample("MATCH (n) RETURN n LIMIT 1"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Nodes"))
@@ -197,7 +199,7 @@ trait QueryUiRoutes
         ).orElse(textRequestWithExample("MATCH ()-[e]->() RETURN e LIMIT 1"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Edges"))
@@ -218,7 +220,7 @@ trait QueryUiRoutes
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
           )
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(
           ok(
             jsonResponseWithExample[Seq[ujson.Value]](
@@ -252,7 +254,7 @@ trait QueryUiRoutes
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
           )
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("Gremlin Query Return Nodes"))
@@ -272,7 +274,7 @@ trait QueryUiRoutes
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
           )
       ),
-      response = badRequest(docs = Some("runtime error in the query"))
+      response = customBadRequest("runtime error in the query")
         .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
       docs = EndpointDocs()
         .withSummary(Some("Gremlin Query Return Edges"))
