@@ -18,7 +18,7 @@ trait EndpointsWithCustomErrorText extends Endpoints {
 
   %s
 
-  Contact support if you continue to have issues."
+  Contact support if you continue to have issues.
   """.stripMargin
 
   private val serverErrorDoc =
