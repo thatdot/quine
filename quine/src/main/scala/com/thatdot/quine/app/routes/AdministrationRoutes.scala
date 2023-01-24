@@ -11,6 +11,7 @@ import akka.util.{ByteString, Timeout}
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
 import com.thatdot.quine.app.routes.exts.ServerQuineEndpoints
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
@@ -44,6 +45,9 @@ trait AdministrationRoutesImpl
   /** Should the liveness probe report live? */
   def isLive: Boolean
 
+  /** A sample configuration that will be used for documenting the admin/config route. */
+  def sampleConfig: BaseConfig = QuineConfig()
+
   /** Should the readiness probe report ready? */
   def isReady: Boolean
 
@@ -59,7 +63,7 @@ trait AdministrationRoutesImpl
     )
   }
 
-  private val configRoute = config.implementedBy(_ => currentConfig)
+  private val configRoute = config(sampleConfig.loadedConfigJson).implementedBy(_ => currentConfig)
 
   private val livenessProbeRoute = livenessProbe.implementedBy(_ => isLive)
 
@@ -127,7 +131,7 @@ trait AdministrationRoutesImpl
     )
   }
 
-  // Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
+// Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
   private val shutdownRoute = shutdown.implementedBy { _ =>
     graph.system.terminate()
     ()

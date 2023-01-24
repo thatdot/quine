@@ -129,55 +129,7 @@ trait AdministrationRoutes
         .withTags(List(adminTag))
     )
 
-  final val config: Endpoint[Unit, ujson.Value] = {
-    val configExample = ujson.read("""
-        |{
-        |  "quine": {
-        |    "decline-sleep-when-access-within": "0",
-        |    "decline-sleep-when-write-within": "100ms",
-        |    "dump-config": false,
-        |    "edge-iteration": "reverse-insertion",
-        |    "id": {
-        |      "partitioned": false,
-        |      "type": "uuid"
-        |    },
-        |    "in-memory-hard-node-limit": 75000,
-        |    "in-memory-soft-node-limit": 10000,
-        |    "labels-property": "__LABEL",
-        |    "max-catch-up-sleep": "2s",
-        |    "metrics-reporters": [
-        |      {
-        |        "type": "jmx"
-        |      }
-        |    ],
-        |    "persistence": {
-        |      "effect-order": "persistor-first",
-        |      "journal-enabled": true,
-        |      "snapshot-schedule": "on-node-sleep",
-        |      "snapshot-singleton": false,
-        |      "standing-query-schedule": "on-node-sleep"
-        |    },
-        |    "shard-count": 4,
-        |    "should-resume-ingest": false,
-        |    "store": {
-        |      "create-parent-dir": false,
-        |      "filepath": "/var/folders/4y/_h4gzktd5vv8m3cz583wv8v80000gn/T/quine-4872917559272367011.db",
-        |      "sync-all-writes": false,
-        |      "type": "rocks-db",
-        |      "write-ahead-log": true
-        |    },
-        |    "timeout": "2m",
-        |    "webserver": {
-        |      "address": "0.0.0.0",
-        |      "enabled": true,
-        |      "port": 8080
-        |    }
-        |  }
-        |}
-        |
-        |
-        |""".stripMargin)
-
+  final def config(configExample: ujson.Value): Endpoint[Unit, ujson.Value] =
     endpoint(
       request = get(admin / "config"),
       response = ok(jsonResponseWithExample[ujson.Value](configExample)(anySchema(None))),
@@ -198,7 +150,6 @@ trait AdministrationRoutes
         )
         .withTags(List(adminTag))
     )
-  }
 
   final val livenessProbe: Endpoint[Unit, Boolean] =
     endpoint(

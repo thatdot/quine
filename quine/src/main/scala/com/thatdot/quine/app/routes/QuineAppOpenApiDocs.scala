@@ -5,6 +5,7 @@ import akka.http.scaladsl.server.Route
 import endpoints4s.openapi.model._
 
 import com.thatdot.quine.app.BuildInfo
+import com.thatdot.quine.app.config.QuineConfig
 import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
@@ -30,7 +31,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
 
   private[this] val endpoints = List(
     buildInfo,
-    config,
+    config(QuineConfig().loadedConfigJson),
     readinessProbe,
     livenessProbe,
     metrics,
