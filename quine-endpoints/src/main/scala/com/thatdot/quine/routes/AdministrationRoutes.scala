@@ -88,8 +88,8 @@ trait AdministrationRoutes
     with exts.QuineEndpoints
     with exts.AnySchema {
 
-  implicit final lazy val quineInfoSchema: JsonSchema[QuineInfo] =
-    genericJsonSchema[QuineInfo]
+  implicit final lazy val quineInfoSchema: Record[QuineInfo] =
+    genericRecord[QuineInfo]
       .withExample(
         QuineInfo(
           version = "0.1",
@@ -100,18 +100,18 @@ trait AdministrationRoutes
         )
       )
 
-  implicit final lazy val counterSchema: JsonSchema[Counter] = genericJsonSchema[Counter]
-  implicit final lazy val timerSummarySchema: JsonSchema[TimerSummary] =
-    genericJsonSchema[TimerSummary]
-  implicit final lazy val numGaugeSchema: JsonSchema[NumericGauge] = genericJsonSchema[NumericGauge]
-  implicit final lazy val metricsReportSchema: JsonSchema[MetricsReport] =
-    genericJsonSchema[MetricsReport]
+  implicit final lazy val counterSchema: Record[Counter] = genericRecord[Counter]
+  implicit final lazy val timerSummarySchema: Record[TimerSummary] =
+    genericRecord[TimerSummary]
+  implicit final lazy val numGaugeSchema: Record[NumericGauge] = genericRecord[NumericGauge]
+  implicit final lazy val metricsReportSchema: Record[MetricsReport] =
+    genericRecord[MetricsReport]
 
-  implicit final lazy val shardInMemoryLimitSchema: JsonSchema[ShardInMemoryLimit] =
+  implicit final lazy val shardInMemoryLimitSchema: Record[ShardInMemoryLimit] =
     genericRecord[ShardInMemoryLimit]
 
-  implicit final lazy val graphHashCodeSchema: JsonSchema[GraphHashCode] =
-    genericJsonSchema[GraphHashCode]
+  implicit final lazy val graphHashCodeSchema: Record[GraphHashCode] =
+    genericRecord[GraphHashCode]
 
   private val api = path / "api" / "v1"
   protected val admin: Path[Unit] = api / "admin"
@@ -248,6 +248,7 @@ trait AdministrationRoutes
       }
       .withTitle("Shard Sizes Map")
       .withDescription("A map of shard IDs to shard in-memory node limits")
+      .withExample(exampleShardMap)
 
     endpoint(
       request =

@@ -322,7 +322,7 @@ trait StandingQuerySchemas
   import StandingQueryPattern._
   import StandingQueryResultOutputUserDef._
 
-  implicit lazy val logModeSchema: JsonSchema[StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode] =
+  implicit lazy val logModeSchema: Enum[StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode] =
     stringEnumeration[StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode](
       StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.modes
     )(_.toString).withDescription(
@@ -335,12 +335,12 @@ trait StandingQuerySchemas
         |StandingQueryResultOutputs registered on the same standing query.""".stripMargin
     )
 
-  implicit lazy val logLevelSchema: JsonSchema[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel] =
+  implicit lazy val logLevelSchema: Enum[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel] =
     stringEnumeration[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel](
       StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.levels
     )(_.toString)
 
-  implicit lazy val standingQueryModeSchema: JsonSchema[StandingQueryMode] =
+  implicit lazy val standingQueryModeSchema: Enum[StandingQueryMode] =
     stringEnumeration[StandingQueryMode](StandingQueryMode.values)(_.toString)
       .withDescription(
         """Mode used to execute Standing Query. `DistinctId` is the default and
@@ -349,12 +349,12 @@ trait StandingQuerySchemas
           |uses more memory.""".stripMargin
       )
 
-  implicit lazy val outputFormatSchema: JsonSchema[OutputFormat] =
+  implicit lazy val outputFormatSchema: Tagged[OutputFormat] =
     lazyTagged("OutputFormat")(
       genericTagged[OutputFormat]
     ).withExample(OutputFormat.JSON)
 
-  implicit lazy val standingQueryResultOutputSchema: JsonSchema[StandingQueryResultOutputUserDef] =
+  implicit lazy val standingQueryResultOutputSchema: Tagged[StandingQueryResultOutputUserDef] =
     lazyTagged("StandingQueryResultOutput")(
       genericTagged[StandingQueryResultOutputUserDef]
     ).withExample(
@@ -402,21 +402,21 @@ trait StandingQuerySchemas
     StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling
   )
 
-  implicit lazy val standingQueryPatternSchema: JsonSchema[StandingQueryPattern] =
-    genericJsonSchema[StandingQueryPattern].withExample(sqExample.pattern)
+  implicit lazy val standingQueryPatternSchema: Tagged[StandingQueryPattern] =
+    genericTagged[StandingQueryPattern].withExample(sqExample.pattern)
 
-  implicit lazy val standingQueryStatsSchema: JsonSchema[StandingQueryStats] =
-    genericJsonSchema[StandingQueryStats]
+  implicit lazy val standingQueryStatsSchema: Record[StandingQueryStats] =
+    genericRecord[StandingQueryStats]
 
-  implicit lazy val standingQueryRegisteredSchema: JsonSchema[StandingQueryRegistered] =
-    genericJsonSchema[StandingQueryRegistered]
-  implicit lazy val standingQueryCancelledSchema: JsonSchema[StandingQueryCancelled] =
-    genericJsonSchema[StandingQueryCancelled]
+  implicit lazy val standingQueryRegisteredSchema: Record[StandingQueryRegistered] =
+    genericRecord[StandingQueryRegistered]
+  implicit lazy val standingQueryCancelledSchema: Record[StandingQueryCancelled] =
+    genericRecord[StandingQueryCancelled]
 
-  implicit lazy val standingQuerySchema: JsonSchema[StandingQueryDefinition] =
-    genericJsonSchema[StandingQueryDefinition].withExample(sqExample)
-  implicit lazy val runningStandingQuerySchema: JsonSchema[RegisteredStandingQuery] =
-    genericJsonSchema[RegisteredStandingQuery].withExample(runningSqExample)
+  implicit lazy val standingQuerySchema: Record[StandingQueryDefinition] =
+    genericRecord[StandingQueryDefinition].withExample(sqExample)
+  implicit lazy val runningStandingQuerySchema: Record[RegisteredStandingQuery] =
+    genericRecord[RegisteredStandingQuery].withExample(runningSqExample)
 
 }
 

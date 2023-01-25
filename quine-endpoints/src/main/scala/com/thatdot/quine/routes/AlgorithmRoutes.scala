@@ -91,9 +91,9 @@ trait AlgorithmRoutes
     @docs("Optional name of the file in the S3 bucket") key: Option[String]
   ) extends SaveLocation
 
-  implicit lazy val localFileSchema: JsonSchema[LocalFile] = genericJsonSchema[LocalFile]
-  implicit lazy val s3BucketSchema: JsonSchema[S3Bucket] = genericJsonSchema[S3Bucket]
-  implicit lazy val saveLocationSchema: JsonSchema[SaveLocation] = genericJsonSchema[SaveLocation]
+  implicit lazy val localFileSchema: Record[LocalFile] = genericRecord[LocalFile]
+  implicit lazy val s3BucketSchema: Record[S3Bucket] = genericRecord[S3Bucket]
+  implicit lazy val saveLocationSchema: Tagged[SaveLocation] = genericTagged[SaveLocation]
 
   final val algorithmSaveRandomWalks: Endpoint[
     (

@@ -133,25 +133,25 @@ object UiNodeQuickQuery {
 
 trait QueryUiConfigurationSchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema {
 
-  implicit final lazy val querySortSchema: JsonSchema[QuerySort] =
+  implicit final lazy val querySortSchema: Enum[QuerySort] =
     stringEnumeration[QuerySort](Seq(QuerySort.Text, QuerySort.Node))(_.toString)
-  implicit final lazy val queryLanguageSchema: JsonSchema[QueryLanguage] =
+  implicit final lazy val queryLanguageSchema: Enum[QueryLanguage] =
     stringEnumeration[QueryLanguage](Seq(QueryLanguage.Gremlin, QueryLanguage.Cypher))(_.toString)
-  implicit final lazy val quickQuerySchema: JsonSchema[QuickQuery] =
-    genericJsonSchema[QuickQuery].withExample(QuickQuery.adjacentNodes(QueryLanguage.Cypher))
-  implicit final lazy val sampleQuerySchema: JsonSchema[SampleQuery] =
-    genericJsonSchema[SampleQuery]
+  implicit final lazy val quickQuerySchema: Record[QuickQuery] =
+    genericRecord[QuickQuery].withExample(QuickQuery.adjacentNodes(QueryLanguage.Cypher))
+  implicit final lazy val sampleQuerySchema: Record[SampleQuery] =
+    genericRecord[SampleQuery]
 
-  implicit final lazy val uiNodePredicateSchema: JsonSchema[UiNodePredicate] = {
+  implicit final lazy val uiNodePredicateSchema: Record[UiNodePredicate] = {
     implicit lazy val uiNodePredicateValueSchema: JsonSchema[ujson.Value] = anySchema(None)
-    genericJsonSchema[UiNodePredicate]
+    genericRecord[UiNodePredicate]
   }
-  implicit final lazy val uiNodeLabelSchema: JsonSchema[UiNodeLabel] =
-    genericJsonSchema[UiNodeLabel]
-  implicit final lazy val uiNodeAppearanceSchema: JsonSchema[UiNodeAppearance] =
-    genericJsonSchema[UiNodeAppearance]
-  implicit final lazy val uiNodeQuickQuerySchema: JsonSchema[UiNodeQuickQuery] =
-    genericJsonSchema[UiNodeQuickQuery]
+  implicit final lazy val uiNodeLabelSchema: Tagged[UiNodeLabel] =
+    genericTagged[UiNodeLabel]
+  implicit final lazy val uiNodeAppearanceSchema: Record[UiNodeAppearance] =
+    genericRecord[UiNodeAppearance]
+  implicit final lazy val uiNodeQuickQuerySchema: Record[UiNodeQuickQuery] =
+    genericRecord[UiNodeQuickQuery]
 }
 
 trait QueryUiConfigurationRoutes

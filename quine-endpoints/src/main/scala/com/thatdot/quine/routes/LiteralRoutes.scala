@@ -52,16 +52,16 @@ trait LiteralRoutes
     with exts.QuineEndpoints
     with exts.AnySchema {
 
-  implicit final lazy val literalNodeSchema: JsonSchema[LiteralNode[Id, BStr]] =
-    genericJsonSchema[LiteralNode[Id, BStr]]
+  implicit final lazy val literalNodeSchema: Record[LiteralNode[Id, BStr]] =
+    genericRecord[LiteralNode[Id, BStr]]
 
-  implicit final lazy val edgeDirectionSchema: JsonSchema[EdgeDirection] =
+  implicit final lazy val edgeDirectionSchema: Enum[EdgeDirection] =
     stringEnumeration[EdgeDirection](EdgeDirection.values)(_.toString)
       .withTitle("Edge direction")
       .withDescription("Direction of an edge in the graph")
 
-  implicit final lazy val restHalfEdgeSchema: JsonSchema[RestHalfEdge[Id]] =
-    genericJsonSchema[RestHalfEdge[Id]]
+  implicit final lazy val restHalfEdgeSchema: Record[RestHalfEdge[Id]] =
+    genericRecord[RestHalfEdge[Id]]
 
   implicit final lazy val edgeDirectionQueryStringParam: QueryStringParam[EdgeDirection] =
     stringQueryString.xmapWithCodec[EdgeDirection](

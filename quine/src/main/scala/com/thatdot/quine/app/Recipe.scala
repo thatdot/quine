@@ -50,11 +50,11 @@ private object RecipeSchema
     with QueryUiConfigurationSchemas
     with UjsonAnySchema {
 
-  implicit lazy val printQuerySchema: JsonSchema[StatusQuery] =
-    genericJsonSchema[StatusQuery]
+  implicit lazy val printQuerySchema: Record[StatusQuery] =
+    genericRecord[StatusQuery]
 
-  implicit lazy val recipeSchema: JsonSchema[Recipe] =
-    genericJsonSchema[Recipe]
+  implicit lazy val recipeSchema: Record[Recipe] =
+    genericRecord[Recipe]
 }
 
 object Recipe {

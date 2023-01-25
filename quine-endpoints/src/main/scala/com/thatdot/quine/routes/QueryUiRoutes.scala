@@ -84,9 +84,9 @@ final case class GremlinQuery(
 
 trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with exts.IdSchema {
 
-  implicit lazy val graphNodeSchema: JsonSchema[UiNode[Id]] = {
+  implicit lazy val graphNodeSchema: Record[UiNode[Id]] = {
     implicit val property = anySchema(None)
-    genericJsonSchema[UiNode[Id]]
+    genericRecord[UiNode[Id]]
       .withExample(
         UiNode(
           id = sampleId(),
@@ -102,8 +102,8 @@ trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema w
 
   }
 
-  implicit lazy val graphEdgeSchema: JsonSchema[UiEdge[Id]] =
-    genericJsonSchema[UiEdge[Id]]
+  implicit lazy val graphEdgeSchema: Record[UiEdge[Id]] =
+    genericRecord[UiEdge[Id]]
       .withExample(
         UiEdge(
           from = sampleId(),
@@ -121,17 +121,17 @@ trait QueryUiRoutes
     with exts.AnySchema
     with QuerySchemas {
 
-  implicit lazy val cypherQueryResultSchema: JsonSchema[CypherQueryResult] = {
+  implicit lazy val cypherQueryResultSchema: Record[CypherQueryResult] = {
     implicit val queryResult = anySchema(Some("cypher-value"))
-    genericJsonSchema[CypherQueryResult]
+    genericRecord[CypherQueryResult]
   }
-  implicit lazy val cypherQuerySchema: JsonSchema[CypherQuery] = {
+  implicit lazy val cypherQuerySchema: Record[CypherQuery] = {
     implicit val parameter = anySchema(Some("cypher-value"))
-    genericJsonSchema[CypherQuery]
+    genericRecord[CypherQuery]
   }
-  implicit lazy val gremlinQuerySchema: JsonSchema[GremlinQuery] = {
+  implicit lazy val gremlinQuerySchema: Record[GremlinQuery] = {
     implicit val parameter = anySchema(Some("gremlin-value"))
-    genericJsonSchema[GremlinQuery]
+    genericRecord[GremlinQuery]
   }
 
   final protected val query: Path[Unit] = path / "api" / "v1" / "query"

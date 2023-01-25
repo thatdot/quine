@@ -81,13 +81,13 @@ object QueryUiEvent {
 /** Serialization format for history */
 object HistoryJsonSchema extends endpoints4s.generic.JsonSchemas with exts.UjsonAnySchema {
   implicit val anyJson: JsonSchema[Value] = anySchema(None)
-  implicit val uiNodeSchema: JsonSchema[UiNode[String]] = genericJsonSchema[UiNode[String]]
-  implicit val uiEdgeSchema: JsonSchema[UiEdge[String]] = genericJsonSchema[UiEdge[String]]
-  implicit val nodePositionsSchema: JsonSchema[QueryUiEvent.NodePosition] =
-    genericJsonSchema[QueryUiEvent.NodePosition]
-  implicit val queryUiEventSchema: JsonSchema[QueryUiEvent] = genericJsonSchema[QueryUiEvent]
-  implicit val historySchema: JsonSchema[History[QueryUiEvent]] =
-    genericJsonSchema[History[QueryUiEvent]]
+  implicit val uiNodeSchema: Record[UiNode[String]] = genericRecord[UiNode[String]]
+  implicit val uiEdgeSchema: Record[UiEdge[String]] = genericRecord[UiEdge[String]]
+  implicit val nodePositionsSchema: Record[QueryUiEvent.NodePosition] =
+    genericRecord[QueryUiEvent.NodePosition]
+  implicit val queryUiEventSchema: Tagged[QueryUiEvent] = genericTagged[QueryUiEvent]
+  implicit val historySchema: Record[History[QueryUiEvent]] =
+    genericRecord[History[QueryUiEvent]]
 
   def encode(history: History[QueryUiEvent]): String =
     ujson.write(historySchema.encoder.encode(history))

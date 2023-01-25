@@ -471,8 +471,8 @@ final class QuineApp(graph: GraphService)
 
   implicit private[this] val standingQueriesSchema
     : JsonSchema[Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]] = {
-    implicit val sqIdSchema = genericJsonSchema[StandingQueryId]
-    implicit val tupSchema = genericJsonSchema[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
+    implicit val sqIdSchema = genericRecord[StandingQueryId]
+    implicit val tupSchema = genericRecord[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
     mapJsonSchema(tupSchema)
   }
 

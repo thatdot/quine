@@ -41,27 +41,31 @@ trait LiteralRoutesImpl
   /* Not implicit since we use this only _explicitly_ to turn [[NodeInternalState]]
    * into JSON (the choice not to expose a JSON schema for the endpoint is
    * intentional, so as to discourage users from using this outside of debugging)
+   *
+   * TODO this should be possible to rewrite as just "define a schema for quinevalue, propertyvalue, and eventtime, then
+   *    derive the rest" -- The implicit resolution scope will need to be corrected but we could remove the redundant
+   *    intermediate implicits.
    */
-  lazy val nodeInternalStateSchema: JsonSchema[NodeInternalState] = {
-    implicit val msSchema: JsonSchema[Milliseconds] =
-      genericJsonSchema[Milliseconds]
+  lazy val nodeInternalStateSchema: Record[NodeInternalState] = {
     implicit val quineValueSchema: JsonSchema[QuineValue] =
       anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toJson)
     implicit val propertyValueSchema: JsonSchema[PropertyValue] =
       quineValueSchema.xmap(PropertyValue.apply)(_.deserialized.get)
-    implicit val halfEdgeSchema: JsonSchema[HalfEdge] = genericJsonSchema[HalfEdge]
-    implicit val lSq: JsonSchema[LocallyRegisteredStandingQuery] =
-      genericJsonSchema[LocallyRegisteredStandingQuery]
     implicit val eventTimeSchema: JsonSchema[EventTime] =
       longJsonSchema.xmap(EventTime.fromRaw)(_.eventTime)
-    implicit val sqIdSchema: JsonSchema[StandingQueryId] = genericJsonSchema[StandingQueryId]
-    implicit val dgnLocalEventIndexSummarySchema: JsonSchema[DgnLocalEventIndexSummary] =
-      genericJsonSchema[DgnLocalEventIndexSummary]
-    implicit val neSchema: JsonSchema[NodeEvent] = genericJsonSchema[NodeEvent]
-    implicit val newtSchema: JsonSchema[NodeEvent.WithTime] = genericJsonSchema[NodeEvent.WithTime]
-    implicit val sqResult: JsonSchema[SqStateResult] = genericJsonSchema[SqStateResult]
-    implicit val sqResults: JsonSchema[SqStateResults] = genericJsonSchema[SqStateResults]
-    genericJsonSchema[NodeInternalState]
+    implicit val msSchema: Record[Milliseconds] =
+      genericRecord[Milliseconds]
+    implicit val halfEdgeSchema: Record[HalfEdge] = genericRecord[HalfEdge]
+    implicit val lSq: Record[LocallyRegisteredStandingQuery] =
+      genericRecord[LocallyRegisteredStandingQuery]
+    implicit val sqIdSchema: Record[StandingQueryId] = genericRecord[StandingQueryId]
+    implicit val dgnLocalEventIndexSummarySchema: Record[DgnLocalEventIndexSummary] =
+      genericRecord[DgnLocalEventIndexSummary]
+    implicit val neSchema: Tagged[NodeEvent] = genericTagged[NodeEvent]
+    implicit val newtSchema: Record[NodeEvent.WithTime] = genericRecord[NodeEvent.WithTime]
+    implicit val sqResult: Record[SqStateResult] = genericRecord[SqStateResult]
+    implicit val sqResults: Record[SqStateResults] = genericRecord[SqStateResults]
+    genericRecord[NodeInternalState]
   }
 
   implicit def graph: LiteralOpsGraph

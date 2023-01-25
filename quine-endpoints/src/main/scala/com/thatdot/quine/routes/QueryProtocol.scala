@@ -184,17 +184,17 @@ trait QueryProtocolMessageSchema extends endpoints4s.generic.JsonSchemas with ex
 
   import QueryProtocolMessage._
 
-  implicit val clientMessageSchema: JsonSchema[ClientMessage] = {
+  implicit val clientMessageSchema: Tagged[ClientMessage] = {
     implicit val anyJson: JsonSchema[Value] = anySchema(None)
-    implicit lazy val queryLanguageSchema: JsonSchema[QueryLanguage] =
+    implicit lazy val queryLanguageSchema: Enum[QueryLanguage] =
       stringEnumeration[QueryLanguage](Seq(QueryLanguage.Gremlin, QueryLanguage.Cypher))(_.toString)
-    implicit lazy val querySortSchema: JsonSchema[QuerySort] =
+    implicit lazy val querySortSchema: Enum[QuerySort] =
       stringEnumeration[QuerySort](Seq(TextSort, NodeSort, EdgeSort))(_.toString)
-    genericJsonSchema[ClientMessage]
+    genericTagged[ClientMessage]
   }
 
-  implicit def serverMessageSchema: JsonSchema[ServerMessage[Id]] = {
+  implicit def serverMessageSchema: Tagged[ServerMessage[Id]] = {
     implicit val anyJson: JsonSchema[Value] = anySchema(None)
-    genericJsonSchema[ServerMessage[Id]]
+    genericTagged[ServerMessage[Id]]
   }
 }

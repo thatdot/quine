@@ -115,8 +115,8 @@ final case class RatesSummary(
 )
 
 trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
-  implicit lazy val ratesSummarySchema: JsonSchema[RatesSummary] =
-    genericJsonSchema[RatesSummary]
+  implicit lazy val ratesSummarySchema: Record[RatesSummary] =
+    genericRecord[RatesSummary]
 }
 
 @unnamed
@@ -134,8 +134,8 @@ final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 final case class AwsRegion(region: String)
 
 trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
-  implicit lazy val awsCredentialsSchema: JsonSchema[AwsCredentials] = genericJsonSchema[AwsCredentials]
-  implicit val awsRegionSchema: JsonSchema[AwsRegion] = genericJsonSchema[AwsRegion]
+  implicit lazy val awsCredentialsSchema: Record[AwsCredentials] = genericRecord[AwsCredentials]
+  implicit val awsRegionSchema: Record[AwsRegion] = genericRecord[AwsRegion]
 }
 
 @unnamed
@@ -637,36 +637,36 @@ object CsvCharacter {
 
 trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfigurationSchemas with MetricsSummarySchemas {
 
-  implicit lazy val recordEncodingTypeFormatSchema: JsonSchema[RecordDecodingType] =
+  implicit lazy val recordEncodingTypeFormatSchema: Enum[RecordDecodingType] =
     stringEnumeration(RecordDecodingType.values)(_.toString)
 
   implicit lazy val csvHeaderOptionFormatSchema: JsonSchema[Either[Boolean, List[String]]] =
     orFallbackToJsonSchema[Boolean, List[String]](implicitly, implicitly)
 
-  implicit lazy val csvCharacterFormatSchema: JsonSchema[CsvCharacter] =
+  implicit lazy val csvCharacterFormatSchema: Enum[CsvCharacter] =
     stringEnumeration(CsvCharacter.values)(_.toString)
 
-  implicit lazy val entityFormatSchema: JsonSchema[StreamedRecordFormat] =
-    genericJsonSchema[StreamedRecordFormat]
+  implicit lazy val entityFormatSchema: Tagged[StreamedRecordFormat] =
+    genericTagged[StreamedRecordFormat]
       .withExample(IngestRoutes.defaultStreamedRecordFormat)
 
-  implicit lazy val fileIngestFormatSchema: JsonSchema[FileIngestFormat] =
-    genericJsonSchema[FileIngestFormat]
+  implicit lazy val fileIngestFormatSchema: Tagged[FileIngestFormat] =
+    genericTagged[FileIngestFormat]
       .withExample(IngestRoutes.defaultFileRecordFormat)
 
-  implicit val ingestStatusSchema: JsonSchema[IngestStreamStatus] =
+  implicit val ingestStatusSchema: Enum[IngestStreamStatus] =
     stringEnumeration(IngestStreamStatus.states)(_.toString)
       .withExample(IngestStreamStatus.Running)
 
   implicit lazy val iteratorTypeSchema: JsonSchema[KinesisIngest.IteratorType] = {
     import KinesisIngest.IteratorType
-    val unparameterizedKinesisIteratorSchema: JsonSchema[IteratorType.Unparameterized] =
+    val unparameterizedKinesisIteratorSchema: Enum[IteratorType.Unparameterized] =
       stringEnumeration[IteratorType.Unparameterized](
         Seq(IteratorType.TrimHorizon, IteratorType.Latest)
       )(_.toString)
 
-    val parameterizedKinesisIteratorSchema: JsonSchema[IteratorType.Parameterized] =
-      genericJsonSchema[IteratorType.Parameterized]
+    val parameterizedKinesisIteratorSchema: Tagged[IteratorType.Parameterized] =
+      genericTagged[IteratorType.Parameterized]
 
     // Try the string enumeration first, then try the parameterized versions.
     orFallbackToJsonSchema(unparameterizedKinesisIteratorSchema, parameterizedKinesisIteratorSchema)
@@ -692,27 +692,28 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
   val exampleIngestStreamInfoWithName: IngestStreamInfoWithName =
     exampleIngestStreamInfo.withName("log1-entity-ingest-source")
 
-  implicit lazy val pulsarSubscriptTypeSchema: JsonSchema[PulsarSubscriptionType] =
+  // TODO review which of these are necessary
+  implicit lazy val pulsarSubscriptTypeSchema: Enum[PulsarSubscriptionType] =
     stringEnumeration(PulsarSubscriptionType.values)(_.toString)
   implicit lazy val kafkaSubscriptionSchema: JsonSchema[Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments]] =
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
-  implicit lazy val kafkaSecurityProtocolSchema: JsonSchema[KafkaSecurityProtocol] =
+  implicit lazy val kafkaSecurityProtocolSchema: Enum[KafkaSecurityProtocol] =
     stringEnumeration(KafkaSecurityProtocol.values)(_.name)
-  implicit lazy val kafkaAutoOffsetResetSchema: JsonSchema[KafkaAutoOffsetReset] =
+  implicit lazy val kafkaAutoOffsetResetSchema: Enum[KafkaAutoOffsetReset] =
     stringEnumeration(KafkaAutoOffsetReset.values)(_.name)
-  implicit lazy val kafkaOffsetCommittingSchema: JsonSchema[KafkaOffsetCommitting] =
-    genericJsonSchema[KafkaOffsetCommitting]
-  implicit lazy val wsKeepaliveSchema: JsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
-    genericJsonSchema[WebsocketSimpleStartupIngest.KeepaliveProtocol]
-  implicit lazy val ingestStreamConfigurationSchema: JsonSchema[IngestStreamConfiguration] =
-    genericJsonSchema[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
-  implicit lazy val ingestStreamStatsSchema: JsonSchema[IngestStreamStats] =
-    genericJsonSchema[IngestStreamStats].withExample(exampleIngestStreamInfo.stats)
-  implicit lazy val ingestStreamInfoSchema: JsonSchema[IngestStreamInfo] =
-    genericJsonSchema[IngestStreamInfo].withExample(exampleIngestStreamInfo)
-  implicit lazy val ingestStreamInfoWithNameSchema: JsonSchema[IngestStreamInfoWithName] =
-    genericJsonSchema[IngestStreamInfoWithName].withExample(exampleIngestStreamInfoWithName)
-  implicit lazy val fileIngestModeSchema: JsonSchema[FileIngestMode] =
+  implicit lazy val kafkaOffsetCommittingSchema: Tagged[KafkaOffsetCommitting] =
+    genericTagged[KafkaOffsetCommitting]
+  implicit lazy val wsKeepaliveSchema: Tagged[WebsocketSimpleStartupIngest.KeepaliveProtocol] =
+    genericTagged[WebsocketSimpleStartupIngest.KeepaliveProtocol]
+  implicit lazy val ingestStreamConfigurationSchema: Tagged[IngestStreamConfiguration] =
+    genericTagged[IngestStreamConfiguration].withExample(exampleIngestStreamInfo.settings)
+  implicit lazy val ingestStreamStatsSchema: Record[IngestStreamStats] =
+    genericRecord[IngestStreamStats].withExample(exampleIngestStreamInfo.stats)
+  implicit lazy val ingestStreamInfoSchema: Record[IngestStreamInfo] =
+    genericRecord[IngestStreamInfo].withExample(exampleIngestStreamInfo)
+  implicit lazy val ingestStreamInfoWithNameSchema: Record[IngestStreamInfoWithName] =
+    genericRecord[IngestStreamInfoWithName].withExample(exampleIngestStreamInfoWithName)
+  implicit lazy val fileIngestModeSchema: Enum[FileIngestMode] =
     stringEnumeration(FileIngestMode.values)(_.toString)
 
 }

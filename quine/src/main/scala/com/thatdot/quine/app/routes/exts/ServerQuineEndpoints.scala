@@ -69,7 +69,7 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
     defaultStringJsonSchema.xmap(Symbol.apply)(_.name)
 
   /** Edge direction */
-  implicit lazy val edgeDirectionsSchema: JsonSchema[EdgeDirection] =
+  implicit lazy val edgeDirectionsSchema: Enum[EdgeDirection] =
     stringEnumeration[EdgeDirection](EdgeDirection.values)(_.toString)
 
   implicit lazy val byteArraySchema: JsonSchema[Array[Byte]] =
