@@ -111,6 +111,7 @@ object UiNodeLabel {
 }
 
 @title("Quick Query")
+@unnamed
 @docs("A query that can show up in the context menu brought up by right-clicking a node")
 final case class UiNodeQuickQuery(
   @docs("Condition that a node must satisfy for this query to be in the context menu")
