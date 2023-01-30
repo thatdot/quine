@@ -52,9 +52,6 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
   /** @return sequence number to order events that occur at the same logical time */
   def eventSequence: Long = eventTime & EventSequenceMask
 
-  /** @return time and event sequence numbers (the non-millisecond part of the time) */
-  def timestampAndEventSequence: Long = eventTime & (EventSequenceMask | TimestampSequenceMask)
-
   /** @param logOpt an optional logger. If specified, this will be used to report overflow warnings to the operator
     * @return the next smallest event time
     *
@@ -73,13 +70,6 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
           nextTime.millis
         )
       }
-      if (nextTime.timestampSequence != timestampSequence) {
-        log.warning(
-          "Too many operations on this node caused tickEventSequence to overflow timestampSequence from: {} to: {}",
-          timestampSequence,
-          nextTime.timestampSequence
-        )
-      }
     }
     nextTime
   }
@@ -91,7 +81,12 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
   def largestEventTimeInThisMillisecond: EventTime =
     new EventTime(eventTime | TimestampSequenceMask | EventSequenceMask)
 
-  /** Advance time forward
+  /** Advance time forward.
+    *
+    * Note that it is possible to generate incorrect results here by inputting
+    * newMillis to be < currentMillis. e.g. (10 | 4 |3).tick(false, 9L) -> (9 | 0 |0).
+    *
+    * Callers should wrap this method around a check that tick is >= current, as in ActorClock.
     *
     * @param mustAdvanceLogicalTime must logical time advance? (has anything interesting happened?)
     * @param newMillis new millisecond component
@@ -105,6 +100,10 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
       else timestampSequence + 1
     EventTime(newMillis, timestampSequence = newTimeSequence, eventSequence = 0L)
   }
+
+  /** Print out with separated components */
+  override def toString: String = f"EventTime(${millis}%013d|${timestampSequence}%05d|${eventSequence}%03d)"
+
 }
 object EventTime extends LazyLogging {
 
@@ -157,7 +156,9 @@ object EventTime extends LazyLogging {
     time
   }
 
-  /** Wrap a [[Long]] known to have the right bit-wise structure into an actor timestamp */
+  /** Wrap a [[Long]] known to have the right bit-wise structure into an actor timestamp.
+    *    Note that this is unsafe.
+    */
   @inline
   final def fromRaw(eventTime: Long): EventTime = new EventTime(eventTime)
 
@@ -166,4 +167,5 @@ object EventTime extends LazyLogging {
   val MinValue: EventTime = EventTime.fromRaw(0L)
 
   val MaxValue: EventTime = EventTime.fromRaw(-1)
+
 }
