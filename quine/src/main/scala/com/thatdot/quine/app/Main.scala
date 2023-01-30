@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
-import com.thatdot.quine.app.config.{PersistenceAgentType, QuineConfig}
+import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
@@ -120,7 +120,7 @@ object Main extends App with LazyLogging {
         GraphService(
           persistor = system =>
             new ExceptionWrappingPersistenceAgent(
-              config.store.persistor(config.persistence)(system),
+              PersistenceBuilder.build(config.store, config.persistence)(system),
               system.dispatcher
             ),
           idProvider = config.id.idProvider,

@@ -9,31 +9,22 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import akka.actor.ActorSystem
 
 import com.datastax.oss.driver.api.core.DefaultConsistencyLevel
-import com.typesafe.scalalogging.LazyLogging
 import pureconfig.ConfigConvert
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 
-import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
 
 /** Options for persistence */
-sealed abstract class PersistenceAgentType {
-
-  /** Does the persistor use instance storage */
-  def isLocal: Boolean
+sealed abstract class PersistenceAgentType(val isLocal: Boolean) {
 
   /** Size of the bloom filter, if enabled (not all persistors even support this) */
   def bloomFilterSize: Option[Long]
 
-  /** Construct a persistence agent */
-  def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent
 }
 object PersistenceAgentType {
 
-  case object Empty extends PersistenceAgentType {
-    def isLocal: Boolean = false
+  case object Empty extends PersistenceAgentType(false) {
 
     def bloomFilterSize = None
 
@@ -41,13 +32,9 @@ object PersistenceAgentType {
       new EmptyPersistor(persistenceConfig)
   }
 
-  case object InMemory extends PersistenceAgentType {
-    def isLocal: Boolean = true
-
+  case object InMemory extends PersistenceAgentType(true) {
     def bloomFilterSize = None
 
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent =
-      new InMemoryPersistor(persistenceConfig = persistenceConfig)
   }
 
   final case class RocksDb(
@@ -56,37 +43,7 @@ object PersistenceAgentType {
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType
-      with LazyLogging {
-    def isLocal: Boolean = true
-
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent = {
-      if (createParentDir) {
-        val parentDir = filepath.getAbsoluteFile.getParentFile
-        if (parentDir.mkdirs())
-          logger.warn(s"Configured persistence directory: $parentDir did not exist; created.")
-      }
-      val db =
-        try new RocksDbPersistor(
-          filepath.getAbsolutePath,
-          writeAheadLog,
-          syncAllWrites,
-          new java.util.Properties(),
-          persistenceConfig
-        )
-        catch {
-          case err: UnsatisfiedLinkError =>
-            logger.error(
-              "RocksDB native library could not be loaded. " +
-              "Consider using MapDB instead by specifying `quine.store.type=map-db`",
-              err
-            )
-            sys.exit(1)
-        }
-
-      BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, db, persistenceConfig)
-    }
-  }
+  ) extends PersistenceAgentType(true) {}
 
   final case class MapDb(
     filepath: Option[File],
@@ -95,39 +52,7 @@ object PersistenceAgentType {
     commitInterval: FiniteDuration = 10.seconds,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType {
-    def isLocal: Boolean = true
-
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent = {
-      val interval = if (writeAheadLog) Some(commitInterval) else None
-
-      def dbForPath(dbPath: MapDbPersistor.DbPath) =
-        new MapDbPersistor(dbPath, writeAheadLog, interval, persistenceConfig, Metrics)
-
-      def possiblyShardedDb(basePath: Option[File]) =
-        if (numberPartitions == 1) {
-          dbForPath(basePath match {
-            case None => MapDbPersistor.TemporaryDb
-            case Some(p) => MapDbPersistor.PersistedDb.makeDirIfNotExists(createParentDir, p)
-          })
-        } else {
-          val dbPaths: Vector[MapDbPersistor.DbPath] = basePath match {
-            case None => Vector.fill(numberPartitions)(MapDbPersistor.TemporaryDb)
-            case Some(p) =>
-              val name = p.getName
-              val parent = p.getParent
-
-              Vector.tabulate(numberPartitions) { (idx: Int) =>
-                MapDbPersistor.PersistedDb.makeDirIfNotExists(createParentDir, new File(parent, s"part$idx.$name"))
-              }
-          }
-
-          new ShardedPersistor(dbPaths.map(dbForPath), persistenceConfig)
-        }
-
-      BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, possiblyShardedDb(filepath), persistenceConfig)
-    }
-  }
+  ) extends PersistenceAgentType(true)
 
   val defaultCassandraPort = 9042
   def defaultCassandraAddress: List[InetSocketAddress] =
@@ -150,32 +75,10 @@ object PersistenceAgentType {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType {
-    def isLocal: Boolean = false
-
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent = {
-      val db = new CassandraPersistor(
-        persistenceConfig,
-        keyspace,
-        replicationFactor,
-        readConsistency,
-        writeConsistency,
-        endpoints,
-        localDatacenter,
-        writeTimeout,
-        readTimeout,
-        shouldCreateTables,
-        shouldCreateKeyspace,
-        Some(Metrics),
-        snapshotPartMaxSizeBytes
-      )
-      BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, db, persistenceConfig)
-    }
-  }
+  ) extends PersistenceAgentType(false)
 
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
     import PureconfigInstances._
-
     // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
     @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
       ConfigConvert.viaNonEmptyString[InetSocketAddress](
