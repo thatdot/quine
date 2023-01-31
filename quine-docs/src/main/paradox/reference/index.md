@@ -8,6 +8,7 @@ This section contains the reference documentation for Quine. These documents are
 Please reach out to the team in @link:[Slack](https://quine-io.slack.com/ssb/redirect) if the reference docs do not provide what you are looking for.
 
 @@@index
+
 * @ref:[Configuration](configuration.md)
 * @ref:[Recipes](recipe-ref-manual.md)
 * @ref:[REST API](rest-api.md)
