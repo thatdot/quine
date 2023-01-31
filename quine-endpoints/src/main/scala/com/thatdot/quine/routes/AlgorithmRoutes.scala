@@ -24,7 +24,7 @@ trait AlgorithmRoutes
 
   val walkLength: QueryString[Option[Int]] = qs[Option[Int]](
     "length",
-    docs = Some("maximum length of a walk")
+    docs = Some("Maximum length of a walk. Default: `10`")
   )
 
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
@@ -51,14 +51,14 @@ trait AlgorithmRoutes
 
   val numberOfWalks: QueryString[Option[Int]] = qs[Option[Int]](
     "count",
-    docs = Some("integer for how many random walks from a node to generate")
+    docs = Some("An optional integer for how many random walks from each node to generate. Default: `5`")
   )
 
   val returnParameter: QueryString[Option[Double]] = qs[Option[Double]](
     "return",
     docs = Some(
       "the `p` parameter to determine likelihood of returning to the node just visited: `1/p`  Lower is " +
-      "more likely; but if `0`, never return to previous node. Defaults to `1`."
+      "more likely; but if `0`, never return to previous node. Default: `1`"
     )
   )
 
@@ -66,13 +66,17 @@ trait AlgorithmRoutes
     "in-out",
     docs = Some(
       "the `q` parameter to determine likelihood of visiting a node outside the neighborhood of the" +
-      " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Defaults to `1`."
+      " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`"
     )
   )
 
   val randomSeedOpt: QueryString[Option[String]] = qs[Option[String]](
     name = "seed",
-    docs = Some("Optionally specify a random seed for generating walks")
+    docs = Some(
+      "Optionally specify any string as a random seed for generating walks. This is used to determine all " +
+      "randomness, so providing the same seed will always produce the same random walk. If unset, a new seed is " +
+      "used each time a random choice is needed."
+    )
   )
 
   @unnamed
@@ -135,7 +139,25 @@ trait AlgorithmRoutes
               |multiple columns and rows returned from this query will be concatenated together sequentially into
               |the aggregated walk results.
               |
-              |**The resulting CSV may have rows of varying length.**""".stripMargin
+              |**The resulting CSV may have rows of varying length.**
+              |
+              |The name of the output file is derived from the arguments used to generate it; or a custom file name can
+              |be specified in the API request body. If no custom name is specified, the following values are
+              |concatenated to produce the final file name:
+              |
+              | - the constant prefix: `graph-walk-`
+              | - the timestamp provided in `at-time` or else the current time when run. A trailing `_T` is appended if no timestamp was specified.
+              | - the `length` parameter followed by the constant `x`
+              | - the `count` parameter
+              | - the constant `-q` follow by the number of characters in the supplied `query` (`0` if not specified)
+              | - the `return` parameter followed by the constant `x`
+              | - the `in-out` parameter
+              | - the `seed` parameter or `_` if none was supplied
+              | - the constant suffix `.csv`
+              |
+              | Example file name: `graph-walk-1675122348011_T-10x5-q0-1.0x1.0-_.csv`
+              |
+              | The name of the actual file being written is returned in the API response body.""".stripMargin
           )
         )
         .withTags(List(algorithmTag))

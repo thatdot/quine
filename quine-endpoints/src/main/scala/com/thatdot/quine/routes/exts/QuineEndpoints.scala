@@ -109,7 +109,7 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
 
   final val atTime: QueryString[AtTime] = qs[AtTime](
     "at-time",
-    docs = Some("Timestamp representing the historical moment to query")
+    docs = Some("An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query")
   )
 
   final val reqTimeout: QueryString[Option[FiniteDuration]] = qs[Option[FiniteDuration]](
@@ -123,7 +123,7 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
   final val parallelism: QueryString[Int] = qs[Option[Int]](
     name = "parallelism",
     docs = Some(
-      s"operations to simultaneously write to a backing graph. Defaults to ${IngestRoutes.defaultWriteParallelism}"
+      s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`"
     )
   ).xmap(_.getOrElse(IngestRoutes.defaultWriteParallelism))(Some(_))
 
