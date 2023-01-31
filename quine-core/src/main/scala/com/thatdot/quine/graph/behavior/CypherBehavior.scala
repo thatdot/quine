@@ -6,6 +6,7 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, QueryResults}
 import com.thatdot.quine.graph.messaging.CypherMessage.{
   CheckOtherHalfEdge,
   CypherQueryInstruction,
@@ -16,6 +17,17 @@ import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 
 trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with QuineIdOps with QuineRefOps {
+
+  /** Run a [[CompiledQuery]] on this node's interpreter
+    * NOT THREADSAFE: this closes over and may mutate node state, depending on the [[query]]
+    */
+  def runQuery[Start <: Location](
+    query: CompiledQuery[Start],
+    parameters: Map[String, cypher.Value]
+  ): QueryResults = {
+    val nodeInterpreter = this: CypherInterpreter[Location.OnNode]
+    query.run(parameters, Map.empty, nodeInterpreter)
+  }
 
   def cypherBehavior(instruction: CypherQueryInstruction): Unit = instruction match {
     case qp @ QueryPackage(query, parameters, qc, _) =>

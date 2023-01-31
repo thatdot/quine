@@ -359,7 +359,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
               val cypherResultRows =
                 if (shouldRetry) atLeastOnceCypherQuery.stream(value)(graph)
-                else compiledQuery.run(Map(parameter -> value))(graph).results
+                else graph.cypherOps.query(compiledQuery, atTime = None, parameters = Map(parameter -> value)).results
 
               cypherResultRows
                 .map { resultRow =>

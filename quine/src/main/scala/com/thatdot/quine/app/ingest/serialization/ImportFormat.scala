@@ -14,6 +14,7 @@ import io.circe.jawn.CirceSupportParser
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 
 /** Describes formats that Quine can import
@@ -76,7 +77,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   override val label: String = "Cypher " + query
 
   // TODO: think about error handling of failed compilation
-  val compiled: cypher.CompiledQuery = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
+  val compiled: CompiledQuery[Location.Anywhere] = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
   lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "ingest-query")
 
   if (compiled.query.canContainAllNodeScan) {

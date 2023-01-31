@@ -46,7 +46,7 @@ class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.Any
   private def startQuery() = {
     log.debug(s"SkipOptimizingActor is beginning execution of query. AtTime: ${atTime}; query: $QueryFamily")
     graph.cypherOps
-      .query(QueryFamily, parameters = Parameters.empty, atTime = atTime)
+      .continueQuery(QueryFamily, parameters = Parameters.empty, atTime = atTime)
       .watchTermination() { case (mat, completesWithStream) =>
         /** Register a termination hook. This can be read roughly as "when the last element of the queryFamily query is
           * produced, shut down this SkipOptimizingActor". What we really want is "when the last element of the

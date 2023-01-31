@@ -50,7 +50,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
   )
 
   // utility to normalize a CompiledQuery by removing as many [[Expr.Parameters]] as possible -- ie, the fixed parameters
-  private def normalize(compiledQuery: CompiledQuery) = {
+  private def normalize[Start <: Location](compiledQuery: CompiledQuery[Start]): CompiledQuery[Start] = {
     val fixedParamsToSubstitute: Map[Expr.Parameter, Value] = compiledQuery.fixedParameters.params.zipWithIndex.map {
       case (paramValue, index) =>
         // unfixedParameters always precede fixedParameters, so the Expr.Parameter referring to a fixed parameters

@@ -1,7 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import com.thatdot.quine.graph.CypherOpsGraph
-import com.thatdot.quine.model.Milliseconds
+import akka.NotUsed
 
 /** Packages together all the information about a query that can be run
   *
@@ -11,9 +10,9 @@ import com.thatdot.quine.model.Milliseconds
   * @param fixedParameters vector of parameters already specified
   * @param initialColumns columns that will need to initially be in scope
   */
-final case class CompiledQuery(
+final case class CompiledQuery[+Start <: Location](
   queryText: String,
-  query: Query[Location.Anywhere],
+  query: Query[Start],
   unfixedParameters: Seq[String],
   fixedParameters: Parameters,
   initialColumns: Seq[String]
@@ -34,23 +33,20 @@ final case class CompiledQuery(
       )
   }
 
-  /** Run this query on a graph
+  /** To start a query, use [[graph.cypherOps.query]] or [[graph.cypherOps.queryFromNode]] instead
+    * Run this query on a graph
     *
     * @param parameters          constants referred to in the query
     * @param initialColumnValues variables that should be in scope for the query
-    * @param atTime              moment in time to query ([[None]] represents the present)
     * @param initialInterpreter  Some(interpreter that will be used to run the [[query]]) or None to use the
     *                            default AnchoredInterpreter for the provided atTime. Note that certain queries may
     *                            cause other interpreters to be invoked as the query propagates through the graph
     * @return query and its results
     */
-  def run(
-    parameters: Map[String, Value] = Map.empty,
-    initialColumnValues: Map[String, Value] = Map.empty,
-    atTime: Option[Milliseconds] = None,
-    initialInterpreter: Option[CypherInterpreter[Location.Anywhere]] = None
-  )(implicit
-    graph: CypherOpsGraph
+  private[graph] def run(
+    parameters: Map[String, Value],
+    initialColumnValues: Map[String, Value],
+    initialInterpreter: CypherInterpreter[Start]
   ): QueryResults = {
 
     /* Construct the runtime vector of parameters by combining the ones that
@@ -76,14 +72,11 @@ final case class CompiledQuery(
       )
     }
 
-    val results = graph.cypherOps.query(
-      query,
-      params,
-      atTime,
-      initialContext,
-      bypassSkipOptimization = false,
-      initialInterpreter = initialInterpreter
-    )
+    val results = initialInterpreter
+      .interpret(query, initialContext)(params)
+      .mapMaterializedValue(_ => NotUsed)
+      .named("cypher-query-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString))
+
     QueryResults(this, resultContexts = results)
   }
 }

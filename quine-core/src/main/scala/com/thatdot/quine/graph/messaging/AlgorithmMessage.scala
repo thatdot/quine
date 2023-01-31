@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.messaging
 
-import com.thatdot.quine.graph.cypher.CompiledQuery
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.model.{HalfEdge, QuineId}
 
 /** Top-level type of all algorithms-related messages relayed through the graph
@@ -24,7 +24,7 @@ object AlgorithmMessage {
     * @param replyTo      Where to send the final result.
     */
   final case class GetRandomWalk(
-    collectQuery: CompiledQuery,
+    collectQuery: CompiledQuery[Location.OnNode],
     length: Int,
     returnParam: Double,
     inOutParam: Double,
@@ -47,7 +47,7 @@ object AlgorithmMessage {
     * @param reportTo         delivery final answer here.
     */
   final case class AccumulateRandomWalk(
-    collectQuery: CompiledQuery,
+    collectQuery: CompiledQuery[Location.OnNode],
     remainingLength: Int,
     neighborhood: Set[QuineId],
     returnParam: Double,

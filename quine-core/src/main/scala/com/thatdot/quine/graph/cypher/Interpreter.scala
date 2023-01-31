@@ -280,7 +280,7 @@ trait OnNodeInterpreter
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] =
-    graph.cypherOps.query(query, parameters, atTime, context)
+    graph.cypherOps.continueQuery(query, parameters, atTime, context)
 
   final private[cypher] def interpretArgumentEntry(
     query: ArgumentEntry,

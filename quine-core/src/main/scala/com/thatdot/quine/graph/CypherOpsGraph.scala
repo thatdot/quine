@@ -70,13 +70,17 @@ trait CypherOpsGraph extends BaseGraph {
      */
     private val currentMomentInterpreter = new ThoroughgoingInterpreter(CypherOpsGraph.this)
 
-    /** Issue a compiled Cypher query for a point in time
+    /** To start a query, use [[cypherOps.query]] or [[CypherBehavior.runQuery()]] instead
+      *
+      * Continue processing a [sub]query against the graph. This is used for 2 reasons:
+      * 1) to go from an OnNode interpreter to a graph-managed interpreter
+      * 2) to change between graph-managed interpreters mid-query
       *
       * @param query                  compiled Cypher query
       * @param parameters             constants in the query
       * @param atTime                 historical moment to query
       * @param context                variables already bound going into the query
-      * @param bypassSkipOptimization if true and the query+atTime are otherwise elligible for skip optimizations (@see
+      * @param bypassSkipOptimization if true and the query+atTime are otherwise eligible for skip optimizations (see
       *                               [[SkipOptimizingActor]]), the query will be run without using any available
       *                               [[SkipOptimizingActor]] for orchestration
       * @param initialInterpreter     Some(interpreter that will be used to run the provided Query) or None to use the
@@ -84,7 +88,7 @@ trait CypherOpsGraph extends BaseGraph {
       *                               cause other interpreters to be invoked as the query propagates through the graph
       * @return rows of results
       */
-    def query(
+    private[graph] def continueQuery(
       query: Query[Location.Anywhere],
       parameters: Parameters = Parameters.empty,
       atTime: Option[Milliseconds] = None,
@@ -106,6 +110,33 @@ trait CypherOpsGraph extends BaseGraph {
         .interpret(query, context)(parameters)
         .mapMaterializedValue(_ => NotUsed)
         .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
+    }
+
+    /** Issue a query against the graph, allowing the graph to pick an interpreter
+      *
+      * The query must be a [[Location.Anywhere]] query (i.e., must not depend directly on node-local information).
+      * Queries that contain node-entering subqueries (e.g., AnchoredEntry) are allowed.
+      *
+      * @param query                  compiled Cypher query
+      * @param atTime                 historical moment to query
+      * @param parameters             constants in the query
+      * @param bypassSkipOptimization if true and the query+atTime are otherwise eligible for skip optimizations (see
+      *                               [[SkipOptimizingActor]]), the query will be run without using any available
+      *                               [[SkipOptimizingActor]] for orchestration
+      */
+    def query(
+      query: CompiledQuery[Location.Anywhere],
+      atTime: Option[Milliseconds],
+      parameters: Map[String, cypher.Value],
+      bypassSkipOptimization: Boolean = false
+    ): QueryResults = {
+      requiredGraphIsReady()
+      val interpreter: CypherInterpreter[Location.Anywhere] = atTime match {
+        case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
+        case None => currentMomentInterpreter
+      }
+
+      query.run(parameters, Map.empty, interpreter)
     }
   }
 }

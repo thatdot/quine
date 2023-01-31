@@ -9,11 +9,12 @@ import akka.stream.scaladsl.Source
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
+import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, ShardNotAvailableException, cypher}
 import com.thatdot.quine.persistor.WrappedPersistorException
 
-/** A Cypher query that will be retried until the entire query succeeds
+/** A Cypher query that will be retried against the graph until the entire query succeeds
   *
   * @param query               the compiled Cypher query to run at least once
   * @param cypherParameterName the name of the Cypher parameter left free for values in [[query]]
@@ -23,7 +24,7 @@ import com.thatdot.quine.persistor.WrappedPersistorException
   *                            query interpreter started
   */
 final case class AtLeastOnceCypherQuery(
-  query: cypher.CompiledQuery,
+  query: cypher.CompiledQuery[Location.Anywhere],
   cypherParameterName: String,
   debugName: String = "unnamed",
   startupRetryDelay: FiniteDuration = 100.millis
@@ -47,9 +48,7 @@ final case class AtLeastOnceCypherQuery(
     // If a recoverable error occurs, instead return a Source that will fail after a small delay
     // so that recoverWithRetries (below) can retry the query
     def bestEffortSource: Source[Vector[cypher.Value], NotUsed] =
-      try query
-        .run(parameters = Map(cypherParameterName -> value))(graph)
-        .results
+      try graph.cypherOps.query(query, atTime = None, parameters = Map(cypherParameterName -> value)).results
       catch {
         case RetriableQueryFailure(e) =>
           // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above

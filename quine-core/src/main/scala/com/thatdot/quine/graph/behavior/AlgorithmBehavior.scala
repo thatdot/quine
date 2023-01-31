@@ -7,18 +7,19 @@ import akka.stream.scaladsl.Sink
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Expr, Location}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, QueryResults}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.model.QuineId
 
-trait AlgorithmBehavior
-    extends BaseNodeActor
-    with cypher.OnNodeInterpreter
-    with QuineIdOps
-    with QuineRefOps
-    with LazyLogging {
+trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazyLogging {
+
+  /** Dependency: run a cypher query on this node (implemented by [[CypherBehavior.runQuery]]) */
+  def runQuery[Start <: Location](
+    query: CompiledQuery[Start],
+    parameters: Map[String, cypher.Value]
+  ): QueryResults
 
   protected def algorithmBehavior(command: AlgorithmCommand): Unit = command match {
     case GetRandomWalk(collectQuery, depth, returnParam, inOutParam, seedOpt, replyTo) =>
@@ -66,17 +67,8 @@ trait AlgorithmBehavior
           edgeChoiceWeight -> e
       }.toList
 
-      val selfInterpreter: CypherInterpreter[Location.OnNode] = this
-
-      def getCypherWalkValues(query: CompiledQuery): Future[List[String]] =
-        query
-          .run(
-            Map("n" -> Expr.Bytes(qid)),
-            Map.empty,
-            atTime,
-            Some(selfInterpreter)
-          )(graph)
-          .results
+      def getCypherWalkValues[QueryStart <: Location](query: CompiledQuery[QueryStart]): Future[List[String]] =
+        runQuery(query, Map("n" -> Expr.Bytes(qid))).results
           .mapConcat { row =>
             row.flatMap {
               case Expr.List(v) => v.toList.map(x => Expr.toQuineValue(x).pretty)

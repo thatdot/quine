@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import akka.stream.scaladsl.{Sink, Source}
 import akka.util.{ByteString, Timeout}
 
-import com.thatdot.quine.graph.cypher.CompiledQuery
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage.{GetRandomWalk, RandomWalkResult}
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
 import com.thatdot.quine.model.{Milliseconds, QuineId}
@@ -57,9 +57,9 @@ trait AlgorithmGraph extends BaseGraph {
       * preprocessing and superior sampling efficiency of random walks. Note that by setting πv,x to be a function
       * of the preceding node in the walk t, the random walks are 2nd order Markovian.
       */
-    def randomWalk(
+    def randomWalk[QueryStart <: Location](
       startingNode: QuineId,
-      collectQuery: CompiledQuery,
+      collectQuery: CompiledQuery[QueryStart],
       length: Int,
       returnParam: Double,
       inOutParam: Double,
@@ -96,9 +96,9 @@ trait AlgorithmGraph extends BaseGraph {
       * @return              The materialized result of running the saveSink. This will be a future representing the
       *                      completion of the file write operation.
       */
-    def saveRandomWalks[A](
-      saveSink: Sink[ByteString, Future[A]],
-      collectQuery: CompiledQuery,
+    def saveRandomWalks[SinkMat, QueryStart <: Location](
+      saveSink: Sink[ByteString, Future[SinkMat]],
+      collectQuery: CompiledQuery[QueryStart],
       length: Int,
       walksPerNode: Int,
       returnParam: Double,
@@ -108,7 +108,7 @@ trait AlgorithmGraph extends BaseGraph {
       parallelism: Int = 16
     )(implicit
       timeout: Timeout
-    ): Future[A] =
+    ): Future[SinkMat] =
       enumerateAllNodeIds()
         .flatMapConcat(qid => Source(0 until walksPerNode).map(qid -> _))
         .mapAsync(parallelism) { case (qid, i) =>

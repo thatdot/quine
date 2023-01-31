@@ -3,9 +3,14 @@ package com.thatdot.quine.graph.cypher
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-/** Packages together all the information about a query that is running */
+/** Packages together all the information about a query that is running
+  *
+  * @param compiled       the query that produced these results: note that the starting location of the query is left
+  *                       generic, as it does not matter for the query's results
+  * @param resultContexts the underlying Source of QueryContexts (rows) emitted by the query
+  */
 final case class QueryResults(
-  compiled: CompiledQuery,
+  compiled: CompiledQuery[_ <: Location],
   private val resultContexts: Source[QueryContext, NotUsed]
 ) {
 

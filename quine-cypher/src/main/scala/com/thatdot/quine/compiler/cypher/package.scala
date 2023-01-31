@@ -208,7 +208,7 @@ package object cypher {
     initialColumns: Seq[(String, symbols.CypherType)] = Seq.empty,
     customParsingContext: Option[(InputPosition, SourceText)] = None,
     cache: Boolean = true
-  ): CompiledQuery = {
+  ): CompiledQuery[Location.Anywhere] = {
     val uncompiled = UncompiledQueryIdentity(queryText, unfixedParameters, initialColumns)
 
     val (compiled, fixedParameters) =
@@ -308,8 +308,9 @@ package object cypher {
     val initialCompiledColumns: Seq[(String, symbols.CypherType)] = initialColumns.toSeq.map { case (col, value) =>
       (col, OpenCypherUdf.typeToOpenCypherType(value.typ))
     }
-    compile(queryText, parameters.keys.toSeq, initialCompiledColumns, cache = cacheCompilation)
-      .run(parameters, initialColumns, atTime)(graph)
+
+    val compiledQuery = compile(queryText, parameters.keys.toSeq, initialCompiledColumns, cache = cacheCompilation)
+    graph.cypherOps.query(compiledQuery, atTime, parameters)
   }
 
   /** The openCypher `front-end` pipeline that will parse, validate, and
@@ -373,11 +374,11 @@ package object cypher {
     * @see [[openCypherPipeline]]
     */
   private val openCypherStandingPipeline: Transformer[BaseContext, BaseState, BaseState] = {
+    import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
     import org.opencypher.v9_0.frontend.phases._
     import org.opencypher.v9_0.rewriting.Deprecations
-    import org.opencypher.v9_0.util.StepSequencer
     import org.opencypher.v9_0.rewriting.rewriters.normalizeWithAndReturnClauses
-    import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
+    import org.opencypher.v9_0.util.StepSequencer
 
     val supportedFeatures = Array[SemanticFeature](SemanticFeature.CorrelatedSubQueries)
 
@@ -456,7 +457,7 @@ package object cypher {
 
         import java.lang.reflect.{InvocationHandler, Method, Proxy}
 
-        import scala.reflect.{classTag, ClassTag}
+        import scala.reflect.{ClassTag, classTag}
 
         def newMonitor[T <: AnyRef: ClassTag](tags: String*): T = {
           val cls: Class[_] = classTag[T].runtimeClass

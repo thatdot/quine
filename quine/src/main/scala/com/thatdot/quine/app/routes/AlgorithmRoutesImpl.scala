@@ -17,8 +17,7 @@ import endpoints4s.Invalid
 
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.AlgorithmGraph
-import com.thatdot.quine.graph.cypher.Location.OnNode
-import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Query}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Location}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.AlgorithmRoutes
 
@@ -32,15 +31,11 @@ trait AlgorithmRoutesImpl
 
   implicit def timeout: Timeout
 
-  private def compileWalkQuery(queryOpt: Option[String]): CompiledQuery = {
+  private def compileWalkQuery(queryOpt: Option[String]): CompiledQuery[Location.OnNode] = {
     val queryText = queryOpt.fold(AlgorithmGraph.defaults.walkQuery)(AlgorithmGraph.defaults.walkPrefix + _)
-    val compiledQuery: CompiledQuery = cypher.compile(queryText, unfixedParameters = List("n"))
+    val compiledQuery = cypher.compile(queryText, unfixedParameters = List("n"))
     require(compiledQuery.isReadOnly, s"Query must conclusively be a read-only query. Provided: $queryText")
-    require(!compiledQuery.canContainAllNodeScan, "Query must not scan all nodes. Provided: $queryText")
-    require(
-      compiledQuery.query.isInstanceOf[Query[OnNode]],
-      "Query must be runnable from a specific node. Provided: $queryText"
-    )
+    require(!compiledQuery.canContainAllNodeScan, s"Query must not scan all nodes. Provided: $queryText")
     compiledQuery
   }
 
