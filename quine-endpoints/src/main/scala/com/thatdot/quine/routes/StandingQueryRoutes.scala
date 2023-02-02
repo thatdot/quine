@@ -589,7 +589,7 @@ trait StandingQueryRoutes
         url = standing / "control" / "propagate" /? (sleepingToo & wakeUpParallelism),
         entity = emptyRequest
       ),
-      response = ok(emptyResponse),
+      response = accepted(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Propagate Standing Queries"))
         .withTags(List(standingTag))
