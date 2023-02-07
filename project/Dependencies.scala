@@ -27,7 +27,7 @@ object Dependencies {
   val guavaV = "31.1-jre"
   val ioniconsV = "2.0.1"
   val jnrPosixV = "3.1.16"
-  val jqueryV = "3.6.1"
+  val jqueryV = "3.6.3"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.4.5"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
