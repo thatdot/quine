@@ -322,7 +322,7 @@ final class QuineApp(graph: GraphService)
             ()
           }
           streamDefWithControl.terminated = ingestControl.termSignal
-          streamDefWithControl.registerTerminationHooks(name, logger)(graph.system.dispatcher)
+          streamDefWithControl.registerTerminationHooks(name)(graph.system.dispatcher)
           ingestStreams += name -> streamDefWithControl
 
           val thisMemberId = 0

@@ -17,7 +17,7 @@ import akka.util.Timeout
 import akka.{Done, NotUsed}
 
 import com.codahale.metrics.Metered
-import com.typesafe.scalalogging.Logger
+import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes._
@@ -54,7 +54,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   var restored: Boolean = false,
   var close: () => Unit = () => (),
   var terminated: Future[Done] = Future.failed(new Exception("Stream never started"))
-) {
+) extends LazyLogging {
   def status(implicit materializer: Materializer): Future[IngestStreamStatus] =
     terminated.value match {
       case Some(Success(Done)) => Future.successful(IngestStreamStatus.Completed)
@@ -89,9 +89,8 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   /** Register hooks to freeze metrics and log once the ingest stream terminates
     *
     * @param name name of the ingest stream
-    * @param logger where to log about completion
     */
-  def registerTerminationHooks(name: String, logger: Logger)(implicit ec: ExecutionContext): Unit =
+  def registerTerminationHooks(name: String)(ec: ExecutionContext): Unit =
     terminated.onComplete {
       case Failure(err) =>
         val now = Instant.now
@@ -107,7 +106,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
         logger.info(
           s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
         )
-    }
+    }(ec)
 }
 
 final private[thatdot] case class IngestMetrics(
