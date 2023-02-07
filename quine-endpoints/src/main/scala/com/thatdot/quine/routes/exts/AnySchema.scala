@@ -1,12 +1,13 @@
 package com.thatdot.quine.routes.exts
 
-import ujson.Value
+import io.circe.{Decoder, Encoder, Json}
+import ujson.circe.CirceJson
 
 /** Add a schema for untyped JSON */
 trait AnySchema extends endpoints4s.algebra.JsonSchemas {
 
   /** Schema for any JSON value. Use this to duck under `endpoints` :) */
-  def anySchema(format: Option[String]): JsonSchema[ujson.Value]
+  def anySchema(format: Option[String]): JsonSchema[Json]
 
   /** Schema for an optional value
     *
@@ -15,28 +16,22 @@ trait AnySchema extends endpoints4s.algebra.JsonSchemas {
     */
   def optionalSchema[A](implicit schema: JsonSchema[A]): JsonSchema[Option[A]]
 }
+trait CirceJsonAnySchema extends AnySchema with endpoints4s.circe.JsonSchemas {
+  def anySchema(format: Option[String]): JsonSchema[Json] = JsonSchema(
+    Encoder.instance(identity),
+    Decoder.instance(c => Right(c.value))
+  )
 
-/** Implementation of [[AnySchema]] for `ujson`-backed schemas */
-trait UjsonAnySchema extends AnySchema with endpoints4s.ujson.JsonSchemas {
-
-  def anySchema(format: Option[String]): JsonSchema[Value] = new JsonSchema[ujson.Value] {
-    val encoder = (value: ujson.Value) => value
-    val decoder = (value: ujson.Value) => endpoints4s.Valid(value)
-  }
-
-  def optionalSchema[A](implicit schema: JsonSchema[A]): JsonSchema[Option[A]] = new JsonSchema[Option[A]] {
-    val encoder = _.fold[ujson.Value](ujson.Null)(schema.encoder.encode)
-    val decoder = {
-      case ujson.Null => endpoints4s.Valid(None)
-      case other => schema.decoder.decode(other).map(Some(_))
-    }
-  }
+  def optionalSchema[A](implicit schema: JsonSchema[A]): JsonSchema[Option[A]] = JsonSchema(
+    _.fold(Json.Null)(schema.encoder.apply),
+    json => if (json.value.isNull) Right(None) else schema.decoder(json).map(Some(_))
+  )
 }
 
 /** Implementation of [[AnySchema]] for OpenAPI schemas */
 trait OpenApiAnySchema extends AnySchema with endpoints4s.openapi.JsonSchemas {
 
-  def anySchema(format: Option[String]): JsonSchema[Value] = {
+  def anySchema(format: Option[String]): JsonSchema[Json] = {
 
     val docs = DocumentedJsonSchema.Primitive(
       name = "", // TODO: really we want to just omit this, but =.=
@@ -44,9 +39,9 @@ trait OpenApiAnySchema extends AnySchema with endpoints4s.openapi.JsonSchemas {
       example = None
     )
 
-    val schema = new ujsonSchemas.JsonSchema[ujson.Value] {
-      val encoder = (value: ujson.Value) => value
-      val decoder = (value: ujson.Value) => endpoints4s.Valid(value)
+    val schema = new ujsonSchemas.JsonSchema[Json] {
+      val encoder = CirceJson.transform(_, ujson.Value)
+      val decoder = (value: ujson.Value) => endpoints4s.Valid(value.transform(CirceJson))
     }
 
     new JsonSchema(schema, docs)

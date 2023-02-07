@@ -9,8 +9,7 @@ trait AlgorithmRoutes
     extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
-    with exts.QuineEndpoints
-    with exts.AnySchema {
+    with exts.QuineEndpoints {
 
   private val api = path / "api" / "v1"
   private val algorithmsPrefix = api / "algorithm"

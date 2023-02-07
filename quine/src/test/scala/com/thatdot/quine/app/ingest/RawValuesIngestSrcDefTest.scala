@@ -17,8 +17,8 @@ import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
 import akka.util.ByteString
 
+import io.circe.Json
 import org.scalatest.funsuite.AnyFunSuite
-import ujson.Obj
 
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
@@ -79,7 +79,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
 
     //val probe: TestSubscriber.Probe[T] = src.toMat(TestSink.probe)(Keep.both).run()
 
-    def values(ct: Int): Seq[Obj] = (1 to ct).map(i => ujson.Obj(ingest.name -> i.toString))
+    def values(ct: Int): Seq[Json] = (1 to ct).map(i => Json.obj(ingest.name -> Json.fromString(i.toString)))
 
     def writeValues(ct: Int): Unit = values(ct).foreach { obj =>
       ingest.write(s"$obj\n".getBytes())
@@ -143,9 +143,9 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
       val decoded = ContentDecoder.ZlibDecoder.decode(ContentDecoder.Base64Decoder.decode(encoded))
       assert(decoded sameElements expected)
       ctx.ingest.write(encoded)
-      val next: (Try[Value], ByteString) = ctx.probe.requestNext(5.seconds)
-      assert(next._1 == Success(Value.fromJson(obj)))
-      assert(next._2 == ByteString(encoded))
+      val (value, bytes) = ctx.probe.requestNext(5.seconds)
+      assert(value === Success(Value.fromJson(obj)))
+      assert(bytes === ByteString(encoded))
     }
     ctx.close()
   }
@@ -156,10 +156,10 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
 
     //  Values are properly deserialized from json objects.
     ctx.values(10).foreach { obj =>
-      ctx.ingest.write(s"$obj\n".getBytes())
-      val next: (Try[Value], ByteString) = ctx.probe.requestNext(5.seconds)
-      assert(next._1 == Success(Value.fromJson(obj)))
-      assert(next._2 == ByteString(obj.toString()))
+      ctx.ingest.write((obj.noSpaces + '\n').getBytes)
+      val (value, bytes) = ctx.probe.requestNext(5.seconds)
+      assert(value === Success(Value.fromJson(obj)))
+      assert(bytes === ByteString(obj.noSpaces))
     }
 
     /* Values that are not valid json properly return Failures */

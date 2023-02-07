@@ -63,7 +63,16 @@ object QuineSettings {
       case _ =>
         Seq.empty
     }),
-    javacOptions ++= Seq("--release", "11")
+    javacOptions ++= Seq("--release", "11"),
+    // Circe is binary compatible between 0.13 and 0.14
+    // Circe projects from other orgs sometimes pull in older versions of circe (0.13):
+    // ujson-circe and circe-config
+    // This prevents sbt from erroring with:
+    // "found version conflict(s) in library dependencies; some are suspected to be binary incompatible"
+    libraryDependencySchemes ++= Seq(
+      "io.circe" %% "circe-core" % VersionScheme.Always,
+      "io.circe" %% "circe-parser" % VersionScheme.Always
+    )
   )
 
   /* Settings for building a Scala.js/React webapp using Slinky

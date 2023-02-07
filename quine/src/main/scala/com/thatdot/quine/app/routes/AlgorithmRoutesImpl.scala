@@ -15,6 +15,7 @@ import akka.util.Timeout
 
 import endpoints4s.Invalid
 
+import com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.AlgorithmGraph
 import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Location}
@@ -24,7 +25,7 @@ import com.thatdot.quine.routes.AlgorithmRoutes
 trait AlgorithmRoutesImpl
     extends AlgorithmRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
   implicit def graph: AlgorithmGraph

@@ -5,6 +5,8 @@ addCommandAlias("scala212", "++" + scalaV212)
 addCommandAlias("scala213", "++" + scalaV213)
 addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
 
+//ThisBuild / evictionErrorLevel := Level.Warn
+
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
@@ -170,9 +172,11 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .settings(`scala 2.12 to 2.13`)
   .settings(
     libraryDependencies ++= Seq(
-      "org.endpoints4s" %%% "algebra" % endpoints4sDefaultV,
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
+      "org.endpoints4s" %%% "json-schema-circe" % "2.3.0",
+      "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
+      "com.lihaoyi" %% "ujson-circe" % ujsonV,
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test
     )
   )
@@ -227,6 +231,7 @@ lazy val `quine`: Project = project
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
+      "io.circe" %% "circe-config" % "0.8.0",
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
@@ -245,10 +250,10 @@ lazy val `quine`: Project = project
       // All akka-http module version numbers need to match exactly, or else it
       // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
       "com.typesafe.akka" %% "akka-http-xml" % akkaHttpV,
+      "de.heikoseeberger" %% "akka-http-circe" % "1.39.2",
+      "io.circe" %% "circe-yaml-v12" % "0.14.3-RC3",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
-      "org.endpoints4s" %% "algebra-json-schema" % endpoints4sDefaultV,
-      "org.endpoints4s" %% "json-schema-generic" % endpoints4sDefaultV,
       "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
       "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
       // for the akka-streams integration

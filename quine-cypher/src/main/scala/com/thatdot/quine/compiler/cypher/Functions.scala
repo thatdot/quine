@@ -14,8 +14,10 @@ import java.util.{Locale, TimeZone}
 import scala.collection.concurrent
 import scala.util.{Random, Try}
 
+import cats.syntax.either._
 import com.google.common.hash.Hashing
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.parser.parse
 import org.apache.commons.codec.DecoderException
 import org.apache.commons.codec.digest.MurmurHash2
 import org.apache.commons.codec.net.PercentCodec
@@ -480,7 +482,7 @@ object CypherParseJson extends UserDefinedFunction {
   val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
-    case Vector(Expr.Str(jsonStr)) => Value.fromJson(ujson.read(jsonStr))
+    case Vector(Expr.Str(jsonStr)) => Value.fromJson(parse(jsonStr).valueOr(throw _))
     case other => throw wrongSignature(other)
   }
 }

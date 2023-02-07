@@ -108,7 +108,7 @@ class CypherJsonInputFormat(query: String, parameter: String) extends CypherImpo
 
   override def importBytes(data: Array[Byte]): Try[cypher.Value] =
     // deserialize bytes into JSON without going through string
-    new CirceSupportParser(None, false).parseFromByteArray(data).map(cypher.Value.fromCirceJson)
+    new CirceSupportParser(None, false).parseFromByteArray(data).map(cypher.Value.fromJson)
 
 }
 

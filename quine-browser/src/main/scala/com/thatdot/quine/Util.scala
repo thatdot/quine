@@ -2,6 +2,8 @@ package com.thatdot.quine
 
 import scala.scalajs.js
 
+import io.circe.Json
+import io.circe.Printer.{noSpaces, spaces2}
 import org.scalajs.dom.intl.NumberFormat
 import slinky.core.facade.ReactElement
 import slinky.web.html.pre
@@ -29,15 +31,12 @@ object Util {
     * @param value
     * @return
     */
-  def renderJsonResultValue(value: ujson.Value): ReactElement = {
+  def renderJsonResultValue(value: Json): ReactElement = {
     // use pretty printing when there is an object within the top 2 levels
-    val indent = value match {
-      case ujson.Obj(_) => true // root entity is an object
-      case ujson.Arr(xs) => xs.exists(_.objOpt.nonEmpty) //root entity is an array containing an object
-      case _ => false
-    }
-    if (indent) pre(ujson.write(value, 2))
-    else ujson.write(value, -1)
+    val indent = value.isObject || // root entity is an object
+      value.asArray.exists(_.exists(_.isObject)) //root entity is an array containing an object
+    if (indent) pre(spaces2.print(value))
+    else noSpaces.print(value)
   }
 
   val UploadIcon = "ion-android-upload"

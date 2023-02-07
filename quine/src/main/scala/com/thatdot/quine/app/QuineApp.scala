@@ -48,7 +48,7 @@ final class QuineApp(graph: GraphService)
     with QueryUiConfigurationSchemas
     with StandingQuerySchemas
     with IngestSchemas
-    with com.thatdot.quine.routes.exts.UjsonAnySchema
+    with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazyLogging {
 
   import QuineApp._

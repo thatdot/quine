@@ -83,7 +83,7 @@
     <logger name="thatdot.Interactive" level="OFF" additivity="false">
         <appender-ref ref="consoleSimple"/>
     </logger>
-    <logger name="com.thatdot" level="${thatdot.loglevel:-OFF}"/>
+    <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
     <root level="${root.loglevel:-OFF}">
         <appender-ref ref="asyncConsole"/>
     </root>

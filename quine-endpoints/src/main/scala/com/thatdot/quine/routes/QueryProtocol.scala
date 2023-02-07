@@ -1,6 +1,6 @@
 package com.thatdot.quine.routes
 
-import ujson.Value
+import io.circe.Json
 
 /** Type of messages sent as part of the WebSocket query protocol
   *
@@ -71,7 +71,7 @@ object QueryProtocolMessage {
     queryId: Int,
     query: String,
     sort: QuerySort,
-    parameters: Map[String, ujson.Value],
+    parameters: Map[String, Json],
     language: QueryLanguage,
     atTime: Option[Long],
     maxResultBatch: Option[Int],
@@ -125,7 +125,7 @@ object QueryProtocolMessage {
   final case class TabularResults(
     queryId: Int,
     columns: Seq[String],
-    results: Seq[Seq[ujson.Value]]
+    results: Seq[Seq[Json]]
   ) extends ServerAsyncNotificationMessage[Nothing]
 
   /** Batch of non-tabular results to a query
@@ -135,7 +135,7 @@ object QueryProtocolMessage {
     */
   final case class NonTabularResults(
     queryId: Int,
-    results: Seq[ujson.Value]
+    results: Seq[Json]
   ) extends ServerAsyncNotificationMessage[Nothing]
 
   /** Batch of node results to a query
@@ -180,12 +180,12 @@ object QueryProtocolMessage {
 
 }
 
-trait QueryProtocolMessageSchema extends endpoints4s.generic.JsonSchemas with exts.UjsonAnySchema with QuerySchemas {
+trait QueryProtocolMessageSchema extends endpoints4s.generic.JsonSchemas with QuerySchemas {
 
   import QueryProtocolMessage._
 
   implicit val clientMessageSchema: Tagged[ClientMessage] = {
-    implicit val anyJson: JsonSchema[Value] = anySchema(None)
+    implicit val anyJson: JsonSchema[Json] = anySchema(None)
     implicit lazy val queryLanguageSchema: Enum[QueryLanguage] =
       stringEnumeration[QueryLanguage](Seq(QueryLanguage.Gremlin, QueryLanguage.Cypher))(_.toString)
     implicit lazy val querySortSchema: Enum[QuerySort] =
@@ -194,7 +194,7 @@ trait QueryProtocolMessageSchema extends endpoints4s.generic.JsonSchemas with ex
   }
 
   implicit def serverMessageSchema: Tagged[ServerMessage[Id]] = {
-    implicit val anyJson: JsonSchema[Value] = anySchema(None)
+    implicit val anyJson: JsonSchema[Json] = anySchema(None)
     genericTagged[ServerMessage[Id]]
   }
 }

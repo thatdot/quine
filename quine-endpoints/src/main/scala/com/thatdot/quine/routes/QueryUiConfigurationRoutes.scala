@@ -1,6 +1,7 @@
 package com.thatdot.quine.routes
 
 import endpoints4s.generic.{docs, title, unnamed}
+import io.circe.Json
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
 
@@ -32,13 +33,13 @@ final case class UiNodePredicate(
   @docs("Properties the node must have to apply this style") propertyKeys: Vector[String],
   @docs("Properties with known constant values the node must have to apply this style") knownValues: Map[
     String,
-    ujson.Value
+    Json
   ],
   @docs("Label the node must have to apply this style") dbLabel: Option[String]
 ) {
   def matches(node: UiNode[String]): Boolean = {
     def hasRightLabel = dbLabel.forall(_ == node.label)
-    def hasRightKeys = propertyKeys.forall(node.properties.contains(_))
+    def hasRightKeys = propertyKeys.forall(node.properties.contains)
     def hasRightValues = knownValues.forall { case (k, v) =>
       node.properties.get(k).fold(false)(v == _)
     }
@@ -143,7 +144,7 @@ trait QueryUiConfigurationSchemas extends endpoints4s.generic.JsonSchemas with e
     genericRecord[SampleQuery]
 
   implicit final lazy val uiNodePredicateSchema: Record[UiNodePredicate] = {
-    implicit lazy val uiNodePredicateValueSchema: JsonSchema[ujson.Value] = anySchema(None)
+    implicit lazy val uiNodePredicateValueSchema: JsonSchema[Json] = anySchema(None)
     genericRecord[UiNodePredicate]
   }
   implicit final lazy val uiNodeLabelSchema: Tagged[UiNodeLabel] =

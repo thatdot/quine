@@ -5,9 +5,11 @@ import scala.concurrent._
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.scalajs.js.|
-import scala.util._
+import scala.util.{Failure, Random, Success}
 
-import endpoints4s.{Invalid, Valid}
+import cats.data.Validated
+import endpoints4s.Invalid
+import io.circe.Json
 import org.scalajs.dom
 import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
@@ -20,6 +22,7 @@ import slinky.web.html.{`type` => _, _}
 import com.thatdot.quine.Util.{escapeHtml, renderJsonResultValue}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.webapp.History
+import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components._
 import com.thatdot.{visnetwork => vis}
 
@@ -184,10 +187,8 @@ import com.thatdot.{visnetwork => vis}
     val uiLabel = labelDescOpt match {
       case Some(UiNodeLabel.Constant(lbl)) => lbl
       case Some(UiNodeLabel.Property(key, prefix)) if node.properties.contains(key) =>
-        val propVal = node.properties(key) match {
-          case ujson.Str(str) => str
-          case other => ujson.write(other)
-        }
+        val prop = node.properties(key)
+        val propVal = prop.asString getOrElse prop.noSpaces
         prefix.getOrElse("") + propVal
       case _ => node.label
     }
@@ -258,7 +259,7 @@ import com.thatdot.{visnetwork => vis}
         val strProps = node.properties.toList
           .sortBy(_._1)
           .map { case (keyStr, valueJson) =>
-            s"${escapeHtml(keyStr)} : ${escapeHtml(ujson.write(valueJson))}"
+            s"${escapeHtml(keyStr)} : ${escapeHtml(valueJson.noSpaces)}"
           }
 
         (idProp :: hostProp ++ strProps).mkString("<br>")
@@ -436,7 +437,7 @@ import com.thatdot.{visnetwork => vis}
       // Deserialize
       val jsonStr = e.target.asInstanceOf[dom.FileReader].result.asInstanceOf[String]
       HistoryJsonSchema.decode(jsonStr) match {
-        case Valid(hist) =>
+        case Validated.Valid(hist) =>
           val msg = """Uploading this history will erase your existing one.
                       |
                       |Do you wish to continue?""".stripMargin
@@ -447,8 +448,8 @@ import com.thatdot.{visnetwork => vis}
             )
           }
 
-        case Invalid(errs) =>
-          val msg = s"Malformed JSON history file:${errs.mkString("\n  ", "\n  ", "")}"
+        case Validated.Invalid(errs) =>
+          val msg = s"Malformed JSON history file:${errs.toList.mkString("\n  ", "\n  ", "")}"
           setState(_.copy(bottomBar = Some(MessageBarContent(pre(msg), "pink"))))
       }
     }
@@ -506,11 +507,9 @@ import com.thatdot.{visnetwork => vis}
     case false => QueryLanguage.Gremlin
   }
 
-  private def mergeEndpointErrorsIntoFuture[A](fut: Future[Either[Invalid, A]]): Future[A] =
-    fut.flatMap {
-      case Left(Invalid(errs)) => Future.failed(new Exception(errs.mkString("\n")))
-      case Right(success) => Future.successful(success)
-    }
+  private def invalidToException(invalid: Invalid): Exception = new Exception(invalid.errors mkString "\n")
+  private def mergeEndpointErrorsIntoFuture[A](fut: Future[Either[endpoints4s.Invalid, A]]): Future[A] =
+    fut.flatMap(x => Future.fromTry(x.left.map(invalidToException).toTry))
 
   /** Issue a query that returns nodes and get back results in one final batch
     *
@@ -520,7 +519,7 @@ import com.thatdot.{visnetwork => vis}
     query: String,
     atTime: Option[Long],
     language: QueryLanguage,
-    parameters: Map[String, ujson.Value]
+    parameters: Map[String, Json]
   ): Future[Option[Seq[UiNode[String]]]] =
     props.queryMethod match {
       case QueryMethod.Restful =>
@@ -549,7 +548,7 @@ import com.thatdot.{visnetwork => vis}
     query: String,
     atTime: Option[Long],
     language: QueryLanguage,
-    parameters: Map[String, ujson.Value]
+    parameters: Map[String, Json]
   ): Future[Option[Seq[UiEdge[String]]]] =
     props.queryMethod match {
       case QueryMethod.Restful =>
@@ -565,7 +564,7 @@ import com.thatdot.{visnetwork => vis}
         val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
         for {
           client <- getWebSocketClient()
-          queryId <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
+          _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
           results <- edgeCallback.future
         } yield results
     }
@@ -579,8 +578,8 @@ import com.thatdot.{visnetwork => vis}
     query: String,
     atTime: Option[Long],
     language: QueryLanguage,
-    parameters: Map[String, ujson.Value],
-    updateResults: Either[Seq[ujson.Value], CypherQueryResult] => Unit
+    parameters: Map[String, Json],
+    updateResults: Either[Seq[Json], CypherQueryResult] => Unit
   ): Future[Option[Unit]] =
     (props.queryMethod, language) match {
       case (QueryMethod.Restful, QueryLanguage.Gremlin) =>
@@ -603,10 +602,10 @@ import com.thatdot.{visnetwork => vis}
         val textCallback: QueryCallbacks = language match {
           case QueryLanguage.Gremlin =>
             new QueryCallbacks.NonTabularCallbacks {
-              private var buffered = Seq.empty[ujson.Value]
+              private var buffered = Seq.empty[Json]
               private var cancelled = false
 
-              def onNonTabularResults(batch: Seq[ujson.Value]): Unit = {
+              def onNonTabularResults(batch: Seq[Json]): Unit = {
                 buffered ++= batch
                 updateResults(Left(buffered))
               }
@@ -631,10 +630,10 @@ import com.thatdot.{visnetwork => vis}
 
           case QueryLanguage.Cypher =>
             new QueryCallbacks.TabularCallbacks {
-              private var buffered = Seq.empty[Seq[ujson.Value]]
+              private var buffered = Seq.empty[Seq[Json]]
               private var cancelled = false
 
-              def onTabularResults(columns: Seq[String], batch: Seq[Seq[ujson.Value]]): Unit = {
+              def onTabularResults(columns: Seq[String], batch: Seq[Seq[Json]]): Unit = {
                 buffered ++= batch
                 updateResults(Right(CypherQueryResult(columns, buffered)))
               }
@@ -710,9 +709,9 @@ import com.thatdot.{visnetwork => vis}
 
     if (uiQueryType == UiQueryType.Text) {
 
-      def updateResults(result: Either[Seq[ujson.Value], CypherQueryResult]): Unit = {
+      def updateResults(result: Either[Seq[Json], CypherQueryResult]): Unit = {
         val rendered: ReactElement = result match {
-          case Left(results) => pre(renderJsonResultValue(ujson.Arr(results: _*)))
+          case Left(results) => pre(renderJsonResultValue(Json.fromValues(results)))
           case Right(results) => CypherResultsTable(results)
         }
         setState(_.copy(bottomBar = Some(MessageBarContent(rendered, "lightgreen"))))
@@ -798,8 +797,8 @@ import com.thatdot.{visnetwork => vis}
             }
             val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
             val queryParameters = Map(
-              "new" -> ujson.Arr.from(newNodes.map(ujson.Str(_))),
-              "all" -> ujson.Arr.from((existingNodes ++ newNodes).map(ujson.Str(_)))
+              "new" -> Json.fromValues(newNodes.map(Json.fromString)),
+              "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString))
             )
             edgeQuery(query, state.atTime, props.edgeQueryLanguage, queryParameters)
           }

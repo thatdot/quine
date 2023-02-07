@@ -11,7 +11,9 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
+import cats.syntax.either._
 import com.typesafe.scalalogging.StrictLogging
+import io.circe.parser.parse
 import org.opencypher.v9_0.ast
 import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.util.StepSequencer.Condition
@@ -263,7 +265,7 @@ object JsonLoad extends UserDefinedProcedure {
       scala.io.Source
         .fromURL(urlOrPath)
         .getLines()
-        .map((line: String) => Vector(Value.fromJson(ujson.read(line))))
+        .map((line: String) => Vector(Value.fromJson(parse(line).valueOr(throw _))))
     )
   }
 }

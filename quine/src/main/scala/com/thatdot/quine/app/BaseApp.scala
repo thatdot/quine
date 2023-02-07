@@ -1,12 +1,11 @@
 package com.thatdot.quine.app
 
-import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
 
 import scala.concurrent.Future
-import scala.util.Try
 
-import endpoints4s.{Codec, Invalid, Valid, Validated}
+import endpoints4s.{Invalid, Valid, Validated}
+import io.circe.jawn
 
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx}
 
@@ -16,7 +15,7 @@ import com.thatdot.quine.graph.{BaseGraph, MemberIdx}
   *
   * @param graph reference to the underlying graph
   */
-abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
+abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
 
   /** Store a key-value pair that is relevant only for one particular app instance (i.e. "local")
     *
@@ -44,7 +43,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
     * @return The encoded value as a byte array
     */
   final protected def encodeMetaData[A](value: A)(implicit schema: JsonSchema[A]): Array[Byte] =
-    Codec.sequentially(BaseApp.utf8Codec)(schema.stringCodec).encode(value)
+    schema.encoder(value).noSpaces.getBytes(UTF_8)
 
   /** Retrieve a value associated with a key which was stored for the local app
     *
@@ -86,7 +85,8 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
     * @return The encoded value as a byte array
     */
   final protected def decodeMetaData[A](jsonBytes: Array[Byte])(implicit schema: JsonSchema[A]): Validated[A] =
-    Codec.sequentially(BaseApp.utf8Codec)(schema.stringCodec).decode(jsonBytes)
+    Validated.fromEither(jawn.decodeByteArray(jsonBytes)(schema.decoder).left.map(err => Seq(err.toString)))
+  //Codec.sequentially(BaseApp.utf8Codec)(schema.stringCodec).decode(jsonBytes)
 
   /** A convenience method for unwrapping the decoded (validated) deserialized value. Throws an exception if invalid.
     *
@@ -137,21 +137,6 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.ujson.JsonSchemas {
         val defaulted = defaultValue
         storeGlobalMetaData(key, defaulted).map(_ => defaulted)(graph.system.dispatcher)
     }(graph.system.dispatcher)
-}
-
-object BaseApp {
-
-  /** Codec for UTF-8 strings */
-  private val utf8Codec = new Codec[Array[Byte], String] {
-    def encode(str: String): Array[Byte] = str.getBytes(UTF_8)
-    def decode(bytes: Array[Byte]): Validated[String] = Validated.fromTry(Try {
-
-      /** Use a decoder object so that invalid data will result in a [caught] exception rather than silently being
-        * converted to replacement characters
-        */
-      UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString
-    })
-  }
 }
 
 class MetaDataDeserializationException(msg: String) extends RuntimeException(msg)

@@ -23,7 +23,7 @@ import com.thatdot.quine.routes._
 trait LiteralRoutesImpl
     extends LiteralRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
   private def toEdgeDirection(dir: model.EdgeDirection): EdgeDirection = dir match {
@@ -48,7 +48,7 @@ trait LiteralRoutesImpl
    */
   lazy val nodeInternalStateSchema: Record[NodeInternalState] = {
     implicit val quineValueSchema: JsonSchema[QuineValue] =
-      anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toJson)
+      anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toCirceJson)
     implicit val propertyValueSchema: JsonSchema[PropertyValue] =
       quineValueSchema.xmap(PropertyValue.apply)(_.deserialized.get)
     implicit val eventTimeSchema: JsonSchema[EventTime] =
@@ -102,7 +102,7 @@ trait LiteralRoutesImpl
   }
 
   protected val literalDebugRoute: Route = literalDebug.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
-    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder.encode)(graph.shardDispatcherEC)
+    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder(_))(graph.shardDispatcherEC)
   }
 
   private val literalEdgesGetRoute = literalEdgesGet.implementedByAsync {

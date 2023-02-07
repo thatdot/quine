@@ -207,7 +207,7 @@ object SvgSnapshot {
 
       val properties = queryUiNode.uiNode.properties.toVector
         .sortBy(_._1)
-        .map { case (k, v) => s"$k: ${ujson.write(v)}" }
+        .map { case (k, v) => s"$k: ${v.noSpaces}" }
         .mkString("\u000A")
 
       elements += makeNodeIcon(

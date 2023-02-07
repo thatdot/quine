@@ -4,6 +4,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
+import io.circe.Json
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
 
@@ -23,7 +24,7 @@ final case class UiNode[Id](
   @docs("node id") id: Id,
   @docs("index of the cluster host responsible for this node") hostIndex: Int,
   @docs("categorical classification") label: String,
-  @docs("properties on the node") properties: Map[String, ujson.Value]
+  @docs("properties on the node") properties: Map[String, Json]
 )
 
 /** Edges in the UI
@@ -59,7 +60,7 @@ final case class UiEdge[Id](
         |""".stripMargin)
 final case class CypherQueryResult(
   @docs("Return values of the Cypher query") columns: Seq[String],
-  @docs("Rows of results") results: Seq[Seq[ujson.Value]]
+  @docs("Rows of results") results: Seq[Seq[Json]]
 )
 
 /** A (possibly-parameterized) cypher query
@@ -69,7 +70,7 @@ final case class CypherQueryResult(
 @title("Cypher Query")
 final case class CypherQuery(
   @docs("Text of the query to execute") text: String,
-  @docs("Parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
+  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty
 )
 
 /** A (possibly-parameterized) gremlin query
@@ -79,7 +80,7 @@ final case class CypherQuery(
 @title("Gremlin Query")
 final case class GremlinQuery(
   @docs("Text of the query to execute") text: String,
-  @docs("Parameters the query expects, if any") parameters: Map[String, ujson.Value] = Map.empty
+  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty
 )
 
 trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with exts.IdSchema {
@@ -93,9 +94,9 @@ trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema w
           hostIndex = 0,
           label = "Harry",
           properties = Map(
-            "first_name" -> ujson.Str("Harry"),
-            "last_name" -> ujson.Str("Potter"),
-            "birth_year" -> ujson.Num(1980)
+            "first_name" -> Json.fromString("Harry"),
+            "last_name" -> Json.fromString("Potter"),
+            "birth_year" -> Json.fromInt(1980)
           )
         )
       )
@@ -148,7 +149,7 @@ trait QueryUiRoutes
       request = post(
         url = query / "cypher" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequestWithExample[CypherQuery](
-          CypherQuery("RETURN $x+$y AS three", Map(("x" -> ujson.Num(1)), ("y" -> ujson.Num(2))))
+          CypherQuery("RETURN $x+$y AS three", Map(("x" -> Json.fromInt(1)), ("y" -> Json.fromInt(2))))
         ).orElse(textRequestWithExample("RETURN 1 + 2 AS three"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
@@ -156,7 +157,7 @@ trait QueryUiRoutes
         .orElse(
           ok(
             jsonResponseWithExample[CypherQueryResult](
-              example = CypherQueryResult(Seq("three"), Seq(Seq(ujson.Num(3))))
+              example = CypherQueryResult(Seq("three"), Seq(Seq(Json.fromInt(3))))
             )
           )
         ),
@@ -173,7 +174,7 @@ trait QueryUiRoutes
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH (n) RETURN n LIMIT $lim",
-            Map(("lim" -> ujson.Num(1)))
+            Map(("lim" -> Json.fromInt(1)))
           )
         ).orElse(textRequestWithExample("MATCH (n) RETURN n LIMIT 1"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
@@ -194,7 +195,7 @@ trait QueryUiRoutes
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH ()-[e]->() RETURN e LIMIT $lim",
-            Map(("lim" -> ujson.Num(1)))
+            Map(("lim" -> Json.fromInt(1)))
           )
         ).orElse(textRequestWithExample("MATCH ()-[e]->() RETURN e LIMIT 1"))
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
@@ -208,13 +209,13 @@ trait QueryUiRoutes
         .withTags(List(cypherTag))
     )
 
-  val gremlinPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[ujson.Value]]] = {
+  val gremlinPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[Json]]] = {
     implicit val queryResult = anySchema(Some("gremlin JSON"))
     endpoint(
       request = post(
         url = query / "gremlin" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> ujson.Num(1)))
+          GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().valueMap().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
@@ -223,12 +224,12 @@ trait QueryUiRoutes
       response = customBadRequest("runtime error in the query")
         .orElse(
           ok(
-            jsonResponseWithExample[Seq[ujson.Value]](
+            jsonResponseWithExample[Seq[Json]](
               example = Seq(
-                ujson.Obj(
-                  "first_name" -> ujson.Str("Harry"),
-                  "last_name" -> ujson.Str("Potter"),
-                  "birth_year" -> ujson.Num(1980)
+                Json.obj(
+                  "first_name" -> Json.fromString("Harry"),
+                  "last_name" -> Json.fromString("Potter"),
+                  "birth_year" -> Json.fromInt(1980)
                 )
               )
             )
@@ -248,7 +249,7 @@ trait QueryUiRoutes
       request = post(
         url = query / "gremlin" / "nodes" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().limit(lim)", Map("lim" -> ujson.Num(1)))
+          GremlinQuery("g.V().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
@@ -268,7 +269,7 @@ trait QueryUiRoutes
       request = post(
         url = query / "gremlin" / "edges" /? (atTime & reqTimeout),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> ujson.Num(1)))
+          GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().outE().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
             if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)

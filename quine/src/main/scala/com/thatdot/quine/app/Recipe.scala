@@ -4,18 +4,19 @@ import java.io.File
 import java.net.HttpURLConnection.{HTTP_MOVED_PERM, HTTP_MOVED_TEMP}
 import java.net.{HttpURLConnection, MalformedURLException, URL, URLEncoder}
 
-import scala.collection.Iterable
 import scala.util.Using
 import scala.util.control.Exception.catching
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits._
 import endpoints4s.generic.docs
+import io.circe.Error.showError
 import ujson.Obj
+import ujson.circe.CirceJson
 
 import com.thatdot.quine.app.yaml.parseToJson
 import com.thatdot.quine.routes._
-import com.thatdot.quine.routes.exts.UjsonAnySchema
+import com.thatdot.quine.routes.exts.CirceJsonAnySchema
 
 import StandingQueryResultOutputUserDef._
 
@@ -43,12 +44,12 @@ final case class Recipe(
 final case class StatusQuery(cypherQuery: String)
 
 private object RecipeSchema
-    extends endpoints4s.ujson.JsonSchemas
+    extends endpoints4s.circe.JsonSchemas
     with endpoints4s.generic.JsonSchemas
     with IngestSchemas
     with StandingQuerySchemas
     with QueryUiConfigurationSchemas
-    with UjsonAnySchema {
+    with CirceJsonAnySchema {
 
   implicit lazy val printQuerySchema: Record[StatusQuery] =
     genericRecord[StatusQuery]
@@ -62,9 +63,14 @@ object Recipe {
   import RecipeSchema._
 
   def fromJson(json: ujson.Value): Either[Seq[String], Recipe] = for {
+    // TODO: convert this stuff to Circe
     jsonObj <- json.objOpt.map(ujson.Obj(_)) toRight Seq("Recipe must be an object, got: " + json)
+    // Can use https://github.com/circe/circe/pull/1117 for this:
     withValidatedFieldNames <- validateFieldNames(jsonObj)
-    recipe <- recipeSchema.decoder.decode(withValidatedFieldNames).toEither
+    recipe <- json
+      .transform(CirceJson)
+      .as[Recipe](recipeSchema.decoder)
+      .leftMap(e => Seq(showError.show(e)))
     validatedRecipe <- isCurrentVersion(recipe)
   } yield validatedRecipe
 

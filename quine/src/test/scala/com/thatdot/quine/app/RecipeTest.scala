@@ -75,7 +75,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     assert(
       loadYamlString("version: foo").left.value ==
         List(
-          """Invalid integer value: "foo""""
+          "DecodingFailure at .version: Int"
         )
     )
   }

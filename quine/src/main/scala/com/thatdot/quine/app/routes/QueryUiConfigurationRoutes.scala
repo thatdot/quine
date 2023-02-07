@@ -3,12 +3,13 @@ package com.thatdot.quine.app.routes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 
+import com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
 import com.thatdot.quine.routes.QueryUiConfigurationRoutes
 
 trait QueryUiConfigurationRoutesImpl
     extends QueryUiConfigurationRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
   protected val serviceState: QueryUiConfigurationState

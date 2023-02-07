@@ -1,7 +1,8 @@
 package com.thatdot.quine.webapp.queryui
 
-import endpoints4s.Validated
-import ujson.Value
+import cats.data.ValidatedNel
+import io.circe.parser.decodeAccumulating
+import io.circe.{Error, Json}
 
 import com.thatdot.quine.routes.{UiEdge, UiNode, exts}
 import com.thatdot.quine.webapp.History
@@ -79,8 +80,8 @@ object QueryUiEvent {
 }
 
 /** Serialization format for history */
-object HistoryJsonSchema extends endpoints4s.generic.JsonSchemas with exts.UjsonAnySchema {
-  implicit val anyJson: JsonSchema[Value] = anySchema(None)
+object HistoryJsonSchema extends endpoints4s.generic.JsonSchemas with exts.CirceJsonAnySchema {
+  implicit val anyJson: JsonSchema[Json] = anySchema(None)
   implicit val uiNodeSchema: Record[UiNode[String]] = genericRecord[UiNode[String]]
   implicit val uiEdgeSchema: Record[UiEdge[String]] = genericRecord[UiEdge[String]]
   implicit val nodePositionsSchema: Record[QueryUiEvent.NodePosition] =
@@ -90,8 +91,8 @@ object HistoryJsonSchema extends endpoints4s.generic.JsonSchemas with exts.Ujson
     genericRecord[History[QueryUiEvent]]
 
   def encode(history: History[QueryUiEvent]): String =
-    ujson.write(historySchema.encoder.encode(history))
+    historySchema.encoder(history).noSpaces
 
-  def decode(jsonStr: String): Validated[History[QueryUiEvent]] =
-    historySchema.decoder.decode(ujson.read(jsonStr))
+  def decode(jsonStr: String): ValidatedNel[Error, History[QueryUiEvent]] =
+    decodeAccumulating(jsonStr)(historySchema.decoder)
 }

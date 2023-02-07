@@ -7,6 +7,7 @@ import akka.http.scaladsl.server.{Directives, Route}
 import akka.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.Json
 import org.webjars.WebJarAssetLocator
 
 import com.thatdot.quine.app.BuildInfo
@@ -30,7 +31,7 @@ class QuineAppRoutes(
     with QueryUiConfigurationState
     with StandingQueryStore
     with IngestStreamState,
-  val currentConfig: ujson.Value,
+  val currentConfig: Json,
   val timeout: Timeout
 ) extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -42,7 +43,7 @@ class QuineAppRoutes(
     with IngestRoutesImpl
     with StandingQueryRoutesImpl
     with exts.ServerEntitiesWithExamples
-    with com.thatdot.quine.routes.exts.UjsonAnySchema
+    with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazyLogging {
 
   val version = BuildInfo.version

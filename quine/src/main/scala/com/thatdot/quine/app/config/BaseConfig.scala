@@ -1,30 +1,23 @@
 package com.thatdot.quine.app.config
 
-import java.io.PrintWriter
+import java.nio.file.{Files, Path}
 
-import com.typesafe.config.{ConfigRenderOptions, ConfigValue}
+import cats.syntax.either._
+import com.typesafe.config.{Config, ConfigRenderOptions}
+import io.circe
+import io.circe.Json
 
 trait BaseConfig {
 
-  def configVal: ConfigValue
+  def configVal: Config
 
   /** @return JSON representation of the current config */
-  def loadedConfigJson: ujson.Value = {
-
-    // See Javadocs of `ConfigRenderOptions` about options for producing valid JSON
-    val renderOpts = ConfigRenderOptions
-      .defaults()
-      .setOriginComments(false)
-      .setComments(false)
-      .setJson(true)
-
-    val configStr = configVal.render(renderOpts)
-    ujson.read(configStr)
-  }
+  def loadedConfigJson: Json =
+    circe.config.parser.parse(configVal).valueOr(throw _)
 
   /** @return HOCON representation of the current config */
-  def loadedConfigHocon: String = configVal.render(
-    ConfigRenderOptions.defaults().setOriginComments(false).setJson(false)
+  def loadedConfigHocon: String = configVal.root render (
+    ConfigRenderOptions.defaults.setOriginComments(false).setJson(false)
   )
 
   /** Write the config out to a file
@@ -32,8 +25,7 @@ trait BaseConfig {
     * @param path file path at which to write the config file
     */
   def writeConfig(path: String): Unit = {
-    val writer = new PrintWriter(path)
-    writer.println(loadedConfigJson.render(indent = 2))
-    writer.close()
+    Files.writeString(Path.of(path), loadedConfigJson.spaces2)
+    ()
   }
 }

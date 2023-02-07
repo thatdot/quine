@@ -33,7 +33,7 @@ object QuineValue {
   def apply(v: Int): QuineValue = Integer(v.toLong)
   def apply(v: Floating#JvmType): QuineValue = Floating(v)
   def apply(v: Float): QuineValue = Floating(v.toDouble)
-  def apply(v: True.JvmType): QuineValue = if (v) True else False
+  def apply(v: True.JvmType): QuineValue = fromBoolean(v)
   def apply(v: Null.JvmType): QuineValue = Null
   def apply(v: Bytes#JvmType): QuineValue = Bytes(v)
   def apply(v: Vector[QuineValue]): QuineValue = List(v)
@@ -43,6 +43,7 @@ object QuineValue {
     idProvider: QuineIdProvider.Aux[CustomIdType]
   ): QuineValue = Id(v)
 
+  def fromBoolean(b: Boolean): QuineValue = if (b) True else False
   final case class Str(string: String) extends QuineValue {
     type JvmType = String
 
@@ -183,27 +184,23 @@ object QuineValue {
     *
     * {{{
     * val roundtripped = fromJson(_).compose(toJson(_))
-    * forAll { (json: ujson.Value) =>
+    * forAll { (json: Json) =>
     *   roundtripped(json) == json
     * }
     * }}}
     *
     * @see [[com.thatdot.quine.graph.cypher.Value.fromJson]]
-    * @param jsonV json value to decode
+    * @param json json value to decode
     * @return decoded Quine value
     */
-  def fromJson(jsonV: ujson.Value): QuineValue = jsonV match {
-    case ujson.Null => QuineValue.Null
-    case ujson.Str(s) => QuineValue.Str(s)
-    case ujson.False => QuineValue.False
-    case ujson.True => QuineValue.True
-
-    // Numbers are entirely ambiguous. We go with Longs when whole, Doubles otherwise. Works when you squint.
-    case ujson.Num(x) => if (x.isWhole) QuineValue.Integer(x.toLong) else QuineValue.Floating(x)
-
-    case ujson.Arr(jvs) => QuineValue.List(jvs.view.map(fromJson).toVector)
-    case ujson.Obj(jkvs) => QuineValue.Map(jkvs.view.mapValues(fromJson).toMap)
-  }
+  def fromJson(json: Json): QuineValue = json.fold(
+    QuineValue.Null,
+    QuineValue.fromBoolean,
+    num => num.toLong.fold[QuineValue](QuineValue.Floating(num.toDouble))(QuineValue.Integer(_)),
+    QuineValue.Str,
+    jsonVals => QuineValue.List(jsonVals map fromJson),
+    jsonObj => QuineValue.Map(jsonObj.toMap.view.mapValues(fromJson))
+  )
 
   /** Encode a Quine value into JSON
     *

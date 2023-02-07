@@ -12,8 +12,10 @@ import akka.stream._
 import akka.stream.scaladsl._
 import akka.{Done, NotUsed}
 
+import cats.syntax.either._
 import com.typesafe.scalalogging.LazyLogging
-import endpoints4s.{Codec, Invalid, Valid}
+import io.circe
+import io.circe.{Decoder, Encoder}
 
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.gremlin.QuineGremlinException
@@ -56,8 +58,8 @@ trait WebSocketQueryProtocolServer
 
   import QueryProtocolMessage._
 
-  private[this] val clientMessageCodec: Codec[String, ClientMessage] = clientMessageSchema.stringCodec
-  private[this] val serverMessageCodec: Codec[String, ServerMessage[Id]] = serverMessageSchema.stringCodec
+  implicit private[this] val clientMessageDecoder: Decoder[ClientMessage] = clientMessageSchema.decoder
+  private[this] val serverMessageEncoder: Encoder[ServerMessage[Id]] = serverMessageSchema.encoder
 
   /** Protocol flow
     *
@@ -138,7 +140,7 @@ trait WebSocketQueryProtocolServer
 
           FlowShape(
             clientMessages.in,
-            responseAndResultMerge.out.map(m => ws.TextMessage(serverMessageCodec.encode(m))).outlet
+            responseAndResultMerge.out.map(m => ws.TextMessage(serverMessageEncoder(m).noSpaces)).outlet
           )
         }
       )
@@ -151,11 +153,10 @@ trait WebSocketQueryProtocolServer
     * @return deserialized client message or error
     */
   private[this] def deserializeClientTextMessage(message: String): Either[MessageError, ClientMessage] =
-    clientMessageCodec.decode(message) match {
-      case Valid(clientMessage) => Right(clientMessage)
-      case Invalid(errors) =>
-        val msg = "Failed to deserialize client message:\n" + errors.mkString("\n")
-        Left(QueryProtocolMessage.MessageError(msg))
+    // TODO: switch back to accumulating decoder?
+    circe.parser.decode(message).leftMap { error =>
+      val msg = "Failed to deserialize client message:\n" + circe.Error.showError.show(error)
+      QueryProtocolMessage.MessageError(msg)
     }
 
   /** Turn an exception into a string to send back to the client

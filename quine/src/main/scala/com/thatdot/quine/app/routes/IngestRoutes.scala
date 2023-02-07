@@ -18,6 +18,7 @@ import akka.{Done, NotUsed}
 
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.Json
 
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes._
@@ -50,7 +51,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   settings: Conf,
   metrics: IngestMetrics,
   valve: Future[ValveSwitch],
-  var optWs: Option[(Sink[ujson.Value, NotUsed], IngestMeter)] = None,
+  var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
   var restored: Boolean = false,
   var close: () => Unit = () => (),
   var terminated: Future[Done] = Future.failed(new Exception("Stream never started"))
@@ -143,7 +144,7 @@ final private[thatdot] case class IngestMetrics(
 trait IngestRoutesImpl
     extends IngestRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
   implicit def timeout: Timeout

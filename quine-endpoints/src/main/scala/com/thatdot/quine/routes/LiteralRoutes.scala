@@ -2,6 +2,7 @@ package com.thatdot.quine.routes
 
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
+import io.circe.Json
 
 /* TODO:
  *
@@ -150,7 +151,7 @@ trait LiteralRoutes
         .withTags(List(literalTag))
     )
 
-  final val literalDebug: Endpoint[(Id, AtTime), ujson.Value] =
+  final val literalDebug: Endpoint[(Id, AtTime), Json] =
     endpoint(
       request = get(literal / "debug" /? atTime),
       response = ok(jsonResponse(anySchema(None))),

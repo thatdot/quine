@@ -5,6 +5,7 @@ import scala.util.Try
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import endpoints4s.{Valid, Validated}
+import io.circe.Json
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
 
@@ -129,10 +130,10 @@ trait AdministrationRoutes
         .withTags(List(adminTag))
     )
 
-  final def config(configExample: ujson.Value): Endpoint[Unit, ujson.Value] =
+  final def config(configExample: Json): Endpoint[Unit, Json] =
     endpoint(
       request = get(admin / "config"),
-      response = ok(jsonResponseWithExample[ujson.Value](configExample)(anySchema(None))),
+      response = ok(jsonResponseWithExample[Json](configExample)(anySchema(None))),
       docs = EndpointDocs()
         .withSummary(Some("Running Configuration"))
         .withDescription(

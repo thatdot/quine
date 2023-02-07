@@ -1,11 +1,18 @@
 package com.thatdot.quine.routes
 
+//import endpoints4s.ujson.JsonSchemas
+
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 
-import endpoints4s.{Codec, Invalid, Valid}
+import cats.data.Validated
+import endpoints4s.circe.JsonSchemas
+import io.circe.parser.decodeAccumulating
+import io.circe.{Decoder, Encoder, Json}
 import org.scalajs.dom
 import org.scalajs.dom.console
+
+import com.thatdot.quine.routes.exts.CirceJsonAnySchema
 
 /** Client to run queries (streaming results, cancellation, concurrently) over a WebSocket
   *
@@ -17,12 +24,14 @@ class WebSocketQueryClient(
   val webSocket: dom.WebSocket,
   val clientName: String = "WebSocketQueryClient"
 ) extends QueryProtocolMessageSchema
-    with exts.NoopIdSchema {
+    with JsonSchemas
+    with exts.NoopIdSchema
+    with CirceJsonAnySchema {
 
   import QueryProtocolMessage._
 
-  private val clientMessageCodec: Codec[String, ClientMessage] = clientMessageSchema.stringCodec
-  private val serverMessageCodec: Codec[String, ServerMessage[Id]] = serverMessageSchema.stringCodec
+  private val clientMessageEncoder: Encoder[ClientMessage] = clientMessageSchema.encoder
+  implicit private val serverMessageDecoder: Decoder[ServerMessage[Id]] = serverMessageSchema.decoder
 
   /* Every time we send a query to the backend, we also add it to this map. Then, when we get back
    * results, we use the data in this map to decide what to do with those results. Finally, when
@@ -52,10 +61,10 @@ class WebSocketQueryClient(
   private def onMessage(event: dom.MessageEvent): Unit = {
     val serverMessage: ServerMessage[Id] = event.data match {
       case message: String =>
-        serverMessageCodec.decode(message) match {
-          case Valid(serverMessage) => serverMessage
-          case Invalid(errors) =>
-            console.error(s"$clientName: could not decode '$message' (${errors.mkString(" ")}")
+        decodeAccumulating(message) match {
+          case Validated.Valid(serverMessage) => serverMessage
+          case Validated.Invalid(errors) =>
+            console.error(s"$clientName: could not decode '$message' (${errors.toList.mkString(" ")}")
             return
         }
       case other =>
@@ -164,7 +173,7 @@ class WebSocketQueryClient(
     pendingMessages.enqueue(runQuery)
 
     nextQueryId += 1
-    webSocket.send(clientMessageCodec.encode(runQuery))
+    webSocket.send(clientMessageEncoder(runQuery).noSpaces)
     Right(queryId)
   }
 
@@ -181,7 +190,7 @@ class WebSocketQueryClient(
     val cancelQuery = CancelQuery(queryId.id)
     pendingMessages.enqueue(cancelQuery)
 
-    webSocket.send(clientMessageCodec.encode(cancelQuery))
+    webSocket.send(clientMessageEncoder(cancelQuery).noSpaces)
     Right(())
   }
 }
@@ -203,7 +212,7 @@ final case class QueryId(id: Int) extends AnyVal
   */
 final case class StreamingQuery(
   query: String,
-  parameters: Map[String, ujson.Value],
+  parameters: Map[String, Json],
   language: QueryLanguage,
   atTime: Option[Long],
   maxResultBatch: Option[Int],
@@ -324,7 +333,7 @@ final object QueryCallbacks {
       * @param columns columns in the result
       * @param batchOfRows batch of rows
       */
-    def onTabularResults(columns: Seq[String], batchOfRows: Seq[Seq[ujson.Value]]): Unit
+    def onTabularResults(columns: Seq[String], batchOfRows: Seq[Seq[Json]]): Unit
   }
 
   trait NonTabularCallbacks extends QueryCallbacks {
@@ -334,7 +343,7 @@ final object QueryCallbacks {
       *
       * @param batch batch of results
       */
-    def onNonTabularResults(batch: Seq[ujson.Value]): Unit
+    def onNonTabularResults(batch: Seq[Json]): Unit
   }
 
   /** Aggregate all node results into one [[Future]] */

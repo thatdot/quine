@@ -42,9 +42,9 @@ trait StandingQueryStore {
 /** The Akka HTTP implementation of [[StandingQueryRoutes]] */
 trait StandingQueryRoutesImpl
     extends StandingQueryRoutes
-    with endpoints4s.ujson.JsonSchemas
+    with endpoints4s.circe.JsonSchemas
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
   implicit def graph: StandingQueryOpsGraph

@@ -14,6 +14,7 @@ import akka.stream.scaladsl.{Sink, Source}
 import akka.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.Json
 
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.{
@@ -31,7 +32,7 @@ import com.thatdot.quine.routes.{CypherQuery, CypherQueryResult, GremlinQuery, Q
 trait QueryUiRoutesImpl
     extends QueryUiRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
+    with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints
     with exts.ServerRequestTimeoutOps
     with LazyLogging {
@@ -51,54 +52,55 @@ trait QueryUiRoutesImpl
 
   // This is how Gremlin values will be formatted as JSON
   // NB: this is tuned to consume values coming out of the Gremlin interpreter
-  private def writeGremlinValue(any: Any): ujson.Value = any match {
+  private def writeGremlinValue(any: Any): Json = any match {
     // Null value
-    case null | () => ujson.Null
+    case null | () => Json.Null
 
     // Option
-    case None => ujson.Null
+    case None => Json.Null
     case Some(x) => writeGremlinValue(x)
 
     // Numbers
-    case n: Byte => ujson.Num(n.toDouble)
-    case n: Int => ujson.Num(n.toDouble)
-    case n: Long => ujson.Num(n.toDouble)
-    case n: Double => ujson.Num(n.toDouble)
-    case n: java.lang.Long => ujson.Num(n.toDouble)
-    case n: java.lang.Double => ujson.Num(n.toDouble)
+    case n: Byte => Json.fromInt(n.intValue)
+    case n: Int => Json.fromInt(n)
+    case n: Long => Json.fromLong(n)
+    case n: Float => Json.fromFloatOrString(n)
+    case n: Double => Json.fromDoubleOrString(n)
+    case n: java.lang.Long => Json.fromLong(n)
+    case n: java.lang.Double => Json.fromDoubleOrString(n)
 
     // Strings
-    case s: String => ujson.Str(s)
+    case s: String => Json.fromString(s)
 
     // Booleans
-    case b: Boolean => ujson.Bool(b)
-    case b: java.lang.Boolean => ujson.Bool(b)
+    case b: Boolean => Json.fromBoolean(b)
+    case b: java.lang.Boolean => Json.fromBoolean(b)
 
     // Lists
     case l: java.util.List[_] => writeGremlinValue(l.asScala)
-    case l: List[_] => ujson.Arr.from(l.map(writeGremlinValue))
-    case a: Array[_] => ujson.Arr.from(a.map(writeGremlinValue))
-    case a: Vector[_] => ujson.Arr.from(a.map(writeGremlinValue))
+    case l: List[_] => Json.fromValues(l.map(writeGremlinValue))
+    case a: Array[_] => Json.fromValues(a.map(writeGremlinValue))
+    case a: Vector[_] => Json.fromValues(a.map(writeGremlinValue))
 
     // Maps
     case m: java.util.Map[_, _] => writeGremlinValue(m.asScala)
-    case m: Map[_, _] => ujson.Obj.from(m map { case (k, v) => (k.toString, writeGremlinValue(v)) })
+    case m: Map[_, _] => Json.fromFields(m map { case (k, v) => (k.toString, writeGremlinValue(v)) })
 
     // Vertex and edges
-    case Vertex(qid) => ujson.Str(s"Vertex($qid)")
-    case Edge(src, lbl, tgt) => ujson.Str(s"Edge($src, ${lbl.name}, $tgt)")
+    case Vertex(qid) => Json.fromString(s"Vertex($qid)")
+    case Edge(src, lbl, tgt) => Json.fromString(s"Edge($src, ${lbl.name}, $tgt)")
 
     // Custom id type
-    case CustomIdTypeClassTag(a) => ujson.Str(idProv.customIdToString(a))
+    case CustomIdTypeClassTag(a) => Json.fromString(idProv.customIdToString(a))
 
     // Other: Any custom 'toString'
-    case o => ujson.Str(o.toString)
+    case o => Json.fromString(o.toString)
   }
 
-  private def guessGremlinParameters(params: Map[String, ujson.Value]): Map[Symbol, QuineValue] =
+  private def guessGremlinParameters(params: Map[String, Json]): Map[Symbol, QuineValue] =
     params.map { case (k, v) => (Symbol(k) -> QuineValue.fromJson(v)) }
 
-  private def guessCypherParameters(params: Map[String, ujson.Value]): Map[String, CypherValue] =
+  private def guessCypherParameters(params: Map[String, Json]): Map[String, CypherValue] =
     params.map { case (k, v) => (k -> CypherExpr.fromQuineValue(QuineValue.fromJson(v))) }
 
   /** Given a [[QuineId]], query out a [[UiNode]]
@@ -176,10 +178,10 @@ trait QueryUiRoutesImpl
     * @param atTime possibly historical time to query
     * @return data produced by the query formatted as JSON
     */
-  final def queryGremlinGeneric(query: GremlinQuery, atTime: AtTime): Source[ujson.Value, NotUsed] =
+  final def queryGremlinGeneric(query: GremlinQuery, atTime: AtTime): Source[Json, NotUsed] =
     gremlin
       .query(query.text, guessGremlinParameters(query.parameters), atTime)
-      .map[ujson.Value](writeGremlinValue)
+      .map[Json](writeGremlinValue)
 
   /** Query nodes with a given Cypher query
     *
@@ -213,7 +215,7 @@ trait QueryUiRoutesImpl
             id = qid,
             hostIndex = hostIndex(qid),
             label = nodeLabel,
-            properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) }
+            properties = properties.map { case (k, v) => (k.name, CypherValue.toCirceJson(v)) }
           )
 
         case other =>
@@ -278,7 +280,7 @@ trait QueryUiRoutesImpl
   final def queryCypherGeneric(
     query: CypherQuery,
     atTime: AtTime
-  ): (Seq[String], Source[Seq[ujson.Value], NotUsed], Boolean, Boolean) = {
+  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
 
     // TODO: remove `PROFILE` here too
     val ExplainedQuery = raw"(?is)\s*explain\s+(.*)".r
@@ -295,12 +297,12 @@ trait QueryUiRoutesImpl
 
     if (!explainQuery) {
       val columns = res.columns.map(_.name)
-      val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
+      val bodyRows = res.results.map(row => row.map(CypherValue.toCirceJson))
       (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
     } else {
       logger.debug(s"User requested EXPLAIN of query: ${res.compiled.query}")
       val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
-      (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
+      (Vector("plan"), Source.single(Seq(CypherValue.toCirceJson(plan))), true, false)
     }
   }
 

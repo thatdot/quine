@@ -9,6 +9,7 @@ import java.time.{
   ZoneOffset,
   ZonedDateTime => JavaZonedDateTime
 }
+import java.util.Base64
 
 import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
@@ -2769,29 +2770,16 @@ object Value {
     *
     * {{{
     * val roundtripped = fromJson(_).compose(toJson(_))
-    * forAll { (json: ujson.Value) =>
+    * forAll { (json: Json) =>
     *   roundtripped(json) == json
     * }
     * }}}
     *
     * @see [[com.thatdot.quine.model.QuineValue.fromJson]]
-    * @param jsonV json value to decode
+    * @param jvalue json value to decode
     * @return decoded Cypher value
     */
-  def fromJson(jsonV: ujson.Value): Value = jsonV match {
-    case ujson.Null => Expr.Null
-    case ujson.Str(value) => Expr.Str(value)
-    case ujson.False => Expr.False
-    case ujson.True => Expr.True
-
-    // Numbers are entirely ambiguous. We go with Longs when whole, Doubles otherwise. Works when you squint.
-    case ujson.Num(value) => if (value.isWhole) Expr.Integer(value.toLong) else Expr.Floating(value)
-
-    case ujson.Arr(jvs) => Expr.List(jvs.view.map(fromJson).toVector)
-    case ujson.Obj(jkvs) => Expr.Map(jkvs.view.mapValues(fromJson).toMap)
-  }
-
-  def fromCirceJson(jvalue: Json): Value = jvalue.fold(
+  def fromJson(jvalue: Json): Value = jvalue.fold(
     Expr.Null,
     b => Expr.Bool(b),
     (n: JsonNumber) =>
@@ -2800,8 +2788,8 @@ object Value {
         case None => Expr.Floating(n.toDouble)
       },
     (s: String) => Expr.Str(s),
-    (u: Seq[Json]) => Expr.List(u.map(fromCirceJson): _*),
-    (m: JsonObject) => Expr.Map(m.toMap.view.mapValues(fromCirceJson))
+    (u: Seq[Json]) => Expr.List(u.map(fromJson): _*),
+    (m: JsonObject) => Expr.Map(m.toMap.view.mapValues(fromJson))
   )
 
   /** Encode a Cypher value into JSON
@@ -2840,6 +2828,38 @@ object Value {
         "properties" -> ujson.Obj.from(props.map(kv => (kv._1.name, toJson(kv._2))))
       )
     case path: Expr.Path => toJson(path.toList)
+  }
+  def toCirceJson(value: Value)(implicit idProvider: QuineIdProvider): Json = value match {
+    case Expr.Null => Json.Null
+    case Expr.Str(str) => Json.fromString(str)
+    // Can't use `case Expr.Bool(b) =>` here because then scalac thinks the match isn't exhaustive
+    // Can't use `case b: Expr.Bool =>` here because `Expr.Null` also extends `Bool`.
+    case Expr.True => Json.fromBoolean(true)
+    case Expr.False => Json.fromBoolean(false)
+    case Expr.Integer(lng) => Json.fromLong(lng)
+    case Expr.Floating(dbl) => Json.fromDoubleOrString(dbl)
+    case Expr.List(vs) => Json.fromValues(vs.map(toCirceJson))
+    case Expr.Map(kvs) => Json.fromFields(kvs.map(kv => kv._1 -> toCirceJson(kv._2)))
+    case Expr.Bytes(byteArray, false) => Json.fromString(Base64.getEncoder.encodeToString(byteArray))
+    case Expr.Bytes(byteArray, true) => Json.fromString(QuineId(byteArray).pretty)
+    case Expr.LocalDateTime(localDateTime) => Json.fromString(localDateTime.toString)
+    case Expr.DateTime(zonedDateTime) => Json.fromString(zonedDateTime.toString)
+    case Expr.Duration(duration) => Json.fromString(duration.toString)
+
+    case Expr.Node(qid, labels, props) =>
+      Json.obj(
+        "id" -> Json.fromString(qid.pretty),
+        "labels" -> Json.fromValues(labels.map(sym => Json.fromString(sym.name))),
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toCirceJson(kv._2))))
+      )
+    case Expr.Relationship(start, name, props, end) =>
+      Json.obj(
+        "start" -> Json.fromString(start.pretty),
+        "end" -> Json.fromString(end.pretty),
+        "name" -> Json.fromString(name.name),
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toCirceJson(kv._2))))
+      )
+    case path: Expr.Path => toCirceJson(path.toList)
   }
 }
 

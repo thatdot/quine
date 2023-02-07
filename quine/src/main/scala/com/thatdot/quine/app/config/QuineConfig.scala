@@ -5,7 +5,7 @@ import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
 import akka.util.Timeout
 
-import com.typesafe.config.ConfigValue
+import com.typesafe.config.{Config, ConfigObject}
 import pureconfig._
 import pureconfig.generic.ProductHint
 import pureconfig.generic.auto._
@@ -38,7 +38,7 @@ final case class QuineConfig(
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx)
 ) extends BaseConfig {
 
-  def configVal: ConfigValue = ConfigWriter[QuineConfig].to(this)
+  def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig
 }
 
 object QuineConfig {

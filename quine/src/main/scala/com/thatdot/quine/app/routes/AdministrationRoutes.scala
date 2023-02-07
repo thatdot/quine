@@ -10,9 +10,9 @@ import akka.http.scaladsl.server.Route
 import akka.util.{ByteString, Timeout}
 
 import com.typesafe.scalalogging.LazyLogging
+import io.circe.Json
 
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
-import com.thatdot.quine.app.routes.exts.ServerQuineEndpoints
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 import com.thatdot.quine.persistor.PersistenceAgent
@@ -27,8 +27,8 @@ trait AdministrationRoutesState {
 trait AdministrationRoutesImpl
     extends AdministrationRoutes
     with endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromSchemas
-    with ServerQuineEndpoints { self: LazyLogging =>
+    with exts.circe.JsonEntitiesFromSchemas
+    with exts.ServerQuineEndpoints { self: LazyLogging =>
 
   def graph: BaseGraph
   implicit def timeout: Timeout
@@ -37,7 +37,7 @@ trait AdministrationRoutesImpl
   val version: String
 
   /** Current config */
-  def currentConfig: ujson.Value
+  def currentConfig: Json
 
   /** State in the application */
   val serviceState: AdministrationRoutesState
