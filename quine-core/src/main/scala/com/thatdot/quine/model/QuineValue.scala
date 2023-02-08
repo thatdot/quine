@@ -209,34 +209,15 @@ object QuineValue {
     * @param idProvider ID provider used to try to serialize IDs nicely
     * @return encoded JSON value
     */
-  def toJson(value: QuineValue)(implicit idProvider: QuineIdProvider): ujson.Value = value match {
-    case QuineValue.Null => ujson.Null
-    case QuineValue.Str(str) => ujson.Str(str)
-    case QuineValue.False => ujson.False
-    case QuineValue.True => ujson.True
-    case QuineValue.Integer(lng) => ujson.Num(lng.toDouble)
-    case QuineValue.Floating(dbl) => ujson.Num(dbl)
-    case QuineValue.List(vs) => ujson.Arr.from(vs.view.map(toJson))
-    case QuineValue.Map(kvs) => ujson.Obj.from(kvs.view.mapValues(toJson))
-    case QuineValue.Bytes(byteArray) => ujson.Arr.from(byteArray)
-    case QuineValue.DateTime(instant) => ujson.Str(instant.toString)
-    case QuineValue.Id(qid) => ujson.Str(qid.pretty)
-  }
-
-  /* TODO this replication of toJson is a temporary artifact of switching incrementatly to circe handing
-   of json values because of their better support for larger long values. Eventually the ujson method
-   should be removed when no longer in use by API endpoints.
-
-   */
-  def toCirceJson(value: QuineValue)(implicit idProvider: QuineIdProvider): Json = value match {
+  def toJson(value: QuineValue)(implicit idProvider: QuineIdProvider): Json = value match {
     case QuineValue.Null => Json.Null
     case QuineValue.Str(str) => Json.fromString(str)
     case QuineValue.False => Json.False
     case QuineValue.True => Json.True
     case QuineValue.Integer(lng) => Json.fromLong(lng)
     case QuineValue.Floating(dbl) => Json.fromDoubleOrString(dbl)
-    case QuineValue.List(vs) => Json.fromValues(vs.map(toCirceJson))
-    case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toCirceJson).toSeq)
+    case QuineValue.List(vs) => Json.fromValues(vs.map(toJson))
+    case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toJson).toSeq)
     case QuineValue.Bytes(byteArray) => Json.fromValues(byteArray.map(b => Json.fromInt(b.intValue())))
     case QuineValue.DateTime(instant) => Json.fromString(instant.toString)
     case QuineValue.Id(qid) => Json.fromString(qid.pretty)

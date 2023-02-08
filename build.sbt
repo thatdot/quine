@@ -22,7 +22,6 @@ lazy val `quine-core`: Project = project
       "com.typesafe.akka" %% "akka-slf4j" % akkaV,
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
-      "com.lihaoyi" %% "ujson" % ujsonV,
       "io.circe" %% "circe-parser" % circeV,
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
@@ -176,7 +175,7 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
       "org.endpoints4s" %%% "json-schema-circe" % "2.3.0",
       "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
-      "com.lihaoyi" %% "ujson-circe" % ujsonV,
+      "com.lihaoyi" %% "ujson-circe" % ujsonV, // For the OpenAPI rendering
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test
     )
   )
@@ -232,6 +231,7 @@ lazy val `quine`: Project = project
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
       "io.circe" %% "circe-config" % "0.8.0",
+      "io.circe" %% "circe-generic-extras" % circeV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,

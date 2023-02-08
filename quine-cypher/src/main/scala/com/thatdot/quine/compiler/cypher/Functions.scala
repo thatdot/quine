@@ -464,7 +464,7 @@ object CypherToJson extends UserDefinedFunction {
   val category = Category.STRING
 
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value = args match {
-    case Vector(x) => Expr.Str(ujson.write(Value.toJson(x)))
+    case Vector(x) => Expr.Str(Value.toJson(x).noSpaces)
     case other => throw wrongSignature(other)
   }
 }

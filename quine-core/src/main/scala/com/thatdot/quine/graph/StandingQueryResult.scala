@@ -34,7 +34,7 @@ final case class StandingQueryResult(
     Json.fromFields(
       Seq(
         ("meta", meta.toJson),
-        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toCirceJson(v)) }.toSeq))
+        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq))
       )
     )
 

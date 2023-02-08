@@ -15,13 +15,13 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.concurrent.Eventually.eventually
 import org.scalatest.concurrent.Futures.interval
 import org.scalatest.funsuite.AnyFunSuite
-import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
+import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app._
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.{CypherQuery, WriteToFile}
 import com.thatdot.quine.routes.{StandingQueryPattern => SqPattern, _}
 
-class StandingQueryTest extends AnyFunSuite with BeforeAndAfterAll {
+class StandingQueryTest extends AnyFunSuite with BeforeAndAfterAll with Matchers {
 
   val graph: GraphService = IngestTestGraph.makeGraph()
   implicit val system: ActorSystem = graph.system
@@ -104,8 +104,8 @@ class StandingQueryTest extends AnyFunSuite with BeforeAndAfterAll {
 
     eventually(Eventually.timeout(5.seconds), interval(500.millis)) {
       val source: BufferedSource = Source.fromFile(tmpFile)
-      val lines = source.getLines().toList
-      try lines.exists(_.contains("""data":{"a.id":9223372036854775806,"b.id":9223372036854775807}""")) shouldBe true
+      val lines = source.getLines()
+      try lines.exists(_ contains """data":{"a.id":9223372036854775806,"b.id":9223372036854775807}""") shouldBe true
       finally source.close
     }
 

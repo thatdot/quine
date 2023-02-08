@@ -1,9 +1,10 @@
 package com.thatdot.quine.app
 
-import java.io.ByteArrayInputStream
-import java.nio.charset.StandardCharsets.UTF_8
-
 import cats.data.{NonEmptyList, Validated}
+import cats.syntax.either._
+import io.circe.CursorOp.DownField
+import io.circe.DecodingFailure.Reason.{CustomReason, WrongTypeExpectation}
+import io.circe.{DecodingFailure, Json}
 import org.scalatest.EitherValues
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -11,15 +12,15 @@ import com.thatdot.quine.routes.FileIngestFormat.CypherJson
 import com.thatdot.quine.routes._
 
 class RecipeTest extends AnyFunSuite with EitherValues {
-  def loadYamlString(s: String): Either[Seq[String], Recipe] =
-    Recipe.fromJson(yaml.parseToJson(new ByteArrayInputStream(s.getBytes(UTF_8))))
+  def loadYamlString(s: String): Either[NonEmptyList[io.circe.Error], Recipe] =
+    io.circe.yaml.v12.parser.parse(s).toEitherNel.flatMap(Recipe.fromJson)
 
   def loadRecipeFromClasspath(filename: String): Either[Seq[String], Recipe] =
     Recipe.get(getClass.getResource(filename).toString)
 
   test("invalid syntax") {
     val expectedParseError =
-      """while scanning a simple key
+      """ParsingFailure: while scanning a simple key
         | in reader, line 2, column 1:
         |    baz
         |    ^
@@ -35,7 +36,9 @@ class RecipeTest extends AnyFunSuite with EitherValues {
 
   test("not an object") {
     assert(
-      loadYamlString("foo").left.value == Seq("""Recipe must be an object, got: "foo"""")
+      loadYamlString("foo").left.value == NonEmptyList.one(
+        DecodingFailure(WrongTypeExpectation("object", Json.fromString("foo")), List())
+      )
     )
   }
   test("empty object") {
@@ -55,9 +58,15 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       """.stripMargin)
 
     assert(
-      recipe.left.value.toSet == Set(
-        "The field 'not_a_key' is not part of the recipe specification",
-        "The field 'also_not_a_key' is not part of the recipe specification"
+      recipe.left.value == NonEmptyList.of(
+        DecodingFailure(
+          "Unexpected field: [not_a_key]; valid fields: version, title, contributor, summary, description, iconImage, ingestStreams, standingQueries, nodeAppearances, quickQueries, sampleQueries, statusQuery",
+          List()
+        ),
+        DecodingFailure(
+          "Unexpected field: [also_not_a_key]; valid fields: version, title, contributor, summary, description, iconImage, ingestStreams, standingQueries, nodeAppearances, quickQueries, sampleQueries, statusQuery",
+          List()
+        )
       )
     )
   }
@@ -66,18 +75,20 @@ class RecipeTest extends AnyFunSuite with EitherValues {
 
     val recipe = loadYamlString("""
         |version: 2
-      """.stripMargin)
+      """.stripMargin).value
 
-    assert(recipe.left.value == Seq("The only supported Recipe version number is 1"))
+    assert(
+      Recipe.validateRecipeCurrentVersion(recipe).left.value == Seq("The only supported Recipe version number is 1")
+    )
 
   }
-  test("wrong type") {
-    assert(
-      loadYamlString("version: foo").left.value ==
-        List(
-          "DecodingFailure at .version: Int"
-        )
-    )
+  test("wrong types") {
+    loadYamlString("version: foo\ntitle: 6").left.value ==
+      NonEmptyList.of(
+        DecodingFailure(CustomReason("Int"), List(DownField("version"))),
+        DecodingFailure(WrongTypeExpectation("string", Json.fromInt(6)), List(DownField("title")))
+      )
+
   }
   test("minimal recipe") {
     assert(

@@ -24,7 +24,7 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
   }
 
   describe("`toJson` function") {
-    testExpression("toJson(100.000)", Expr.Str("100"))
+    testExpression("toJson(100.000)", Expr.Str("100.0"))
     testExpression("toJson(100)", Expr.Str("100"))
     testExpression(
       "toJson([n, r, m])",

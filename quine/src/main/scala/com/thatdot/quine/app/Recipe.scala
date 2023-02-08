@@ -7,14 +7,17 @@ import java.net.{HttpURLConnection, MalformedURLException, URL, URLEncoder}
 import scala.util.Using
 import scala.util.control.Exception.catching
 
-import cats.data.{Validated, ValidatedNel}
+import cats.data.{EitherNel, Validated, ValidatedNel}
 import cats.implicits._
 import endpoints4s.generic.docs
+import io.circe
+import io.circe.DecodingFailure.Reason.WrongTypeExpectation
 import io.circe.Error.showError
-import ujson.Obj
-import ujson.circe.CirceJson
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.semiauto._
+import io.circe.{Decoder, DecodingFailure, Json}
+import org.snakeyaml.engine.v2.api.YamlUnicodeReader
 
-import com.thatdot.quine.app.yaml.parseToJson
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.CirceJsonAnySchema
 
@@ -38,7 +41,9 @@ final case class Recipe(
   @docs("For web UI customization") quickQueries: List[UiNodeQuickQuery] = List(),
   @docs("For web UI customization") sampleQueries: List[SampleQuery] = List(),
   @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery]
-)
+) {
+  def isVersion(testVersion: Int): Boolean = version == testVersion
+}
 
 @docs("A Cypher query to be run periodically while Recipe is running")
 final case class StatusQuery(cypherQuery: String)
@@ -54,25 +59,26 @@ private object RecipeSchema
   implicit lazy val printQuerySchema: Record[StatusQuery] =
     genericRecord[StatusQuery]
 
-  implicit lazy val recipeSchema: Record[Recipe] =
-    genericRecord[Recipe]
 }
 
 object Recipe {
 
   import RecipeSchema._
+  implicit def endpointRecordToDecoder[A](implicit record: Record[A]): Decoder[A] = record.decoder
 
-  def fromJson(json: ujson.Value): Either[Seq[String], Recipe] = for {
-    // TODO: convert this stuff to Circe
-    jsonObj <- json.objOpt.map(ujson.Obj(_)) toRight Seq("Recipe must be an object, got: " + json)
-    // Can use https://github.com/circe/circe/pull/1117 for this:
-    withValidatedFieldNames <- validateFieldNames(jsonObj)
-    recipe <- json
-      .transform(CirceJson)
-      .as[Recipe](recipeSchema.decoder)
-      .leftMap(e => Seq(showError.show(e)))
-    validatedRecipe <- isCurrentVersion(recipe)
-  } yield validatedRecipe
+  // This isn't actually used anywhere else, but if we mark it `private` scalac thinks it unused and
+  // emits a warning.
+  implicit protected val errorOnExtraFieldsJsonConfig: Configuration =
+    Configuration.default.withDefaults // To make case class params with default values optional in the JSON
+      .withStrictDecoding // To error on unrecognized fields present in the JSON
+  implicit val recipeDecoder: Decoder[Recipe] = deriveConfiguredDecoder
+  //implicit val recipeEncoder: Encoder[Recipe] = deriveConfiguredEncoder
+
+  import cats.syntax.option._
+  def fromJson(json: Json): EitherNel[circe.Error, Recipe] = for {
+    _ <- json.asObject toRightNel DecodingFailure(WrongTypeExpectation("object", json), List())
+    recipe <- recipeDecoder.decodeAccumulating(json.hcursor).toEither
+  } yield recipe
 
   /** Indicates an error due to a missing recipe variable.
     *
@@ -381,14 +387,10 @@ object Recipe {
   def applySubstitution(input: String, values: Map[String, String]): ValidatedNel[UnboundVariableError, String] =
     if (input.startsWith("$")) {
       val key = input.slice(1, input.length)
-      if (input.startsWith("$$")) {
+      if (input.startsWith("$$"))
         Validated.valid(key)
-      } else {
-        values.get(key) match {
-          case None => Validated.invalid(UnboundVariableError(key)).toValidatedNel
-          case Some(value) => Validated.valid(value)
-        }
-      }
+      else
+        values.get(key) toValidNel UnboundVariableError(key)
     } else {
       Validated.valid(input)
     }
@@ -438,10 +440,29 @@ object Recipe {
             }
           }.toEither.left.map(e => Seq(e.toString)).joinRight
       }
-      json <- Using(urlToRecipeContent.openStream)(parseToJson).toEither.left.map(e => Seq(e.toString))
-      recipe <- Recipe.fromJson(json)
+      json <- Either
+        .catchNonFatal(
+          Using.resource(urlToRecipeContent.openStream)(inStream =>
+            circe.yaml.v12.Parser.default.parse(new YamlUnicodeReader(inStream)).leftMap(e => Seq(showError.show(e)))
+          )
+        )
+        .leftMap(e => Seq(e.toString))
+        .flatten
+      recipe <- fromJson(json).leftMap(_.toList.map(showError.show))
+      _ <- validateRecipeCurrentVersion(recipe)
     } yield recipe
   }
+
+  def validateRecipeCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
+    recipe.isVersion(currentVersion),
+    recipe,
+    Seq(s"The only supported Recipe version number is $currentVersion")
+  )
+
+  def validatedNelToEitherStrings[A, E](
+    validatedNel: ValidatedNel[E, A],
+    showErrors: E => String
+  ): Either[List[String], A] = validatedNel.leftMap(_.toList.map(showErrors)).toEither
 
   /** Fetch the recipe using the identifying string and then apply substitutions
     *
@@ -452,33 +473,12 @@ object Recipe {
   def getAndSubstitute(recipeIdentifyingString: String, values: Map[String, String]): Either[Seq[String], Recipe] =
     for {
       recipe <- get(recipeIdentifyingString)
-      substitutedRecipe <- applySubstitutions(recipe, values).toEither.left
-        .map(_.toList.distinct.map(e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}="))
+      substitutedRecipe <- validatedNelToEitherStrings[Recipe, UnboundVariableError](
+        applySubstitutions(recipe, values),
+        e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}="
+      )
     } yield substitutedRecipe
+
   final val currentVersion = 1
-
-  private def isCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
-    recipe.version == currentVersion,
-    recipe,
-    Seq(s"The only supported Recipe version number is $currentVersion")
-  )
-
-  /** Return a list of field names that are not part of the recipe spec. */
-  private def validateFieldNames(value: ujson.Obj): Either[Seq[String], Obj] = {
-
-    import scala.reflect.runtime.universe._
-    val fieldNames: Iterable[String] = typeOf[Recipe].members
-      .collect {
-        case m: MethodSymbol if m.isCaseAccessor => m
-      }
-      .map(_.name.toString)
-
-    value.objOpt.map(m => m.keySet.toSet.diff(fieldNames.toSet)) match {
-      case Some(values) if values.isEmpty => Right(value)
-      case Some(values) => Left(values.map(name => f"The field '$name' is not part of the recipe specification").toSeq)
-      case None => Right(value)
-    }
-
-  }
 
 }

@@ -215,7 +215,7 @@ trait QueryUiRoutesImpl
             id = qid,
             hostIndex = hostIndex(qid),
             label = nodeLabel,
-            properties = properties.map { case (k, v) => (k.name, CypherValue.toCirceJson(v)) }
+            properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) }
           )
 
         case other =>
@@ -297,12 +297,12 @@ trait QueryUiRoutesImpl
 
     if (!explainQuery) {
       val columns = res.columns.map(_.name)
-      val bodyRows = res.results.map(row => row.map(CypherValue.toCirceJson))
+      val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
       (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
     } else {
       logger.debug(s"User requested EXPLAIN of query: ${res.compiled.query}")
       val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
-      (Vector("plan"), Source.single(Seq(CypherValue.toCirceJson(plan))), true, false)
+      (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
     }
   }
 

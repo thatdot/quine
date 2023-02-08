@@ -48,7 +48,7 @@ trait LiteralRoutesImpl
    */
   lazy val nodeInternalStateSchema: Record[NodeInternalState] = {
     implicit val quineValueSchema: JsonSchema[QuineValue] =
-      anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toCirceJson)
+      anySchema(None).xmap(QuineValue.fromJson)(QuineValue.toJson)
     implicit val propertyValueSchema: JsonSchema[PropertyValue] =
       quineValueSchema.xmap(PropertyValue.apply)(_.deserialized.get)
     implicit val eventTimeSchema: JsonSchema[EventTime] =

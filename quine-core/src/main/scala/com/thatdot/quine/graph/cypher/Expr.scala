@@ -2799,37 +2799,7 @@ object Value {
     * @param idProvider ID provider used to try to serialize IDs nicely
     * @return encoded JSON value
     */
-  def toJson(value: Value)(implicit idProvider: QuineIdProvider): ujson.Value = value match {
-    case Expr.Null => ujson.Null
-    case Expr.Str(str) => ujson.Str(str)
-    case Expr.False => ujson.False
-    case Expr.True => ujson.True
-    case Expr.Integer(lng) => ujson.Num(lng.toDouble)
-    case Expr.Floating(dbl) => ujson.Num(dbl)
-    case Expr.List(vs) => ujson.Arr.from(vs.view.map(toJson))
-    case Expr.Map(kvs) => ujson.Obj.from(kvs.view.map(kv => kv._1 -> toJson(kv._2)))
-    case Expr.Bytes(byteArray, false) => ujson.Arr.from(byteArray)
-    case Expr.Bytes(byteArray, true) => ujson.Str(QuineId(byteArray).pretty)
-    case Expr.LocalDateTime(localDateTime) => ujson.Str(localDateTime.toString)
-    case Expr.DateTime(zonedDateTime) => ujson.Str(zonedDateTime.toString)
-    case Expr.Duration(duration) => ujson.Str(duration.toString)
-
-    case Expr.Node(qid, labels, props) =>
-      ujson.Obj(
-        "id" -> ujson.Str(qid.pretty),
-        "labels" -> ujson.Arr.from(labels.map(sym => ujson.Str(sym.name))),
-        "properties" -> ujson.Obj.from(props.map(kv => (kv._1.name, toJson(kv._2))))
-      )
-    case Expr.Relationship(start, name, props, end) =>
-      ujson.Obj(
-        "start" -> ujson.Str(start.pretty),
-        "end" -> ujson.Str(end.pretty),
-        "name" -> ujson.Str(name.name),
-        "properties" -> ujson.Obj.from(props.map(kv => (kv._1.name, toJson(kv._2))))
-      )
-    case path: Expr.Path => toJson(path.toList)
-  }
-  def toCirceJson(value: Value)(implicit idProvider: QuineIdProvider): Json = value match {
+  def toJson(value: Value)(implicit idProvider: QuineIdProvider): Json = value match {
     case Expr.Null => Json.Null
     case Expr.Str(str) => Json.fromString(str)
     // Can't use `case Expr.Bool(b) =>` here because then scalac thinks the match isn't exhaustive
@@ -2838,8 +2808,8 @@ object Value {
     case Expr.False => Json.fromBoolean(false)
     case Expr.Integer(lng) => Json.fromLong(lng)
     case Expr.Floating(dbl) => Json.fromDoubleOrString(dbl)
-    case Expr.List(vs) => Json.fromValues(vs.map(toCirceJson))
-    case Expr.Map(kvs) => Json.fromFields(kvs.map(kv => kv._1 -> toCirceJson(kv._2)))
+    case Expr.List(vs) => Json.fromValues(vs.map(toJson))
+    case Expr.Map(kvs) => Json.fromFields(kvs.map(kv => kv._1 -> toJson(kv._2)))
     case Expr.Bytes(byteArray, false) => Json.fromString(Base64.getEncoder.encodeToString(byteArray))
     case Expr.Bytes(byteArray, true) => Json.fromString(QuineId(byteArray).pretty)
     case Expr.LocalDateTime(localDateTime) => Json.fromString(localDateTime.toString)
@@ -2850,16 +2820,16 @@ object Value {
       Json.obj(
         "id" -> Json.fromString(qid.pretty),
         "labels" -> Json.fromValues(labels.map(sym => Json.fromString(sym.name))),
-        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toCirceJson(kv._2))))
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2))))
       )
     case Expr.Relationship(start, name, props, end) =>
       Json.obj(
         "start" -> Json.fromString(start.pretty),
         "end" -> Json.fromString(end.pretty),
         "name" -> Json.fromString(name.name),
-        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toCirceJson(kv._2))))
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2))))
       )
-    case path: Expr.Path => toCirceJson(path.toList)
+    case path: Expr.Path => toJson(path.toList)
   }
 }
 

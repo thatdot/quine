@@ -21,8 +21,9 @@ import endpoints4s.openapi.model.{
   SecurityRequirement,
   SecurityScheme
 }
+import io.circe.yaml.v12.syntax._
+import ujson.circe.CirceJson
 
-import com.thatdot.quine.app.yaml
 object OpenApiRenderer {
 
   val openApiVersion = "3.0.0"
@@ -293,7 +294,9 @@ object OpenApiRenderer {
         // besides just its current schema field. That way we can do this in `def yamlRequest` and the `mediaTypeJson`
         // method, instead of special-casing "application/yaml" here.
         if (k == "application/yaml") {
-          schemaJson.value ++= v.schema.flatMap(getExample).map(ex => "example" -> ujson.Str(yaml.renderFromJson(ex)))
+          schemaJson.value ++= v.schema
+            .flatMap(getExample)
+            .map(ex => "example" -> ujson.Str(ex.transform(CirceJson).asYaml.spaces2))
         }
         k -> schemaJson
       })

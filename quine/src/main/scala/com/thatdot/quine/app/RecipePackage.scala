@@ -1,8 +1,8 @@
 package com.thatdot.quine.app
 
-import java.io.ByteArrayInputStream
-import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
+
+import io.circe
 
 /** Container for a Recipe that also includes data not modelled in the Recipe itself
   * (the Recipe source and canonical name).
@@ -27,28 +27,20 @@ object RecipePackage {
 
     // Check that the recipe corresponds to a valid name
     val recipeFileName: String = file.getFileName.toString
-    val name: String = if (recipeFileName.endsWith(".yml")) {
-      recipeFileName.stripSuffix(".yml")
-    } else if (recipeFileName.endsWith(".yaml")) {
-      recipeFileName.stripSuffix(".yaml")
-    } else if (recipeFileName.endsWith(".json")) {
-      recipeFileName.stripSuffix(".json")
-    } else {
-      throw new IllegalArgumentException(
-        s"File $file does not have an accepted recipe extension"
-      )
+    val name = recipeFileName.split('.') match {
+      case Array(name, ext) if Seq("yml", "yaml", "json").contains(ext) => name
+      case _ =>
+        throw new IllegalArgumentException(
+          s"File $file does not have an accepted recipe extension"
+        )
     }
 
     // Get the recipe contents
-    val sourceBytes = Files.readAllBytes(file)
-    val source = new String(sourceBytes, StandardCharsets.UTF_8)
+    val source = Files.readString(file)
 
     // Parse the recipe
-    val recipe = Recipe.fromJson(yaml.parseToJson(new ByteArrayInputStream(sourceBytes))) match {
-      case Left(errs) =>
-        throw new IllegalArgumentException(s"Malformed recipe: ${errs.mkString("\n", "\n", "")}")
-      case Right(parsed) =>
-        parsed
+    val recipe = circe.yaml.v12.parser.decodeAccumulating[Recipe](source) valueOr { errs =>
+      throw new IllegalArgumentException("Malformed recipe: \n" + errs.toList.mkString("\n"))
     }
 
     RecipePackage(name, recipe, source)

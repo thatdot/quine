@@ -14,7 +14,7 @@ object GenerateRecipeDirectory extends App {
     case Array(a, b) =>
       (Paths.get(a), Paths.get(b))
     case _ =>
-      println(s"GenerateRecipeTable expected 2 command line arguments but got: ${args.mkString(",")}")
+      println(s"GenerateRecipeTable expected 2 command line arguments but got: [${args.mkString(",")}]")
       sys.exit(1)
   }
 

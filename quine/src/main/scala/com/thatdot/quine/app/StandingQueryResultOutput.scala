@@ -80,7 +80,7 @@ object StandingQueryResultOutput extends LazyLogging {
               uri = url,
               entity = HttpEntity(
                 contentType = `application/json`,
-                if (onlyPositiveMatchData) QuineValue.toCirceJson(QuineValue.Map(result.data)).noSpaces
+                if (onlyPositiveMatchData) QuineValue.toJson(QuineValue.Map(result.data)).noSpaces
                 else result.toJson.noSpaces
               )
             )
@@ -440,7 +440,7 @@ object StandingQueryResultOutput extends LazyLogging {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
     val dataPrettyJson: String =
-      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toCirceJson(v)) }.toSeq).spaces2
+      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq).spaces2
 
     // slack message blocks
     def slackBlocks: Vector[Json] = Vector(

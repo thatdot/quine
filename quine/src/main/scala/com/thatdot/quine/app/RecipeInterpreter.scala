@@ -248,7 +248,7 @@ object RecipeInterpreter {
           queryResults.columns.map(_.name.length).max,
           columnNameFixedWidthMax
         )
-      val valueStrings = resultRecord.map(Value.toJson(_).toString)
+      val valueStrings = resultRecord.map(Value.toJson(_).noSpaces)
       val valueStringMaxLength = valueStrings.map(_.length).max
       val separator = " | "
       val headerLengthMin = 40
