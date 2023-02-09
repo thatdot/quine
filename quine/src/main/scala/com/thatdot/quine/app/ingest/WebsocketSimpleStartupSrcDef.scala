@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.ingest
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
@@ -101,7 +102,7 @@ final case class WebsocketSimpleStartupSrcDef(
       case Failure(ex) => Failure(new UpgradeFailedException(ex))
       // the websocket upgrade succeeded: proceed with setting up the ingest stream source
       case Success(ValidUpgrade(_, _)) => Success(v)
-    })
+    }(ExecutionContexts.parasitic))
     .mapMaterializedValue(_ => NotUsed) // TBD .mapMaterializedValue(_.flatten)
 
 }

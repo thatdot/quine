@@ -74,7 +74,7 @@ case class PulsarSrcDef(
 
   override val ack: Flow[TryDeserialized, Done, NotUsed] = Flow[TryDeserialized]
     .mapAsync(parallelism) { m =>
-      consumer.acknowledgeAsync(m._2.messageId)
+      consumer.acknowledgeAsync(m._2.messageId)(AsyncHandler.handler(system.dispatcher))
     }
     .map(_ => Done)
 

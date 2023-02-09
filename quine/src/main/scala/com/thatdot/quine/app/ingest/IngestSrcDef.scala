@@ -4,8 +4,8 @@ import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 
 import scala.compat.ExecutionContexts
+import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
@@ -54,7 +54,6 @@ abstract class IngestSrcDef(
 )(implicit graph: CypherOpsGraph)
     extends LazyLogging {
   implicit val system: ActorSystem = graph.system
-  implicit val ec: ExecutionContext = graph.system.dispatcher
   val isSingleHost: Boolean = graph.isSingleHost
   val meter: IngestMeter = IngestMetered.ingestMeter(name)
 
@@ -91,7 +90,8 @@ abstract class IngestSrcDef(
   /** Write successful values to the graph. */
   protected val writeSuccessValues: TryDeserialized => Future[TryDeserialized] = { t: TryDeserialized =>
     t._1 match {
-      case Success(deserialized) => format.writeValueToGraph(graph, deserialized).flatMap(_ => Future.successful(t))
+      case Success(deserialized) =>
+        format.writeValueToGraph(graph, deserialized).map(_ => t)(ExecutionContexts.parasitic)
       case Failure(err) =>
         logger.info(s"Deserialization failure {} {}", name, err)
         Future.failed(err)
