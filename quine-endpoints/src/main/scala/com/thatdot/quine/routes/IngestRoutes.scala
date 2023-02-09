@@ -173,16 +173,23 @@ sealed abstract class KafkaOffsetCommitting
 object KafkaOffsetCommitting {
   @unnamed
   @title("Auto Commit")
-  @docs("Set Kafka's enable.auto.commit and auto.commit.interval.ms settings")
-  final case class AutoCommit(commitIntervalMillis: Int = 5000) extends KafkaOffsetCommitting
+  @docs("""Set Kafka's enable.auto.commit and auto.commit.interval.ms settings.
 
+         Note that with `autoCommit=true` it is possible for some records to be lost
+         on shutdown since some records may be in transit but marked as committed by
+         Kafka.""".stripMargin)
+  final case class AutoCommit(commitIntervalMillis: Int = 5000) extends KafkaOffsetCommitting
   @unnamed
   @title("Explicit Commit")
   @docs("Don't auto commit, only explicitly commit to consumer group on successful execution of ingest query to graph")
   final case class ExplicitCommit(
+    @docs("Maximum number of messages in a single commit batch")
     maxBatch: Long = 1000,
+    @docs("Maximum interval between commits in milliseconds")
     maxIntervalMillis: Int = 10000,
+    @docs("Parallelism for async committing")
     parallelism: Int = 100,
+    @docs("Wait for a confirmation from Kafka on ack")
     waitForCommitConfirmation: Boolean = true
   ) extends KafkaOffsetCommitting
 }

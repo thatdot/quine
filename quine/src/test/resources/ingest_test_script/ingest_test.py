@@ -66,8 +66,8 @@ def random_string(ct: int = 10):
 
 class TestConfig:
 
-    def __init__(self, count: int, quine_url: str, encodings: List[str]):
-        self.name = random_string()
+    def __init__(self, name:str, count: int, quine_url: str, encodings: List[str]):
+        self.name = name
         self.quine_url = quine_url
         self.count = count
         self.encodings = encodings
@@ -83,6 +83,7 @@ class TestConfig:
         pass
 
     def create_recipe(self):
+        print(colored("Sending recipe", "magenta"))
         self.req("post", f'/api/v1/ingest/{self.name}',
                  json=self.recipe() | {
                      "recordDecoders": self.encodings})  # , headers={"Content-type":"application/json"})
@@ -96,26 +97,28 @@ class TestConfig:
         rsp = self.req("get", f'/api/v1/ingest/{self.name}').json()
         return rsp["stats"]["ingestedCount"]
 
-    def run_test(self, sleep_time_ms=0):
-        # optionally sleep before retrieving values.
-        self.create_recipe()
-        values = self.generate_values()
-        self.write_values(values)
-        if sleep_time_ms:
-            time.sleep(sleep_time_ms / 1000.0)
-        returned_values = self.retrieve_values()
-        if (len(returned_values) == self.count):
-            print(
-                colored(f"Correct number of values ({self.count}) received from type {self.recipe()['type']}", "green"))
+    def run_test(self, sleep_time_ms=20000, write=True, read = True):
+        print(f"READ={read} WRITE={write}")
+        if read:
+            self.create_recipe()
+        print(f"sleeping {sleep_time_ms/1000.0} seconds before writing values")
+        time.sleep(sleep_time_ms / 1000.0)
+        if write:
+            values = self.generate_values()
+            self.write_values(values)
 
-        else:
-            print(colored(f"Expected {self.count} values, got {len(returned_values)}", "red"))
+        if read:
+            returned_values = self.retrieve_values()
+            if (len(returned_values) == self.count):
+                print(                colored(f"Correct number of values ({self.count}) received from type {self.recipe()['type']}", "green"))
+            else:
+                print(colored(f"Expected {self.count} values, got {len(returned_values)}", "red"))
 
-        for r in returned_values:
-            assert(r["properties"]["test_name"] == self.name)
+            for r in returned_values:
+                assert(r["properties"]["test_name"] == self.name)
 
-        print(colored(f"returned values are in the correct form: {returned_values[0]}", "green"))
-        assert len(returned_values) == self.count
+            print(colored(f"returned values are in the correct form: {returned_values[0]}", "green"))
+            assert len(returned_values) == self.count
 
     def req(self, method: str, path: str, **kwargs) -> Optional[Response]:
         url = f'http://{self.quine_url}{path}'
@@ -138,8 +141,8 @@ class TestConfig:
 
 class KinesisConfig(TestConfig):
 
-    def __init__(self, count: int, quine_url: str, stream_name: str, encodings: List[str], creds: Dict[str, str]):
-        super().__init__(count, quine_url, encodings)
+    def __init__(self, name: str, count: int, quine_url: str, stream_name: str, encodings: List[str], creds: Dict[str, str]):
+        super().__init__(name, count, quine_url, encodings)
         self.stream_name = stream_name
         self.creds = creds
 
@@ -159,8 +162,8 @@ class KinesisConfig(TestConfig):
 
 
 class SQSConfig(TestConfig):
-    def __init__(self, count: int, quine_url: str, queue_url: str, encodings: List[str], creds: Dict[str, str]):
-        super().__init__(count, quine_url, encodings)
+    def __init__(self, name: str,count: int, quine_url: str, queue_url: str, encodings: List[str], creds: Dict[str, str]):
+        super().__init__(name, count, quine_url, encodings)
         self.queue_url = queue_url
         self.creds = creds
 
@@ -187,34 +190,40 @@ class SQSConfig(TestConfig):
 
 class KafkaConfig(TestConfig):
 
-    def __init__(self, count: int, quine_url: str, topic: str, kafka_url: str, commit, encodings: List[str]):
-        super().__init__(count, quine_url, encodings)
+    def __init__(self, name: str,count: int, quine_url: str, topic: str, kafka_url: str, commit, ending_offset, encodings: List[str], waitForCommitConfirmation=True):
+        super().__init__(name, count, quine_url, encodings)
         self.topic = topic
         self.kafka_url = kafka_url
         self.commit = commit
+        self.ending_offset = ending_offset
+        self.waitForCommitConfirmation = waitForCommitConfirmation
 
     def recipe(self):
+        commit = {"type":self.commit}
+        if commit == "ExplicitCommit":
+           commit ={"type":self.commit, "waitForCommitConfirmation":self.waitForCommitConfirmation, "maxIntervalMillis": 100000}
         return {"name": self.name,
                 "type": "KafkaIngest",
                 "format": {"query": "CREATE ($that)", "type": "CypherJson"},
                 "topics": [self.topic],
-                "offsetCommitting": {"type": self.commit},
-                "bootstrapServers": self.kafka_url}
+                "offsetCommitting": commit,
+                "bootstrapServers": self.kafka_url} | (self.ending_offset and {"endingOffset": self.ending_offset} or {})
 
     def write_values(self, values: List[str]):
+        print(colored(f"WRITING {len(values)} VALUES", "magenta"))
         client = KafkaClient(hosts=self.kafka_url)
         topic = client.topics[self.topic]
 
         with topic.get_sync_producer() as producer:
             for value in self.generate_values():
-                logging.debug(f"writing to {self.topic} [{value}]")
+                print(f"writing to {self.topic} [{value}]")
                 producer.produce(value.encode("utf-8"))
 
 
 class PulsarConfig(TestConfig):
-    def __init__(self, count: int, quine_url: str, topic: str, pulsar_url: str, subscription_name: str,
+    def __init__(self, name: str,count: int, quine_url: str, topic: str, pulsar_url: str, subscription_name: str,
                  encodings: List[str]):
-        super().__init__(count, quine_url, encodings)
+        super().__init__(name, count, quine_url, encodings)
         self.topic = topic
         self.pulsar_url = pulsar_url
         self.subscription_name = subscription_name
@@ -247,6 +256,9 @@ if __name__ == "__main__":
     parser.add_argument("-q", "--quine_url", default="0.0.0.0:8080", help="quine api url. Default '0.0.0.0:8080'")
     parser.add_argument("-c", "--count", type=int, default=10, help="number of values to send. Default 10")
     parser.add_argument("-e", "--encodings", type=str, help=f"csv list of encodings from {ENCODINGS}")
+    parser.add_argument("-W", "--writeonly", action='store_true',  help="if set will only write to service and not start a quine consumer.")
+    parser.add_argument("-R", "--readonly", action='store_true',  help="if set will only start a quine consumer and not write to the service.")
+    parser.add_argument("-N", "--testname", type=str, help="Unique test name. Default will be randomly supplied")
     subparsers = parser.add_subparsers(dest="type")
     #
     # kafka args
@@ -257,6 +269,8 @@ if __name__ == "__main__":
     )
     kafka_parser.add_argument("-C", "--commit", default="AutoCommit", help="AutoCommit or ExplicitCommit")
     kafka_parser.add_argument("-t", "--topic", help="kafka topic")
+    kafka_parser.add_argument( "--endingoffset", type=int, help="kafka ending offset", required=False)
+    kafka_parser.add_argument( "--waitForCommitConfirmation", type=bool, help="kafka ending offset confirmation", required=False, default=True)
     #
     # kinesis args
     #
@@ -282,18 +296,20 @@ if __name__ == "__main__":
     pulsar_parser.add_argument("-n", "--subscription_name", help="subscription name", default="my_subscription")
 
     args = parser.parse_args()
+    print(colored(f"ARGS = {args}","blue"))
 
+    testname =   random_string()
     encodings: List[str] = Encoding.parse_csv(args.encodings)
     if args.type == "kafka":
-        config = KafkaConfig(args.count, args.quine_url, args.topic, args.kafka_url, args.commit, encodings)
+        config = KafkaConfig(testname, args.count, args.quine_url, args.topic, args.kafka_url, args.commit, args.endingoffset, encodings, args.waitForCommitConfirmation)
     elif args.type == "kinesis":
-        config = KinesisConfig(args.count, args.quine_url, args.name, encodings,
+        config = KinesisConfig(testname, args.count, args.quine_url, args.name, encodings,
                                {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "sqs":
-        config = SQSConfig(args.count, args.quine_url, args.queue_url, encodings,
+        config = SQSConfig(testname, args.count, args.quine_url, args.queue_url, encodings,
                            {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "pulsar":
-        config = PulsarConfig(args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name,
+        config = PulsarConfig(testname, args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name,
                               encodings)
-    config.run_test(sleep_time_ms=1000)
+    config.run_test(sleep_time_ms=20000,  write=args.writeonly or args.readonly == False, read=args.readonly or args.writeonly == False)
 

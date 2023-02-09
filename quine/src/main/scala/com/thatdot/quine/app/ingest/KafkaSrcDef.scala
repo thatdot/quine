@@ -59,7 +59,7 @@ object KafkaSrcDef {
 
     // Create Map of kafka properties: combination of user passed properties from `kafkaProperties`
     // as well as those templated by `KafkaAutoOffsetReset` and `KafkaSecurityProtocol`
-    // NOTE: This diveragence between how kafka properties are set should be resolved, most likely by removing
+    // NOTE: This divergence between how kafka properties are set should be resolved, most likely by removing
     // `KafkaAutoOffsetReset`, `KafkaSecurityProtocol`, and `KafkaOffsetCommitting.AutoCommit`
     // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
     val properties = kafkaProperties ++ Map(
@@ -234,7 +234,16 @@ object KafkaSrcDef {
               )
           )
 
-      Flow[TryDeserialized].map(_._2.committableOffset).via(committer).map(_ => Done)
+      // Note - In cases where we are in ExplicitCommit mode with CommitDelivery.WaitForAck _and_ there is an
+      // endingOffset set , we will get a akka.kafka.CommitTimeoutException here, since the commit delivery is
+      // batched and it's possible to have remaining commit offsets remaining that don't get sent.
+      //
+      // e.g. partition holds 1000 values, we set koc.maxBatch=100, and endingOffset to 150. Last ack sent will
+      // be 100, last 50 will not be sent.
+      Flow[TryDeserialized]
+        .map(_._2.committableOffset)
+        .via(committer)
+        .map(_ => Done)
     }
 
   }
