@@ -739,12 +739,12 @@ trait IngestRoutes
     .withDescription(Some("Sources of streaming data ingested into the graph interpreter."))
 
   val ingestStreamName: Path[String] =
-    segment[String]("name", docs = Some("Unique name for the ingest stream"))
+    segment[String]("name", docs = Some("Ingest stream name"))
 
   val ingestStreamStart: Endpoint[(String, IngestStreamConfiguration), Either[ClientErrors, Unit]] =
     endpoint(
       request = post(
-        url = ingest / ingestStreamName,
+        url = ingest / segment[String]("name", Some("Unique name for the ingest stream")),
         entity = jsonOrYamlRequest[IngestStreamConfiguration]
       ),
       response = customBadRequest("Ingest stream exists already")
