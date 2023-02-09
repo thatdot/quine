@@ -57,9 +57,9 @@ trait AlgorithmGraph extends BaseGraph {
       * preprocessing and superior sampling efficiency of random walks. Note that by setting πv,x to be a function
       * of the preceding node in the walk t, the random walks are 2nd order Markovian.
       */
-    def randomWalk[QueryStart <: Location](
+    def randomWalk(
       startingNode: QuineId,
-      collectQuery: CompiledQuery[QueryStart],
+      collectQuery: CompiledQuery[Location.OnNode],
       length: Int,
       returnParam: Double,
       inOutParam: Double,
@@ -96,9 +96,9 @@ trait AlgorithmGraph extends BaseGraph {
       * @return              The materialized result of running the saveSink. This will be a future representing the
       *                      completion of the file write operation.
       */
-    def saveRandomWalks[SinkMat, QueryStart <: Location](
+    def saveRandomWalks[SinkMat](
       saveSink: Sink[ByteString, Future[SinkMat]],
-      collectQuery: CompiledQuery[QueryStart],
+      collectQuery: CompiledQuery[Location.OnNode],
       length: Int,
       walksPerNode: Int,
       returnParam: Double,

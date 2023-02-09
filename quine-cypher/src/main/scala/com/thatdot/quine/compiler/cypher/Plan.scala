@@ -1,6 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
-import com.thatdot.quine.graph.cypher.{Columns, Expr, Query, Value}
+import com.thatdot.quine.graph.cypher.{Columns, Expr, Location, Query, Value}
 
 /** This provides debug information about a query in a format that can be
   * consumed by `cypher-shell`. An example of this format is listed here:
@@ -67,7 +67,7 @@ object Plan {
     * @param isRoot whether this is a root of a tree of a queries
     * @return plan representation of the compiled query
     */
-  def fromQuery(query: Query[_], isRoot: Boolean = true): Plan = {
+  def fromQuery(query: Query[Location], isRoot: Boolean = true): Plan = {
 
     val childrenQueries = Vector.newBuilder[Plan]
     val arguments = Map.newBuilder[String, Value]
@@ -89,7 +89,7 @@ object Plan {
 
     for ((fieldName, value) <- fields)
       (fieldName, value) match {
-        case (_, subQuery: Query[_]) => childrenQueries += Plan.fromQuery(subQuery, isRoot = false)
+        case (_, subQuery: Query[Location]) => childrenQueries += Plan.fromQuery(subQuery, isRoot = false)
         case ("columns", _) => // Ignore the columns, they get pulled out at the end of `fromQuery`
         case (field, value) =>
           // TODO: pretty-print expressions in the AST

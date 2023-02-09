@@ -35,16 +35,19 @@ object EntryPoint {
 }
 
 /** Represents a location from which a query (or sub-query) can be executed
-  * See the scaladoc on Query for more information.
+  * See the scaladoc on [[Query]] abd [[CypherInterpreter]] for more information.
   */
-sealed abstract class Location
+sealed trait Location
 object Location {
 
-  /** For queries that can be executed from inside or outside the graph */
-  sealed trait Anywhere extends Location
-
   /** For queries that can only be executed from inside the graph */
-  type OnNode = Location
+  sealed trait OnNode extends Location
+
+  /** For queries that can only be executed from outside the graph (e.g., on an [[AnchoredInterpreter]]) */
+  sealed trait External extends Location
+
+  /** For queries that can be executed from inside or outside the graph */
+  sealed trait Anywhere extends OnNode with External
 }
 
 /** A cypher query which can be executed starting at a location and ending at a
@@ -59,12 +62,24 @@ object Location {
   * Furthermore, any subquery that needs to be passed along (to be executed
   * elsewhere) should also be a field.
   *
-  * @tparam Start requirement of from where the query must be run. A Query[OnNode] must only be initiated on a node
-  *               (i.e., via a `CypherInterpreter[OnNode]`, while a Query[Anywhere] may run on or off-node (e.g.,
-  *               via the graph's global AtTimeInterpreter for a given timestamp). Descendants/ancestors of a query may
-  *               have different Location requirements, and this is common -- for example, an [[ArgumentEntry]] is a
-  *               Query that can run from Anywhere whose purpose is to make its child ([[ArgumentEntry.andThen]]) run
-  *               in an OnNode interpreter.
+  * @tparam Start requirement of from where the query must be run. For example, a Query[OnNode] must only be initiated
+  *               on a node (i.e., via a `CypherInterpreter[OnNode]`, while a Query[Anywhere] may run on or off-node
+  *               (e.g., via the graph's global AtTimeInterpreter for a given timestamp). Descendants/ancestors of a
+  *               query may have different Location requirements, and this is common -- for example, an
+  *               [[ArgumentEntry]] is a Query that can run from Anywhere whose purpose is to make its child
+  *               ([[ArgumentEntry.andThen]]) run in an OnNode interpreter.
+  *               On deciding between `Location`, `Location.Anywhere`, or a `[+T <: Location]` carry-through parameter:
+  *                - In general, use `Location` when you don't care about the location constraints at all -- that is,
+  *               treat `Query[Location]` like `Query[_]`.
+  *                - As a heuristic to decide between Location.Anywhere and a type parameter, consider: Does this
+  *                Query's semantics bake in enough information about all its parts (in particular, its subqueries) to
+  *                be executable from anywhere?
+  *                  * ArgumentEntry is a Query[Location.Anywhere] because the semantics of ArgumentEntry choose a
+  *                    specific interpreter for its follow-up Query, and define that the chosen interpreter will be an
+  *                    OnNode interpreter.
+  *                  * In contrast, `Limit` is type-parameterized. While the counting/dropping part of Limit could be
+  *                   done Anywhere, the "executing the Query to be limited" part can only happen on the same Location
+  *                   as the Query in question. Therefore, Limit's location must match that of its inner Query.
   */
 sealed abstract class Query[+Start <: Location] extends Product with Serializable {
 
@@ -130,7 +145,7 @@ sealed abstract class Query[+Start <: Location] extends Product with Serializabl
     * These are usually called "andThen" or similar. The children should be ordered by their execution order.
     * For example, {{query1} UNION {query2}}.children == Seq({query1}, {query2})
     */
-  def children: Seq[Query[_]]
+  def children: Seq[Query[Location]]
 }
 
 object Query {
@@ -218,7 +233,7 @@ object Query {
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): Empty = this
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** A unit query - returns exactly the input */
@@ -231,7 +246,7 @@ object Query {
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): Unit = this
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** A solid starting point for a query - usually some sort of index scan
@@ -254,7 +269,7 @@ object Query {
     }
     def substitute(parameters: Map[Expr.Parameter, Value]): AnchoredEntry =
       copy(andThen = andThen.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(andThen)
+    def children: Seq[Query[Location]] = Seq(andThen)
   }
 
   /** A starting point from a node. This _can_ be an entry point from outside
@@ -275,7 +290,7 @@ object Query {
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): ArgumentEntry =
       copy(node = node.substitute(parameters), andThen = andThen.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(andThen)
+    def children: Seq[Query[Location]] = Seq(andThen)
   }
 
   /** Get the degree of a node
@@ -296,7 +311,7 @@ object Query {
     def isIdempotent: Boolean = true
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): GetDegree = this
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Hop across all matching edges going from one node to another
@@ -326,7 +341,7 @@ object Query {
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Expand =
       copy(toNode = toNode.map(_.substitute(parameters)), andThen = andThen.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(andThen)
+    def children: Seq[Query[Location]] = Seq(andThen)
   }
 
   /** Check that a node has certain labels and properties, and add the node to
@@ -351,7 +366,7 @@ object Query {
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): LocalNode =
       copy(propertiesOpt = propertiesOpt.map(_.substitute(parameters)))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Walk through the records in a external CSV
@@ -376,7 +391,7 @@ object Query {
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): LoadCSV =
       copy(urlString = urlString.substitute(parameters))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Execute both queries one after another and concatenate the results
@@ -396,7 +411,7 @@ object Query {
     def canContainAllNodeScan: Boolean = unionLhs.canContainAllNodeScan || unionRhs.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Union[Start] =
       copy(unionLhs = unionLhs.substitute(parameters), unionRhs = unionRhs.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(unionLhs, unionRhs)
+    def children: Seq[Query[Location]] = Seq(unionLhs, unionRhs)
   }
 
   /** Execute the first query then, if it didn't return any results, execute the
@@ -417,7 +432,7 @@ object Query {
     def canContainAllNodeScan: Boolean = tryFirst.canContainAllNodeScan || trySecond.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Or[Start] =
       copy(tryFirst = tryFirst.substitute(parameters), trySecond = trySecond.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(tryFirst, trySecond)
+    def children: Seq[Query[Location]] = Seq(tryFirst, trySecond)
   }
 
   /** Execute two queries and join pairs of results which had matching values
@@ -456,7 +471,7 @@ object Query {
       lhsProperty = lhsProperty.substitute(parameters),
       rhsProperty = rhsProperty.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(joinLhs, joinRhs)
+    def children: Seq[Query[Location]] = Seq(joinLhs, joinRhs)
   }
 
   /** Filter input stream keeping only entries which produce something when run
@@ -466,7 +481,7 @@ object Query {
     * @param inverted invert the match: keep only elements for which the test
     *        query returns no results
     */
-  final case class SemiApply[Start <: Location](
+  final case class SemiApply[+Start <: Location](
     acceptIfThisSucceeds: Query[Start],
     inverted: Boolean = false,
     columns: Columns = Columns.Omitted
@@ -478,7 +493,7 @@ object Query {
     def canContainAllNodeScan: Boolean = acceptIfThisSucceeds.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): SemiApply[Start] =
       copy(acceptIfThisSucceeds = acceptIfThisSucceeds.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(acceptIfThisSucceeds)
+    def children: Seq[Query[Location]] = Seq(acceptIfThisSucceeds)
   }
 
   /** Apply one query, then apply another query to all the results of the first
@@ -506,7 +521,7 @@ object Query {
         startWithThis = startWithThis.substitute(parameters),
         thenCrossWithThis = thenCrossWithThis.substitute(parameters)
       )
-    def children: Seq[Query[_]] = Seq(startWithThis, thenCrossWithThis)
+    def children: Seq[Query[Location]] = Seq(startWithThis, thenCrossWithThis)
   }
 
   /** Try to apply a query. If there are results, return those as the outputs.
@@ -514,7 +529,7 @@ object Query {
     *
     * @param query the optional query to run
     */
-  final case class Optional[Start <: Location](
+  final case class Optional[+Start <: Location](
     query: Query[Start],
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
@@ -524,7 +539,7 @@ object Query {
     def isIdempotent: Boolean = query.isIdempotent
     def canContainAllNodeScan: Boolean = query.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Optional[Start] = copy(query = query.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(query)
+    def children: Seq[Query[Location]] = Seq(query)
   }
 
   /** Given a query, filter the outputs to keep only those where a condition
@@ -547,7 +562,7 @@ object Query {
       condition = condition.substitute(parameters),
       toFilter = toFilter.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toFilter)
+    def children: Seq[Query[Location]] = Seq(toFilter)
   }
 
   /** Given a query, drop a prefix of the results
@@ -569,7 +584,7 @@ object Query {
       drop = drop.substitute(parameters),
       toSkip = toSkip.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toSkip)
+    def children: Seq[Query[Location]] = Seq(toSkip)
   }
   object Skip {
 
@@ -599,7 +614,7 @@ object Query {
       take = take.substitute(parameters),
       toLimit = toLimit.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toLimit)
+    def children: Seq[Query[Location]] = Seq(toLimit)
   }
   object Limit {
 
@@ -628,7 +643,7 @@ object Query {
       by = by.map { case (expr, bool) => expr.substitute(parameters) -> bool },
       toSort = toSort.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toSort)
+    def children: Seq[Query[Location]] = Seq(toSort)
   }
   object Sort {
 
@@ -691,7 +706,7 @@ object Query {
       drop = drop.map(_.substitute(parameters)),
       take = take.map(_.substitute(parameters))
     )
-    def children: Seq[Query[_]] = Seq(toReturn)
+    def children: Seq[Query[Location]] = Seq(toReturn)
   }
 
   /** Given a query, deduplicate the results by a certain expression
@@ -713,7 +728,7 @@ object Query {
       by = by.map(_.substitute(parameters)),
       toDedup = toDedup.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toDedup)
+    def children: Seq[Query[Location]] = Seq(toDedup)
   }
   object Distinct {
 
@@ -748,7 +763,7 @@ object Query {
       listExpr = listExpr.substitute(parameters),
       unwindFrom = unwindFrom.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(unwindFrom)
+    def children: Seq[Query[Location]] = Seq(unwindFrom)
   }
 
   /** Tweak the values stored in the output (context)
@@ -772,7 +787,7 @@ object Query {
       toAdd = toAdd.map { case (sym, expr) => sym -> expr.substitute(parameters) },
       adjustThis = adjustThis.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(adjustThis)
+    def children: Seq[Query[Location]] = Seq(adjustThis)
   }
 
   /** Mutate a property of a node
@@ -792,7 +807,7 @@ object Query {
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): SetProperty =
       copy(newValue = newValue.map(_.substitute(parameters)))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Mutate in batch properties of a node
@@ -812,7 +827,7 @@ object Query {
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): SetProperties =
       copy(properties = properties.substitute(parameters))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Delete a node, relationship, or path
@@ -834,7 +849,7 @@ object Query {
     def isIdempotent: Boolean = toDelete.isPure
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): Delete = copy(toDelete = toDelete.substitute(parameters))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Mutate an edge of a node
@@ -865,7 +880,7 @@ object Query {
       target = target.substitute(parameters),
       andThen = andThen.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(andThen)
+    def children: Seq[Query[Location]] = Seq(andThen)
   }
 
   /** Mutate labels of a node
@@ -884,7 +899,7 @@ object Query {
     def isIdempotent: Boolean = true // NB labels are a deduplicated `Set`
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): SetLabels = this
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Eager aggregation along properties
@@ -918,7 +933,7 @@ object Query {
       aggregateWith = aggregateWith.map { case (sym, aggregator) => sym -> aggregator.substitute(parameters) },
       toAggregate = toAggregate.substitute(parameters)
     )
-    def children: Seq[Query[_]] = Seq(toAggregate)
+    def children: Seq[Query[Location]] = Seq(toAggregate)
   }
 
   /** Custom procedure call
@@ -942,7 +957,7 @@ object Query {
     def canContainAllNodeScan: Boolean = procedure.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): ProcedureCall =
       copy(arguments = arguments.map(_.substitute(parameters)))
-    def children: Seq[Query[_]] = Seq.empty
+    def children: Seq[Query[Location]] = Seq.empty
   }
 
   /** Sub query context, which allows for running a subquery and then stitching
@@ -963,6 +978,6 @@ object Query {
     def canContainAllNodeScan: Boolean = subQuery.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): SubQuery[Start] =
       copy(subQuery = subQuery.substitute(parameters))
-    def children: Seq[Query[_]] = Seq(subQuery)
+    def children: Seq[Query[Location]] = Seq(subQuery)
   }
 }

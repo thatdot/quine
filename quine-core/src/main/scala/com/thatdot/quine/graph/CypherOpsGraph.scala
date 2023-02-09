@@ -41,12 +41,12 @@ trait CypherOpsGraph extends BaseGraph {
   object cypherOps {
 
     // INV queries used as keys must have no Parameters
-    val skipOptimizerCache: LoadingCache[(Query[Location.Anywhere], Option[Milliseconds]), ActorRef] =
+    val skipOptimizerCache: LoadingCache[(Query[Location.External], Option[Milliseconds]), ActorRef] =
       CacheBuilder
         .newBuilder()
         .maximumSize(100) // TODO arbitrary
         .removalListener { // NB invoked semi-manually via [[SkipOptimizingActor.decommission]]
-          (notification: RemovalNotification[(Query[Location.Anywhere], Option[Milliseconds]), ActorRef]) =>
+          (notification: RemovalNotification[(Query[Location.External], Option[Milliseconds]), ActorRef]) =>
             /** allow REPLACED actors to live on (eg, as happens when calling [[skipOptimizerCache.refresh]].
               * Otherwise, remove the actor from the actor system as soon as it has burnt down its mailbox
               */
@@ -60,8 +60,8 @@ trait CypherOpsGraph extends BaseGraph {
               )
             }
         }
-        .build(new CacheLoader[(Query[Location.Anywhere], Option[Milliseconds]), ActorRef] {
-          def load(key: (Query[Location.Anywhere], Option[Milliseconds])): ActorRef =
+        .build(new CacheLoader[(Query[Location.External], Option[Milliseconds]), ActorRef] {
+          def load(key: (Query[Location.External], Option[Milliseconds])): ActorRef =
             system.actorOf(akka.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key._1, key._2)))
         })
 
@@ -83,28 +83,26 @@ trait CypherOpsGraph extends BaseGraph {
       * @param bypassSkipOptimization if true and the query+atTime are otherwise eligible for skip optimizations (see
       *                               [[SkipOptimizingActor]]), the query will be run without using any available
       *                               [[SkipOptimizingActor]] for orchestration
-      * @param initialInterpreter     Some(interpreter that will be used to run the provided Query) or None to use the
-      *                               default AnchoredInterpreter for the provided atTime. Note that certain queries may
-      *                               cause other interpreters to be invoked as the query propagates through the graph
       * @return rows of results
       */
     private[graph] def continueQuery(
-      query: Query[Location.Anywhere],
+      query: Query[Location.External],
       parameters: Parameters = Parameters.empty,
       atTime: Option[Milliseconds] = None,
       context: QueryContext = QueryContext.empty,
-      bypassSkipOptimization: Boolean = false,
-      initialInterpreter: Option[CypherInterpreter[Location.Anywhere]] = None
+      bypassSkipOptimization: Boolean = false
     ): Source[QueryContext, NotUsed] = {
       requiredGraphIsReady()
+      val interpreter =
+        atTime match {
+          case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
+          case None => currentMomentInterpreter
+        }
+
       require(
-        initialInterpreter.forall(_.atTime == atTime),
+        interpreter.atTime == atTime,
         "Refusing to execute a query at a different timestamp than requested by the caller"
       )
-      val interpreter = initialInterpreter.getOrElse(atTime match {
-        case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
-        case None => currentMomentInterpreter
-      })
 
       interpreter
         .interpret(query, context)(parameters)
@@ -125,13 +123,13 @@ trait CypherOpsGraph extends BaseGraph {
       *                               [[SkipOptimizingActor]] for orchestration
       */
     def query(
-      query: CompiledQuery[Location.Anywhere],
+      query: CompiledQuery[Location.External],
       atTime: Option[Milliseconds],
       parameters: Map[String, cypher.Value],
       bypassSkipOptimization: Boolean = false
     ): QueryResults = {
       requiredGraphIsReady()
-      val interpreter: CypherInterpreter[Location.Anywhere] = atTime match {
+      val interpreter: CypherInterpreter[Location.External] = atTime match {
         case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
         case None => currentMomentInterpreter
       }

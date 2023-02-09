@@ -16,8 +16,8 @@ import com.thatdot.quine.model.QuineId
 trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazyLogging {
 
   /** Dependency: run a cypher query on this node (implemented by [[CypherBehavior.runQuery]]) */
-  def runQuery[Start <: Location](
-    query: CompiledQuery[Start],
+  def runQuery(
+    query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
   ): QueryResults
 
@@ -67,7 +67,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
           edgeChoiceWeight -> e
       }.toList
 
-      def getCypherWalkValues[QueryStart <: Location](query: CompiledQuery[QueryStart]): Future[List[String]] =
+      def getCypherWalkValues(query: CompiledQuery[Location.OnNode]): Future[List[String]] =
         runQuery(query, Map("n" -> Expr.Bytes(qid))).results
           .mapConcat { row =>
             row.flatMap {

@@ -29,7 +29,7 @@ import com.thatdot.quine.model.Milliseconds
   *                    convenience.
   * @param atTime      the timestamp at which [[QueryFamily]] will be run against the graph
   */
-class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.Anywhere], atTime: Option[Milliseconds])
+class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.External], atTime: Option[Milliseconds])
     extends Actor
     with ActorLogging {
   import SkipOptimizingActor._
@@ -229,7 +229,7 @@ object SkipOptimizingActor {
     * @param replyTo               the ActorRef to which results and/or errors will be `tell`-ed
     */
   case class ResumeQuery(
-    query: Query.Return[Location.Anywhere],
+    query: Query.Return[Location.External],
     context: QueryContext,
     parameters: Parameters,
     restartIfAppropriate: Boolean,

@@ -24,7 +24,7 @@ import com.thatdot.quine.persistor.WrappedPersistorException
   *                            query interpreter started
   */
 final case class AtLeastOnceCypherQuery(
-  query: cypher.CompiledQuery[Location.Anywhere],
+  query: cypher.CompiledQuery[Location.External],
   cypherParameterName: String,
   debugName: String = "unnamed",
   startupRetryDelay: FiniteDuration = 100.millis

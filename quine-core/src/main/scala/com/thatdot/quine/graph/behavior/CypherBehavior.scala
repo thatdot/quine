@@ -21,8 +21,8 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
   /** Run a [[CompiledQuery]] on this node's interpreter
     * NOT THREADSAFE: this closes over and may mutate node state, depending on the [[query]]
     */
-  def runQuery[Start <: Location](
-    query: CompiledQuery[Start],
+  def runQuery(
+    query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
   ): QueryResults = {
     val nodeInterpreter = this: CypherInterpreter[Location.OnNode]

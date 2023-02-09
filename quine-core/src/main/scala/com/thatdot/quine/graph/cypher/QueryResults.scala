@@ -10,7 +10,7 @@ import akka.stream.scaladsl.Source
   * @param resultContexts the underlying Source of QueryContexts (rows) emitted by the query
   */
 final case class QueryResults(
-  compiled: CompiledQuery[_ <: Location],
+  compiled: CompiledQuery[Location],
   private val resultContexts: Source[QueryContext, NotUsed]
 ) {
 

@@ -33,14 +33,14 @@ import com.thatdot.quine.model.{
 
 // Only knows what to do with index anchored queries, cannot access node-local state
 // INV: Thread-safe
-trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] with LazyLogging {
+trait AnchoredInterpreter extends CypherInterpreter[Location.External] with LazyLogging {
 
   def node: Option[BaseNodeActor] = None
 
   implicit val self: ActorRef = ActorRef.noSender
 
   final def interpret(
-    query: Query[Location.Anywhere],
+    query: Query[Location.External],
     context: QueryContext
   )(implicit
     parameters: Parameters
@@ -51,29 +51,29 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.Anywhere] with Lazy
       case query: AnchoredEntry => interpretAnchoredEntry(query, context)
       case query: ArgumentEntry => interpretArgumentEntry(query, context)
       case query: LoadCSV => interpretLoadCSV(query, context)
-      case query: Union[Location.Anywhere @unchecked] => interpretUnion(query, context)
-      case query: Or[Location.Anywhere @unchecked] => interpretOr(query, context)
-      case query: ValueHashJoin[Location.Anywhere @unchecked] => interpretValueHashJoin(query, context)
-      case query: SemiApply[Location.Anywhere @unchecked] => interpretSemiApply(query, context)
-      case query: Apply[Location.Anywhere @unchecked] => interpretApply(query, context)
-      case query: Optional[Location.Anywhere @unchecked] => interpretOptional(query, context)
-      case query: Filter[Location.Anywhere @unchecked] => interpretFilter(query, context)
-      case query: Skip[Location.Anywhere @unchecked] => interpretSkip(query, context)
-      case query: Limit[Location.Anywhere @unchecked] => interpretLimit(query, context)
-      case query: Sort[Location.Anywhere @unchecked] => interpretSort(query, context)
-      case query: Return[Location.Anywhere @unchecked] => interpretReturn(query, context)
-      case query: Distinct[Location.Anywhere @unchecked] => interpretDistinct(query, context)
-      case query: Unwind[Location.Anywhere @unchecked] => interpretUnwind(query, context)
-      case query: AdjustContext[Location.Anywhere @unchecked] => interpretAdjustContext(query, context)
-      case query: EagerAggregation[Location.Anywhere @unchecked] => interpretEagerAggregation(query, context)
+      case query: Union[Location.External @unchecked] => interpretUnion(query, context)
+      case query: Or[Location.External @unchecked] => interpretOr(query, context)
+      case query: ValueHashJoin[Location.External @unchecked] => interpretValueHashJoin(query, context)
+      case query: SemiApply[Location.External @unchecked] => interpretSemiApply(query, context)
+      case query: Apply[Location.External @unchecked] => interpretApply(query, context)
+      case query: Optional[Location.External @unchecked] => interpretOptional(query, context)
+      case query: Filter[Location.External @unchecked] => interpretFilter(query, context)
+      case query: Skip[Location.External @unchecked] => interpretSkip(query, context)
+      case query: Limit[Location.External @unchecked] => interpretLimit(query, context)
+      case query: Sort[Location.External @unchecked] => interpretSort(query, context)
+      case query: Return[Location.External @unchecked] => interpretReturn(query, context)
+      case query: Distinct[Location.External @unchecked] => interpretDistinct(query, context)
+      case query: Unwind[Location.External @unchecked] => interpretUnwind(query, context)
+      case query: AdjustContext[Location.External @unchecked] => interpretAdjustContext(query, context)
+      case query: EagerAggregation[Location.External @unchecked] => interpretEagerAggregation(query, context)
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
-      case query: SubQuery[Location.Anywhere @unchecked] => interpretSubQuery(query, context)
+      case query: SubQuery[Location.External @unchecked] => interpretSubQuery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
     }
 
-  override private[quine] def interpretReturn(query: Return[Location.Anywhere], context: QueryContext)(implicit
+  override private[quine] def interpretReturn(query: Return[Location.External], context: QueryContext)(implicit
     parameters: Parameters
   ): Source[QueryContext, _] =
     query match {
@@ -650,7 +650,9 @@ trait OnNodeInterpreter
 
 /** @tparam Start the most specific Location this interpreter can handle. That is, if this interpreter runs on a node
   *               thread, [[Location.OnNode]] (see: OnNodeInterpreter). If this interpreter runs off-node,
-  *               [[Location.Anywhere]] (see: AnchoredInterpreter).
+  *               [[Location.External]] (see: AnchoredInterpreter). Bear in mind that CypherInterpreter is contravariant
+  *               in Start, so a CypherInterpreter[OnNode] is also a CypherIntepreter[Anywhere], but not a
+  *               CypherInterpreter[External] nor a CypherInterpreter[Location]
   */
 trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
