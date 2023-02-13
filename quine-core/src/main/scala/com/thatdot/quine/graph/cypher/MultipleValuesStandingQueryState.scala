@@ -5,7 +5,8 @@ import scala.collection.mutable
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelMultipleValuesResult,
   NewMultipleValuesResult,

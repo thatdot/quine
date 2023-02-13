@@ -8,7 +8,8 @@ import scala.util.Success
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
-import com.thatdot.quine.graph.NodeChangeEvent._
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage._
@@ -37,9 +38,9 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
       }
       c ?! Source(matchingEdges.map(HalfEdgeMessage).toList)
 
-    case a @ AddHalfEdgeCommand(he, _) => a ?! processEvents(EdgeAdded(he) :: Nil)
+    case a @ AddHalfEdgeCommand(he, _) => a ?! processEdgeEvents(EdgeAdded(he) :: Nil)
 
-    case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEvents(EdgeRemoved(he) :: Nil)
+    case r @ RemoveHalfEdgeCommand(he, _) => r ?! processEdgeEvents(EdgeRemoved(he) :: Nil)
 
     case g @ GetPropertiesCommand(_) =>
       val a = Source((properties - graph.labelsProperty).map({ case (key, value) =>
@@ -56,11 +57,11 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
       val b = Source(edges.all.toList).map(e => PropertyOrEdgeMessage(Right(e)))
       r ?! (a concat b)
 
-    case s @ SetPropertyCommand(key, value, _) => s ?! processEvents(PropertySet(key, value) :: Nil)
+    case s @ SetPropertyCommand(key, value, _) => s ?! processPropertyEvents(PropertySet(key, value) :: Nil)
 
     case r @ RemovePropertyCommand(key, _) =>
       r ?! properties.get(key).fold(Future.successful(Done)) { value =>
-        processEvents(PropertyRemoved(key, value) :: Nil)
+        processPropertyEvents(PropertyRemoved(key, value) :: Nil)
       }
 
     case d @ DeleteNodeCommand(shouldDeleteEdges, _) =>
@@ -75,22 +76,24 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         val otherSidesRemoved =
           edgeRemovalEvents.map(ev => ev.edge.other.?(RemoveHalfEdgeCommand(ev.edge.reflect(qid), _)).flatten)
         // Confirmation future completes when every bit of the removal is done
-        d ?! processEvents(edgeRemovalEvents ++ propertyRemovalEvents).flatMap(_ =>
-          Future
-            .sequence(otherSidesRemoved)(implicitlyBF, context.dispatcher)
-            .map(_ => DeleteNodeCommand.Success)(context.dispatcher)
-        )(context.dispatcher)
+        d ?! processEdgeEvents(edgeRemovalEvents)
+          .zip(processPropertyEvents(propertyRemovalEvents.toSeq))
+          .flatMap(_ =>
+            Future
+              .sequence(otherSidesRemoved)(implicitlyBF, context.dispatcher)
+              .map(_ => DeleteNodeCommand.Success)(context.dispatcher)
+          )(context.dispatcher)
       }
 
     case i @ IncrementProperty(propKey, incAmount, _) =>
       i ?! (properties.get(propKey).map(_.deserialized) match {
         case None =>
           val newValue = PropertyValue(QuineValue.Integer(incAmount))
-          processEvents(PropertySet(propKey, newValue) :: Nil)
+          processPropertyEvents(PropertySet(propKey, newValue) :: Nil)
           IncrementProperty.Success(incAmount)
         case Some(Success(QuineValue.Integer(i))) =>
           val newValue = PropertyValue(QuineValue.Integer(i + incAmount))
-          processEvents(PropertySet(propKey, newValue) :: Nil)
+          processPropertyEvents(PropertySet(propKey, newValue) :: Nil)
           IncrementProperty.Success(i + incAmount)
         case Some(Success(other)) => IncrementProperty.Failed(other)
         case _ => IncrementProperty.Failed(QuineValue.Null)

@@ -32,13 +32,23 @@ object NodeEvent {
   *   - persist the changes to durable storage without necessarily needing
   *     expensive updates (append often suffices)
   */
-sealed trait NodeChangeEvent extends NodeEvent
+sealed abstract class NodeChangeEvent extends NodeEvent
+sealed abstract class PropertyEvent extends NodeChangeEvent {
+  val key: Symbol
+}
+object PropertyEvent {
+  final case class PropertySet(key: Symbol, value: PropertyValue) extends PropertyEvent
 
-object NodeChangeEvent {
-  final case class EdgeAdded(edge: HalfEdge) extends NodeChangeEvent
-  final case class EdgeRemoved(edge: HalfEdge) extends NodeChangeEvent
-  final case class PropertySet(key: Symbol, value: PropertyValue) extends NodeChangeEvent
-  final case class PropertyRemoved(key: Symbol, value: PropertyValue) extends NodeChangeEvent
+  final case class PropertyRemoved(key: Symbol, value: PropertyValue) extends PropertyEvent
+
+}
+sealed abstract class EdgeEvent extends NodeChangeEvent {
+  val edge: HalfEdge
+}
+object EdgeEvent {
+  final case class EdgeAdded(edge: HalfEdge) extends EdgeEvent
+  final case class EdgeRemoved(edge: HalfEdge) extends EdgeEvent
+
 }
 
 sealed trait DomainIndexEvent extends NodeEvent {

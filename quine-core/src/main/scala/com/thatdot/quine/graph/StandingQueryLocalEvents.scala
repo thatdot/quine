@@ -2,7 +2,8 @@ package com.thatdot.quine.graph
 
 import scala.collection.mutable
 
-import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
@@ -119,19 +120,19 @@ final case class StandingQueryLocalEventIndex(
       case StandingQueryLocalEvents.Property(key) =>
         watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
         properties.get(key).toSeq.map { propVal =>
-          NodeChangeEvent.PropertySet(key, propVal)
+          PropertySet(key, propVal)
         }
 
       case StandingQueryLocalEvents.Edge(Some(key)) =>
         watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler
         edges.matching(key).toSeq.map { halfEdge =>
-          NodeChangeEvent.EdgeAdded(halfEdge)
+          EdgeAdded(halfEdge)
         }
 
       case StandingQueryLocalEvents.Edge(None) =>
         watchingForAnyEdge.add(handler)
         edges.all.toSeq.map { halfEdge =>
-          NodeChangeEvent.EdgeAdded(halfEdge)
+          EdgeAdded(halfEdge)
         }
     }
 

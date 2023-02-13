@@ -5,7 +5,7 @@ import scala.compat.ExecutionContexts
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, QueryResults}
 import com.thatdot.quine.graph.messaging.CypherMessage.{
   CheckOtherHalfEdge,
@@ -41,7 +41,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         case None => ce ?! Source.empty
         // Add edge
         case Some(true) =>
-          val edgeAdded = processEvents(EdgeAdded(halfEdge) :: Nil)
+          val edgeAdded = processEdgeEvents(EdgeAdded(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
             .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContexts.parasitic))
@@ -50,7 +50,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
 
         // Remove edge
         case Some(false) =>
-          val edgeRemoved = processEvents(EdgeRemoved(halfEdge) :: Nil)
+          val edgeRemoved = processEdgeEvents(EdgeRemoved(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
             .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContexts.parasitic))

@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
-import com.thatdot.quine.graph.{ByteBufferOps, EventTime, NodeChangeEvent, NodeEvent}
+import com.thatdot.quine.graph.{ByteBufferOps, EdgeEvent, EventTime, NodeEvent, PropertyEvent}
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{Offset, TypeAndOffset}
@@ -16,7 +16,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
     event: NodeEvent
   ): TypeAndOffset =
     event match {
-      case NodeChangeEvent.EdgeAdded(HalfEdge(edgeType, dir, other)) =>
+      case EdgeEvent.EdgeAdded(HalfEdge(edgeType, dir, other)) =>
         val event = persistence.AddEdge.createAddEdge(
           builder,
           builder.createString(edgeType.name),
@@ -25,7 +25,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         )
         TypeAndOffset(persistence.NodeEventUnion.AddEdge, event)
 
-      case NodeChangeEvent.EdgeRemoved(HalfEdge(edgeType, dir, other)) =>
+      case EdgeEvent.EdgeRemoved(HalfEdge(edgeType, dir, other)) =>
         val event = persistence.RemoveEdge.createRemoveEdge(
           builder,
           builder.createString(edgeType.name),
@@ -34,7 +34,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         )
         TypeAndOffset(persistence.NodeEventUnion.RemoveEdge, event)
 
-      case NodeChangeEvent.PropertySet(propKey, value) =>
+      case PropertyEvent.PropertySet(propKey, value) =>
         val event = persistence.AddProperty.createAddProperty(
           builder,
           builder.createString(propKey.name),
@@ -42,7 +42,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         )
         TypeAndOffset(persistence.NodeEventUnion.AddProperty, event)
 
-      case NodeChangeEvent.PropertyRemoved(propKey, value) =>
+      case PropertyEvent.PropertyRemoved(propKey, value) =>
         val event = persistence.RemoveProperty.createRemoveProperty(
           builder,
           builder.createString(propKey.name),
@@ -66,7 +66,7 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
           byte2EdgeDirection(event.direction),
           QuineId(event.otherIdAsByteBuffer.remainingBytes)
         )
-        NodeChangeEvent.EdgeAdded(halfEdge)
+        EdgeEvent.EdgeAdded(halfEdge)
 
       case persistence.NodeEventUnion.RemoveEdge =>
         val event = makeEvent(new persistence.RemoveEdge()).asInstanceOf[persistence.RemoveEdge]
@@ -75,19 +75,19 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
           byte2EdgeDirection(event.direction),
           QuineId(event.otherIdAsByteBuffer.remainingBytes)
         )
-        NodeChangeEvent.EdgeRemoved(halfEdge)
+        EdgeEvent.EdgeRemoved(halfEdge)
 
       case persistence.NodeEventUnion.AddProperty =>
         val event = makeEvent(new persistence.AddProperty()).asInstanceOf[persistence.AddProperty]
         val propertyKey = Symbol(event.key)
         val propertyValue = PropertyValue.fromBytes(event.valueAsByteBuffer.remainingBytes)
-        NodeChangeEvent.PropertySet(propertyKey, propertyValue)
+        PropertyEvent.PropertySet(propertyKey, propertyValue)
 
       case persistence.NodeEventUnion.RemoveProperty =>
         val event = makeEvent(new persistence.RemoveProperty()).asInstanceOf[persistence.RemoveProperty]
         val propertyKey = Symbol(event.key)
         val propertyValue = PropertyValue.fromBytes(event.valueAsByteBuffer.remainingBytes)
-        NodeChangeEvent.PropertyRemoved(propertyKey, propertyValue)
+        PropertyEvent.PropertyRemoved(propertyKey, propertyValue)
 
       case other =>
         throw new InvalidUnionType(other, persistence.NodeEventUnion.names)

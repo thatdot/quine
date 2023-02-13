@@ -12,8 +12,7 @@ trait BaseNodeActor extends BaseNodeActorView {
     *
     * === Thread safety ===
     *
-    * This function is ''NOT'' thread safe. However, it can be called multiple times without waiting for the returned
-    * futures to complete since the thread-unsafe computation happens before the future gets returned. If processing
+    * This function is ''NOT'' thread safe. If processing
     * multiple events, call this function once and pass the events in as a sequence. Redundant events will be stripped
     * out in order of the sequence in which they are passed, but after after stripping out redundant events, the effects
     * may not be strictly applied in the same order.
@@ -44,10 +43,17 @@ trait BaseNodeActor extends BaseNodeActorView {
     *
     * @param event a single event that is being applied individually
     * @param atTimeOverride overrides the time at which the event occurs (take great care if using this!)
-    * @return future tracking completion of off-node actions
+    * @return future tracking completion
     */
-  protected def processEvents(
-    event: Seq[NodeChangeEvent],
+
+  protected def processPropertyEvents(
+    events: Seq[PropertyEvent],
+    atTimeOverride: Option[EventTime] = None
+  ): Future[Done.type]
+
+  // The only place this is called with a collection is when deleting a node.
+  protected def processEdgeEvents(
+    events: Seq[EdgeEvent],
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type]
 
@@ -58,8 +64,8 @@ trait BaseNodeActor extends BaseNodeActorView {
     */
   protected def setLabels(labels: Set[Symbol]): Future[Done.type] = {
     val labelsValue = QuineValue.List(labels.map(_.name).toVector.sorted.map(QuineValue.Str))
-    val propertyEvent = NodeChangeEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
-    processEvents(propertyEvent :: Nil)
+    val propertyEvent = PropertyEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
+    processPropertyEvents(propertyEvent :: Nil)
   }
 
   /** Record that some update pertinent to snapshots has occurred */

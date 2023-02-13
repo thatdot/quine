@@ -13,7 +13,8 @@ import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging}
 
-import com.thatdot.quine.graph.NodeChangeEvent._
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{
   DomainNodeIndex,
   NodeParentIndex,
@@ -294,20 +295,37 @@ private[graph] class NodeActor(
   private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
 
   /* Determine if this event causes a change to the respective state (defaults to this node's state) */
+  // This is only used when passing a single EdgeEvent or PropertyEvent to processEvents
   protected def hasEffect(event: NodeChangeEvent): Boolean = event match {
-    case PropertySet(key, value) => !properties.get(key).contains(value)
-    case PropertyRemoved(key, _) => properties.contains(key)
+    case e: EdgeEvent => hasEffect(e)
+    case p: PropertyEvent => hasEffect(p)
+  }
+  protected def hasEffect(event: EdgeEvent): Boolean = event match {
     case EdgeAdded(edge) => !edges.contains(edge)
     case EdgeRemoved(edge) => edges.contains(edge)
   }
+  protected def hasEffect(event: PropertyEvent): Boolean = event match {
+    case PropertySet(key, value) => !properties.get(key).contains(value)
+    case PropertyRemoved(key, _) => properties.contains(key)
+  }
+
+  protected def processPropertyEvents(
+    events: Seq[PropertyEvent],
+    atTimeOverride: Option[EventTime]
+  ): Future[Done.type] = processEvents(events, atTimeOverride)
+
+  protected def processEdgeEvents(
+    events: Seq[EdgeEvent],
+    atTimeOverride: Option[EventTime]
+  ): Future[Done.type] = processEvents(events, atTimeOverride)
 
   /** Process multiple node events as a single unit, so their effects are applied in memory together, and also persisted
     * together. Will check the incoming sequence for conflicting events (modifying the same value more than once), and
     * keep only the last event, ensuring the provided collection is internally coherent.
     */
-  protected def processEvents(
+  private def processEvents(
     events: Seq[NodeChangeEvent],
-    atTimeOverride: Option[EventTime] = None
+    atTimeOverride: Option[EventTime]
   ): Future[Done.type] =
     if (atTime.isDefined) Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
     else if (atTimeOverride.isDefined && events.size > 1)

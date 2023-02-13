@@ -48,7 +48,7 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
   }
 
   val pendingCallbacks: mutable.ArrayBuffer[PausedMessageCallback[_]] = mutable.ArrayBuffer.empty
-  var idCounter = 0 // Used only to uniquely identify futures in progress. OK if it rolls over.
+  private var idCounter = 0 // Used only to uniquely identify futures in progress. OK if it rolls over.
 
   // Convenience method which doesn't eagerly evaluate strings.
   private def debug(msg: => String): Unit = if (log.isDebugEnabled) log.debug(msg)
@@ -106,7 +106,7 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
 
   val messageBuffer: mutable.ArrayBuffer[Envelope] = mutable.ArrayBuffer.empty
 
-  var isCalled = new AtomicBoolean()
+  private val isCalled = new AtomicBoolean()
 
   /** Pause message processing until a future is completed
     *

@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
 import scala.collection.mutable
+import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -14,13 +15,14 @@ import akka.util.Timeout
 import com.google.common.collect.MinMaxPriorityQueue
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved, PropertyRemoved, PropertySet}
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.Query._
 import com.thatdot.quine.graph.cypher.SkipOptimizingActor._
 import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, QueryContextResult, QueryPackage}
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
-import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NodeChangeEvent}
+import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, PropertyEvent}
 import com.thatdot.quine.model.{
   EdgeDirection,
   HalfEdge,
@@ -537,7 +539,7 @@ trait OnNodeInterpreter
       case Some(expr) => PropertySet(query.key, PropertyValue(Expr.toQuineValue(expr.eval(context))))
     }
     Source
-      .future(processEvents(event :: Nil))
+      .future(processPropertyEvents(event :: Nil))
       .map(_ => context)
   }
 
@@ -560,7 +562,7 @@ trait OnNodeInterpreter
     }
 
     // Build up the full set to events to process before processing them
-    val eventsToProcess = Vector.newBuilder[NodeChangeEvent]
+    val eventsToProcess = Vector.newBuilder[PropertyEvent]
 
     // Optionally drop existing properties
     if (!query.includeExisting) {
@@ -574,7 +576,7 @@ trait OnNodeInterpreter
     for ((key, value) <- map)
       eventsToProcess += PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
 
-    Source.future(processEvents(eventsToProcess.result()).map(_ => context)(cypherEc))
+    Source.future(processPropertyEvents(eventsToProcess.result()).map(_ => context)(ExecutionContexts.parasitic))
   }
 
   final private[quine] def interpretSetEdge(
@@ -596,7 +598,7 @@ trait OnNodeInterpreter
     // Add the half-edge locally
     val edge: HalfEdge = HalfEdge(query.label, query.direction, other)
     val event = if (query.add) EdgeAdded(edge) else EdgeRemoved(edge)
-    val setThisHalf = processEvents(event :: Nil)
+    val setThisHalf = processEdgeEvents(event :: Nil)
 
     val newContext = query.bindRelation match {
       case None => context

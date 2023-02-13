@@ -18,6 +18,8 @@ import org.scalacheck.util.Buildable
 import org.scalacheck.{Arbitrary, Gen}
 import shapeless.cachedImplicit
 
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty.{
@@ -364,7 +366,6 @@ trait ArbitraryInstances {
   }
 
   implicit val arbNodeChangeEvent: Arbitrary[NodeChangeEvent] = Arbitrary {
-    import NodeChangeEvent._
     Gen.oneOf(
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeAdded.apply),
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeRemoved.apply),

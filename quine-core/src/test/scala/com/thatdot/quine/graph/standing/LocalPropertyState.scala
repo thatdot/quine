@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.standing
 
 import org.scalatest.funsuite.AnyFunSuite
 
-import com.thatdot.quine.graph.NodeChangeEvent.{PropertyRemoved, PropertySet}
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 

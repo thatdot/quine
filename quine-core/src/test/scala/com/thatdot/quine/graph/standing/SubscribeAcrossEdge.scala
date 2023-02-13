@@ -5,7 +5,7 @@ import java.util.UUID
 import org.scalactic.source.Position
 import org.scalatest.funsuite.AnyFunSuite
 
-import com.thatdot.quine.graph.NodeChangeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelMultipleValuesResult,

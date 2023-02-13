@@ -15,6 +15,7 @@ import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
 
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
 import com.thatdot.quine.graph.Generators.{generate1, generateN}
+import com.thatdot.quine.graph.PropertyEvent.PropertySet
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
   DomainIndexEvent,
@@ -68,11 +69,11 @@ abstract class PersistenceAgentSpec
   val qid3: QuineId = idProvider.customIdStringToQid("45cc12b5-f498-4f72-89d3-29180df76e34").get
   val qid4: QuineId = idProvider.customIdStringToQid("ffffffff-ffff-ffff-ffff-ffffffffffff").get
 
-  val event0: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(0L)))
-  val event1: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(1L)))
-  val event2: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(2L)))
-  val event3: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(3L)))
-  val event4: NodeChangeEvent.PropertySet = NodeChangeEvent.PropertySet(Symbol("foo"), PropertyValue(QuineValue(4L)))
+  val event0: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(0L)))
+  val event1: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(1L)))
+  val event2: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(2L)))
+  val event3: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(3L)))
+  val event4: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(4L)))
 
   // arbitrary byte arrays
   val snapshot0: Array[Byte] = Array[Byte](1)
