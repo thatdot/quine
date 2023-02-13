@@ -53,6 +53,34 @@ persistence {
 }
 ```
 
+## Cassandra Authentication
+
+Quine uses the [DataStax Java Driver for Apache Cassandra](https://mvnrepository.com/artifact/com.datastax.oss/java-driver-core/4.15.0) for connections. You can configure authentication by adding `datastax-java-driver` configuration to your local `quine.conf` file as described on the [Authentication page](https://docs.datastax.com/en/developer/java-driver/4.14/manual/core/authentication/).
+
+For example, adding the following into a `quine.conf` file will set up basic authentication.
+
+``` json
+quine.store {
+  # LOCAL Apache Cassandra Instance
+  type = cassandra
+}
+datastax-java-driver {
+  advanced {
+    auth-provider {
+      class = PlainTextAuthProvider
+      username = cassandra
+      password = cassandra
+    }
+  }
+}
+```
+
+Then launch Quine with the following command line:
+
+```shell
+java -Dconfig.file=quine.conf -jar quine.jar
+```
+
 ## Automatic Creation of Keyspace and Tables
 
 Quine has settings in the Cassandra section of the config, `should-create-keyspace` and `should-create-tables`. When enabled, Quine automatically creates the keyspace and/or tables at startup if they don’t already exist.
@@ -60,6 +88,8 @@ Quine has settings in the Cassandra section of the config, `should-create-keyspa
 @@@ note { title=Note }
 Auto creation of the keyspace and tables is included as a development convenience and should never be used in production.
 @@@
+
+
 
 ## Cassandra Schema
 
