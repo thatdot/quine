@@ -33,7 +33,7 @@ WHERE exists(person.name) AND exists(mom.name)
 RETURN DISTINCT strId(person) AS id
 ```
 
-Standing queries must only contain a `MATCH` and a `RETURN`, with an optional `WHERE` in between. Additionally, when running with the default `DistinctId` mode (see the `"mode"` field in the `/api/v1/query/standing/{name}/issue` endpoint), the following additional constraints apply:
+Standing queries must only contain a `MATCH` and a `RETURN`, with an optional `WHERE` in between. Additionally, when running with the default `DistinctId` mode (see the `"mode"` field in the `/api/v1/query/standing/{name}` POST endpoint), the following additional constraints apply:
 
   1. Each node inside the `MATCH` may have: an optional node variable name, an optional label (but not more than one label per node), an optional map of literal property values to match. For example, `(grandpa { name: "Joe" })` from the example query above binds the variable `grandpa` and specifies the literal property values `{ name: "Joe" }`.
 

@@ -13,7 +13,7 @@ This feature is still in preview mode. It may
 
 @@@
 
-This mode can be enabled by specifying `"mode": "MultipleValues"` when creating a standing query with the `/api/v1/query/standing/{name}/issue` endpoint.
+This mode can be enabled by specifying `"mode": "MultipleValues"` when creating a standing query with the `/api/v1/query/standing/{name}` POST endpoint.
 
 ## Motivation
 
