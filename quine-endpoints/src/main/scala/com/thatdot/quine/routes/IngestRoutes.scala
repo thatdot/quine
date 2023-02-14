@@ -167,21 +167,17 @@ object KafkaSecurityProtocol {
 @unnamed
 @title("Kafka offset tracking mechanism")
 @docs(
-  "How to keep track of current offset when consuming from Kafka, if at all."
+  "How to keep track of current offset when consuming from Kafka, if at all. " +
+  """You could alternatively set "enable.auto.commit": "true" in kafkaProperties  for this ingest, """ +
+  "but in that case messages will be lost if the ingest is stopped while processing messages"
 )
 sealed abstract class KafkaOffsetCommitting
 object KafkaOffsetCommitting {
   @unnamed
-  @title("Auto Commit")
-  @docs("""Set Kafka's enable.auto.commit and auto.commit.interval.ms settings.
-
-         Note that with `autoCommit=true` it is possible for some records to be lost
-         on shutdown since some records may be in transit but marked as committed by
-         Kafka.""".stripMargin)
-  final case class AutoCommit(commitIntervalMillis: Int = 5000) extends KafkaOffsetCommitting
-  @unnamed
   @title("Explicit Commit")
-  @docs("Don't auto commit, only explicitly commit to consumer group on successful execution of ingest query to graph")
+  @docs(
+    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record"
+  )
   final case class ExplicitCommit(
     @docs("Maximum number of messages in a single commit batch")
     maxBatch: Long = 1000,

@@ -17,11 +17,7 @@ import akka.stream.scaladsl.{Flow, Source}
 import akka.{Done, NotUsed}
 
 import org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG
-import org.apache.kafka.clients.consumer.ConsumerConfig.{
-  AUTO_COMMIT_INTERVAL_MS_CONFIG,
-  AUTO_OFFSET_RESET_CONFIG,
-  ENABLE_AUTO_COMMIT_CONFIG
-}
+import org.apache.kafka.clients.consumer.ConsumerConfig.AUTO_OFFSET_RESET_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
@@ -121,25 +117,6 @@ object KafkaSrcDef {
       )
 
     offsetCommitting match {
-      case Some(KafkaOffsetCommitting.AutoCommit(commitIntervalMs)) =>
-        val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(
-          consumerSettings.withProperties(
-            ENABLE_AUTO_COMMIT_CONFIG -> "true",
-            AUTO_COMMIT_INTERVAL_MS_CONFIG -> commitIntervalMs.toString
-          ),
-          subscription
-        )
-
-        NonCommitting(
-          name,
-          format,
-          initialSwitchMode,
-          parallelism,
-          consumer,
-          endingOffset,
-          maxPerSecond,
-          decoders
-        )
       case None =>
         val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
 
