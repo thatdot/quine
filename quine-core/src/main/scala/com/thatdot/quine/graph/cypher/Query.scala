@@ -43,7 +43,7 @@ object Location {
   /** For queries that can only be executed from inside the graph */
   sealed trait OnNode extends Location
 
-  /** For queries that can only be executed from outside the graph (e.g., on an [[AnchoredInterpreter]]) */
+  /** For queries that can only be executed from outside the graph (e.g., on an [[GraphExternalInterpreter]]) */
   sealed trait External extends Location
 
   /** For queries that can be executed from inside or outside the graph */

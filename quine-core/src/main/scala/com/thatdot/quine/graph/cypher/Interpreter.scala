@@ -33,9 +33,9 @@ import com.thatdot.quine.model.{
   QuineValue
 }
 
-// Only knows what to do with index anchored queries, cannot access node-local state
+// An interpreter that runs against the graph as a whole, rather than "inside" the graph
 // INV: Thread-safe
-trait AnchoredInterpreter extends CypherInterpreter[Location.External] with LazyLogging {
+trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with LazyLogging {
 
   def node: Option[BaseNodeActor] = None
 
@@ -160,13 +160,13 @@ trait AnchoredInterpreter extends CypherInterpreter[Location.External] with Lazy
   }
 }
 
-/** an interpreter that runs over a particular timestamp "off the graph" (ie, an [[AnchoredInterpreter]]
+/** an interpreter that runs over a particular timestamp "off the graph" (ie, an [[GraphExternalInterpreter]]
   */
 class AtTimeInterpreter(
   val graph: CypherOpsGraph,
   val atTime: Option[Milliseconds],
   val bypassSkipOptimization: Boolean
-) extends AnchoredInterpreter {
+) extends GraphExternalInterpreter {
   def this(graph: CypherOpsGraph, atTime: Milliseconds, bypassSkipOptimization: Boolean) =
     this(graph, Some(atTime), bypassSkipOptimization)
 
