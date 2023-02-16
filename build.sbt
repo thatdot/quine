@@ -196,9 +196,21 @@ lazy val `quine-browser`: Project = project
       "org.scala-js" %%% "scala-js-macrotask-executor" % scalajsMacroTaskExecutorV,
       "org.endpoints4s" %%% "xhr-client" % endpoints4sXhrClientV
     ),
+    Compile / npmDevDependencies ++= Seq(
+      "ts-loader" -> "8.0.0",
+      "typescript" -> "4.9.5",
+      "@types/react" -> "17.0.0",
+      "@types/react-dom" -> "17.0.0",
+      "@types/node" -> "16.7.13"
+    ),
     Compile / npmDependencies ++= Seq(
+      "react" -> reactV,
+      "react-dom" -> reactV,
+      "es6-shim" -> "0.35.7",
       "react-plotly.js" -> reactPlotlyV,
-      "@stoplight/elements" -> stoplightElementsV
+      "plotly.js" -> plotlyV,
+      "@stoplight/elements" -> stoplightElementsV,
+      "mkdirp" -> "1.0.0"
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
     // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
@@ -206,6 +218,7 @@ lazy val `quine-browser`: Project = project
     // This aggressively ignores all warnings from webpack, which is more than necessary, but trivially works
     webpackExtraArgs := Seq("--ignore-warnings-message", "/.*/"),
     fastOptJS / webpackConfigFile := Some(baseDirectory.value / "dev.webpack.config.js"),
+    fastOptJS / webpackDevServerExtraArgs := Seq("--inline", "--hot"),
     fullOptJS / webpackConfigFile := Some(baseDirectory.value / "prod.webpack.config.js"),
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
     test := {},
@@ -265,7 +278,6 @@ lazy val `quine`: Project = project
       "org.webjars" % "jquery" % jqueryV,
       "org.webjars" % "bootstrap" % bootstrapV,
       "org.webjars.npm" % "sugar-date" % sugarV,
-      "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
       "com.google.guava" % "guava" % guavaV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,

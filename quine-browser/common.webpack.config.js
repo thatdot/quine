@@ -1,10 +1,14 @@
+const webpack = require('webpack');
 const path = require("path");
-const webpack = require("webpack");
 
 module.exports = {
     module: {
         rules: [
-            {
+            { 
+                test: /\.(ts|tsx)$/, 
+                use: 'ts-loader',
+                exclude: /node_modules/
+            }, {
                 test: /\.css$/,
                 use: ['style-loader', 'css-loader']
             }, {
@@ -14,6 +18,11 @@ module.exports = {
         ]
     },
     resolve: {
+        modules: [
+          "node_modules",
+          path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
+          path.resolve(__dirname, "../../../../src/main/scala/com/thatdot/quine/webapp")
+        ],
         // good packages for fallbacks are listed at
         // https://webpack.js.org/configuration/resolve/#resolvefallback
         // or https://github.com/browserify/browserify#compatibility
@@ -25,10 +34,16 @@ module.exports = {
             stream: require.resolve('stream-browserify/'),
             path: require.resolve('path-browserify/'),
         },
+        modules: [
+            "node_modules",
+            path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
+            path.resolve(__dirname, "../../../../src/main/scala/com/thatdot/quine/webapp"),
+        ],
         alias: {
             "NodeModules": path.resolve(__dirname, "../../scalajs-bundler/main/node_modules"),
-            "resources": path.resolve(__dirname, "../../../../src/main/resources")
-        }
+            "resources": path.resolve(__dirname, "../../../../src/main/resources"),
+        },
+        extensions: ['.js', '.jsx', '.ts', '.tsx']
     },
     plugins: [
         // "process" is assumed by Stoplight elements to be available globally -- this is what the ProvidePlugin does

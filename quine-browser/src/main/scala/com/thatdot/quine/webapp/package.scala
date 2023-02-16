@@ -5,7 +5,7 @@ import scala.scalajs.js.annotation.{JSExportTopLevel, JSImport}
 
 import org.scalajs.dom
 import slinky.core.KeyAndRefAddingStage
-import slinky.core.facade.ReactInstance
+import slinky.core.facade.{ReactElement, ReactInstance}
 
 import com.thatdot.quine.Util.{DashboardIcon, DocumentationIcon, ExplorerIcon}
 import com.thatdot.quine.routes.ClientRoutes
@@ -19,6 +19,10 @@ package object webapp {
   @js.native
   object IndexCss extends js.Object
   locally(IndexCss) // something has to use this for it to actually load
+
+  @js.native
+  @JSImport("QuineInteractiveTS", "InteractiveClient")
+  def InteractiveClient(): ReactElement = js.native
 
   /** Make a Query UI
     *
@@ -74,6 +78,7 @@ package object webapp {
           options.baseURI
         ),
         Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI)
+        // Tab(ExplorerIcon, "Interactive Client - TS", "/client-ts", InteractiveClient(), options.baseURI)
       )
     }
 
