@@ -142,5 +142,13 @@ class QueryStaticTest extends CypherHarness("query-static-tests") {
       expectedIsIdempotent = true,
       expectedCanContainAllNodeScan = false
     )
+    testQueryStaticAnalysis(
+      queryText =
+        "UNWIND [{}, {}] AS s MATCH (a), (b) WHERE strId(a) = s.foo AND strId(b) = s.bar CREATE (a)-[:baz]->(b)",
+      expectedIsReadOnly = false,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false
+    )
   }
 }
