@@ -130,6 +130,10 @@ object DGNHash {
       case QuineValue.Id(id) =>
         into.putByte(10)
         into.putBytes(id.array)
+      case QuineValue.Duration(d) =>
+        into.putByte(11)
+        into.putLong(d.getSeconds)
+        into.putInt(d.getNano)
     }
 
   private def putLocalProp(key: Symbol, fn: PropertyComparisonFunc, v: Option[PropertyValue], h: Hasher): Hasher = {

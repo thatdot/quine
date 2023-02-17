@@ -64,6 +64,7 @@ final case class StandingQueryResult(
     putQuineValue(value, into)
   }
 
+  //TODO this is a duplicate block with DomainGraphNode#putQuineValue
   private def putQuineValue(from: QuineValue, into: Hasher): Hasher =
     from match {
       case QuineValue.Str(string) =>
@@ -107,6 +108,11 @@ final case class StandingQueryResult(
       case QuineValue.Id(id) =>
         into.putByte(10)
         into.putBytes(id.array)
+      case QuineValue.Duration(d) =>
+        into.putByte(11)
+        into.putLong(d.getSeconds)
+        into.putInt(d.getNano)
+
     }
 
   def dataHashCode: Long =

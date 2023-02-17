@@ -1,6 +1,7 @@
 package com.thatdot.quine.model
 
-import java.time.Instant
+import java.nio.ByteBuffer
+import java.time.{Duration => JavaDuration, Instant}
 
 import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
@@ -164,6 +165,17 @@ object QuineValue {
     def pretty(implicit idProvider: QuineIdProvider): String = timestamp.toString
   }
 
+  final case class Duration(duration: JavaDuration) extends QuineValue {
+
+    type JvmType = JavaDuration
+
+    def quineType = QuineType.Duration
+
+    def underlyingJvmValue = duration
+
+    def pretty(implicit idProvider: QuineIdProvider): String = duration.toString
+  }
+
   object Id {
     def apply[CustomIdType](id: CustomIdType)(implicit
       idProvider: QuineIdProvider.Aux[CustomIdType]
@@ -220,11 +232,13 @@ object QuineValue {
     case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toJson).toSeq)
     case QuineValue.Bytes(byteArray) => Json.fromValues(byteArray.map(b => Json.fromInt(b.intValue())))
     case QuineValue.DateTime(instant) => Json.fromString(instant.toString)
+    case QuineValue.Duration(d) => Json.fromString(d.toString) //TODO Better String reprsentation?
     case QuineValue.Id(qid) => Json.fromString(qid.pretty)
   }
 
   // Message pack extension tags
   final val IdExt: Byte = 32
+  final val DurationExt: Byte = 33
 
   /** Read just the type of a [[QuineValue]] from a MessagePack payload
     *
@@ -248,6 +262,7 @@ object QuineValue {
         val extHeader = unpacker.unpackExtensionTypeHeader()
         extHeader.getType match {
           case IdExt => QuineType.Id
+          case DurationExt => QuineType.Duration
           case EXT_TIMESTAMP => QuineType.DateTime
           case other =>
             throw new IllegalArgumentException(s"Unsupported data extension $other")
@@ -308,6 +323,17 @@ object QuineValue {
       case ValueType.EXTENSION =>
         val extHeader = unpacker.unpackExtensionTypeHeader()
         extHeader.getType match {
+          case DurationExt =>
+            val extData = unpacker.readPayload(extHeader.getLength)
+            val buffer = ByteBuffer.wrap(extData)
+            val seconds = buffer.getLong
+            val nanos = buffer.getInt
+            if (extData.length != 12)
+              throw new IllegalArgumentException(
+                s"Invalid length for date time (expected 12 but got ${extData.length})"
+              )
+            QuineValue.Duration(JavaDuration.ofSeconds(seconds, nanos.toLong))
+
           case EXT_TIMESTAMP =>
             QuineValue.DateTime(unpacker.unpackTimestamp(extHeader))
 
@@ -365,6 +391,10 @@ object QuineValue {
       case QuineValue.DateTime(timestamp) =>
         packer.packTimestamp(timestamp)
 
+      case QuineValue.Duration(duration) =>
+        val data = ByteBuffer.allocate(12).putLong(duration.getSeconds).putInt(duration.getNano).array()
+        packer.packExtensionTypeHeader(DurationExt, 12).addPayload(data)
+
       case QuineValue.Id(qid) =>
         val data = qid.array
         packer.packExtensionTypeHeader(IdExt, data.length).addPayload(data)
@@ -397,6 +427,7 @@ object QuineType {
   case object List extends QuineType
   case object Map extends QuineType
   case object DateTime extends QuineType
+  case object Duration extends QuineType
   case object Id extends QuineType
 }
 

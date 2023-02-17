@@ -95,6 +95,7 @@ object Expr {
     case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue(_)).toMap)
     case QuineValue.DateTime(instant) =>
       DateTime(JavaZonedDateTime.ofInstant(instant, ZoneOffset.UTC))
+    case QuineValue.Duration(duration) => Duration(duration)
     case QuineValue.Id(id) => Bytes(id)
   }
 
@@ -110,9 +111,9 @@ object Expr {
     case List(vec) => QuineValue.List(vec.map(toQuineValue(_)))
     case Map(map) => QuineValue.Map(map.view.mapValues(toQuineValue(_)).toMap)
     case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toInstant)
+    case Duration(duration) => QuineValue.Duration(duration)
     /* TODO?
       case LocalDateTime(localDateTime) =>
-      case Duration(duration) =>
      */
     case other => sys.error(s"Not a valid quine value: $other")
   }

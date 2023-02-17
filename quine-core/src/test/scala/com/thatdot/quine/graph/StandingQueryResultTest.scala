@@ -9,6 +9,6 @@ class StandingQueryResultTest extends AnyFlatSpec with HalfEdgeGen with Arbitrar
     val hasher = murmur3_128.newHasher
     val standingQueries = Generators.generateN[StandingQueryResult](n = 1000, size = 100, Seed(0L))
     standingQueries.map(_.dataHashCode).foreach(hasher.putLong)
-    assert(6339540399760536445L === hasher.hash().asLong())
+    assert(3485917830483155130L === hasher.hash().asLong())
   }
 }

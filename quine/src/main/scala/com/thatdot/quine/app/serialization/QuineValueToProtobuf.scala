@@ -1,5 +1,4 @@
 package com.thatdot.quine.app.serialization
-
 import java.lang.Boolean
 import java.net.URL
 
@@ -9,7 +8,7 @@ import cats.data.{Chain, NonEmptyChain}
 import cats.implicits._
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.{Descriptor, EnumValueDescriptor, FieldDescriptor}
-import com.google.protobuf.{ByteString, DynamicMessage, Timestamp}
+import com.google.protobuf.{ByteString, Duration, DynamicMessage, Timestamp}
 
 import com.thatdot.quine.model.{QuineType, QuineValue}
 
@@ -119,6 +118,18 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
           val builder = Timestamp.newBuilder
           builder.setSeconds(time.getEpochSecond)
           builder.setNanos(time.getNano)
+          Right(builder.build)
+        case other => Left(TypeMismatch(qv.quineType, other))
+      }
+    case QuineValue.Duration(javaDuration) =>
+      field.getJavaType match {
+        case JavaType.LONG => Right(Long.box(javaDuration.toMillis))
+        case JavaType.STRING => Right(javaDuration.toString)
+        // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
+        case JavaType.MESSAGE if field.getMessageType == Duration.getDescriptor =>
+          val builder = Duration.newBuilder
+          builder.setSeconds(javaDuration.getSeconds)
+          builder.setNanos(javaDuration.getNano)
           Right(builder.build)
         case other => Left(TypeMismatch(qv.quineType, other))
       }

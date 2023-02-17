@@ -229,6 +229,12 @@ trait ArbitraryInstances {
     )
   }
 
+  implicit val arbDuration: Arbitrary[JavaDuration] = {
+    val minJavaDuration = JavaDuration.ofSeconds(Long.MinValue)
+    val maxJavaDuration = JavaDuration.ofSeconds(Long.MaxValue, 999999999L)
+    Arbitrary(Gen.choose(minJavaDuration, maxJavaDuration))
+  }
+
   implicit val arbMilliseconds: Arbitrary[Milliseconds] = Arbitrary {
     arbitrary[Long].map(Milliseconds.apply)
   }
@@ -253,7 +259,8 @@ trait ArbitraryInstances {
           GenApply.resultOf[Vector[QuineValue], QuineValue](QuineValue.List.apply),
           GenApply.resultOf[Map[String, QuineValue], QuineValue](QuineValue.Map.apply),
           GenApply.resultOf[Instant, QuineValue](QuineValue.DateTime.apply),
-          GenApply.resultOf[QuineId, QuineValue](QuineValue.Id.apply)
+          GenApply.resultOf[QuineId, QuineValue](QuineValue.Id.apply),
+          GenApply.resultOf[JavaDuration, QuineValue](QuineValue.Duration.apply)
         )
       )
     )

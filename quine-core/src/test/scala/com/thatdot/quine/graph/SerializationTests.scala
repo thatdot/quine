@@ -22,6 +22,14 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     }
   }
 
+  "Binary serialization" should "roundtrip Duration" in {
+    forAll { (v: java.time.Duration) =>
+      val qv = QuineValue.Duration(v)
+      val bytes = QuineValue.writeMsgPack(qv)
+      assert(QuineValue.readMsgPack(bytes) == qv && QuineValue.readMsgPackType(bytes) == qv.quineType)
+    }
+  }
+
   it should "eventWithTime format safely encapsulates event" in {
     forAll { (event: NodeEvent.WithTime) =>
       assert(eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event)
