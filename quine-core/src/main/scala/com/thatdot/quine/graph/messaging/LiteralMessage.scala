@@ -96,6 +96,7 @@ object LiteralMessage {
       extends QuineMessage
 
   /** IncrementCounter Procedure */
+  @deprecated("Use AddToAtomic variants instead for consistency across types", "Feb 2023")
   final case class IncrementProperty(propertyKey: Symbol, incrementAmount: Long, replyTo: QuineRef)
       extends LiteralCommand
       with AskableQuineMessage[IncrementProperty.Result]
@@ -105,6 +106,48 @@ object LiteralMessage {
 
     final case class Failed(valueFound: QuineValue) extends Result
     final case class Success(newCount: Long) extends Result
+  }
+
+  /** @tparam T a QuineValue type that is "addable"
+    *           TODO we can add a constraint that there is a `Monoid[T.jvmType]` and use that instance to implement
+    *             the behavior for these messages, rather than copy/pasting in LiteralCommandBehavior
+    *           TODO add instances for String, Map, etc. See [[AddToFloat]] and [[AddToInt]] for the pattern of cypher
+    *             procedures making this functionality available to users
+    *
+    * Invariant: AddToAtomic[T] will always respond with either AddToAtomicResult.Failed or an AddToAtomicResult.Aux[T]
+    */
+  sealed trait AddToAtomic[T <: QuineValue] extends LiteralCommand with AskableQuineMessage[AddToAtomicResult] {
+    def propertyKey: Symbol
+    def addThis: T
+
+    def success(result: T): AddToAtomicResult.Aux[T]
+    def failure(currentVal: QuineValue): AddToAtomicResult.Failed = AddToAtomicResult.Failed(currentVal)
+  }
+  object AddToAtomic {
+    final case class Int(propertyKey: Symbol, addThis: QuineValue.Integer, replyTo: QuineRef)
+        extends AddToAtomic[QuineValue.Integer] {
+      def success(result: QuineValue.Integer): AddToAtomicResult.SuccessInt = AddToAtomicResult.SuccessInt(result)
+    }
+
+    final case class Float(propertyKey: Symbol, addThis: QuineValue.Floating, replyTo: QuineRef)
+        extends AddToAtomic[QuineValue.Floating] {
+      def success(result: QuineValue.Floating): AddToAtomicResult.SuccessFloat = AddToAtomicResult.SuccessFloat(result)
+    }
+
+  }
+  sealed trait AddToAtomicResult extends LiteralMessage {
+    type T <: QuineValue
+    def valueFound: T
+  }
+  object AddToAtomicResult {
+    type Aux[A <: QuineValue] = AddToAtomicResult { type T = A }
+    final case class Failed(override val valueFound: QuineValue) extends AddToAtomicResult { type T = QuineValue }
+    final case class SuccessInt(override val valueFound: QuineValue.Integer) extends AddToAtomicResult {
+      type T = QuineValue.Integer
+    }
+    final case class SuccessFloat(override val valueFound: QuineValue.Floating) extends AddToAtomicResult {
+      type T = QuineValue.Floating
+    }
   }
 
   final case class SetLabels(labels: Set[Symbol], replyTo: QuineRef)

@@ -304,6 +304,120 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     )
   }
 
+  describe("atomic adders") {
+    // incrementCounter (no history)
+    testQuery(
+      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count', 20) YIELD count RETURN count",
+      expectedColumns = Vector("count"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(20L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // incrementCounter (with history)
+    testQuery(
+      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count', 15) YIELD count RETURN count",
+      expectedColumns = Vector("count"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(35L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // 2-ary incrementCounter
+    testQuery(
+      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count') YIELD count RETURN count",
+      expectedColumns = Vector("count"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(36L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+
+    // int.add (no history)
+    testQuery(
+      "CALL int.add(idFrom(1230021), 'count', 15) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(15L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // int.add (with history)
+    testQuery(
+      "CALL int.add(idFrom(1230021), 'count', 30) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(45L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // 2-ary int.add
+    testQuery(
+      "CALL int.add(idFrom(1230021), 'count') YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Integer(46L)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+
+    // float.add (no history)
+    testQuery(
+      "CALL float.add(idFrom(1230021.0), 'count', 1.5) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Floating(1.5)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // float.add (with history)
+    testQuery(
+      "CALL float.add(idFrom(1230021.0), 'count', 3.0) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Floating(4.5)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+    // 2-ary float.add
+    testQuery(
+      "CALL float.add(idFrom(1230021.0), 'count') YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Floating(5.5)
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+
+  }
+
   describe("map projections") {
 
     testQuery(

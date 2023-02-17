@@ -4,6 +4,7 @@ import java.time.{Instant, ZoneId, ZonedDateTime}
 import java.util.UUID
 import java.util.concurrent.TimeoutException
 
+import scala.annotation.nowarn
 import scala.collection.concurrent
 import scala.concurrent.duration.DurationLong
 
@@ -12,7 +13,7 @@ import akka.stream.scaladsl.Source
 import akka.util.Timeout
 
 import cats.syntax.either._
-import com.typesafe.scalalogging.StrictLogging
+import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 import io.circe.parser.parse
 import org.opencypher.v9_0.ast
 import org.opencypher.v9_0.frontend.phases._
@@ -91,7 +92,9 @@ case object resolveCalls extends StatementRewriter {
     RecentNodes,
     RecentNodeIds,
     JsonLoad,
-    IncrementCounter,
+    IncrementCounter: @nowarn, // TODO remove on breaking change
+    AddToInt,
+    AddToFloat,
     CypherLogging,
     CypherDebugNode,
     CypherGetDistinctIDSqSubscriberResults,
@@ -102,7 +105,7 @@ case object resolveCalls extends StatementRewriter {
   )
 
   /** This map is only meant to maintain backward compatibility for a short time. */
-  val deprecatedNames: Map[String, UserDefinedProcedure] = Map.empty
+  val deprecatedNames: Map[String, UserDefinedProcedure] = Map()
 
   private val procedures: concurrent.Map[String, UserDefinedProcedure] = Proc.userDefinedProcedures
   builtInProcedures.foreach(registerUserDefinedProcedure)
@@ -334,6 +337,8 @@ object CypherLabels
 
 /** Increment an integer property on a node atomically (doing the get and the
   * set in one step with no intervening operation)
+  *
+  * TODO remove at next breaking change
   */
 object IncrementCounter extends UserDefinedProcedure {
   val name = "incrementCounter"
@@ -366,7 +371,7 @@ object IncrementCounter extends UserDefinedProcedure {
 
     Source.lazyFuture { () =>
       nodeId
-        .?(IncrementProperty(Symbol(propertyKey), incrementQuantity, _))
+        .?(IncrementProperty(Symbol(propertyKey), incrementQuantity, _): @nowarn)
         .map {
           case IncrementProperty.Success(newCount) => Vector(Expr.Integer(newCount))
           case IncrementProperty.Failed(valueFound) =>
@@ -374,6 +379,132 @@ object IncrementCounter extends UserDefinedProcedure {
               expected = Seq(Type.Integer),
               actualValue = Expr.fromQuineValue(valueFound),
               context = "`incrementCounter` procedure"
+            )
+        }(location.graph.nodeDispatcherEC)
+    }
+  }
+}
+
+/** Increment an integer property on a node atomically (doing the get and the
+  * set in one step with no intervening operation)
+  */
+object AddToInt extends UserDefinedProcedure with LazyLogging {
+  val name = "int.add"
+  val canContainUpdates = true
+  val isIdempotent = false
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Integer),
+    outputs = Vector("result" -> Type.Floating),
+    description = """Atomically add to an integer property on a node by a certain amount (defaults to 1),
+                    |returning the resultant value""".stripMargin.replace('\n', ' ')
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+    import location._
+
+    val nodeId = arguments.headOption
+      .flatMap(UserDefinedProcedure.extractQuineId)
+      .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
+    // Pull out the arguments
+    val (propertyKey, incrementQuantity) = arguments match {
+      case Seq(_, Expr.Str(key)) => (key, 1L)
+      case Seq(_, Expr.Str(key), Expr.Integer(amount)) => (key, amount)
+      case other => throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      nodeId
+        .?(AddToAtomic.Int(Symbol(propertyKey), QuineValue.Integer(incrementQuantity), _))
+        .map {
+          case AddToAtomicResult.SuccessInt(newCount) => Vector(Expr.fromQuineValue(newCount))
+          case AddToAtomicResult.Failed(valueFound) =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Integer),
+              actualValue = Expr.fromQuineValue(valueFound),
+              context = s"Property accessed by $name procedure"
+            )
+          case successOfDifferentType: AddToAtomicResult =>
+            // by the type invariant on [[AddToAtomic]], this case is unreachable.
+            logger.warn(
+              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
+                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as an integer
+                 |by: $name.""".stripMargin.replace('\n', ' ')
+            )
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Floating),
+              actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
+              context = s"Property accessed by $name procedure."
+            )
+        }(location.graph.nodeDispatcherEC)
+    }
+  }
+}
+
+/** Increment a floating-point property on a node atomically (doing the get and the
+  * set in one step with no intervening operation)
+  */
+object AddToFloat extends UserDefinedProcedure with LazyLogging {
+  val name = "float.add"
+  val canContainUpdates = true
+  val isIdempotent = false
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Floating),
+    outputs = Vector("result" -> Type.Floating),
+    description = """Atomically add to a floating-point property on a node by a certain amount (defaults to 1.0),
+                    |returning the resultant value""".stripMargin.replace('\n', ' ')
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+    import location._
+
+    val nodeId = arguments.headOption
+      .flatMap(UserDefinedProcedure.extractQuineId)
+      .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
+    // Pull out the arguments
+    val (propertyKey, incrementQuantity) = arguments match {
+      case Seq(_, Expr.Str(key)) => (key, 1.0)
+      case Seq(_, Expr.Str(key), Expr.Floating(amount)) => (key, amount)
+      case other => throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      nodeId
+        .?(AddToAtomic.Float(Symbol(propertyKey), QuineValue.Floating(incrementQuantity), _))
+        .map {
+          case AddToAtomicResult.SuccessFloat(newCount) => Vector(Expr.fromQuineValue(newCount))
+          case AddToAtomicResult.Failed(valueFound) =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Floating),
+              actualValue = Expr.fromQuineValue(valueFound),
+              context = s"Property accessed by $name procedure"
+            )
+          case successOfDifferentType: AddToAtomicResult =>
+            // by the type invariant on [[AddToAtomic]], this case is unreachable.
+            logger.warn(
+              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
+                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a float
+                 |by: $name.""".stripMargin.replace('\n', ' ')
+            )
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Floating),
+              actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
+              context = s"Property accessed by $name procedure."
             )
         }(location.graph.nodeDispatcherEC)
     }

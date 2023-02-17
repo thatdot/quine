@@ -1,5 +1,6 @@
 package com.thatdot.quine.graph.behavior
 
+import scala.annotation.nowarn
 import scala.compat.CompatBuildFrom.implicitlyBF
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
@@ -24,6 +25,7 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
 
   def getSqState(): SqStateResults
 
+  @nowarn("msg=class IncrementProperty in object LiteralMessage is deprecated")
   protected def literalCommandBehavior(command: LiteralCommand): Unit = command match {
     case c: GetHalfEdgesCommand =>
       val matchingEdges: Iterator[HalfEdge] = c match {
@@ -97,6 +99,32 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
           IncrementProperty.Success(i + incAmount)
         case Some(Success(other)) => IncrementProperty.Failed(other)
         case _ => IncrementProperty.Failed(QuineValue.Null)
+      })
+
+    case i @ AddToAtomic.Int(propKey, incAmount, _) =>
+      i ?! (properties.get(propKey).map(_.deserialized) match {
+        case None =>
+          processPropertyEvents(PropertySet(propKey, PropertyValue(incAmount)) :: Nil)
+          i.success(incAmount)
+        case Some(Success(QuineValue.Integer(prevValue))) =>
+          val newValue = QuineValue.Integer(prevValue + incAmount.long)
+          processPropertyEvents(PropertySet(propKey, PropertyValue(newValue)) :: Nil)
+          i.success(newValue)
+        case Some(Success(other)) => i.failure(other)
+        case _ => i.failure(QuineValue.Null)
+      })
+
+    case i @ AddToAtomic.Float(propKey, incAmount, _) =>
+      i ?! (properties.get(propKey).map(_.deserialized) match {
+        case None =>
+          processPropertyEvents(PropertySet(propKey, PropertyValue(incAmount)) :: Nil)
+          i.success(incAmount)
+        case Some(Success(QuineValue.Floating(prevValue))) =>
+          val newValue = QuineValue.Floating(prevValue + incAmount.double)
+          processPropertyEvents(PropertySet(propKey, PropertyValue(newValue)) :: Nil)
+          i.success(newValue)
+        case Some(Success(other)) => i.failure(other)
+        case _ => i.failure(QuineValue.Null)
       })
 
     case s @ SetLabels(labels, _) => s ?! setLabels(labels)
