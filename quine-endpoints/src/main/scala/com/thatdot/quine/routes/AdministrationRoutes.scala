@@ -21,38 +21,43 @@ final case class QuineInfo(
 )
 
 @title("Metrics Counter")
+@docs("Counters record a single shared count, and give that count a name")
 @unnamed
 final case class Counter(
-  name: String,
-  count: Long
+  @docs("Name of the metric being reported") name: String,
+  @docs("The value tracked by this counter") count: Long
 )
 
 @title("Metrics Numeric Gauge")
+@docs("Gauges provide a single point-in-time measurement, and give that measurement a name")
 @unnamed
 final case class NumericGauge(
-  name: String,
-  value: Double
+  @docs("Name of the metric being reported") name: String,
+  @docs("The latest measurement recorded by this gauge") value: Double
 )
 
 @title("Metrics Timer Summary")
 @unnamed
-@docs("A rough cumulative histogram of times recorded by a timer. All times in milliseconds.")
+@docs("""A rough cumulative histogram of times recorded by a timer, as well as the average rate at which that timer is
+        |used to take new measurements. All times in milliseconds.""".stripMargin.replace('\n', ' '))
 final case class TimerSummary(
-  name: String,
+  @docs("Name of the metric being reported") name: String,
   // standard metrics
-  min: Double,
-  max: Double,
-  median: Double,
-  mean: Double,
-  q1: Double,
-  q3: Double,
-  @docs("One-minute moving average rate at which events have occurred") oneMinuteRate: Double,
-  @docs("90th percentile time; representative of heavy load") `90`: Double,
-  @docs("99th percentile time; representative of worst case or peak load") `99`: Double,
+  @docs("Fastest recorded time") min: Double,
+  @docs("Slowest recorded time") max: Double,
+  @docs("Median recorded time") median: Double,
+  @docs("Average recorded time") mean: Double,
+  @docs("First-quartile time") q1: Double,
+  @docs("Third-quartile time") q3: Double,
+  @docs(
+    "Average per-second rate of new events over the last one minute"
+  ) oneMinuteRate: Double,
+  @docs("90th percentile time") `90`: Double,
+  @docs("99th percentile time") `99`: Double,
   // pareto principle thresholds
-  `80`: Double,
-  `20`: Double,
-  `10`: Double
+  @docs("80th percentile time") `80`: Double,
+  @docs("20th percentile time") `20`: Double,
+  @docs("10th percentile time") `10`: Double
 )
 
 object MetricsReport {
@@ -61,11 +66,19 @@ object MetricsReport {
 }
 
 @title("Metrics Report")
+@docs("""A selection of metrics registered by Quine, its libraries, and the JVM. Reported metrics may change
+    |based on which ingests and standing queries have been running since Quine startup, as well as the JVM distribution
+    |running Quine and the packaged version of any dependencies. Metrics are sampled and non-authoritative. In
+    |particular, they may be less precise when the system is under heavy load.""".stripMargin.replace('\n', ' '))
 final case class MetricsReport(
-  @docs("A UTC Instant at which these metrics are accurate") atTime: java.time.Instant,
-  @docs("All registered counters from this instance's metrics") counters: Seq[Counter],
-  @docs("All registered timers from this instance's metrics") timers: Seq[TimerSummary],
-  @docs("All registered numerical gauges from this instance's metrics") gauges: Seq[NumericGauge]
+  @docs("A UTC Instant at which the returned metrics were collected") atTime: java.time.Instant,
+  @docs("General-purpose counters for single numerical values") counters: Seq[Counter],
+  @docs(
+    "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds"
+  ) timers: Seq[
+    TimerSummary
+  ],
+  @docs("Gauges which report an instantaneously-sampled reading of a particular metric") gauges: Seq[NumericGauge]
 )
 
 @title("Shard In-Memory Limits")
@@ -200,7 +213,29 @@ trait AdministrationRoutes
           Some(
             """Returns a JSON object containing metrics data used in the Quine 
               |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring) 
-              |dashboard.""".stripMargin
+              |dashboard. The selection of metrics is based on current configuration and execution environment, and is
+              |subject to change. A few metrics of note include:""".stripMargin.replace('\n', ' ') +
+            """
+                |
+                |Counters
+                |
+                | - `node.edge-counts.*`: Histogram-style summaries of edges per node
+                | - `node.property-counts.*`: Histogram-style summaries of properties per node
+                | - `shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
+                |   states. These can be used to estimate the number of awake nodes.
+                |
+                |Timers
+                |
+                | - `persistor.get-journal`: Time taken to read and deserialize a single node's relevant journal
+                | - `persistor.persist-event`: Time taken to serialize and persist one message's worth of on-node events
+                | - `persistor.get-latest-snapshot`: Time taken to read (but not deserialize) a single node snapshot
+                |
+                | Gauges
+                | - `memory.heap.*`: JVM heap usage
+                | - `memory.total`: JVM combined memory usage
+                | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
+                | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
+                |""".stripMargin
           )
         )
         .withTags(List(adminTag))
