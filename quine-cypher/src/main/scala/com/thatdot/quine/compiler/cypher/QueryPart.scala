@@ -341,7 +341,19 @@ object QueryPart {
       graph <- Graph.fromPattern(pattern)
       tryFirstQuery <- CompM.withIsolatedContext(tryFirst(graph))
       trySecondQuery <- trySecond(graph)
-    } yield cypher.Query.Or(tryFirstQuery, trySecondQuery)
+
+      /* Branches of the `Or` should have the same variables defined. Since
+       * this is a merge, we know columns in `trySecondQuery` should be a subset
+       * of columns from `tryFirstQuery`, so we can ensure things line up by
+       * dropping extra columns from the first query
+       */
+      secondCols <- CompM.getColumns
+      tryFirstPrunedQuery = cypher.Query.adjustContext(
+        dropExisting = true,
+        toAdd = secondCols.map(v => v -> cypher.Expr.Variable(v)),
+        adjustThis = tryFirstQuery
+      )
+    } yield cypher.Query.Or(tryFirstPrunedQuery, trySecondQuery)
   }
 
   private def compileUnwind(

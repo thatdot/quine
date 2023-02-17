@@ -87,6 +87,13 @@ class QueryStaticTest extends CypherHarness("query-static-tests") {
       expectedCanContainAllNodeScan = false
     )
     testQueryStaticAnalysis(
+      queryText = "MATCH (a), (b), (p), (e), (c) MERGE (a)-[:A]->(b)-[:B]->(p)-[:C]->(c)-[:D]->(e)",
+      expectedIsReadOnly = false,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = true
+    )
+    testQueryStaticAnalysis(
       queryText = "return duration({ days: 24 })",
       expectedIsReadOnly = true,
       expectedCannotFail = false,
