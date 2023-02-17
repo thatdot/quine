@@ -3,7 +3,7 @@ description: Quine streaming graph ingest events from standard in
 ---
 # Standard In
 
-Quine fully supports reading from Standard In. Together with writing @ref:[Standing Queries to Standard Out](../standing-query-outputs.md), Quine is a powerful tool for any command-line data processing task.
+Quine fully supports reading from Standard In. Together with writing @ref:[Standing Queries to Standard Out](../writing-standing-queries.md), Quine is a powerful tool for any command-line data processing task.
 
 The following is a simple @ref[Recipe](../../core-concepts/about-recipes.md) that ingests each line of input from Standard In as a node in the graph. It also uses a Standing Query to write every to Standard Out:
 

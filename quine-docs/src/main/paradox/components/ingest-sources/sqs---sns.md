@@ -61,7 +61,7 @@ We also choose to acknowledge receipt of each message successfully read off the 
 
 ## Writing Results to SNS
 
-Quine also supports writing @ref:[Standing Query](../standing-query-outputs.md) results to AWS SNS.
+Quine also supports writing @ref:[Standing Query](../writing-standing-queries.md) results to AWS SNS.
 
 ### SNS Write Example
 

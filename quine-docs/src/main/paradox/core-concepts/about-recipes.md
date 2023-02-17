@@ -8,7 +8,7 @@ description: A recipe is a document that contains all the information necessary 
 A Recipe is a document that contains all the information necessary for Quine to execute any batch or streaming data processing task. Recipes are built from components including:
 
 * @ref:[Ingest Streams](../components/ingest-sources/ingest-sources.md) to read streaming data from sources and update graph data
-* @ref:[Standing Queries](../components/standing-query-outputs.md) to transform graph data, and to produce aggregates and other outputs
+* @ref:[Standing Queries](../components/writing-standing-queries.md) to transform graph data, and to produce aggregates and other outputs
 * @ref:[Cypher expressions](../reference/cypher/cypher-language.md) to implement graph operations such as querying and updating data
 * UI configuration to specialize the web user interface for the use-case that is the subject of the Recipe
 

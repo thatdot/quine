@@ -8,7 +8,7 @@ description: Quine streaming graph recipe definition reference
 For Quine, a recipe is a document that contains all of the information necessary for Quine to execute any batch or streaming data process. Quine recipes are written in `yaml` and built from components including:
 
 * @ref:[**Ingest Streams**](../components/ingest-sources/ingest-sources.md) to read streaming data from sources and update graph data
-* @ref:[**Standing Queries**](../components/standing-query-outputs.md) to transform graph data, and to produce aggregates and other outputs
+* @ref:[**Standing Queries**](../components/writing-standing-queries.md) to transform graph data, and to produce aggregates and other outputs
 * @ref:[**Cypher expressions**](../reference/cypher/cypher-language.md) to implement graph operations such as querying and updating data
 * @ref:[**Exploration UI**](../getting-started/exploration-ui.md) configuration to customize the web user interface for the use-case that is the subject of the recipe
 
