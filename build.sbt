@@ -278,6 +278,7 @@ lazy val `quine`: Project = project
       "org.webjars" % "jquery" % jqueryV,
       "org.webjars" % "bootstrap" % bootstrapV,
       "org.webjars.npm" % "sugar-date" % sugarV,
+      "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
       "com.google.guava" % "guava" % guavaV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
