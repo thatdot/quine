@@ -995,6 +995,17 @@ object QueryPart {
         case _ => conjuncts += fullExpr
       }
 
+    // `IN` variants matter because openCypher sometimes rewrites `=` to these
+    object EqualLike {
+      def unapply(e: expressions.Expression) =
+        e match {
+          case expressions.Equals(lhs, rhs) => Some((lhs, rhs))
+          case expressions.In(lhs, expressions.ListLiteral(List(rhs))) => Some((lhs, rhs))
+          case expressions.In(expressions.ListLiteral(List(lhs)), rhs) => Some((lhs, rhs))
+          case _ => None
+        }
+    }
+
     // Collect all constraints and other filters
     def visit(e: expressions.Expression): Unit = e match {
       case expressions.And(lhs, rhs) =>
@@ -1003,11 +1014,9 @@ object QueryPart {
       case expressions.Ands(conjs) =>
         conjs.foreach(visit)
 
-      case expressions.Equals(IdFunc(variable), arg) =>
+      case EqualLike(IdFunc(variable), arg) =>
         visitPossibleConstraint(variable, arg, e)
-      case expressions.Equals(arg, IdFunc(variable)) =>
-        visitPossibleConstraint(variable, arg, e)
-      case expressions.In(IdFunc(variable), expressions.ListLiteral(List(arg))) =>
+      case EqualLike(arg, IdFunc(variable)) =>
         visitPossibleConstraint(variable, arg, e)
 
       case other => conjuncts += other
