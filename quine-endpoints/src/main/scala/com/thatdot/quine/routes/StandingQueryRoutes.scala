@@ -350,12 +350,10 @@ trait StandingQuerySchemas
       )
 
   implicit lazy val outputFormatSchema: Tagged[OutputFormat] =
-    lazyTagged("OutputFormat")(
-      genericTagged[OutputFormat]
-    ).withExample(OutputFormat.JSON)
+    genericTagged[OutputFormat].withExample(OutputFormat.JSON)
 
   implicit lazy val standingQueryResultOutputSchema: Tagged[StandingQueryResultOutputUserDef] =
-    lazyTagged("StandingQueryResultOutput")(
+    lazyTagged(StandingQueryResultOutputUserDef.title)(
       genericTagged[StandingQueryResultOutputUserDef]
     ).withExample(
       StandingQueryResultOutputUserDef.CypherQuery(
