@@ -465,8 +465,7 @@ object Expr {
 
   /** A list of cypher values
     *
-    * Values can b`e heterogeneous (although only limited homogeneous lists can
-    * actually be stored as properties).
+    * Values can be heterogeneous.
     *
     * A list of integers can be coerced to list of floats. TODO: figure out
     * where this coercion can possibly matter/occur besides just making a list

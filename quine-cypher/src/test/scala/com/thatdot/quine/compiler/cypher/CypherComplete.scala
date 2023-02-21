@@ -724,6 +724,34 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
     }
   }
+  describe("Regression test thatdot/quine#9") {
+    testQuery(
+      """
+        |// Setup query
+        |MATCH (n) WHERE id(n) = idFrom(-2439) SET n = {
+        |  tags: {
+        |    foo: "bar",
+        |    fizz: "buzz"
+        |  }
+        |}
+        |WITH *
+        |// Subquery to ensure updates will be reflected
+        |CALL {
+        |  MATCH (n) WHERE id(n) = idFrom(-2439)
+        |  UNWIND keys(castOrThrow.map(n.tags)) AS key RETURN key
+        |}
+        |RETURN key
+        |""".stripMargin,
+      Vector("key"),
+      Vector(
+        Vector(Expr.Str("foo")),
+        Vector(Expr.Str("fizz"))
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true,
+      ordered = false
+    )
+  }
 }
 
 // For testing only...

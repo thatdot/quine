@@ -29,6 +29,7 @@ import org.opencypher.v9_0.util.Rewritable.IteratorEq
 import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
 
+import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
@@ -153,7 +154,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherCollMax,
     CypherCollMin,
     CypherMetaType
-  ) ++ CypherGenFroms.all
+  ) ++ CypherGenFroms.all ++ CypherCasts.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
   val deprecatedNames: Map[String, UserDefinedFunction] = Map.empty
@@ -1208,27 +1209,84 @@ object CypherMetaType extends UserDefinedFunction {
     }
 }
 
-class CypherValueGen(outputType: Type, defaultSize: Long, randGen: (Long) => Value) extends UserDefinedFunction {
-  val name: String = s"gen.${outputType.pretty.toLowerCase}"
-  val category: String = Category.SCALAR
-  val isPure: Boolean = false
+object CypherCasts {
+  val types: Seq[(String, Type)] = Seq(
+    Type.Number,
+    Type.Integer,
+    Type.Floating,
+    Type.Bool,
+    Type.Str,
+    //  Type.List(of) is a special case as the only non-unary type -- see below
+    Type.Map,
+    Type.Null,
+    Type.Bytes,
+    Type.Node,
+    Type.Relationship,
+    Type.Path,
+    Type.LocalDateTime,
+    Type.DateTime,
+    Type.Duration
+  ).map(cType => cType.pretty.toLowerCase -> cType) :+
+    /** Note that all instances of [[Expr.List]] return [[Type.ListOfAnything]] when `list.typ` is invoked. We use the
+      * same sentinel value here, as cypher doesn't have full support for the 1-kinded List type
+      */
+    ("list" -> Type.ListOfAnything)
 
-  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = {
-    val size = arguments match {
-      case Seq() => defaultSize
-      case Seq(Expr.Integer(i)) => i
-      case args => throw wrongSignature(args)
-    }
-    randGen(size)
+  val all: Seq[UserDefinedFunction] = types.flatMap { case (typeName, cType) =>
+    Seq(new UnsafeCastFunc(typeName, cType), new CastFunc(typeName, cType))
   }
 
-  val signatures: Seq[UserDefinedFunctionSignature] = {
-    val sig = UserDefinedFunctionSignature(
-      arguments = Vector("size" -> Type.Integer),
-      output = outputType,
-      description = s"Randomly generate a ${outputType.pretty.toLowerCase}."
+  class CastFunc(typeName: String, cType: graph.cypher.Type) extends UserDefinedFunction with LazyLogging {
+    def name: String = s"castOrNull.${typeName}"
+
+    def category: String = Category.SCALAR
+
+    def isPure: Boolean = true
+
+    def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = arguments match {
+      case Vector(expr) if expr.typ == cType => expr
+      case Vector(expr) =>
+        logger.debug(s"Failed to cast value: $expr to a: $cType, returning NULL instead from: $name")
+        Expr.Null
+      case args => throw wrongSignature(args)
+    }
+
+    def signatures: Seq[UserDefinedFunctionSignature] = Seq(
+      UserDefinedFunctionSignature(
+        Seq("value" -> Type.Anything),
+        cType,
+        s"""Casts the provided value to the type $cType. If the provided value is not already an instance of the
+           |requested type, this will return null. For functions that convert between types, see `toInteger` et al.
+           |This can be useful to recover type information in cases where the Cypher compiler is unable to fully track
+           |types on its own. This is most common when dealing with lists, due to the limited support for
+           |higher-kinded types within the Cypher language.""".stripMargin.replace('\n', ' ')
+      )
     )
-    Seq(sig.copy(arguments = Vector.empty), sig)
+  }
+
+  class UnsafeCastFunc(typeName: String, cType: graph.cypher.Type) extends UserDefinedFunction {
+    def name: String = s"castOrThrow.${typeName}"
+    def category: String = Category.SCALAR
+    def isPure: Boolean = true
+
+    def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = arguments match {
+      case Vector(expr) if expr.typ == cType => expr
+      case Vector(expr) =>
+        throw CypherException.Runtime(
+          s"Cast failed: Cypher execution engine is unable to determine that $expr is a valid ${cType.pretty}"
+        )
+      case args => throw wrongSignature(args)
+    }
+    def signatures: Seq[UserDefinedFunctionSignature] = Seq(
+      UserDefinedFunctionSignature(
+        Seq("value" -> Type.Anything),
+        cType,
+        s"""Adds a runtime assertion that the provided `value` is actually of type $cType. This can be useful to recover
+           |type information in cases where the Cypher compiler is unable to fully track types on its own. This is
+           |most common when dealing with lists, due to the limited support for higher-kinded types within the
+           |Cypher language.""".stripMargin.replace('\n', ' ')
+      )
+    )
   }
 }
 

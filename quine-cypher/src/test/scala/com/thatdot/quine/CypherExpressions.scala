@@ -2,7 +2,7 @@ package com.thatdot.quine.compiler.cypher
 
 import org.scalactic.source.Position
 
-import com.thatdot.quine.graph.cypher.{CypherException, Expr}
+import com.thatdot.quine.graph.cypher.{CypherException, Expr, SourceText}
 
 class CypherExpressions extends CypherHarness("cypher-expression-tests") {
 
@@ -418,6 +418,112 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
 
   }
 
+  describe("runtime type checking") {
+    testExpression("meta.type(1)", Expr.Str("INTEGER"))
+    testExpression("meta.type(1.0)", Expr.Str("FLOAT"))
+    testExpression("meta.type('bazinga')", Expr.Str("STRING"))
+    testExpression("meta.type([1, 2, 3])", Expr.Str("LIST OF ANY"))
+    // meta.type edge case: Note that the "calling a function with NULL" rule skips the function entirely, whenever
+    // cypher is clever enough to pick up on it
+    testExpression("meta.type(null)", Expr.Null)
+  }
+
+  describe("simple assertion-based runtime type casting") {
+    testExpression("castOrThrow.integer(1)", Expr.Integer(1))
+    testExpression("castOrThrow.integer(n)", Expr.Integer(1), queryPreamble = "UNWIND [1] AS n RETURN ")
+    testQuery(
+      "UNWIND [1, 2, 3] AS n RETURN castOrThrow.integer(n) AS cast",
+      Vector("cast"),
+      Vector(
+        Vector(Expr.Integer(1)),
+        Vector(Expr.Integer(2)),
+        Vector(Expr.Integer(3))
+      )
+    )
+  }
+
+  describe("simple null-on-failure runtime type casting") {
+    testExpression("castOrNull.integer(1)", Expr.Integer(1))
+    testExpression("castOrNull.integer(2.0)", Expr.Null)
+    testExpression("castOrNull.integer(n)", Expr.Integer(1), queryPreamble = "UNWIND [1] AS n RETURN ")
+    testQuery(
+      "UNWIND [1, 2, 3] AS n RETURN castOrThrow.integer(n) AS cast",
+      Vector("cast"),
+      Vector(
+        Vector(Expr.Integer(1)),
+        Vector(Expr.Integer(2)),
+        Vector(Expr.Integer(3))
+      )
+    )
+    testQuery(
+      "UNWIND [1, 2, 'tortoise', 8675309] AS n RETURN castOrNull.integer(n) AS cast",
+      Vector("cast"),
+      Vector(
+        Vector(Expr.Integer(1)),
+        Vector(Expr.Integer(2)),
+        Vector(Expr.Null),
+        Vector(Expr.Integer(8675309))
+      )
+    )
+  }
+
+  describe("runtime casts to circumvent cypher limitations") {
+    val testJson =
+      """{
+        |  "hello": "world",
+        |  "arr": [1, 2, 3],
+        |  "sub": {
+        |    "object": {},
+        |    "bool": true
+        |  }
+        |}""".stripMargin.replace('\n', ' ').replace(" ", "")
+    val testMap = Expr.Map(
+      "hello" -> Expr.Str("world"),
+      "arr" -> Expr.List(Expr.Integer(1), Expr.Integer(2), Expr.Integer(3)),
+      "sub" -> Expr.Map(
+        "object" -> Expr.Map.empty,
+        "bool" -> Expr.True
+      )
+    )
+
+    // verification that the test case is coherent
+    testExpression(s"parseJson('$testJson')", testMap)
+
+    // verification that castOrThrow.map performs basic functionality
+    testQuery(
+      s"WITH parseJson('$testJson') AS json RETURN castOrThrow.map(json) AS j",
+      expectedColumns = Vector("j"),
+      Vector(
+        Vector(
+          testMap
+        )
+      )
+    )
+
+    // This is the first real test: using the parsed value directly with UNWIND is impossible
+    val failedUnwind = s"WITH parseJson('$testJson') AS json UNWIND keys(json) AS key RETURN key"
+    assertStaticQueryFailure(
+      failedUnwind,
+      CypherException.Compile(
+        "Type mismatch: expected Map, Node or Relationship but was Any",
+        Some(
+          com.thatdot.quine.graph.cypher.Position(1, 103, 102, SourceText(failedUnwind))
+        )
+      )
+    )
+    // But with castOrThrow, all is well:
+    testQuery(
+      s"WITH parseJson('$testJson') AS json UNWIND keys(castOrThrow.map(json)) AS key RETURN key",
+      Vector("key"),
+      Vector(
+        Vector(Expr.Str("hello")),
+        Vector(Expr.Str("arr")),
+        Vector(Expr.Str("sub"))
+      ),
+      ordered = false
+    )
+  }
+
   describe("map projections") {
 
     testQuery(
@@ -560,6 +666,14 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       CypherException.Arithmetic(
         wrapping = "long overflow",
         operands = Seq(Expr.Integer(922337203685L), Expr.Integer(45938759384L))
+      )
+    )
+
+    // cast failure
+    assertQueryExecutionFailure(
+      "RETURN castOrThrow.integer(2.0)",
+      CypherException.Runtime(
+        s"Cast failed: Cypher execution engine is unable to determine that Floating(2.0) is a valid INTEGER"
       )
     )
   }
