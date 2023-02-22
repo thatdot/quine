@@ -195,12 +195,18 @@ object Main extends App with LazyLogging {
   attemptAppLoad()
 
   quineWebserverUrl foreach { url =>
-    new QuineAppRoutes(graph, appState, config.loadedConfigJson, timeout)
+    // hack: if host is "0.0.0.0" or "::" (INADDR_ANY and IN6ADDR_ANY's most common serialized form) present the URL
+    // as "localhost" to the user. This is necessary because while INADDR_ANY as a source address means "bind to all
+    // interfaces", it cannot necessarily be used as a destination address
+    val resolvableHost = if (Set("0.0.0.0", "::").contains(url.getHost)) "localhost" else url.getHost
+    val resolvableUrl = new java.net.URL(url.getProtocol, resolvableHost, url.getPort, url.getFile)
+
+    new QuineAppRoutes(graph, appState, config.loadedConfigJson, resolvableUrl, timeout)
       .bindWebServer(interface = url.getHost, port = url.getPort)
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
-          statusLines.info(s"Quine web server available at $url")
+          statusLines.info(s"Quine web server available at $resolvableUrl")
         case Failure(_) => // akka will have logged a stacktrace to the debug logger
       }(ec)
   }

@@ -19,7 +19,7 @@ object GenerateOpenApi extends App {
   }
 
   val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider).api
-  val openApiDocumentationJson: String = OpenApiRenderer.stringEncoder.encode(openApiRoutes)
+  val openApiDocumentationJson: String = OpenApiRenderer.stringEncoder(servers = None).encode(openApiRoutes)
 
   Files.createDirectories(outputPath.getParent())
   Files.write(

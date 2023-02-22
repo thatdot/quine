@@ -24,6 +24,8 @@ import endpoints4s.openapi.model.{
 import io.circe.yaml.v12.syntax._
 import ujson.circe.CirceJson
 
+import com.thatdot.quine.routes.exts.{OpenApiServer, OpenApiServerVariable}
+
 object OpenApiRenderer {
 
   val openApiVersion = "3.0.0"
@@ -349,7 +351,31 @@ object OpenApiRenderer {
   private def pathsJson(paths: collection.Map[String, PathItem]): ujson.Obj =
     mapJson(paths)(pathItem => mapJson(pathItem.operations)(operationJson))
 
-  private val jsonEncoder: Encoder[OpenApi, ujson.Value] =
+  private def serverVariableJson(variable: OpenApiServerVariable): ujson.Obj = variable match {
+    case OpenApiServerVariable(enumAlternatives, default, description) =>
+      val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
+        "default" -> ujson.Str(default)
+      )
+      description.foreach(desc => fields += "description" -> ujson.Str(desc))
+      enumAlternatives.foreach(alternates => fields += "enum" -> ujson.Arr.from(alternates.map(ujson.Str)))
+      ujson.Obj(fields)
+  }
+  private def serversJson(servers: Seq[OpenApiServer]): ujson.Arr =
+    ujson.Arr.from(servers.map { case OpenApiServer(url, description, variables) =>
+      val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
+        "url" -> ujson.Str(url)
+      )
+      description.foreach(desc => fields += "description" -> ujson.Str(desc))
+      if (variables.nonEmpty) {
+        val variablesFields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap()
+        variables.foreach { case (k, v) => variablesFields += k -> serverVariableJson(v) }
+        fields += "variables" -> ujson.Obj(variablesFields)
+      }
+
+      ujson.Obj(fields)
+    })
+
+  private def jsonEncoder(servers: Option[Seq[OpenApiServer]]): Encoder[OpenApi, ujson.Value] =
     openApi => {
       val fields: mutable.LinkedHashMap[String, ujson.Value] =
         mutable.LinkedHashMap(
@@ -364,10 +390,11 @@ object OpenApiRenderer {
       if (openApi.components.schemas.nonEmpty || openApi.components.securitySchemes.nonEmpty) {
         fields += "components" -> componentsJson(openApi.components)
       }
+      servers.foreach(servers => fields += "servers" -> serversJson(servers))
       new ujson.Obj(fields)
     }
 
-  implicit val stringEncoder: Encoder[OpenApi, String] =
-    openApi => jsonEncoder.encode(openApi).transform(ujson.StringRenderer()).toString
+  def stringEncoder(servers: Option[Seq[OpenApiServer]]): Encoder[OpenApi, String] =
+    openApi => jsonEncoder(servers).encode(openApi).transform(ujson.StringRenderer()).toString
 
 }
