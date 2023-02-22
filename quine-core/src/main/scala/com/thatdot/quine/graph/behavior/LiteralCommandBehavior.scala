@@ -101,30 +101,49 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         case _ => IncrementProperty.Failed(QuineValue.Null)
       })
 
-    case i @ AddToAtomic.Int(propKey, incAmount, _) =>
-      i ?! (properties.get(propKey).map(_.deserialized) match {
+    case msg @ AddToAtomic.Int(propKey, incAmount, _) =>
+      msg ?! (properties.get(propKey).map(_.deserialized) match {
         case None =>
           processPropertyEvents(PropertySet(propKey, PropertyValue(incAmount)) :: Nil)
-          i.success(incAmount)
+          msg.success(incAmount)
         case Some(Success(QuineValue.Integer(prevValue))) =>
           val newValue = QuineValue.Integer(prevValue + incAmount.long)
           processPropertyEvents(PropertySet(propKey, PropertyValue(newValue)) :: Nil)
-          i.success(newValue)
-        case Some(Success(other)) => i.failure(other)
-        case _ => i.failure(QuineValue.Null)
+          msg.success(newValue)
+        case Some(Success(other)) => msg.failure(other)
+        case _ => msg.failure(QuineValue.Null)
       })
 
-    case i @ AddToAtomic.Float(propKey, incAmount, _) =>
-      i ?! (properties.get(propKey).map(_.deserialized) match {
+    case msg @ AddToAtomic.Float(propKey, incAmount, _) =>
+      msg ?! (properties.get(propKey).map(_.deserialized) match {
         case None =>
           processPropertyEvents(PropertySet(propKey, PropertyValue(incAmount)) :: Nil)
-          i.success(incAmount)
+          msg.success(incAmount)
         case Some(Success(QuineValue.Floating(prevValue))) =>
           val newValue = QuineValue.Floating(prevValue + incAmount.double)
           processPropertyEvents(PropertySet(propKey, PropertyValue(newValue)) :: Nil)
-          i.success(newValue)
-        case Some(Success(other)) => i.failure(other)
-        case _ => i.failure(QuineValue.Null)
+          msg.success(newValue)
+        case Some(Success(other)) => msg.failure(other)
+        case _ => msg.failure(QuineValue.Null)
+      })
+
+    case msg @ AddToAtomic.Set(propKey, QuineValue.List(newElems), _) =>
+      msg ?! (properties.get(propKey).map(_.deserialized) match {
+        case None =>
+          val newSet = QuineValue.List(newElems.distinct)
+          processPropertyEvents(PropertySet(propKey, PropertyValue(newSet)) :: Nil)
+          msg.success(newSet)
+        case Some(Success(QuineValue.List(oldElems))) =>
+          // Set behavior: newElem is not yet in ths list stored at this key, so update the list
+          val newElementsDeduplicated = newElems.filterNot(oldElems.contains).distinct
+          val updatedSet = QuineValue.List(oldElems ++ newElementsDeduplicated)
+          // peephole optimization: if the sets are identical, no need to wait until processEvents runs to discover that
+          if (newElementsDeduplicated.nonEmpty) {
+            processPropertyEvents(PropertySet(propKey, PropertyValue(updatedSet)) :: Nil)
+          }
+          msg.success(updatedSet)
+        case Some(Success(other)) => msg.failure(other)
+        case _ => msg.failure(QuineValue.Null)
       })
 
     case s @ SetLabels(labels, _) => s ?! setLabels(labels)

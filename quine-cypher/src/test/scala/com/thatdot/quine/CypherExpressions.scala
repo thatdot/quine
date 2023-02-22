@@ -416,6 +416,107 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       expectedIsIdempotent = false
     )
 
+    // set.insert (no history)
+    testQuery(
+      "CALL set.insert(idFrom(12232), 'set-unary', 1.5) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Floating(1.5)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, homogenous)
+    testQuery(
+      "CALL set.insert(idFrom(12232), 'set-unary', 2.0) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, homogenous, deduplicated)
+    testQuery(
+      "CALL set.insert(idFrom(12232), 'set-unary', 1.50) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, heterogenous)
+    testQuery(
+      "CALL set.insert(idFrom(12232), 'set-unary', 'foo') YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0), Expr.Str("foo")))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+
+    // set.insert (no history)
+    testQuery(
+      "CALL set.union(idFrom(12232), 'set-union', [3, 2]) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, homogenous)
+    testQuery(
+      "CALL set.union(idFrom(12232), 'set-union', [1]) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, homogenous, partially-deduplicated)
+    testQuery(
+      "CALL set.union(idFrom(12232), 'set-union', [7, 1]) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.insert (with history, homogenous, fully-deduplicated)
+    testQuery(
+      "CALL set.union(idFrom(12232), 'set-union', [7, 3]) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+    // set.union (with history, heterogenous, partially-deduplicated)
+    testQuery(
+      "CALL set.union(idFrom(12232), 'set-union', [7, 3, 'jason']) YIELD result RETURN result",
+      expectedColumns = Vector("result"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7), Expr.Str("jason")))
+        )
+      ),
+      expectedIsReadOnly = false
+    )
+
   }
 
   describe("runtime type checking") {

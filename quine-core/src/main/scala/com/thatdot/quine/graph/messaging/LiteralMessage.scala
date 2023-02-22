@@ -5,6 +5,7 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import com.thatdot.quine.graph.messaging.LiteralMessage.AddToAtomicResult.Aux
 import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineValue}
@@ -134,6 +135,11 @@ object LiteralMessage {
       def success(result: QuineValue.Floating): AddToAtomicResult.SuccessFloat = AddToAtomicResult.SuccessFloat(result)
     }
 
+    final case class Set(propertyKey: Symbol, addThis: QuineValue.List, replyTo: QuineRef)
+        extends AddToAtomic[QuineValue.List] {
+      def success(result: QuineValue.List): Aux[QuineValue.List] = AddToAtomicResult.SuccessList(result)
+    }
+
   }
   sealed trait AddToAtomicResult extends LiteralMessage {
     type T <: QuineValue
@@ -147,6 +153,9 @@ object LiteralMessage {
     }
     final case class SuccessFloat(override val valueFound: QuineValue.Floating) extends AddToAtomicResult {
       type T = QuineValue.Floating
+    }
+    final case class SuccessList(override val valueFound: QuineValue.List) extends AddToAtomicResult {
+      type T = QuineValue.List
     }
   }
 

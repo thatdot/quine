@@ -95,6 +95,8 @@ case object resolveCalls extends StatementRewriter {
     IncrementCounter: @nowarn, // TODO remove on breaking change
     AddToInt,
     AddToFloat,
+    InsertToSet,
+    UnionToSet,
     CypherLogging,
     CypherDebugNode,
     CypherGetDistinctIDSqSubscriberResults,
@@ -503,6 +505,133 @@ object AddToFloat extends UserDefinedProcedure with LazyLogging {
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Floating),
+              actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
+              context = s"Property accessed by $name procedure."
+            )
+        }(location.graph.nodeDispatcherEC)
+    }
+  }
+}
+
+/** Add to a list-typed property on a node atomically, treating the list as a set (doing the get, the deduplication, and
+  * the set in one step with no intervening operation)
+  */
+object InsertToSet extends UserDefinedProcedure with LazyLogging {
+  val name = "set.insert"
+  val canContainUpdates = true
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Anything),
+    outputs = Vector("result" -> Type.ListOfAnything),
+    description =
+      """Atomically add an element to a list property treated as a set. If one or more instances of `add` are
+        |already present in the list at node[key], this procedure has no effect.""".stripMargin.replace('\n', ' ')
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+    import location._
+
+    val nodeId = arguments.headOption
+      .flatMap(UserDefinedProcedure.extractQuineId)
+      .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
+    // Pull out the arguments
+    val (propertyKey, newElements) = arguments match {
+      case Seq(_, Expr.Str(key), elem) => (key, QuineValue.List(Vector(Expr.toQuineValue(elem))))
+      case other => throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      nodeId
+        .?(AddToAtomic.Set(Symbol(propertyKey), newElements, _))
+        .map {
+          case AddToAtomicResult.SuccessList(newCount) => Vector(Expr.fromQuineValue(newCount))
+          case AddToAtomicResult.Failed(valueFound) =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.ListOfAnything),
+              actualValue = Expr.fromQuineValue(valueFound),
+              context = s"Property accessed by $name procedure"
+            )
+          case successOfDifferentType: AddToAtomicResult =>
+            // by the type invariant on [[AddToAtomic]], this case is unreachable.
+            logger.warn(
+              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
+                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a list (used as set)
+                 |by: $name.""".stripMargin.replace('\n', ' ')
+            )
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.ListOfAnything),
+              actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
+              context = s"Property accessed by $name procedure."
+            )
+        }(location.graph.nodeDispatcherEC)
+    }
+  }
+}
+
+/** Add to a list-typed property on a node atomically, treating the list as a set (doing the get, the deduplication, and
+  * the set in one step with no intervening operation)
+  */
+object UnionToSet extends UserDefinedProcedure with LazyLogging {
+  val name = "set.union"
+  val canContainUpdates = true
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.ListOfAnything),
+    outputs = Vector("result" -> Type.ListOfAnything),
+    description =
+      """Atomically add set of elements to a list property treated as a set. The elements in `add` will be deduplicated
+        |and, for any that are not yet present at node[key], will be stored. If the list at node[key] already contains
+        |all elements of `add`, this procedure has no effect.""".stripMargin.replace('\n', ' ')
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+    import location._
+
+    val nodeId = arguments.headOption
+      .flatMap(UserDefinedProcedure.extractQuineId)
+      .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
+    // Pull out the arguments
+    val (propertyKey, newElements) = arguments match {
+      case Seq(_, Expr.Str(key), Expr.List(cypherElems)) => (key, QuineValue.List(cypherElems.map(Expr.toQuineValue)))
+      case other => throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      nodeId
+        .?(AddToAtomic.Set(Symbol(propertyKey), newElements, _))
+        .map {
+          case AddToAtomicResult.SuccessList(newCount) => Vector(Expr.fromQuineValue(newCount))
+          case AddToAtomicResult.Failed(valueFound) =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.ListOfAnything),
+              actualValue = Expr.fromQuineValue(valueFound),
+              context = s"Property accessed by $name procedure"
+            )
+          case successOfDifferentType: AddToAtomicResult =>
+            // by the type invariant on [[AddToAtomic]], this case is unreachable.
+            logger.warn(
+              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
+                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a list (used as set)
+                 |by: $name.""".stripMargin.replace('\n', ' ')
+            )
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.ListOfAnything),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
               context = s"Property accessed by $name procedure."
             )
