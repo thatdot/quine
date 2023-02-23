@@ -2,10 +2,12 @@ package com.thatdot.quine.compiler.cypher
 
 import java.nio.charset.StandardCharsets
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalField
+import java.time.temporal.{ChronoField, TemporalField}
 import java.time.{
   Duration => JavaDuration,
+  LocalDate,
   LocalDateTime => JavaLocalDateTime,
+  LocalTime,
   ZoneId,
   ZonedDateTime => JavaZonedDateTime
 }
@@ -27,7 +29,7 @@ import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.util.Foldable.TreeAny
 import org.opencypher.v9_0.util.Rewritable.IteratorEq
 import org.opencypher.v9_0.util.StepSequencer.Condition
-import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
+import org.opencypher.v9_0.util.{CypherException, _}
 
 import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
@@ -77,6 +79,10 @@ object OpenCypherUdf {
       case Type.Duration => symbols.CTDuration
       case Type.DateTime => symbols.CTDateTime
       case Type.LocalDateTime => symbols.CTLocalDateTime
+      case Type.Date => symbols.CTDate
+      //Not symbols.CTTime, as openCypher Time includes a timezone, while our Time
+      //is mapped to java LocalTime and does not.
+      case Type.Time => symbols.CTLocalTime
       case _ => symbols.CTAny
     }
 }
@@ -147,6 +153,8 @@ case object resolveFunctions extends StatementRewriter {
     CypherTextUrlEncode,
     CypherTextUrlDecode,
     CypherDateTime,
+    CypherDate,
+    CypherTime,
     CypherLocalDateTime,
     CypherDuration,
     CypherDurationBetween,
@@ -1013,6 +1021,163 @@ object CypherLocalDateTime extends UserDefinedFunction {
       case Vector(Expr.Str(temporalValue), Expr.Str(format)) =>
         val formatter = DateTimeFormatter.ofPattern(format, Locale.US)
         Expr.LocalDateTime(JavaLocalDateTime.parse(temporalValue, formatter))
+
+      case other => throw wrongSignature(other)
+    }
+}
+
+object CypherDate extends UserDefinedFunction {
+  val name = "date"
+  val isPure = false // reads system time and zone
+  val signatures: Seq[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector(),
+      output = Type.Date,
+      description = "Get the current local date"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("options" -> Type.Map),
+      output = Type.Date,
+      description = "Construct a local date from the options"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("date" -> Type.Str),
+      output = Type.Date,
+      description = "Parse a local date from a string"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("date" -> Type.Str, "format" -> Type.Str),
+      output = Type.Date,
+      description = "Parse a local date from a string using a custom format"
+    )
+  )
+  val category = Category.TEMPORAL
+
+  private[cypher] val unitFields: List[(String, TemporalField)] =
+    List(
+      "year" -> ChronoField.YEAR,
+      "month" -> ChronoField.MONTH_OF_YEAR,
+      "day" -> ChronoField.DAY_OF_MONTH
+    )
+
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    args match {
+      case Vector() => Expr.LocalDateTime(JavaLocalDateTime.now())
+
+      case Vector(Expr.Map(optionsMap)) =>
+        val remainingOptions = scala.collection.mutable.Map(optionsMap.toSeq: _*)
+
+        // TODO: consider detecting non-sensical combinations of units
+        val localDate = CypherDateTime.unitFields.foldLeft(java.time.LocalDate.of(0, 1, 1)) {
+          case (accDate, (unitFieldName, temporalField)) =>
+            remainingOptions.remove(unitFieldName) match {
+              case None => accDate
+              case Some(Expr.Integer(unitValue)) => accDate.`with`(temporalField, unitValue)
+              case Some(other) =>
+                throw CypherException.TypeMismatch(
+                  Seq(Type.Integer),
+                  other,
+                  s"`$unitFieldName` field in options map"
+                )
+            }
+        }
+
+        // Disallow unknown fields
+        if (remainingOptions.nonEmpty) {
+          throw CypherException.Runtime(
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+          )
+        }
+
+        Expr.Date(localDate)
+
+      // TODO, support more formats here...
+      case Vector(Expr.Str(temporalValue)) =>
+        Expr.Date(LocalDate.parse(temporalValue))
+
+      case Vector(Expr.Str(temporalValue), Expr.Str(format)) =>
+        val formatter = DateTimeFormatter.ofPattern(format, Locale.US)
+        Expr.Date(java.time.LocalDate.parse(temporalValue, formatter))
+
+      case other => throw wrongSignature(other)
+    }
+}
+
+object CypherTime extends UserDefinedFunction {
+  val name = "time"
+  val isPure = false // reads system time and zone
+  val signatures: Seq[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector(),
+      output = Type.Time,
+      description = "Get the current local time"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("options" -> Type.Map),
+      output = Type.Time,
+      description = "Construct a local time from the options"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("time" -> Type.Str),
+      output = Type.Time,
+      description = "Parse a local time from a string"
+    ),
+    UserDefinedFunctionSignature(
+      arguments = Vector("time" -> Type.Str, "format" -> Type.Str),
+      output = Type.Time,
+      description = "Parse a local time from a string using a custom format"
+    )
+  )
+  val category = Category.TEMPORAL
+
+  private[cypher] val unitFields: List[(String, TemporalField)] =
+    List(
+      "hour" -> ChronoField.HOUR_OF_DAY,
+      "minute" -> ChronoField.MINUTE_OF_HOUR,
+      "second" -> ChronoField.SECOND_OF_MINUTE,
+      "millisecond" -> ChronoField.MILLI_OF_SECOND,
+      "microsecond" -> ChronoField.MICRO_OF_SECOND,
+      "nanosecond" -> ChronoField.NANO_OF_SECOND
+    )
+
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    args match {
+      case Vector() => Expr.Time(java.time.LocalTime.now())
+
+      case Vector(Expr.Map(optionsMap)) =>
+        val remainingOptions = scala.collection.mutable.Map(optionsMap.toSeq: _*)
+
+        // TODO: consider detecting non-sensical combinations of units
+        val localTime = CypherTime.unitFields.foldLeft(java.time.LocalTime.of(0, 0, 0)) {
+          case (accTime, (unitFieldName, temporalField)) =>
+            remainingOptions.remove(unitFieldName) match {
+              case None => accTime
+              case Some(Expr.Integer(unitValue)) => accTime.`with`(temporalField, unitValue)
+              case Some(other) =>
+                throw CypherException.TypeMismatch(
+                  Seq(Type.Integer),
+                  other,
+                  s"`$unitFieldName` field in options map"
+                )
+            }
+        }
+
+        // Disallow unknown fields
+        if (remainingOptions.nonEmpty) {
+          throw CypherException.Runtime(
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+          )
+        }
+
+        Expr.Time(localTime)
+
+      // TODO, support more formats here...
+      case Vector(Expr.Str(temporalValue)) =>
+        Expr.Time(LocalTime.parse(temporalValue))
+
+      case Vector(Expr.Str(temporalValue), Expr.Str(format)) =>
+        val formatter = DateTimeFormatter.ofPattern(format, Locale.US)
+        Expr.Time(java.time.LocalTime.parse(temporalValue, formatter))
 
       case other => throw wrongSignature(other)
     }

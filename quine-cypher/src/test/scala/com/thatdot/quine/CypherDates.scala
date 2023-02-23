@@ -26,6 +26,17 @@ class CypherDates extends CypherHarness("cypher-dates-tests") {
     )
 
     testExpression(
+      "date({ year: 1995, month: 4, day: 24 })",
+      Expr.Date(java.time.LocalDate.of(1995, 4, 24)),
+      expectedIsIdempotent = false
+    )
+
+    testExpression(
+      "time({ hour: 10, minute: 4, second: 24, nanosecond: 110 })",
+      Expr.Time(java.time.LocalTime.of(10, 4, 24, 110)),
+      expectedIsIdempotent = false
+    )
+    testExpression(
       "duration({ days: 24 })",
       Expr.Duration(JavaDuration.ofDays(24)),
       expectedIsIdempotent = true

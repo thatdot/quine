@@ -18,7 +18,9 @@ union CypherValue {
   CypherPath,
   CypherLocalDateTime,
   CypherDateTime,
-  CypherDuration,
+  CypherDate,
+  CypherTime,
+  CypherDuration
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr]]
@@ -38,7 +40,8 @@ union CypherExpr {
   CypherLocalDateTime,
   CypherDateTime,
   CypherDuration,
-
+  CypherDate,
+  CypherTime,
   CypherVariable,
   CypherPropertyAccess,
   CypherDynamicPropertyAccess,
@@ -143,6 +146,16 @@ table CypherDateTime {
 // See [[com.thatdot.quine.graph.cypher.Expr.Duration]]
 table CypherDuration {
   duration: Duration;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Date]]
+table CypherDate {
+   date: LocalDate;
+}
+
+// See [[com.thatdot.quine.graph.cypher.Expr.Time]]
+table CypherTime {
+   time: LocalTime;
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Variable]]

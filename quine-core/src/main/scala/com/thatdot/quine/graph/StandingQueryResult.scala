@@ -112,7 +112,16 @@ final case class StandingQueryResult(
         into.putByte(11)
         into.putLong(d.getSeconds)
         into.putInt(d.getNano)
-
+      case QuineValue.Date(d) =>
+        into.putByte(12)
+        into.putLong(d.toEpochDay)
+      case QuineValue.Time(t) =>
+        into.putByte(13)
+        into.putLong(t.toNanoOfDay)
+      case QuineValue.LocalDateTime(ldt) =>
+        into.putByte(14)
+        into.putLong(ldt.toLocalDate.toEpochDay)
+        into.putLong(ldt.toLocalTime.toNanoOfDay)
     }
 
   def dataHashCode: Long =

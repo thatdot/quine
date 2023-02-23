@@ -284,6 +284,8 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
     case Expr.DateTime(d) =>      writeValue(buf, Expr.Str(d.toString))
     case Expr.LocalDateTime(d) => writeValue(buf, Expr.Str(d.toString))
     case Expr.Duration(d) =>      writeValue(buf, Expr.Str(d.toString))
+    case Expr.Date(d) =>          writeValue(buf, Expr.Str(d.toString))
+    case Expr.Time(d) =>          writeValue(buf, Expr.Str(d.toString))
   }
 
   /** Serialize a structure to a byte string builder

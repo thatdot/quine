@@ -317,6 +317,16 @@ trait PersistenceCodec[T] extends LazyLogging {
     cypher.Expr.Duration(javaDuration)
   }
 
+  private[this] def readCypherDate(date: persistence.CypherDate): cypher.Expr.Date = {
+    val javaDate = readLocalDate(date.date)
+    cypher.Expr.Date(javaDate)
+  }
+
+  private[this] def readCypherTime(time: persistence.CypherTime): cypher.Expr.Time = {
+    val javaTime = readLocalTime(time.time)
+    cypher.Expr.Time(javaTime)
+  }
+
   private[this] def writeCypherRelationship(
     builder: FlatBufferBuilder,
     relationship: cypher.Expr.Relationship
@@ -406,6 +416,20 @@ trait PersistenceCodec[T] extends LazyLogging {
   private[this] def writeCypherDateTime(builder: FlatBufferBuilder, dateTime: cypher.Expr.DateTime): Offset = {
     val zonedDateTimeOff: Offset = writeZonedDateTime(builder, dateTime.zonedDateTime)
     persistence.CypherDateTime.createCypherDateTime(builder, zonedDateTimeOff)
+  }
+
+  private[this] def writeCypherDate(builder: FlatBufferBuilder, date: cypher.Expr.Date): Offset = {
+    persistence.CypherDate.startCypherDate(builder)
+    val offset = writeCypherDate(builder, date)
+    persistence.CypherDate.addDate(builder, offset)
+    persistence.CypherDate.endCypherDate(builder)
+  }
+
+  private[this] def writeCypherTime(builder: FlatBufferBuilder, time: cypher.Expr.Time): Offset = {
+    persistence.CypherTime.startCypherTime(builder)
+    val offset = writeCypherTime(builder, time)
+    persistence.CypherTime.addTime(builder, offset)
+    persistence.CypherTime.endCypherTime(builder)
   }
 
   private[this] def writeCypherDuration(builder: FlatBufferBuilder, duration: cypher.Expr.Duration): Offset = {
@@ -906,6 +930,12 @@ trait PersistenceCodec[T] extends LazyLogging {
 
       case duration: cypher.Expr.Duration =>
         TypeAndOffset(persistence.CypherValue.CypherDuration, writeCypherDuration(builder, duration))
+
+      case date: cypher.Expr.Date =>
+        TypeAndOffset(persistence.CypherValue.CypherDate, writeCypherDate(builder, date))
+
+      case time: cypher.Expr.Time =>
+        TypeAndOffset(persistence.CypherValue.CypherTime, writeCypherTime(builder, time))
     }
 
   protected[this] def readCypherValue(typ: Byte, makeExpr: Table => Table): cypher.Value =
@@ -968,6 +998,14 @@ trait PersistenceCodec[T] extends LazyLogging {
         val duration = makeExpr(new persistence.CypherDuration()).asInstanceOf[persistence.CypherDuration]
         readCypherDuration(duration)
 
+      case persistence.CypherValue.CypherDate =>
+        val date = makeExpr(new persistence.CypherDate()).asInstanceOf[persistence.CypherDate]
+        readCypherDate(date)
+
+      case persistence.CypherValue.CypherTime =>
+        val time = makeExpr(new persistence.CypherTime()).asInstanceOf[persistence.CypherTime]
+        readCypherTime(time)
+
       case other =>
         throw new InvalidUnionType(other, persistence.CypherValue.names)
     }
@@ -1018,6 +1056,12 @@ trait PersistenceCodec[T] extends LazyLogging {
 
       case duration: cypher.Expr.Duration =>
         TypeAndOffset(persistence.CypherExpr.CypherDuration, writeCypherDuration(builder, duration))
+
+      case date: cypher.Expr.Date =>
+        TypeAndOffset(persistence.CypherExpr.CypherDate, writeCypherDate(builder, date))
+
+      case time: cypher.Expr.Time =>
+        TypeAndOffset(persistence.CypherExpr.CypherTime, writeCypherTime(builder, time))
 
       case variable: cypher.Expr.Variable =>
         TypeAndOffset(persistence.CypherExpr.CypherVariable, writeCypherVariable(builder, variable))

@@ -281,6 +281,7 @@ lazy val `quine`: Project = project
       "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
       "com.google.guava" % "guava" % guavaV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
+      "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
       "com.github.scopt" %% "scopt" % scoptV,
       "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,

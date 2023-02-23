@@ -22,7 +22,7 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
     val hasher = murmur3_128.newHasher
     val input = Generators.generateN[DomainGraphNode](100000, 200, Seed(0))
     for { dgn <- input } hasher.putLong(DomainGraphNode.id(dgn))
-    hasher.hash.asLong shouldBe -913264820859010539L
+    hasher.hash.asLong shouldBe -2223157429016222151L
   }
   it must "generate unique identifiers for arbitrary values" in {
     val nodes = mutable.Set.empty[DomainGraphNode]

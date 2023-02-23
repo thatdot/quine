@@ -22,6 +22,8 @@ sealed abstract class Type {
     case Type.LocalDateTime => "LOCALDATETIME"
     case Type.DateTime => "DATETIME"
     case Type.Duration => "DURATION"
+    case Type.Date => "DATE"
+    case Type.Time => "TIME"
     case Type.Anything => "ANY"
   }
 }
@@ -41,6 +43,8 @@ object Type {
   case object LocalDateTime extends Type
   case object DateTime extends Type
   case object Duration extends Type
+  case object Date extends Type
+  case object Time extends Type
   case object Anything extends Type
 
   val ListOfAnything: List = List(Anything)
