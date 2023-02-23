@@ -1211,14 +1211,19 @@ object CypherMetaType extends UserDefinedFunction {
 
 object CypherCasts {
   val types: Seq[(String, Type)] = Seq(
-    Type.Number,
+    // Type.Number: has no inhabitants at runtime -- it is only used by openCypher analysis
     Type.Integer,
     Type.Floating,
     Type.Bool,
     Type.Str,
-    //  Type.List(of) is a special case as the only non-unary type -- see below
+    //  Type.List(of): a special case as the only non-unary type -- see below
     Type.Map,
-    Type.Null,
+    /** Type.Null:
+      * It is not supposed to be possible to invoke a function with a `null` value (indeed, you can't invoke a
+      * function with `Expr.Null`: see [[Function.eval]]). While it may be possible to invoke a function with an
+      * *expression* that returns `null`, there is also no reason to ever cast to null -- you could just use the literal
+      * `null` instead.
+      */
     Type.Bytes,
     Type.Node,
     Type.Relationship,
