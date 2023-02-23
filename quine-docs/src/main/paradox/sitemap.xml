@@ -136,16 +136,6 @@
   <priority>0.64</priority>
 </url>
 <url>
-  <loc>https://docs.quine.io/components/multiple-values.html</loc>
-  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
-  <priority>0.64</priority>
-</url>
-<url>
-  <loc>https://docs.quine.io/components/standing-query-outputs.html</loc>
-  <lastmod>2022-11-02T16:39:55+00:00</lastmod>
-  <priority>0.64</priority>
-</url>
-<url>
   <loc>https://docs.quine.io/components/persistors/persistor.html</loc>
   <lastmod>2022-11-02T16:39:55+00:00</lastmod>
   <priority>0.64</priority>

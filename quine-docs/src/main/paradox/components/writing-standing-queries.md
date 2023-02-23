@@ -16,7 +16,7 @@ Cypher within a pattern query must only contain a `MATCH` and a `RETURN`, with a
 
 ![Standing Query Model](standingQuery.png)
 
-As described in the [Create Standing Query](/api/v1/query/standing/{standing-query-name}) API documentation, a standing query is created via POST to the `/api/v1/query/standing/{standing-query-name}` endpoint.
+As described in the [Create Standing Query](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-standing-standing-query-name/post) API documentation, a standing query is created via POST to the `/api/v1/query/standing/{standing-query-name}` endpoint.
 
 ```json title="POST /api/v1/query/standing/STANDING-1"
 {
