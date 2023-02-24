@@ -22,6 +22,6 @@ class GraphNodeHashCodeTest extends AnyFlatSpec with Matchers with HalfEdgeGen w
       val graphNodeHashCode = GraphNodeHashCode(qid, properties, edges)
       hasher.putLong(graphNodeHashCode.value)
     }
-    hasher.hash.asLong shouldBe -8121479720832342574L
+    hasher.hash.asLong shouldBe -6974225630962523339L
   }
 }

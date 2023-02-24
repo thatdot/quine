@@ -3,9 +3,9 @@ package com.thatdot.quine.graph
 import java.time.{
   Duration => JavaDuration,
   Instant,
-  LocalDate => JavaDate,
+  LocalDate => JavaLocalDate,
   LocalDateTime => JavaLocalDateTime,
-  LocalTime => JavaTime,
+  LocalTime => JavaLocalTime,
   ZonedDateTime => JavaZonedDateTime
 }
 import java.util.UUID
@@ -56,6 +56,17 @@ import DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
   * }}}
   */
 trait ArbitraryInstances {
+
+  // A Gen[DateTime] bounded by what fits into an int32 as epoch day
+  // LocalDate.ofEpochDay(Int.MaxValue).getYear == 5,881,580
+  // Nearly 6 million years should be good enough.
+  // Long.MaxValue would be well after the heat death of the universe
+  // The upstream definition is Gen.choose(DateTime.MIN, DateTime.MAX)
+  lazy val intBoundedDateGen: Gen[JavaLocalDate] = arbitrary[Int].map(i => JavaLocalDate.ofEpochDay(i.toLong))
+  lazy val intBoundedLocalDateTimeGen: Gen[JavaLocalDateTime] = for {
+    date <- intBoundedDateGen
+    time <- arbitrary[JavaLocalTime]
+  } yield JavaLocalDateTime.of(date, time)
 
   /* Tweak the containers so that the generation size does _not_ get passed
    * through straight away. Instead, we pick a container size and then scale
@@ -248,18 +259,18 @@ trait ArbitraryInstances {
           Gen.const[QuineValue](QuineValue.Null)
         ),
         other = List(
-          Gen.resultOf[String, QuineValue](QuineValue.Str.apply),
-          Gen.resultOf[Long, QuineValue](QuineValue.Integer.apply),
-          Gen.resultOf[Double, QuineValue](QuineValue.Floating.apply),
-          Gen.resultOf[Array[Byte], QuineValue](QuineValue.Bytes.apply),
-          GenApply.resultOf[Vector[QuineValue], QuineValue](QuineValue.List.apply),
-          GenApply.resultOf[Map[String, QuineValue], QuineValue](QuineValue.Map.apply),
-          GenApply.resultOf[Instant, QuineValue](QuineValue.DateTime.apply),
-          GenApply.resultOf[QuineId, QuineValue](QuineValue.Id.apply),
-          GenApply.resultOf[JavaDuration, QuineValue](QuineValue.Duration.apply),
-          GenApply.resultOf[JavaDate, QuineValue](QuineValue.Date.apply),
-          GenApply.resultOf[JavaTime, QuineValue](QuineValue.Time.apply),
-          GenApply.resultOf[JavaLocalDateTime, QuineValue](QuineValue.LocalDateTime.apply)
+          Gen.resultOf[String, QuineValue](QuineValue.Str),
+          Gen.resultOf[Long, QuineValue](QuineValue.Integer(_)),
+          Gen.resultOf[Double, QuineValue](QuineValue.Floating),
+          Gen.resultOf[Array[Byte], QuineValue](QuineValue.Bytes),
+          GenApply.resultOf[Vector[QuineValue], QuineValue](QuineValue.List),
+          GenApply.resultOf[Map[String, QuineValue], QuineValue](QuineValue.Map(_)),
+          Gen.resultOf[Instant, QuineValue](QuineValue.DateTime),
+          Gen.resultOf[QuineId, QuineValue](QuineValue.Id(_)),
+          Gen.resultOf[JavaDuration, QuineValue](QuineValue.Duration),
+          intBoundedDateGen.map(QuineValue.Date),
+          Gen.resultOf[JavaLocalTime, QuineValue](QuineValue.Time),
+          intBoundedLocalDateTimeGen.map(QuineValue.LocalDateTime)
         )
       )
     )

@@ -1,6 +1,5 @@
 package com.thatdot.quine.model
 
-import java.nio.ByteBuffer
 import java.time.{Duration => JavaDuration, Instant, LocalDate, LocalDateTime => JavaLocalDateTime, LocalTime}
 
 import scala.collection.compat._
@@ -9,7 +8,7 @@ import scala.util.hashing.MurmurHash3
 
 import io.circe.Json
 import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
-import org.msgpack.core.{MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
+import org.msgpack.core.{ExtensionTypeHeader, MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 
 /** Values that are recognized by the Quine interpreter. When talking about Quine
@@ -322,6 +321,11 @@ object QuineValue {
     }
   }
 
+  // The size of bytes of various combinations of things we're putting in msgpack extensions:
+  private val IntByteSize = java.lang.Integer.BYTES // 4
+  private val LongByteSize = java.lang.Long.BYTES // 8
+  private val LongAndIntByteSize = LongByteSize + IntByteSize
+
   /** Read a [[QuineValue]] from a MessagePack payload
     *
     * @param unpacker source of data
@@ -329,14 +333,12 @@ object QuineValue {
     */
   def readMsgPack(unpacker: MessageUnpacker): QuineValue = {
 
-    def readMsgPackExtension[T](bytes: Array[Byte], expectedLength: Int, f: ByteBuffer => T): T = {
-      if (bytes.length != expectedLength) {
-        throw new IllegalArgumentException(
-          s"Invalid length for date time (expected $expectedLength but got ${bytes.length})"
-        )
-      }
-      f(ByteBuffer.wrap(bytes))
-    }
+    def validateExtHeaderLength(extHeader: ExtensionTypeHeader, expectedLength: Int) = if (
+      extHeader.getLength != expectedLength
+    )
+      throw new IllegalArgumentException(
+        s"Invalid length for date time (expected $expectedLength but got ${extHeader.getLength})"
+      )
 
     val format = unpacker.getNextFormat()
     val typ = format.getValueType()
@@ -386,47 +388,27 @@ object QuineValue {
         val extHeader = unpacker.unpackExtensionTypeHeader()
         extHeader.getType match {
           case DurationExt =>
-            readMsgPackExtension(
-              unpacker.readPayload(extHeader.getLength),
-              12,
-              buf => {
-                val seconds = buf.getLong
-                val nanos = buf.getInt
-                QuineValue.Duration(JavaDuration.ofSeconds(seconds, nanos.toLong))
-              }
-            )
+            validateExtHeaderLength(extHeader, LongAndIntByteSize)
+            val seconds = unpacker.unpackLong()
+            val nanos = unpacker.unpackInt()
+            QuineValue.Duration(JavaDuration.ofSeconds(seconds, nanos.toLong))
 
           case DateExt =>
-            readMsgPackExtension(
-              unpacker.readPayload(extHeader.getLength),
-              8,
-              buf => {
-                val epochDay = buf.getLong()
-                QuineValue.Date(LocalDate.ofEpochDay(epochDay))
-              }
-            )
+            validateExtHeaderLength(extHeader, IntByteSize)
+            val epochDay = unpacker.unpackInt()
+            QuineValue.Date(LocalDate.ofEpochDay(epochDay.toLong))
 
           case TimeExt =>
-            readMsgPackExtension(
-              unpacker.readPayload(extHeader.getLength),
-              8,
-              buf => {
-                val nanoDay = buf.getLong()
-                QuineValue.Time(LocalTime.ofNanoOfDay(nanoDay))
-              }
-            )
+            validateExtHeaderLength(extHeader, LongByteSize)
+            val nanoDay = unpacker.unpackLong()
+            QuineValue.Time(LocalTime.ofNanoOfDay(nanoDay))
 
           case LocalDateTimeExt =>
-            readMsgPackExtension(
-              unpacker.readPayload(extHeader.getLength),
-              16,
-              buf => {
-                val epochDay = buf.getLong
-                val nanoDay = buf.getLong
-                QuineValue.LocalDateTime(
-                  JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay), LocalTime.ofNanoOfDay(nanoDay))
-                )
-              }
+            validateExtHeaderLength(extHeader, LongAndIntByteSize)
+            val epochDay = unpacker.unpackInt()
+            val nanoDay = unpacker.unpackLong()
+            QuineValue.LocalDateTime(
+              JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), LocalTime.ofNanoOfDay(nanoDay))
             )
 
           case EXT_TIMESTAMP =>
@@ -448,7 +430,6 @@ object QuineValue {
     * @param quineValue value to write
     */
   def writeMsgPack(packer: MessagePacker, quineValue: QuineValue): Unit = {
-
     quineValue match {
       case QuineValue.Null =>
         packer.packNil()
@@ -488,38 +469,26 @@ object QuineValue {
         packer.packTimestamp(timestamp)
 
       case QuineValue.Duration(duration) =>
-        val data = ByteBuffer
-          .allocate(12)
-          .putLong(duration.getSeconds)
-          .putInt(duration.getNano)
-          .array()
-        packer.packExtensionTypeHeader(DurationExt, 12).addPayload(data)
+        packer
+          .packExtensionTypeHeader(DurationExt, LongAndIntByteSize)
+          .packLong(duration.getSeconds)
+          .packInt(duration.getNano)
 
       case QuineValue.Date(date) =>
-        val data = ByteBuffer
-          .allocate(8)
-          .putLong(date.toEpochDay)
-          .array()
-        packer.packExtensionTypeHeader(DateExt, 8).addPayload(data)
+        packer.packExtensionTypeHeader(DateExt, IntByteSize).packInt(date.toEpochDay.intValue)
       case QuineValue.Time(time) =>
-        val data = ByteBuffer
-          .allocate(8)
-          .putLong(time.toNanoOfDay)
-          .array()
-        packer.packExtensionTypeHeader(TimeExt, 8).addPayload(data)
+        packer.packExtensionTypeHeader(TimeExt, LongByteSize).packLong(time.toNanoOfDay)
       case QuineValue.LocalDateTime(localDateTime) =>
-        val data = ByteBuffer
-          .allocate(16)
-          .putLong(localDateTime.toLocalDate.toEpochDay)
-          .putLong(localDateTime.toLocalTime.toNanoOfDay)
-          .array()
-        packer.packExtensionTypeHeader(LocalDateTimeExt, 16).addPayload(data)
+        packer
+          .packExtensionTypeHeader(LocalDateTimeExt, LongAndIntByteSize)
+          .packInt(localDateTime.toLocalDate.toEpochDay.intValue)
+          .packLong(localDateTime.toLocalTime.toNanoOfDay)
 
       case QuineValue.Id(qid) =>
         val data = qid.array
         packer.packExtensionTypeHeader(IdExt, data.length).addPayload(data)
     }
-    ()
+    () // Just to get rid of the "discarded non-Unit value" warning from all of the above
   }
 
   def readMsgPackType(packed: Array[Byte]): QuineType =
