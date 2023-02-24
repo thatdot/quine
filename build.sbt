@@ -90,14 +90,16 @@ lazy val `quine-rocksdb-persistor`: Project = project
 
 // Cassandra implementation of a Quine persistor
 lazy val `quine-cassandra-persistor`: Project = project
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
-  .dependsOn(`quine-core` % "compile->compile;test->test")
+  .dependsOn(`quine-core` % "compile->compile;it->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
       "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
-      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest
     )
   )
 
