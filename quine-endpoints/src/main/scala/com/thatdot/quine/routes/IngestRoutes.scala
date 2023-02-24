@@ -176,16 +176,16 @@ object KafkaOffsetCommitting {
   @unnamed
   @title("Explicit Commit")
   @docs(
-    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record"
+    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record."
   )
   final case class ExplicitCommit(
-    @docs("Maximum number of messages in a single commit batch")
+    @docs("Maximum number of messages in a single commit batch.")
     maxBatch: Long = 1000,
-    @docs("Maximum interval between commits in milliseconds")
+    @docs("Maximum interval between commits in milliseconds.")
     maxIntervalMillis: Int = 10000,
-    @docs("Parallelism for async committing")
+    @docs("Parallelism for async committing.")
     parallelism: Int = 100,
-    @docs("Wait for a confirmation from Kafka on ack")
+    @docs("Wait for a confirmation from Kafka on ack.")
     waitForCommitConfirmation: Boolean = true
   ) extends KafkaOffsetCommitting
 }
@@ -231,31 +231,31 @@ object RecordDecodingType {
 @title("Kafka Ingest Stream")
 @docs("A stream of data being ingested from Kafka.")
 final case class KafkaIngest(
-  @docs("format used to decode each Kafka record")
+  @docs("The format used to decode each Kafka record.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
   @docs(
     """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
-      |whose values are partition indices""".stripMargin
+      |whose values are partition indices.""".stripMargin
       .replace('\n', ' ')
   ) topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
-  @docs("maximum number of records being processed at once")
+  @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("comma-separated list of Kafka broker servers") bootstrapServers: String,
+  @docs("A comma-separated list of Kafka broker servers.") bootstrapServers: String,
   @docs(
-    "ID of the consumer group this ingest stream should report that it belongs to; defaults to the name of the ingest"
+    "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream."
   ) groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
   @docs(
-    "Map of Kakfa client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
+    "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
   )
   kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
   @docs(
-    "offset at which this stream should complete; offsets are sequential integers starting at 0"
+    "The offset at which this stream should complete; offsets are sequential integers starting at 0."
   ) endingOffset: Option[Long],
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
-  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs("List of decodings to be applied to each input. The specified decodings are applied in declared array order.")
   @unnamed
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
@@ -305,16 +305,16 @@ object KinesisIngest {
 @unnamed
 @docs("A stream of data being ingested from Pulsar.")
 final case class PulsarIngest(
-  @docs("format used to decode each Pulsar record")
+  @docs("The format used to decode each Pulsar record.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("name of the Pulsar topic from which to ingest") topics: Seq[String],
-  @docs("Pulsar service url") pulsarUrl: String,
-  @docs("subscription key") subscriptionName: String,
-  @docs("Pulsar subscription type") subscriptionType: PulsarSubscriptionType,
-  @docs("maximum number of records to write simultaneously")
+  @docs("Name of the Pulsar topic to ingest.") topics: Seq[String],
+  @docs("Pulsar service url.") pulsarUrl: String,
+  @docs("Pulsar subscription key.") subscriptionName: String,
+  @docs("Pulsar subscription type.") subscriptionType: PulsarSubscriptionType,
+  @docs("Maximum number of records to write simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
-  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
@@ -322,21 +322,21 @@ final case class PulsarIngest(
 @unnamed
 @docs("A stream of data being ingested from Kinesis.")
 final case class KinesisIngest(
-  @docs("format used to decode each Kinesis record")
+  @docs("The format used to decode each Kinesis record.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("name of the Kinesis stream from which to ingest") streamName: String,
+  @docs("Name of the Kinesis stream to ingest.") streamName: String,
   @docs(
-    "IDs of the shards within the named kinesis stream from which to ingest; if empty or excluded, all shards on the stream will be used"
+    "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed."
   )
   shardIds: Option[Set[String]],
-  @docs("maximum number of records to write simultaneously")
+  @docs("Maximum number of records to write simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   credentials: Option[AwsCredentials],
   region: Option[AwsRegion],
-  @docs("shard iterator type") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
-  @docs("number of retries to attempt on Kineses error") numRetries: Int = 3,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
-  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  @docs("Shard iterator type.") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
+  @docs("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
+  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
@@ -346,14 +346,14 @@ final case class KinesisIngest(
   "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event."
 )
 final case class ServerSentEventsIngest(
-  @docs("format used to decode each event's `data`")
+  @docs("Format used to decode each event's `data`.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("URL of the server sent event stream") url: String,
-  @docs("maximum number of records to ingest simultaneously")
+  @docs("URL of the server sent event stream.") url: String,
+  @docs("Maximum number of records to ingest simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
+  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
   @docs(
-    "list of encodings that have been applied to each input. Decoding of each type is applied in order."
+    "List of encodings that have been applied to each input. Decoding of each type is applied in order."
   ) recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
@@ -361,18 +361,18 @@ final case class ServerSentEventsIngest(
 @unnamed
 @docs("An active stream of data being ingested from AWS SQS.")
 final case class SQSIngest(
-  @docs("format used to decode each queued record")
+  @docs("Format used to decode each queued record.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("URL of the queue from which to ingest") queueUrl: String,
-  @docs("maximum number of records to read from the queue simultaneously") readParallelism: Int = 1,
-  @docs("maximum number of records to ingest simultaneously")
+  @docs("URL of the queue to ingest.") queueUrl: String,
+  @docs("Maximum number of records to read from the queue simultaneously.") readParallelism: Int = 1,
+  @docs("Maximum number of records to ingest simultaneously.")
   writeParallelism: Int = IngestRoutes.defaultWriteParallelism,
   credentials: Option[AwsCredentials],
   region: Option[AwsRegion],
-  @docs("whether the queue consumer should acknowledge receipt of in-flight messages")
+  @docs("Whether the queue consumer should acknowledge receipt of in-flight messages.")
   deleteReadMessages: Boolean = true,
-  @docs("maximum records to process per second") maximumPerSecond: Option[Int],
-  @docs("list of decodings to be applied to each input, where specified decodings are applied im declared array order")
+  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
@@ -382,32 +382,32 @@ object WebsocketSimpleStartupIngest {
   sealed abstract class KeepaliveProtocol
   @unnamed
   @title("Ping/Pong on interval")
-  @docs("Send empty websocket messages at the specified interval (in milliseconds)")
+  @docs("Send empty websocket messages at the specified interval (in milliseconds).")
   final case class PingPongInterval(intervalMillis: Int = 5000) extends KeepaliveProtocol
   @unnamed
   @title("Text Keepalive Message on Interval")
-  @docs("Send the same text-based Websocket message at the specified interval (in milliseconds)")
+  @docs("Send the same text-based Websocket message at the specified interval (in milliseconds).")
   final case class SendMessageInterval(message: String, intervalMillis: Int = 5000) extends KeepaliveProtocol
   @unnamed
   @title("No Keepalive")
-  @docs("Only send data messages, no keepalives")
+  @docs("Only send data messages, no keepalives.")
   final case object NoKeepalive extends KeepaliveProtocol
 }
 @title("Websockets Ingest Stream (Simple Startup)")
 @unnamed
-@docs("A websocket stream started after a sequence of text messages")
+@docs("A websocket stream started after a sequence of text messages.")
 final case class WebsocketSimpleStartupIngest(
-  @docs("format used to decode each incoming message")
+  @docs("Format used to decode each incoming message.")
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("websocket (ws: or wss:) url to connect to")
+  @docs("Websocket (ws: or wss:) url to connect to.")
   url: String,
-  @docs("initial messages to send to the server on connecting")
+  @docs("Initial messages to send to the server on connecting.")
   initMessages: Seq[String] = Seq.empty,
-  @docs("what strategy to use for sending keepalive messages, if any")
+  @docs("Strategy to use for sending keepalive messages, if any.")
   keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
-  @docs("maximum number of records to ingest simultaneously")
+  @docs("Maximum number of records to ingest simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs(s"""text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
+  @docs(s"""Text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
            |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
            |""".stripMargin)
   encoding: String = "UTF-8"
@@ -421,13 +421,13 @@ object StreamedRecordFormat {
 
   @title("JSON via Cypher")
   @unnamed
-  @docs("""Records should be JSON values. For every record received, the
+  @docs("""Records are JSON values. For every record received, the
   |given Cypher query will be re-executed with the parameter in the query set
   |equal to the new JSON value.
   """.stripMargin)
   final case class CypherJson(
-    @docs("Cypher query to execute on each record") query: String,
-    @docs("name of the Cypher parameter to populate with the JSON value") parameter: String = "that"
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that"
   ) extends StreamedRecordFormat
 
   @title("Raw Bytes via Cypher")
@@ -437,25 +437,25 @@ object StreamedRecordFormat {
           |equal to the new value as a Cypher byte array.
   """.stripMargin)
   final case class CypherRaw(
-    @docs("Cypher query to execute on each record") query: String,
-    @docs("name of the Cypher parameter to populate with the byte array") parameter: String = "that"
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that"
   ) extends StreamedRecordFormat
 
   @title("Protobuf via Cypher")
   @unnamed
   @docs(
-    "Records are serialized instances of typeName as described in the schema (a `.desc` descriptor file) at " +
-    "schemaUrl. For every record received, the given Cypher query will be re-executed with the parameter " +
+    "Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at " +
+    "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
     "in the query set equal to the new (deserialized) Protobuf message."
   )
   final case class CypherProtobuf(
-    @docs("Cypher query to execute on each record") query: String,
-    @docs("name of the Cypher parameter to populate with the Protobuf message") parameter: String = "that",
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter to populate with the Protobuf message.") parameter: String = "that",
     @docs(
-      "URL (or local filename) of the Protobuf .desc file to load to parse the typeName"
+      "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`."
     ) schemaUrl: String,
     @docs(
-      "message type name to use from the given .desc file as the incoming message type"
+      "Message type name to use from the given `.desc` file as the incoming message type."
     ) typeName: String
   ) extends StreamedRecordFormat
 
@@ -478,26 +478,28 @@ object StreamedRecordFormat {
 @docs("An active stream of data being ingested from a file on this Quine host.")
 final case class FileIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
-  @docs("Path to the file")
+  @docs("Local file path.")
   path: String,
   @docs(
-    "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
+    "The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are " +
     "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
   )
   encoding: String = "UTF-8",
-  @docs("Maximum number of records being processed at once")
+  @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("Maximum size (in bytes) of any line in the file")
+  @docs("Maximum size (in bytes) of any line in the file.")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
-  @docs(s"""start at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-           |resuming ingest from a partially consumed file""".stripMargin)
+  @docs(
+    s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
+           |resuming ingest from a partially consumed file.""".stripMargin
+  )
   startAtOffset: Long = 0L,
   @docs(s"Optionally limit how many records are ingested from this file.")
   ingestLimit: Option[Long],
-  @docs("Maximum number of records to process per second")
+  @docs("Maximum number of records to process per second.")
   maximumPerSecond: Option[Int],
   @docs(
-    "Enables behaviors required for ingesting from a non-regular file type; default is to auto-detect if file is named pipe"
+    "Ingest mode for reading from a non-regular file type; default is to auto-detect if file is named pipe."
   ) fileIngestMode: Option[FileIngestMode]
 ) extends IngestStreamConfiguration
 
@@ -508,15 +510,15 @@ final case class FileIngest(
 final case class StandardInputIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
   @docs(
-    "text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly supported " +
+    "Text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly supported " +
     "-- other encodings will be transcoded to UTF-8 on the fly (and ingest may be slower)."
   )
   encoding: String = "UTF-8",
-  @docs("maximum number of records being processed at once")
+  @docs("Maximum number of records process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("maximum size (in bytes) of any line")
+  @docs("Maximum size (in bytes) of any line.")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
-  @docs("maximum records to process per second")
+  @docs("Maximum records to process per second.")
   maximumPerSecond: Option[Int]
 ) extends IngestStreamConfiguration
 
@@ -529,16 +531,16 @@ final case class StandardInputIngest(
 )
 case class NumberIteratorIngest(
   format: FileIngestFormat = IngestRoutes.defaultNumberFormat,
-  @docs("begin the stream with this number")
+  @docs("Begin the stream with this number.")
   startAt: Long = 0L,
-  @docs("optionally end the stream after consuming this many items")
+  @docs("Optionally end the stream after consuming this many items.")
   ingestLimit: Option[Long],
   @docs(
-    "limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
+    "Limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
     "backpressure elsewhere in the system."
   )
   throttlePerSecond: Option[Int],
-  @docs("maximum number of records being processed at once")
+  @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism
 ) extends IngestStreamConfiguration
 
@@ -576,27 +578,27 @@ object FileIngestFormat {
   @title("CypherCSV")
   @unnamed()
   @docs("""For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
-          |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether
-          |`headers` are available.""".stripMargin.replace('\n', ' '))
+          |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
+          |`headers` row is available.""".stripMargin.replace('\n', ' '))
   final case class CypherCsv(
-    @docs("Cypher query to execute on each record") query: String,
-    @docs("name of the Cypher parameter holding the parsed CSV value as a list or map, depending on `headers`")
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter holding the parsed CSV row.")
     parameter: String = "that",
-    @docs("""Read the CSV file with headers read from the first row of the file (`true`) or with no headers (`false`).
-            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-            |type available to the Cypher query will be a List of strings with values accessible by index. If headers
-            |are available (supplied or read from the file), the resulting type available to the Cypher query will be
-            |a Map[String, String], with values accessible by using the corresponding header string. CSV rows longer
-            |than the `headers` will have later items discarded which don't match up with a header column. CSV rows
-            |with fewer columns than the `headers` will have `null` values for the missing headers. Defaults to
-            |`false`.""".stripMargin)
+    @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`). 
+            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting 
+            |type available to the Cypher query will be a List of strings with values accessible by index. When 
+            |headers are available (supplied or read from the file), the resulting type available to the Cypher 
+            |query will be a Map[String, String], with values accessible using the corresponding header string. 
+            |CSV rows containing more records than the `headers` will have items that don't match a header column 
+            |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+            |Default: `false`.""".stripMargin)
     headers: Either[Boolean, List[String]] = Left(false),
-    @docs("character used to delimit values on a single CSV row")
+    @docs("CSV row delimiter character.")
     delimiter: CsvCharacter = CsvCharacter.Comma,
-    @docs("""character used to quote values in a field. Special characters (like new lines) inside of a quoted
-            |section will be a part of the CSV value""".stripMargin)
+    @docs("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
+            |section will be a part of the CSV value.""".stripMargin)
     quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
-    @docs("character used to escape other special characters")
+    @docs("Character used to escape special characters.")
     escapeChar: CsvCharacter = CsvCharacter.Backslash
   ) extends FileIngestFormat {
     require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
@@ -606,7 +608,7 @@ object FileIngestFormat {
 }
 
 @title("File Ingest Mode")
-@docs("Determines behaviors required for ingesting from a non-regular file type")
+@docs("Determines behavior when ingesting from a non-regular file type.")
 sealed abstract class FileIngestMode
 object FileIngestMode {
   @docs("Ordinary file to be open and read once")
