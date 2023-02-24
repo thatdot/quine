@@ -12,6 +12,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -34,8 +35,9 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   * @param persistenceConfig persistence options
   */
 class InMemoryPersistor(
-  journals: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
-  domainIndexEvents: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeEvent]] = new ConcurrentHashMap(),
+  journals: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, NodeChangeEvent]] = new ConcurrentHashMap(),
+  domainIndexEvents: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, DomainIndexEvent]] =
+    new ConcurrentHashMap(),
   snapshots: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, Array[Byte]]] = new ConcurrentHashMap(),
   standingQueries: ConcurrentMap[StandingQueryId, StandingQuery] = new ConcurrentHashMap(),
   multipleValuesStandingQueryStates: ConcurrentMap[
@@ -54,14 +56,14 @@ class InMemoryPersistor(
       journals.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- events } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit
   }
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- events } domainIndexEvents
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
@@ -72,7 +74,7 @@ class InMemoryPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = {
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = {
     val eventsMap = journals.get(id)
     Future.successful(
       if (eventsMap == null)
@@ -92,7 +94,7 @@ class InMemoryPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = {
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = {
     val eventsMap = domainIndexEvents.get(id)
     Future.successful(
       if (eventsMap == null)
@@ -110,7 +112,7 @@ class InMemoryPersistor(
 
   def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = {
 
-    domainIndexEvents.asScala.map { case (_: QuineId, m: ConcurrentNavigableMap[EventTime, NodeEvent]) =>
+    domainIndexEvents.asScala.map { case (_: QuineId, m: ConcurrentNavigableMap[EventTime, DomainIndexEvent]) =>
       m.entrySet()
         .removeIf(entry =>
           entry.getValue match {

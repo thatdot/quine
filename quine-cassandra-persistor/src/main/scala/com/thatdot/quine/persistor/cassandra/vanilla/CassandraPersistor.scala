@@ -43,13 +43,14 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, EdgeDirection, QuineId}
-import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, DomainIndexEventCodec, NodeEventCodec}
+import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, DomainIndexEventCodec, NodeChangeEventCodec}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, PersistenceAgent, PersistenceConfig}
 
 object syntax {
@@ -115,9 +116,9 @@ object CassandraCodecs {
   implicit val eventTimeCodec: TypeCodec[EventTime] =
     TypeCodecs.BIGINT.xmap(x => EventTime.fromRaw(x - Long.MaxValue - 1L), x => x.eventTime + Long.MaxValue + 1L)
 
-  implicit val nodeEventCodec: TypeCodec[NodeEvent] = BLOB_TO_ARRAY.xmap(
-    NodeEventCodec.format.read(_).get,
-    NodeEventCodec.format.write
+  implicit val nodeChangeEventCodec: TypeCodec[NodeChangeEvent] = BLOB_TO_ARRAY.xmap(
+    NodeChangeEventCodec.format.read(_).get,
+    NodeChangeEventCodec.format.write
   )
   implicit val domainIndexEventCodec: TypeCodec[DomainIndexEvent] = BLOB_TO_ARRAY.xmap(
     DomainIndexEventCodec.format.read(_).get,
@@ -526,17 +527,18 @@ class CassandraPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = journals.getJournalWithTime(id, startingAt, endingAt)
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = journals.getJournalWithTime(id, startingAt, endingAt)
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
+    domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
 
-  override def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  override def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     journals.persistEvents(id, events)
 
-  override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     domainIndexEvents.persistEvents(id, events)
 
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =

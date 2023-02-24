@@ -18,13 +18,13 @@ import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
-import com.thatdot.quine.graph.{EventTime, NodeEvent}
+import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.QuineId
 trait JournalColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
   final protected val timestampColumn: CassandraColumn[EventTime] = CassandraColumn[EventTime]("timestamp")
-  final protected val dataColumn: CassandraColumn[NodeEvent] = CassandraColumn[NodeEvent]("data")
+  final protected val dataColumn: CassandraColumn[NodeChangeEvent] = CassandraColumn[NodeChangeEvent]("data")
 }
 
 class Journals(
@@ -51,7 +51,7 @@ class Journals(
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     executeFuture(
       BatchStatement
         .newInstance(
@@ -72,7 +72,7 @@ class Journals(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = executeSelect(
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = executeSelect(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))
@@ -134,7 +134,7 @@ object Journals extends TableDefinition with JournalColumnNames {
   protected val tableName = "journals"
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
-  protected val dataColumns: List[CassandraColumn[NodeEvent]] = List(dataColumn)
+  protected val dataColumns: List[CassandraColumn[NodeChangeEvent]] = List(dataColumn)
 
   private val createTableStatement: SimpleStatement =
     makeCreateTableStatement

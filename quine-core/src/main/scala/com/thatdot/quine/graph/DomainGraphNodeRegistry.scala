@@ -4,8 +4,6 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.concurrent._
 import scala.jdk.CollectionConverters._
 
-import com.typesafe.scalalogging.StrictLogging
-
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, DomainGraphNodePackage, IdentifiedDomainGraphNode}
 
@@ -16,7 +14,7 @@ class DomainGraphNodeRegistry(
   registerGaugeDomainGraphNodeCount: (() => Int) => Unit,
   persistDomainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode] => Future[Unit],
   removeDomainGraphNodes: Set[DomainGraphNodeId] => Future[Unit]
-) extends StrictLogging {
+) {
 
   private case class DGNWithRef(dgn: DomainGraphNode, standingQueries: Set[StandingQueryId])
 

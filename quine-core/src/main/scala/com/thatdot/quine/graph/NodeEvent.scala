@@ -12,8 +12,8 @@ object NodeEvent {
     * @param event what happened to the node?
     * @param atTime when did it happen?
     */
-  final case class WithTime(
-    event: NodeEvent,
+  final case class WithTime[+E <: NodeEvent](
+    event: E,
     atTime: EventTime
   )
 }

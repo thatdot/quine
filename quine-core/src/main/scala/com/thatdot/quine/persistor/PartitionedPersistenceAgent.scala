@@ -8,8 +8,10 @@ import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.{
   BaseGraph,
+  DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -37,24 +39,24 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
         .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     getAgent(id).persistNodeChangeEvents(id, events)
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     getAgent(id).persistDomainIndexEvents(id, events)
 
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     getAgent(id).getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     getAgent(id).getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =

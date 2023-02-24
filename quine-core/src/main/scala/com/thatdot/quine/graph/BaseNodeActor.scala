@@ -8,14 +8,17 @@ import com.thatdot.quine.model.{PropertyValue, QuineValue}
 /** Basic operations that can be issued on a node actor */
 trait BaseNodeActor extends BaseNodeActorView {
 
-  /** Apply an event to this node and save the event to the persistor.
+  /** The following four methods are for applying mutations to the properties and half-edges of the node.
+    * They both write the event to the journal, and apply it to the node's current state.
+    * The reason there's two of each is to allow the single-event variant to optionally take an external time
+    * for the event (I'd think we could support that on the collection case, too - just as long as you promise the
+    * atTimeOverride function you pass in returns a new number each time).
     *
     * === Thread safety ===
     *
-    * This function is ''NOT'' thread safe. If processing
-    * multiple events, call this function once and pass the events in as a sequence. Redundant events will be stripped
-    * out in order of the sequence in which they are passed, but after after stripping out redundant events, the effects
-    * may not be strictly applied in the same order.
+    * This function modifies NodeActor state on the current thread, hence is ''NOT'' thread safe. If processing
+    * multiple events, call this function once and pass the events in as a sequence.
+    * Events which do not modify the NodeActor state (because they are redundant with existing state) will be ignored.
     *
     * {{{
     * val l: List[NodeChangeEvent] = ...
@@ -33,28 +36,32 @@ trait BaseNodeActor extends BaseNodeActorView {
     * === Redundant events ===
     *
     * If an event won't have an effect on node state (e.g. it is removing and edge that doesn't exist, or is setting to
-    * a property a value that is already the property's value), the function short-circuits and returns a successful
-    * future without ever saving the effect-less event to the node's journal.
-    *
-    * If a list of events is passed in, but the list contains redundant events or events which reverse the effects of
-    * other events in this list, the extra events will be filtered out. e.g. If a list of events includes setting the
-    * property "foo" to "bar" and another that sets "foo" to "baz", then only the last event that sets "foo" to "baz"
-    * will be applied to the event. There will be no record in the node's journal of having ever been set to "bar".
+    * a property a value that is already the property's value), it is filtered from the incoming list. If the list is or
+    * becomes empty from this, the function short-circuits and returns a successful
+    * future without ever saving the effect-less event(s) to the node's journal.
     *
     * @param event a single event that is being applied individually
     * @param atTimeOverride overrides the time at which the event occurs (take great care if using this!)
     * @return future tracking completion
     */
 
+  protected def processPropertyEvent(
+    event: PropertyEvent,
+    atTimeOverride: Option[EventTime] = None
+  ): Future[Done.type]
+
   protected def processPropertyEvents(
-    events: Seq[PropertyEvent],
+    events: List[PropertyEvent]
+  ): Future[Done.type]
+
+  protected def processEdgeEvent(
+    event: EdgeEvent,
     atTimeOverride: Option[EventTime] = None
   ): Future[Done.type]
 
   // The only place this is called with a collection is when deleting a node.
   protected def processEdgeEvents(
-    events: Seq[EdgeEvent],
-    atTimeOverride: Option[EventTime] = None
+    events: List[EdgeEvent]
   ): Future[Done.type]
 
   /** Set the labels on the node
@@ -65,7 +72,7 @@ trait BaseNodeActor extends BaseNodeActorView {
   protected def setLabels(labels: Set[Symbol]): Future[Done.type] = {
     val labelsValue = QuineValue.List(labels.map(_.name).toVector.sorted.map(QuineValue.Str))
     val propertyEvent = PropertyEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
-    processPropertyEvents(propertyEvent :: Nil)
+    processPropertyEvent(propertyEvent)
   }
 
   /** Record that some update pertinent to snapshots has occurred */

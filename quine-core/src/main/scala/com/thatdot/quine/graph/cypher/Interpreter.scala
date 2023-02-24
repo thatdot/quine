@@ -562,7 +562,7 @@ trait OnNodeInterpreter
     }
 
     // Build up the full set to events to process before processing them
-    val eventsToProcess = Vector.newBuilder[PropertyEvent]
+    val eventsToProcess = List.newBuilder[PropertyEvent]
 
     // Optionally drop existing properties
     if (!query.includeExisting) {

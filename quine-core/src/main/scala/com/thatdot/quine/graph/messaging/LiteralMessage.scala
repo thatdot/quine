@@ -188,7 +188,7 @@ object LiteralMessage {
     sqStateResults: SqStateResults,
     dgnLocalEventIndex: DgnLocalEventIndexSummary,
     multipleValuesStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
-    journal: Set[NodeEvent.WithTime],
+    journal: Set[NodeEvent.WithTime[NodeEvent]],
     graphNodeHashCode: Long
   ) extends LiteralMessage
 

@@ -24,6 +24,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -33,7 +34,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
-  NodeEventCodec,
+  NodeChangeEventCodec,
   StandingQueryCodec
 }
 import com.thatdot.quine.util.QuineDispatchers
@@ -179,7 +180,7 @@ final class MapDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -200,7 +201,7 @@ final class MapDbPersistor(
       .asScala
       .flatMap { entry =>
         val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
-        val event = NodeEventCodec.format.read(entry.getValue).get
+        val event = NodeChangeEventCodec.format.read(entry.getValue).get
         Iterator.single(NodeEvent.WithTime(event, eventTime))
       }
       .toSeq
@@ -211,7 +212,7 @@ final class MapDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = Future {
 
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -239,9 +240,9 @@ final class MapDbPersistor(
   }(blockingDispatcherEC)
     .recoverWith { case e => logger.error("getDomainIndexEvents failed", e); Future.failed(e) }(nodeDispatcherEC)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future {
     val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
-      val serializedEvent = NodeEventCodec.format.write(event)
+      val serializedEvent = NodeChangeEventCodec.format.write(event)
       nodeEventSize.update(serializedEvent.length)
       nodeEventTotalSize.inc(serializedEvent.length.toLong)
       Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
@@ -251,7 +252,7 @@ final class MapDbPersistor(
     logger.error("persist NodeChangeEvent failed.", e); Future.failed(e)
   }(nodeDispatcherEC)
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
     val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
       val serializedEvent = DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
       nodeEventSize.update(serializedEvent.length)

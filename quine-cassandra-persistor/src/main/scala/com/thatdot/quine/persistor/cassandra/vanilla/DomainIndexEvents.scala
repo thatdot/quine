@@ -54,7 +54,7 @@ class DomainIndexEvents(
 
   def nonEmpty(): Future[Boolean] = yieldsResults(DomainIndexEvents.arbitraryRowStatement)
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] =
+  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     executeFuture(
       BatchStatement
         .newInstance(
@@ -78,7 +78,7 @@ class DomainIndexEvents(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = executeSelect(
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = executeSelect(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
         selectWithTimeByQuineId.bindColumns(quineIdColumn.set(id))

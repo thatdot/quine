@@ -15,6 +15,7 @@ import com.thatdot.quine.graph.{
   EventTime,
   MemberIdx,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -123,18 +124,24 @@ trait PersistenceAgent extends StrictLogging {
     * @param events event records to write
     * @return something that completes 'after' the write finishes
     */
-  final def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  final def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeEvent]]): Future[Unit] = {
     val (domainIndexEvents, nodeChangeEvents) = events.partition(e => e.event.isInstanceOf[DomainIndexEvent])
-    ifNonEmpty(domainIndexEvents, persistDomainIndexEvents(id, _)).zipWith(
-      ifNonEmpty(nodeChangeEvents, persistNodeChangeEvents(id, _))
+    ifNonEmpty(
+      domainIndexEvents.asInstanceOf[Seq[NodeEvent.WithTime[DomainIndexEvent]]],
+      persistDomainIndexEvents(id, _)
+    ).zipWith(
+      ifNonEmpty(
+        nodeChangeEvents.asInstanceOf[Seq[NodeEvent.WithTime[NodeChangeEvent]]],
+        persistNodeChangeEvents(id, _)
+      )
     )((_, _) => ())(ExecutionContexts.parasitic)
   }
 
   /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit]
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit]
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit]
 
   /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
@@ -168,12 +175,12 @@ trait PersistenceAgent extends StrictLogging {
     startingAt: EventTime,
     endingAt: EventTime,
     includeDomainIndexEvents: Boolean
-  ): Future[Iterable[NodeEvent.WithTime]] = {
+  ): Future[Iterable[NodeEvent.WithTime[NodeEvent]]] = {
 
     def mergeEvents(
-      i1: Iterable[NodeEvent.WithTime],
-      i2: Iterable[NodeEvent.WithTime]
-    ): Iterable[NodeEvent.WithTime] = (i1 ++ i2).toVector.sortBy(e => e.atTime.millis)
+      i1: Iterable[NodeEvent.WithTime[NodeChangeEvent]],
+      i2: Iterable[NodeEvent.WithTime[DomainIndexEvent]]
+    ): Iterable[NodeEvent.WithTime[NodeEvent]] = (i1 ++ i2).toVector.sortBy(e => e.atTime.millis)
 
     val nceEvents = getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
@@ -182,8 +189,8 @@ trait PersistenceAgent extends StrictLogging {
     } else {
       implicit val ctx: ExecutionContext = ExecutionContexts.parasitic
       for {
-        h: Iterable[NodeEvent.WithTime] <- nceEvents
-        i: Iterable[NodeEvent.WithTime] <- getDomainIndexEventsWithTime(id, startingAt, endingAt)
+        h: Iterable[NodeEvent.WithTime[NodeChangeEvent]] <- nceEvents
+        i: Iterable[NodeEvent.WithTime[DomainIndexEvent]] <- getDomainIndexEventsWithTime(id, startingAt, endingAt)
       } yield mergeEvents(h, i)
     }
   }
@@ -192,13 +199,13 @@ trait PersistenceAgent extends StrictLogging {
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]]
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]]
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]]
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]]
 
   /** Get a source of every node in the graph which has been written to the
     * journal store.

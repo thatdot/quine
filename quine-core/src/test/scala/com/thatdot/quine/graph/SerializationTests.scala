@@ -6,7 +6,6 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
 import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, MultipleValuesStandingQueryState}
 import com.thatdot.quine.model._
-import com.thatdot.quine.persistor.codecs.NodeEventCodec.eventWithTimeFormat
 import com.thatdot.quine.persistor.codecs._
 
 class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks with ArbitraryInstances {
@@ -22,15 +21,9 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
     }
   }
 
-  it should "eventWithTime format safely encapsulates event" in {
-    forAll { (event: NodeEvent.WithTime) =>
-      assert(eventWithTimeFormat.read(eventWithTimeFormat.write(event)).get == event)
-    }
-  }
-
   it should "roundtrip NodeChangeEvent" in {
     forAll { (event: NodeChangeEvent) =>
-      assert(NodeEventCodec.format.read(NodeEventCodec.format.write(event)).get == event)
+      assert(NodeChangeEventCodec.format.read(NodeChangeEventCodec.format.write(event)).get == event)
     }
   }
 

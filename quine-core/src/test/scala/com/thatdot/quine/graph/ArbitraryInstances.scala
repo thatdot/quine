@@ -405,8 +405,8 @@ trait ArbitraryInstances {
     )
   }
 
-  implicit val arbNodeEventWithTime: Arbitrary[NodeEvent.WithTime] = Arbitrary {
-    Gen.resultOf[NodeChangeEvent, EventTime, NodeEvent.WithTime](NodeEvent.WithTime.apply)
+  implicit val arbNodeEventWithTime: Arbitrary[NodeEvent.WithTime[NodeChangeEvent]] = Arbitrary {
+    Gen.resultOf[NodeChangeEvent, EventTime, NodeEvent.WithTime[NodeChangeEvent]](NodeEvent.WithTime.apply)
   }
 
   implicit val arbPropCompF: Arbitrary[PropertyComparisonFunc] = Arbitrary {

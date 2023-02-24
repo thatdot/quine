@@ -9,8 +9,10 @@ import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.{
   BaseGraph,
+  DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -33,7 +35,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     else Future.successful(false)
 
   /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
       val previous = events
         .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
@@ -47,7 +49,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
   }
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistDomainIndexEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
       val previous = events
         .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
@@ -64,14 +66,14 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     wrapped.getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     wrapped.getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = wrapped.enumerateJournalNodeIds()

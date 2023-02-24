@@ -62,7 +62,7 @@ trait LiteralRoutesImpl
     implicit val dgnLocalEventIndexSummarySchema: Record[DgnLocalEventIndexSummary] =
       genericRecord[DgnLocalEventIndexSummary]
     implicit val neSchema: Tagged[NodeEvent] = genericTagged[NodeEvent]
-    implicit val newtSchema: Record[NodeEvent.WithTime] = genericRecord[NodeEvent.WithTime]
+    implicit val newtSchema: Record[NodeEvent.WithTime[NodeEvent]] = genericRecord[NodeEvent.WithTime[NodeEvent]]
     implicit val sqResult: Record[SqStateResult] = genericRecord[SqStateResult]
     implicit val sqResults: Record[SqStateResults] = genericRecord[SqStateResults]
     genericRecord[NodeInternalState]

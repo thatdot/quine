@@ -28,6 +28,9 @@ object PureconfigInstances {
   implicit val effectOrderConvert: ConfigConvert[EventEffectOrder] =
     deriveEnumerationConvert[EventEffectOrder]
 
+  implicit val symbolConvert: ConfigConvert[Symbol] =
+    ConfigConvert[String].xmap(Symbol(_), _.name)
+
   implicit val hostConvert: ConfigConvert[Host] =
     ConfigConvert[String].xmap(s => Host(replaceHostSpecialValues(s)), _.asString)
   implicit val portConvert: ConfigConvert[Port] =

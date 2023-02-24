@@ -7,8 +7,10 @@ import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.{
   BaseGraph,
+  DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -19,7 +21,9 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 /** Reified version of persistor call for logging purposes
   */
 sealed abstract class PersistorCall
-case class PersistEvents(id: QuineId, events: Seq[NodeEvent.WithTime]) extends PersistorCall
+case class PersistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]) extends PersistorCall
+case class PersistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]])
+    extends PersistorCall
 case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
@@ -60,14 +64,14 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   }(ec)
 
   /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
-    new WrappedPersistorException(PersistEvents(id, events), _),
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = leftMap(
+    new WrappedPersistorException(PersistNodeChangeEvents(id, events), _),
     persistenceAgent.persistNodeChangeEvents(id, events)
   )
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = leftMap(
-    new WrappedPersistorException(PersistEvents(id, events), _),
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = leftMap(
+    new WrappedPersistorException(PersistDomainIndexEvents(id, events), _),
     persistenceAgent.persistDomainIndexEvents(id, events)
   )
 
@@ -75,7 +79,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = leftMap(
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = leftMap(
     new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
     persistenceAgent.getNodeChangeEventsWithTime(id, startingAt, endingAt)
   )
@@ -84,11 +88,12 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = leftMap(
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = leftMap(
     new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
     persistenceAgent.getDomainIndexEventsWithTime(id, startingAt, endingAt)
   )
 
+  // TODO: Can you catch and wrap exceptions thrown by Streams?
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateJournalNodeIds()
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateSnapshotNodeIds()

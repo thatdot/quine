@@ -29,7 +29,7 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
-  NodeEventCodec,
+  NodeChangeEventCodec,
   StandingQueryCodec
 }
 import com.thatdot.quine.util.QuineDispatchers
@@ -280,7 +280,7 @@ final class RocksDbPersistor(
     }(ioDispatcher)
   }
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future {
     val serializedEvents = {
       //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
       for {
@@ -288,12 +288,12 @@ final class RocksDbPersistor(
       } yield qidAndTime2Key(
         id,
         atTime
-      ) -> NodeEventCodec.format.write(event)
+      ) -> NodeChangeEventCodec.format.write(event)
     }
     putKeyValues(nodeEventsCF, serializedEvents toMap)
   }(ioDispatcher)
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future {
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
     val serializedEvents =
       //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
       for {
@@ -410,9 +410,9 @@ final class RocksDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
     withReadLock {
-      val vb = Iterable.newBuilder[NodeEvent.WithTime]
+      val vb = Iterable.newBuilder[NodeEvent.WithTime[NodeChangeEvent]]
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
 
@@ -427,7 +427,7 @@ final class RocksDbPersistor(
       try {
         it.seek(startKey)
         while (it.isValid) {
-          val event = NodeEventCodec.format.read(it.value()).get
+          val event = NodeChangeEventCodec.format.read(it.value()).get
           if (event.isInstanceOf[NodeChangeEvent]) {
             val (_, eventTime) = key2QidAndTime(it.key())
             vb += NodeEvent.WithTime(event, eventTime)
@@ -446,10 +446,10 @@ final class RocksDbPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] = Future {
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = Future {
 
     withReadLock {
-      val vb = Iterable.newBuilder[NodeEvent.WithTime]
+      val vb = Iterable.newBuilder[NodeEvent.WithTime[DomainIndexEvent]]
       // Inclusive start key
       val startKey = qidAndTime2Key(id, startingAt)
 

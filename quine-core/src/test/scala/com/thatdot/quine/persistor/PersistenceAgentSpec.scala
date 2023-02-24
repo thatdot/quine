@@ -49,12 +49,13 @@ abstract class PersistenceAgentSpec
 
   def persistor: PersistenceAgent
 
-  def withRandomTime[T <: NodeEvent](events: Seq[T]): Seq[NodeEvent.WithTime] =
+  def withRandomTime[T <: NodeEvent](events: Seq[T]): Seq[NodeEvent.WithTime[T]] =
     events.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(Random.nextLong())))
 
-  def sortedByTime(events: Seq[NodeEvent.WithTime]): Seq[NodeEvent.WithTime] = events.sorted(Ordering.by {
-    e: NodeEvent.WithTime => e.atTime
-  })
+  def sortedByTime[T <: NodeEvent](events: Seq[NodeEvent.WithTime[T]]): Seq[NodeEvent.WithTime[T]] =
+    events.sorted(Ordering.by { e: NodeEvent.WithTime[T] =>
+      e.atTime
+    })
   override def afterAll(): Unit = {
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)

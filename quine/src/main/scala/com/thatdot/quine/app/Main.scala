@@ -131,7 +131,7 @@ object Main extends App with LazyLogging {
           declineSleepWhenWriteWithinMillis = config.declineSleepWhenWriteWithin.toMillis,
           declineSleepWhenAccessWithinMillis = config.declineSleepWhenAccessWithin.toMillis,
           maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
-          labelsProperty = Symbol(config.labelsProperty),
+          labelsProperty = config.labelsProperty,
           edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
           metricRegistry = Metrics
         ).flatMap(graph =>

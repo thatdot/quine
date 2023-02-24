@@ -122,10 +122,10 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
 
   private[this] def writeDomainIndexEventWithTime(
     builder: FlatBufferBuilder,
-    eventWithTime: NodeEvent.WithTime
+    eventWithTime: NodeEvent.WithTime[DomainIndexEvent]
   ): Offset = {
     val TypeAndOffset(eventTyp, eventOff) =
-      writeDomainIndexEventUnion(builder, eventWithTime.event.asInstanceOf[DomainIndexEvent])
+      writeDomainIndexEventUnion(builder, eventWithTime.event)
     persistence.DomainIndexEventWithTime.createDomainIndexEventWithTime(
       builder,
       eventWithTime.atTime.eventTime,
@@ -136,7 +136,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
 
   private[this] def readDomainIndexEventWithTime(
     eventWithTime: persistence.DomainIndexEventWithTime
-  ): NodeEvent.WithTime = {
+  ): NodeEvent.WithTime[DomainIndexEvent] = {
     val event = readDomainIndexEventUnion(eventWithTime.eventType, eventWithTime.event)
     val atTime = EventTime.fromRaw(eventWithTime.eventTime)
     NodeEvent.WithTime(event, atTime)
@@ -163,12 +163,12 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
       readDomainIndexEvent(persistence.DomainIndexEvent.getRootAsDomainIndexEvent(buffer))
   }
 
-  val domainIndexEventWithTimeFormat: BinaryFormat[NodeEvent.WithTime] =
-    new PackedFlatBufferBinaryFormat[NodeEvent.WithTime] {
-      def writeToBuffer(builder: FlatBufferBuilder, event: NodeEvent.WithTime): Offset =
+  val domainIndexEventWithTimeFormat: BinaryFormat[NodeEvent.WithTime[DomainIndexEvent]] =
+    new PackedFlatBufferBinaryFormat[NodeEvent.WithTime[DomainIndexEvent]] {
+      def writeToBuffer(builder: FlatBufferBuilder, event: NodeEvent.WithTime[DomainIndexEvent]): Offset =
         writeDomainIndexEventWithTime(builder, event)
 
-      def readFromBuffer(buffer: ByteBuffer): NodeEvent.WithTime =
+      def readFromBuffer(buffer: ByteBuffer): NodeEvent.WithTime[DomainIndexEvent] =
         readDomainIndexEventWithTime(persistence.DomainIndexEventWithTime.getRootAsDomainIndexEventWithTime(buffer))
     }
 }

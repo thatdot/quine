@@ -4,16 +4,16 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
-import com.thatdot.quine.graph.{ByteBufferOps, EdgeEvent, EventTime, NodeEvent, PropertyEvent}
+import com.thatdot.quine.graph.{ByteBufferOps, EdgeEvent, NodeChangeEvent, PropertyEvent}
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{Offset, TypeAndOffset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
-object NodeEventCodec extends PersistenceCodec[NodeEvent] {
+object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
 
   private[this] def writeNodeEventUnion(
     builder: FlatBufferBuilder,
-    event: NodeEvent
+    event: NodeChangeEvent
   ): TypeAndOffset =
     event match {
       case EdgeEvent.EdgeAdded(HalfEdge(edgeType, dir, other)) =>
@@ -54,10 +54,10 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         throw new InvalidEventType(other, persistence.NodeEventUnion.names)
 
     }
-  private[this] def readNodeEventUnion(
+  private[this] def readNodeChangeEventUnion(
     typ: Byte,
     makeEvent: Table => Table
-  ): NodeEvent =
+  ): NodeChangeEvent =
     typ match {
       case persistence.NodeEventUnion.AddEdge =>
         val event = makeEvent(new persistence.AddEdge()).asInstanceOf[persistence.AddEdge]
@@ -93,30 +93,9 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
         throw new InvalidUnionType(other, persistence.NodeEventUnion.names)
     }
 
-  private[this] def writeNodeEventWithTime(
+  private[this] def writeNodeChangeEvent(
     builder: FlatBufferBuilder,
-    eventWithTime: NodeEvent.WithTime
-  ): Offset = {
-    val TypeAndOffset(eventTyp, eventOff) = writeNodeEventUnion(builder, eventWithTime.event)
-    persistence.NodeEventWithTime.createNodeEventWithTime(
-      builder,
-      eventWithTime.atTime.eventTime,
-      eventTyp,
-      eventOff
-    )
-  }
-
-  private[this] def readNodeEventWithTime(
-    eventWithTime: persistence.NodeEventWithTime
-  ): NodeEvent.WithTime = {
-    val event = readNodeEventUnion(eventWithTime.eventType, eventWithTime.event)
-    val atTime = EventTime.fromRaw(eventWithTime.eventTime)
-    NodeEvent.WithTime(event, atTime)
-  }
-
-  private[this] def writeNodeEvent(
-    builder: FlatBufferBuilder,
-    event: NodeEvent
+    event: NodeChangeEvent
   ): Offset = {
     val TypeAndOffset(eventTyp, eventOff) = writeNodeEventUnion(builder, event)
     persistence.NodeEvent.createNodeEvent(builder, eventTyp, eventOff)
@@ -124,23 +103,15 @@ object NodeEventCodec extends PersistenceCodec[NodeEvent] {
 
   private[this] def readNodeEvent(
     event: persistence.NodeEvent
-  ): NodeEvent =
-    readNodeEventUnion(event.eventType, event.event)
+  ): NodeChangeEvent =
+    readNodeChangeEventUnion(event.eventType, event.event)
 
-  val format: BinaryFormat[NodeEvent] = new PackedFlatBufferBinaryFormat[NodeEvent] {
-    def writeToBuffer(builder: FlatBufferBuilder, event: NodeEvent): Offset =
-      writeNodeEvent(builder, event)
+  val format: BinaryFormat[NodeChangeEvent] = new PackedFlatBufferBinaryFormat[NodeChangeEvent] {
+    def writeToBuffer(builder: FlatBufferBuilder, event: NodeChangeEvent): Offset =
+      writeNodeChangeEvent(builder, event)
 
-    def readFromBuffer(buffer: ByteBuffer): NodeEvent =
+    def readFromBuffer(buffer: ByteBuffer): NodeChangeEvent =
       readNodeEvent(persistence.NodeEvent.getRootAsNodeEvent(buffer))
   }
 
-  val eventWithTimeFormat: BinaryFormat[NodeEvent.WithTime] =
-    new PackedFlatBufferBinaryFormat[NodeEvent.WithTime] {
-      def writeToBuffer(builder: FlatBufferBuilder, event: NodeEvent.WithTime): Offset =
-        writeNodeEventWithTime(builder, event)
-
-      def readFromBuffer(buffer: ByteBuffer): NodeEvent.WithTime =
-        readNodeEventWithTime(persistence.NodeEventWithTime.getRootAsNodeEventWithTime(buffer))
-    }
 }

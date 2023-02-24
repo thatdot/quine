@@ -5,7 +5,15 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, NodeEvent, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{
+  DomainIndexEvent,
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
+  NodeEvent,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
@@ -35,17 +43,18 @@ class EmptyPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeEvent.WithTime]] = Future.successful(Vector.empty)
+  ): Future[Vector[NodeEvent.WithTime[NodeChangeEvent]]] = Future.successful(Vector.empty)
 
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Vector[NodeEvent.WithTime]] = Future.successful(Vector.empty)
+  ): Future[Vector[NodeEvent.WithTime[DomainIndexEvent]]] = Future.successful(Vector.empty)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future.unit
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = Future.unit
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+    Future.unit
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =

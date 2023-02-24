@@ -13,6 +13,9 @@ import scala.util.{Failure, Success}
 
 import akka.actor.{Actor, ActorLogging}
 
+import cats.data.NonEmptyList
+
+import com.thatdot.quine.graph.DomainIndexEvent.CreateDomainStandingQuerySubscription
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{
@@ -185,7 +188,11 @@ private[graph] class NodeActor(
   { // here be the side-effects performed by the constructor
     initialEdges.foreach(edges +=)
 
-    applyEventsEffectsInMemory(initialJournal, shouldCauseSideEffects = false)
+    initialJournal foreach {
+      case event: PropertyEvent => applyPropertyEffect(event)
+      case event: EdgeEvent => applyEdgeEffect(event)
+      case event: DomainIndexEvent => applyDomainIndexEffect(event, shouldCauseSideEffects = false)
+    }
 
     // Once edge map is updated, recompute cost to sleep:
     costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
@@ -294,81 +301,103 @@ private[graph] class NodeActor(
   /** Fast check for if a number is a power of 2 */
   private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
 
-  /* Determine if this event causes a change to the respective state (defaults to this node's state) */
-  // This is only used when passing a single EdgeEvent or PropertyEvent to processEvents
-  protected def hasEffect(event: NodeChangeEvent): Boolean = event match {
-    case e: EdgeEvent => hasEffect(e)
-    case p: PropertyEvent => hasEffect(p)
-  }
-  protected def hasEffect(event: EdgeEvent): Boolean = event match {
+  protected def edgeEventHasEffect(event: EdgeEvent): Boolean = event match {
     case EdgeAdded(edge) => !edges.contains(edge)
     case EdgeRemoved(edge) => edges.contains(edge)
   }
-  protected def hasEffect(event: PropertyEvent): Boolean = event match {
+  protected def propertyEventHasEffect(event: PropertyEvent): Boolean = event match {
     case PropertySet(key, value) => !properties.get(key).contains(value)
     case PropertyRemoved(key, _) => properties.contains(key)
   }
 
-  protected def processPropertyEvents(
-    events: Seq[PropertyEvent],
-    atTimeOverride: Option[EventTime]
-  ): Future[Done.type] = processEvents(events, atTimeOverride)
+  /** Enforces processEvents invariants before delegating to `onEffecting` (see block comment in [[BaseNodeActor]]
+    * @param hasEffectPredicate A function that, given an event, returns true if and only if the event would change the
+    *                           state of the node
+    * @param events             The events to apply to this node, in the order they should be applied
+    * @param atTimeOverride     Supply a number if you wish to override the number produced by the node's actor clock,
+    *                           recorded as the timestamp of the event when writing to the journal.
+    * @param onEffecting        The effect to be run -- this will be provided the final, deduplicated list of events to
+    *                           apply, in order. The events represent the minimal set of events that will change node
+    *                           state in a way equivalent to if all of the original `events` were applied.
+    */
+  protected[this] def guardEvents[E <: NodeChangeEvent](
+    hasEffectPredicate: E => Boolean,
+    events: List[E],
+    atTimeOverride: Option[EventTime],
+    onEffecting: NonEmptyList[NodeEvent.WithTime[E]] => Future[Done.type]
+  ): Future[Done.type] = {
+    val produceEventTime = atTimeOverride.fold(() => tickEventSequence())(() => _)
+    refuseHistoricalUpdates(events)(
+      NonEmptyList.fromList(events.filter(hasEffectPredicate)) match {
+        case Some(effectfulEvents) => onEffecting(effectfulEvents.map(e => NodeEvent.WithTime(e, produceEventTime())))
+        case None => Future.successful(Done)
+      }
+    )
+  }
+
+  // This is marked private and wrapped with two separate callable methods that either allow a collection or allow passing a custom `atTime`, but not both.
+  private[this] def propertyEvents(events: List[PropertyEvent], atTime: Option[EventTime]): Future[Done.type] =
+    guardEvents[PropertyEvent](
+      propertyEventHasEffect,
+      events,
+      atTime,
+      persistAndApplyEventsEffectsInMemory[PropertyEvent](_, _.toList.foreach(applyPropertyEffect))
+    )
+
+  protected def processPropertyEvent(
+    event: PropertyEvent,
+    atTimeOverride: Option[EventTime] = None
+  ): Future[Done.type] = propertyEvents(event :: Nil, atTimeOverride)
+
+  protected def processPropertyEvents(events: List[PropertyEvent]): Future[Done.type] =
+    propertyEvents(events, None)
+
+  private[this] def edgeEvents(events: List[EdgeEvent], atTime: Option[EventTime]): Future[Done.type] =
+    guardEvents[EdgeEvent](
+      edgeEventHasEffect,
+      events,
+      atTime,
+      persistAndApplyEventsEffectsInMemory[EdgeEvent](_, _.toList.foreach(applyEdgeEffect))
+    )
 
   protected def processEdgeEvents(
-    events: Seq[EdgeEvent],
+    events: List[EdgeEvent]
+  ): Future[Done.type] = edgeEvents(events, None)
+  protected def processEdgeEvent(
+    event: EdgeEvent,
     atTimeOverride: Option[EventTime]
-  ): Future[Done.type] = processEvents(events, atTimeOverride)
+  ): Future[Done.type] = edgeEvents(event :: Nil, atTimeOverride)
 
-  /** Process multiple node events as a single unit, so their effects are applied in memory together, and also persisted
-    * together. Will check the incoming sequence for conflicting events (modifying the same value more than once), and
-    * keep only the last event, ensuring the provided collection is internally coherent.
+  /** This is just an assertion to guard against programmer error.
+    * @param events Just for the [[IllegalHistoricalUpdate]] error returned, which doesn't even use it in its message? Maybe it should be passed-through as an arg to [[action]], so callers don't have to specify it twice?
+    * @param action The action to run if this is indeed not a hisorical node.
+    * @tparam A
+    * @return
     */
-  private def processEvents(
-    events: Seq[NodeChangeEvent],
-    atTimeOverride: Option[EventTime]
-  ): Future[Done.type] =
-    if (atTime.isDefined) Future.failed(IllegalHistoricalUpdate(events, qid, atTime.get))
-    else if (atTimeOverride.isDefined && events.size > 1)
-      Future.failed(IllegalTimeOverride(events, qid, atTimeOverride.get))
-    else
-      persistAndApplyEventsEffectsInMemory {
-        if (events.isEmpty) Seq.empty
-        else if (events.size == 1 && hasEffect(events.head))
-          Seq(NodeEvent.WithTime(events.head, atTimeOverride.getOrElse(tickEventSequence())))
-        else {
-          /* This process reverses the events, considering only the last event per property/edge/etc. and keeps the
-           * event if it has an effect. If multiple events would affect the same value (e.g. have the same property key),
-           * but would result in no change when applied in order, then no change at all will be applied. e.g. if a
-           * property exists, and these events would remove it and set it back to its same value, then no change to the
-           * property will be recorded at all. Original event order is maintained. */
-          var es: Set[HalfEdge] = Set.empty
-          var ps: Set[Symbol] = Set.empty
-          events.reverse
-            .filter {
-              case e @ EdgeAdded(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
-              case e @ EdgeRemoved(ha) => if (es.contains(ha)) false else { es += ha; hasEffect(e) }
-              case e @ PropertySet(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
-              case e @ PropertyRemoved(k, _) => if (ps.contains(k)) false else { ps += k; hasEffect(e) }
-            }
-            .reverse
-            .map(e => NodeEvent.WithTime(e, atTimeOverride.getOrElse(tickEventSequence())))
-          // TODO: It should be possible to do all this in only two passes over the collection with no reverses.
-        }
-      }
+  def refuseHistoricalUpdates[A](events: Seq[NodeEvent])(action: => Future[A]): Future[A] =
+    atTime.fold(action)(historicalTime => Future.failed(IllegalHistoricalUpdate(events, qid, historicalTime)))
 
   protected def processDomainIndexEvent(
     event: DomainIndexEvent
   ): Future[Done.type] =
-    persistAndApplyEventsEffectsInMemory(Seq(NodeEvent.WithTime(event, tickEventSequence())))
+    refuseHistoricalUpdates(event :: Nil)(
+      persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
+        NonEmptyList.one(NodeEvent.WithTime(event, tickEventSequence())),
+        // We know there is only one event here, because we're only passing one above.
+        // So just calling .head works as well as .foreach
+        events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true)
+      )
+    )
 
-  protected def persistAndApplyEventsEffectsInMemory(
-    dedupedEffectingEvents: Seq[NodeEvent.WithTime]
-  ): Future[Done.type] = if (atTime.isEmpty) {
+  protected def persistAndApplyEventsEffectsInMemory[A <: NodeEvent](
+    effectingEvents: NonEmptyList[NodeEvent.WithTime[A]],
+    applyEventsEffectsInMemory: NonEmptyList[A] => Unit
+  ): Future[Done.type] = {
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Done.type] =
       if (persistenceConfig.journalEnabled) {
         metrics.persistorPersistEventTimer
-          .time(persistor.persistEvents(qid, dedupedEffectingEvents))
+          .time(persistor.persistEvents(qid, effectingEvents.toList))
           .transform(
             _ =>
               // TODO: add a metric to count `persistAttempts`
@@ -376,7 +405,7 @@ private[graph] class NodeActor(
             (e: Throwable) => {
               val attemptCount = persistAttempts.getAndIncrement()
               log.info(
-                s"Retrying persistence from node: ${qid.pretty} with events: $dedupedEffectingEvents after: " +
+                s"Retrying persistence from node: ${qid.pretty} with events: $effectingEvents after: " +
                 s"$attemptCount attempts, with error: $e"
               )
               e
@@ -384,10 +413,11 @@ private[graph] class NodeActor(
           )(cypherEc)
       } else Future.successful(Done)
 
-    (dedupedEffectingEvents.nonEmpty, graph.effectOrder) match {
-      case (false, _) => Future.successful(Done)
-      case (true, EventEffectOrder.MemoryFirst) =>
-        applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event), shouldCauseSideEffects = true)
+    graph.effectOrder match {
+      case EventEffectOrder.MemoryFirst =>
+        val events = effectingEvents.map(_.event)
+        applyEventsEffectsInMemory(events)
+        notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
         akka.pattern.retry(
           () => persistEventsToJournal(),
           Int.MaxValue,
@@ -395,24 +425,24 @@ private[graph] class NodeActor(
           10.seconds,
           randomFactor = 0.1d
         )(cypherEc, context.system.scheduler)
-      case (true, EventEffectOrder.PersistorFirst) =>
+      case EventEffectOrder.PersistorFirst =>
         pauseMessageProcessingUntil[Done.type](
           persistEventsToJournal(),
           {
             case Success(_) =>
               // Executed by this actor (which is not slept), in order before any other messages are processed.
-              applyEventsEffectsInMemory(dedupedEffectingEvents.map(_.event), shouldCauseSideEffects = true)
+              val events = effectingEvents.map(_.event)
+              applyEventsEffectsInMemory(events)
+              notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
             case Failure(e) =>
               log.info(
                 s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
-                s"events: $dedupedEffectingEvents to in-memory state. Returning failed result. Error: $e"
+                s"events: $effectingEvents to in-memory state. Returning failed result. Error: $e"
               )
           }
         ).map(_ => Done)(ExecutionContexts.parasitic)
     }
-  } else {
-    log.debug("persistAndApplyEventsEffectsInMemory called on historical node: This indicates programmer error.")
-    Future.successful(Done)
+
   }
 
   private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
@@ -449,44 +479,49 @@ private[graph] class NodeActor(
     log.debug("persistSnapshot called on historical node: This indicates programmer error.")
   }
 
-  /** Apply the in-memory effects of the provided events.
-    *
-    * @param events a sequence of already-deduplicated events to apply in order
-    * @param shouldCauseSideEffects whether the application of these effects should cause additional side effects, such
-    *                               as Standing Query results and creation of a new snapshot (if applicable based on
-    *                               `quine.persistence` configuration). This value should be false when restoring
+  /** The folling three methods apply effects of the provided events to the node state.
+    * For [[EdgeEvent]], [[PropertyEvent]], and [[DomainIndexEvent]], respectively
+    * @param event                 thee event to apply
+    */
+  private[this] def applyEdgeEffect(event: EdgeEvent): Unit = event match {
+    case EdgeAdded(edge) =>
+      // The more edges you get, the worse it is to sleep
+      val len = edges.size
+      if (len > 7 && isPowerOfTwo(len)) costToSleep.incrementAndGet()
+
+      val edgeCollectionSizeWarningInterval = 10000
+      if (log.isWarningEnabled && (len + 1) % edgeCollectionSizeWarningInterval == 0)
+        log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
+
+      metrics.nodeEdgesCounter.increment(previousCount = len)
+      edges += edge
+      ()
+
+    case EdgeRemoved(edge) =>
+      metrics.nodeEdgesCounter.decrement(previousCount = edges.size)
+      edges -= edge
+      ()
+
+  }
+
+  private[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
+    case PropertySet(key, value) =>
+      metrics.nodePropertyCounter.increment(previousCount = properties.size)
+      properties = properties + (key -> value)
+    case PropertyRemoved(key, _) =>
+      metrics.nodePropertyCounter.decrement(previousCount = properties.size)
+      properties = properties - key
+  }
+
+  /** Apply a [[DomainIndexEvent]] to the node state
+    * @param event the event to apply
+    * @param shouldCauseSideEffects whether the application of this event should cause off-node side effects, such
+    *                               as Standing Query results. This value should be false when restoring
     *                               events from a journal.
     */
-  private[this] def applyEventsEffectsInMemory(
-    events: Iterable[NodeEvent],
-    shouldCauseSideEffects: Boolean
-  ): Unit = {
+  private[this] def applyDomainIndexEffect(event: DomainIndexEvent, shouldCauseSideEffects: Boolean): Unit = {
     import DomainIndexEvent._
-    events.foreach {
-      case PropertySet(propKey, propValue) =>
-        metrics.nodePropertyCounter.increment(previousCount = properties.size)
-        properties = properties + (propKey -> propValue)
-
-      case PropertyRemoved(propKey, _) =>
-        metrics.nodePropertyCounter.decrement(previousCount = properties.size)
-        properties = properties - propKey
-
-      case EdgeAdded(edge) =>
-        // The more edges you get, the worse it is to sleep
-        val len = edges.size
-        if (len > 7 && isPowerOfTwo(len)) costToSleep.incrementAndGet()
-
-        val edgeCollectionSizeWarningInterval = 10000
-        if (log.isWarningEnabled && (len + 1) % edgeCollectionSizeWarningInterval == 0)
-          log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
-
-        metrics.nodeEdgesCounter.increment(previousCount = len)
-        edges += edge
-
-      case EdgeRemoved(edge) =>
-        metrics.nodeEdgesCounter.decrement(previousCount = edges.size)
-        edges -= edge
-
+    event match {
       case CreateDomainNodeSubscription(dgnId, nodeId, forQuery) =>
         receiveDomainNodeSubscription(Left(nodeId), dgnId, forQuery, shouldSendReplies = shouldCauseSideEffects)
 
@@ -498,15 +533,20 @@ private[graph] class NodeActor(
 
       case CancelDomainNodeSubscription(dgnId, fromSubscriber) =>
         cancelSubscription(dgnId, Some(Left(fromSubscriber)), shouldSendReplies = shouldCauseSideEffects)
-    }
 
-    if (shouldCauseSideEffects) { // `false` when restoring from journals
-      latestUpdateAfterSnapshot = Some(peekEventSequence())
-      lastWriteMillis = previousMessageMillis()
-      if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
-      val nodeChangeEvents = events.collect { case e: NodeChangeEvent => e }
-      runPostActions(nodeChangeEvents)
     }
+  }
+
+  /** Call this if effects were applied to the node state (it was modified)
+    * to update the "last update" timestamp, save a snapshot (if configured to),
+    * and notify any subscribers of the applied [[NodeChangeEvent]]s
+    * @param events
+    */
+  private[this] def notifyNodeUpdate(events: List[NodeChangeEvent]): Unit = {
+    latestUpdateAfterSnapshot = Some(peekEventSequence())
+    lastWriteMillis = previousMessageMillis()
+    if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
+    runPostActions(events)
   }
 
   /** Hook for registering some arbitrary action after processing a node event. Right now, all this
@@ -514,7 +554,7 @@ private[graph] class NodeActor(
     *
     * @param events ordered sequence of node events produced from a single message.
     */
-  private[this] def runPostActions(events: Iterable[NodeChangeEvent]): Unit = events.foreach { event =>
+  private[this] def runPostActions(events: List[NodeChangeEvent]): Unit = events.foreach { event =>
     localEventIndex.standingQueriesWatchingNodeEvent(
       event,
       {

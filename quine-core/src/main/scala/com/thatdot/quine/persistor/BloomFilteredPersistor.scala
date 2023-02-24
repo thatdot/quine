@@ -12,9 +12,11 @@ import com.google.common.hash.{BloomFilter, Funnel, Funnels, PrimitiveSink}
 
 import com.thatdot.quine.graph.{
   BaseGraph,
+  DomainIndexEvent,
   EventTime,
   MemberIdx,
   MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
   NodeEvent,
   StandingQuery,
   StandingQueryId
@@ -72,12 +74,12 @@ private class BloomFilteredPersistor(
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
     wrappedPersistor.emptyOfQuineData()
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistNodeChangeEvents(id, events)
   }
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime]): Future[Unit] = {
+  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistDomainIndexEvents(id, events)
   }
@@ -86,7 +88,7 @@ private class BloomFilteredPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     if (mightContain(id))
       wrappedPersistor.getNodeChangeEventsWithTime(id, startingAt, endingAt)
     else
@@ -96,7 +98,7 @@ private class BloomFilteredPersistor(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime]] =
+  ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     if (mightContain(id))
       wrappedPersistor.getDomainIndexEventsWithTime(id, startingAt, endingAt)
     else

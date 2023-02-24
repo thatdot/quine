@@ -34,7 +34,7 @@ final case class QuineConfig(
   edgeIteration: EdgeIteration = EdgeIteration.ReverseInsertion,
   store: PersistenceAgentType = PersistenceAgentType.RocksDb(),
   persistence: PersistenceConfig = PersistenceConfig(),
-  labelsProperty: String = "__LABEL",
+  labelsProperty: Symbol = Symbol("__LABEL"),
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx)
 ) extends BaseConfig {
 
