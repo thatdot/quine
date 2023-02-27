@@ -1,5 +1,6 @@
 package com.thatdot.quine.graph.edgecollection
 
+import scala.concurrent.Future
 import scala.language.higherKinds
 
 import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
@@ -32,3 +33,4 @@ abstract class AbstractEdgeCollection[F[_], S[_]] {
 }
 
 abstract class SyncEdgeCollection extends AbstractEdgeCollection[Identity, Iterator]
+abstract class AsyncEdgeCollection extends AbstractEdgeCollection[Future, NoMatSource]
