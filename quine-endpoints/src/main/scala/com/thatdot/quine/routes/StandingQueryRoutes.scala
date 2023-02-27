@@ -525,9 +525,7 @@ trait StandingQueryRoutes
         .withSummary(Some("Delete Standing Query"))
         .withDescription(
           Some(
-            """Immediately halt and remove the named standing query from Quine.
-              | 
-              |The standing query will complete any pending operations before exiting.""".stripMargin
+            "Immediately halt and remove the named standing query from Quine."
           )
         )
         .withTags(List(standingTag))
