@@ -4,11 +4,6 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
-/* TODO:
- *
- *   - edge literal instructions
- */
-
 sealed abstract class EdgeDirection
 object EdgeDirection {
   case object Outgoing extends EdgeDirection
@@ -21,9 +16,14 @@ object EdgeDirection {
 @unnamed
 @title("Node Data")
 @docs("Data locally available on a node in the graph.")
-final case class LiteralNode[Id, BStr](
-  @docs("Properties on the node; note that values are the base64-encoded serialized bytes")
-  properties: Map[String, BStr],
+final case class LiteralNode[Id](
+  @docs(
+    """Properties on the node; note that values are represented as closely as possible
+      |to how they would be emitted by
+      |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
+      |""".stripMargin.replace('\n', ' ').trim
+  )
+  properties: Map[String, Json],
   edges: Seq[RestHalfEdge[Id]]
 )
 
@@ -46,15 +46,36 @@ final case class RestHalfEdge[Id](
   @docs("Id of node at the other end of the edge") other: Id
 )
 
-trait LiteralRoutes
+trait DebugOpsRoutes
     extends endpoints4s.algebra.Endpoints
     with endpoints4s.algebra.JsonEntitiesFromSchemas
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints
     with exts.AnySchema {
 
-  implicit final lazy val literalNodeSchema: Record[LiteralNode[Id, BStr]] =
-    genericRecord[LiteralNode[Id, BStr]]
+  /** Schema to be used for QuineValues -- this is specifically left explicit, as `Json` is too generic a type to have
+    * a useful implicit schema around for.
+    */
+  val anySchemaQVMapExample: JsonSchema[Json] = anySchema(Some("quine-value")).withExample(
+    Json.obj(
+      "name" -> Json.fromString("fruits-collection"),
+      "fruits" -> Json.arr(Json.fromString("apple"), Json.fromString("orange"), Json.fromString("grape"))
+    )
+  )
+
+  implicit final lazy val literalNodeSchema: Record[LiteralNode[Id]] = {
+    implicit val propertiesMapSchema: JsonSchema[Map[String, Json]] =
+      mapJsonSchema(anySchemaQVMapExample).withExample(
+        Map(
+          "prop1" -> Json.obj(
+            "hello" -> Json.fromString("world")
+          ),
+          "prop2" -> Json.fromInt(128),
+          "another-prop" -> Json.False
+        )
+      )
+    genericRecord[LiteralNode[Id]]
+  }
 
   implicit final lazy val edgeDirectionSchema: Enum[EdgeDirection] =
     stringEnumeration[EdgeDirection](EdgeDirection.values)(_.toString)
@@ -100,20 +121,20 @@ trait LiteralRoutes
   final val otherOpt: QueryString[Option[Id]] = qs[Option[Id]]("other", docs = Some("Other edge endpoint"))
 
   private val api = path / "api" / "v1"
-  private val literalPrefix = api / "query" / "literal"
-  private val literal = literalPrefix / nodeIdSegment
+  private val debugPrefix = api / "debug"
+  private val debugNode = debugPrefix / nodeIdSegment
 
-  private[this] val literalTag = Tag("Literal Node Operations")
+  private[this] val debugOpsTag = Tag("Debug Node Operations")
     .withDescription(
       Some(
-        "Operations that are lower level and involve requests to individual nodes in the graph."
+        "Operations that are lower level and involve sending requests to individual nodes in the graph."
       )
     )
 
-  final val literalGet: Endpoint[(Id, AtTime), LiteralNode[Id, BStr]] =
+  final val debugOpsGet: Endpoint[(Id, AtTime), LiteralNode[Id]] =
     endpoint(
-      request = get(literal /? atTime),
-      response = ok(jsonResponse[LiteralNode[Id, BStr]]),
+      request = get(debugNode /? atTime),
+      response = ok(jsonResponse[LiteralNode[Id]]),
       docs = EndpointDocs()
         .withSummary(Some("List Properties/Edges"))
         .withDescription(
@@ -121,130 +142,144 @@ trait LiteralRoutes
             "Retrieve a nodes list of properties and list of edges"
           )
         )
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalPost: Endpoint[(Id, LiteralNode[Id, BStr]), Unit] =
+  final val debugOpsPut: Endpoint[(Id, LiteralNode[Id]), Unit] =
     endpoint(
-      request = post(
-        url = literal,
-        entity = jsonOrYamlRequest[LiteralNode[Id, BStr]]
+      request = put(
+        url = debugNode,
+        entity = jsonOrYamlRequest[LiteralNode[Id]]
       ),
       ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Update Properties/Edges"))
-        .withDescription(Some("""Add or update properties and edges.
+        .withDescription(Some("""
+            |Add or update properties and edges.
             |
             |Any properties or edges that do not already exist on the node will replace existing values.
             |Any new properties or edges will be appended to existing values.
-            |Properties must be specified as Base64 values.""".stripMargin))
-        .withTags(List(literalTag))
+            |Properties must be specified as JSON values, the format of which should match
+            |how the same values would be emitted by
+            |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
+            |""".stripMargin.trim))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalDelete: Endpoint[Id, Unit] =
+  final val debugOpsDelete: Endpoint[Id, Unit] =
     endpoint(
-      request = delete(literal),
+      request = delete(debugNode),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Properties/Edges"))
         .withDescription(Some("Delete all properties and edges from a node"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalDebug: Endpoint[(Id, AtTime), Json] =
+  final val debugOpsVerbose: Endpoint[(Id, AtTime), Json] =
     endpoint(
-      request = get(literal / "debug" /? atTime),
-      response = ok(jsonResponse(anySchema(None))),
+      request = get(debugNode / "verbose" /? atTime),
+      response = ok(jsonResponse(anySchemaQVMapExample)),
       docs = EndpointDocs()
-        .withSummary(Some("List Node State (Debug)"))
-        .withDescription(Some("""Returns information relating to the nodes internal state.
-                          The information returned by this endpoint is intended to be used for debugging.
-                          It is implementation-dependent and subject to change."""))
-        .withTags(List(literalTag))
+        .withSummary(Some("List Node State (Verbose)"))
+        .withDescription(
+          Some(
+            """Returns information relating to the nodes internal state.
+              |The information returned by this endpoint is intended to be used for debugging.
+              |It is implementation-dependent and subject to change.""".stripMargin.replace('\n', ' ')
+          )
+        )
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalEdgesGet: Endpoint[
+  final val debugOpsEdgesGet: Endpoint[
     (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String])),
     Seq[RestHalfEdge[Id]]
   ] =
     endpoint(
-      request = get(literal / "edges" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
+      request = get(debugNode / "edges" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Edges"))
         .withDescription(Some("Retrieve all node edges"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalEdgePut: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
+  final val debugOpsEdgesPut: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
     endpoint(
       request = put(
-        url = literal / "edges",
+        url = debugNode / "edges",
         entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Add Full Edges"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalEdgeDelete: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
+  final val debugOpsEdgeDelete: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
     endpoint(
       request = request(
         Delete,
-        url = literal / "edges",
+        url = debugNode / "edges",
         entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Full Edges"))
         .withDescription(Some("Delete the specified full edges from this node"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalHalfEdgesGet: Endpoint[
+  final val debugOpsHalfEdgesGet: Endpoint[
     (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String])),
     Seq[RestHalfEdge[Id]]
   ] =
     endpoint(
-      request = get(literal / "edges" / "half" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
+      request = get(debugNode / "edges" / "half" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Half Edges"))
         .withDescription(Some("Retrieve all half edges associated with a node"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalPropertyGet: Endpoint[(Id, String, AtTime), Option[BStr]] =
+  final val debugOpsPropertyGet: Endpoint[(Id, String, AtTime), Option[Json]] =
     endpoint(
-      request = get(literal / "props" /? (propKey & atTime)),
-      response = wheneverFound(ok(jsonResponse[BStr])),
+      request = get(debugNode / "props" /? (propKey & atTime)),
+      response = wheneverFound(ok(jsonResponse[Json](anySchemaQVMapExample))),
       docs = EndpointDocs()
         .withSummary(Some("Get Property"))
-        .withDescription(Some("""Retrieve a single named property on a node.
-            |The property value returned will be Base64 encoded.""".stripMargin))
-        .withTags(List(literalTag))
+        .withDescription(
+          Some(
+            """Retrieve a single property from the node; note that values are represented as
+              |closely as possible to how they would be emitted by
+              |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
+              |""".stripMargin.replace('\n', ' ').trim
+          )
+        )
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalPropertyPut: Endpoint[(Id, String, BStr), Unit] =
+  final val debugOpsPropertyPut: Endpoint[(Id, String, Json), Unit] =
     endpoint(
       request = put(
-        url = literal / "props" /? propKey,
-        entity = jsonOrYamlRequest[BStr]
+        url = debugNode / "props" /? propKey,
+        entity = jsonOrYamlRequest[Json](anySchemaQVMapExample)
       ),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Set Property"))
         .withDescription(Some("Set a single named property on a node"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 
-  final val literalPropertyDelete: Endpoint[(Id, String), Unit] =
+  final val debugOpsPropertyDelete: Endpoint[(Id, String), Unit] =
     endpoint(
-      request = delete(literal / "props" /? propKey),
+      request = delete(debugNode / "props" /? propKey),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Property"))
-        .withTags(List(literalTag))
+        .withTags(List(debugOpsTag))
     )
 }

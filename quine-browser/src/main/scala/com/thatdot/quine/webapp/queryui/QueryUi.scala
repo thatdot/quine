@@ -1061,7 +1061,7 @@ import com.thatdot.{visnetwork => vis}
       val visNode: vis.Node = props.graphData.nodeSet.get(heldNodeId).merge
       val uiNode = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
       println(uiNode)
-      props.routes.literalDebug(uiNode.id -> None).future.onComplete(println(_))
+      props.routes.debugOpsVerbose(uiNode.id -> None).future.onComplete(println(_))
     }
   }
 

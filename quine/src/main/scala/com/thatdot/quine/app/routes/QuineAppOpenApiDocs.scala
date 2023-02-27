@@ -19,7 +19,7 @@ import com.thatdot.quine.routes.exts.OpenApiServer
   * @param idProvider the Quine ID provider (relevant for serialization of IDs and examples)
   */
 final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
-    extends LiteralRoutes
+    extends DebugOpsRoutes
     with AlgorithmRoutes
     with AdministrationRoutes
     with QueryUiRoutes
@@ -42,17 +42,18 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     shardSizes,
     requestNodeSleep,
     graphHashCode,
-    literalGet,
-    literalPost,
-    literalDelete,
-    literalDebug,
-    literalEdgesGet,
-    literalEdgePut,
-    literalEdgeDelete,
-    literalHalfEdgesGet,
-    literalPropertyGet,
-    literalPropertyPut,
-    literalPropertyDelete,
+    debugOpsGet,
+    debugOpsVerbose,
+    debugOpsEdgesGet,
+    debugOpsHalfEdgesGet,
+    debugOpsPropertyGet,
+    //    non-readonly debugOps (intentionally left registered but undocumented, QU-1045:
+    //    debugOpsPost,
+    //    debugOpsDelete,
+    //    debugOpsEdgesPut,
+    //    debugOpsEdgeDelete,
+    //    debugOpsPropertyPut,
+    //    debugOpsPropertyDelete,
     algorithmSaveRandomWalks,
     algorithmRandomWalk,
     cypherPost,

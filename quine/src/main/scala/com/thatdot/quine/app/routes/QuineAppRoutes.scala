@@ -41,7 +41,7 @@ class QuineAppRoutes(
     with QueryUiRoutesImpl
     with WebSocketQueryProtocolServer
     with QueryUiConfigurationRoutesImpl
-    with LiteralRoutesImpl
+    with DebugRoutesImpl
     with AlgorithmRoutesImpl
     with AdministrationRoutesImpl
     with IngestRoutesImpl
@@ -88,7 +88,7 @@ class QuineAppRoutes(
     queryUiRoutes ~
     queryProtocolWS ~
     queryUiConfigurationRoutes ~
-    literalRoutes ~
+    debugRoutes ~
     algorithmRoutes ~
     administrationRoutes ~
     ingestRoutes ~

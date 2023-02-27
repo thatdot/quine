@@ -1,10 +1,13 @@
 package com.thatdot.quine.app.routes
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.util.{ByteString, Timeout}
+import akka.util.Timeout
+
+import io.circe.Json
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
@@ -19,9 +22,9 @@ import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
 import com.thatdot.quine.routes._
 
-/** The Akka HTTP implementation of [[LiteralRoutes]] */
-trait LiteralRoutesImpl
-    extends LiteralRoutes
+/** The Akka HTTP implementation of [[DebugOpsRoutes]] */
+trait DebugRoutesImpl
+    extends DebugOpsRoutes
     with endpoints4s.akkahttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
@@ -71,51 +74,50 @@ trait LiteralRoutesImpl
   implicit def graph: LiteralOpsGraph
   implicit def timeout: Timeout
 
-  private val literalGetRoute = literalGet.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
+  private val debugGetRoute = debugOpsGet.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
     val propsF = graph.literalOps.getProps(qid, atTime = atTime)
     val edgesF = graph.literalOps.getEdges(qid, atTime = atTime)
     propsF
       .zip(edgesF)
       .map { case (props, edges) =>
         LiteralNode(
-          props.map { case (k, v) => k.name -> ByteString(v.serialized) },
+          props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider) },
           edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) }
         )
-      }(graph.shardDispatcherEC)
+      }(graph.nodeDispatcherEC)
   }
 
-  private val literalPostRoute = literalPost.implementedByAsync {
-    case (qid: QuineId, node: LiteralNode[QuineId, ByteString]) =>
-      val propsF = Future.traverse(node.properties: TraversableOnce[(String, BStr)]) { case (typ, value) =>
-        graph.literalOps.setPropBytes(qid, typ, value.toArray)
-      }(implicitly, graph.shardDispatcherEC)
-      val edgesF = Future.traverse(node.edges) {
-        case RestHalfEdge(typ, Outgoing, to) => graph.literalOps.addEdge(qid, to, typ, true)
-        case RestHalfEdge(typ, Incoming, to) => graph.literalOps.addEdge(to, qid, typ, true)
-        case RestHalfEdge(typ, Undirected, to) => graph.literalOps.addEdge(qid, to, typ, false)
-      }(implicitly, graph.shardDispatcherEC)
-      propsF.flatMap(_ => edgesF)(graph.shardDispatcherEC).map(_ => ())(graph.shardDispatcherEC)
+  private val debugPostRoute = debugOpsPut.implementedByAsync { case (qid: QuineId, node: LiteralNode[QuineId]) =>
+    val propsF = Future.traverse(node.properties: TraversableOnce[(String, Json)]) { case (typ, value) =>
+      graph.literalOps.setProp(qid, typ, QuineValue.fromJson(value))
+    }(implicitly, graph.nodeDispatcherEC)
+    val edgesF = Future.traverse(node.edges) {
+      case RestHalfEdge(typ, Outgoing, to) => graph.literalOps.addEdge(qid, to, typ, true)
+      case RestHalfEdge(typ, Incoming, to) => graph.literalOps.addEdge(to, qid, typ, true)
+      case RestHalfEdge(typ, Undirected, to) => graph.literalOps.addEdge(qid, to, typ, false)
+    }(implicitly, graph.nodeDispatcherEC)
+    propsF.flatMap(_ => edgesF)(ExecutionContexts.parasitic).map(_ => ())(ExecutionContexts.parasitic)
   }
 
-  private val literalDeleteRoute = literalDelete.implementedByAsync { (qid: QuineId) =>
+  private val debugDeleteRoute = debugOpsDelete.implementedByAsync { (qid: QuineId) =>
     graph.literalOps.deleteNode(qid)
   }
 
-  protected val literalDebugRoute: Route = literalDebug.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
-    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder(_))(graph.shardDispatcherEC)
+  protected val debugVerboseRoute: Route = debugOpsVerbose.implementedByAsync { case (qid: QuineId, atTime: AtTime) =>
+    graph.literalOps.logState(qid, atTime).map(nodeInternalStateSchema.encoder(_))(graph.nodeDispatcherEC)
   }
 
-  private val literalEdgesGetRoute = literalEdgesGet.implementedByAsync {
+  private val debugEdgesGetRoute = debugOpsEdgesGet.implementedByAsync {
     case (qid, (atTime, limit, edgeDirOpt, otherOpt, edgeTypeOpt)) =>
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
         .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
-          graph.shardDispatcherEC
+          graph.nodeDispatcherEC
         )
   }
 
-  private val literalEdgePutRoute = literalEdgePut.implementedByAsync { case (qid, edges) =>
+  private val debugEdgesPutRoute = debugOpsEdgesPut.implementedByAsync { case (qid, edges) =>
     Future
       .traverse(edges) { case RestHalfEdge(edgeType, edgeDir, other) =>
         edgeDir match {
@@ -123,11 +125,11 @@ trait LiteralRoutesImpl
           case Outgoing => graph.literalOps.addEdge(qid, other, edgeType, isDirected = true)
           case Incoming => graph.literalOps.addEdge(other, qid, edgeType, isDirected = true)
         }
-      }(implicitly, graph.shardDispatcherEC)
-      .map(_ => ())(graph.shardDispatcherEC)
+      }(implicitly, graph.nodeDispatcherEC)
+      .map(_ => ())(ExecutionContexts.parasitic)
   }
 
-  private val literalEdgeDeleteRoute = literalEdgeDelete.implementedByAsync { case (qid, edges) =>
+  private val debugEdgesDeleteRoute = debugOpsEdgeDelete.implementedByAsync { case (qid, edges) =>
     Future
       .traverse(edges) { case RestHalfEdge(edgeType, edgeDir, other) =>
         edgeDir match {
@@ -136,46 +138,48 @@ trait LiteralRoutesImpl
           case Outgoing => graph.literalOps.removeEdge(qid, other, edgeType, isDirected = true)
           case Incoming => graph.literalOps.removeEdge(other, qid, edgeType, isDirected = true)
         }
-      }(implicitly, graph.shardDispatcherEC)
-      .map(_ => ())(graph.shardDispatcherEC)
+      }(implicitly, graph.nodeDispatcherEC)
+      .map(_ => ())(ExecutionContexts.parasitic)
   }
 
-  private val literalHalfEdgesGetRoute = literalHalfEdgesGet.implementedByAsync {
+  private val debugHalfEdgesGetRoute = debugOpsHalfEdgesGet.implementedByAsync {
     case (qid, (atTime, limit, edgeDirOpt, otherOpt, edgeTypeOpt)) =>
       val edgeDirOpt2 = edgeDirOpt.map(fromEdgeDirection)
       graph.literalOps
         .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
         .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
-          graph.shardDispatcherEC
+          graph.nodeDispatcherEC
         )
   }
 
-  private val literalPropertyGetRoute = literalPropertyGet.implementedByAsync { case (qid, propKey, atTime) =>
+  private val debugPropertyGetRoute = debugOpsPropertyGet.implementedByAsync { case (qid, propKey, atTime) =>
     graph.literalOps
       .getProps(qid, atTime)
-      .map(m => m.get(Symbol(propKey)).map(_.serialized).map(ByteString(_)))(graph.shardDispatcherEC)
+      .map(m => m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider)))(
+        graph.nodeDispatcherEC
+      )
   }
 
-  private val literalPropertyPutRoute = literalPropertyPut.implementedByAsync { case (qid, propKey, value) =>
+  private val debugPropertyPutRoute = debugOpsPropertyPut.implementedByAsync { case (qid, propKey, value) =>
     graph.literalOps
-      .setPropBytes(qid, propKey, value.toArray)
+      .setProp(qid, propKey, QuineValue.fromJson(value))
   }
 
-  private val literalPropertyDeleteRoute = literalPropertyDelete.implementedByAsync { case (qid, propKey) =>
+  private val debugPropertyDeleteRoute = debugOpsPropertyDelete.implementedByAsync { case (qid, propKey) =>
     graph.literalOps.removeProp(qid, propKey)
   }
 
-  final val literalRoutes: Route = {
-    literalGetRoute ~
-    literalDeleteRoute ~
-    literalPostRoute ~
-    literalDebugRoute ~
-    literalEdgesGetRoute ~
-    literalEdgePutRoute ~
-    literalEdgeDeleteRoute ~
-    literalHalfEdgesGetRoute ~
-    literalPropertyGetRoute ~
-    literalPropertyPutRoute ~
-    literalPropertyDeleteRoute
+  final val debugRoutes: Route = {
+    debugGetRoute ~
+    debugDeleteRoute ~
+    debugPostRoute ~
+    debugVerboseRoute ~
+    debugEdgesGetRoute ~
+    debugEdgesPutRoute ~
+    debugEdgesDeleteRoute ~
+    debugHalfEdgesGetRoute ~
+    debugPropertyGetRoute ~
+    debugPropertyPutRoute ~
+    debugPropertyDeleteRoute
   }
 }
