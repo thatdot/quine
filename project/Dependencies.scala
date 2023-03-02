@@ -42,7 +42,7 @@ object Dependencies {
   val pulsar4sV = "2.9.0"
   val plotlyV = "1.57.1"
   val protobufV = "3.21.10"
-  val protobufCommonV = "2.14.1"
+  val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.2"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
