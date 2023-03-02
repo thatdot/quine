@@ -59,6 +59,12 @@ MATCH (n) WHERE id(n) = idFrom($that) SET n.line = $that
 
 By default, each node in the graph maintains a record of its historical changes over time. When a node's properties or edges change, the change event and timestamp are saved to an append-only log for that particular node. This technique is known as @link:[Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html){ open=new }, applied individually to each node. This historical log can be replayed up to any desired moment in time, allowing for the system to quickly answer questions using the state of the graph *as it was in the past.*
 
+@@@ note
+
+When you delete a node, it's not completely gone, but rather its history is updated to indicate that all its properties and edges were removed at the time the deletion occurred. At any given moment, if a node is empty, it is essentially the same as a non-existent node - the only difference being that because the node has history it will be included in the count returned by queries like `MATCH (a) RETURN count(a)` or show up in query results that perform a full node scan.
+
+@@@
+
 ## Real-Time Pattern Matching With Standing Queries
 
 Work in Quine is done primarily through the expression of patterns to be found while incoming streams of data are being processed. First, you must declare the shape of data (the nodes and edges that will define your initial graph state). Then you should determine the sub-graph represening the interesting or valuable pattern of events that you want to find in the stream using Cypher. Finally, you will define the action you want to be triggered each time that pattern is found (this is accomplished using a standing query). The matching and discovery of every instance of each pattern happen automatically, and the corresponding data is used to trigger the desired action.
