@@ -435,10 +435,7 @@ sealed abstract class SingleVersionUuidProvider[UuidV <: UUID4s: ClassTag] exten
     * @param u the UUID instance to check
     * @return true iff the instance is of the version represented by `UuidV`
     */
-  def uuidVersionMatches(u: UUID4s): Boolean = {
-    import memeid4s.UUID.RichUUID
-    u.is[UuidV]
-  }
+  def uuidVersionMatches(u: UUID4s): Boolean = memeid4s.UUID.richUUID(u).is[UuidV]
 
   final val customIdTag: ClassTag[UUID] = classTag[UUID]
   final type CustomIdType = UUID
