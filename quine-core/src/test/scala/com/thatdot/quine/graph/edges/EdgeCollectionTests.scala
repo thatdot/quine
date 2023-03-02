@@ -1,4 +1,4 @@
-package com.thatdot.quine.graph.edgecollection
+package com.thatdot.quine.graph.edges
 
 import scala.collection.compat._
 import scala.collection.mutable.LinkedHashSet
@@ -50,7 +50,7 @@ abstract class EdgeCollectionTests
       // Given a bunch of edges coming in sequentially
       val edgeCollection = newEdgeCollection
       // When the edges are loaded into the EdgeCollection
-      edges.foreach(edge => edgeCollection += edge)
+      edges.foreach(edge => edgeCollection.addEdgeSync(edge))
       val byEdgeType = edges.groupBy(_.edgeType).map { case (k, v) => k -> v.to(LinkedHashSet) }
       val byDirection = edges.groupBy(_.direction).map { case (k, v) => k -> v.to(LinkedHashSet) }
       val byOther = edges.groupBy(_.other).map { case (k, v) => k -> v.to(LinkedHashSet) }
@@ -135,7 +135,7 @@ abstract class EdgeCollectionTests
     assume(runnable)
     def checkContains(localEdges: Seq[HalfEdge], domainEdges: Seq[DomainEdge], qid: QuineId): Boolean = {
       val ec = newEdgeCollection
-      localEdges.foreach(edge => ec += edge)
+      localEdges.foreach(edge => ec.addEdgeSync(edge))
       ec.hasUniqueGenEdges(domainEdges.toSet, qid)
     }
 

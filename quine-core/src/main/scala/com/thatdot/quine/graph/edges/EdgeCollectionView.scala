@@ -1,4 +1,4 @@
-package com.thatdot.quine.graph.edgecollection
+package com.thatdot.quine.graph.edges
 
 import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
 

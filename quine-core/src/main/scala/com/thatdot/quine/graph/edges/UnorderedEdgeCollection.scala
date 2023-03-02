@@ -1,4 +1,4 @@
-package com.thatdot.quine.graph.edgecollection
+package com.thatdot.quine.graph.edges
 
 import scala.collection.AbstractIterable
 import scala.collection.mutable.{Map => MutableMap, Set => MutableSet}
@@ -24,18 +24,16 @@ final class UnorderedEdgeCollection extends EdgeCollection {
 
   override def size: Int = totalSize
 
-  override def +=(edge: HalfEdge): this.type = {
+  override def addEdgeSync(edge: HalfEdge): Unit = {
     val edgeDirMap = edgeMap.getOrElseUpdate(edge.edgeType, MutableMap.empty)
     val quineIdSet = edgeDirMap.getOrElseUpdate(edge.direction, MutableSet.empty)
     val didAddQuineId = quineIdSet.add(edge.other)
 
     // Only if something new was added does size need to be updated
     if (didAddQuineId) totalSize += 1
-
-    this
   }
 
-  override def -=(edge: HalfEdge): this.type = {
+  override def removeEdgeSync(edge: HalfEdge): Unit =
     for {
       edgeDirMap <- edgeMap.get(edge.edgeType)
       quineIdSet <- edgeDirMap.get(edge.direction)
@@ -54,9 +52,6 @@ final class UnorderedEdgeCollection extends EdgeCollection {
         }
       }
     }
-
-    this
-  }
 
   override def all: Iterator[HalfEdge] = for {
     (edgeTyp, dirMap) <- edgeMap.iterator

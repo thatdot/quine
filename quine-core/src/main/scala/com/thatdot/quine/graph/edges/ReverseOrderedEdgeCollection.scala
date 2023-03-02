@@ -1,4 +1,4 @@
-package com.thatdot.quine.graph.edgecollection
+package com.thatdot.quine.graph.edges
 
 import scala.collection.compat._
 
@@ -30,20 +30,20 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
 
   override def size: Int = edges.size
 
-  override def +=(edge: HalfEdge): this.type = {
+  override def addEdgeSync(edge: HalfEdge): Unit = {
     edges += edge
     typeIndex += edge
     otherIndex += edge
     typeDirectionIndex += edge
-    this
+    ()
   }
 
-  override def -=(edge: HalfEdge): this.type = {
+  override def removeEdgeSync(edge: HalfEdge): Unit = {
     edges -= edge
     typeIndex -= edge
     otherIndex -= edge
     typeDirectionIndex -= edge
-    this
+    ()
   }
 
   protected[graph] def toSerialize: Iterable[HalfEdge] = edges

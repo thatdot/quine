@@ -1,4 +1,4 @@
-package com.thatdot.quine.graph.edgecollection
+package com.thatdot.quine.graph.edges
 
 import scala.collection.mutable
 

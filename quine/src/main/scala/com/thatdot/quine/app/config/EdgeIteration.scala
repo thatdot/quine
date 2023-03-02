@@ -3,7 +3,7 @@ package com.thatdot.quine.app.config
 import pureconfig.ConfigConvert
 import pureconfig.generic.semiauto.deriveEnumerationConvert
 
-import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection, UnorderedEdgeCollection}
+import com.thatdot.quine.graph.edges.{EdgeCollection, ReverseOrderedEdgeCollection, UnorderedEdgeCollection}
 
 /** Options for edge collection iteration */
 sealed abstract class EdgeIteration {

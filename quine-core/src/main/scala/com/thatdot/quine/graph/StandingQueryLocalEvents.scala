@@ -6,7 +6,7 @@ import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
-import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
+import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, PropertyValue, SingleBranch}

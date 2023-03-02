@@ -3,7 +3,7 @@ package com.thatdot.quine.graph
 import akka.actor.Actor
 import akka.stream.Materializer
 
-import com.thatdot.quine.graph.edgecollection.EdgeCollectionView
+import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.graph.messaging.QuineIdAtTime
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 
@@ -38,8 +38,6 @@ trait BaseNodeActorView extends Actor {
 
   /** ID provider */
   implicit def idProvider: QuineIdProvider
-
-  def qidPrettyString: String = idProvider.qidToPrettyString(qid)
 
   /** Metrics about the quine system */
   protected def metrics: HostQuineMetrics

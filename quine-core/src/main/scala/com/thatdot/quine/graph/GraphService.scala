@@ -11,7 +11,7 @@ import akka.actor._
 import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 
-import com.thatdot.quine.graph.edgecollection.{EdgeCollection, ReverseOrderedEdgeCollection}
+import com.thatdot.quine.graph.edges.{EdgeCollection, ReverseOrderedEdgeCollection}
 import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent}

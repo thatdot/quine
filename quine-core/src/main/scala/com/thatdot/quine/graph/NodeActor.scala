@@ -15,8 +15,7 @@ import akka.actor.{Actor, ActorLogging}
 
 import cats.data.NonEmptyList
 
-import com.thatdot.quine.graph.DomainIndexEvent.CreateDomainStandingQuerySubscription
-import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
+import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{
   DomainNodeIndex,
@@ -29,7 +28,7 @@ import com.thatdot.quine.graph.cypher.{
   MultipleValuesStandingQueryLookupInfo,
   MultipleValuesStandingQueryState
 }
-import com.thatdot.quine.graph.edgecollection.EdgeCollection
+import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
@@ -146,7 +145,40 @@ private[graph] class NodeActor(
   protected val persistor: PersistenceAgent = graph.persistor
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
-  protected val edges: EdgeCollection = graph.edgeCollectionFactory()
+  protected var edges: EdgeProcessor = {
+    val edgeCollection = graph.edgeCollectionFactory()
+    initialEdges.foreach(edgeCollection.addEdgeSync)
+    val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
+      if (persistor.persistenceConfig.journalEnabled)
+        events => metrics.persistorPersistEventTimer.time(persistor.persistEvents(qid, events.toList))
+      else
+        _ => Future.unit
+
+    graph.effectOrder match {
+      case EventEffectOrder.PersistorFirst =>
+        new PersistorFirstEdgeProcessor(
+          edges = edgeCollection,
+          persistToJournal = persistEventsToJournal,
+          pauseMessageProcessingUntil = pauseMessageProcessingUntil,
+          updateSnapshotTimestamp = () => updateLasttWriteAfterSnapshot(),
+          runPostActions = runPostActions,
+          qid = qid,
+          costToSleep = costToSleep,
+          nodeEdgesCounter = metrics.nodeEdgesCounter
+        )
+      case EventEffectOrder.MemoryFirst =>
+        new MemoryFirstEdgeProcessor(
+          edges = edgeCollection,
+          persistToJournal = persistEventsToJournal,
+          updateSnapshotTimestamp = () => updateLasttWriteAfterSnapshot(),
+          runPostActions = runPostActions,
+          qid = qid,
+          costToSleep = costToSleep,
+          nodeEdgesCounter = metrics.nodeEdgesCounter
+        )(graph.system, idProvider)
+    }
+  }
+
   protected val dgnRegistry: DomainGraphNodeRegistry = graph.dgnRegistry
   protected val domainGraphSubscribers: SubscribersToThisNode = SubscribersToThisNode(initialDomainGraphSubscribers)
 
@@ -186,11 +218,12 @@ private[graph] class NodeActor(
       ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
 
   { // here be the side-effects performed by the constructor
-    initialEdges.foreach(edges +=)
+    // This assumes a synchronous in-memory EdgeCollection
+    // For supernodes, initialEdges (the edges in the snapshot) will be empty - so this will be a no-op
 
     initialJournal foreach {
       case event: PropertyEvent => applyPropertyEffect(event)
-      case event: EdgeEvent => applyEdgeEffect(event)
+      case event: EdgeEvent => edges.updateEdgeCollection(event)
       case event: DomainIndexEvent => applyDomainIndexEffect(event, shouldCauseSideEffects = false)
     }
 
@@ -298,13 +331,6 @@ private[graph] class NodeActor(
       updateMultipleValuesStandingQueriesOnNode()
     }
 
-  /** Fast check for if a number is a power of 2 */
-  private[this] def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
-
-  protected def edgeEventHasEffect(event: EdgeEvent): Boolean = event match {
-    case EdgeAdded(edge) => !edges.contains(edge)
-    case EdgeRemoved(edge) => edges.contains(edge)
-  }
   protected def propertyEventHasEffect(event: PropertyEvent): Boolean = event match {
     case PropertySet(key, value) => !properties.get(key).contains(value)
     case PropertyRemoved(key, _) => properties.contains(key)
@@ -341,7 +367,10 @@ private[graph] class NodeActor(
       propertyEventHasEffect,
       events,
       atTime,
-      persistAndApplyEventsEffectsInMemory[PropertyEvent](_, _.toList.foreach(applyPropertyEffect))
+      persistAndApplyEventsEffectsInMemory[PropertyEvent](
+        _,
+        events => events.toList.foreach(applyPropertyEffect)
+      )
     )
 
   protected def processPropertyEvent(
@@ -353,12 +382,9 @@ private[graph] class NodeActor(
     propertyEvents(events, None)
 
   private[this] def edgeEvents(events: List[EdgeEvent], atTime: Option[EventTime]): Future[Done.type] =
-    guardEvents[EdgeEvent](
-      edgeEventHasEffect,
-      events,
-      atTime,
-      persistAndApplyEventsEffectsInMemory[EdgeEvent](_, _.toList.foreach(applyEdgeEffect))
-    )
+    refuseHistoricalUpdates(events)(
+      edges.processEdgeEvents(events, atTime.fold(() => tickEventSequence())(() => _))
+    ).map(_ => Done)(ExecutionContexts.parasitic)
 
   protected def processEdgeEvents(
     events: List[EdgeEvent]
@@ -394,14 +420,14 @@ private[graph] class NodeActor(
     applyEventsEffectsInMemory: NonEmptyList[A] => Unit
   ): Future[Done.type] = {
     val persistAttempts = new AtomicInteger(1)
-    def persistEventsToJournal(): Future[Done.type] =
+    def persistEventsToJournal(): Future[Unit] =
       if (persistenceConfig.journalEnabled) {
         metrics.persistorPersistEventTimer
           .time(persistor.persistEvents(qid, effectingEvents.toList))
           .transform(
             _ =>
               // TODO: add a metric to count `persistAttempts`
-              Done,
+              (),
             (e: Throwable) => {
               val attemptCount = persistAttempts.getAndIncrement()
               log.info(
@@ -411,22 +437,24 @@ private[graph] class NodeActor(
               e
             }
           )(cypherEc)
-      } else Future.successful(Done)
+      } else Future.unit
 
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
         val events = effectingEvents.map(_.event)
         applyEventsEffectsInMemory(events)
         notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
-        akka.pattern.retry(
-          () => persistEventsToJournal(),
-          Int.MaxValue,
-          1.millisecond,
-          10.seconds,
-          randomFactor = 0.1d
-        )(cypherEc, context.system.scheduler)
+        akka.pattern
+          .retry(
+            () => persistEventsToJournal(),
+            Int.MaxValue,
+            1.millisecond,
+            10.seconds,
+            randomFactor = 0.1d
+          )(cypherEc, context.system.scheduler)
+          .map(_ => Done)(ExecutionContexts.parasitic)
       case EventEffectOrder.PersistorFirst =>
-        pauseMessageProcessingUntil[Done.type](
+        pauseMessageProcessingUntil[Unit](
           persistEventsToJournal(),
           {
             case Success(_) =>
@@ -479,30 +507,10 @@ private[graph] class NodeActor(
     log.debug("persistSnapshot called on historical node: This indicates programmer error.")
   }
 
-  /** The folling three methods apply effects of the provided events to the node state.
-    * For [[EdgeEvent]], [[PropertyEvent]], and [[DomainIndexEvent]], respectively
+  /** The folling two methods apply effects of the provided events to the node state.
+    * For [[PropertyEvent]], and [[DomainIndexEvent]], respectively
     * @param event                 thee event to apply
     */
-  private[this] def applyEdgeEffect(event: EdgeEvent): Unit = event match {
-    case EdgeAdded(edge) =>
-      // The more edges you get, the worse it is to sleep
-      val len = edges.size
-      if (len > 7 && isPowerOfTwo(len)) costToSleep.incrementAndGet()
-
-      val edgeCollectionSizeWarningInterval = 10000
-      if (log.isWarningEnabled && (len + 1) % edgeCollectionSizeWarningInterval == 0)
-        log.warning(s"Node: ${qid.pretty} has: ${len + 1} edges")
-
-      metrics.nodeEdgesCounter.increment(previousCount = len)
-      edges += edge
-      ()
-
-    case EdgeRemoved(edge) =>
-      metrics.nodeEdgesCounter.decrement(previousCount = edges.size)
-      edges -= edge
-      ()
-
-  }
 
   private[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
     case PropertySet(key, value) =>
@@ -537,15 +545,19 @@ private[graph] class NodeActor(
     }
   }
 
+  private def updateLasttWriteAfterSnapshot(): Unit = {
+    latestUpdateAfterSnapshot = Some(peekEventSequence())
+    lastWriteMillis = previousMessageMillis()
+    if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
+  }
+
   /** Call this if effects were applied to the node state (it was modified)
     * to update the "last update" timestamp, save a snapshot (if configured to),
     * and notify any subscribers of the applied [[NodeChangeEvent]]s
     * @param events
     */
   private[this] def notifyNodeUpdate(events: List[NodeChangeEvent]): Unit = {
-    latestUpdateAfterSnapshot = Some(peekEventSequence())
-    lastWriteMillis = previousMessageMillis()
-    if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
+    updateLasttWriteAfterSnapshot()
     runPostActions(events)
   }
 
