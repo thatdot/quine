@@ -44,7 +44,7 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
                   .asScala
                   .map { mapEntry =>
                     /*
-                      mapEntry.getDescriptorForType is a type descriped as:
+                      mapEntry.getDescriptorForType is a type described as:
                       message MapFieldEntry {
                         key_type key = 1;
                         value_type value = 2;

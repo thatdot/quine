@@ -81,7 +81,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   lazy val atLeastOnceQuery: AtLeastOnceCypherQuery = AtLeastOnceCypherQuery(compiled, parameter, "ingest-query")
 
   if (compiled.query.canContainAllNodeScan) {
-    // TODO this should be lifted to an (overrideable, see allowAllNodeScan in SQ outputs) API error
+    // TODO this should be lifted to an (overridable, see allowAllNodeScan in SQ outputs) API error
     logger.warn(
       "Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
       "The provided query was: " + compiled.queryText

@@ -6,7 +6,7 @@ description: Introducing Quine streaming graph exploration user interface
 Quine's Exploration UI is an interactive canvas for exploring specific sub-graphs of data. While Quine overall is a streaming graph interpreter, the Exploration UI gives a user the ability to explore subsets of data in a style more similar to a database. This tool is particularly useful for investigating specific data found via the streaming capabilities built into the rest of the system. It facilitates an ad hoc, interactive exploration of small subsets of data.
 
 @@@ note
-The Exploration UI is fully supported in Chrome. Other browsers are likely to work for most cases, but may experience some unusual behavior. In particular, Safari occassionaly does not update or garbles text values returned in the interactive documentation. Safari also renders nodes more slowly than Chrome, so animating the layout of many nodes is likely to be slow in Safari.
+The Exploration UI is fully supported in Chrome. Other browsers are likely to work for most cases, but may experience some unusual behavior. In particular, Safari occasionally does not update or garbles text values returned in the interactive documentation. Safari also renders nodes more slowly than Chrome, so animating the layout of many nodes is likely to be slow in Safari.
 @@@
 
 ## Components

@@ -9,7 +9,7 @@ import com.thatdot.quine.graph.messaging.QuineMessage
 
 /** Nested Futures should have their innermost Future time out before their outermost future.
   * Tracking how much to decrement the inner future is necessarily imprecise (because calculating
-  * how much time has elapsed or is remainingrequires a non-measurable ammount of time). This method
+  * how much time has elapsed or is remainingrequires a non-measurable amount of time). This method
   * calculates a suitably-shortened timeout.
   *
   * This function has two primary purposes:
@@ -17,7 +17,7 @@ import com.thatdot.quine.graph.messaging.QuineMessage
   * 2.) decrement the timeout according to the `nestedTimeoutSafetyMargin` so that inner timeouts
   * fail first.
   *
-  * Guidence:
+  * Guidance:
   * - Call this function when a `Timeout` is needed. If no timeout is needed, then thread through the original nanos.
   * - This should be called as close to where it will be used as possible. All computation done after this is called will eat into the nestedTimeoutSafetyMargin.
   * - It is not needed when completing a future with `onComplete`, even if the success function creates another future via an ask. This is because they are sequential, but a new Timeout will have to be created for the second future.

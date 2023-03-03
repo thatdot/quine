@@ -26,7 +26,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
   * @param actorRef address of the destination actor
   * @param refIsRemote is the destination actor in a different JVM?
   * @param originalSender for debuggging purposes - what Akka's `sender()` will report
-  * @param promisedResult promise that is fulfilled with the reponse
+  * @param promisedResult promise that is fulfilled with the response
   * @param timeout time to wait until the promise fails with a timeout
   */
 final private[quine] class ExactlyOnceAskActor[Resp](

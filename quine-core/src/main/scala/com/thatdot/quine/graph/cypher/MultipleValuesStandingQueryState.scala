@@ -118,7 +118,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
 /** A [[MultipleValuesStandingQueryState]] that refers to a [[MultipleValuesStandingQuery]] in the system (graph)'s cache
   * `query` may be safely used in any other function
   */
-sealed trait CachableQueryMultipleValues extends MultipleValuesStandingQueryState {
+sealed trait CacheableQueryMultipleValues extends MultipleValuesStandingQueryState {
   private[this] var _query: StateOf = _ // late-init
   protected[this] def query: StateOf = _query // readonly access for implementations
 
@@ -185,7 +185,7 @@ trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLook
 
   /** Cancel an existing result
     *
-    * @param resultId uniqe identifier for the old result
+    * @param resultId unique identifier for the old result
     */
   def cancelOldResult(resultId: ResultId): Unit
 }
@@ -199,7 +199,7 @@ final case class UnitState(
   queryPartId: MultipleValuesStandingQueryPartId,
   var resultId: Option[ResultId]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
 
   override def onInitialize(
     effectHandler: MultipleValuesStandingQueryEffects
@@ -228,7 +228,7 @@ final case class CrossState(
   accumulatedResults: ArraySeq[mutable.Map[ResultId, QueryContext]],
   resultDependency: mutable.Map[ResultId, List[ResultId]]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
   type StateOf = MultipleValuesStandingQuery.Cross
 
   /** map of results received to the set of results emitted
@@ -381,10 +381,10 @@ final case class CrossState(
     }
 
   def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultDependency.view.map { case (resultId, dependsOnResulIds) =>
+    resultDependency.view.map { case (resultId, dependsOnResultIds) =>
       val recreatedResult = accumulatedResults.view
         .map(
-          dependsOnResulIds.collectFirst(_).get
+          dependsOnResultIds.collectFirst(_).get
         ) // TODO: handle `get` with an error explaining what invariant is violated
         .foldLeft(QueryContext.empty)(_ ++ _)
       resultId -> recreatedResult
@@ -400,7 +400,7 @@ final case class LocalPropertyState(
   queryPartId: MultipleValuesStandingQueryPartId,
   var currentResult: Option[ResultId]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
   type StateOf = MultipleValuesStandingQuery.LocalProperty
 
   override def relevantEvents: Seq[StandingQueryLocalEvents.Property] = Seq(
@@ -524,7 +524,7 @@ final case class LocalIdState(
   queryPartId: MultipleValuesStandingQueryPartId,
   var resultId: Option[ResultId]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
   type StateOf = MultipleValuesStandingQuery.LocalId
 
   private[this] var idValue: Value = _
@@ -571,7 +571,7 @@ final case class SubscribeAcrossEdgeState(
     (MultipleValuesStandingQueryPartId, mutable.Map[ResultId, (ResultId, QueryContext)])
   ]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
   type StateOf = MultipleValuesStandingQuery.SubscribeAcrossEdge
 
   /** mapping from standing queries emitted to the corresponding half edge
@@ -785,7 +785,7 @@ final case class FilterMapState(
   queryPartId: MultipleValuesStandingQueryPartId,
   keptResults: mutable.Map[ResultId, (ResultId, QueryContext)]
 ) extends MultipleValuesStandingQueryState
-    with CachableQueryMultipleValues {
+    with CacheableQueryMultipleValues {
   type StateOf = MultipleValuesStandingQuery.FilterMap
 
   override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =

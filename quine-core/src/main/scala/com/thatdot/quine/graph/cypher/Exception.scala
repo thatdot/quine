@@ -10,7 +10,7 @@ sealed abstract class CypherException extends Exception with Product {
     .fold("")(pos => s"at ${pos.row}.${pos.column} ")
 
   /** Construct a pretty error message, which include the type of error, the
-    * position where it occured (if we have that), the error message, then
+    * position where it occurred (if we have that), the error message, then
     * a the line which contains the error position (if we have that)
     */
   def pretty: String = {

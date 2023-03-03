@@ -57,7 +57,7 @@ ingestStreams:
           AND id(clientGeo) = idFrom('clientGeo', $that.client_geo_country)
 
         ////////////////////////////////////////
-        //Bucketing for HITs and MISSes counters
+        //Bucketing for HITs and MISSSes counters
         ////////////////////////////////////////
         // RegEx deets here: https://regex101.com/r/uP0KMm/1
         WITH *, text.regexFirstMatch($that.cache_status, '(HIT|MISS(?!.*HIT)).*') AS hmp WHERE hmp[1] IS NOT NULL
@@ -237,7 +237,7 @@ standingQueries:
           // Add constraints to the cache MISS events match involving the same server and asset pair.
           MATCH (server1:server)<-[:TARGETED]-(event1 {cache_class:"MISS"})-[:REQUESTED]->(asset)<-[:REQUESTED]-(event2 {cache_class:"MISS"})-[:TARGETED]->(server2:server)
           WHERE id(event1) = $that.data.event1
-            // Time between consecutive cache MISSes between 5-45 minutes expressed in ISO 8601 duration format (https://en.wikipedia.org/wiki/ISO_8601#Durations)
+            // Time between consecutive cache MISSSes between 5-45 minutes expressed in ISO 8601 duration format (https://en.wikipedia.org/wiki/ISO_8601#Durations)
             // Feel free to alter the range to meet your requirements
             AND duration("PT45M") > duration.between(localdatetime(event1.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS"), localdatetime(event2.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS")) > duration("PT5M")
             AND event1.client_asn = event2.client_asn
@@ -247,7 +247,7 @@ standingQueries:
           ////////////////////////////////////////////////////////
           // missEvents
           ////////////////////////////////////////////////////////
-          // Manifest missEvents node to track metadata relative to consecutive cache MISSes that match the previous constraints
+          // Manifest missEvents node to track metadata relative to consecutive cache MISSSes that match the previous constraints
           MATCH (missEvents) 
           WHERE id(missEvents) = idFrom('missEvents', server1.server_id, asset.full_path)
           SET missEvents.asset = event1.path, 
@@ -524,7 +524,7 @@ nodeAppearances:
     size: 50.00
     label:
       type: Property
-      key: lastestMiss
+      key: latestMiss
       prefix: "Miss Events: "
   # Server Icon/color *********************
   - predicate:

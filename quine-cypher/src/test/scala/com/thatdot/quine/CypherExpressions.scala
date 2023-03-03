@@ -427,7 +427,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       ),
       expectedIsReadOnly = false
     )
-    // set.insert (with history, homogenous)
+    // set.insert (with history, homogeneous)
     testQuery(
       "CALL set.insert(idFrom(12232), 'set-unary', 2.0) YIELD result RETURN result",
       expectedColumns = Vector("result"),
@@ -438,7 +438,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       ),
       expectedIsReadOnly = false
     )
-    // set.insert (with history, homogenous, deduplicated)
+    // set.insert (with history, homogeneous, deduplicated)
     testQuery(
       "CALL set.insert(idFrom(12232), 'set-unary', 1.50) YIELD result RETURN result",
       expectedColumns = Vector("result"),
@@ -472,7 +472,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       ),
       expectedIsReadOnly = false
     )
-    // set.insert (with history, homogenous)
+    // set.insert (with history, homogeneous)
     testQuery(
       "CALL set.union(idFrom(12232), 'set-union', [1]) YIELD result RETURN result",
       expectedColumns = Vector("result"),
@@ -483,7 +483,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       ),
       expectedIsReadOnly = false
     )
-    // set.insert (with history, homogenous, partially-deduplicated)
+    // set.insert (with history, homogeneous, partially-deduplicated)
     testQuery(
       "CALL set.union(idFrom(12232), 'set-union', [7, 1]) YIELD result RETURN result",
       expectedColumns = Vector("result"),
@@ -494,7 +494,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       ),
       expectedIsReadOnly = false
     )
-    // set.insert (with history, homogenous, fully-deduplicated)
+    // set.insert (with history, homogeneous, fully-deduplicated)
     testQuery(
       "CALL set.union(idFrom(12232), 'set-union', [7, 3]) YIELD result RETURN result",
       expectedColumns = Vector("result"),

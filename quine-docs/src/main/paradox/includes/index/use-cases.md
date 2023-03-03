@@ -55,7 +55,7 @@ Using Streaming Graph To Solve Complex Event Processing Challenges Without Time 
   </div>
   <div>
     <h4 class="h3-small">Swappable Data Storage</h4>
-    <div class="small-text">Integrate with persistent data store of your choice. Acheive HA with WAL</div>
+    <div class="small-text">Integrate with persistent data store of your choice. Achieve HA with WAL</div>
   </div>
 </div>
 <div class="feature-card">

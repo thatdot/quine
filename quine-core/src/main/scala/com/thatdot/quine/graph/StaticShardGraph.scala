@@ -32,7 +32,7 @@ trait StaticShardGraph extends BaseGraph {
 
   /** Number of shards in the graph
     *
-    * Since shards are reponsible for waking up and sleeping nodes, the number
+    * Since shards are responsible for waking up and sleeping nodes, the number
     * of shards should be based on the expected rate of nodes being woken/slept.
     */
   def shardCount: Int

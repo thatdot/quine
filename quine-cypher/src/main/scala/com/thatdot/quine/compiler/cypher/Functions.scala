@@ -101,7 +101,7 @@ final class QuineFunctionInvocation(
   override val distinct = false
   override val function = new OpenCypherUdf(udf)
 
-  /* This _must_ be overriden or else `QuineFunctionInvocation` risks being
+  /* This _must_ be overridden or else `QuineFunctionInvocation` risks being
    * re-written back to `FunctionInvocation`. This is all thanks to the fact
    * that this class is extending a `case class` and `ASTNode.dup` looks up the
    * constructor to use from `Rewritable.copyConstructor`, which in turn defers
@@ -162,7 +162,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherCollMax,
     CypherCollMin,
     CypherMetaType
-  ) ++ CypherGenFroms.all ++ CypherCasts.all
+  ) ++ CypherGenForms.all ++ CypherCasts.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
   val deprecatedNames: Map[String, UserDefinedFunction] = Map.empty
@@ -1485,7 +1485,7 @@ class CypherValueGenFrom(outputType: Type, defaultSize: Long, randGen: (Long, Lo
   }
 }
 
-object CypherGenFroms {
+object CypherGenForms {
   private def bytes(hash: Long, size: Int): Array[Byte] = {
     val b = Array.ofDim[Byte](size)
     new Random(hash).nextBytes(b)

@@ -212,7 +212,7 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
     structuredValues.get(structure.signature) match {
       case Some(s) => s.fromStructure(structure)
       case None => throw new IllegalArgumentException(
-        s"Unkown structure signature ${structure.signature}"
+        s"Unknown structure signature ${structure.signature}"
       )
     }
   }

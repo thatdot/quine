@@ -907,7 +907,7 @@ object Query {
     * This is eager because 'no' rows get emitted until all rows have been
     * consumed. Each incoming row is evaluated along a list of expressions.
     * For each such bucket, some aggregate expression is maintained. When
-    * there are no more inputs, one row gets outputed for each bucket.
+    * there are no more inputs, one row gets outputted for each bucket.
     *
     * @param aggregateAlong criteria along which to partition rows
     * @param aggregateWith how to perform aggregation on each bucket

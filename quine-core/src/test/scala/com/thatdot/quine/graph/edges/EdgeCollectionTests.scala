@@ -37,9 +37,9 @@ abstract class EdgeCollectionTests
     */
   def newEdgeCollection: EdgeCollection
 
-  /** Describes the specific assertion to make compairing the actual and expected values.
+  /** Describes the specific assertion to make comparing the actual and expected values.
     *
-    * @param expected The expecte value to compare against
+    * @param expected The expected value to compare against
     * @return
     */
   def assertEdgeCollection[A](actual: Seq[A], expected: Seq[A]): Assertion

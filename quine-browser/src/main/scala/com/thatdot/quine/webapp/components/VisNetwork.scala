@@ -53,7 +53,7 @@ object VisData {
 
   /** @param data mutable data store backing the network
     * @param afterNetworkInit called with the network object once it is initialized
-    * @param options options with which to intialize the network
+    * @param options options with which to initialize the network
     */
   case class Props(
     data: VisData,

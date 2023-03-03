@@ -66,7 +66,7 @@ final case class NodeComponents(
 object NodeComponents {
 
   /** Flatten a set of [[NodeComponents]] such that all node components sharing common [[QuineId]]s are merged, with
-    * their edges being similarily recursively merged.
+    * their edges being similarly recursively merged.
     *
     * @param ncs set of node components to merge
     * @return set of node components with distinct [[QuineId]]s

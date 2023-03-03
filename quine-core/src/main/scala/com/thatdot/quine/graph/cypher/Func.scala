@@ -498,7 +498,7 @@ object Func {
   case object Replace extends BuiltinFunc(
     name = "replace",
     isPure = true,
-    description = "replace every occurence of a target string",
+    description = "replace every occurrence of a target string",
     signature = "(original :: STRING?, target :: STRING?, replacement :: STRING?) :: STRING?"
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =

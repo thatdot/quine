@@ -37,7 +37,7 @@ python ingest_test.py -e 'Base64,Zlib' kinesis --name ingest-test-stream --regio
 
 ## Operation
 	
-	This script works by generating a random key for each run and generating N json data elements containg that key. We then run
+	This script works by generating a random key for each run and generating N json data elements containing that key. We then run
 	an  ingest and a query for values containing that generated key. Each run therefore generates N new values in quine. The 
 	number of generated values is configurable but defaults to 10.
 

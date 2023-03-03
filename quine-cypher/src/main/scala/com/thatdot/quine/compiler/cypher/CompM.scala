@@ -11,7 +11,7 @@ import com.thatdot.quine.utils.MonadErrorVia
 
 /** Stateful compilation computation
   *
-  *   - reads query-global parameter indicies (to compile constructs like `$props`)
+  *   - reads query-global parameter indices (to compile constructs like `$props`)
   *   - reads query-global source text (used when creating exception positions)
   *   - tracks state: which nodes are in scope at a given point of query compilation
   *   - captures compilation exceptions

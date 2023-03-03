@@ -145,7 +145,7 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
           val builder = Date.newBuilder()
           builder.setDay(javaLocalDate.getDayOfMonth)
           builder.setMonth(javaLocalDate.getDayOfMonth)
-          //TODO Protobuf lib. Only supports postive years 0-9999, while javaLocalDate supports -999999999 to 999999999
+          //TODO Protobuf lib. Only supports positive years 0-9999, while javaLocalDate supports -999999999 to 999999999
           builder.setYear(javaLocalDate.getYear)
           Right(builder.build)
         case other => Left(TypeMismatch(qv.quineType, other))

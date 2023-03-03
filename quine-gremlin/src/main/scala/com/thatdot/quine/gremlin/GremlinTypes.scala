@@ -758,7 +758,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
   }
 
   /** Groups its inputs and emits one output at the end: a map from each
-    * distinct input to the total number of occurences of that input
+    * distinct input to the total number of occurrences of that input
     */
   case object GroupCount extends TraversalStep {
     override def flow(implicit ctx: VariableStore, atTime: AtTime): Success[Flow[Result, Result, NotUsed]] = Success {

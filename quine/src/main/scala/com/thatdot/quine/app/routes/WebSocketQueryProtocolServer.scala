@@ -86,7 +86,7 @@ trait WebSocketQueryProtocolServer
         GraphDSL.createGraph(mergeHub) { implicit builder => mergedSource =>
           import GraphDSL.Implicits._
 
-          // Recieve client messages and deserialize them
+          // Receive client messages and deserialize them
           val clientMessages = builder.add(Flow[ws.Message])
 
           // Do something with client messages and return a response
