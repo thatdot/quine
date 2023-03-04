@@ -57,7 +57,7 @@ ingestStreams:
           AND id(clientGeo) = idFrom('clientGeo', $that.client_geo_country)
 
         ////////////////////////////////////////
-        //Bucketing for HITs and MISSSes counters
+        //Bucketing for HITs and MISSes counters
         ////////////////////////////////////////
         // RegEx deets here: https://regex101.com/r/uP0KMm/1
         WITH *, text.regexFirstMatch($that.cache_status, '(HIT|MISS(?!.*HIT)).*') AS hmp WHERE hmp[1] IS NOT NULL
