@@ -247,7 +247,7 @@ standingQueries:
           ////////////////////////////////////////////////////////
           // missEvents
           ////////////////////////////////////////////////////////
-          // Manifest missEvents node to track metadata relative to consecutive cache MISSSes that match the previous constraints
+          // Manifest missEvents node to track metadata relative to consecutive cache MISSes that match the previous constraints
           MATCH (missEvents) 
           WHERE id(missEvents) = idFrom('missEvents', server1.server_id, asset.full_path)
           SET missEvents.asset = event1.path, 
