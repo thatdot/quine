@@ -237,7 +237,7 @@ standingQueries:
           // Add constraints to the cache MISS events match involving the same server and asset pair.
           MATCH (server1:server)<-[:TARGETED]-(event1 {cache_class:"MISS"})-[:REQUESTED]->(asset)<-[:REQUESTED]-(event2 {cache_class:"MISS"})-[:TARGETED]->(server2:server)
           WHERE id(event1) = $that.data.event1
-            // Time between consecutive cache MISSSes between 5-45 minutes expressed in ISO 8601 duration format (https://en.wikipedia.org/wiki/ISO_8601#Durations)
+            // Time between consecutive cache MISSes between 5-45 minutes expressed in ISO 8601 duration format (https://en.wikipedia.org/wiki/ISO_8601#Durations)
             // Feel free to alter the range to meet your requirements
             AND duration("PT45M") > duration.between(localdatetime(event1.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS"), localdatetime(event2.timestamp, "yyyy-MM-dd HH:mm:ss.SSSSSS")) > duration("PT5M")
             AND event1.client_asn = event2.client_asn
