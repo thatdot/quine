@@ -6,6 +6,7 @@ description: Cypher language list for Quine streaming graph
 @@@index
 * @ref:[Cypher Functions](cypher-functions.md)
 * @ref:[Cypher Procedures](cypher-procedures.md)
+* @ref:[Advanced Cypher](advanced-cypher.md)
 @@@
 
 
