@@ -344,7 +344,7 @@ object Substitution {
     case SingleBranch(done, id, nextBranches, comparisonFunc) =>
       val nextBranchesSubstituted =
         nextBranches.map(nextBranch => nextBranch.copy(branch = substitute(nextBranch.branch, variable, branch)))
-      SingleBranch(done, id, nextBranchesSubstituted, comparisonFunc)
+      SingleBranch(dne, id, nextBranchesSubstituted, comparisonFunc)
 
     case And(conjuncts) =>
       And(conjuncts.map(conjunct => substitute(conjunct, variable, branch)))
