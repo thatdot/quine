@@ -341,7 +341,7 @@ object Substitution {
     variable: MuVariableName,
     branch: DomainGraphBranch
   ): DomainGraphBranch = substituteIn match {
-    case SingleBranch(done, id, nextBranches, comparisonFunc) =>
+    case SingleBranch(dne, id, nextBranches, comparisonFunc) =>
       val nextBranchesSubstituted =
         nextBranches.map(nextBranch => nextBranch.copy(branch = substitute(nextBranch.branch, variable, branch)))
       SingleBranch(dne, id, nextBranchesSubstituted, comparisonFunc)
