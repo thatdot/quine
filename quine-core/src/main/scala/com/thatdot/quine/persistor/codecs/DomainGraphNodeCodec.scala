@@ -119,15 +119,15 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
         throw new InvalidUnionType(other, persistence.PropertyComparisonFunction.names)
     }
 
-  private[this] def writeDomainNodeEquiv(builder: FlatBufferBuilder, done: DomainNodeEquiv): Offset = {
-    val classNameOff: Offset = done.className match {
+  private[this] def writeDomainNodeEquiv(builder: FlatBufferBuilder, dne: DomainNodeEquiv): Offset = {
+    val classNameOff: Offset = dne.className match {
       case None => NoOffset
       case Some(name) => builder.createString(name)
     }
 
     val localPropsOff: Offset = {
-      val localPropertiesOffs: Array[Offset] = new Array[Offset](done.localProps.size)
-      for (((propKey, (compFunction, propValueOpt)), i) <- done.localProps.zipWithIndex) {
+      val localPropertiesOffs: Array[Offset] = new Array[Offset](dne.localProps.size)
+      for (((propKey, (compFunction, propValueOpt)), i) <- dne.localProps.zipWithIndex) {
         val propKeyOff: Offset = builder.createString(propKey.name)
         val TypeAndOffset(compFuncTyp, compFuncOff) = writePropertyComparisonFunction(builder, compFunction)
         val propValueOff: Offset = persistence.LocalProperty.createValueVector(
@@ -145,8 +145,8 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     }
 
     val circularEdgesOff: Offset = {
-      val circularEdgesOffs: Array[Offset] = new Array[Offset](done.circularEdges.size)
-      for (((edgeType, isDirected), i) <- done.circularEdges.zipWithIndex)
+      val circularEdgesOffs: Array[Offset] = new Array[Offset](dne.circularEdges.size)
+      for (((edgeType, isDirected), i) <- dne.circularEdges.zipWithIndex)
         circularEdgesOffs(i) = persistence.CircularEdge.createCircularEdge(
           builder,
           builder.createString(edgeType.name),
@@ -163,15 +163,15 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     )
   }
 
-  private[this] def readDomainNodeEquiv(done: persistence.DomainNodeEquiv): DomainNodeEquiv = {
-    val className: Option[String] = Option(done.className)
+  private[this] def readDomainNodeEquiv(dne: persistence.DomainNodeEquiv): DomainNodeEquiv = {
+    val className: Option[String] = Option(dne.className)
 
     val localProps: Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])] = {
       val builder = Map.newBuilder[Symbol, (PropertyComparisonFunc, Option[PropertyValue])]
       var i: Int = 0
-      val localPropertiesLength: Int = done.localPropertiesLength
+      val localPropertiesLength: Int = dne.localPropertiesLength
       while (i < localPropertiesLength) {
-        val localProperty: persistence.LocalProperty = done.localProperties(i)
+        val localProperty: persistence.LocalProperty = dne.localProperties(i)
         val propertyKey: Symbol = Symbol(localProperty.propertyKey)
         val compFunc: PropertyComparisonFunc = readPropertyComparisonFunction(
           localProperty.comparisonFunctionType,
@@ -191,9 +191,9 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     val circularEdges: Set[CircularEdge] = {
       val builder = Set.newBuilder[CircularEdge]
       var i: Int = 0
-      val circularEdgesLength = done.circularEdgesLength
+      val circularEdgesLength = dne.circularEdgesLength
       while (i < circularEdgesLength) {
-        val circularEdge: persistence.CircularEdge = done.circularEdges(i)
+        val circularEdge: persistence.CircularEdge = dne.circularEdges(i)
         builder += Symbol(circularEdge.edgeType) -> circularEdge.isDirected
         i += 1
       }
@@ -269,7 +269,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     dgn: DomainGraphNode
   ): TypeAndOffset =
     dgn match {
-      case DomainGraphNode.Single(done, identification, nextNodes, compFunc) =>
+      case DomainGraphNode.Single(dne, identification, nextNodes, compFunc) =>
         val identificationOff: Offset = identification match {
           case None => NoOffset
           case Some(id) =>
@@ -300,7 +300,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
 
         val offset: Offset = persistence.SingleNode.createSingleNode(
           builder,
-          writeDomainNodeEquiv(builder, done),
+          writeDomainNodeEquiv(builder, dne),
           identificationOff,
           nextNodesOff,
           comparisonFunction
