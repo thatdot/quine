@@ -11,7 +11,7 @@ import akka.actor._
 import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 
-import com.thatdot.quine.graph.edges.{EdgeCollection, ReverseOrderedEdgeCollection}
+import com.thatdot.quine.graph.edges.{ReverseOrderedEdgeCollection, SyncEdgeCollection}
 import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent}
@@ -29,7 +29,7 @@ class GraphService(
   val declineSleepWhenAccessWithinMillis: Long,
   val maxCatchUpSleepMillis: Long,
   val labelsProperty: Symbol,
-  val edgeCollectionFactory: () => EdgeCollection,
+  val edgeCollectionFactory: QuineId => SyncEdgeCollection,
   val metrics: HostQuineMetrics
 ) extends StaticShardGraph
     with LiteralOpsGraph
@@ -112,7 +112,7 @@ object GraphService {
     declineSleepWhenAccessWithinMillis: Long = 0L,
     maxCatchUpSleepMillis: Long = 2000L,
     labelsProperty: Symbol = Symbol("__LABEL"),
-    edgeCollectionFactory: () => EdgeCollection = () => new ReverseOrderedEdgeCollection,
+    edgeCollectionFactory: QuineId => SyncEdgeCollection = new ReverseOrderedEdgeCollection(_),
     metricRegistry: MetricRegistry = new MetricRegistry
   ): Future[GraphService] =
     try {

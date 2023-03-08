@@ -8,7 +8,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 
-import com.google.common.hash.{BloomFilter, Funnel, Funnels, PrimitiveSink}
+import com.google.common.hash.{BloomFilter, Funnel, PrimitiveSink}
 
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -26,7 +26,10 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 // This needs to be serializable for the bloom filter to be serializable
 case object QuineIdFunnel extends Funnel[QuineId] {
-  override def funnel(from: QuineId, into: PrimitiveSink): Unit = Funnels.byteArrayFunnel.funnel(from.array, into)
+  override def funnel(from: QuineId, into: PrimitiveSink): Unit = {
+    into.putBytes(from.array)
+    ()
+  }
 }
 
 object BloomFilteredPersistor {

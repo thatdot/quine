@@ -16,7 +16,7 @@ import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.QuineDispatchers
 
 class MemoryFirstEdgeProcessor(
-  edges: EdgeCollection,
+  edges: SyncEdgeCollection,
   persistToJournal: NonEmptyList[NodeEvent.WithTime[EdgeEvent]] => Future[Unit],
   updateSnapshotTimestamp: () => Unit,
   runPostActions: List[NodeChangeEvent] => Unit,

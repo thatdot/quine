@@ -13,7 +13,7 @@ import akka.util.Timeout
 
 import com.typesafe.scalalogging.StrictLogging
 
-import com.thatdot.quine.graph.edges.EdgeCollection
+import com.thatdot.quine.graph.edges.SyncEdgeCollection
 import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
 import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
@@ -59,7 +59,7 @@ trait BaseGraph extends StrictLogging {
   def nodeClass: Class[_]
 
   /** Method for initializing edge collections */
-  val edgeCollectionFactory: () => EdgeCollection
+  val edgeCollectionFactory: QuineId => SyncEdgeCollection
 
   // TODO: put this in some other class which is a field here
   val ingestValve: SharedValve = new SharedValve("ingest")

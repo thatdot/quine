@@ -13,7 +13,7 @@ import com.thatdot.quine.model._
   *
   * Not concurrent.
   */
-final class UnorderedEdgeCollection extends EdgeCollection {
+final class UnorderedEdgeCollection(val thisQid: QuineId) extends SyncEdgeCollection {
   private val edgeMap: MutableMap[Symbol, MutableMap[EdgeDirection, MutableSet[QuineId]]] = MutableMap.empty
   private var totalSize: Int = 0
 
@@ -24,7 +24,7 @@ final class UnorderedEdgeCollection extends EdgeCollection {
 
   override def size: Int = totalSize
 
-  override def addEdgeSync(edge: HalfEdge): Unit = {
+  override def addEdge(edge: HalfEdge): Unit = {
     val edgeDirMap = edgeMap.getOrElseUpdate(edge.edgeType, MutableMap.empty)
     val quineIdSet = edgeDirMap.getOrElseUpdate(edge.direction, MutableSet.empty)
     val didAddQuineId = quineIdSet.add(edge.other)
@@ -33,7 +33,7 @@ final class UnorderedEdgeCollection extends EdgeCollection {
     if (didAddQuineId) totalSize += 1
   }
 
-  override def removeEdgeSync(edge: HalfEdge): Unit =
+  override def removeEdge(edge: HalfEdge): Unit =
     for {
       edgeDirMap <- edgeMap.get(edge.edgeType)
       quineIdSet <- edgeDirMap.get(edge.direction)
@@ -63,65 +63,65 @@ final class UnorderedEdgeCollection extends EdgeCollection {
     def iterator: Iterator[HalfEdge] = all
   }
 
-  def matching(edgeType: Symbol): Iterator[HalfEdge] =
+  def edgesByType(edgeType: Symbol): Iterator[HalfEdge] =
     for {
       dirMap <- edgeMap.get(edgeType).iterator
       (dir, qids) <- dirMap.iterator
       qid <- qids.iterator
     } yield HalfEdge(edgeType, dir, qid)
 
-  def matching(edgeType: Symbol, direction: EdgeDirection): Iterator[HalfEdge] =
+  def qidsByTypeAndDirection(edgeType: Symbol, direction: EdgeDirection): Iterator[QuineId] =
     for {
       dirMap <- edgeMap.get(edgeType).iterator
       qids <- dirMap.get(direction).iterator
       qid <- qids.iterator
-    } yield HalfEdge(edgeType, direction, qid)
+    } yield qid
 
-  def matching(edgeType: Symbol, id: QuineId): Iterator[HalfEdge] =
+  def directionsByTypeAndQid(edgeType: Symbol, id: QuineId): Iterator[EdgeDirection] =
     for {
       dirMap <- edgeMap.get(edgeType).iterator
       (dir, qids) <- dirMap.iterator
       if qids.contains(id)
-    } yield HalfEdge(edgeType, dir, id)
+    } yield dir
 
-  def matching(edgeType: Symbol, direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] =
-    for {
-      dirMap <- edgeMap.get(edgeType).iterator
-      qids <- dirMap.get(direction).iterator
-      if qids.contains(id)
-    } yield HalfEdge(edgeType, direction, id)
+  def contains(edge: HalfEdge): Boolean =
+    (for {
+      dirMap <- edgeMap.get(edge.edgeType)
+      qids <- dirMap.get(edge.direction)
+      if qids.contains(edge.other)
+    } yield ()).isDefined
 
-  def matching(direction: EdgeDirection): Iterator[HalfEdge] =
+  def edgesByDirection(direction: EdgeDirection): Iterator[HalfEdge] =
     for {
       (edgeTyp, dirMap) <- edgeMap.iterator
       qids <- dirMap.get(direction).iterator
       qid <- qids.iterator
     } yield HalfEdge(edgeTyp, direction, qid)
 
-  def matching(direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] =
+  def typesByDirectionAndQid(direction: EdgeDirection, id: QuineId): Iterator[Symbol] =
     for {
       (edgeTyp, dirMap) <- edgeMap.iterator
       qids <- dirMap.get(direction).iterator
       if qids.contains(id)
-    } yield HalfEdge(edgeTyp, direction, id)
+    } yield edgeTyp
 
-  def matching(id: QuineId): Iterator[HalfEdge] =
+  def edgesByQid(id: QuineId): Iterator[GenericEdge] =
     for {
       (edgeTyp, dirMap) <- edgeMap.iterator
       (dir, qids) <- dirMap.iterator
       if qids.contains(id)
-    } yield HalfEdge(edgeTyp, dir, id)
+    } yield GenericEdge(edgeTyp, dir)
 
-  def matching(genEdge: GenericEdge): Iterator[HalfEdge] =
-    matching(genEdge.edgeType, genEdge.direction)
-
+  /* One of these was faster - I forget which
   override def contains(edge: HalfEdge): Boolean = edgeMap
     .getOrElse(edge.edgeType, MutableMap.empty)
     .getOrElse(edge.direction, MutableSet.empty)
     .contains(edge.other)
 
+   */
+
   // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
-  def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean = {
+  def hasUniqueGenEdges(requiredEdges: Iterable[DomainEdge]): Boolean = {
     // keys are edge specifications, values are how many edges matching that specification are necessary.
     val circAllowed = collection.mutable.Map.empty[GenericEdge, Int] // edge specifications that may be circular
     val circDisallowed = collection.mutable.Map.empty[GenericEdge, Int] // edge specifications that must not be circular
@@ -164,8 +164,6 @@ final class UnorderedEdgeCollection extends EdgeCollection {
         edgesMatchingRequirement.size >= requiredNoncircularCount + numberOfCircularEdgesPermitted
     }
   }
-
-  override def toSet: Set[HalfEdge] = all.toSet
 
   override def nonEmpty: IsDirected = edgeMap.nonEmpty
 }

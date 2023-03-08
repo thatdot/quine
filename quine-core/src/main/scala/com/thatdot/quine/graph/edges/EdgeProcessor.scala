@@ -6,11 +6,13 @@ import cats.data.NonEmptyList
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
-import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime, MemberIdx}
+import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime}
 import com.thatdot.quine.model._
 
+//abstract class DontCareWrapper(edges: AbstractEdgeCollectionView[F forSome { type F[_] }, S forSome { type S[_] }])
+//    extends EdgeProcessor(edges)
 abstract class EdgeProcessor(
-  edges: EdgeCollection
+  edges: AbstractEdgeCollectionView
 ) extends EdgeCollectionView {
 
   /** Apply edge events to a node including:
@@ -36,41 +38,46 @@ abstract class EdgeProcessor(
     */
   def updateEdgeCollection(event: EdgeEvent): Unit
 
-  def size: MemberIdx = edges.size
+  import edges.{toSyncFuture, toSyncStream}
+  def size: Int = toSyncFuture(edges.size).toInt
 
-  def all: Iterator[HalfEdge] = edges.all
+  def all: Iterator[HalfEdge] = toSyncStream(edges.all)
 
-  def toSet: Set[HalfEdge] = edges.toSet
+  def toSet: Set[HalfEdge] = all.toSet
 
   protected[graph] def toSerialize: Iterable[HalfEdge] = edges.toSerialize
 
-  def nonEmpty: Boolean = edges.nonEmpty
+  def nonEmpty: Boolean = toSyncFuture(edges.nonEmpty)
 
-  def matching(edgeType: Symbol): Iterator[HalfEdge] = edges.matching(edgeType)
+  def matching(edgeType: Symbol): Iterator[HalfEdge] = toSyncStream(edges.edgesByType(edgeType))
 
-  def matching(edgeType: Symbol, direction: EdgeDirection): Iterator[HalfEdge] = edges.matching(edgeType, direction)
+  def matching(edgeType: Symbol, direction: EdgeDirection): Iterator[HalfEdge] =
+    toSyncStream(edges.qidsByTypeAndDirection(edgeType, direction)).map(HalfEdge(edgeType, direction, _))
 
-  def matching(edgeType: Symbol, id: QuineId): Iterator[HalfEdge] = edges.matching(edgeType, id)
+  def matching(edgeType: Symbol, id: QuineId): Iterator[HalfEdge] =
+    toSyncStream(edges.directionsByTypeAndQid(edgeType, id)).map(HalfEdge(edgeType, _, id))
 
-  def matching(edgeType: Symbol, direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] =
-    edges.matching(edgeType, direction, id)
+  def matching(edgeType: Symbol, direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] = {
+    val edge = HalfEdge(edgeType, direction, id)
+    if (toSyncFuture(edges.contains(edge))) Iterator.single(edge) else Iterator.empty
+  }
+  def matching(direction: EdgeDirection): Iterator[HalfEdge] = toSyncStream(edges.edgesByDirection(direction))
 
-  def matching(direction: EdgeDirection): Iterator[HalfEdge] = edges.matching(direction)
+  def matching(direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] =
+    toSyncStream(edges.typesByDirectionAndQid(direction, id)).map(HalfEdge(_, direction, id))
 
-  def matching(direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] = edges.matching(direction, id)
+  def matching(id: QuineId): Iterator[HalfEdge] = toSyncStream(edges.edgesByQid(id)).map(_.toHalfEdge(id))
 
-  def matching(id: QuineId): Iterator[HalfEdge] = edges.matching(id)
+  def matching(genEdge: GenericEdge): Iterator[HalfEdge] = matching(genEdge.edgeType, genEdge.direction)
 
-  def matching(genEdge: GenericEdge): Iterator[HalfEdge] = edges.matching(genEdge)
-
-  def contains(edge: HalfEdge): Boolean = edges.contains(edge)
+  def contains(edge: HalfEdge): Boolean = toSyncFuture(edges.contains(edge))
 
   def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean =
-    edges.hasUniqueGenEdges(requiredEdges, thisQid)
+    toSyncFuture(edges.hasUniqueGenEdges(requiredEdges))
 }
 
 abstract class SynchronousEdgeProcessor(
-  edges: EdgeCollection,
+  edges: SyncEdgeCollection,
   qid: QuineId,
   costToSleep: CostToSleep,
   nodeEdgesCounter: BinaryHistogramCounter
@@ -99,15 +106,15 @@ abstract class SynchronousEdgeProcessor(
 
   def updateEdgeCollection(event: EdgeEvent): Unit = event match {
     case EdgeEvent.EdgeAdded(edge) =>
-      edges.addEdgeSync(edge)
+      edges.addEdge(edge)
     case EdgeEvent.EdgeRemoved(edge) =>
-      edges.removeEdgeSync(edge)
+      edges.removeEdge(edge)
   }
 
   /** Apply all effects (see [[processEdgeEvents]]) of a single edge event
     */
   protected[this] def applyEdgeEffect(event: EdgeEvent): Unit = {
-    val oldSize = edges.size
+    val oldSize = edges.size.toInt
     updateEdgeCollection(event)
     event match {
       case EdgeEvent.EdgeAdded(_) =>

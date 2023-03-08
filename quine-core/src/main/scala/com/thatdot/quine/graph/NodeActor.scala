@@ -146,8 +146,8 @@ private[graph] class NodeActor(
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
   protected var edges: EdgeProcessor = {
-    val edgeCollection = graph.edgeCollectionFactory()
-    initialEdges.foreach(edgeCollection.addEdgeSync)
+    val edgeCollection = graph.edgeCollectionFactory(qid)
+    initialEdges.foreach(edgeCollection.addEdge)
     val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
       if (persistor.persistenceConfig.journalEnabled)
         events => metrics.persistorPersistEventTimer.time(persistor.persistEvents(qid, events.toList))
@@ -219,7 +219,6 @@ private[graph] class NodeActor(
 
   { // here be the side-effects performed by the constructor
     // This assumes a synchronous in-memory EdgeCollection
-    // For supernodes, initialEdges (the edges in the snapshot) will be empty - so this will be a no-op
 
     initialJournal foreach {
       case event: PropertyEvent => applyPropertyEffect(event)
@@ -545,7 +544,7 @@ private[graph] class NodeActor(
     }
   }
 
-  private def updateLasttWriteAfterSnapshot(): Unit = {
+  protected def updateLasttWriteAfterSnapshot(): Unit = {
     latestUpdateAfterSnapshot = Some(peekEventSequence())
     lastWriteMillis = previousMessageMillis()
     if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
@@ -556,7 +555,7 @@ private[graph] class NodeActor(
     * and notify any subscribers of the applied [[NodeChangeEvent]]s
     * @param events
     */
-  private[this] def notifyNodeUpdate(events: List[NodeChangeEvent]): Unit = {
+  protected[this] def notifyNodeUpdate(events: List[NodeChangeEvent]): Unit = {
     updateLasttWriteAfterSnapshot()
     runPostActions(events)
   }
@@ -566,7 +565,7 @@ private[graph] class NodeActor(
     *
     * @param events ordered sequence of node events produced from a single message.
     */
-  private[this] def runPostActions(events: List[NodeChangeEvent]): Unit = events.foreach { event =>
+  protected[this] def runPostActions(events: List[NodeChangeEvent]): Unit = events.foreach { event =>
     localEventIndex.standingQueriesWatchingNodeEvent(
       event,
       {

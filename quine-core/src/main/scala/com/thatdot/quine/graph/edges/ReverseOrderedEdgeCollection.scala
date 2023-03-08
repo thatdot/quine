@@ -17,7 +17,7 @@ import com.thatdot.quine.util.ReversibleLinkedHashSet
   *
   * Not concurrent.
   */
-final class ReverseOrderedEdgeCollection extends EdgeCollection {
+final class ReverseOrderedEdgeCollection(val thisQid: QuineId) extends SyncEdgeCollection {
 
   private val edges: ReversibleLinkedHashSet[HalfEdge] = ReversibleLinkedHashSet.empty
   private val typeIndex: EdgeIndex[Symbol] = new EdgeIndex(_.edgeType)
@@ -30,7 +30,7 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
 
   override def size: Int = edges.size
 
-  override def addEdgeSync(edge: HalfEdge): Unit = {
+  override def addEdge(edge: HalfEdge): Unit = {
     edges += edge
     typeIndex += edge
     otherIndex += edge
@@ -38,7 +38,7 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
     ()
   }
 
-  override def removeEdgeSync(edge: HalfEdge): Unit = {
+  override def removeEdge(edge: HalfEdge): Unit = {
     edges -= edge
     typeIndex -= edge
     otherIndex -= edge
@@ -52,52 +52,38 @@ final class ReverseOrderedEdgeCollection extends EdgeCollection {
     * @return An iterator in the same direction as those returned by [[matching]]
     */
   override def all: Iterator[HalfEdge] = edges.reverseIterator
-  override def toSet: Set[HalfEdge] = edges.toSet
   override def nonEmpty: Boolean = edges.nonEmpty
 
-  override def matching(edgeType: Symbol): Iterator[HalfEdge] =
+  override def edgesByType(edgeType: Symbol): Iterator[HalfEdge] =
     typeIndex(edgeType).reverseIterator
-
-  // Equivalent to matching(GenericEdge), so we delegate to that.
-  override def matching(edgeType: Symbol, direction: EdgeDirection): Iterator[HalfEdge] =
-    matching(GenericEdge(edgeType, direction))
 
   // Edge type is probably going to be lower cardinality than linked QuineId (especially if you have a lot of edges),
   // so we narrow based on qid first.
-  override def matching(edgeType: Symbol, id: QuineId): Iterator[HalfEdge] =
-    otherIndex(id).filter(_.edgeType == edgeType).reverseIterator
-
-  // Equivalent to contains, so we delegate to that.
-  override def matching(edgeType: Symbol, direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] = {
-    val edge = HalfEdge(edgeType, direction, id)
-    if (contains(edge))
-      Iterator.single(edge)
-    else
-      Iterator.empty
-  }
+  override def directionsByTypeAndQid(edgeType: Symbol, id: QuineId): Iterator[EdgeDirection] =
+    otherIndex(id).filter(_.edgeType == edgeType).reverseIterator.map(_.direction)
 
   // EdgeDirection has 3 possible values, and this call isn't used much. Apart from the general patterns
   // (the cypher interpreter and literal ops), it's used for GetDegree and in Novelty when promoting a node to a high-
   // cardinality node. So this is deemed not worth indexing (each index slows down the addEdge call, and adds memory).
   // This full edge scan is half as fast as UnorderedEdgeCollection's impl. With an index it's 30x faster.
-  override def matching(direction: EdgeDirection): Iterator[HalfEdge] =
+  override def edgesByDirection(direction: EdgeDirection): Iterator[HalfEdge] =
     edges.filter(_.direction == direction).reverseIterator
 
   // Edge type is probably going to be lower cardinality than linked QuineId (especially if you have a lot of edges),
   // so we narrow based on qid first.
-  override def matching(direction: EdgeDirection, id: QuineId): Iterator[HalfEdge] =
-    otherIndex(id).filter(_.direction == direction).reverseIterator
+  override def typesByDirectionAndQid(direction: EdgeDirection, id: QuineId): Iterator[Symbol] =
+    otherIndex(id).filter(_.direction == direction).reverseIterator.map(_.edgeType)
 
-  override def matching(id: QuineId): Iterator[HalfEdge] =
-    otherIndex(id).reverseIterator
+  override def edgesByQid(id: QuineId): Iterator[GenericEdge] =
+    otherIndex(id).reverseIterator.map(e => GenericEdge(e.edgeType, e.direction))
 
-  override def matching(genEdge: GenericEdge): Iterator[HalfEdge] =
-    typeDirectionIndex(genEdge).reverseIterator
+  override def qidsByTypeAndDirection(edgeType: Symbol, direction: EdgeDirection): Iterator[QuineId] =
+    typeDirectionIndex(GenericEdge(edgeType, direction)).reverseIterator.map(_.other)
 
   override def contains(edge: HalfEdge): Boolean = edges contains edge
 
   // Test for the presence of all required edges, without allowing one existing edge to match more than one required edge.
-  override def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean = {
+  override def hasUniqueGenEdges(requiredEdges: Iterable[DomainEdge]): Boolean = {
     val (circAlloweds, circDisalloweds) = requiredEdges.filter(_.constraints.min > 0).partition(_.circularMatchAllowed)
     // Count how many GenericEdges there are in each set between the circularMatchAllowed and not allowed sets.
     // keys are edge specifications, values are how many edges matching that specification are necessary.

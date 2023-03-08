@@ -27,7 +27,7 @@ abstract class EdgeCollectionTests
     with Matchers
     with LoneElement {
 
-  import HalfEdgeGen.{halfEdgeGen, intToQuineId}
+  import HalfEdgeGen.{halfEdgeGen, intToQuineId, quineIdGen}
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
@@ -35,7 +35,7 @@ abstract class EdgeCollectionTests
   /** The EdgeCollection impl to use.
     * @return
     */
-  def newEdgeCollection: EdgeCollection
+  def newEdgeCollection(qid: QuineId): SyncEdgeCollection
 
   /** Describes the specific assertion to make compairing the actual and expected values.
     *
@@ -46,11 +46,11 @@ abstract class EdgeCollectionTests
 
   "The EdgeCollection" should "return the appropriate edges when variously queried" in {
     assume(runnable)
-    forAll(Gen.listOfN(100, halfEdgeGen)) { edges =>
+    forAll(quineIdGen, Gen.listOfN(100, halfEdgeGen)) { (qid, edges) =>
       // Given a bunch of edges coming in sequentially
-      val edgeCollection = newEdgeCollection
+      val edgeCollection = newEdgeCollection(qid)
       // When the edges are loaded into the EdgeCollection
-      edges.foreach(edge => edgeCollection.addEdgeSync(edge))
+      edges.foreach(edge => edgeCollection.addEdge(edge))
       val byEdgeType = edges.groupBy(_.edgeType).map { case (k, v) => k -> v.to(LinkedHashSet) }
       val byDirection = edges.groupBy(_.direction).map { case (k, v) => k -> v.to(LinkedHashSet) }
       val byOther = edges.groupBy(_.other).map { case (k, v) => k -> v.to(LinkedHashSet) }
@@ -58,21 +58,24 @@ abstract class EdgeCollectionTests
       // Then:
 
       // All of the edges should be in the EdgeCollection
-      edgeCollection.toSet should contain allElementsOf edges
+      edgeCollection.all.toSet should contain allElementsOf edges
 
       // Querying the EdgeCollection by a given edgeType should return all edges of that type
       Inspectors.forAll(byEdgeType) { case (edgeType, typeSet) =>
-        assertEdgeCollection(edgeCollection.matching(edgeType).toSeq, typeSet.toSeq)
+        assertEdgeCollection(edgeCollection.edgesByType(edgeType).toSeq, typeSet.toSeq)
       }
 
       // Querying the EdgeCollection by a given direction should return all edges of that direction
       Inspectors.forAll(byDirection) { case (direction, directionSet) =>
-        assertEdgeCollection(edgeCollection.matching(direction).toSeq, directionSet.toSeq)
+        assertEdgeCollection(edgeCollection.edgesByDirection(direction).toSeq, directionSet.toSeq)
       }
 
       // Querying the EdgeCollection by a given node should return all edges linked to that node
       Inspectors.forAll(byOther) { case (other, otherSet) =>
-        assertEdgeCollection(edgeCollection.matching(other).toSeq, otherSet.toSeq)
+        assertEdgeCollection(
+          edgeCollection.edgesByQid(other).toSeq,
+          otherSet.map(e => GenericEdge(e.edgeType, e.direction)) toSeq
+        )
       }
 
       // Querying the EdgeCollection by edge type and direction should return all edges with both that type and direction
@@ -80,9 +83,9 @@ abstract class EdgeCollectionTests
         Inspectors.forAll(byDirection) { case (direction, directionSet) =>
           assertEdgeCollection(
             edgeCollection
-              .matching(edgeType, direction)
+              .qidsByTypeAndDirection(edgeType, direction)
               .toSeq,
-            (typeSet intersect directionSet).toSeq
+            (typeSet intersect directionSet).map(_.other).toSeq
           )
         }
       }
@@ -92,9 +95,9 @@ abstract class EdgeCollectionTests
         Inspectors.forAll(byOther) { case (other, otherSet) =>
           assertEdgeCollection(
             edgeCollection
-              .matching(direction, other)
+              .typesByDirectionAndQid(direction, other)
               .toSeq,
-            (directionSet intersect otherSet).toSeq
+            (directionSet intersect otherSet).map(_.edgeType).toSeq
           )
         }
       }
@@ -104,28 +107,28 @@ abstract class EdgeCollectionTests
         Inspectors.forAll(byOther) { case (other, otherSet) =>
           assertEdgeCollection(
             edgeCollection
-              .matching(edgeType, other)
+              .directionsByTypeAndQid(edgeType, other)
               .toSeq,
-            (typeSet intersect otherSet).toSeq
+            (typeSet intersect otherSet).map(_.direction).toSeq
           )
         }
       }
 
       // Querying the EdgeCollection by type, direction, and node should return the edges with that type, direction, and node
       Inspectors.forAll(edges) { edge =>
-        edgeCollection.matching(edge.edgeType, edge.direction, edge.other).toSeq.loneElement shouldBe edge
+        assert(edgeCollection.contains(edge))
       }
 
       // Should not return results for queries involving a edge type and/or node it hasn't seen
-      edgeCollection.matching(Symbol("someNewType")) shouldBe empty
-      edgeCollection.matching(intToQuineId(-1)) shouldBe empty
-      edgeCollection.matching(Symbol("someNewType"), intToQuineId(-1)) shouldBe empty
-      edgeCollection.matching(Symbol("someNewType"), edges.head.direction, intToQuineId(-1)) shouldBe empty
-      edgeCollection.matching(Symbol("someNewType"), edges.head.other) shouldBe empty
-      edgeCollection.matching(Symbol("someNewType"), edges.head.direction) shouldBe empty
-      edgeCollection.matching(Symbol("someNewType"), edges.head.direction, edges.head.other) shouldBe empty
-      edgeCollection.matching(edges.head.edgeType, intToQuineId(-1)) shouldBe empty
-      edgeCollection.matching(edges.head.edgeType, edges.head.direction, intToQuineId(-1)) shouldBe empty
+      edgeCollection.edgesByType(Symbol("someNewType")) shouldBe empty
+      edgeCollection.edgesByQid(intToQuineId(-1)) shouldBe empty
+      edgeCollection.directionsByTypeAndQid(Symbol("someNewType"), intToQuineId(-1)) shouldBe empty
+      edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, intToQuineId(-1))) shouldBe false
+      edgeCollection.directionsByTypeAndQid(Symbol("someNewType"), edges.head.other) shouldBe empty
+      edgeCollection.qidsByTypeAndDirection(Symbol("someNewType"), edges.head.direction) shouldBe empty
+      edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, edges.head.other)) shouldBe false
+      edgeCollection.directionsByTypeAndQid(edges.head.edgeType, intToQuineId(-1)) shouldBe empty
+      edgeCollection.contains(HalfEdge(edges.head.edgeType, edges.head.direction, intToQuineId(-1))) shouldBe false
 
     }
 
@@ -133,16 +136,16 @@ abstract class EdgeCollectionTests
 
   "hasUniqueGenEdges" should "be sufficient to match" in {
     assume(runnable)
+    val thisQid = QuineId.fromInternalString("00")
     def checkContains(localEdges: Seq[HalfEdge], domainEdges: Seq[DomainEdge], qid: QuineId): Boolean = {
-      val ec = newEdgeCollection
-      localEdges.foreach(edge => ec.addEdgeSync(edge))
-      ec.hasUniqueGenEdges(domainEdges.toSet, qid)
+      val ec = newEdgeCollection(thisQid)
+      localEdges.foreach(edge => ec.addEdge(edge))
+      ec.hasUniqueGenEdges(domainEdges.toSet)
     }
 
     val qid1 = QuineId.fromInternalString("01")
     val qid2 = QuineId.fromInternalString("02")
     val qid3 = QuineId.fromInternalString("03")
-    val qid4 = QuineId.fromInternalString("04")
 
     def domainEdge(sym: Symbol, dir: EdgeDirection, circularMatchAllowed: Boolean, constraintMin: Int) =
       DomainEdge(
@@ -163,7 +166,7 @@ abstract class EdgeCollectionTests
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
         ),
-        qid3
+        thisQid
       ),
       "Base case - matching edges, circularMatchAllowed = false"
     )
@@ -180,7 +183,7 @@ abstract class EdgeCollectionTests
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 3)
         ),
-        qid3
+        thisQid
       ),
       "domain edges > collection size"
     )
@@ -196,7 +199,7 @@ abstract class EdgeCollectionTests
           domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 1),
           domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 2)
         ),
-        qid3
+        thisQid
       ),
       "Different direction is not matched"
     )
@@ -205,13 +208,13 @@ abstract class EdgeCollectionTests
       !checkContains(
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, thisQid)
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
         ),
-        qid2
+        thisQid
       ),
       "Qid match added totals"
     )
@@ -230,7 +233,7 @@ abstract class EdgeCollectionTests
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 3),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 4)
         ),
-        qid4
+        thisQid
       ),
       "Matching circAllowed and non-circAllowed edges"
     )

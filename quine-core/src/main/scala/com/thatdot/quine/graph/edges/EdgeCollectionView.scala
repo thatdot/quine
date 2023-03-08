@@ -13,10 +13,6 @@ abstract class EdgeCollectionView {
     */
   def all: Iterator[HalfEdge]
 
-  def toSet: Set[HalfEdge]
-
-  protected[graph] def toSerialize: Iterable[HalfEdge]
-
   def nonEmpty: Boolean
 
   def matching(edgeType: Symbol): Iterator[HalfEdge]

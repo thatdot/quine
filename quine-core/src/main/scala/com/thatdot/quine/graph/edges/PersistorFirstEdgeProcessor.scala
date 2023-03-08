@@ -10,7 +10,7 @@ import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 
 class PersistorFirstEdgeProcessor(
-  edges: EdgeCollection,
+  edges: SyncEdgeCollection,
   persistToJournal: NonEmptyList[NodeEvent.WithTime[EdgeEvent]] => Future[Unit],
   pauseMessageProcessingUntil: (Future[Unit], Try[Unit] => Unit) => Future[Unit],
   updateSnapshotTimestamp: () => Unit,
