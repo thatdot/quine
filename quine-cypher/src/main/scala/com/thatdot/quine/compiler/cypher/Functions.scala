@@ -162,7 +162,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherCollMax,
     CypherCollMin,
     CypherMetaType
-  ) ++ CypherGenForms.all ++ CypherCasts.all
+  ) ++ CypherGenFroms.all ++ CypherCasts.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
   val deprecatedNames: Map[String, UserDefinedFunction] = Map.empty
