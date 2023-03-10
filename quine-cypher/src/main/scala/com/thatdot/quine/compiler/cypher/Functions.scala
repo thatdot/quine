@@ -1485,7 +1485,7 @@ class CypherValueGenFrom(outputType: Type, defaultSize: Long, randGen: (Long, Lo
   }
 }
 
-object CypherGenForms {
+object CypherGenFroms {
   private def bytes(hash: Long, size: Int): Array[Byte] = {
     val b = Array.ofDim[Byte](size)
     new Random(hash).nextBytes(b)
