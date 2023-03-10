@@ -397,7 +397,7 @@ object AddToInt extends UserDefinedProcedure with LazyLogging {
   val canContainAllNodeScan = false
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Integer),
-    outputs = Vector("result" -> Type.Floating),
+    outputs = Vector("result" -> Type.Integer),
     description = """Atomically add to an integer property on a node by a certain amount (defaults to 1),
                     |returning the resultant value""".stripMargin.replace('\n', ' ')
   )
@@ -441,7 +441,7 @@ object AddToInt extends UserDefinedProcedure with LazyLogging {
                  |by: $name.""".stripMargin.replace('\n', ' ')
             )
             throw CypherException.TypeMismatch(
-              expected = Seq(Type.Floating),
+              expected = Seq(Type.Integer),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
               context = s"Property accessed by $name procedure."
             )
