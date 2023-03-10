@@ -198,7 +198,7 @@ abstract class TableDefinition extends LazyLogging {
   // The first element is the partition key, anyways - could just treat that separately, and skip the non-empty list
 
   /** Make an insert statement using all the configured columns of the table.
-    * It's marked as idempotent, as it is believed all INSERTTs of this form will be, and
+    * It's marked as idempotent, as it is believed all INSERTs of this form will be, and
     * this statement is not modifiable / customizable after creation.
     * @return An ordinary CQL statement (preparing it with some bind markers is suggested)
     */
