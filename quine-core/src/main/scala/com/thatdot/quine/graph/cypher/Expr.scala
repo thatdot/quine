@@ -2770,7 +2770,7 @@ object Value {
     case _ => Expr.False
   }
 
-  /** Extract a value into its usual Java representing
+  /** Extract a value into its usual Java representation
     *
     *   - [[scala.Vector]] gets turned into [[Expr.List]]
     *   - [[scala.collection.immutable.Map]] gets turned into [[Expr.Map]]
