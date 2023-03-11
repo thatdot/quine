@@ -23,7 +23,7 @@ case object AwsOps extends LazyLogging {
   ) {
 
     /** Credentials to use for this AWS client. If provided, these will be used explicitly.
-      * If absent, credentials will be inferred from the environment accoridng to AWS's DefaultCredentialsProvider
+      * If absent, credentials will be inferred from the environment according to AWS's DefaultCredentialsProvider
       * This may have security implications! Ensure your environment only contains environment variables,
       * java system properties, aws credentials files, and instance profile credentials you trust!
       *

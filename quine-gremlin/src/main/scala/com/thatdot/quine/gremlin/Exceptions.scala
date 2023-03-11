@@ -4,7 +4,7 @@ import scala.util.parsing.input.Position
 
 import com.thatdot.quine.util.HexConversions
 
-/** The sort of exceptions that can be thrown when interpretting Gremlin queries.
+/** The sort of exceptions that can be thrown when interpreting Gremlin queries.
   *
   * This does not mean these are the only exceptions with which queries can fail,
   * since other exceptions could be percolating up from Quine. However, these are

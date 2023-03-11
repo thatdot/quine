@@ -112,7 +112,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
   }
 
   describe("Don't remove the label property when otherwise overriding all properties") {
-    // Set a label and som properties
+    // Set a label and some properties
     testQuery(
       "match (n) where id(n) = 78 set n: Person, n = { name: 'Greta' }",
       expectedColumns = Vector.empty,

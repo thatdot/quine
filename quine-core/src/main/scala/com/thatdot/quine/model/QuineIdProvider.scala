@@ -13,7 +13,7 @@ import com.thatdot.quine.util.HexConversions
 /** Used to map user node IDs to the representation used internally by Quine.
   *
   * Internally, node IDs in Quine are essentially raw byte arrays. This allows
-  * Quine to accomodate any ID type: UUIDs, longs, strings, etc. However, in
+  * Quine to accommodate any ID type: UUIDs, longs, strings, etc. However, in
   * order to use the graph with a certain ID type, Quine needs to know how to
   * turn this type to and from the internal representation. Additionally, mostly
   * for the debugging purposes, the user needs to describe how to print/parse

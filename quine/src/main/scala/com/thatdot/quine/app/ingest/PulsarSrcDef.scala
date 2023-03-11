@@ -62,7 +62,7 @@ case class PulsarSrcDef(
   def rawBytes(value: ConsumerMessage[Array[Byte]]): Array[Byte] = value.value
 
   /** As Pulsar's shutdown switch is materialized by its Source, those stages
-    * are inseperable and thus implemented in [[sourceWithShutdown]].
+    * are inseparable and thus implemented in [[sourceWithShutdown]].
     * This implementation of `source()` is a placeholder and is unused.
     */
   def source(): Source[ConsumerMessage[Array[Byte]], NotUsed] = Source.never

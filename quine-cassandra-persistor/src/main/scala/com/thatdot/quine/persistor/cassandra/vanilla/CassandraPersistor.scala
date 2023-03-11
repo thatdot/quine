@@ -70,7 +70,7 @@ object syntax {
       override def parse(value: String): B = from(longCodec.parse(value))
     }
   }
-  implicit class TypeCodecSynax[A](innerCodec: TypeCodec[A]) {
+  implicit class TypeCodecSyntax[A](innerCodec: TypeCodec[A]) {
     def xmap[B: ClassTag](from: A => B, to: B => A): TypeCodec[B] =
       new MappingCodec[A, B](innerCodec, genericType) {
         override def innerToOuter(value: A): B = from(value)

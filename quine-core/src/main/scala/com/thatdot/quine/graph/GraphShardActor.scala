@@ -96,7 +96,7 @@ final private[quine] class GraphShardActor(
   private[this] val nodesSleptFailureCounter = graph.metrics.shardNodesSleptFailureCounter(name)
   private[this] val nodesRemovedCounter = graph.metrics.shardNodesRemovedCounter(name)
 
-  // Counters that track occurences of supposedly unlikely (and generally bad) code paths
+  // Counters that track occurrences of supposedly unlikely (and generally bad) code paths
   private[this] val unlikelyWakeupFailed = graph.metrics.shardUnlikelyWakeupFailed(name)
   private[this] val unlikelyIncompleteShdnCounter = graph.metrics.shardUnlikelyIncompleteShdnCounter(name)
   private[this] val unlikelyActorNameRsvdCounter = graph.metrics.shardUnlikelyActorNameRsvdCounter(name)
@@ -308,7 +308,7 @@ final private[quine] class GraphShardActor(
       deliverLocalMessage(msg, target, originalSender)
 
     case NodeStateRehydrated(id, nodeArgs, remaining, errorCount) =>
-      // Will be re-calcuated from edge count later.
+      // Will be re-calculated from edge count later.
       val costToSleep = new CostToSleep(0L)
       val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake)
       val actorRefLock = new StampedLock()

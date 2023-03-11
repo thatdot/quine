@@ -17,12 +17,12 @@ final case class NavItem(
 @react class NavBar extends Component {
 
   case class Props(
-    intiallySelected: String,
+    initiallySelected: String,
     children: NavItem*
   )
   case class State(selected: String)
 
-  def initialState: com.thatdot.quine.webapp.components.NavBar.State = State(props.intiallySelected)
+  def initialState: com.thatdot.quine.webapp.components.NavBar.State = State(props.initiallySelected)
 
   // TODO: pull CSS out into proper consistent classes
   private val menuStyle = js.Dynamic.literal(

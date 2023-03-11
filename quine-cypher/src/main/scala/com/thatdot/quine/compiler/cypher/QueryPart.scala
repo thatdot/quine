@@ -116,7 +116,7 @@ object QueryPart {
         } yield query
       case Some(ast.Where(expr)) =>
         for {
-          // Seperate `WHERE` into ID constraints and everything else
+          // Separate `WHERE` into ID constraints and everything else
           (anchoredIds, other) <- CompM.getContextParametersAndSource.map { ctx =>
             partitionWhereConstraints(expr)(ctx._1, ctx._2, ctx._3)
           }

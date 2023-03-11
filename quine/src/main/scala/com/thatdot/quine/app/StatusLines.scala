@@ -92,9 +92,9 @@ class StatusLines(
     val home = "\r"
     val homeErase = home + erase
     realtimeOutput.println(homeErase)
-    val stati = messages.values.toSeq.filter(_.trim != "")
-    for { status <- stati } realtimeOutput.println(s"$homeErase | => $status")
+    val statuses = messages.values.toSeq.filter(_.trim != "")
+    for { status <- statuses } realtimeOutput.println(s"$homeErase | => $status")
     if (clearExtraLine) realtimeOutput.print(homeErase)
-    for { _ <- 1 to stati.length + 1 } realtimeOutput.print(up1)
+    for { _ <- 1 to statuses.length + 1 } realtimeOutput.print(up1)
   }
 }

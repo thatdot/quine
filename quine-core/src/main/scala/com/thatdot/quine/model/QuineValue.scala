@@ -274,10 +274,10 @@ object QuineValue {
     case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toJson).toSeq)
     case QuineValue.Bytes(byteArray) => Json.fromValues(byteArray.map(b => Json.fromInt(b.intValue())))
     case QuineValue.DateTime(instant) => Json.fromString(instant.toString)
-    case QuineValue.Date(d) => Json.fromString(d.toString) //TODO Better String reprsentation?
-    case QuineValue.Time(d) => Json.fromString(d.toString) //TODO Better String reprsentation?
-    case QuineValue.LocalDateTime(d) => Json.fromString(d.toString) //TODO Better String reprsentation?
-    case QuineValue.Duration(d) => Json.fromString(d.toString) //TODO Better String reprsentation?
+    case QuineValue.Date(d) => Json.fromString(d.toString) //TODO Better String representation?
+    case QuineValue.Time(d) => Json.fromString(d.toString) //TODO Better String representation?
+    case QuineValue.LocalDateTime(d) => Json.fromString(d.toString) //TODO Better String representation?
+    case QuineValue.Duration(d) => Json.fromString(d.toString) //TODO Better String representation?
     case QuineValue.Id(qid) => Json.fromString(qid.pretty)
   }
 

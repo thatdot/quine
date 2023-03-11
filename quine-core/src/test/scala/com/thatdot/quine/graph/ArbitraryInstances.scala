@@ -98,9 +98,9 @@ trait ArbitraryInstances {
   }
 
   /* This exposes a bunch of helpers that are similar to [[Gen.resultOf]] but which distribute the
-   * generator size among the subterms (instead of passing it through). This is criticially
+   * generator size among the subterms (instead of passing it through). This is critically
    * important to bound the total size of an AST. Just decrementing the size in the recursive case
-   * it still not enough since you still get exponetial growth in tree size for linear growth in
+   * it still not enough since you still get exponential growth in tree size for linear growth in
    * ScalaCheck "size" parameter.
    */
   object GenApply {

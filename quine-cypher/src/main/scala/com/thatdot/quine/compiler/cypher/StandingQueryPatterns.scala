@@ -434,7 +434,7 @@ object StandingQueryPatterns extends LazyLogging {
     * exception on anything else)
     *
     * @param whereOpt where expression to decompose
-    * @return (property contraints, id constraints, remaining constraints)
+    * @return (property constraints, id constraints, remaining constraints)
     */
   @throws[CypherException]
   def partitionConstraints(

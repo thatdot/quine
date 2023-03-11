@@ -101,7 +101,7 @@ final class QuineFunctionInvocation(
   override val distinct = false
   override val function = new OpenCypherUdf(udf)
 
-  /* This _must_ be overriden or else `QuineFunctionInvocation` risks being
+  /* This _must_ be overridden or else `QuineFunctionInvocation` risks being
    * re-written back to `FunctionInvocation`. This is all thanks to the fact
    * that this class is extending a `case class` and `ASTNode.dup` looks up the
    * constructor to use from `Rewritable.copyConstructor`, which in turn defers

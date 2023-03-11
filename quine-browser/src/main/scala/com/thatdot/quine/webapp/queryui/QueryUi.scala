@@ -36,7 +36,7 @@ import com.thatdot.{visnetwork => vis}
     * @param hostColors list of colors through which to cycle when rendering nodes
     * @param onNetworkCreate callback that gets executed on network creation
     * @param isQueryBarVisible should the query bar be displayed at all
-    * @param initialLayout how is the network initially layed out?
+    * @param initialLayout how is the network initially laid out?
     * @param edgeQueryLanguage which query language is used for edge queries
     * @param queryMethod how should the query UI relay queries to the backend?
     */

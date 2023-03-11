@@ -226,7 +226,7 @@ Also notice that interleaved with the revision events, Quine displays a running 
  | => INGEST-1 status is paused and ingested 715
 ```
 
-Depending on your application, you may choose to leave the `nodeApperances`, `quickQueries` and `sampleQueries`  arrays empty. When configured, they can improve the readability and ease of analysis of the streaming graph within the exploration UI. We cover the Exploration UI in another tutorial.
+Depending on your application, you may choose to leave the `nodeAppearances`, `quickQueries` and `sampleQueries`  arrays empty. When configured, they can improve the readability and ease of analysis of the streaming graph within the exploration UI. We cover the Exploration UI in another tutorial.
 
 ## Status Query
 

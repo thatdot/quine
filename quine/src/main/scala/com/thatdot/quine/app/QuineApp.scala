@@ -60,7 +60,7 @@ final class QuineApp(graph: GraphService)
     * Accesses to the following collections must be threadsafe. Additionally, the persisted copy of these collections
     * (ie those accessed by `*Metadata` functions) must be kept in sync with the in-memory copy. Because all of these
     * functions are expected to have a low volume of usage, and thus don't need to be performance-optimized, we
-    * aggressively synchronize on `this`. In particular, synchronizing on the variable itself is not sufficent, because
+    * aggressively synchronize on `this`. In particular, synchronizing on the variable itself is not sufficient, because
     * the lock offered by `synchronize` is with respect to the locked *value*, not the locked *field* -- so locking on
     * a mutating variable does not result in a mutex. By contrast, locking on `this` is more than is strictly necessary,
     * but represents a deliberate choice to simplify the synchronization logic at the cost of reduced performance,

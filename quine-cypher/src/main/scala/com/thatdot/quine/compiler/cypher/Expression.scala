@@ -564,7 +564,7 @@ object Expression {
 
   /** Map a simple scalar function into its IR equivalent.
     *
-    * The monadic context is just to faciliate error messages for non-simple or
+    * The monadic context is just to facilitate error messages for non-simple or
     * non-scalar functions.
     *
     * @param func function to translate
@@ -650,7 +650,7 @@ object Expression {
 
 /** Turns all pattern expressions into pattern comprehensions
   *
-  * This happens for two reaons:
+  * This happens for two reasons:
   *   - to take advantage of `namePatternComprehensionPatternElements`
   *   - to take advantage of rewrites that synthesize `PathExpression`'s for us
   *   - to leave the avenue open for additional rewrites adding predicates

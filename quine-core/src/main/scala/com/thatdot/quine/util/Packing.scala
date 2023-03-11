@@ -12,7 +12,7 @@ import java.nio.ByteBuffer
   */
 object Packing {
 
-  /** Zero-pad data in preperation for packing
+  /** Zero-pad data in preparation for packing
     * Pads on the right to the nearest multiple of 8 bytes
     *
     * @note whenever possible, try to do the packing _without_ this wasteful copy

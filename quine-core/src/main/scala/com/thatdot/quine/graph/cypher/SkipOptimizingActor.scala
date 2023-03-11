@@ -224,7 +224,7 @@ object SkipOptimizingActor {
     *                              the actor will reject the query instead. For example, if the last row this actor
     *                              facilitated was the 40th row, and this [[ResumeQuery]] requests rows 35-45, if
     *                              `restartIsAppropriate == true`, this actor will replay the query to row 34, then
-    *                              forward the query for rows 35-45. If `restartIsAppropraite == false`, instead the
+    *                              forward the query for rows 35-45. If `restartIsAppropriate == false`, instead the
     *                              actor will reply with a [[SkipOptimizationError.SkipLimitMismatch]]
     * @param replyTo               the ActorRef to which results and/or errors will be `tell`-ed
     */

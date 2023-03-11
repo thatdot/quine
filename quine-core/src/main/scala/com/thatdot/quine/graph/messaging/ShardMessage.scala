@@ -33,7 +33,7 @@ object ShardMessage {
 
   /** Instruct the shard to forcibly remove some of its nodes
     *
-    * @param predicate how to pick the nodes to reomve
+    * @param predicate how to pick the nodes to remove
     * @param replyTo where to send a signal that the operation is done
     */
   final case class RemoveNodesIf(predicate: LocalPredicate, replyTo: QuineRef)

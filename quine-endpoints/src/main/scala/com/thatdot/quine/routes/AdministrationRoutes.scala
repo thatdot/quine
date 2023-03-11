@@ -317,7 +317,7 @@ trait AdministrationRoutes
         .withSummary(Some("Sleep Node"))
         .withDescription(Some("""Attempt to put the specified node to sleep.
             |
-            |This behavior is not guaranteed. Activity on the node will supercede this request""".stripMargin))
+            |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin))
         .withTags(List(adminTag))
     )
 

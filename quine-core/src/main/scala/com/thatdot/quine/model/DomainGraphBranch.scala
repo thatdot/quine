@@ -337,10 +337,10 @@ final case class MuVar(variable: MuVariableName) extends DomainGraphBranch {
 
 object Substitution {
   def substitute(
-    subsituteIn: DomainGraphBranch,
+    substituteIn: DomainGraphBranch,
     variable: MuVariableName,
     branch: DomainGraphBranch
-  ): DomainGraphBranch = subsituteIn match {
+  ): DomainGraphBranch = substituteIn match {
     case SingleBranch(dne, id, nextBranches, comparisonFunc) =>
       val nextBranchesSubstituted =
         nextBranches.map(nextBranch => nextBranch.copy(branch = substitute(nextBranch.branch, variable, branch)))

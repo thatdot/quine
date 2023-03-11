@@ -653,7 +653,7 @@ trait OnNodeInterpreter
 /** @tparam Start the most specific Location this interpreter can handle. That is, if this interpreter runs on a node
   *               thread, [[Location.OnNode]] (see: OnNodeInterpreter). If this interpreter runs off-node,
   *               [[Location.External]] (see: AnchoredInterpreter). Bear in mind that CypherInterpreter is contravariant
-  *               in Start, so a CypherInterpreter[OnNode] is also a CypherIntepreter[Anywhere], but not a
+  *               in Start, so a CypherInterpreter[OnNode] is also a CypherInterpreter[Anywhere], but not a
   *               CypherInterpreter[External] nor a CypherInterpreter[Location]
   */
 trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {

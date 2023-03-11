@@ -35,7 +35,7 @@ package object gremlin {
        * This check is further complicated by the fact that `asInstanceOf`
        * happily unboxes/boxes primitive types, but `asSubclass` doesn't take
        * this into account. As a workaround we manually convert the class types
-       * to the boxed reprsentation and _then_ use `asSubclass`.
+       * to the boxed representation and _then_ use `asSubclass`.
        */
 
       val boxClassMapping: Map[Class[_], Class[_]] = Map(

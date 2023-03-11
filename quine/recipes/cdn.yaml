@@ -524,7 +524,7 @@ nodeAppearances:
     size: 50.00
     label:
       type: Property
-      key: lastestMiss
+      key: latestMiss
       prefix: "Miss Events: "
   # Server Icon/color *********************
   - predicate:

@@ -18,14 +18,14 @@ import com.thatdot.quine.model.Milliseconds
   *     timestamps until 2109 (see `java.time.Instant.EPOCH.plusMillis(1L << 42)` for a more
   *     precise max timestamp).
   *
-  *   - '''Middle 14 bits store an actor-local timestamp sequence number.''' This is an artifical
+  *   - '''Middle 14 bits store an actor-local timestamp sequence number.''' This is an artificial
   *     counter for disambiguating times that fall in the same millisecond but which are otherwise
   *     logically different (eg. the node processes multiple messages in a millisecond, and events
   *     that occurred due to different messages get a logically different timestamp thanks to this
   *     sequence number).
   *
   *   - '''Least significant 8 bits store an actor-local event sequence number.''' This is an
-  *     artifical counter that makes it possible to give a strict total order to events that
+  *     artificial counter that makes it possible to give a strict total order to events that
   *     occurred at the same logical time. This makes it possible to give every event in the node
   *     journal a unique key, which enables more efficient persistence layer implementations.
   *

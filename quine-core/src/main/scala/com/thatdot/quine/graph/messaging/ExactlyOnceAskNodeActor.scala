@@ -30,7 +30,7 @@ import com.thatdot.quine.model.QuineIdProvider
   * @param remoteShardTarget if in a different JVM, shard actor responsible for the node
   * @param idProvider for debuggind purposes - used to pretty-print the node ID
   * @param originalSender for debuggging purposes - what Akka's `sender()` will report
-  * @param promisedResult promise that is fulfilled with the reponse
+  * @param promisedResult promise that is fulfilled with the response
   * @param timeout time to wait until the promise fails with a timeout
   */
 final private[quine] class ExactlyOnceAskNodeActor[Resp](
