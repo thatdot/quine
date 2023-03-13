@@ -245,7 +245,7 @@ lazy val `quine`: Project = project
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
-      "io.circe" %% "circe-config" % "0.8.0",
+      "io.circe" %% "circe-config" % "0.10.0",
       "io.circe" %% "circe-generic-extras" % circeV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,

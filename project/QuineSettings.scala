@@ -66,7 +66,7 @@ object QuineSettings {
     javacOptions ++= Seq("--release", "11"),
     // Circe is binary compatible between 0.13 and 0.14
     // Circe projects from other orgs sometimes pull in older versions of circe (0.13):
-    // ujson-circe and circe-config
+    // As of Mar 8 2023, ujson-circe
     // This prevents sbt from erroring with:
     // "found version conflict(s) in library dependencies; some are suspected to be binary incompatible"
     libraryDependencySchemes ++= Seq(
