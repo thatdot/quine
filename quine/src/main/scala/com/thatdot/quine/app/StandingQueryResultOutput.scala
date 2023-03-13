@@ -444,11 +444,15 @@ object StandingQueryResultOutput extends LazyLogging {
 
     // slack message blocks
     def slackBlocks: Vector[Json] = Vector(
-      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdown", "text" -> s"```$dataPrettyJson```")),
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```")),
       Json.obj(
         "type" -> "context",
-        "elements" ->
-        Json.obj("type" -> "mrkdwn", "text" -> s"*Result ID:* ${resultId.uuid.toString}")
+        "elements" -> Json.arr(
+          Json.obj(
+            "type" -> "mrkdwn",
+            "text" -> s"*Result ID:* ${resultId.uuid.toString}"
+          )
+        )
       )
     )
 
