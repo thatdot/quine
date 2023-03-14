@@ -75,6 +75,13 @@ trait AbstractEdgeCollection extends AbstractEdgeCollectionView {
   def removeEdge(edge: HalfEdge): F[Unit]
 
 }
+object AbstractEdgeCollection {
+  // A way to expose the type members as type parameters to use from tests
+  type Aux[F0[_], S0[_]] = AbstractEdgeCollection {
+    type F[A] = F0[A]
+    type S[A] = S0[A]
+  }
+}
 
 trait SyncEdgeCollectionView extends AbstractEdgeCollectionView {
   type F[A] = A
