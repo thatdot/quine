@@ -52,6 +52,18 @@ trait DebugOpsRoutes
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints
     with exts.AnySchema {
+  val DebugOpsDisclaimer: String =
+    """
+      |
+      |This endpoint's usage, including the structure of the values returned,
+      |are implementation-specific and subject to change without warning. This
+      |endpoint is not intended for consumption by automated clients. The information
+      |returned by this endpoint is formatted for human consumption and is intended
+      |to assist the operator[s] of Quine in inspecting specific parts of the internal
+      |Quine graph state.
+      |
+      |For querying from an automated system, use [one of the language-specific interfaces]""".stripMargin
+      .+("(https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)")
 
   /** Schema to be used for QuineValues -- this is specifically left explicit, as `Json` is too generic a type to have
     * a useful implicit schema around for.
@@ -139,7 +151,7 @@ trait DebugOpsRoutes
         .withSummary(Some("List Properties/Edges"))
         .withDescription(
           Some(
-            "Retrieve a nodes list of properties and list of edges"
+            "Retrieve a nodes list of properties and list of edges." + DebugOpsDisclaimer
           )
         )
         .withTags(List(debugOpsTag))
@@ -162,7 +174,7 @@ trait DebugOpsRoutes
             |Properties must be specified as JSON values, the format of which should match
             |how the same values would be emitted by
             |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
-            |""".stripMargin.trim))
+            |""".stripMargin.trim + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
@@ -172,7 +184,7 @@ trait DebugOpsRoutes
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Properties/Edges"))
-        .withDescription(Some("Delete all properties and edges from a node"))
+        .withDescription(Some("Delete all properties and edges from a node." + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
@@ -184,9 +196,7 @@ trait DebugOpsRoutes
         .withSummary(Some("List Node State (Verbose)"))
         .withDescription(
           Some(
-            """Returns information relating to the nodes internal state.
-              |The information returned by this endpoint is intended to be used for debugging.
-              |It is implementation-dependent and subject to change.""".stripMargin.replace('\n', ' ')
+            "Returns information relating to the node's internal state." + DebugOpsDisclaimer
           )
         )
         .withTags(List(debugOpsTag))
@@ -201,7 +211,7 @@ trait DebugOpsRoutes
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Edges"))
-        .withDescription(Some("Retrieve all node edges"))
+        .withDescription(Some("Retrieve all node edges." + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
@@ -227,7 +237,7 @@ trait DebugOpsRoutes
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Full Edges"))
-        .withDescription(Some("Delete the specified full edges from this node"))
+        .withDescription(Some("Delete the specified full edges from this node." + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
@@ -240,7 +250,7 @@ trait DebugOpsRoutes
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Half Edges"))
-        .withDescription(Some("Retrieve all half edges associated with a node"))
+        .withDescription(Some("Retrieve all half edges associated with a node." + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
@@ -254,8 +264,8 @@ trait DebugOpsRoutes
           Some(
             """Retrieve a single property from the node; note that values are represented as
               |closely as possible to how they would be emitted by
-              |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
-              |""".stripMargin.replace('\n', ' ').trim
+              |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
+              |""".stripMargin.replace('\n', ' ').trim + DebugOpsDisclaimer
           )
         )
         .withTags(List(debugOpsTag))
@@ -270,7 +280,7 @@ trait DebugOpsRoutes
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Set Property"))
-        .withDescription(Some("Set a single named property on a node"))
+        .withDescription(Some("Set a single named property on a node." + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
