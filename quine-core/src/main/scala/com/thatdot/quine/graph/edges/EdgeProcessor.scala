@@ -77,20 +77,20 @@ abstract class EdgeProcessor(
 }
 
 abstract class SynchronousEdgeProcessor(
-  edges: SyncEdgeCollection,
+  edgeCollection: SyncEdgeCollection,
   qid: QuineId,
   costToSleep: CostToSleep,
   nodeEdgesCounter: BinaryHistogramCounter
 )(implicit idProvider: QuineIdProvider)
-    extends EdgeProcessor(edges)
+    extends EdgeProcessor(edgeCollection)
     with LazyLogging {
 
   /** Fast check for if a number is a power of 2 */
   private def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
 
   private[this] def edgeEventHasEffect(event: EdgeEvent): Boolean = event match {
-    case EdgeAdded(edge) => !edges.contains(edge)
-    case EdgeRemoved(edge) => edges.contains(edge)
+    case EdgeAdded(edge) => !edgeCollection.contains(edge)
+    case EdgeRemoved(edge) => edgeCollection.contains(edge)
   }
 
   protected def journalAndApplyEffects(
@@ -106,15 +106,15 @@ abstract class SynchronousEdgeProcessor(
 
   def updateEdgeCollection(event: EdgeEvent): Unit = event match {
     case EdgeEvent.EdgeAdded(edge) =>
-      edges.addEdge(edge)
+      edgeCollection.addEdge(edge)
     case EdgeEvent.EdgeRemoved(edge) =>
-      edges.removeEdge(edge)
+      edgeCollection.removeEdge(edge)
   }
 
   /** Apply all effects (see [[processEdgeEvents]]) of a single edge event
     */
   protected[this] def applyEdgeEffect(event: EdgeEvent): Unit = {
-    val oldSize = edges.size.toInt
+    val oldSize = edgeCollection.size.toInt
     updateEdgeCollection(event)
     event match {
       case EdgeEvent.EdgeAdded(_) =>

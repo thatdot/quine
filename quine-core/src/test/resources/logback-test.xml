@@ -84,7 +84,7 @@
         <appender-ref ref="consoleSimple"/>
     </logger>
     <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
-    <root level="${root.loglevel:-OFF}">
+    <root level="${root.loglevel:-ERROR}">
         <appender-ref ref="asyncConsole"/>
     </root>
 

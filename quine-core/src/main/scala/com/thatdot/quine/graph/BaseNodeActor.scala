@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import scala.concurrent.Future
 
+import com.thatdot.quine.graph.edges.EdgeProcessor
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
@@ -74,6 +75,8 @@ trait BaseNodeActor extends BaseNodeActorView {
     val propertyEvent = PropertyEvent.PropertySet(graph.labelsProperty, PropertyValue(labelsValue))
     processPropertyEvent(propertyEvent)
   }
+
+  protected def edges: EdgeProcessor
 
   /** Record that some update pertinent to snapshots has occurred */
   protected def updateRelevantToSnapshotOccurred(): Unit

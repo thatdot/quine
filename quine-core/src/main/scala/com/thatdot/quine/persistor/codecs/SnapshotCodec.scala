@@ -16,7 +16,7 @@ import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 
 object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
 
-  private[this] def writeNodeSnapshot(
+  private[codecs] def writeNodeSnapshot(
     builder: FlatBufferBuilder,
     snapshot: NodeSnapshot
   ): Offset = {
@@ -136,7 +136,7 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
     )
   }
 
-  private[this] def readNodeSnapshot(snapshot: persistence.NodeSnapshot): NodeSnapshot = {
+  private[codecs] def readNodeSnapshot(snapshot: persistence.NodeSnapshot): NodeSnapshot = {
     val time = EventTime.fromRaw(snapshot.time)
     val properties: Map[Symbol, PropertyValue] = {
       val builder = Map.newBuilder[Symbol, PropertyValue]
