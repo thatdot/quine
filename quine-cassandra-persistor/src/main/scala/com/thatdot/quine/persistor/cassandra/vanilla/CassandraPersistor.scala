@@ -220,12 +220,8 @@ abstract class CassandraTable(session: CqlSession) {
   /** Does the table have any rows?
     */
   def nonEmpty(): Future[Boolean]
-  def pair[A, B](columnA: CassandraColumn[A], columnB: CassandraColumn[B])(row: Row): (A, B) =
+  protected def pair[A, B](columnA: CassandraColumn[A], columnB: CassandraColumn[B])(row: Row): (A, B) =
     (columnA.get(row), columnB.get(row))
-  def triple[A, B, C](columnA: CassandraColumn[A], columnB: CassandraColumn[B], columnC: CassandraColumn[C])(
-    row: Row
-  ): (A, B, C) =
-    (columnA.get(row), columnB.get(row), columnC.get(row))
 
   /** Helper method for wrapping Java Reactive Streams CQL execution in Akka Streams
     *
@@ -272,17 +268,6 @@ abstract class CassandraTable(session: CqlSession) {
     cbf: Factory[(A, B), C with immutable.Iterable[_]]
   ): Future[C] =
     executeSelect(statement)(pair(colA, colB))
-
-  final protected def selectColumns[A, B, C, D](
-    statement: Statement[_],
-    colA: CassandraColumn[A],
-    colB: CassandraColumn[B],
-    colC: CassandraColumn[C]
-  )(implicit
-    materializer: Materializer,
-    cbf: Factory[(A, B, C), D with immutable.Iterable[_]]
-  ): Future[D] =
-    executeSelect(statement)(triple(colA, colB, colC))
 
   /** Helper method for converting no-op results to {{{Future[Unit]}}}
     *
@@ -452,22 +437,13 @@ class CassandraPersistor(
   ): Future[Option[MultipartSnapshot]] =
     snapshots
       .getLatestSnapshotTime(id, upToTime)
-      .map({
-        case Some(time) =>
+      .flatMap(
+        _.traverse(time =>
           snapshots
             .getSnapshotParts(id, time)
-            .map(parts =>
-              parts
-                .map { case (partBytes, partIndex, partCount) =>
-                  MultipartSnapshotPart(partBytes, partIndex, partCount)
-                }
-            )(ExecutionContexts.parasitic)
-            .map(multipartSnapshotParts => Some(MultipartSnapshot(time, multipartSnapshotParts)))(
-              ExecutionContexts.parasitic
-            )
-        case _ => Future.successful(None)
-      })(multipartSnapshotExecutionContext)
-      .flatten
+            .map(MultipartSnapshot(time, _))(ExecutionContexts.parasitic)
+        )
+      )(multipartSnapshotExecutionContext)
 
   override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
     standingQueries.persistStandingQuery(standingQuery)

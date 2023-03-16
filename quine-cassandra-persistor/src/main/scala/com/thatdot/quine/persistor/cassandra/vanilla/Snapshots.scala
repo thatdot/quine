@@ -19,6 +19,7 @@ import com.datastax.oss.driver.api.querybuilder.select.Select
 
 import com.thatdot.quine.graph.EventTime
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
 
 trait SnapshotsColumnNames {
   import CassandraCodecs._
@@ -144,16 +145,13 @@ class Snapshots(
   def getSnapshotParts(
     id: QuineId,
     atTime: EventTime
-  )(implicit mat: Materializer): Future[Seq[(Array[Byte], Int, Int)]] =
-    selectColumns(
+  )(implicit mat: Materializer): Future[Seq[MultipartSnapshotPart]] =
+    executeSelect(
       getPartsStatement.bindColumns(
         quineIdColumn.set(id),
         timestampColumn.set(atTime)
-      ),
-      dataColumn,
-      multipartIndexColumn,
-      multipartCountColumn
-    )
+      )
+    )(row => MultipartSnapshotPart(dataColumn.get(row), multipartIndexColumn.get(row), multipartCountColumn.get(row)))
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
