@@ -2,23 +2,52 @@ package com.thatdot.quine.persistor.codecs
 
 import java.nio.ByteBuffer
 
+import scala.collection.mutable.{Map => MutableMap}
 import scala.collection.{AbstractIterable, mutable}
 
 import com.google.flatbuffers.FlatBufferBuilder
 
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior
-import com.thatdot.quine.graph.{ByteBufferOps, EventTime, NodeSnapshot, Notifiable, StandingQueryId}
+import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
+import com.thatdot.quine.graph.{
+  AbstractNodeSnapshot,
+  ByteBufferOps,
+  EventTime,
+  NodeSnapshot,
+  Notifiable,
+  StandingQueryId
+}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 
-object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
+/** A codec for snapshots, sans logic for dealing with reserved fields. In Quine, these wil always have fixed values.
+  * All implementers will be binary-compatible with the `NodeSnapshot` flatbuffers type
+  */
+abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends PersistenceCodec[SnapshotT] {
+  // Compute the value of the reserved property in preparation for writing (always false in Quine)
+  def determineReserved(snapshot: SnapshotT): Boolean
+  // Emit a final result, given a baseline snapshot and the value of the reserved property (always false in Quine)
+  def constructDeserialized(
+    time: EventTime,
+    properties: Map[Symbol, PropertyValue],
+    edges: Iterable[HalfEdge],
+    subscribersToThisNode: MutableMap[
+      DomainGraphNodeId,
+      DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+    ],
+    domainNodeIndex: MutableMap[
+      QuineId,
+      MutableMap[DomainGraphNodeId, Option[Boolean]]
+    ],
+    reserved: Boolean
+  ): SnapshotT
 
   private[codecs] def writeNodeSnapshot(
     builder: FlatBufferBuilder,
-    snapshot: NodeSnapshot
+    snapshot: SnapshotT
   ): Offset = {
 
     val time = snapshot.time.eventTime
@@ -126,17 +155,20 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
         persistence.NodeSnapshot.createDomainNodeIndexVector(builder, domainNodeIndexOffs)
       }
 
+    val reserved = determineReserved(snapshot)
+
     persistence.NodeSnapshot.createNodeSnapshot(
       builder,
       time,
       properties,
       edges,
       subscribers,
-      domainNodeIndex
+      domainNodeIndex,
+      reserved
     )
   }
 
-  private[codecs] def readNodeSnapshot(snapshot: persistence.NodeSnapshot): NodeSnapshot = {
+  private[codecs] def readNodeSnapshot(snapshot: persistence.NodeSnapshot): SnapshotT = {
     val time = EventTime.fromRaw(snapshot.time)
     val properties: Map[Symbol, PropertyValue] = {
       val builder = Map.newBuilder[Symbol, PropertyValue]
@@ -246,6 +278,45 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
       builder
     }
 
+    val reserved = snapshot.reserved
+
+    constructDeserialized(
+      time,
+      properties,
+      edges,
+      subscribersToThisNode,
+      domainNodeIndex,
+      reserved
+    )
+  }
+
+  val format: BinaryFormat[SnapshotT] = new PackedFlatBufferBinaryFormat[SnapshotT] {
+    def writeToBuffer(builder: FlatBufferBuilder, snapshot: SnapshotT): Offset =
+      writeNodeSnapshot(builder, snapshot)
+
+    def readFromBuffer(buffer: ByteBuffer): SnapshotT =
+      readNodeSnapshot(persistence.NodeSnapshot.getRootAsNodeSnapshot(buffer))
+  }
+}
+
+object SnapshotCodec extends AbstractSnapshotCodec[NodeSnapshot] {
+  def determineReserved(snapshot: NodeSnapshot): Boolean = false
+
+  def constructDeserialized(
+    time: EventTime,
+    properties: Map[Symbol, PropertyValue],
+    edges: Iterable[HalfEdge],
+    subscribersToThisNode: MutableMap[DomainGraphNodeId, SubscribersToThisNodeUtil.DistinctIdSubscription],
+    domainNodeIndex: MutableMap[QuineId, MutableMap[DomainGraphNodeId, Option[Boolean]]],
+    reserved: Boolean
+  ): NodeSnapshot = {
+    if (reserved) { // must be false in Quine
+      throw new UnsupportedExtension(
+        """Node snapshot indicates that restoring this node requires a Quine system
+          |extension not available in the running application.""".stripMargin.replace('\n', ' ')
+      )
+    }
+
     NodeSnapshot(
       time,
       properties,
@@ -253,12 +324,5 @@ object SnapshotCodec extends PersistenceCodec[NodeSnapshot] {
       subscribersToThisNode,
       domainNodeIndex
     )
-  }
-  val format: BinaryFormat[NodeSnapshot] = new PackedFlatBufferBinaryFormat[NodeSnapshot] {
-    def writeToBuffer(builder: FlatBufferBuilder, snapshot: NodeSnapshot): Offset =
-      writeNodeSnapshot(builder, snapshot)
-
-    def readFromBuffer(buffer: ByteBuffer): NodeSnapshot =
-      readNodeSnapshot(persistence.NodeSnapshot.getRootAsNodeSnapshot(buffer))
   }
 }

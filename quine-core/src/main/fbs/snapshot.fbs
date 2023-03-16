@@ -8,6 +8,7 @@ table NodeSnapshot {
   edges: [HalfEdge];
   subscribers: [Subscriber];
   domain_node_index: [NodeIndex];
+  reserved: bool = false; // Do not modify. Always false in Quine: See [[NodeSnapshotPlus]] in quine-plus
 }
 
 table PropertyCollectionValue {

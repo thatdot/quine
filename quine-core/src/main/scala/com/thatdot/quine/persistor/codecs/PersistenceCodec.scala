@@ -27,6 +27,11 @@ class InvalidUnionType(
   validTags: Array[String]
 ) extends IllegalArgumentException(s"Invalid tag $typeTag (valid tags: ${validTags.mkString(", ")})")
 
+class UnsupportedExtension(
+  msg: String = s"Persisted data requires an extension to Quine that the current application does not support.",
+  cause: Throwable = null
+) extends IllegalArgumentException(msg, cause)
+
 //TODO this is temporary, and only serves to mark places where the code is processing a NodeEvent type
 // but expects a NodeChangeEvent or DomainIndexType. We can remove this when we remove the NodeEvent
 // union type.

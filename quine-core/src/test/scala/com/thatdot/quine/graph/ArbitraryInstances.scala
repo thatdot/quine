@@ -42,9 +42,8 @@ import com.thatdot.quine.graph.cypher.{
   Value => CypherValue
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{MultipleValuesStandingQuerySubscriber, ResultId}
+import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model._
-
-import DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 
 /** The derived [[Arbitrary]] instances for some types get big fast. If the
   * serialization tests ever start being too slow, you can get scalacheck to
