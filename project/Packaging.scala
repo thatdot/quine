@@ -8,8 +8,10 @@ object Packaging extends AutoPlugin {
   override def requires = AssemblyPlugin
 
   // Assembly merge strategy
-  private val reverseConcat: MergeStrategy = CustomMergeStrategy("reverseConcat") { conflicts =>
-    MergeStrategy.concat(conflicts.reverse)
+  private val appendProjectsLast: MergeStrategy = CustomMergeStrategy("appendProjectsLast") { conflicts =>
+    val (projects, libraries) = conflicts.partition(_.isProjectDependency)
+    // Make sure our reference.confs are appended _after_ reference.confs in libraries
+    MergeStrategy.concat(libraries ++ projects)
   }
 
   /* This decides how to aggregate files from different JARs into one JAR.
@@ -18,7 +20,7 @@ object Packaging extends AutoPlugin {
    *   - allows for removing entirely unnecessary resources from output JAR
    */
   private val mergeStrategy: String => MergeStrategy = {
-    case x if Assembly.isConfigFile(x) => reverseConcat
+    case x if Assembly.isConfigFile(x) => appendProjectsLast
     case "version.conf" => MergeStrategy.concat
     case PathList("META-INF", "LICENSES.txt") | "AUTHORS" => MergeStrategy.concat
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
