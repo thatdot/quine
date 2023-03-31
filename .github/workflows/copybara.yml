@@ -43,7 +43,7 @@ jobs:
           docker pull localhost:5000/copybara:latest || docker pull public.ecr.aws/p0a2o6c9/copybara:latest
           docker tag public.ecr.aws/p0a2o6c9/copybara:latest localhost:5000/copybara:latest && docker push localhost:5000/copybara:latest || true
       - name: Copybara Action 2
-        uses: Olivr/copybara-action@a0bb6a37362014a57421a6c8dec43fa1908dda06 #v1.2.3: verify action source code before updating
+        uses: thatdot/copybara-action@main
         with:
           copybara_image: localhost:5000/copybara # thatdot-managed copy of olivr/copybara (itself a build of https://github.com/google/copybara/blob/master/Dockerfile)
           copybara_image_tag: latest
