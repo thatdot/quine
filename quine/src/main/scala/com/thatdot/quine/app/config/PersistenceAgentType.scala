@@ -22,7 +22,7 @@ sealed abstract class PersistenceAgentType(val isLocal: Boolean) {
   def bloomFilterSize: Option[Long]
 
 }
-object PersistenceAgentType {
+object PersistenceAgentType extends PureconfigInstances {
 
   case object Empty extends PersistenceAgentType(false) {
 
@@ -78,7 +78,6 @@ object PersistenceAgentType {
   ) extends PersistenceAgentType(false)
 
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
-    import PureconfigInstances._
     // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
     @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
       ConfigConvert.viaNonEmptyString[InetSocketAddress](

@@ -27,7 +27,9 @@ final case class QuineConfig(
   declineSleepWhenWriteWithin: FiniteDuration = 100.millis,
   declineSleepWhenAccessWithin: FiniteDuration = Duration.Zero,
   maxCatchUpSleep: FiniteDuration = 2000.millis,
-  webserver: WebServerConfig = WebServerConfig(Host("0.0.0.0"), Port(8080)),
+  webserver: WebServerBindConfig = // TODO consider renaming to webserverBind
+    WebServerBindConfig(Host("0.0.0.0"), Port(8080)),
+  webserverAdvertise: Option[WebserverAdvertiseConfig] = None,
   shouldResumeIngest: Boolean = false,
   shardCount: Int = 4,
   id: IdProviderType = IdProviderType.UUID(),
@@ -41,15 +43,13 @@ final case class QuineConfig(
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig
 }
 
-object QuineConfig {
+object QuineConfig extends PureconfigInstances {
 
-  val webserverLens: Lens[QuineConfig, WebServerConfig] = lens[QuineConfig] >> Symbol("webserver")
+  val webserverLens: Lens[QuineConfig, WebServerBindConfig] = lens[QuineConfig] >> Symbol("webserver")
   val webserverPortLens: Lens[QuineConfig, Int] = webserverLens >> Symbol("port") >> Symbol("asInt")
   val webserverEnabledLens: Lens[QuineConfig, Boolean] = webserverLens >> Symbol("enabled")
 
   implicit val configConvert: ConfigConvert[QuineConfig] = {
-    import PureconfigInstances._
-
     @nowarn implicit val configConvert = deriveConvert[QuineConfig]
 
     // This class is necessary to make sure our config is always situated at the `quine` root

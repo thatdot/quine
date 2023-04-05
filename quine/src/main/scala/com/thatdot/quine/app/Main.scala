@@ -168,7 +168,9 @@ object Main extends App with LazyLogging {
   statusLines.info("Graph is ready")
 
   // The web service is started unless it was disabled.
-  val quineWebserverUrl: Option[URL] = Option.when(config.webserver.enabled)(config.webserver.toURL)
+  val bindUrl: Option[URL] = Option.when(config.webserver.enabled)(config.webserver.toURL)
+  val canonicalUrl: Option[URL] =
+    Option.when(config.webserver.enabled)(config.webserverAdvertise.map(_.toURL)).flatten
 
   @volatile
   var recipeInterpreterTask: Option[Cancellable] = None
@@ -179,7 +181,7 @@ object Main extends App with LazyLogging {
       .onComplete {
         case Success(()) =>
           recipeInterpreterTask = recipe.map(r =>
-            RecipeInterpreter(statusLines, r, appState, graph, quineWebserverUrl)(
+            RecipeInterpreter(statusLines, r, appState, graph, canonicalUrl)(
               graph.idProvider
             )
           )
@@ -194,12 +196,23 @@ object Main extends App with LazyLogging {
 
   attemptAppLoad()
 
-  quineWebserverUrl foreach { url =>
-    // hack: if host is "0.0.0.0" or "::" (INADDR_ANY and IN6ADDR_ANY's most common serialized form) present the URL
-    // as "localhost" to the user. This is necessary because while INADDR_ANY as a source address means "bind to all
-    // interfaces", it cannot necessarily be used as a destination address
-    val resolvableHost = if (Set("0.0.0.0", "::").contains(url.getHost)) "localhost" else url.getHost
-    val resolvableUrl = new java.net.URL(url.getProtocol, resolvableHost, url.getPort, url.getFile)
+  bindUrl foreach { url =>
+    // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
+    // from the bind URL
+    val resolvableUrl = canonicalUrl.getOrElse {
+      // hack: if using the bindURL when host is "0.0.0.0" or "::" (INADDR_ANY and IN6ADDR_ANY's most common
+      // serialized forms) present the URL as "localhost" to the user. This is necessary because while
+      // INADDR_ANY as a source  address means "bind to all interfaces", it cannot necessarily be used as
+      // a destination address
+      val resolvableHost =
+        if (Set("0.0.0.0", "::").contains(url.getHost)) "localhost" else url.getHost
+      new java.net.URL(
+        url.getProtocol,
+        resolvableHost,
+        url.getPort,
+        url.getFile
+      )
+    }
 
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, resolvableUrl, timeout)
       .bindWebServer(interface = url.getHost, port = url.getPort)

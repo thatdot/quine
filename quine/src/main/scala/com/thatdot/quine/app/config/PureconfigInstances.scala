@@ -15,7 +15,7 @@ import com.thatdot.quine.util.{Host, Port}
 
 /** Collection of implicits for helping implicit resolution of pureconfig schemas
   */
-object PureconfigInstances {
+trait PureconfigInstances {
 
   // Unknown keys should be errors
   implicit def sealedProductHint[T]: ProductHint[T] = ProductHint[T](allowUnknownKeys = false)
