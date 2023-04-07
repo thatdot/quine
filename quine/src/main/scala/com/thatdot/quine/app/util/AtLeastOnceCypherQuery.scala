@@ -90,6 +90,7 @@ object AtLeastOnceCypherQuery {
       case _: ShardNotAvailableException => Some(e)
       // Some problem from the persistor. This can include ephemeral errors like timeouts, so conservatively retry
       case _: WrappedPersistorException => Some(e)
+      case _: com.datastax.oss.driver.api.core.DriverException => Some(e)
       // Retriable failures related to StreamRefs:
       case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
       case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)

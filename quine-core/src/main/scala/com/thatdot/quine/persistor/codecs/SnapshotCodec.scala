@@ -8,15 +8,7 @@ import scala.collection.{AbstractIterable, mutable}
 import com.google.flatbuffers.FlatBufferBuilder
 
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior
-import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
-import com.thatdot.quine.graph.{
-  AbstractNodeSnapshot,
-  ByteBufferOps,
-  EventTime,
-  NodeSnapshot,
-  Notifiable,
-  StandingQueryId
-}
+import com.thatdot.quine.graph.{AbstractNodeSnapshot, ByteBufferOps, EventTime, Notifiable, StandingQueryId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
@@ -296,33 +288,5 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
 
     def readFromBuffer(buffer: ByteBuffer): SnapshotT =
       readNodeSnapshot(persistence.NodeSnapshot.getRootAsNodeSnapshot(buffer))
-  }
-}
-
-object SnapshotCodec extends AbstractSnapshotCodec[NodeSnapshot] {
-  def determineReserved(snapshot: NodeSnapshot): Boolean = false
-
-  def constructDeserialized(
-    time: EventTime,
-    properties: Map[Symbol, PropertyValue],
-    edges: Iterable[HalfEdge],
-    subscribersToThisNode: MutableMap[DomainGraphNodeId, SubscribersToThisNodeUtil.DistinctIdSubscription],
-    domainNodeIndex: MutableMap[QuineId, MutableMap[DomainGraphNodeId, Option[Boolean]]],
-    reserved: Boolean
-  ): NodeSnapshot = {
-    if (reserved) { // must be false in Quine
-      throw new UnsupportedExtension(
-        """Node snapshot indicates that restoring this node requires a Quine system
-          |extension not available in the running application.""".stripMargin.replace('\n', ' ')
-      )
-    }
-
-    NodeSnapshot(
-      time,
-      properties,
-      edges,
-      subscribersToThisNode,
-      domainNodeIndex
-    )
   }
 }

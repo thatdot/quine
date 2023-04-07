@@ -47,8 +47,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   def clearStandingQueries(): Unit = standingQueries.clear()
 
-  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.MultipleValuesStandingQueryBehavior])
-  requireBehavior(classOf[StandingQueryOpsGraph].getSimpleName, classOf[behavior.DomainNodeIndexBehavior])
+  private[this] def requireCompatibleNodeType(): Unit = {
+    requireBehavior[StandingQueryOpsGraph, behavior.MultipleValuesStandingQueryBehavior]
+    requireBehavior[StandingQueryOpsGraph, behavior.DomainNodeIndexBehavior]
+  }
 
   // NB this initialization needs to occur before we restore standing queries,
   // otherwise a null pointer exception occurs
@@ -163,6 +165,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     skipPersistor: Boolean = false,
     sqId: StandingQueryId
   ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
+    requireCompatibleNodeType()
     requiredGraphIsReady()
     val rsqAndOutputs =
       startStandingQuery(
@@ -227,6 +230,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     standingQueryId: StandingQueryId,
     skipPersistor: Boolean = false
   ): Option[Future[(StandingQuery, Instant, Int)]] = {
+    requireCompatibleNodeType()
     requiredGraphIsReady()
     standingQueries.remove(standingQueryId).map { (sq: RunningStandingQuery) =>
       val persistence = (if (skipPersistor) Future.unit else persistor.removeStandingQuery(sq.query)).flatMap { _ =>
@@ -250,6 +254,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     * @return standing query, when it was started (or re-started), and the number of buffered results
     */
   def listStandingQueries: Map[StandingQueryId, (StandingQuery, Instant, Int)] = {
+    requireCompatibleNodeType()
     requiredGraphIsReady()
     runningStandingQueries.view.mapValues(sq => (sq.query, sq.startTime, sq.bufferCount)).toMap
   }
@@ -259,6 +264,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     * @return source to wire-tap or [[None]] if the standing query doesn't exist
     */
   def wireTapStandingQuery(standingQueryId: StandingQueryId): Option[Source[StandingQueryResult, NotUsed]] = {
+    requireCompatibleNodeType()
     requiredGraphIsReady()
     runningStandingQuery(standingQueryId).map(_.resultsHub)
   }
@@ -271,6 +277,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     * @return future that completes when all the messages have been fired off
     */
   def propagateStandingQueries(parallelism: Option[Int])(implicit timeout: Timeout): Future[Unit] = {
+    requireCompatibleNodeType()
     requiredGraphIsReady()
     parallelism match {
       case Some(par) =>

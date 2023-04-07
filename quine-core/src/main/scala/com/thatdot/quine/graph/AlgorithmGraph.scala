@@ -12,7 +12,8 @@ import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 trait AlgorithmGraph extends BaseGraph {
 
-  requireBehavior(classOf[AlgorithmGraph].getSimpleName, classOf[behavior.AlgorithmBehavior])
+  private[this] def requireCompatibleNodeType(): Unit =
+    requireBehavior[AlgorithmGraph, behavior.AlgorithmBehavior]
 
   object algorithms {
 
@@ -68,7 +69,9 @@ trait AlgorithmGraph extends BaseGraph {
       atTime: Option[Milliseconds]
     )(implicit
       timeout: Timeout
-    ): Future[RandomWalkResult] =
+    ): Future[RandomWalkResult] = {
+      requireCompatibleNodeType()
+      requiredGraphIsReady()
       relayAsk(
         QuineIdAtTime(startingNode, atTime),
         GetRandomWalk(
@@ -80,6 +83,7 @@ trait AlgorithmGraph extends BaseGraph {
           _
         )
       )
+    }
 
     /** @param saveSink      An output sink which will handle receiving and writing each of the final walk results.
       * @param collectQuery  A constrained OnNode Cypher query to fetch results to fold into the random walk results
@@ -108,7 +112,9 @@ trait AlgorithmGraph extends BaseGraph {
       parallelism: Int = 16
     )(implicit
       timeout: Timeout
-    ): Future[SinkMat] =
+    ): Future[SinkMat] = {
+      requireCompatibleNodeType()
+      requiredGraphIsReady()
       enumerateAllNodeIds()
         .flatMapConcat(qid => Source(0 until walksPerNode).map(qid -> _))
         .mapAsync(parallelism) { case (qid, i) =>
@@ -120,6 +126,7 @@ trait AlgorithmGraph extends BaseGraph {
             )(nodeDispatcherEC)
         }
         .runWith(saveSink)
+    }
 
   }
 }

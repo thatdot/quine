@@ -312,9 +312,11 @@ final private[quine] class GraphShardActor(
       val costToSleep = new CostToSleep(0L)
       val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake)
       val actorRefLock = new StampedLock()
+      val finalNodeArgs = id :: graph :: costToSleep :: wakefulState :: actorRefLock ::
+        nodeArgs.productIterator.toList
       val props = Props(
-        graph.nodeClass,
-        id :: graph :: costToSleep :: wakefulState :: actorRefLock :: nodeArgs.productIterator.toList: _*
+        graph.nodeStaticSupport.nodeClass.runtimeClass,
+        finalNodeArgs: _*
       ).withMailbox("akka.quine.node-mailbox")
         .withDispatcher(QuineDispatchers.nodeDispatcherName)
       try {
@@ -467,7 +469,7 @@ final private[quine] class GraphShardActor(
           if (canCreateNewNodes) {
             val ec = graph.nodeDispatcherEC
             nodes(id) = NodeState.WakingNode
-            NodeActor
+            graph.nodeStaticSupport
               .create(id, snapshotOpt, graph)
               .onComplete {
                 case Success(nodeArgs) =>
@@ -751,9 +753,9 @@ final private[quine] case class WakeUp(
 ) extends ShardControlMessage
 
 /** Sent to a shard to tell it the state for a waking Node has been read from persistence */
-final private[quine] case class NodeStateRehydrated(
+final private[quine] case class NodeStateRehydrated[NodeConstructorRecord <: Product](
   id: QuineIdAtTime,
-  nodeArgs: NodeActorConstructorArgs,
+  nodeArgs: NodeConstructorRecord,
   remainingRetries: Int,
   errorCount: Map[WakeUpErrorStates, Int]
 ) extends ShardControlMessage

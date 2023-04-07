@@ -41,7 +41,6 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.codecs.SnapshotCodec
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.HexConversions
 
@@ -76,8 +75,7 @@ abstract private[graph] class AbstractNodeActor(
     SubscribersToThisNodeUtil.DistinctIdSubscription
   ],
   protected val domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
-  protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries,
-  initialJournal: NodeActor.Journal
+  protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries
 ) extends Actor
     with ActorLogging
     with BaseNodeActor
@@ -344,20 +342,20 @@ abstract private[graph] class AbstractNodeActor(
         )
       )
 
-    def infinitePersisting(logFunc: String => Unit, f: Future[Unit] = persistSnapshot()): Future[Unit] =
+    def infinitePersisting(logFunc: String => Unit, f: => Future[Unit]): Future[Unit] =
       f.recoverWith { case NonFatal(e) =>
         logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
-        infinitePersisting(logFunc, persistSnapshot())
+        infinitePersisting(logFunc, f)
       }(cypherEc)
 
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
-        infinitePersisting(log.info)
+        infinitePersisting(log.info, persistSnapshot())
       case EventEffectOrder.PersistorFirst =>
         // There's nothing sane to do if this fails; there's no query result to fail. Just retry forever and deadlock.
         // The important intention here is to disallow any subsequent message (e.g. query) until the persist succeeds,
         // and to disallow `runPostActions` until persistence succeeds.
-        val _ = pauseMessageProcessingUntil(infinitePersisting(log.warning))
+        val _ = pauseMessageProcessingUntil[Unit](infinitePersisting(log.warning, persistSnapshot()), _ => ())
     }
     latestUpdateAfterSnapshot = None
   } else {
@@ -458,7 +456,7 @@ abstract private[graph] class AbstractNodeActor(
     */
   def toSnapshotBytes(time: EventTime): Array[Byte] = {
     latestUpdateAfterSnapshot = None // TODO: reconsider what to do if saving the snapshot fails!
-    SnapshotCodec.format.write(
+    NodeSnapshot.snapshotCodec.format.write(
       NodeSnapshot(
         time,
         properties,

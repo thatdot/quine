@@ -47,7 +47,7 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
 
   it should "roundtrip NodeSnapshot" in {
     forAll { (snapshot: NodeSnapshot) =>
-      val converted = SnapshotCodec.format.read(SnapshotCodec.format.write(snapshot)).get
+      val converted = NodeSnapshot.snapshotCodec.format.read(NodeSnapshot.snapshotCodec.format.write(snapshot)).get
       /* Snapshot is equal up to type of edges iterator returned.*/
       assert(converted.copy(edges = converted.edges.toVector) == snapshot)
     }

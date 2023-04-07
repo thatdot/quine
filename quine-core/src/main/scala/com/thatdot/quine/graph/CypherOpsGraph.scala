@@ -14,8 +14,8 @@ import com.thatdot.quine.model._
 
 /** Functionality for querying the graph using Cypher. */
 trait CypherOpsGraph extends BaseGraph {
-
-  requireBehavior(classOf[CypherOpsGraph].getSimpleName, classOf[behavior.CypherBehavior])
+  private[this] def requireCompatibleNodeType(): Unit =
+    requireBehavior[CypherOpsGraph, behavior.CypherBehavior]
 
   /** Maximum expanded length of a variable length pattern.
     *
@@ -92,6 +92,7 @@ trait CypherOpsGraph extends BaseGraph {
       context: QueryContext = QueryContext.empty,
       bypassSkipOptimization: Boolean = false
     ): Source[QueryContext, NotUsed] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val interpreter =
         atTime match {
@@ -128,6 +129,7 @@ trait CypherOpsGraph extends BaseGraph {
       parameters: Map[String, cypher.Value],
       bypassSkipOptimization: Boolean = false
     ): QueryResults = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val interpreter: CypherInterpreter[Location.External] = atTime match {
         case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)

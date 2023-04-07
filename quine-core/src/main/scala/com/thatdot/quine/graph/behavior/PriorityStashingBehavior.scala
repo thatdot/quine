@@ -125,7 +125,7 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     */
   final protected def pauseMessageProcessingUntil[A](
     until: Future[A],
-    onComplete: Try[A] => Unit = (_: Try[A]) => ()
+    onComplete: Try[A] => Unit
   ): Future[Unit] = if (until.isCompleted && pendingCallbacks.isEmpty) {
     // If the future is already completed and no other callbacks are enqueued ahead of it, apply effects immediately
     Future.successful(onComplete(until.value.get))
@@ -165,7 +165,7 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     // Schedule the message which will restore the previous actor behavior after the future completes.
     until.onComplete { (done: Try[_]) =>
       done.toEither.left.foreach(err =>
-        log.error(err, s"pauseMessageProcessingUntil: future failed on node ${qid.debug(idProvider)}")
+        debug(s"pauseMessageProcessingUntil: future for: $thisFutureId failed on node ${qid.debug(idProvider)}")
       )
       self ! StashedResultDelivery(thisFutureId, done)
     }(context.dispatcher)

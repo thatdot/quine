@@ -41,7 +41,10 @@ class GraphService(
 
   val dispatchers = new QuineDispatchers(system)
 
-  def nodeClass: Class[NodeActor] = classOf[NodeActor]
+  type Node = NodeActor
+  type Snapshot = NodeSnapshot
+  type NodeConstructorRecord = NodeConstructorArgs
+  val nodeStaticSupport: StaticNodeSupport[NodeActor, NodeSnapshot, NodeConstructorArgs] = StaticNodeActorSupport
 
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit] =
     InMemoryNodeLimit.fromOptions(inMemorySoftNodeLimit, inMemoryHardNodeLimit)

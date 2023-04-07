@@ -12,8 +12,8 @@ import com.thatdot.quine.model._
 
 /** Functionality for directly modifying the runtime property graph. Always prefer using something else. */
 trait LiteralOpsGraph extends BaseGraph {
-
-  requireBehavior(classOf[LiteralOpsGraph].getSimpleName, classOf[behavior.LiteralCommandBehavior])
+  private[this] def requireCompatibleNodeType(): Unit =
+    requireBehavior[LiteralOpsGraph, behavior.LiteralCommandBehavior]
 
   // TODO: should we keep this object indirection? It serves no purpose other than namespacing...
   object literalOps {
@@ -28,16 +28,19 @@ trait LiteralOpsGraph extends BaseGraph {
     def logState(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
       timeout: Timeout
     ): Future[NodeInternalState] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, atTime), LogInternalState).flatten
     }
 
     def getSqResults(node: QuineId)(implicit timeout: Timeout): Future[SqStateResults] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), GetSqState)
     }
 
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), DeleteNodeCommand(true, _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
@@ -46,6 +49,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def getProps(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
       timeout: Timeout
     ): Future[Map[Symbol, PropertyValue]] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       (getPropsAndLabels(node, atTime) map { case (x, _) =>
         x // keeping only properties
@@ -61,6 +65,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def getPropsAndLabels(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
       timeout: Timeout
     ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val futureSource = relayAsk(QuineIdAtTime(node, atTime), GetPropertiesCommand)
       Source
@@ -86,6 +91,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def setLabels(node: QuineId, labels: Set[String])(implicit
       timeout: Timeout
     ): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), SetLabels(labels.map(Symbol(_)), _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
@@ -109,6 +115,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def setProp(node: QuineId, key: String, value: QuineValue)(implicit
       timeout: Timeout
     ): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), SetPropertyCommand(Symbol(key), PropertyValue(value), _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
@@ -118,6 +125,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def setPropBytes(node: QuineId, key: String, value: Array[Byte])(implicit
       timeout: Timeout
     ): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val propVal = PropertyValue.fromBytes(value)
       relayAsk(QuineIdAtTime(node, None), SetPropertyCommand(Symbol(key), propVal, _)).flatten
@@ -125,6 +133,7 @@ trait LiteralOpsGraph extends BaseGraph {
     }
 
     def removeProp(node: QuineId, key: String)(implicit timeout: Timeout): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(QuineIdAtTime(node, None), RemovePropertyCommand(Symbol(key), _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
@@ -139,6 +148,7 @@ trait LiteralOpsGraph extends BaseGraph {
       withLimit: Option[Int] = None,
       atTime: Option[Milliseconds] = None
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val halfEdgesSource =
         relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
@@ -154,6 +164,7 @@ trait LiteralOpsGraph extends BaseGraph {
       withLimit: Option[Int] = None,
       atTime: Option[Milliseconds] = None
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       getHalfEdges(node, withType, withDir, withId, withLimit, atTime)
         .flatMap(halfEdges =>
@@ -175,6 +186,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def addEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
       timeout: Timeout
     ): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(
@@ -191,6 +203,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def removeEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
       timeout: Timeout
     ): Future[Unit] = {
+      requireCompatibleNodeType()
       requiredGraphIsReady()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(

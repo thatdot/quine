@@ -3,6 +3,7 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.reflect.{ClassTag, classTag}
 
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
@@ -48,15 +49,10 @@ trait BaseGraph extends StrictLogging {
 
   val metrics: HostQuineMetrics
 
-  /** Class of nodes in the graph
-    *
-    * INV: This class must have a constructor that has the same arguments (in order) as [[NodeActor]]
-    * INV: the constructor arguments must end with the same types in the same order as [[NodeActorConstructorArgs]]
-    *
-    * The handle to the graph is usually a more specific type than `BaseGraph`,
-    * constrained by behaviors that are mixed into the node class.
-    */
-  def nodeClass: Class[_]
+  type Node <: AbstractNodeActor
+  type Snapshot <: AbstractNodeSnapshot
+  type NodeConstructorRecord <: Product
+  def nodeStaticSupport: StaticNodeSupport[Node, Snapshot, NodeConstructorRecord]
 
   /** Method for initializing edge collections */
   val edgeCollectionFactory: QuineId => SyncEdgeCollection
@@ -181,11 +177,16 @@ trait BaseGraph extends StrictLogging {
     *
     * @param context where is the requirement coming from?
     * @param clazz class of the behaviour
+    *
+    * TODO it should be possible to replace all runtime instances of this function with compile-time checks using
+    *      something like an Aux pattern on BaseGraph
     */
   @throws[IllegalArgumentException]("node type does not implement the specified behaviour")
-  def requireBehavior[T](context: String, clazz: Class[T]): Unit =
-    if (!clazz.isAssignableFrom(nodeClass)) {
-      throw new IllegalArgumentException(s"$context requires the type of nodes extend ${clazz.getSimpleName}")
+  def requireBehavior[C: ClassTag, T: ClassTag]: Unit =
+    if (!classTag[T].runtimeClass.isAssignableFrom(nodeStaticSupport.nodeClass.runtimeClass)) {
+      throw new IllegalArgumentException(
+        s"${classTag[C].runtimeClass.getSimpleName} requires the type of nodes extend ${classTag[T].runtimeClass.getSimpleName}"
+      )
     }
 
   /** Uses the appropriate persistor method (journals or snapshot) to enumerate all node IDs.
