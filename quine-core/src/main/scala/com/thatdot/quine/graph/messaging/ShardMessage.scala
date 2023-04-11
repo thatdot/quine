@@ -1,5 +1,7 @@
 package com.thatdot.quine.graph.messaging
 
+import scala.concurrent.Future
+
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
@@ -30,6 +32,10 @@ object ShardMessage {
 
   /** Instruct the shard to forcibly stop all of its nodes */
   case object RemoveNodes extends ShardMessage
+
+  case class PurgeNode(qid: QuineId, replyTo: QuineRef)
+      extends ShardMessage
+      with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
   /** Instruct the shard to forcibly remove some of its nodes
     *

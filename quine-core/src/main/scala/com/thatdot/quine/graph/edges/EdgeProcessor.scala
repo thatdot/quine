@@ -39,7 +39,7 @@ abstract class EdgeProcessor(
   def updateEdgeCollection(event: EdgeEvent): Unit
 
   import edges.{toSyncFuture, toSyncStream}
-  def size: Int = toSyncFuture(edges.size).toInt
+  def size: Int = toSyncFuture(edges.size)
 
   def all: Iterator[HalfEdge] = toSyncStream(edges.all)
 

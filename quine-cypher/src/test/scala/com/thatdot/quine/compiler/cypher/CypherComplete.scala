@@ -644,6 +644,26 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
     }
   }
+  describe("purgeNode on a node must remove all of its properteis and edges") {
+    val molly = people.find(_.first == "Molly").get.id
+    testQuery(
+      s"CALL purgeNode($molly)",
+      expectedColumns = Vector.empty,
+      expectedRows = Seq.empty,
+      expectedIsReadOnly = false
+    )
+    testQuery(
+      s"MATCH (n) where id(n) = $molly RETURN properties(n)",
+      expectedColumns = Vector("properties(n)"),
+      expectedRows = Seq(Vector(Expr.Map.empty))
+    )
+    testQuery(
+      s"MATCH (n)-[e]-(x) where id(n) = $molly RETURN e",
+      expectedColumns = Vector("e"),
+      expectedRows = Seq.empty,
+      expectedCannotFail = true
+    )
+  }
   describe("Updates and void procedures' return behavior") {
 
     describe("Used as a mid-query clause: SET/REMOVE et al should return 1 row") {

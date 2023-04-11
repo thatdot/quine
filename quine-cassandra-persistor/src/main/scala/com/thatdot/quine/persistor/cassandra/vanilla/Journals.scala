@@ -1,10 +1,8 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.NotUsed
 import akka.stream.Materializer
@@ -12,14 +10,15 @@ import akka.stream.scaladsl.Source
 
 import cats.Monad
 import cats.implicits._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
 import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.{T2, T9}
 trait JournalColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
@@ -29,8 +28,7 @@ trait JournalColumnNames {
 
 class Journals(
   session: CqlSession,
-  insertTimeout: FiniteDuration,
-  writeConsistency: ConsistencyLevel,
+  writeSettings: CassandraStatementSettings,
   selectAllQuineIds: PreparedStatement,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
@@ -40,7 +38,8 @@ class Journals(
   selectWithTimeByQuineIdSinceTimestamp: PreparedStatement,
   selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
   selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
-  insert: PreparedStatement
+  insert: PreparedStatement,
+  deleteByQuineId: PreparedStatement
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
     with JournalColumnNames {
@@ -53,20 +52,24 @@ class Journals(
 
   def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     executeFuture(
-      BatchStatement
-        .newInstance(
-          BatchType.UNLOGGED,
-          events map { case NodeEvent.WithTime(event, atTime) =>
-            insert.bindColumns(
-              quineIdColumn.set(id),
-              timestampColumn.set(atTime),
-              dataColumn.set(event)
-            )
-          }: _*
-        )
-        .setTimeout(insertTimeout.toJava)
-        .setConsistencyLevel(writeConsistency)
+      writeSettings(
+        BatchStatement
+          .newInstance(
+            BatchType.UNLOGGED,
+            events map { case NodeEvent.WithTime(event, atTime) =>
+              insert.bindColumns(
+                quineIdColumn.set(id),
+                timestampColumn.set(atTime),
+                dataColumn.set(event)
+              )
+            }: _*
+          )
+      )
     )
+
+  def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(
+    deleteByQuineId.bindColumns(quineIdColumn.set(qid))
+  )
 
   def getJournalWithTime(
     id: QuineId,
@@ -194,61 +197,35 @@ object Journals extends TableDefinition with JournalColumnNames {
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit materializer: Materializer, futureMonad: Monad[Future]): Future[Journals] = {
+    import shapeless.syntax.std.tuple._ // to concatenate tuples
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
-    }
-
-    val createdSchema =
-      if (shouldCreateTables)
-        session.executeAsync(createTableStatement).toScala
-      else
-        Future.unit
+    val createdSchema = futureMonad.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.
     // Even though there is no "explicit" dependency being passed between the two parts.
     createdSchema.flatMap(_ =>
       (
-        prepare(selectAllQuineIds.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(selectByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(
-          selectByQuineIdSinceTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectByQuineIdUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectByQuineIdSinceUntilTimestampQuery.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdQuery.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdSinceTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(
-          selectWithTimeByQuineIdUntilTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(
+        T9(
+          selectAllQuineIds,
+          selectByQuineIdQuery.build,
+          selectByQuineIdSinceTimestampQuery,
+          selectByQuineIdUntilTimestampQuery,
+          selectByQuineIdSinceUntilTimestampQuery,
+          selectWithTimeByQuineIdQuery.build,
+          selectWithTimeByQuineIdSinceTimestampQuery,
+          selectWithTimeByQuineIdUntilTimestampQuery,
           selectWithTimeByQuineIdSinceUntilTimestampQuery
-            .setTimeout(selectTimeout.toJava)
-            .setConsistencyLevel(readConsistency)
-        ),
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new Journals(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _))
+        ).map(prepare(session, readSettings)).toTuple ++
+        T2(insertStatement, deleteAllByPartitionKeyStatement)
+          .map(prepare(session, writeSettings))
+          .toTuple
+      ).mapN(new Journals(session, writeSettings, _, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }

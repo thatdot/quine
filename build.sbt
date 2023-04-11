@@ -95,6 +95,7 @@ lazy val `quine-cassandra-persistor`: Project = project
   .settings(commonSettings)
   .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-core` % "compile->compile;it->test")
+  .enablePlugins(spray.boilerplate.BoilerplatePlugin)
   .settings(
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,

@@ -1,19 +1,17 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
 
 import cats.Monad
 import cats.implicits._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 import com.typesafe.scalalogging.LazyLogging
@@ -21,6 +19,7 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.{T3, T9}
 
 trait DomainIndexEventColumnNames {
   import CassandraCodecs._
@@ -32,8 +31,7 @@ trait DomainIndexEventColumnNames {
 
 class DomainIndexEvents(
   session: CqlSession,
-  insertTimeout: FiniteDuration,
-  writeConsistency: ConsistencyLevel,
+  writeSettings: CassandraStatementSettings,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
   selectByQuineIdUntilTimestamp: PreparedStatement,
@@ -42,9 +40,10 @@ class DomainIndexEvents(
   selectWithTimeByQuineIdSinceTimestamp: PreparedStatement,
   selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
   selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
-  insert: PreparedStatement,
   selectByDgnId: PreparedStatement,
-  deleteByQuineIdTimestamp: PreparedStatement
+  insert: PreparedStatement,
+  deleteByQuineIdTimestamp: PreparedStatement,
+  deleteByQuineId: PreparedStatement
 )(implicit materializer: Materializer)
     extends CassandraTable(session)
     with DomainIndexEventColumnNames
@@ -56,22 +55,20 @@ class DomainIndexEvents(
 
   def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     executeFuture(
-      BatchStatement
-        .newInstance(
-          BatchType.UNLOGGED,
-          //TODO this filter is temporary until NodeEvent.WithTime is split into
-          // separate types for NodeChangeEvent and DomainIndexEvent
-          events.collect { case NodeEvent.WithTime(event: DomainIndexEvent, atTime) =>
-            insert.bindColumns(
-              quineIdColumn.set(id),
-              timestampColumn.set(atTime),
-              dgnIdColumn.set(event.dgnId),
-              dataColumn.set(event)
-            )
-          }: _*
-        )
-        .setTimeout(insertTimeout.toJava)
-        .setConsistencyLevel(writeConsistency)
+      writeSettings(
+        BatchStatement
+          .newInstance(
+            BatchType.UNLOGGED,
+            events.map { case NodeEvent.WithTime(event: DomainIndexEvent, atTime) =>
+              insert.bindColumns(
+                quineIdColumn.set(id),
+                timestampColumn.set(atTime),
+                dgnIdColumn.set(event.dgnId),
+                dataColumn.set(event)
+              )
+            }: _*
+          )
+      )
     )
 
   def getJournalWithTime(
@@ -140,12 +137,16 @@ class DomainIndexEvents(
      a reasonable default for delete parallelism */
     val deleteParallelism = 10
     executeSource(selectByDgnId.bindColumns(dgnIdColumn.set(id)))
-      .map(row => (quineIdColumn.get(row), timestampColumn.get(row)))
+      .map(pair(quineIdColumn, timestampColumn))
       .runWith(Sink.foreachAsync(deleteParallelism) { case (id, timestamp) =>
         executeFuture(deleteByQuineIdTimestamp.bindColumns(quineIdColumn.set(id), timestampColumn.set(timestamp)))
       })
       .map(_ => ())(ExecutionContexts.parasitic)
   }
+
+  def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(
+    deleteByQuineId.bindColumns(quineIdColumn.set(qid))
+  )
 
 }
 
@@ -217,49 +218,39 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit materializer: Materializer, futureMonad: Monad[Future]): Future[DomainIndexEvents] = {
+    import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(
-      statement: SimpleStatement,
-      timeout: FiniteDuration = selectTimeout,
-      consistencyLevel: ConsistencyLevel = readConsistency
-    ): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement.setTimeout(timeout.toJava).setConsistencyLevel(consistencyLevel)).toScala
-    }
-
-    val createdSchema = {
-
-      if (shouldCreateTables)
-        session.executeAsync(createTableStatement).toScala
-      else
-        Future.unit
-    }
+    val createdSchema = futureMonad.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.
     // Even though there is no "explicit" dependency being passed between the two parts.
-    createdSchema.flatMap(_ =>
-      (
-        prepare(selectByQuineIdQuery.build()),
-        prepare(selectByQuineIdSinceTimestampQuery),
-        prepare(selectByQuineIdUntilTimestampQuery),
-        prepare(selectByQuineIdSinceUntilTimestampQuery),
-        prepare(selectWithTimeByQuineIdQuery.build()),
-        prepare(selectWithTimeByQuineIdSinceTimestampQuery),
-        prepare(selectWithTimeByQuineIdUntilTimestampQuery),
-        prepare(selectWithTimeByQuineIdSinceUntilTimestampQuery),
-        prepare(insertStatement, insertTimeout, writeConsistency),
-        prepare(selectByDgnId, selectTimeout, readConsistency),
-        prepare(deleteStatement, insertTimeout, writeConsistency)
-      ).mapN(new DomainIndexEvents(session, insertTimeout, writeConsistency, _, _, _, _, _, _, _, _, _, _, _))
-    )(ExecutionContexts.parasitic)
+    createdSchema.flatMap { _ =>
+      val selects = T9(
+        selectByQuineIdQuery.build,
+        selectByQuineIdSinceTimestampQuery,
+        selectByQuineIdUntilTimestampQuery,
+        selectByQuineIdSinceUntilTimestampQuery,
+        selectWithTimeByQuineIdQuery.build,
+        selectWithTimeByQuineIdSinceTimestampQuery,
+        selectWithTimeByQuineIdUntilTimestampQuery,
+        selectWithTimeByQuineIdSinceUntilTimestampQuery,
+        selectByDgnId
+      ).map(prepare(session, readSettings))
+      val updates = T3(
+        insertStatement,
+        deleteStatement,
+        deleteAllByPartitionKeyStatement
+      ).map(prepare(session, writeSettings))
+      (selects ++ updates).mapN(
+        new DomainIndexEvents(session, writeSettings, _, _, _, _, _, _, _, _, _, _, _, _)
+      )
+    }(ExecutionContexts.parasitic)
 
   }
 }

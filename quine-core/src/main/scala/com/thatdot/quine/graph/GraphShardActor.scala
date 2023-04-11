@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
 import scala.collection.concurrent
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteDuration}
 import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success}
@@ -13,7 +14,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Pro
 import akka.dispatch.Envelope
 import akka.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.GraphShardActor.LivenessStatus
+import com.thatdot.quine.graph.GraphShardActor.{LivenessStatus, NodeState}
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
 import com.thatdot.quine.graph.messaging.ShardMessage.{
   AwakeNode,
@@ -22,6 +23,7 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
   GetShardStats,
   InitiateShardShutdown,
   LocalPredicate,
+  PurgeNode,
   RemoveNodesIf,
   RequestNodeSleep,
   SampleAwakeNodes,
@@ -30,7 +32,7 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
   UpdateInMemoryLimits
 }
 import com.thatdot.quine.graph.messaging.{NodeActorMailboxExtension, QuineIdAtTime, QuineMessage, QuineRefOps}
-import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 
 /** Shard in the Quine graph
@@ -105,7 +107,25 @@ final private[quine] class GraphShardActor(
 
   override def postStop(): Unit = graph.metrics.removeShardMetrics(name)
 
-  import GraphShardActor.NodeState
+  /** Remove all nodes from this shard which match a predicate on their QuineIdAtTime
+    * @param predicate a function on the node's QuineIdAtTime to determine if we should remove the node
+    * @return true if all matching nodes were removed. false if there are still pending nodes waking that we didn't remove
+    */
+  private def removeNodesIf(predicate: QuineIdAtTime => Boolean): Boolean = {
+    var noWakingNodesExist = true
+    for ((nodeId, nodeState) <- nodes; if predicate(nodeId))
+      nodeState match {
+        case NodeState.WakingNode =>
+          if (log.isInfoEnabled) log.info(s"Got message to remove node $nodeId that's not yet awake, will recurse")
+          noWakingNodesExist = false
+        case NodeState.LiveNode(_, actorRef, _, _) =>
+          nodes.remove(nodeId)
+          nodesRemovedCounter.inc()
+          context.stop(actorRef)
+          inMemoryActorList.remove(nodeId)
+      }
+    noWakingNodesExist
+  }
 
   /** An LRU cache of nodes. Used to decide which node to sleep next.
     *
@@ -502,24 +522,29 @@ final private[quine] class GraphShardActor(
       }
 
     case msg @ RemoveNodesIf(LocalPredicate(predicate), _) =>
-      var wakingNodesExist = false
-      for ((nodeId, nodeState) <- nodes; if predicate(nodeId))
-        nodeState match {
-          case NodeState.WakingNode =>
-            if (log.isInfoEnabled) log.info(s"Got message to remove node $nodeId that's not yet awake, will recurse")
-            wakingNodesExist = true
-          case NodeState.LiveNode(_, actorRef, _, _) =>
-            nodes.remove(nodeId)
-            nodesRemovedCounter.inc()
-            context.stop(actorRef)
-            inMemoryActorList.remove(nodeId)
-        }
-      if (wakingNodesExist) {
-        val _ = context.system.scheduler.scheduleOnce(8.millis, self, msg)(context.dispatcher, sender())
-      } else {
+      if (removeNodesIf(predicate)) {
         msg ?! Done
+      } else {
+        // If there are still waking nodes, retry this in 8 ms
+        val _ = context.system.scheduler.scheduleOnce(8.millis, self, msg)(context.dispatcher, sender())
       }
 
+    case msg @ PurgeNode(qid, _) =>
+      if (removeNodesIf(_.id == qid)) {
+        import graph.persistor
+        val deleteFunctions = Seq[QuineId => Future[Unit]](
+          persistor.deleteSnapshots,
+          persistor.deleteNodeChangeEvents,
+          persistor.deleteDomainIndexEvents,
+          persistor.deleteMultipleValuesStandingQueryStates
+        )
+        val persistorDeletions = Future.traverse(deleteFunctions)(f => f(qid))(implicitly, context.dispatcher)
+
+        msg ?! persistorDeletions.map(_ => Done)(ExecutionContexts.parasitic)
+      } else {
+        // If there are still waking nodes, retry this in 8 ms
+        val _ = context.system.scheduler.scheduleOnce(8.millis, self, msg)(context.dispatcher, sender())
+      }
     case msg @ RequestNodeSleep(idToSleep, _) =>
       sleepActor(idToSleep)
       msg ?! Done

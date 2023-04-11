@@ -208,7 +208,7 @@ trait BaseGraph extends StrictLogging {
             .named(s"all-recent-node-scan-shard-${shardRef.shardId}")
             .runWith(Sink.collection[QuineId, Set[QuineId]])
         }(implicitly, shardDispatcherEC)
-        .map(_.foldLeft(Set.empty[QuineId])(_ union _))(shardDispatcherEC)
+        .map(_.reduce(_ union _))(shardDispatcherEC)
 
       // Return those nodes, plus the ones the persistor produces
       val combinedSource = Source.futureSource {

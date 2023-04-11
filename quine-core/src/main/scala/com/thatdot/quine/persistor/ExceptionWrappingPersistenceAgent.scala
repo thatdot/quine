@@ -1,5 +1,6 @@
 package com.thatdot.quine.persistor
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success}
 
 import akka.NotUsed
@@ -22,17 +23,21 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   */
 sealed abstract class PersistorCall
 case class PersistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]) extends PersistorCall
+case class DeleteNodeChangeEvents(id: QuineId) extends PersistorCall
 case class PersistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]])
     extends PersistorCall
+case class DeleteDomainIndexEvents(id: QuineId) extends PersistorCall
 case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
+case class DeleteSnapshot(id: QuineId) extends PersistorCall
 case class GetLatestSnapshot(id: QuineId, upToTime: EventTime) extends PersistorCall
 case class PersistStandingQuery(standingQuery: StandingQuery) extends PersistorCall
 case class RemoveStandingQuery(standingQuery: StandingQuery) extends PersistorCall
 case object GetStandingQueries extends PersistorCall
 case class GetMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
+case class DeleteMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case class SetStandingQueryState(
   standingQuery: StandingQueryId,
   id: QuineId,
@@ -49,6 +54,7 @@ case object GetDomainGraphNodes extends PersistorCall
 
 class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
+    with NoStackTrace
 
 /** @param ec EC on which to schedule error-wrapping logic (low CPU, nonblocking workload)
   */
@@ -91,6 +97,23 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = leftMap(
     new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
     persistenceAgent.getDomainIndexEventsWithTime(id, startingAt, endingAt)
+  )
+
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = leftMap(
+    new WrappedPersistorException(DeleteSnapshot(qid), _),
+    persistenceAgent.deleteSnapshots(qid)
+  )
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = leftMap(
+    new WrappedPersistorException(DeleteNodeChangeEvents(qid), _),
+    persistenceAgent.deleteNodeChangeEvents(qid)
+  )
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = leftMap(
+    new WrappedPersistorException(DeleteDomainIndexEvents(qid), _),
+    persistenceAgent.deleteDomainIndexEvents(qid)
+  )
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = leftMap(
+    new WrappedPersistorException(DeleteMultipleValuesStandingQueryStates(id), _),
+    persistenceAgent.deleteMultipleValuesStandingQueryStates(id)
   )
 
   // TODO: Can you catch and wrap exceptions thrown by Streams?

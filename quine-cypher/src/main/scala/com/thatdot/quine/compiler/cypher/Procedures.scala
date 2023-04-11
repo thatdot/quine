@@ -6,6 +6,7 @@ import java.util.concurrent.TimeoutException
 
 import scala.annotation.nowarn
 import scala.collection.concurrent
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationLong
 
 import akka.NotUsed
@@ -101,6 +102,7 @@ case object resolveCalls extends StatementRewriter {
     CypherDebugNode,
     CypherGetDistinctIDSqSubscriberResults,
     CypherGetDistinctIdSqSubscriptionResults,
+    PurgeNode,
     CypherDebugSleep,
     ReifyTime,
     RandomWalk
@@ -899,6 +901,46 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
   }
 }
 
+object PurgeNode extends UserDefinedProcedure {
+  val name = "purgeNode"
+  val canContainUpdates = true
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Anything),
+    outputs = Vector.empty,
+    description = "Purge a node from history"
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+
+    val graph = LiteralOpsGraph.getOrThrow(s"$name Cypher procedure", location.graph)
+    implicit val idProv: QuineIdProvider = graph.idProvider
+
+    val node: QuineId = arguments match {
+      case Seq(nodeLike) =>
+        UserDefinedProcedure.extractQuineId(nodeLike) match {
+          case None =>
+            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
+          case Some(qid) =>
+            qid
+        }
+      case other =>
+        throw wrongSignature(other)
+    }
+
+    Source.lazyFuture { () =>
+      graph.literalOps.purgeNode(node).map(_ => Vector.empty)(ExecutionContexts.parasitic)
+    }
+  }
+}
 object CypherDebugSleep extends UserDefinedProcedure {
   val name = "debug.sleep"
   val canContainUpdates = false

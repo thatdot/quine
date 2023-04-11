@@ -9,7 +9,7 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, MapDb}
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
+import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, CassandraStatementSettings}
 
 /** Options for persistence */
 object PersistenceBuilder extends LazyLogging {
@@ -79,12 +79,16 @@ object PersistenceBuilder extends LazyLogging {
           persistenceConfig,
           c.keyspace,
           c.replicationFactor,
-          c.readConsistency,
-          c.writeConsistency,
+          CassandraStatementSettings(
+            c.readConsistency,
+            c.readTimeout
+          ),
+          CassandraStatementSettings(
+            c.writeConsistency,
+            c.writeTimeout
+          ),
           c.endpoints,
           c.localDatacenter,
-          c.writeTimeout,
-          c.readTimeout,
           c.shouldCreateTables,
           c.shouldCreateKeyspace,
           Some(Metrics),

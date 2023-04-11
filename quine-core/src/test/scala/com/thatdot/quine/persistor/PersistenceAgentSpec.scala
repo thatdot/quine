@@ -8,10 +8,12 @@ import scala.util.Random
 
 import akka.actor.ActorSystem
 
+import cats.syntax.functor._
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
 import org.scalatest.funspec.AsyncFunSpec
-import org.scalatest.{Assertion, BeforeAndAfterAll, OptionValues}
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.{Assertion, BeforeAndAfterAll, Inspectors, OptionValues}
 
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
 import com.thatdot.quine.graph.Generators.{generate1, generateN}
@@ -39,10 +41,12 @@ import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineVa
 abstract class PersistenceAgentSpec
     extends AsyncFunSpec
     with BeforeAndAfterAll
+    with Matchers
+    with Inspectors
     with OptionValues
     with ArbitraryInstances {
 
-  implicit val system: ActorSystem = ActorSystem()
+  implicit val system: ActorSystem = ActorSystem("test-system")
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
@@ -113,7 +117,7 @@ abstract class PersistenceAgentSpec
   /** Mash together a bunch of async actions into one assertion */
   def allOfConcurrent[A](asyncTests: Future[A]*): Future[Assertion] = {
     assume(runnable)
-    Future.sequence(asyncTests.toList).map(_ => succeed)
+    Future.sequence(asyncTests) as succeed
   }
 
   describe("persistEvent") {
@@ -131,41 +135,41 @@ abstract class PersistenceAgentSpec
         )
       )
     }
-  }
 
-  it("supports EventTime.MaxValue and EventTime.MinValue") {
-    allOfConcurrent(
-      // "minimum qid" (all 0 bits)
-      persistor.persistEvents(
-        qid0,
-        Seq(
-          NodeEvent.WithTime(event0, EventTime.MinValue),
-          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeEvent.WithTime(event3, EventTime.MaxValue)
-        )
-      ),
-      // in between qid
-      persistor.persistEvents(
-        qid2,
-        Seq(
-          NodeEvent.WithTime(event0, EventTime.MinValue),
-          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeEvent.WithTime(event3, EventTime.MaxValue)
-        )
-      ),
-      // "maximum qid" (all 1 bits)
-      persistor.persistEvents(
-        qid4,
-        Seq(
-          NodeEvent.WithTime(event0, EventTime.MinValue),
-          NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
-          NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-          NodeEvent.WithTime(event3, EventTime.MaxValue)
+    it("supports EventTime.MaxValue and EventTime.MinValue") {
+      allOfConcurrent(
+        // "minimum qid" (all 0 bits)
+        persistor.persistEvents(
+          qid0,
+          Seq(
+            NodeEvent.WithTime(event0, EventTime.MinValue),
+            NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+            NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+            NodeEvent.WithTime(event3, EventTime.MaxValue)
+          )
+        ),
+        // in between qid
+        persistor.persistEvents(
+          qid2,
+          Seq(
+            NodeEvent.WithTime(event0, EventTime.MinValue),
+            NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+            NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+            NodeEvent.WithTime(event3, EventTime.MaxValue)
+          )
+        ),
+        // "maximum qid" (all 1 bits)
+        persistor.persistEvents(
+          qid4,
+          Seq(
+            NodeEvent.WithTime(event0, EventTime.MinValue),
+            NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
+            NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
+            NodeEvent.WithTime(event3, EventTime.MaxValue)
+          )
         )
       )
-    )
+    }
   }
 
   describe("getJournal") {
@@ -706,9 +710,7 @@ abstract class PersistenceAgentSpec
   describe("persistDomainGraphNodes") {
     val generated = generateN[DomainGraphNode](2, 2).map(dgn => DomainGraphNode.id(dgn) -> dgn).toMap
     it("write") {
-      persistor.persistDomainGraphNodes(generated) map { _ =>
-        assert(true)
-      }
+      persistor.persistDomainGraphNodes(generated) as succeed
     }
     it("read") {
       persistor.getDomainGraphNodes().map { n =>
@@ -734,9 +736,7 @@ abstract class PersistenceAgentSpec
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistEvents(qid, withTimeUnsorted) map { _ =>
-        assert(true)
-      }
+      persistor.persistEvents(qid, withTimeUnsorted) as succeed
     }
 
     it("read") {
@@ -756,9 +756,7 @@ abstract class PersistenceAgentSpec
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistEvents(qid, withTimeUnsorted) map { _ =>
-        assert(true)
-      }
+      persistor.persistEvents(qid, withTimeUnsorted) as succeed
     }
     it("read") {
       val minTime = sorted.head.atTime
@@ -785,21 +783,19 @@ abstract class PersistenceAgentSpec
       )
 
     /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
-    def eventCount(): Future[Int] = {
-      val v = Future.sequence(
-        events.map(t =>
-          persistor
-            .getDomainIndexEventsWithTime(t._1, EventTime.MinValue, EventTime.MaxValue)
-            .map(_.size)
-        )
-      )
-      v.map(_.sum)
-
-    }
+    def eventCount(): Future[Int] = Future
+      .traverse(events) { case (qid, _) =>
+        persistor
+          .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+          .map(_.size)
+      }
+      .map(_.sum)
 
     def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
       persistor.deleteDomainIndexEventsByDgnId(dgnId)
 
+    // TODO: this randomly fails on CI for InMemoryPersistorSpec
+    // Maybe move it out of here and into something else which everything but InMemoryPeristenceAgentSpec uses?
     ignore("should read back domain index events, and support deletes") {
       for {
         _ <- Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2))

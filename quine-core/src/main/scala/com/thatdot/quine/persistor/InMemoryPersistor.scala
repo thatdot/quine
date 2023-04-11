@@ -51,9 +51,11 @@ class InMemoryPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig()
 ) extends PersistenceAgent {
 
+  private val allTables =
+    Seq(journals, domainIndexEvents, snapshots, standingQueries, multipleValuesStandingQueryStates, domainGraphNodes)
   override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
-      journals.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      allTables.forall(_.isEmpty)
     )
 
   def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
@@ -63,10 +65,20 @@ class InMemoryPersistor(
     Future.unit
   }
 
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = {
+    journals.remove(qid)
+    Future.unit
+  }
+
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- events } domainIndexEvents
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
+    Future.unit
+  }
+
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = {
+    domainIndexEvents.remove(qid)
     Future.unit
   }
 
@@ -138,6 +150,11 @@ class InMemoryPersistor(
     Future.unit
   }
 
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = {
+    snapshots.remove(qid)
+    Future.unit
+  }
+
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] = {
     val snapshotsMap = snapshots.get(id)
     Future.successful(
@@ -185,6 +202,11 @@ class InMemoryPersistor(
           .apply(multipleValuesStandingQueryStates.get(id))
           .map(states => states.remove((standingQuery, standingQueryId)))
     }
+    Future.unit
+  }
+
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = {
+    multipleValuesStandingQueryStates.remove(id)
     Future.unit
   }
 

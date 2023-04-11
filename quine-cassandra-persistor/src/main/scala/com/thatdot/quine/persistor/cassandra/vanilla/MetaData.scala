@@ -1,18 +1,17 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.stream.Materializer
-import akka.stream.scaladsl.Sink
 
 import cats.Monad
 import cats.implicits._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
+
+import com.thatdot.quine.util.T2
 
 trait MetaDataColumnName {
   import CassandraCodecs._
@@ -47,34 +46,22 @@ object MetaData extends TableDefinition with MetaDataColumnName {
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
     futureMonad: Monad[Future]
   ): Future[MetaData] = {
+    import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
-    }
-
-    val createdSchema =
-      if (shouldCreateTables)
-        session.executeAsync(createTableStatement).toScala
-      else
-        Future.unit
+    val createdSchema = futureMonad.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
 
     createdSchema.flatMap(_ =>
       (
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(deleteStatement.setConsistencyLevel(readConsistency)),
-        prepare(selectAllStatement.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(selectSingleStatement.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency))
+        T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple ++
+        T2(selectAllStatement, selectSingleStatement).map(prepare(session, readSettings)).toTuple
       ).mapN(new MetaData(session, _, _, _, _))
     )(ExecutionContexts.parasitic)
   }
@@ -93,13 +80,13 @@ class MetaData(
   import syntax._
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] =
-    executeSource(selectSingleStatement.bindColumns(keyColumn.set(key)))
-      .map(row => valueColumn.get(row))
-      .named(s"cassandra-get-metadata-$key")
-      .runWith(Sink.headOption)
+    queryFuture(
+      selectSingleStatement.bindColumns(keyColumn.set(key)),
+      singleRow(valueColumn)
+    )
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] =
-    selectColumns[String, Array[Byte], Map[String, Array[Byte]]](selectAllStatement.bind(), keyColumn, valueColumn)
+    selectColumns(selectAllStatement.bind(), keyColumn, valueColumn)
 
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     executeFuture(

@@ -142,7 +142,8 @@ object Proc {
                 case HalfEdge(edgeType, dir, other)
                     if edgeTypes.forall(_.contains(edgeType)) &&
                       dir != EdgeDirection.Undirected &&
-                      !seen.contains(other) && !toExpand.contains(other) =>
+                      !seen.contains(other) &&
+                      !toExpand.contains(other) =>
                   val rel = dir match {
                     case EdgeDirection.Outgoing =>
                       Expr.Relationship(qid, edgeType, Map.empty, other)

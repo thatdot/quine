@@ -3,11 +3,12 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Sink, Source}
 import akka.util.Timeout
 
 import com.thatdot.quine.graph.messaging.LiteralMessage._
-import com.thatdot.quine.graph.messaging.QuineIdAtTime
+import com.thatdot.quine.graph.messaging.ShardMessage.PurgeNode
+import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdAtTime}
 import com.thatdot.quine.model._
 
 /** Functionality for directly modifying the runtime property graph. Always prefer using something else. */
@@ -17,6 +18,10 @@ trait LiteralOpsGraph extends BaseGraph {
 
   // TODO: should we keep this object indirection? It serves no purpose other than namespacing...
   object literalOps {
+    def purgeNode(qid: QuineId)(implicit timeout: Timeout): Future[BaseMessage.Done.type] = {
+      requiredGraphIsReady()
+      relayAsk(shardFromNode(qid).quineRef, PurgeNode(qid, _)).flatten
+    }
 
     /** Assemble together debugging information about a node's internal state
       *
@@ -152,7 +157,7 @@ trait LiteralOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       val halfEdgesSource =
         relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
-      Source.futureSource(halfEdgesSource).map(_.halfEdge).runFold(Set.empty[HalfEdge])((a, v) => a + v)
+      Source.futureSource(halfEdgesSource).map(_.halfEdge).runWith(Sink.collection)
     }
 
     // NB: Checks that the other half of the edge exists

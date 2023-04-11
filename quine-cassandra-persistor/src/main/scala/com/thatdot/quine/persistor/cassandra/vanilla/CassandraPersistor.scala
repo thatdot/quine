@@ -175,6 +175,13 @@ abstract class TableDefinition extends LazyLogging {
   protected def clusterKeys: List[CassandraColumn[_]]
   protected def dataColumns: List[CassandraColumn[_]]
 
+  protected def prepare(session: AsyncCqlSession, settings: CassandraStatementSettings)(
+    statement: SimpleStatement
+  ): Future[PreparedStatement] = {
+    logger.trace("Preparing {}", statement.getQuery)
+    session.prepareAsync(settings(statement)).toScala
+  }
+
   /** Start building a CREATE TABLE statement, based on the {{{partitionKey}}}, {{{clusterKeys}}}, and {{{dataColumns}}}
     * specified. Set any other desired options (e.g. {{{.withClusteringOrder}}}) and then call {{{.build()}}} to
     * get a CQL statement to execute.
@@ -206,8 +213,11 @@ abstract class TableDefinition extends LazyLogging {
     .foldLeft(
       insertInto(tableName).value(partitionKey.name, bindMarker(partitionKey.name))
     )((s, c) => s.value(c.name, bindMarker(c.name)))
-    .build()
+    .build
     .setIdempotent(true)
+
+  // Used to delete all entries with a particular Quine Id, pretty much
+  protected def deleteAllByPartitionKeyStatement: SimpleStatement = delete.where(partitionKey.is.eq).build
 
   /** Gets an arbitrary row from this table
     * @return an ordinary CQL statement to get a single row from this table, if any exists.
@@ -269,13 +279,19 @@ abstract class CassandraTable(session: CqlSession) {
   ): Future[C] =
     executeSelect(statement)(pair(colA, colB))
 
+  final protected def queryFuture[A](statement: Statement[_], f: AsyncResultSet => A): Future[A] =
+    session.executeAsync(statement).toScala.map(f)(ExecutionContexts.parasitic)
+
   /** Helper method for converting no-op results to {{{Future[Unit]}}}
     *
     * @param statement A CQL statemment to be executed - either prepared or not.
     * @return Unit - intended for INSERT or CREATE TABLE statements that don't return a useful result.
     */
   final protected def executeFuture(statement: Statement[_]): Future[Unit] =
-    session.executeAsync(statement).thenApply[Unit](_ => ()).toScala
+    queryFuture(statement, _ => ())
+
+  final protected def singleRow[A](col: CassandraColumn[A])(resultSet: AsyncResultSet): Option[A] =
+    Option(resultSet.one()).map(col.get)
 
   /** Helper function to evaluate if a statement yields at least one result
     * @param statement The statement to test
@@ -283,6 +299,13 @@ abstract class CassandraTable(session: CqlSession) {
     */
   final protected def yieldsResults(statement: Statement[_]): Future[Boolean] =
     session.executeAsync(statement).thenApply[Boolean](_.currentPage.iterator.hasNext).toScala
+}
+
+// to be applied to a statement
+case class CassandraStatementSettings(consistency: ConsistencyLevel, timeout: FiniteDuration) {
+  import scala.compat.java8.DurationConverters.toJava
+  def apply[SelfT <: Statement[SelfT]](statement: SelfT): SelfT =
+    statement.setConsistencyLevel(consistency).setTimeout(toJava(timeout))
 }
 
 /** Persistence implementation backed by Cassandra.
@@ -302,12 +325,10 @@ class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
   keyspace: String,
   replicationFactor: Int,
-  readConsistency: ConsistencyLevel,
-  writeConsistency: ConsistencyLevel,
+  readSettings: CassandraStatementSettings,
+  writeSettings: CassandraStatementSettings,
   endpoints: List[InetSocketAddress],
   localDatacenter: String,
-  writeTimeout: FiniteDuration,
-  readTimeout: FiniteDuration,
   shouldCreateTables: Boolean,
   shouldCreateKeyspace: Boolean,
   metricRegistry: Option[MetricRegistry],
@@ -334,7 +355,7 @@ class CassandraPersistor(
   private def createQualifiedSession: CqlSession = metricRegistry
     .fold(sessionBuilder)(sessionBuilder.withMetricRegistry)
     .withKeyspace(keyspace)
-    .build()
+    .build
 
   protected val session: CqlSession =
     try {
@@ -354,7 +375,7 @@ class CassandraPersistor(
       session
     } catch {
       case _: InvalidKeyspaceException if shouldCreateKeyspace =>
-        val sess = sessionBuilder.build()
+        val sess = sessionBuilder.build
         // CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}
         sess.execute(createKeyspace(keyspace).ifNotExists().withSimpleStrategy(replicationFactor).build())
         sess.close()
@@ -371,41 +392,13 @@ class CassandraPersistor(
     domainIndexEvents
   ) = Await.result(
     (
-      Journals.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
-      Snapshots.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
-      StandingQueries.create(
-        session,
-        readConsistency,
-        writeConsistency,
-        writeTimeout,
-        readTimeout,
-        shouldCreateTables
-      ),
-      StandingQueryStates.create(
-        session,
-        readConsistency,
-        writeConsistency,
-        writeTimeout,
-        readTimeout,
-        shouldCreateTables
-      ),
-      MetaData.create(session, readConsistency, writeConsistency, writeTimeout, readTimeout, shouldCreateTables),
-      DomainGraphNodes.create(
-        session,
-        readConsistency,
-        writeConsistency,
-        writeTimeout,
-        readTimeout,
-        shouldCreateTables
-      ),
-      DomainIndexEvents.create(
-        session,
-        readConsistency,
-        writeConsistency,
-        writeTimeout,
-        readTimeout,
-        shouldCreateTables
-      )
+      Journals.create(session, readSettings, writeSettings, shouldCreateTables),
+      Snapshots.create(session, readSettings, writeSettings, shouldCreateTables),
+      StandingQueries.create(session, readSettings, writeSettings, shouldCreateTables),
+      StandingQueryStates.create(session, readSettings, writeSettings, shouldCreateTables),
+      MetaData.create(session, readSettings, writeSettings, shouldCreateTables),
+      DomainGraphNodes.create(session, readSettings, writeSettings, shouldCreateTables),
+      DomainIndexEvents.create(session, readSettings, writeSettings, shouldCreateTables)
     ).tupled,
     5.seconds
   )
@@ -430,6 +423,7 @@ class CassandraPersistor(
     val MultipartSnapshotPart(bytes, index, count) = part
     snapshots.persistSnapshotPart(id, atTime, bytes, index, count)
   }
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = snapshots.deleteAllByQid(qid)
 
   override def getLatestMultipartSnapshot(
     id: QuineId,
@@ -480,7 +474,8 @@ class CassandraPersistor(
     standingQueryId,
     state
   )
-
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
+    standingQueryStates.deleteStandingQueryStates(id)
   override def getMetaData(key: String): Future[Option[Array[Byte]]] = metaData.getMetaData(key)
 
   override def getAllMetaData(): Future[Map[String, Array[Byte]]] = metaData.getAllMetaData()
@@ -514,8 +509,10 @@ class CassandraPersistor(
   override def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     journals.persistEvents(id, events)
 
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = journals.deleteEvents(qid)
   override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     domainIndexEvents.persistEvents(id, events)
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = domainIndexEvents.deleteEvents(qid)
 
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
     domainIndexEvents.deleteByDgnId(dgnId)

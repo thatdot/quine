@@ -106,6 +106,12 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     wrapped.getMultipleValuesStandingQueryStates(id)
 
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = wrapped.deleteSnapshots(qid)
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrapped.deleteNodeChangeEvents(qid)
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = wrapped.deleteDomainIndexEvents(qid)
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
+    wrapped.deleteMultipleValuesStandingQueryStates(id)
+
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrapped.getAllMetaData()
   def getMetaData(key: String): Future[Option[Array[Byte]]] = wrapped.getMetaData(key)
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = wrapped.setMetaData(key, newValue)

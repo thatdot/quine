@@ -1,10 +1,8 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.NotUsed
 import akka.stream.Materializer
@@ -12,14 +10,15 @@ import akka.stream.scaladsl.Source
 
 import cats.Monad
 import cats.implicits._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
 import com.thatdot.quine.graph.EventTime
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
+import com.thatdot.quine.util.{T2, T4}
 
 trait SnapshotsColumnNames {
   import CassandraCodecs._
@@ -62,35 +61,28 @@ object Snapshots extends TableDefinition with SnapshotsColumnNames {
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit
     futureMonad: Monad[Future]
   ): Future[Snapshots] = {
+    import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
-    }
-
-    val createdSchema =
-      if (shouldCreateTables)
-        session.executeAsync(createTableStatement).toScala
-      else
-        Future.unit
+    val createdSchema = futureMonad.whenA(
+      shouldCreateTables
+    )(session.executeAsync(createTableStatement).toScala)
 
     createdSchema.flatMap(_ =>
       (
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(getLatestTime.build().setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(getLatestTimeBefore.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(getParts.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(selectAllQuineIds.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency))
-      ).mapN(new Snapshots(session, _, _, _, _, _))
+        T2(insertStatement, deleteAllByPartitionKeyStatement)
+          .map(prepare(session, writeSettings))
+          .toTuple ++
+        T4(getLatestTime.build, getLatestTimeBefore, getParts, selectAllQuineIds)
+          .map(prepare(session, readSettings))
+          .toTuple
+      ).mapN(new Snapshots(session, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
   }
 
@@ -99,6 +91,7 @@ object Snapshots extends TableDefinition with SnapshotsColumnNames {
 class Snapshots(
   session: CqlSession,
   insertStatement: PreparedStatement,
+  deleteByQidStatement: PreparedStatement,
   getLatestTimeStatement: PreparedStatement,
   getLatestTimeBeforeStatement: PreparedStatement,
   getPartsStatement: PreparedStatement,
@@ -125,22 +118,23 @@ class Snapshots(
     )
   )
 
+  def deleteAllByQid(id: QuineId): Future[Unit] = executeFuture(deleteByQidStatement.bindColumns(quineIdColumn.set(id)))
+
   def getLatestSnapshotTime(
     id: QuineId,
     upToTime: EventTime
-  ): Future[Option[EventTime]] =
-    session
-      .executeAsync(upToTime match {
-        case EventTime.MaxValue =>
-          getLatestTimeStatement.bindColumns(quineIdColumn.set(id))
-        case _ =>
-          getLatestTimeBeforeStatement.bindColumns(
-            quineIdColumn.set(id),
-            timestampColumn.setLt(upToTime)
-          )
-      })
-      .toScala
-      .map(results => Option(results.one).map(timestampColumn.get))(ExecutionContexts.parasitic)
+  ): Future[Option[EventTime]] = queryFuture(
+    upToTime match {
+      case EventTime.MaxValue =>
+        getLatestTimeStatement.bindColumns(quineIdColumn.set(id))
+      case _ =>
+        getLatestTimeBeforeStatement.bindColumns(
+          quineIdColumn.set(id),
+          timestampColumn.setLt(upToTime)
+        )
+    },
+    singleRow(timestampColumn)
+  )
 
   def getSnapshotParts(
     id: QuineId,

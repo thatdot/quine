@@ -8,10 +8,10 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import akka.actor.ActorSystem
 
-import com.datastax.oss.driver.api.core.DefaultConsistencyLevel
-import pureconfig.ConfigConvert
+import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
+import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 
 import com.thatdot.quine.persistor._
 
@@ -65,8 +65,8 @@ object PersistenceAgentType extends PureconfigInstances {
   final case class Cassandra(
     keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),
     replicationFactor: Int = Integer.parseUnsignedInt(sys.env.getOrElse("CASSANDRA_REPLICATION_FACTOR", "1")),
-    readConsistency: DefaultConsistencyLevel = DefaultConsistencyLevel.LOCAL_QUORUM,
-    writeConsistency: DefaultConsistencyLevel = DefaultConsistencyLevel.LOCAL_QUORUM,
+    readConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
+    writeConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
     endpoints: List[InetSocketAddress] = defaultCassandraAddress,
     localDatacenter: String = "datacenter1",
     writeTimeout: FiniteDuration = 10.seconds,
@@ -77,6 +77,16 @@ object PersistenceAgentType extends PureconfigInstances {
     snapshotPartMaxSizeBytes: Int = 1000000
   ) extends PersistenceAgentType(false)
 
+  implicit val cassandraConfigConvert: ConfigConvert[ConsistencyLevel] = {
+    import ConfigReader.javaEnumReader
+    import ConfigWriter.javaEnumWriter
+    val reader: ConfigReader[ConsistencyLevel] = javaEnumReader[DefaultConsistencyLevel].map(identity)
+    val writer: ConfigWriter[ConsistencyLevel] = javaEnumWriter[DefaultConsistencyLevel].contramap {
+      case defaultLevel: DefaultConsistencyLevel => defaultLevel
+      case other => sys.error("Can't serialize custom consistency level:" + other)
+    }
+    ConfigConvert(reader, writer)
+  }
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
     // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
     @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =

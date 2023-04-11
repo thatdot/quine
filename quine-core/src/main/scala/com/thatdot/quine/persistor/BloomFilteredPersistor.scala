@@ -148,6 +148,15 @@ private class BloomFilteredPersistor(
     wrappedPersistor.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
   }
 
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = wrappedPersistor.deleteSnapshots(qid)
+
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrappedPersistor.deleteNodeChangeEvents(qid)
+
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = wrappedPersistor.deleteDomainIndexEvents(qid)
+
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
+    wrappedPersistor.deleteMultipleValuesStandingQueryStates(id)
+
   override def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrappedPersistor.getAllMetaData()
 
   override def getMetaData(key: String): Future[Option[Array[Byte]]] = wrappedPersistor.getMetaData(key)

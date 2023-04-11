@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.behavior
 
 import scala.annotation.nowarn
 import scala.compat.CompatBuildFrom.implicitlyBF
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Success
@@ -74,17 +75,17 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
       } else {
         // Clear properties, half edges, and request removal of the reciprocal half edges.
         val propertyRemovalEvents = properties.map { case (k, v) => PropertyRemoved(k, v) }
-        val edgeRemovalEvents = edges.all.map(EdgeRemoved).toList
-        val otherSidesRemoved =
-          edgeRemovalEvents.map(ev => ev.edge.other.?(RemoveHalfEdgeCommand(ev.edge.reflect(qid), _)).flatten)
+        val allEdges = edges.all
+        val edgeRemovalEvents = allEdges.map(EdgeRemoved).toList
+        val otherSidesRemoved = Future.traverse(allEdges)(edge =>
+          edge.other.?(RemoveHalfEdgeCommand(edge.reflect(qid), _)).flatten
+        )(implicitlyBF, context.dispatcher)
+
         // Confirmation future completes when every bit of the removal is done
         d ?! processEdgeEvents(edgeRemovalEvents)
           .zip(processPropertyEvents(propertyRemovalEvents.toList))
-          .flatMap(_ =>
-            Future
-              .sequence(otherSidesRemoved)(implicitlyBF, context.dispatcher)
-              .map(_ => DeleteNodeCommand.Success)(context.dispatcher)
-          )(context.dispatcher)
+          .zip(otherSidesRemoved)
+          .map(_ => DeleteNodeCommand.Success)(ExecutionContexts.parasitic)
       }
 
     case i @ IncrementProperty(propKey, incAmount, _) =>

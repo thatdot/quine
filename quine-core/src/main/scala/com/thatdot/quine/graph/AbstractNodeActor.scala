@@ -104,7 +104,7 @@ abstract private[graph] class AbstractNodeActor(
     initialEdges.foreach(edgeCollection.addEdge)
     val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
       if (persistor.persistenceConfig.journalEnabled)
-        events => metrics.persistorPersistEventTimer.time(persistor.persistEvents(qid, events.toList))
+        events => metrics.persistorPersistEventTimer.time(persistor.persistNodeChangeEvents(qid, events.toList))
       else
         _ => Future.unit
 

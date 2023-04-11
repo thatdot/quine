@@ -1,0 +1,13 @@
+package com.thatdot.quine.util
+
+/** A representation of homogeneous tuples (where the elements are all of the same type)
+*   so we can have `.map` across all the elements implemented for them.
+*/
+// Not really any reason for this common supertype (tuples don't have one, after all), but why not?
+sealed abstract class TN[A]
+// Generated code. The parts between [# ... #]'s get repeated 1-22
+[#final case class T1[A]([#a1: A#]) extends TN[A] {
+  def map[B](f: A => B): T1[B] = T1([#f(a1)#])
+  def toTuple: ([#A#]) = T1.unapply(this).get
+}#
+]

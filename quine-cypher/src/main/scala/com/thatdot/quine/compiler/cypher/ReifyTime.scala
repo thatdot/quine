@@ -2,6 +2,7 @@ package com.thatdot.quine.compiler.cypher
 
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
 import scala.collection.Set
 import scala.concurrent.Future
@@ -86,15 +87,13 @@ object ReifyTime extends UserDefinedProcedure {
     implicit val idProvider: QuineIdProvider = location.idProvider
     import location._
 
-    val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-
     // Generate a QuineId from a values that define a time node key (time and period)
     def timeNodeId(
       sourceTime: ZonedDateTime,
       period: Period
     ): QuineId = {
       val periodTruncatedDate = period.truncate(sourceTime)
-      val periodTruncatedDateStr = periodTruncatedDate.format(formatter)
+      val periodTruncatedDateStr = periodTruncatedDate.format(ISO_OFFSET_DATE_TIME)
       idFrom(Expr.Str("time-node"), Expr.Str(period.name), Expr.Str(periodTruncatedDateStr))
     }
 

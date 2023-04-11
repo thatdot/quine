@@ -1,20 +1,19 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.stream.Materializer
 
 import cats.Monad
 import cats.implicits._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.util.T2
 
 trait DomainGraphNodeColumnNames {
   import CassandraCodecs._
@@ -43,33 +42,24 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
     futureMonad: Monad[Future]
   ): Future[DomainGraphNodes] = {
+    import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
-    }
-
-    val createdSchema =
-      if (shouldCreateTables)
-        session.executeAsync(createTableStatement).toScala
-      else
-        Future.unit
+    val createdSchema = futureMonad.whenA(
+      shouldCreateTables
+    )(session.executeAsync(createTableStatement).toScala)
 
     createdSchema.flatMap(_ =>
       (
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(selectAllStatement.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(deleteStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
+        T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
+        prepare(session, readSettings)(selectAllStatement)
       ).mapN(new DomainGraphNodes(session, _, _, _))
     )(ExecutionContexts.parasitic)
   }
@@ -78,8 +68,8 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 class DomainGraphNodes(
   session: CqlSession,
   insertStatement: PreparedStatement,
-  selectAllStatement: PreparedStatement,
-  deleteStatement: PreparedStatement
+  deleteStatement: PreparedStatement,
+  selectAllStatement: PreparedStatement
 )(implicit mat: Materializer)
     extends CassandraTable(session)
     with DomainGraphNodeColumnNames {

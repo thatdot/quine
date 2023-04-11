@@ -20,3 +20,4 @@ addSbtPlugin("io.spray" % "sbt-revolver" % "0.9.1")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.4")
 libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
 libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "6.5.0.202303070854-r"
+addSbtPlugin("io.spray" % "sbt-boilerplate" % "0.6.1")

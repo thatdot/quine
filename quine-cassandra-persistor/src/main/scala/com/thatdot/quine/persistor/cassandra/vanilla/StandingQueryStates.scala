@@ -1,10 +1,8 @@
 package com.thatdot.quine.persistor.cassandra.vanilla
 
 import scala.compat.ExecutionContexts
-import scala.compat.java8.DurationConverters._
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
@@ -12,11 +10,12 @@ import akka.stream.scaladsl.Sink
 import cats.Monad
 import cats.implicits._
 import com.datastax.dse.driver.api.core.cql.reactive.ReactiveRow
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession}
 
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, StandingQueryId}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.{T2, T4}
 
 trait StandingQueryStatesColumnNames {
   import CassandraCodecs._
@@ -82,41 +81,31 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
 
   def create(
     session: CqlSession,
-    readConsistency: ConsistencyLevel,
-    writeConsistency: ConsistencyLevel,
-    insertTimeout: FiniteDuration,
-    selectTimeout: FiniteDuration,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit
     futureMonad: Monad[Future],
     mat: Materializer
   ): Future[StandingQueryStates] = {
+    import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    def prepare(statement: SimpleStatement): Future[PreparedStatement] = {
-      logger.trace("Preparing {}", statement.getQuery)
-      session.prepareAsync(statement).toScala
-    }
-
-    val createdSchema =
-      if (shouldCreateTables)
-        session
-          .executeAsync(createTableStatement)
-          .toScala
+    val createdSchema = futureMonad.whenA(
+      shouldCreateTables
+    )(
+      session.executeAsync(createTableStatement).toScala
       //.flatMap(_ => session.executeAsync(createIndexStatement).toScala)(ExecutionContexts.parasitic)
-      else
-        Future.unit
-
+    )
     createdSchema.flatMap(_ =>
       (
-        prepare(insertStatement.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(
-          getMultipleValuesStandingQueryStates.setTimeout(selectTimeout.toJava).setConsistencyLevel(readConsistency)
-        ),
-        prepare(removeStandingQueryState.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency)),
-        prepare(getIdsForStandingQuery.setTimeout(insertTimeout.toJava).setConsistencyLevel(readConsistency)),
-        prepare(removeStandingQuery.setTimeout(insertTimeout.toJava).setConsistencyLevel(writeConsistency))
-      ).mapN(new StandingQueryStates(session, _, _, _, _, _))
+        T4(insertStatement, removeStandingQueryState, removeStandingQuery, deleteAllByPartitionKeyStatement)
+          .map(prepare(session, writeSettings))
+          .toTuple ++
+        T2(getMultipleValuesStandingQueryStates, getIdsForStandingQuery)
+          .map(prepare(session, readSettings))
+          .toTuple
+      ).mapN(new StandingQueryStates(session, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
   }
 
@@ -124,13 +113,15 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
 class StandingQueryStates(
   session: CqlSession,
   insertStatement: PreparedStatement,
-  getMultipleValuesStandingQueryStatesStatement: PreparedStatement,
   removeStandingQueryStateStatement: PreparedStatement,
-  getIdsForStandingQueryStatement: PreparedStatement,
-  removeStandingQueryStatement: PreparedStatement
+  removeStandingQueryStatement: PreparedStatement,
+  deleteStandingQueryStatesByQid: PreparedStatement,
+  getMultipleValuesStandingQueryStatesStatement: PreparedStatement,
+  getIdsForStandingQueryStatement: PreparedStatement
 )(implicit mat: Materializer)
     extends CassandraTable(session)
     with StandingQueryStatesColumnNames {
+
   import syntax._
 
   def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueryStates.arbitraryRowStatement)
@@ -169,6 +160,10 @@ class StandingQueryStates(
           )
       }
     )
+
+  def deleteStandingQueryStates(id: QuineId): Future[Unit] = executeFuture(
+    deleteStandingQueryStatesByQid.bindColumns(quineIdColumn.set(id))
+  )
 
   def removeStandingQuery(standingQuery: StandingQueryId): Future[Unit] =
     executeSource(getIdsForStandingQueryStatement.bindColumns(standingQueryIdColumn.set(standingQuery)))
