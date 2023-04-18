@@ -135,7 +135,7 @@ table CypherPathSegment {
 
 // See [[com.thatdot.quine.graph.cypher.Expr.LocalDateTime]]
 table CypherLocalDateTime {
-  local_date_time: LocalDateTime;
+  local_date_time: LocalDateTime (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.DateTime]]
@@ -145,17 +145,17 @@ table CypherDateTime {
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Duration]]
 table CypherDuration {
-  duration: Duration;
+  duration: Duration (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Date]]
 table CypherDate {
-   date: LocalDate;
+   date: LocalDate (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Time]]
 table CypherTime {
-   time: LocalTime;
+   time: LocalTime (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Variable]]

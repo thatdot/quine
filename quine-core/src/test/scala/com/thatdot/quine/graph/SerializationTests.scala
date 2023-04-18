@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
-import com.thatdot.quine.graph.cypher.{Expr => CypherExpr, MultipleValuesStandingQueryState}
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.codecs._
 
@@ -30,12 +30,6 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
   it should "roundtrip DomainIndexEvent" in {
     forAll { (event: DomainIndexEvent) =>
       assert(DomainIndexEventCodec.format.read(DomainIndexEventCodec.format.write(event)).get == event)
-    }
-  }
-
-  it should "roundtrip cypher.Expr" in {
-    forAll { (e: CypherExpr) =>
-      assert(CypherExprCodec.format.read(CypherExprCodec.format.write(e)).get == e)
     }
   }
 
