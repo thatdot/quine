@@ -2,11 +2,7 @@ import sbt._
 import sbt.Keys._
 import sbt.util.CacheImplicits._
 
-import scala.util.{Properties, Using}
-import java.net.URL
-import java.nio.channels.{Channels, FileChannel}
-import java.nio.file._
-import java.util.zip._
+import scala.util.Properties
 
 object FlatcPlugin extends AutoPlugin {
   import Dependencies.flatbuffersV
@@ -39,7 +35,7 @@ object FlatcPlugin extends AutoPlugin {
           else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-12.zip")
           else None
 
-        suffixOpt.map(suffix => new URL(prefix + suffix))
+        suffixOpt.map(suffix => url(prefix + suffix))
       },
       // This must match the version of the jar we download from Maven
       flatcExecutable := {
@@ -63,20 +59,13 @@ object FlatcPlugin extends AutoPlugin {
         val getFlatc: ((File, URL)) => File = Cache.cached[(File, URL), File](flatcStore) {
           case (outputDirectory, url) =>
             val logger = streams.value.log
-
-            Using.Manager { use =>
-              logger.info(s"Downloading flatc from $url...")
-              val zipIS = use(new ZipInputStream(Channels.newInputStream(Channels.newChannel(url.openStream()))))
-              val entry = zipIS.getNextEntry
-              val toPath = outputDirectory.toPath.resolve(entry.getName)
-              IO.createDirectory(outputDirectory)
-              val fileChannel = use(FileChannel.open(toPath, StandardOpenOption.WRITE, StandardOpenOption.CREATE))
-              fileChannel.transferFrom(Channels.newChannel(zipIS), 0, Long.MaxValue)
-              if (IO.isPosix) IO.chmod("rwxr--r--", toPath.toFile)
-              logger.info(s"Saved flatc to $toPath")
-              toPath.toFile
-            }.get
-
+            logger.info(s"Downloading flatc from $url...")
+            val files = IO.unzipURL(url, outputDirectory)
+            assert(files.size == 1, "Only expected a single file in the zip file when downloading flatc")
+            val flatcPath = files.head
+            if (IO.isPosix) IO.chmod("rwxr--r--", flatcPath)
+            logger.info(s"Saved flatc to $flatcPath")
+            flatcPath
         }
 
         getFlatc(outputDirectory, url)
