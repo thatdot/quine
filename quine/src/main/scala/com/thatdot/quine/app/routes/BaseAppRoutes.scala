@@ -33,7 +33,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
     super.handleServerError(throwable)
   }
 
-  def isLive = true
   def isReady = graph.isReady
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */

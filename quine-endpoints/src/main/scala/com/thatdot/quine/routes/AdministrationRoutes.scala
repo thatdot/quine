@@ -68,13 +68,14 @@ object MetricsReport {
 @title("Metrics Report")
 @docs("""A selection of metrics registered by Quine, its libraries, and the JVM. Reported metrics may change
     |based on which ingests and standing queries have been running since Quine startup, as well as the JVM distribution
-    |running Quine and the packaged version of any dependencies. Metrics are sampled and non-authoritative. In
-    |particular, they may be less precise when the system is under heavy load.""".stripMargin.replace('\n', ' '))
+    |running Quine and the packaged version of any dependencies.""".stripMargin.replace('\n', ' '))
 final case class MetricsReport(
   @docs("A UTC Instant at which the returned metrics were collected") atTime: java.time.Instant,
   @docs("General-purpose counters for single numerical values") counters: Seq[Counter],
   @docs(
-    "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds"
+    "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds. " +
+    "These are measured with wall time, and hence may be skewed by other system events outside our control like " +
+    "GC pauses or system load."
   ) timers: Seq[
     TimerSummary
   ],
@@ -165,20 +166,18 @@ trait AdministrationRoutes
         .withTags(List(adminTag))
     )
 
-  final val livenessProbe: Endpoint[Unit, Boolean] =
+  final val livenessProbe: Endpoint[Unit, Unit] =
     endpoint(
       request = get(admin / "liveness"),
-      response = noContent(docs = Some("System is live"))
-        .orElse(serviceUnavailable(docs = Some("System is not live")))
-        .xmap(_.isLeft)(isReady => if (isReady) Left(()) else Right(())),
+      response = noContent(docs = Some("System is live")),
       docs = EndpointDocs()
-        .withSummary(Some("Container Liveness"))
+        .withSummary(Some("Is the process responsive?"))
         .withDescription(
           Some(
-            """This is for integrating with liveness probes when containerizing the system (eg. in
-              |Kubernetes or Docker).
-              |
-              |A 204 response indicates that the container is alive.""".stripMargin
+            """This is a basic no-op endpoint for use when checking if the system is hung or responsive.
+              | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
+              | It does not otherwise indicate readiness to handle data requests or system health.
+              | Returns a 204 response.""".stripMargin
           )
         )
         .withTags(List(adminTag))
@@ -187,16 +186,16 @@ trait AdministrationRoutes
   final val readinessProbe: Endpoint[Unit, Boolean] =
     endpoint(
       request = get(admin / "readiness"),
-      response = noContent(docs = Some("System is ready"))
+      response = noContent(docs = Some("System is ready to serve requests"))
         .orElse(serviceUnavailable(docs = Some("System is not ready")))
         .xmap(_.isLeft)(isReady => if (isReady) Left(()) else Right(())),
       docs = EndpointDocs()
-        .withSummary(Some("Container Readiness"))
+        .withSummary(Some("Is the system able to handle user requests?"))
         .withDescription(
           Some(
-            """This is for integrating with liveness probes when containerizing the system (eg. in
-              |Kubernetes or Docker). The question being answered with the status code response is
-              |whether the container is ready to accept user requests.
+            """This indicates whether the system is fully up and ready to service user requests.
+              |The intended use is for a load balancer to use this to know when the instance is
+              |up ready and start routing user requests to it.
               |""".stripMargin
           )
         )

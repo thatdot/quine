@@ -42,9 +42,6 @@ trait AdministrationRoutesImpl
   /** State in the application */
   val serviceState: AdministrationRoutesState
 
-  /** Should the liveness probe report live? */
-  def isLive: Boolean
-
   /** A sample configuration that will be used for documenting the admin/config route. */
   def sampleConfig: BaseConfig = QuineConfig()
 
@@ -65,7 +62,7 @@ trait AdministrationRoutesImpl
 
   private val configRoute = config(sampleConfig.loadedConfigJson).implementedBy(_ => currentConfig)
 
-  private val livenessProbeRoute = livenessProbe.implementedBy(_ => isLive)
+  private val livenessProbeRoute = livenessProbe.implementedBy(_ => ())
 
   private val readinessProbeRoute = readinessProbe.implementedBy(_ => isReady)
 
