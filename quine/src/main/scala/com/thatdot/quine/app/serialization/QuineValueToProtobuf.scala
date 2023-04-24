@@ -1,13 +1,12 @@
 package com.thatdot.quine.app.serialization
-import java.lang.Boolean
 import java.net.URL
-import java.time.ZoneOffset
+import java.time.{LocalDateTime, ZoneOffset}
 
 import scala.jdk.CollectionConverters._
 
 import cats.data.{Chain, NonEmptyChain}
 import cats.implicits._
-import com.google.`type`.{Date, TimeOfDay}
+import com.google.`type`.{Date, DateTime, TimeOfDay}
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.{Descriptor, EnumValueDescriptor, FieldDescriptor}
 import com.google.protobuf.{ByteString, Duration, DynamicMessage, Timestamp}
@@ -56,6 +55,15 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
     }
   }
 
+  private def dateTimeToProtobuf(datetime: LocalDateTime): DateTime.Builder = DateTime.newBuilder
+    .setYear(datetime.getYear)
+    .setMonth(datetime.getMonthValue)
+    .setDay(datetime.getDayOfMonth)
+    .setHours(datetime.getHour)
+    .setMinutes(datetime.getMinute)
+    .setSeconds(datetime.getSecond)
+    .setNanos(datetime.getNano)
+
   def quineValueToProtobuf(field: FieldDescriptor, qv: QuineValue): Either[ConversionFailure, AnyRef] = qv match {
     case QuineValue.Str(string) =>
       field.getJavaType match {
@@ -80,13 +88,13 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
     case QuineValue.True =>
       Either.cond(
         field.getJavaType == JavaType.BOOLEAN,
-        Boolean.TRUE,
+        java.lang.Boolean.TRUE,
         TypeMismatch(QuineType.Boolean, field.getJavaType)
       )
     case QuineValue.False =>
       Either.cond(
         field.getJavaType == JavaType.BOOLEAN,
-        Boolean.FALSE,
+        java.lang.Boolean.FALSE,
         TypeMismatch(QuineType.Boolean, field.getJavaType)
       )
     // Just so the linting doesn't complain about missing cases:
@@ -108,19 +116,29 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
         mapToProtobuf(field.getMessageType, map)
       else
         Left(TypeMismatch(QuineType.Map, field.getJavaType))
-    case QuineValue.DateTime(time) =>
+    case QuineValue.DateTime(datetime) =>
       field.getJavaType match {
-        case JavaType.LONG => Right(Long.box(time.toEpochMilli))
-        case JavaType.STRING => Right(time.toString)
-        // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
-        // to be able to give an error message that says "Yes, it's a message, but not the right type of message."
-        // The current error message will say "Can't coerce DateTime to MESSAGE" in that case,
-        // but that should give you a clue of what's going on anyways.
-        case JavaType.MESSAGE if field.getMessageType == Timestamp.getDescriptor =>
-          val builder = Timestamp.newBuilder
-          builder.setSeconds(time.getEpochSecond)
-          builder.setNanos(time.getNano)
-          Right(builder.build)
+        case JavaType.LONG => Right(Long.box(datetime.toInstant.toEpochMilli))
+        case JavaType.STRING => Right(datetime.toString)
+        case JavaType.MESSAGE =>
+          val targetMessageType = field.getMessageType
+          if (targetMessageType == Timestamp.getDescriptor) {
+            val builder = Timestamp.newBuilder
+            val instant = datetime.toInstant
+            builder.setSeconds(instant.getEpochSecond)
+            builder.setNanos(instant.getNano)
+            Right(builder.build)
+          } else if (targetMessageType == DateTime.getDescriptor) {
+            Right(
+              dateTimeToProtobuf(datetime.toLocalDateTime)
+                .setUtcOffset(Duration.newBuilder.setSeconds(datetime.getOffset.getTotalSeconds.toLong))
+                .build
+            )
+            // TODO: Give a more specific error message that says:
+            // "Yes, it's a message, but not the right type of message."
+            // The current error message will say "Can't coerce DateTime to MESSAGE",
+            // but that should give you a clue of what's going on anyways.
+          } else Left(TypeMismatch(QuineType.DateTime, JavaType.MESSAGE))
         case other => Left(TypeMismatch(qv.quineType, other))
       }
     case QuineValue.Duration(javaDuration) =>
@@ -136,45 +154,44 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
         case other => Left(TypeMismatch(qv.quineType, other))
       }
 
-    case QuineValue.Date(javaLocalDate) =>
+    case QuineValue.Date(localDate) =>
       field.getJavaType match {
-        case JavaType.LONG => Right(Long.box(javaLocalDate.toEpochDay))
-        case JavaType.STRING => Right(javaLocalDate.toString)
+        case JavaType.LONG => Right(Long.box(localDate.toEpochDay))
+        case JavaType.STRING => Right(localDate.toString)
         // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
-        case JavaType.MESSAGE if field.getMessageType == Duration.getDescriptor =>
-          val builder = Date.newBuilder()
-          builder.setDay(javaLocalDate.getDayOfMonth)
-          builder.setMonth(javaLocalDate.getDayOfMonth)
-          //TODO Protobuf lib. Only supports positive years 0-9999, while javaLocalDate supports -999999999 to 999999999
-          builder.setYear(javaLocalDate.getYear)
+        case JavaType.MESSAGE if field.getMessageType == Date.getDescriptor =>
+          val builder = Date.newBuilder
+          builder.setDay(localDate.getDayOfMonth)
+          builder.setMonth(localDate.getMonthValue)
+          //TODO Protobuf lib. Only supports positive years 1-9999, while javaLocalDate supports -999999999 to 999999999
+          builder.setYear(localDate.getYear)
           Right(builder.build)
         case other => Left(TypeMismatch(qv.quineType, other))
       }
 
-    case QuineValue.Time(javaLocalTime) =>
+    case QuineValue.Time(localTime) =>
       field.getJavaType match {
-        case JavaType.LONG => Right(Long.box(javaLocalTime.toNanoOfDay))
-        case JavaType.STRING => Right(javaLocalTime.toString)
+        case JavaType.LONG => Right(Long.box(localTime.toNanoOfDay))
+        case JavaType.STRING => Right(localTime.toString)
         // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
-        case JavaType.MESSAGE if field.getMessageType == Duration.getDescriptor =>
+        case JavaType.MESSAGE if field.getMessageType == TimeOfDay.getDescriptor =>
           val builder = TimeOfDay.newBuilder
-          builder.setHours(javaLocalTime.getHour)
-          builder.setMinutes(javaLocalTime.getMinute)
-          builder.setSeconds(javaLocalTime.getSecond)
-          builder.setNanos(javaLocalTime.getNano)
+          builder.setHours(localTime.getHour)
+          builder.setMinutes(localTime.getMinute)
+          builder.setSeconds(localTime.getSecond)
+          builder.setNanos(localTime.getNano)
           Right(builder.build)
         case other => Left(TypeMismatch(qv.quineType, other))
       }
     case QuineValue.LocalDateTime(ldt) =>
       field.getJavaType match {
-        case JavaType.LONG => Right(Long.box(ldt.toEpochSecond(ZoneOffset.UTC))) //TODO this is incorrect
+        case JavaType.LONG => Right(Long.box(ldt.toInstant(ZoneOffset.UTC).toEpochMilli))
         case JavaType.STRING => Right(ldt.toString)
         // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
-        case JavaType.MESSAGE if field.getMessageType == Timestamp.getDescriptor =>
-          val builder = Timestamp.newBuilder
-          builder.setSeconds(ldt.toEpochSecond(ZoneOffset.UTC))
-          builder.setNanos(ldt.getNano)
-          Right(builder.build)
+        case JavaType.MESSAGE if field.getMessageType == DateTime.getDescriptor =>
+          Right(
+            dateTimeToProtobuf(ldt).build
+          )
         case other => Left(TypeMismatch(qv.quineType, other))
       }
     // TODO: add String by going through qidToPrettyString

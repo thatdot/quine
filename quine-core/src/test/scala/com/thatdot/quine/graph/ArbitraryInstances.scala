@@ -2,10 +2,11 @@ package com.thatdot.quine.graph
 
 import java.time.{
   Duration => JavaDuration,
-  Instant,
   LocalDate => JavaLocalDate,
   LocalDateTime => JavaLocalDateTime,
   LocalTime => JavaLocalTime,
+  OffsetDateTime,
+  ZoneOffset,
   ZonedDateTime => JavaZonedDateTime
 }
 import java.util.UUID
@@ -66,6 +67,11 @@ trait ArbitraryInstances {
     date <- intBoundedDateGen
     time <- arbitrary[JavaLocalTime]
   } yield JavaLocalDateTime.of(date, time)
+
+  lazy val intBoundedOffsetDateTimeGen: Gen[OffsetDateTime] = for {
+    datetime <- intBoundedLocalDateTimeGen
+    offset <- Gen.choose(-12 * 4, 14 * 4) // We round to nearest 15-minutes in our offset persistence
+  } yield OffsetDateTime.of(datetime, ZoneOffset.ofTotalSeconds(offset * 15 * 60))
 
   /* Tweak the containers so that the generation size does _not_ get passed
    * through straight away. Instead, we pick a container size and then scale
@@ -264,7 +270,7 @@ trait ArbitraryInstances {
           Gen.resultOf[Array[Byte], QuineValue](QuineValue.Bytes),
           GenApply.resultOf[Vector[QuineValue], QuineValue](QuineValue.List),
           GenApply.resultOf[Map[String, QuineValue], QuineValue](QuineValue.Map(_)),
-          Gen.resultOf[Instant, QuineValue](QuineValue.DateTime),
+          intBoundedOffsetDateTimeGen.map(QuineValue.DateTime),
           Gen.resultOf[QuineId, QuineValue](QuineValue.Id(_)),
           Gen.resultOf[JavaDuration, QuineValue](QuineValue.Duration),
           intBoundedDateGen.map(QuineValue.Date),

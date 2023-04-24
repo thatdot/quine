@@ -101,10 +101,11 @@ final case class StandingQueryResult(
           into,
           putQuineValueMapKeyValue(_, newHasher).hash
         )
-      case QuineValue.DateTime(time) =>
+      case QuineValue.DateTime(datetime) =>
         into.putByte(9)
-        into.putLong(time.getEpochSecond)
-        into.putInt(time.getNano)
+        into.putLong(datetime.toLocalDate.toEpochDay)
+        into.putLong(datetime.toLocalTime.toNanoOfDay)
+        into.putInt(datetime.getOffset.getTotalSeconds)
       case QuineValue.Id(id) =>
         into.putByte(10)
         into.putBytes(id.array)

@@ -3,12 +3,7 @@ package com.thatdot.quine.graph.cypher
 import java.lang.{Double => JavaDouble, Integer => JavaInteger, Long => JavaLong}
 import java.nio.charset.StandardCharsets
 import java.time.temporal._
-import java.time.{
-  Duration => JavaDuration,
-  LocalDateTime => JavaLocalDateTime,
-  ZoneOffset,
-  ZonedDateTime => JavaZonedDateTime
-}
+import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, ZonedDateTime => JavaZonedDateTime}
 import java.util.Base64
 
 import scala.collection.compat._
@@ -93,8 +88,7 @@ object Expr {
     case QuineValue.Bytes(arr) => Bytes(arr)
     case QuineValue.List(vec) => List(vec.map(fromQuineValue(_)))
     case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue(_)).toMap)
-    case QuineValue.DateTime(instant) =>
-      DateTime(JavaZonedDateTime.ofInstant(instant, ZoneOffset.UTC))
+    case QuineValue.DateTime(datetime) => DateTime(datetime.toZonedDateTime)
     case QuineValue.Duration(duration) => Duration(duration)
     case QuineValue.Date(date) => Date(date)
     case QuineValue.Time(t) => Time(t)
@@ -114,7 +108,7 @@ object Expr {
     case Bytes(arr, true) => QuineValue.Id(QuineId(arr))
     case List(vec) => QuineValue.List(vec.map(toQuineValue(_)))
     case Map(map) => QuineValue.Map(map.view.mapValues(toQuineValue(_)).toMap)
-    case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toInstant)
+    case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toOffsetDateTime)
     case Duration(duration) => QuineValue.Duration(duration)
     case Date(d) => QuineValue.Date(d)
     case Time(t) => QuineValue.Time(t)

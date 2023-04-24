@@ -125,9 +125,10 @@ object ReifyTime extends UserDefinedProcedure {
             graph.literalOps.setProp(previousNodeId, "period", QuineValue.Str(period.name)),
             graph.literalOps.setProp(nextNodeId, "period", QuineValue.Str(period.name)),
             // set each of prev.start, this.start, next.period
-            graph.literalOps.setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toInstant)),
-            graph.literalOps.setProp(previousNodeId, "start", QuineValue.DateTime(previousPeriodSourceTime.toInstant)),
-            graph.literalOps.setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toInstant)),
+            graph.literalOps.setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toOffsetDateTime)),
+            graph.literalOps
+              .setProp(previousNodeId, "start", QuineValue.DateTime(previousPeriodSourceTime.toOffsetDateTime)),
+            graph.literalOps.setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toOffsetDateTime)),
             // edges (prev)->(this)->(next)
             graph.literalOps.addEdge(nodeId, nextNodeId, "NEXT"),
             graph.literalOps.addEdge(previousNodeId, nodeId, "NEXT")

@@ -1,6 +1,13 @@
 package com.thatdot.quine.model
 
-import java.time.{Duration => JavaDuration, Instant, LocalDate, LocalDateTime => JavaLocalDateTime, LocalTime}
+import java.time.{
+  Duration => JavaDuration,
+  LocalDate,
+  LocalDateTime => JavaLocalDateTime,
+  LocalTime,
+  OffsetDateTime,
+  ZoneOffset
+}
 
 import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
@@ -157,8 +164,8 @@ object QuineValue {
 
   /** @param instant A java.time.Instant models a single instantaneous point on the time-line.
     */
-  final case class DateTime(instant: Instant) extends QuineValue {
-    type JvmType = Instant
+  final case class DateTime(instant: OffsetDateTime) extends QuineValue {
+    type JvmType = OffsetDateTime
 
     def quineType = QuineType.DateTime
     def underlyingJvmValue = instant
@@ -287,6 +294,7 @@ object QuineValue {
   final val DateExt: Byte = 34
   final val TimeExt: Byte = 35
   final val LocalDateTimeExt: Byte = 36
+  final val DateTimeExt: Byte = 37
 
   /** Read just the type of a [[QuineValue]] from a MessagePack payload
     *
@@ -314,6 +322,7 @@ object QuineValue {
           case DateExt => QuineType.Date
           case TimeExt => QuineType.Time
           case LocalDateTimeExt => QuineType.LocalDateTime
+          case DateTimeExt => QuineType.DateTime
           case EXT_TIMESTAMP => QuineType.DateTime
           case other =>
             throw new IllegalArgumentException(s"Unsupported data extension $other")
@@ -324,7 +333,23 @@ object QuineValue {
   // The size of bytes of various combinations of things we're putting in msgpack extensions:
   private val IntByteSize = java.lang.Integer.BYTES // 4
   private val LongByteSize = java.lang.Long.BYTES // 8
+  private val ByteByteSize = java.lang.Byte.BYTES // 8
+  private val LongAndByteByteSize = LongByteSize + ByteByteSize
   private val LongAndIntByteSize = LongByteSize + IntByteSize
+  private val LongIntAndByteByteSize = LongAndIntByteSize + ByteByteSize
+
+  val NanosPerSecond = 1000000000L
+  val NanosPerDay: Long = NanosPerSecond * 60 * 60 * 24
+
+  // The latest date representable as a 64-bit number of nanos since epoch
+  // We use the start of the day as the cutoff, because could overflow the long at  23:47:16.854775296 on that final day
+  private val Largest64BitNanoDate = LocalDate.ofEpochDay(Long.MaxValue / NanosPerDay).toEpochDay
+
+  // All current offsets align with the hour, half-hour, or 15-minutes (e.g. +05:45)
+  // So we store number of 15-minute increments between -12:00 and +14:00
+  // https://en.wikipedia.org/wiki/List_of_UTC_offsets
+  def offsetFromByte(byte: Byte): ZoneOffset = ZoneOffset.ofTotalSeconds(byte * 15 * 60)
+  def offsetToByte(offset: ZoneOffset): Byte = (offset.getTotalSeconds / 60 / 15).toByte
 
   /** Read a [[QuineValue]] from a MessagePack payload
     *
@@ -336,9 +361,7 @@ object QuineValue {
     def validateExtHeaderLength(extHeader: ExtensionTypeHeader, expectedLength: Int) = if (
       extHeader.getLength != expectedLength
     )
-      throw new IllegalArgumentException(
-        s"Invalid length for date time (expected $expectedLength but got ${extHeader.getLength})"
-      )
+      throw new InvalidHeaderLengthException(expectedLength.toString, extHeader.getLength)
 
     val format = unpacker.getNextFormat()
     val typ = format.getValueType()
@@ -411,8 +434,46 @@ object QuineValue {
               JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), LocalTime.ofNanoOfDay(nanoDay))
             )
 
+          case DateTimeExt =>
+            extHeader.getLength match {
+              case LongAndByteByteSize =>
+                import scala.math.Integral.Implicits._
+                val epochNanos = unpacker.unpackLong()
+                val offset = offsetFromByte(unpacker.unpackByte())
+                val (epochDays, nanoOfDay) = epochNanos /% NanosPerDay
+                // epoch days can be negative, but nano of day must be positive
+                // e.g. - 7 days - 2 hours before the epoch corresponds to
+                //      -8 days + 22 hours
+                val dateTime =
+                  if (nanoOfDay < 0)
+                    OffsetDateTime.of(
+                      LocalDate.ofEpochDay(epochDays - 1),
+                      LocalTime.ofNanoOfDay(NanosPerDay + nanoOfDay),
+                      offset
+                    )
+                  else
+                    OffsetDateTime.of(
+                      LocalDate.ofEpochDay(epochDays),
+                      LocalTime.ofNanoOfDay(nanoOfDay),
+                      offset
+                    )
+                QuineValue.DateTime(dateTime)
+
+              case LongIntAndByteByteSize =>
+                val epochDay = unpacker.unpackInt()
+                val nanoOfDay = unpacker.unpackLong()
+                val offset = offsetFromByte(unpacker.unpackByte())
+                val dateTime =
+                  OffsetDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), LocalTime.ofNanoOfDay(nanoOfDay), offset)
+                QuineValue.DateTime(dateTime)
+
+              case other =>
+                throw new InvalidHeaderLengthException(s"one of $LongAndByteByteSize, $LongIntAndByteByteSize", other)
+            }
+
+          // For reading legacy data. We no longer write timestamps w/out offsets.
           case EXT_TIMESTAMP =>
-            QuineValue.DateTime(unpacker.unpackTimestamp(extHeader))
+            QuineValue.DateTime(unpacker.unpackTimestamp(extHeader).atOffset(ZoneOffset.UTC))
 
           case IdExt =>
             val extData = unpacker.readPayload(extHeader.getLength)
@@ -466,7 +527,24 @@ object QuineValue {
         }
 
       case QuineValue.DateTime(timestamp) =>
-        packer.packTimestamp(timestamp)
+        val localDate = timestamp.toLocalDate.toEpochDay
+        val localTime = timestamp.toLocalTime.toNanoOfDay
+        val offset = timestamp.getOffset
+        if (Math.abs(localDate) < Largest64BitNanoDate) {
+          val epochNanos = localDate * NanosPerDay + localTime
+          packer
+            .packExtensionTypeHeader(DateTimeExt, LongAndByteByteSize)
+            .packLong(epochNanos)
+            .packByte(offsetToByte(offset))
+        } else {
+          // It doesn't fit in a single long, so we'll write a int for date
+          // and a long for time (nanos of date)
+          packer
+            .packExtensionTypeHeader(DateTimeExt, LongIntAndByteByteSize)
+            .packInt(localDate.intValue)
+            .packLong(localTime)
+            .packByte(offsetToByte(offset))
+        }
 
       case QuineValue.Duration(duration) =>
         packer
@@ -503,6 +581,10 @@ object QuineValue {
     packer.toByteArray()
   }
 }
+class InvalidHeaderLengthException(expected: String, actual: Int)
+    extends IllegalArgumentException(
+      s"Invalid length for date time (expected $expected but got $actual)"
+    )
 
 /** Types of [[QuineValue]], used for runtime type-mismatched exceptions */
 sealed abstract class QuineType
