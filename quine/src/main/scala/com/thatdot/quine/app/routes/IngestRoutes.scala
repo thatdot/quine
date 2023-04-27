@@ -6,13 +6,13 @@ import java.time.temporal.ChronoUnit.MILLIS
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.stream.Materializer
-import akka.stream.contrib.{SwitchMode, ValveSwitch}
 import akka.stream.scaladsl.Sink
+import akka.stream.{Materializer, StreamDetachedException}
 import akka.util.Timeout
 import akka.{Done, NotUsed}
 
@@ -22,6 +22,9 @@ import io.circe.Json
 
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
+
+class IngestOperationFailedException(msg: String) extends Exception(msg) with NoStackTrace
 
 trait IngestStreamState {
 
@@ -246,22 +249,30 @@ trait IngestRoutesImpl
     serviceState.getIngestStream(name) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        val flippedValve = ingest.valve.flatMap(_.flip(newState))(graph.shardDispatcherEC)
+        val flippedValve = ingest.valve.flatMap(_.flip(newState))(graph.nodeDispatcherEC)
         val ingestStatus = flippedValve.flatMap { _ =>
-          ingest.restored = false // FIXME not threadsafe
+          ingest.restored = false; // FIXME not threadsafe
           stream2Info(ingest)
         }(graph.shardDispatcherEC)
-
-        ingestStatus.map(status => Some(status.withName(name)))(graph.shardDispatcherEC)
-
+        ingestStatus.map(status => Some(status.withName(name)))(ExecutionContexts.parasitic)
     }
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { (name: String) =>
-    setIngestStreamPauseState(name, SwitchMode.Close)
+    setIngestStreamPauseState(name, SwitchMode.Close).transform({
+      case s @ Success(_) => s
+      case Failure(_: StreamDetachedException) =>
+        Failure(new IngestOperationFailedException("Cannot pause a failed ingest."))
+      case f @ Failure(_) => f
+    })(ExecutionContexts.parasitic)
   }
 
   private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { (name: String) =>
-    setIngestStreamPauseState(name, SwitchMode.Open)
+    setIngestStreamPauseState(name, SwitchMode.Open).transform({
+      case s @ Success(_) => s
+      case Failure(_: StreamDetachedException) =>
+        Failure(new IngestOperationFailedException("Cannot resume a failed ingest."))
+      case f @ Failure(_) => f
+    })(ExecutionContexts.parasitic)
   }
 
   final val ingestRoutes: Route = {

@@ -12,7 +12,6 @@ import akka.NotUsed
 import akka.stream.alpakka.kinesis.ShardIterator._
 import akka.stream.alpakka.kinesis.ShardSettings
 import akka.stream.alpakka.kinesis.scaladsl.KinesisSource
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Source}
 
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
@@ -29,6 +28,7 @@ import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
+import com.thatdot.quine.util.SwitchMode
 
 /** The definition of a source stream from Amazon Kinesis
   *

@@ -5,7 +5,6 @@ import scala.util.{Success, Try}
 
 import akka.stream.alpakka.sqs.scaladsl.{SqsAckSink, SqsSource}
 import akka.stream.alpakka.sqs.{MessageAction, SqsSourceSettings}
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.{Done, NotUsed}
 
@@ -20,6 +19,7 @@ import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.util.SwitchMode
 
 /** The definition of an incoming AWS SQS stream.
   *

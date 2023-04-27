@@ -9,7 +9,6 @@ import akka.NotUsed
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.ws._
 import akka.http.scaladsl.settings.ClientConnectionSettings
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Keep, Source}
 import akka.util.ByteString
 
@@ -19,6 +18,7 @@ import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
+import com.thatdot.quine.util.SwitchMode
 
 object WebsocketSimpleStartupSrcDef {
   class UpgradeFailedException(cause: Throwable)

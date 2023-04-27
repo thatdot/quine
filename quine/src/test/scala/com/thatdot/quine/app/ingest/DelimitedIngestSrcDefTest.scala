@@ -5,7 +5,6 @@ import scala.concurrent.{Await, Future}
 import scala.util.{Success, Try}
 
 import akka.NotUsed
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Keep, Sink, Source, StreamConverters}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
@@ -20,6 +19,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, MasterStream, i
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
+import com.thatdot.quine.util.SwitchMode
 
 class DelimitedIngestSrcDefTest extends AnyFunSuite {
   import com.thatdot.quine.app.IngestTestGraph._

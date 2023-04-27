@@ -5,12 +5,12 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.stream.alpakka.sse.scaladsl.EventSource
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.Source
 
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
+import com.thatdot.quine.util.SwitchMode
 
 final case class ServerSentEventsSrcDef(
   override val name: String,

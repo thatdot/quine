@@ -5,9 +5,9 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import akka.Done
 import akka.stream.UniqueKillSwitch
-import akka.stream.contrib.{SwitchMode, ValveSwitch}
 
 import com.thatdot.quine.graph.IngestControl
+import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
 sealed trait QuineAppIngestControl extends IngestControl {
   val valveHandle: ValveSwitch

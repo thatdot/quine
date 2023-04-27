@@ -11,7 +11,6 @@ import scala.util.{Failure, Success, Try}
 import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.Materializer
-import akka.stream.contrib.{SwitchMode, Valve, ValveSwitch}
 import akka.stream.scaladsl.{Flow, Framing, Keep, Source, StreamConverters}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
@@ -24,6 +23,7 @@ import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInp
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 class RawValuesIngestSrcDefTest extends AnyFunSuite {
 
   import com.thatdot.quine.app.IngestTestGraph._

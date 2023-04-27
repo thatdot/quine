@@ -9,7 +9,6 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.Keep
 import akka.stream.{KillSwitches, UniqueKillSwitch}
 import akka.util.Timeout
@@ -34,6 +33,7 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.SwitchMode
 
 /** The Quine application state
   *

@@ -2,7 +2,6 @@ package com.thatdot.quine.app.ingest
 
 import scala.util.Try
 
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Source}
 import akka.{Done, NotUsed}
 
@@ -15,6 +14,7 @@ import com.thatdot.quine.app.{PulsarKillSwitch, ShutdownSwitch}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes.PulsarSubscriptionType
+import com.thatdot.quine.util.SwitchMode
 
 /** Note that this is a minimal implementation. Pulsar client config has a number of additional
   * parameters for future expansion, e.g. authentication, parallelism, threading...

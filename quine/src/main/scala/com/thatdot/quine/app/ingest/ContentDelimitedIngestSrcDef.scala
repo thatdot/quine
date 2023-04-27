@@ -4,7 +4,6 @@ import scala.util.Success
 
 import akka.NotUsed
 import akka.stream.alpakka.csv.scaladsl.{CsvParsing, CsvToMap}
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Framing, Source}
 import akka.util.ByteString
 
@@ -18,6 +17,7 @@ import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
+import com.thatdot.quine.util.SwitchMode
 
 /** Ingest source runtime that requires managing its own record delimitation -- for example, line-based ingests or CSV
   */

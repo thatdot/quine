@@ -12,7 +12,6 @@ import akka.kafka.{
   Subscription,
   Subscriptions => KafkaSubscriptions
 }
-import akka.stream.contrib.SwitchMode
 import akka.stream.scaladsl.{Flow, Source}
 import akka.{Done, NotUsed}
 
@@ -27,6 +26,7 @@ import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
+import com.thatdot.quine.util.SwitchMode
 
 object KafkaSrcDef {
 

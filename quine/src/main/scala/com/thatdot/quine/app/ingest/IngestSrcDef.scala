@@ -11,7 +11,6 @@ import scala.util.{Failure, Success, Try}
 import akka.actor.ActorSystem
 import akka.stream.KillSwitches
 import akka.stream.alpakka.text.scaladsl.TextFlow
-import akka.stream.contrib.{SwitchMode, Valve, ValveSwitch}
 import akka.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
 import akka.util.ByteString
 import akka.{Done, NotUsed}
@@ -26,6 +25,7 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
+import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 
 /** Definition of an ingest that performs the actions
   *    sourceWithShutdown -> throttle -> writeToGraph -> ack

@@ -253,7 +253,6 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
       "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
       "software.amazon.awssdk" % "netty-nio-client" % nettyNioClientV,
-      "com.typesafe.akka" %% "akka-stream-contrib" % akkaStreamContribV,
       "com.typesafe.akka" %% "akka-stream-kafka" % alpakkaKafkaV,
       "com.lightbend.akka" %% "akka-stream-alpakka-kinesis" % alpakkaKinesisV exclude ("org.rocksdb", "rocksdbjni"),
       "com.lightbend.akka" %% "akka-stream-alpakka-sqs" % alpakkaSQSV,
