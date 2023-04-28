@@ -116,10 +116,10 @@ object ReifyTime extends UserDefinedProcedure {
         .sequence(
           List(
             // set a label on each of prev, this, next
-            graph.literalOps.setLabel(nodeId, period.name + ":" + period.labelFormat.format(sourceTime)),
+            graph.literalOps.setLabel(nodeId, period.name),
             graph.literalOps
-              .setLabel(previousNodeId, period.name + ":" + period.labelFormat.format(previousPeriodSourceTime)),
-            graph.literalOps.setLabel(nextNodeId, period.name + ":" + period.labelFormat.format(nextPeriodSourceTime)),
+              .setLabel(previousNodeId, period.name),
+            graph.literalOps.setLabel(nextNodeId, period.name),
             // set each of prev.period, this.period, next.period
             graph.literalOps.setProp(nodeId, "period", QuineValue.Str(period.name)),
             graph.literalOps.setProp(previousNodeId, "period", QuineValue.Str(period.name)),

@@ -517,6 +517,38 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     }
   }
 
+  describe("reify.time") {
+    testQuery(
+      queryText = """CALL reify.time(
+          |  datetime("2023-04-25T22:04:39Z"),
+          |  ["year", "month", "day", "hour", "minute", "second"]
+          |) YIELD node AS leafNode
+          |MATCH (year)-[:MONTH]->(month)-[:DAY]->(day)-[:HOUR]->(hour)-[:MINUTE]->(minute)-[:SECOND]->(leafNode)
+          |RETURN
+          |  labels(year) AS year,
+          |  labels(month) AS month,
+          |  labels(day) AS day,
+          |  labels(hour) AS hour,
+          |  labels(minute) AS minute,
+          |  labels(leafNode) AS second""".stripMargin,
+      expectedColumns = Vector("year", "month", "day", "hour", "minute", "second"),
+      expectedRows = Seq(
+        Vector(
+          "year",
+          "month",
+          "day",
+          "hour",
+          "minute",
+          "second"
+        ).map(period => Expr.List(Expr.Str(period)))
+      ),
+      expectedIsReadOnly = false,
+      // This is actually idempotent, but it isn't recognized as such because datetime is marked as non-idempotent
+      // even when it is provided with a constant datetime value.
+      expectedIsIdempotent = false
+    )
+  }
+
   describe("User defined functions") {
     registerUserDefinedFunction(MyReverse)
     testQuery(
