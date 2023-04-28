@@ -2,6 +2,7 @@ package com.thatdot.quine.app.ingest
 
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
+import java.time.Duration
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
@@ -10,6 +11,7 @@ import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
 import akka.stream.KillSwitches
+import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
 import akka.stream.alpakka.text.scaladsl.TextFlow
 import akka.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
 import akka.util.ByteString
@@ -49,7 +51,6 @@ abstract class IngestSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int,
   maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder],
   val name: String
 )(implicit graph: CypherOpsGraph)
     extends LazyLogging {
@@ -128,7 +129,7 @@ abstract class RawValuesIngestSrcDef(
   decoders: Seq[ContentDecoder],
   name: String
 )(implicit graph: CypherOpsGraph)
-    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, decoders, name) {
+    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
 
   /** Try to deserialize a value of InputType into a CypherValue.  This method
     * also meters the raw byte length of the input.
@@ -160,7 +161,7 @@ abstract class RawValuesIngestSrcDef(
 
 object IngestSrcDef extends LazyLogging {
 
-  def importFormatFor(label: StreamedRecordFormat): ImportFormat =
+  private def importFormatFor(label: StreamedRecordFormat): ImportFormat =
     label match {
       case StreamedRecordFormat.CypherJson(query, parameter) =>
         new CypherJsonInputFormat(query, parameter)
@@ -195,7 +196,7 @@ object IngestSrcDef extends LazyLogging {
         StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
     }
 
-  def throttled[A](maxPerSecond: Option[Int]): Flow[A, A, NotUsed] = maxPerSecond match {
+  private def throttled[A](maxPerSecond: Option[Int]): Flow[A, A, NotUsed] = maxPerSecond match {
     case None => Flow[A]
     case Some(perSec) => Flow[A].throttle(perSec, 1.second)
   }
@@ -248,22 +249,44 @@ object IngestSrcDef extends LazyLogging {
           iteratorType,
           numRetries,
           maxPerSecond,
-          recordEncodings
+          recordEncodings,
+          checkpointSettings
         ) =>
-      KinesisSrcDef(
-        name,
-        streamName,
-        shardIds,
-        importFormatFor(format),
-        initialSwitchMode,
-        parallelism,
-        creds,
-        region,
-        iteratorType,
-        numRetries,
-        maxPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
-      )
+      checkpointSettings match {
+        case None =>
+          KinesisSrcDef(
+            name,
+            streamName,
+            shardIds,
+            importFormatFor(format),
+            initialSwitchMode,
+            parallelism,
+            creds,
+            region,
+            iteratorType,
+            numRetries,
+            maxPerSecond,
+            recordEncodings.map(ContentDecoder.apply)
+          )
+        case Some(settings) =>
+          KinesisCheckpointSrcDef(
+            name,
+            streamName,
+            //shardIds,
+            importFormatFor(format),
+            initialSwitchMode,
+            parallelism,
+            creds,
+            region,
+            numRetries,
+            //iteratorType,
+            maxPerSecond,
+            recordEncodings.map(ContentDecoder.apply),
+            KinesisSchedulerCheckpointSettings.create(settings.maxBatchSize, Duration.ofMillis(settings.maxBatchWait))
+          )
+
+      }
+
     case PulsarIngest(
           format,
           topics,

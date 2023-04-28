@@ -177,7 +177,8 @@ trait IngestRoutesImpl
         )
 
       case Success(true) => Right(())
-      case Failure(err) => Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
+      case Failure(err) =>
+        err.printStackTrace; Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
     }
   }
 

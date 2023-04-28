@@ -261,6 +261,7 @@ lazy val `quine`: Project = project
       "com.lightbend.akka" %% "akka-stream-alpakka-csv" % alpakkaCsvV,
       "com.lightbend.akka" %% "akka-stream-alpakka-text" % alpakkaTextV,
       "com.lightbend.akka" %% "akka-stream-alpakka-s3" % alpakkaS3V,
+      "io.github.streetcontxt" %% "kcl-akka-stream" % "5.0.0",
       // akka-http-xml is not a direct dep, but pulled in transitively by Alpakka modules above.
       // All akka-http module version numbers need to match exactly, or else it
       // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."

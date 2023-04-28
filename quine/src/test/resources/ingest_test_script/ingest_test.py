@@ -106,7 +106,7 @@ class TestConfig:
         if write:
             values = self.generate_values()
             self.write_values(values)
-
+        time.sleep(sleep_time_ms / 1000.0)
         if read:
             returned_values = self.retrieve_values()
             if (len(returned_values) == self.count):
@@ -141,25 +141,30 @@ class TestConfig:
 
 class KinesisConfig(TestConfig):
 
-    def __init__(self, name: str, count: int, quine_url: str, stream_name: str, encodings: List[str], creds: Dict[str, str]):
+    def __init__(self, name: str, count: int, quine_url: str, stream_name: str, encodings: List[str], checkpoint_batch_size:Optional[int], checkpoint_batch_wait_ms:Optional[int], creds: Dict[str, str]):
         super().__init__(name, count, quine_url, encodings)
         self.stream_name = stream_name
         self.creds = creds
+        self.checkpoint_settings =  { "checkpointSettings":{  "maxBatchSize":checkpoint_batch_size,  "maxBatchWait":checkpoint_batch_wait_ms }}  if checkpoint_batch_size else None
 
     def recipe(self):
-        return {"name": self.name,
+
+        base_value= {"name": self.name,
                 "type": "KinesisIngest",
                 "format": {"query": "CREATE ($that)", "type": "CypherJson"},
                 "streamName": self.stream_name,
                 "credentials": {"region": self.creds["region"],
                                 "accessKeyId": self.creds["key"],
                                 "secretAccessKey": self.creds["secret"]}}
+        if self.checkpoint_settings:
+            base_value.update(self.checkpoint_settings)
+
+        return base_value
 
     def write_values(self, values: List[str]):
         kinesis_client = boto3.client('kinesis')
         kinesis_client.put_records(StreamName=self.stream_name,
                                    Records=[{"Data": v, "PartitionKey": "test_name"} for v in values])
-
 
 class SQSConfig(TestConfig):
     def __init__(self, name: str,count: int, quine_url: str, queue_url: str, encodings: List[str], creds: Dict[str, str]):
@@ -279,6 +284,8 @@ if __name__ == "__main__":
     kinesis_parser.add_argument("-r", "--region", help="aws region", default="us-east-1")
     kinesis_parser.add_argument("-k", "--key", help="aws key", required=True)
     kinesis_parser.add_argument("-s", "--secret", help="aws secret", required=True)
+    kinesis_parser.add_argument("--checkpoint_batch_size", help="num records before checkpoint. Also requires checkpoint_batch_wait_ms.", required=False)
+    kinesis_parser.add_argument("--checkpoint_batch_wait_ms", help="checkpoint batch wait time. Also requires checkpoint_batch_size.", required=False)
     #
     # sqs args
     #
@@ -303,7 +310,7 @@ if __name__ == "__main__":
     if args.type == "kafka":
         config = KafkaConfig(testname, args.count, args.quine_url, args.topic, args.kafka_url, args.commit, args.endingoffset, encodings, args.waitForCommitConfirmation)
     elif args.type == "kinesis":
-        config = KinesisConfig(testname, args.count, args.quine_url, args.name, encodings,
+        config = KinesisConfig(testname, args.count, args.quine_url, args.name, encodings, args.checkpoint_batch_size, args.checkpoint_batch_wait_ms,
                                {"region": args.region, "key": args.key, "secret": args.secret})
     elif args.type == "sqs":
         config = SQSConfig(testname, args.count, args.quine_url, args.queue_url, encodings,
@@ -311,5 +318,5 @@ if __name__ == "__main__":
     elif args.type == "pulsar":
         config = PulsarConfig(testname, args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name,
                               encodings)
-    config.run_test(sleep_time_ms=20000,  write=args.writeonly or args.readonly == False, read=args.readonly or args.writeonly == False)
+    config.run_test(sleep_time_ms=10000,  write=args.writeonly or args.readonly == False, read=args.readonly or args.writeonly == False)
 

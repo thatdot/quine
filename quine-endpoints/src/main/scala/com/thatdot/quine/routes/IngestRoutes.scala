@@ -189,7 +189,15 @@ object KafkaOffsetCommitting {
     waitForCommitConfirmation: Boolean = true
   ) extends KafkaOffsetCommitting
 }
-
+@title("Scheduler Checkpoint Settings")
+@docs("Settings for batch configuration for Kinesis stream checkpointing.")
+@unnamed
+final case class KinesisCheckpointSettings(
+  @docs("Maximum checkpoint batch size.")
+  maxBatchSize: Int,
+  @docs("Maximum checkpoint batch wait time in ms.")
+  maxBatchWait: Long
+)
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
 sealed abstract class IngestStreamConfiguration
@@ -301,6 +309,7 @@ object KinesisIngest {
     final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
   }
 }
+
 @title("Pulsar Ingest Stream")
 @unnamed
 @docs("A stream of data being ingested from Pulsar.")
@@ -337,7 +346,11 @@ final case class KinesisIngest(
   @docs("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
   @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
-  recordDecoders: Seq[RecordDecodingType] = Seq.empty
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty,
+  @docs(
+    "Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`, ignoring those fields in the API request."
+  )
+  checkpointSettings: Option[KinesisCheckpointSettings]
 ) extends IngestStreamConfiguration
 
 @title("Server Sent Events Stream")
@@ -584,12 +597,12 @@ object FileIngestFormat {
     @docs("Cypher query to execute on each record.") query: String,
     @docs("Name of the Cypher parameter holding the parsed CSV row.")
     parameter: String = "that",
-    @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`). 
-            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting 
-            |type available to the Cypher query will be a List of strings with values accessible by index. When 
-            |headers are available (supplied or read from the file), the resulting type available to the Cypher 
-            |query will be a Map[String, String], with values accessible using the corresponding header string. 
-            |CSV rows containing more records than the `headers` will have items that don't match a header column 
+    @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
+            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+            |type available to the Cypher query will be a List of strings with values accessible by index. When
+            |headers are available (supplied or read from the file), the resulting type available to the Cypher
+            |query will be a Map[String, String], with values accessible using the corresponding header string.
+            |CSV rows containing more records than the `headers` will have items that don't match a header column
             |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
             |Default: `false`.""".stripMargin)
     headers: Either[Boolean, List[String]] = Left(false),
@@ -680,6 +693,9 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
         case parameterized: IteratorType.Parameterized => Right(parameterized)
       }
   }
+
+  implicit val kinesisCheckpointSettingsSchema: Record[KinesisCheckpointSettings] =
+    genericRecord[KinesisCheckpointSettings].withExample(KinesisCheckpointSettings(100, 1000))
 
   val exampleIngestStreamInfo: IngestStreamInfo = IngestStreamInfo(
     status = IngestStreamStatus.Running,

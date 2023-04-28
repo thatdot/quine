@@ -37,6 +37,7 @@ case class AkkaKillSwitch(killSwitch: UniqueKillSwitch) extends ShutdownSwitch {
     termSignal
   }
 }
+
 case class KafkaKillSwitch(killSwitch: akka.kafka.scaladsl.Consumer.Control) extends ShutdownSwitch {
   def terminate(termSignal: Future[akka.Done]): Future[akka.Done] =
     killSwitch.drainAndShutdown(termSignal)(ExecutionContexts.parasitic)

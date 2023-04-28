@@ -229,7 +229,8 @@ object Recipe {
               iteratorType,
               numRetries,
               maximumPerSecond,
-              recordEncodingTypes
+              recordEncodingTypes,
+              _
             ) =>
           (
             streamName.subs,
@@ -246,7 +247,8 @@ object Recipe {
               iteratorType,
               numRetries,
               maximumPerSecond,
-              recordEncodingTypes
+              recordEncodingTypes,
+              None
             )
           )
 

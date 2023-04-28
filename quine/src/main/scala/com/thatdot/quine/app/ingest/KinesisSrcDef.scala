@@ -5,7 +5,7 @@ import java.time.Instant
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 import akka.NotUsed
@@ -14,11 +14,15 @@ import akka.stream.alpakka.kinesis.ShardSettings
 import akka.stream.alpakka.kinesis.scaladsl.KinesisSource
 import akka.stream.scaladsl.{Flow, Source}
 
+import com.contxt.kinesis.{ConsumerStats, KinesisRecord, NoopConsumerStats}
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.BackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.RetryCondition
+import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
+import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
@@ -71,28 +75,6 @@ final case class KinesisSrcDef(
 
   def source(): Source[kinesisModel.Record, NotUsed] = {
 
-    val builder = KinesisAsyncClient
-      .builder()
-      .credentials(credentialsOpt)
-      .region(regionOpt)
-      .httpClient(
-        NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
-      )
-      .overrideConfiguration(
-        ClientOverrideConfiguration
-          .builder()
-          .retryPolicy(
-            RetryPolicy
-              .builder()
-              .backoffStrategy(BackoffStrategy.defaultStrategy())
-              .throttlingBackoffStrategy(BackoffStrategy.defaultThrottlingStrategy())
-              .numRetries(numRetries)
-              .retryCondition(RetryCondition.defaultRetryCondition())
-              .build()
-          )
-          .build()
-      )
-
     import KinesisIngest.IteratorType
     val shardIterator = iteratorType match {
       case IteratorType.Latest => Latest
@@ -106,7 +88,8 @@ final case class KinesisSrcDef(
       case IteratorType.AfterSequenceNumber(seqNo) => AfterSequenceNumber(seqNo)
     }
 
-    val kinesisClient = builder.build()
+    val kinesisClient = KinesisSrcDef.buildAsyncClient(credentialsOpt, regionOpt, numRetries)
+
     graph.system.registerOnTermination(kinesisClient.close())
 
     // a Future yielding the shard IDs to read from
@@ -164,4 +147,101 @@ final case class KinesisSrcDef(
       .via(kinesisRateLimiter)
 
   }
+}
+
+object KinesisSrcDef {
+
+  def buildAsyncHttpClient: SdkAsyncHttpClient =
+    NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+  def buildAsyncClient(
+    credentialsOpt: Option[AwsCredentials],
+    regionOpt: Option[AwsRegion],
+    numRetries: Int
+  ): KinesisAsyncClient = {
+    val builder = KinesisAsyncClient
+      .builder()
+      .credentials(credentialsOpt)
+      .region(regionOpt)
+      .httpClient(buildAsyncHttpClient)
+      .overrideConfiguration(
+        ClientOverrideConfiguration
+          .builder()
+          .retryPolicy(
+            RetryPolicy
+              .builder()
+              .backoffStrategy(BackoffStrategy.defaultStrategy())
+              .throttlingBackoffStrategy(BackoffStrategy.defaultThrottlingStrategy())
+              .numRetries(numRetries)
+              .retryCondition(RetryCondition.defaultRetryCondition())
+              .build()
+          )
+          .build()
+      )
+    builder.build
+  }
+
+}
+import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
+
+// based on https://github.com/StreetContxt/kcl-akka-stream
+final case class KinesisCheckpointSrcDef(
+  override val name: String,
+  streamName: String,
+  format: ImportFormat,
+  initialSwitchMode: SwitchMode,
+  parallelism: Int,
+  credentialsOpt: Option[AwsCredentials],
+  regionOpt: Option[AwsRegion],
+  numRetries: Int,
+  maxPerSecond: Option[Int],
+  decoders: Seq[ContentDecoder],
+  checkpointSettings: KinesisSchedulerCheckpointSettings
+)(implicit val graph: CypherOpsGraph)
+    extends RawValuesIngestSrcDef(
+      format,
+      initialSwitchMode,
+      parallelism,
+      maxPerSecond,
+      decoders,
+      s"$name (Kinesis CP ingest)"
+    ) {
+
+  type InputType = KinesisRecord
+
+  import com.contxt.kinesis.{ConsumerConfig, KinesisSource}
+
+  private val maxWaitForCompletionOnStreamShutdown = Duration.Inf //shorter waits throw an IterationException
+  private val shardCheckpointConfig = com.contxt.kinesis.ShardCheckpointConfig(
+    checkpointSettings.maxBatchWait,
+    checkpointSettings.maxBatchSize,
+    maxWaitForCompletionOnStreamShutdown
+  )
+
+  private val kinesisClient: KinesisAsyncClient = KinesisSrcDef.buildAsyncClient(credentialsOpt, regionOpt, numRetries)
+  private val dynamoClient: DynamoDbAsyncClient = DynamoDbAsyncClient.builder
+    .credentials(credentialsOpt)
+    .httpClient(KinesisSrcDef.buildAsyncHttpClient)
+    .region(regionOpt)
+    .build
+  private val cloudWatchClient: CloudWatchAsyncClient = CloudWatchAsyncClient.builder
+    .credentials(credentialsOpt)
+    .httpClient(KinesisSrcDef.buildAsyncHttpClient)
+    .region(regionOpt)
+    .build
+
+  private val consumerConfig =
+    ConsumerConfig(streamName, "atLeastOnceApp")(kinesisClient, dynamoClient, cloudWatchClient)
+  private val stats: ConsumerStats = new NoopConsumerStats
+
+  def source(): Source[KinesisRecord, NotUsed.type] = KinesisSource
+    .apply(consumerConfig, shardCheckpointConfig, stats)
+    .map { message =>
+      // After a record is marked as processed, it is eligible to be checkpointed in DynamoDb.
+      message.markProcessed()
+      message
+    }
+    .mapMaterializedValue(_ => NotUsed)
+
+  /** Define a way to extract raw bytes from a single input event */
+  override def rawBytes(value: KinesisRecord): Array[Byte] = value.data.toArray
 }
