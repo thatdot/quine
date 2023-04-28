@@ -584,16 +584,16 @@ object Expr {
   /** A cypher local date time
     *
     * @note this time represents a time and timezone without date information.
-    * @param localDateTime underlying Java local date time
+    * @param localTime underlying Java local time
     */
-  final case class Time(localDateTime: java.time.LocalTime) extends PropertyValue {
+  final case class Time(localTime: java.time.LocalTime) extends PropertyValue {
 
     def typ = Type.Time
 
     def addToHasher(hasher: Hasher): Hasher =
       hasher
         .putInt("Time".hashCode)
-        .putLong(localDateTime.toNanoOfDay)
+        .putLong(localTime.toNanoOfDay)
   }
 
   /** A cypher date time

@@ -30,7 +30,7 @@ object StandingQueryMessage {
   object ResultId {
     def fresh(): ResultId = ResultId(java.util.UUID.randomUUID())
     def fromQuineId(qid: QuineId): ResultId =
-      ResultId(Hashable[Array[Byte]].hashToUuid(murmur3_128(), qid.array))
+      ResultId(Hashable.bytes.hashToUuid(murmur3_128, qid.array))
   }
 
   sealed abstract class MultipleValuesStandingQuerySubscriber {

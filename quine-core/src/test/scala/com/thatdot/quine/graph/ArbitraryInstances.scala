@@ -317,7 +317,9 @@ trait ArbitraryInstances {
           ),
           Gen.resultOf[JavaLocalDateTime, CypherValue](CypherExpr.LocalDateTime.apply),
           Gen.resultOf[JavaZonedDateTime, CypherValue](CypherExpr.DateTime.apply),
-          Gen.resultOf[JavaDuration, CypherValue](CypherExpr.Duration.apply)
+          Gen.resultOf[JavaDuration, CypherValue](CypherExpr.Duration.apply),
+          Gen.resultOf[JavaLocalTime, CypherValue](CypherExpr.Time),
+          Gen.resultOf[JavaLocalDate, CypherValue](CypherExpr.Date)
         )
       )
     )
@@ -330,7 +332,7 @@ trait ArbitraryInstances {
           Gen.const[CypherExpr](CypherExpr.FreshNodeId)
         ),
         other = List(
-          arbCypherValue.arbitrary.map(x => x),
+          arbCypherValue.arbitrary,
           Gen.resultOf[Symbol, CypherExpr](CypherExpr.Variable.apply),
           GenApply.resultOf[CypherExpr, Symbol, CypherExpr](CypherExpr.Property.apply),
           GenApply.resultOf[CypherExpr, CypherExpr, CypherExpr](CypherExpr.DynamicProperty.apply),

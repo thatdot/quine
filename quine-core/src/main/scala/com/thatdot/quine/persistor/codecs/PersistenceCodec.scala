@@ -80,8 +80,24 @@ trait PersistenceCodec[T] extends LazyLogging {
   private[this] def readDuration(duration: persistence.Duration): java.time.Duration =
     java.time.Duration.ofSeconds(duration.seconds, duration.nanos.toLong)
 
+  private[this] def writeLocalDate(builder: FlatBufferBuilder, localDate: java.time.LocalDate): Offset =
+    persistence.LocalDate.createLocalDate(
+      builder,
+      localDate.getYear,
+      localDate.getMonthValue.toByte,
+      localDate.getDayOfMonth.toByte
+    )
   private[this] def readLocalDate(localDate: persistence.LocalDate): java.time.LocalDate =
     java.time.LocalDate.of(localDate.year, localDate.month.toInt, localDate.day.toInt)
+
+  private[this] def writeLocalTime(builder: FlatBufferBuilder, localTime: java.time.LocalTime): Offset =
+    persistence.LocalTime.createLocalTime(
+      builder,
+      localTime.getHour.toByte,
+      localTime.getMinute.toByte,
+      localTime.getSecond.toByte,
+      localTime.getNano
+    )
 
   private[this] def readLocalTime(localTime: persistence.LocalTime): java.time.LocalTime =
     java.time.LocalTime.of(localTime.hour.toInt, localTime.minute.toInt, localTime.second.toInt, localTime.nano)
@@ -235,7 +251,7 @@ trait PersistenceCodec[T] extends LazyLogging {
       val propertiesLength = node.propertiesLength
       while (i < propertiesLength) {
         val property: persistence.CypherProperty = node.properties(i)
-        val value: cypher.Value = readCypherValue(property.valueType, property.value(_))
+        val value: cypher.Value = readCypherValue(property.valueType, property.value)
         builder += Symbol(property.key) -> value
         i += 1
       }
@@ -246,18 +262,11 @@ trait PersistenceCodec[T] extends LazyLogging {
 
   private[this] def readCypherPath(path: persistence.CypherPath): cypher.Expr.Path = {
     val head: cypher.Expr.Node = readCypherNode(path.head)
-    val tails: Vector[(cypher.Expr.Relationship, cypher.Expr.Node)] = {
-      val builder = Vector.newBuilder[(cypher.Expr.Relationship, cypher.Expr.Node)]
-      var i = 0
-      val tailsLength = path.tailsLength
-      while (i < tailsLength) {
-        val segment = path.tails(i)
-        val rel = readCypherRelationship(segment.edge)
-        val to = readCypherNode(segment.to)
-        builder += rel -> to
-        i += 1
-      }
-      builder.result()
+    val tails: Vector[(cypher.Expr.Relationship, cypher.Expr.Node)] = Vector.tabulate(path.tailsLength) { i =>
+      val segment = path.tails(i)
+      val rel = readCypherRelationship(segment.edge)
+      val to = readCypherNode(segment.to)
+      rel -> to
     }
     cypher.Expr.Path(head, tails)
   }
@@ -271,7 +280,7 @@ trait PersistenceCodec[T] extends LazyLogging {
       val propertiesLength = relationship.propertiesLength
       while (i < propertiesLength) {
         val property: persistence.CypherProperty = relationship.properties(i)
-        val value: cypher.Value = readCypherValue(property.valueType, property.value(_))
+        val value: cypher.Value = readCypherValue(property.valueType, property.value)
         builder += Symbol(property.key) -> value
         i += 1
       }
@@ -282,14 +291,10 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherList(list: persistence.CypherList): cypher.Expr.List = {
-    val elements = Vector.newBuilder[cypher.Value]
-    var i = 0
-    val elementsLength = list.elementsLength
-    while (i < elementsLength) {
-      elements += readCypherValue(list.elementsType(i), list.elements(_, i))
-      i += 1
+    val elements = Vector.tabulate(list.elementsLength) { i =>
+      readCypherValue(list.elementsType(i), list.elements(_, i))
     }
-    cypher.Expr.List(elements.result())
+    cypher.Expr.List(elements)
   }
 
   private[this] def readCypherMap(map: persistence.CypherMap): cypher.Expr.Map = {
@@ -298,7 +303,7 @@ trait PersistenceCodec[T] extends LazyLogging {
     val entriesLength = map.entriesLength
     while (i < entriesLength) {
       val entry: persistence.CypherProperty = map.entries(i)
-      val value: cypher.Value = readCypherValue(entry.valueType, entry.value(_))
+      val value: cypher.Value = readCypherValue(entry.valueType, entry.value)
       entries += entry.key -> value
       i += 1
     }
@@ -425,14 +430,14 @@ trait PersistenceCodec[T] extends LazyLogging {
 
   private[this] def writeCypherDate(builder: FlatBufferBuilder, date: cypher.Expr.Date): Offset = {
     persistence.CypherDate.startCypherDate(builder)
-    val offset = writeCypherDate(builder, date)
+    val offset = writeLocalDate(builder, date.date)
     persistence.CypherDate.addDate(builder, offset)
     persistence.CypherDate.endCypherDate(builder)
   }
 
   private[this] def writeCypherTime(builder: FlatBufferBuilder, time: cypher.Expr.Time): Offset = {
     persistence.CypherTime.startCypherTime(builder)
-    val offset = writeCypherTime(builder, time)
+    val offset = writeLocalTime(builder, time.localTime)
     persistence.CypherTime.addTime(builder, offset)
     persistence.CypherTime.endCypherTime(builder)
   }
@@ -459,7 +464,7 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherProperty(property: persistence.CypherPropertyAccess): cypher.Expr.Property = {
-    val expr: cypher.Expr = readCypherExpr(property.exprType, property.expr(_))
+    val expr: cypher.Expr = readCypherExpr(property.exprType, property.expr)
     val key: Symbol = Symbol(property.key)
     cypher.Expr.Property(expr, key)
   }
@@ -504,13 +509,13 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherListSlice(listSlice: persistence.CypherListSlice): cypher.Expr.ListSlice = {
-    val list: cypher.Expr = readCypherExpr(listSlice.listType, listSlice.list(_))
+    val list: cypher.Expr = readCypherExpr(listSlice.listType, listSlice.list)
     val from: Option[cypher.Expr] =
       if (listSlice.fromType == persistence.CypherExpr.NONE) None
-      else Some(readCypherExpr(listSlice.fromType, listSlice.from(_)))
+      else Some(readCypherExpr(listSlice.fromType, listSlice.from))
     val to: Option[cypher.Expr] =
       if (listSlice.toType == persistence.CypherExpr.NONE) None
-      else Some(readCypherExpr(listSlice.toType, listSlice.to(_)))
+      else Some(readCypherExpr(listSlice.toType, listSlice.to))
     cypher.Expr.ListSlice(list, from, to)
   }
 
@@ -535,7 +540,7 @@ trait PersistenceCodec[T] extends LazyLogging {
     val entriesLength = mapLiteral.argumentsLength
     while (i < entriesLength) {
       val mapEntry: persistence.CypherMapExprEntry = mapLiteral.arguments(i)
-      val value = readCypherExpr(mapEntry.valueType, mapEntry.value(_))
+      val value = readCypherExpr(mapEntry.valueType, mapEntry.value)
       entries += mapEntry.key -> value
       i += 1
     }
@@ -564,18 +569,11 @@ trait PersistenceCodec[T] extends LazyLogging {
   private[this] def readCypherMapProjection(
     mapProjection: persistence.CypherMapProjection
   ): cypher.Expr.MapProjection = {
-    val original: cypher.Expr = readCypherExpr(mapProjection.originalType, mapProjection.original(_))
-    val items: Seq[(String, cypher.Expr)] = {
-      val builder = Seq.newBuilder[(String, cypher.Expr)]
-      var i = 0
-      val itemsLength = mapProjection.itemsLength
-      while (i < itemsLength) {
-        val mapEntry: persistence.CypherMapExprEntry = mapProjection.items(i)
-        val value = readCypherExpr(mapEntry.valueType, mapEntry.value(_))
-        builder += mapEntry.key -> value
-        i += 1
-      }
-      builder.result()
+    val original: cypher.Expr = readCypherExpr(mapProjection.originalType, mapProjection.original)
+    val items: Seq[(String, cypher.Expr)] = Seq.tabulate(mapProjection.itemsLength) { i =>
+      val mapEntry: persistence.CypherMapExprEntry = mapProjection.items(i)
+      val value = readCypherExpr(mapEntry.valueType, mapEntry.value)
+      mapEntry.key -> value
     }
     cypher.Expr.MapProjection(original, items, mapProjection.includeAllProps)
   }
@@ -595,7 +593,7 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherUnaryOp(unaryOp: persistence.CypherUnaryOp): cypher.Expr = {
-    val rhs: cypher.Expr = readCypherExpr(unaryOp.rhsType, unaryOp.rhs(_))
+    val rhs: cypher.Expr = readCypherExpr(unaryOp.rhsType, unaryOp.rhs)
     unaryOp.operation match {
       case persistence.CypherUnaryOperator.Add => cypher.Expr.UnaryAdd(rhs)
       case persistence.CypherUnaryOperator.Negate => cypher.Expr.UnarySubtract(rhs)
@@ -627,8 +625,8 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherBinaryOp(binaryOp: persistence.CypherBinaryOp): cypher.Expr = {
-    val lhs: cypher.Expr = readCypherExpr(binaryOp.lhsType, binaryOp.lhs(_))
-    val rhs: cypher.Expr = readCypherExpr(binaryOp.rhsType, binaryOp.rhs(_))
+    val lhs: cypher.Expr = readCypherExpr(binaryOp.lhsType, binaryOp.lhs)
+    val rhs: cypher.Expr = readCypherExpr(binaryOp.rhsType, binaryOp.rhs)
     binaryOp.operation match {
       case persistence.CypherBinaryOperator.Add => cypher.Expr.Add(lhs, rhs)
       case persistence.CypherBinaryOperator.Subtract => cypher.Expr.Subtract(lhs, rhs)
@@ -673,15 +671,8 @@ trait PersistenceCodec[T] extends LazyLogging {
   }
 
   private[this] def readCypherNaryOp(naryOp: persistence.CypherNaryOp): cypher.Expr = {
-    val arguments: Vector[cypher.Expr] = {
-      val builder = Vector.newBuilder[cypher.Expr]
-      var i = 0
-      val argumentsLength = naryOp.argumentsLength
-      while (i < argumentsLength) {
-        builder += readCypherExpr(naryOp.argumentsType(i), naryOp.arguments(_, i))
-        i += 1
-      }
-      builder.result()
+    val arguments: Vector[cypher.Expr] = Vector.tabulate(naryOp.argumentsLength) { i =>
+      readCypherExpr(naryOp.argumentsType(i), naryOp.arguments(_, i))
     }
     naryOp.operation match {
       case persistence.CypherNaryOperator.And => cypher.Expr.And(arguments)
@@ -730,23 +721,16 @@ trait PersistenceCodec[T] extends LazyLogging {
   private[this] def readCypherCase(caseExp: persistence.CypherCase): cypher.Expr.Case = {
     val scrutinee: Option[cypher.Expr] =
       if (caseExp.scrutineeType == persistence.CypherExpr.NONE) None
-      else Some(readCypherExpr(caseExp.scrutineeType, caseExp.scrutinee(_)))
-    val branches: Vector[(cypher.Expr, cypher.Expr)] = {
-      val builder = Vector.newBuilder[(cypher.Expr, cypher.Expr)]
-      var i = 0
-      val branchesLength = caseExp.branchesLength
-      while (i < branchesLength) {
-        val branch: persistence.CypherCaseBranch = caseExp.branches(i)
-        val cond: cypher.Expr = readCypherExpr(branch.conditionType, branch.condition(_))
-        val outcome: cypher.Expr = readCypherExpr(branch.outcomeType, branch.outcome(_))
-        builder += cond -> outcome
-        i += 1
-      }
-      builder.result()
+      else Some(readCypherExpr(caseExp.scrutineeType, caseExp.scrutinee))
+    val branches: Vector[(cypher.Expr, cypher.Expr)] = Vector.tabulate(caseExp.branchesLength) { i =>
+      val branch: persistence.CypherCaseBranch = caseExp.branches(i)
+      val cond: cypher.Expr = readCypherExpr(branch.conditionType, branch.condition)
+      val outcome: cypher.Expr = readCypherExpr(branch.outcomeType, branch.outcome)
+      cond -> outcome
     }
     val default: Option[cypher.Expr] =
       if (caseExp.fallThroughType == persistence.CypherExpr.NONE) None
-      else Some(readCypherExpr(caseExp.fallThroughType, caseExp.fallThrough(_)))
+      else Some(readCypherExpr(caseExp.fallThroughType, caseExp.fallThrough))
     cypher.Expr.Case(scrutinee, branches, default)
   }
 
@@ -774,15 +758,8 @@ trait PersistenceCodec[T] extends LazyLogging {
 
   private[this] def readCypherFunction(func: persistence.CypherFunction): cypher.Expr.Function = {
     val name: String = func.function
-    val arguments: Vector[cypher.Expr] = {
-      val builder = Vector.newBuilder[cypher.Expr]
-      var i: Int = 0
-      val argumentsLength = func.argumentsLength
-      while (i < argumentsLength) {
-        builder += readCypherExpr(func.argumentsType(i), func.arguments(_, i))
-        i += 1
-      }
-      builder.result()
+    val arguments: Vector[cypher.Expr] = Vector.tabulate(func.argumentsLength) { i =>
+      readCypherExpr(func.argumentsType(i), func.arguments(_, i))
     }
     cypher.Expr.Function(builtinFuncs.getOrElse(name, cypher.Func.UserDefined(name)), arguments)
   }
@@ -1225,7 +1202,10 @@ trait PersistenceCodec[T] extends LazyLogging {
         TypeAndOffset(persistence.CypherExpr.CypherFreshNodeId, emptyTable(builder))
     }
 
-  protected[this] def readCypherExpr(typ: Byte, makeExpr: Table => Table): cypher.Expr =
+  protected[this] def readCypherExpr(typ: Byte, makeExpr: Table => Table): cypher.Expr = {
+    // rawMakeExpr
+    // In Scala 3 we could type `makeExpr` as [A <: Table] => A => A
+    // to avoid the cast
     typ match {
       case persistence.CypherExpr.CypherStr =>
         val str = makeExpr(new persistence.CypherStr()).asInstanceOf[persistence.CypherStr]
@@ -1285,6 +1265,12 @@ trait PersistenceCodec[T] extends LazyLogging {
         val duration = makeExpr(new persistence.CypherDuration()).asInstanceOf[persistence.CypherDuration]
         readCypherDuration(duration)
 
+      case persistence.CypherExpr.CypherDate =>
+        val date = makeExpr(new persistence.CypherDate).asInstanceOf[persistence.CypherDate]
+        readCypherDate(date)
+      case persistence.CypherExpr.CypherTime =>
+        val time = makeExpr(new persistence.CypherTime).asInstanceOf[persistence.CypherTime]
+        readCypherTime(time)
       case persistence.CypherExpr.CypherVariable =>
         val variable = makeExpr(new persistence.CypherVariable()).asInstanceOf[persistence.CypherVariable]
         cypher.Expr.Variable(Symbol(variable.id))
@@ -1352,8 +1338,9 @@ trait PersistenceCodec[T] extends LazyLogging {
         cypher.Expr.FreshNodeId
 
       case other =>
-        throw new InvalidUnionType(other, persistence.CypherValue.names)
+        throw new InvalidUnionType(other, persistence.CypherExpr.names)
     }
+  }
 
   protected[this] def writeMultipleValuesStandingQueryPartId(
     builder: FlatBufferBuilder,
@@ -1482,7 +1469,7 @@ trait PersistenceCodec[T] extends LazyLogging {
       case persistence.CypherValueConstraint.CypherValueConstraintNotEqual =>
         val cons = makeValueConstraint(new persistence.CypherValueConstraintNotEqual())
           .asInstanceOf[persistence.CypherValueConstraintNotEqual]
-        val value = readCypherValue(cons.compareToType, cons.compareTo(_))
+        val value = readCypherValue(cons.compareToType, cons.compareTo)
         MultipleValuesStandingQuery.LocalProperty.NotEqual(value)
 
       case persistence.CypherValueConstraint.CypherValueConstraintAny =>
@@ -1663,20 +1650,13 @@ trait PersistenceCodec[T] extends LazyLogging {
   ): MultipleValuesStandingQuery.FilterMap = {
     val condition: Option[cypher.Expr] =
       if (query.conditionType == persistence.CypherExpr.NONE) None
-      else Some(readCypherExpr(query.conditionType, query.condition(_)))
+      else Some(readCypherExpr(query.conditionType, query.condition))
     val toFilter: MultipleValuesStandingQuery = readMultipleValuesStandingQuery(query.toFilterType, query.toFilter)
-    val toAdd: List[(Symbol, cypher.Expr)] = {
-      val builder = List.newBuilder[(Symbol, cypher.Expr)]
-      var i = 0
-      val toAddLength = query.toAddLength
-      while (i < toAddLength) {
-        val entry: persistence.CypherMapExprEntry = query.toAdd(i)
-        val key: Symbol = Symbol(entry.key)
-        val value: cypher.Expr = readCypherExpr(entry.valueType, entry.value(_))
-        builder += key -> value
-        i += 1
-      }
-      builder.result()
+    val toAdd: List[(Symbol, cypher.Expr)] = List.tabulate(query.toAddLength) { i =>
+      val entry: persistence.CypherMapExprEntry = query.toAdd(i)
+      val key: Symbol = Symbol(entry.key)
+      val value: cypher.Expr = readCypherExpr(entry.valueType, entry.value)
+      key -> value
     }
     MultipleValuesStandingQuery.FilterMap(condition, toFilter, query.dropExisting, toAdd)
   }

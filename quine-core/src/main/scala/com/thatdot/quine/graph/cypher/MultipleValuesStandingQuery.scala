@@ -34,7 +34,7 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
     * also desirable that `q1 == q2 implies `q1.id == q2.id` whenever possible.
     */
   val id: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
-    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128(), this)
+    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this)
   )
 
   /** Direct children of this query

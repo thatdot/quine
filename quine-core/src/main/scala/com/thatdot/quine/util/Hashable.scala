@@ -23,20 +23,21 @@ trait Hashable[-A] {
 
   /** Hash a value and produce results in a read-only byte buffer
     *
-    * @param function hash function to use (ex: `Hashing.murmur3_128()`)
+    * @param function hash function to use (ex: `Hashing.murmur3_128`)
     * @param value what to hash
     * @return output hash
     */
-  final def hashToBytes(function: HashFunction, value: A): ByteBuffer = {
-    val hasher: Hasher = addToHasher(function.newHasher(), value)
-    ByteBuffer.wrap(hasher.hash().asBytes()).asReadOnlyBuffer()
+  @inline
+  final private def hashToBytes(function: HashFunction, value: A): ByteBuffer = {
+    val hasher: Hasher = addToHasher(function.newHasher, value)
+    ByteBuffer.wrap(hasher.hash.asBytes)
   }
 
   /** Hash a value into a UUID
     *
     * @note if the hash function does produce enough bits, this will throw
     * @param value what to hash
-    * @param function hash function to use (ex: `Hashing.murmur3_128()`)
+    * @param function hash function to use (ex: `Hashing.murmur3_128`)
     * @return UUID hash
     */
   final def hashToUuid(function: HashFunction, value: A): UUID = {
