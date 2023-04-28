@@ -818,26 +818,30 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamPause: Endpoint[String, Option[IngestStreamInfoWithName]] =
+  val ingestStreamPause: Endpoint[String, Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(
       request = put(
         url = ingest / ingestStreamName / "pause",
         entity = emptyRequest
       ),
-      response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
+      response = customBadRequest("Cannot pause failed ingest").orElse(
+        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName]))
+      ),
       docs = EndpointDocs()
         .withSummary(Some("Pause Ingest Stream"))
         .withDescription(Some("Temporarily pause processing new events by the named ingest stream."))
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamUnpause: Endpoint[String, Option[IngestStreamInfoWithName]] =
+  val ingestStreamUnpause: Endpoint[String, Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(
       request = put(
         url = ingest / ingestStreamName / "start",
         entity = emptyRequest
       ),
-      response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
+      response = customBadRequest("Cannot resume failed ingest").orElse(
+        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName]))
+      ),
       docs = EndpointDocs()
         .withSummary(Some("Unpause Ingest Stream"))
         .withDescription(Some("Resume processing new events by the named ingest stream."))
