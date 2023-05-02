@@ -16,7 +16,7 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "1.4.1")
 addSbtPlugin("com.github.sbt" % "sbt-ghpages" % "0.7.0")
 addSbtPlugin("com.github.sbt" % "sbt-git" % "2.0.1")
 addSbtPlugin("com.github.sbt" % "sbt-proguard" % "0.5.0")
-addSbtPlugin("io.spray" % "sbt-revolver" % "0.9.1")
+addSbtPlugin("io.spray" % "sbt-revolver" % "0.10.0")
 addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.4")
 libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
 libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "6.5.0.202303070854-r"
