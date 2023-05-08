@@ -223,6 +223,11 @@ struct LocalTime {
   nano: int;
 }
 
+// See [[java.time.OffsetTime]]
+struct OffsetTime {
+  local_time: LocalTime;
+  offset: short; // GMT offset in minutes
+}
 // See [[java.time.Instant]]
 struct Instant {
   seconds: long;

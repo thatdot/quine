@@ -1,5 +1,10 @@
 package com.thatdot.quine.graph
 
+import java.util.regex
+
+import com.softwaremill.diffx.Diff
+import com.softwaremill.diffx.generic.auto._
+import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
@@ -8,7 +13,18 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.codecs._
 
-class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks with ArbitraryInstances {
+class SerializationTests
+    extends AnyFlatSpec
+    with ScalaCheckDrivenPropertyChecks
+    with ArbitraryInstances
+    with DiffShouldMatcher {
+  // java.util.regex.Pattern or Array don't have a good equality method
+  // So we define the Diff here in terms of things which do have good equality methods / existing Diffs:
+  // the string pattern from which the Pattern was compiled, and the Seq version of the Array
+  // Without these, we'd get false diffs / test failures from things with the same value not
+  // getting reported as equal due to being different instances (not reference equals)
+  implicit val regexPatternDiff: Diff[regex.Pattern] = Diff[String].contramap(_.pattern)
+  implicit val byteArrayDiff: Diff[Array[Byte]] = Diff[Seq[Byte]].contramap(_.toSeq)
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
@@ -49,14 +65,13 @@ class SerializationTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks
 
   it should "roundtrip StandingQuery" in {
     forAll { (sq: StandingQuery) =>
+
+      val roundTripped = StandingQueryCodec.format.read(StandingQueryCodec.format.write(sq)).get
       /*
       The value "shouldCalculateResultHashCode" is not stored in flatbuffers and is always deserialized to "false",
       so we omit from the comparison for randomly generated test values.
        */
-      assert(
-        StandingQueryCodec.format.read(StandingQueryCodec.format.write(sq)).get == sq
-          .copy(shouldCalculateResultHashCode = false)
-      )
+      roundTripped shouldMatchTo sq.copy(shouldCalculateResultHashCode = false)
     }
   }
 

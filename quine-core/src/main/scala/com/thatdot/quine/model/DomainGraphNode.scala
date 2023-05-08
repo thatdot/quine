@@ -138,13 +138,17 @@ object DGNHash {
       case QuineValue.Date(d) =>
         into.putByte(12)
         into.putLong(d.toEpochDay)
-      case QuineValue.Time(t) =>
+      case QuineValue.LocalTime(t) =>
         into.putByte(13)
         into.putLong(t.toNanoOfDay)
       case QuineValue.LocalDateTime(ldt) =>
         into.putByte(14)
         into.putLong(ldt.toLocalDate.toEpochDay)
         into.putLong(ldt.toLocalTime.toNanoOfDay)
+      case QuineValue.Time(t) =>
+        into.putByte(15)
+        into.putLong(t.toLocalTime.toNanoOfDay)
+        into.putInt(t.getOffset.getTotalSeconds)
     }
 
   private def putLocalProp(key: Symbol, fn: PropertyComparisonFunc, v: Option[PropertyValue], h: Hasher): Hasher = {

@@ -168,8 +168,24 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
           Right(builder.build)
         case other => Left(TypeMismatch(qv.quineType, other))
       }
-
-    case QuineValue.Time(localTime) =>
+    case QuineValue.Time(time) =>
+      field.getJavaType match {
+        // Do we just not support writing times into Longs, or normalize them to UTC, or write them as local times?
+        // case JavaType.LONG => Right(Long.box(time.withOffsetSameInstant(ZoneOffset.UTC).toLocalTime toNanoOfDay))
+        case JavaType.STRING => Right(time.toString)
+        // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
+        // Same question here as for long above: This TimeOfDay doesn't store offset
+        // Do we use local time, normalize to UTC, or just not support it?
+        case JavaType.MESSAGE if field.getMessageType == TimeOfDay.getDescriptor =>
+          val builder = TimeOfDay.newBuilder
+          builder.setHours(time.getHour)
+          builder.setMinutes(time.getMinute)
+          builder.setSeconds(time.getSecond)
+          builder.setNanos(time.getNano)
+          Right(builder.build)
+        case other => Left(TypeMismatch(qv.quineType, other))
+      }
+    case QuineValue.LocalTime(localTime) =>
       field.getJavaType match {
         case JavaType.LONG => Right(Long.box(localTime.toNanoOfDay))
         case JavaType.STRING => Right(localTime.toString)

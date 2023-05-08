@@ -1,6 +1,11 @@
 package com.thatdot.quine.compiler.cypher
 
-import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, ZonedDateTime => JavaZonedDateTime}
+import java.time.{
+  Duration => JavaDuration,
+  LocalDateTime => JavaLocalDateTime,
+  ZoneOffset,
+  ZonedDateTime => JavaZonedDateTime
+}
 
 import com.thatdot.quine.graph.cypher.Expr
 
@@ -32,8 +37,14 @@ class CypherDates extends CypherHarness("cypher-dates-tests") {
     )
 
     testExpression(
-      "time({ hour: 10, minute: 4, second: 24, nanosecond: 110 })",
-      Expr.Time(java.time.LocalTime.of(10, 4, 24, 110)),
+      "time({ hour: 10, minute: 4, second: 24, nanosecond: 110, offsetSeconds: -25200})",
+      Expr.Time(java.time.OffsetTime.of(10, 4, 24, 110, ZoneOffset.ofTotalSeconds(-25200))),
+      expectedIsIdempotent = false
+    )
+
+    testExpression(
+      "localtime({ hour: 10, minute: 4, second: 24, nanosecond: 110 })",
+      Expr.LocalTime(java.time.LocalTime.of(10, 4, 24, 110)),
       expectedIsIdempotent = false
     )
     testExpression(

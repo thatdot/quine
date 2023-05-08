@@ -24,6 +24,7 @@ sealed abstract class Type {
     case Type.Duration => "DURATION"
     case Type.Date => "DATE"
     case Type.Time => "TIME"
+    case Type.LocalTime => "LOCALTIME"
     case Type.Anything => "ANY"
   }
 }
@@ -45,6 +46,7 @@ object Type {
   case object Duration extends Type
   case object Date extends Type
   case object Time extends Type
+  case object LocalTime extends Type
   case object Anything extends Type
 
   val ListOfAnything: List = List(Anything)
@@ -63,6 +65,9 @@ object Type {
   final def path() = Path
   final def localDateTime() = LocalDateTime
   final def dateTime() = DateTime
+  final def date() = Date
+  final def time() = Time
+  final def localTime() = LocalTime
   final def duration() = Duration
   final def anything() = Anything
 }

@@ -2,7 +2,7 @@ package com.thatdot.quine.util
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.time.{Duration, Instant, LocalDate, LocalDateTime, LocalTime, ZonedDateTime}
+import java.time.{Duration, Instant, LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 import java.util.UUID
 
 import scala.language.higherKinds
@@ -81,6 +81,12 @@ trait BasicHashables {
 
   implicit val localTime: Hashable[LocalTime] = long.contramap(_.toNanoOfDay)
 
+  implicit val offsetTime: Hashable[OffsetTime] = new Hashable[OffsetTime] {
+    def addToHasher(hasher: Hasher, value: OffsetTime): Hasher = {
+      localTime.addToHasher(hasher, value.toLocalTime)
+      hasher.putInt(value.getOffset.getTotalSeconds)
+    }
+  }
   implicit val localDateTime: Hashable[LocalDateTime] = new Hashable[LocalDateTime] {
     def addToHasher(hasher: Hasher, value: LocalDateTime): Hasher = {
       hasher.putLong(value.toLocalDate.toEpochDay)

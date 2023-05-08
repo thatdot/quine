@@ -4,8 +4,8 @@ import java.time.{
   Duration => JavaDuration,
   LocalDate,
   LocalDateTime => JavaLocalDateTime,
-  LocalTime,
   OffsetDateTime,
+  OffsetTime,
   ZoneOffset
 }
 
@@ -201,9 +201,20 @@ object QuineValue {
 
   /** @param time A time without a time-zone in the ISO-8601 calendar system, such as 10:15:30.
     */
-  final case class Time(time: LocalTime) extends QuineValue {
+  final case class LocalTime(time: java.time.LocalTime) extends QuineValue {
 
-    type JvmType = LocalTime
+    type JvmType = java.time.LocalTime
+
+    def quineType = QuineType.LocalTime
+
+    def underlyingJvmValue = time
+
+    def pretty(implicit idProvider: QuineIdProvider): String = time.toString
+  }
+
+  final case class Time(time: OffsetTime) extends QuineValue {
+
+    type JvmType = OffsetTime
 
     def quineType = QuineType.Time
 
@@ -281,9 +292,10 @@ object QuineValue {
     case QuineValue.Map(kvs) => Json.fromFields(kvs.view.mapValues(toJson).toSeq)
     case QuineValue.Bytes(byteArray) => Json.fromValues(byteArray.map(b => Json.fromInt(b.intValue())))
     case QuineValue.DateTime(instant) => Json.fromString(instant.toString)
-    case QuineValue.Date(d) => Json.fromString(d.toString) //TODO Better String representation?
-    case QuineValue.Time(d) => Json.fromString(d.toString) //TODO Better String representation?
-    case QuineValue.LocalDateTime(d) => Json.fromString(d.toString) //TODO Better String representation?
+    case QuineValue.Date(d) => Json.fromString(d.toString)
+    case QuineValue.Time(t) => Json.fromString(t.toString)
+    case QuineValue.LocalTime(t) => Json.fromString(t.toString)
+    case QuineValue.LocalDateTime(dt) => Json.fromString(dt.toString)
     case QuineValue.Duration(d) => Json.fromString(d.toString) //TODO Better String representation?
     case QuineValue.Id(qid) => Json.fromString(qid.pretty)
   }
@@ -292,9 +304,10 @@ object QuineValue {
   final val IdExt: Byte = 32
   final val DurationExt: Byte = 33
   final val DateExt: Byte = 34
-  final val TimeExt: Byte = 35
+  final val LocalTimeExt: Byte = 35
   final val LocalDateTimeExt: Byte = 36
   final val DateTimeExt: Byte = 37
+  final val TimeExt: Byte = 38
 
   /** Read just the type of a [[QuineValue]] from a MessagePack payload
     *
@@ -321,6 +334,7 @@ object QuineValue {
           case DurationExt => QuineType.Duration
           case DateExt => QuineType.Date
           case TimeExt => QuineType.Time
+          case LocalTimeExt => QuineType.LocalTime
           case LocalDateTimeExt => QuineType.LocalDateTime
           case DateTimeExt => QuineType.DateTime
           case EXT_TIMESTAMP => QuineType.DateTime
@@ -422,16 +436,22 @@ object QuineValue {
             QuineValue.Date(LocalDate.ofEpochDay(epochDay.toLong))
 
           case TimeExt =>
+            validateExtHeaderLength(extHeader, LongAndByteByteSize)
+            val nanoDay = unpacker.unpackLong()
+            val offset = unpacker.unpackByte()
+            QuineValue.Time(OffsetTime.of(java.time.LocalTime.ofNanoOfDay(nanoDay), offsetFromByte(offset)))
+
+          case LocalTimeExt =>
             validateExtHeaderLength(extHeader, LongByteSize)
             val nanoDay = unpacker.unpackLong()
-            QuineValue.Time(LocalTime.ofNanoOfDay(nanoDay))
+            QuineValue.LocalTime(java.time.LocalTime.ofNanoOfDay(nanoDay))
 
           case LocalDateTimeExt =>
             validateExtHeaderLength(extHeader, LongAndIntByteSize)
             val epochDay = unpacker.unpackInt()
             val nanoDay = unpacker.unpackLong()
             QuineValue.LocalDateTime(
-              JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), LocalTime.ofNanoOfDay(nanoDay))
+              JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), java.time.LocalTime.ofNanoOfDay(nanoDay))
             )
 
           case DateTimeExt =>
@@ -448,13 +468,13 @@ object QuineValue {
                   if (nanoOfDay < 0)
                     OffsetDateTime.of(
                       LocalDate.ofEpochDay(epochDays - 1),
-                      LocalTime.ofNanoOfDay(NanosPerDay + nanoOfDay),
+                      java.time.LocalTime.ofNanoOfDay(NanosPerDay + nanoOfDay),
                       offset
                     )
                   else
                     OffsetDateTime.of(
                       LocalDate.ofEpochDay(epochDays),
-                      LocalTime.ofNanoOfDay(nanoOfDay),
+                      java.time.LocalTime.ofNanoOfDay(nanoOfDay),
                       offset
                     )
                 QuineValue.DateTime(dateTime)
@@ -464,7 +484,11 @@ object QuineValue {
                 val nanoOfDay = unpacker.unpackLong()
                 val offset = offsetFromByte(unpacker.unpackByte())
                 val dateTime =
-                  OffsetDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), LocalTime.ofNanoOfDay(nanoOfDay), offset)
+                  OffsetDateTime.of(
+                    LocalDate.ofEpochDay(epochDay.toLong),
+                    java.time.LocalTime.ofNanoOfDay(nanoOfDay),
+                    offset
+                  )
                 QuineValue.DateTime(dateTime)
 
               case other =>
@@ -555,7 +579,12 @@ object QuineValue {
       case QuineValue.Date(date) =>
         packer.packExtensionTypeHeader(DateExt, IntByteSize).packInt(date.toEpochDay.intValue)
       case QuineValue.Time(time) =>
-        packer.packExtensionTypeHeader(TimeExt, LongByteSize).packLong(time.toNanoOfDay)
+        packer
+          .packExtensionTypeHeader(TimeExt, LongAndByteByteSize)
+          .packLong(time.toLocalTime.toNanoOfDay)
+          .packByte(offsetToByte(time.getOffset))
+      case QuineValue.LocalTime(time) =>
+        packer.packExtensionTypeHeader(LocalTimeExt, LongByteSize).packLong(time.toNanoOfDay)
       case QuineValue.LocalDateTime(localDateTime) =>
         packer
           .packExtensionTypeHeader(LocalDateTimeExt, LongAndIntByteSize)
@@ -601,6 +630,7 @@ object QuineType {
   case object Duration extends QuineType
   case object Date extends QuineType
   case object Time extends QuineType
+  case object LocalTime extends QuineType
   case object LocalDateTime extends QuineType
   case object Id extends QuineType
 }

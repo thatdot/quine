@@ -19,8 +19,9 @@ union CypherValue {
   CypherLocalDateTime,
   CypherDateTime,
   CypherDate,
-  CypherTime,
-  CypherDuration
+  CypherLocalTime,
+  CypherDuration,
+  CypherTime
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr]]
@@ -41,7 +42,7 @@ union CypherExpr {
   CypherDateTime,
   CypherDuration,
   CypherDate,
-  CypherTime,
+  CypherLocalTime,
   CypherVariable,
   CypherPropertyAccess,
   CypherDynamicPropertyAccess,
@@ -58,6 +59,7 @@ union CypherExpr {
   CypherListFold,
   CypherReduceList,
   CypherFreshNodeId,
+  CypherTime
 }
 
 // Key-value pair in a map with string keys
@@ -153,9 +155,14 @@ table CypherDate {
    date: LocalDate (required);
 }
 
+// See [[com.thatdot.quine.graph.cypher.Expr.LocalTime]]
+table CypherLocalTime {
+   time: LocalTime (required);
+}
+
 // See [[com.thatdot.quine.graph.cypher.Expr.Time]]
 table CypherTime {
-   time: LocalTime (required);
+   time: OffsetTime (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.Expr.Variable]]

@@ -6,6 +6,7 @@ import java.time.{
   LocalDateTime => JavaLocalDateTime,
   LocalTime => JavaLocalTime,
   OffsetDateTime,
+  OffsetTime => JavaOffsetTime,
   ZoneOffset,
   ZonedDateTime => JavaZonedDateTime
 }
@@ -68,10 +69,18 @@ trait ArbitraryInstances {
     time <- arbitrary[JavaLocalTime]
   } yield JavaLocalDateTime.of(date, time)
 
+  // We round to nearest 15-minutes in our offset persistence
+  lazy val offsetGen: Gen[ZoneOffset] = Gen.choose(-12 * 4, 14 * 4).map(q => ZoneOffset.ofTotalSeconds(q * 15 * 60))
+
+  lazy val offsetTimeGen: Gen[JavaOffsetTime] = for {
+    time <- arbitrary[JavaLocalTime]
+    offset <- offsetGen
+  } yield JavaOffsetTime.of(time, offset)
+
   lazy val intBoundedOffsetDateTimeGen: Gen[OffsetDateTime] = for {
     datetime <- intBoundedLocalDateTimeGen
-    offset <- Gen.choose(-12 * 4, 14 * 4) // We round to nearest 15-minutes in our offset persistence
-  } yield OffsetDateTime.of(datetime, ZoneOffset.ofTotalSeconds(offset * 15 * 60))
+    offset <- offsetGen
+  } yield OffsetDateTime.of(datetime, offset)
 
   /* Tweak the containers so that the generation size does _not_ get passed
    * through straight away. Instead, we pick a container size and then scale
@@ -274,7 +283,7 @@ trait ArbitraryInstances {
           Gen.resultOf[QuineId, QuineValue](QuineValue.Id(_)),
           Gen.resultOf[JavaDuration, QuineValue](QuineValue.Duration),
           intBoundedDateGen.map(QuineValue.Date),
-          Gen.resultOf[JavaLocalTime, QuineValue](QuineValue.Time),
+          Gen.resultOf[JavaLocalTime, QuineValue](QuineValue.LocalTime),
           intBoundedLocalDateTimeGen.map(QuineValue.LocalDateTime)
         )
       )
@@ -318,7 +327,12 @@ trait ArbitraryInstances {
           Gen.resultOf[JavaLocalDateTime, CypherValue](CypherExpr.LocalDateTime.apply),
           Gen.resultOf[JavaZonedDateTime, CypherValue](CypherExpr.DateTime.apply),
           Gen.resultOf[JavaDuration, CypherValue](CypherExpr.Duration.apply),
-          Gen.resultOf[JavaLocalTime, CypherValue](CypherExpr.Time),
+          Gen.resultOf[JavaLocalTime, CypherValue](CypherExpr.LocalTime),
+          offsetTimeGen.map(CypherExpr.Time),
+          // Cypher Expr.Time truncates the offset to the minute when serializing (so it fits in a short),
+          // so we can't use the general java.time.OffsetTime generator because
+          // it generates UTC offsets with random seconds at the end (that don't exist in real life)
+          // Gen.resultOf[JavaOffsetTime, CypherValue](CypherExpr.Time),
           Gen.resultOf[JavaLocalDate, CypherValue](CypherExpr.Date)
         )
       )
@@ -632,7 +646,7 @@ trait ArbitraryInstances {
   }
 
   implicit val arbNodePatternId: Arbitrary[GraphQueryPattern.NodePatternId] = Arbitrary {
-    Gen.resultOf(GraphQueryPattern.NodePatternId(_))
+    Gen.resultOf(GraphQueryPattern.NodePatternId)
   }
 
   implicit val arbPropertyValuePattern: Arbitrary[GraphQueryPattern.PropertyValuePattern] = Arbitrary {

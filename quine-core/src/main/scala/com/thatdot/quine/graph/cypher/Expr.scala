@@ -92,8 +92,8 @@ object Expr {
     case QuineValue.Duration(duration) => Duration(duration)
     case QuineValue.Date(date) => Date(date)
     case QuineValue.Time(t) => Time(t)
+    case QuineValue.LocalTime(t) => LocalTime(t)
     case QuineValue.LocalDateTime(ldt) => LocalDateTime(ldt)
-
     case QuineValue.Id(id) => Bytes(id)
   }
 
@@ -112,6 +112,7 @@ object Expr {
     case Duration(duration) => QuineValue.Duration(duration)
     case Date(d) => QuineValue.Date(d)
     case Time(t) => QuineValue.Time(t)
+    case LocalTime(t) => QuineValue.LocalTime(t)
     case LocalDateTime(ldt) => QuineValue.LocalDateTime(ldt)
 
     case other => sys.error(s"Not a valid quine value: $other")
@@ -581,18 +582,34 @@ object Expr {
         .putLong(date.toEpochDay)
   }
 
-  /** A cypher local date time
+  /** A cypher time
     *
-    * @note this time represents a time and timezone without date information.
-    * @param localTime underlying Java local time
+    * @note this time represents a time and UTC offset without date information.
+    * @param time underlying Java time
     */
-  final case class Time(localTime: java.time.LocalTime) extends PropertyValue {
+  final case class Time(time: java.time.OffsetTime) extends PropertyValue {
 
     def typ = Type.Time
 
     def addToHasher(hasher: Hasher): Hasher =
       hasher
         .putInt("Time".hashCode)
+        .putLong(time.toLocalTime.toNanoOfDay)
+        .putInt(time.getOffset.getTotalSeconds)
+  }
+
+  /** A cypher local time
+    *
+    * @note this time represents a local time without date information.
+    * @param localTime underlying Java local time
+    */
+  final case class LocalTime(localTime: java.time.LocalTime) extends PropertyValue {
+
+    def typ = Type.LocalTime
+
+    def addToHasher(hasher: Hasher): Hasher =
+      hasher
+        .putInt("LocalTime".hashCode)
         .putLong(localTime.toNanoOfDay)
   }
 
@@ -2384,6 +2401,7 @@ sealed abstract class Value extends Expr {
     case Expr.Duration(duration) => duration
     case Expr.Date(date) => date
     case Expr.Time(time) => time
+    case Expr.LocalTime(time) => time
 
   }
 
@@ -2432,6 +2450,7 @@ sealed abstract class Value extends Expr {
     case Expr.Duration(duration) => s"""duration("$duration")"""
     case Expr.Date(date) => s"""date("$date")"""
     case Expr.Time(time) => s"""time("$time")"""
+    case Expr.LocalTime(time) => s"""localtime("$time")"""
   }
 }
 object Value {
@@ -2622,9 +2641,14 @@ object Value {
       case (_, _: Expr.Date) => -1
 
       // Time
-      case (Expr.Time(d1), Expr.Time(d2)) => d1.compareTo(d2)
+      case (Expr.Time(t1), Expr.Time(t2)) => t1.compareTo(t2)
       case (_: Expr.Time, _) => 1
       case (_, _: Expr.Time) => -1
+
+      // LocalTime
+      case (Expr.LocalTime(t1), Expr.LocalTime(t2)) => t1.compareTo(t2)
+      case (_: Expr.LocalTime, _) => 1
+      case (_, _: Expr.LocalTime) => -1
 
       // Paths come next...
       // TODO: optimize this
@@ -2861,6 +2885,7 @@ object Value {
     case Expr.Duration(duration) => Json.fromString(duration.toString)
     case Expr.Date(date) => Json.fromString(date.toString)
     case Expr.Time(time) => Json.fromString(time.toString)
+    case Expr.LocalTime(time) => Json.fromString(time.toString)
     case Expr.Node(qid, labels, props) =>
       Json.obj(
         "id" -> Json.fromString(qid.pretty),
