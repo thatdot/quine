@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.StampedLock
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Using
 
 import akka.NotUsed
 import akka.actor.ActorSystem
@@ -201,6 +202,14 @@ final class RocksDbPersistor(
     columnFamilyOpts = null
   }
 
+  /** Acquire a read lock for operations that do not require external synchronization with each other, but cannot be
+    * interleaved with reset or shutdown (see comments on dbLock). Also synchronizes memory to make any previous
+    * mutations of this object's variables visible on the calling thread.
+    *
+    * @param f Action to take while holding the read lock
+    * @tparam U Type of the actions return value
+    * @return The result of the action
+    */
   private def withReadLock[U](f: => U): U = {
     val stamp = dbLock.tryReadLock()
     if (stamp == 0) throw new RocksDBUnavailableException()
@@ -293,6 +302,21 @@ final class RocksDbPersistor(
     putKeyValues(nodeEventsCF, serializedEvents toMap)
   }(ioDispatcher)
 
+  /** Delete rows from the given column family that start with the given QuineId. The keys of the column family are
+    * expected to be a QuineId followed by an EventTime (8 bytes).
+    *
+    * @param qid The QuineId whose rows should be deleted.
+    * @param qidAndTimeKeyedCF A QuineId + EventTime keyed column family
+    * @return A Future that does the deletion on the blocking IO dispatcher
+    */
+  private def deleteQid(qid: QuineId, qidAndTimeKeyedCF: ColumnFamilyHandle): Future[Unit] = Future {
+    val startKey = qidAndTime2Key(qid, EventTime.MinValue)
+    val endKey = qidBytes2NextKey(qid.array)
+    withReadLock(db.deleteRange(qidAndTimeKeyedCF, writeOpts, startKey, endKey))
+  }(ioDispatcher)
+
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = deleteQid(qid, nodeEventsCF)
+
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
     val serializedEvents =
       //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
@@ -306,9 +330,13 @@ final class RocksDbPersistor(
     putKeyValues(domainIndexEventsCF, serializedEvents toMap)
   }(ioDispatcher)
 
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = deleteQid(qid, domainIndexEventsCF)
+
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] = Future {
     putKeyValue(snapshotsCF, qidAndTime2Key(id, atTime), snapshotBytes)
   }(ioDispatcher)
+
+  override def deleteSnapshots(qid: QuineId): Future[Unit] = deleteQid(qid, snapshotsCF)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
     val sqBytes = StandingQueryCodec.format.write(standingQuery)
@@ -336,23 +364,58 @@ final class RocksDbPersistor(
     }
   }(ioDispatcher)
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
-    val beginKey = sqIdPrefixKey(standingQuery.id)
-    val endKeyOpt = incrementKey(beginKey)
-    withReadLock(db.delete(standingQueriesCF, writeOpts, standingQuery.name.getBytes(UTF_8)))
-    val endKey = endKeyOpt match {
-      case Some(endKey) => endKey
-
-      // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
-      case None =>
-        val it = db.newIterator(standingQueryStatesCF)
-        try {
-          it.seekToLast()
-          val lastKey = it.key()
-          util.Arrays.copyOf(lastKey, lastKey.length + 1) // a key that is bigger than the last key
-        } finally it.close()
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future {
+    withReadLock {
+      Using.resource(db.newIterator(standingQueryStatesCF)) { it =>
+        it.seekToFirst()
+        while (it.isValid) {
+          val entryKey = it.key()
+          val (_, keyQid, _) = key2SqIdQidAndSqPartId(entryKey)
+          if (keyQid == id) {
+            db.delete(standingQueryStatesCF, writeOpts, entryKey)
+          }
+          it.next()
+        }
+      }
     }
-    db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
+  }(ioDispatcher)
+
+  /** Return a key larger than any with given prefix. Since the key size isn't fixed, if the prefix can't be incremented,
+    * look in the given column family for the last key and make a key that the same as the last key but with an extra
+    * zero byte at the end, making it larger.
+    *
+    * @param prefix Key prefix such that any key with this prefix is smaller than the returned key
+    * @param columnFamilyHandle Column family to search in case the prefix can't be incremented
+    * @return A key larger than any with the given prefix
+    */
+  private def keyAfter(prefix: Array[Byte], columnFamilyHandle: ColumnFamilyHandle): Array[Byte] =
+    incrementKey(prefix) match {
+      case Some(incremented) => incremented
+      case None =>
+        // Very unlikely edge case - see "Use with `incrementKey`" scaladoc on `sqIdPrefixKey`
+        Using.resource(db.newIterator(columnFamilyHandle)) { it =>
+          it.seekToLast()
+          if (it.isValid) {
+            val lastKey = it.key()
+            // a key that is bigger than the last key by having an extra zero byte at the end
+            util.Arrays.copyOf(lastKey, lastKey.length + 1)
+          } else {
+            // An edge case within the edge case where the prefix is all 1s, but the db has nothing in that column
+            // family. For example, this could happen on a freshly initialized RocksDB if the first thing a user did was
+            // try to delete data for a QuineId made of all 1 bits.
+            // TODO: add a test for this
+            util.Arrays.copyOf(prefix, prefix.length + 1)
+          }
+        }
+    }
+
+  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
+    withReadLock {
+      db.delete(standingQueriesCF, writeOpts, standingQuery.name.getBytes(UTF_8))
+      val beginKey = sqIdPrefixKey(standingQuery.id)
+      val endKey = keyAfter(beginKey, standingQueryStatesCF)
+      db.deleteRange(standingQueryStatesCF, writeOpts, beginKey, endKey)
+    }
   }(ioDispatcher)
 
   def getMultipleValuesStandingQueryStates(
@@ -616,7 +679,7 @@ final class RocksDbPersistor(
 
     Future(withReadLock {
       val deletable = filter(e => e.dgnId == dgnId)
-      deletable.foreach(k => db.delete(domainIndexEventsCF, k))
+      deletable.foreach(k => db.delete(domainIndexEventsCF, writeOpts, k))
     })(ioDispatcher)
 
   }
