@@ -53,10 +53,17 @@ class EmptyPersistor(
 
   def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future.unit
 
+  def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = Future.unit
+
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     Future.unit
 
+  def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = Future.unit
+
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]) = Future.unit
+
+  def deleteSnapshots(qid: QuineId): Future[Unit] = Future.unit
+
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     Future.successful(None)
 
@@ -75,6 +82,8 @@ class EmptyPersistor(
     standingQueryId: MultipleValuesStandingQueryPartId,
     state: Option[Array[Byte]]
   ): Future[Unit] = Future.unit
+
+  def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future.unit
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future.successful(None)
 

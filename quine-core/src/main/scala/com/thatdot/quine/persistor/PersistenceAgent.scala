@@ -33,11 +33,6 @@ object PersistenceAgent {
   val VersionMetadataKey = "serialization_version"
 }
 
-class NotYetImplemented(name: String)
-    extends Exception(
-      s"$name is not implemented yet for this persistor. To use this feature, try using cassandra instead."
-    )
-
 /** Interface for a Quine storage layer */
 trait PersistenceAgent extends StrictLogging {
 
@@ -145,14 +140,12 @@ trait PersistenceAgent extends StrictLogging {
   /** Persist [[NodeChangeEvent]] values. */
   def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit]
 
-  def deleteNodeChangeEvents(qid: QuineId): Future[Unit] =
-    Future.failed(new NotYetImplemented("deleteNodeChangeEvents"))
+  def deleteNodeChangeEvents(qid: QuineId): Future[Unit]
 
   /** Persist [[DomainIndexEvent]] values. */
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit]
 
-  def deleteDomainIndexEvents(qid: QuineId): Future[Unit] =
-    Future.failed(new NotYetImplemented("deleteDomainIndexEvents"))
+  def deleteDomainIndexEvents(qid: QuineId): Future[Unit]
 
   /** Fetch a time-ordered list of events without timestamps affecting a node's state.
     *
@@ -245,7 +238,7 @@ trait PersistenceAgent extends StrictLogging {
     */
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit]
 
-  def deleteSnapshots(qid: QuineId): Future[Unit] = Future.failed(new NotYetImplemented("deleteSnapshots"))
+  def deleteSnapshots(qid: QuineId): Future[Unit]
 
   /** Fetch the latest snapshot of a node
     *
@@ -287,8 +280,7 @@ trait PersistenceAgent extends StrictLogging {
     state: Option[Array[Byte]]
   ): Future[Unit]
 
-  def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
-    Future.failed(new NotYetImplemented("deleteMultipleValuesStandingQueryStates"))
+  def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit]
 
   /** Fetch a metadata value with a known name
     *

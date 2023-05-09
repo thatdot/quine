@@ -403,7 +403,6 @@ final class RocksDbPersistor(
             // An edge case within the edge case where the prefix is all 1s, but the db has nothing in that column
             // family. For example, this could happen on a freshly initialized RocksDB if the first thing a user did was
             // try to delete data for a QuineId made of all 1 bits.
-            // TODO: add a test for this
             util.Arrays.copyOf(prefix, prefix.length + 1)
           }
         }
@@ -692,7 +691,6 @@ final class RocksDbPersistor(
     RocksDB.destroyDB(filePath, new Options())
     logger.info(s"Destroyed RocksDB at $filePath.")
   }
-
 }
 
 object RocksDbPersistor {

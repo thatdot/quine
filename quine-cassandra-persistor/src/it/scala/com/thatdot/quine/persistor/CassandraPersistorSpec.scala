@@ -6,12 +6,10 @@ import scala.util.Using
 import akka.actor.ActorSystem
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
 import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
-import com.thatdot.quine.graph.EventTime
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, CassandraStatementSettings}
 
-import scala.compat.ExecutionContexts
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
@@ -43,20 +41,6 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
   lazy val persistor: PersistenceAgent = cassandraWrapper.instance
 
   override def runnable: Boolean = persistor.isInstanceOf[CassandraPersistor]
-
-  // TODO: Move this back into PersitenceAgentSpec once the rest of the peristors implement this.
-  describe("deleteJournal") {
-    val allQids = Seq(qid0, qid1, qid2, qid3, qid4)
-    it("can delete all record events for a given Quine Id") {
-      //Future.traverse(allQids)(qid =>
-      forAll(allQids)(qid =>
-        for {
-          _ <- persistor.deleteNodeChangeEvents(qid)
-          journalEntries <- persistor.getNodeChangeEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
-        } yield journalEntries shouldBe empty
-      ).map(_ => succeed)(ExecutionContexts.parasitic)
-    }
-  }
 }
 
 /** Wrap a test instance of cassandra.

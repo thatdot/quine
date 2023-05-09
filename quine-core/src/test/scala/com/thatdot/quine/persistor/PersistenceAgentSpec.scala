@@ -2,6 +2,7 @@ package com.thatdot.quine.persistor
 
 import java.util.UUID
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.util.Random
@@ -25,8 +26,11 @@ import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   NodeEvent,
+  PatternOrigin,
   QuineUUIDProvider,
-  StandingQueryId
+  StandingQuery,
+  StandingQueryId,
+  StandingQueryPattern
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
@@ -73,6 +77,7 @@ abstract class PersistenceAgentSpec
   val qid2: QuineId = idProvider.customIdStringToQid("77747265-9ea9-4d61-a419-d7758c8b097a").get
   val qid3: QuineId = idProvider.customIdStringToQid("45cc12b5-f498-4f72-89d3-29180df76e34").get
   val qid4: QuineId = idProvider.customIdStringToQid("ffffffff-ffff-ffff-ffff-ffffffffffff").get
+  val allQids: Seq[QuineId] = Seq(qid0, qid1, qid2, qid3, qid4)
 
   val event0: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(0L)))
   val event1: PropertySet = PropertySet(Symbol("foo"), PropertyValue(QuineValue(1L)))
@@ -504,6 +509,40 @@ abstract class PersistenceAgentSpec
     }
   }
 
+  describe("deleteSnapshot") {
+    it("deletes all snapshots for the given QuineId") {
+      forAll(allQids) { qid =>
+        for {
+          _ <- persistor.deleteSnapshots(qid)
+          after <- persistor.getLatestSnapshot(qid, EventTime.MinValue)
+        } yield after shouldBe empty
+      }.map(_ => succeed)(ExecutionContexts.parasitic)
+    }
+  }
+
+  describe("removeStandingQuery") {
+    it("successfully does nothing when given a degenerate standing query id to remove while empty") {
+      val standingQuery = StandingQuery(
+        name = "",
+        id = StandingQueryId(new UUID(-1, -1)),
+        query = StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
+          dgnId = 1L,
+          formatReturnAsStr = true,
+          aliasReturnAs = Symbol("foo"),
+          includeCancellation = true,
+          origin = PatternOrigin.DirectDgb
+        ),
+        queueBackpressureThreshold = 1,
+        queueMaxSize = 1,
+        shouldCalculateResultHashCode = true
+      )
+      for {
+        _ <- persistor.removeStandingQuery(standingQuery)
+        after <- persistor.getStandingQueries
+      } yield after shouldBe empty
+    }
+  }
+
   describe("setStandingQueryState") {
     it("can set multiple states for one node") {
       allOfConcurrent(
@@ -580,6 +619,20 @@ abstract class PersistenceAgentSpec
           assert(sqStates(sqId3 -> sqPartId3) === sqState1)
         }
       )
+    }
+  }
+
+  describe("deleteMultipleValuesStandingQueryStates") {
+    it("deletes all multiple value query states for the given QuineId") {
+      for {
+        before <- persistor.getMultipleValuesStandingQueryStates(qid1)
+        _ <- persistor.deleteMultipleValuesStandingQueryStates(qid1)
+        after <- persistor.getMultipleValuesStandingQueryStates(qid1)
+      } yield {
+        // be sure that this test does something since it depends on previous tests adding states
+        before should not be empty
+        after shouldBe empty
+      }
     }
   }
 
@@ -746,6 +799,17 @@ abstract class PersistenceAgentSpec
     }
   }
 
+  describe("deleteNodeChangeEvents") {
+    it("can delete all record events for a given Quine Id") {
+      forAll(allQids)(qid =>
+        for {
+          _ <- persistor.deleteNodeChangeEvents(qid)
+          journalEntries <- persistor.getNodeChangeEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+        } yield journalEntries shouldBe empty
+      ).map(_ => succeed)(ExecutionContexts.parasitic)
+    }
+  }
+
   describe("persistDomainIndexEvents") {
     //Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
     val qid = idProvider.newQid()
@@ -762,6 +826,12 @@ abstract class PersistenceAgentSpec
       val minTime = sorted.head.atTime
       val maxTime = sorted.last.atTime
       persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
+    }
+    it("delete") {
+      for {
+        _ <- persistor.deleteDomainIndexEvents(qid)
+        after <- persistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+      } yield after shouldBe empty
     }
   }
 
