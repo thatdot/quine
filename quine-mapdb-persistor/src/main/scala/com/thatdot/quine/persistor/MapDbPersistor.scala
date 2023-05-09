@@ -104,9 +104,11 @@ final class MapDbPersistor(
       )
   }
 
+  private type QuineIdTimestampTuple = Array[AnyRef]
+
   // TODO: investigate using `valuesOutsideNodesEnable` for the `treeMap`
 
-  private val nodeChangeEvents: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+  private val nodeChangeEvents: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]] = db
     .treeMap("nodeChangeEvents")
     .keySerializer(
       new SerializerArrayTuple(
@@ -117,7 +119,7 @@ final class MapDbPersistor(
     .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
 
-  private val domainIndexEvents: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+  private val domainIndexEvents: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]] = db
     .treeMap("domainIndexEvents")
     .keySerializer(
       new SerializerArrayTuple(
@@ -128,7 +130,7 @@ final class MapDbPersistor(
     .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
 
-  private val snapshots: ConcurrentNavigableMap[Array[AnyRef], Array[Byte]] = db
+  private val snapshots: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]] = db
     .treeMap(s"snapshots")
     .keySerializer(
       new SerializerArrayTuple(
@@ -176,12 +178,12 @@ final class MapDbPersistor(
       nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
     )(blockingDispatcherEC)
 
-  def getNodeChangeEventsWithTime(
+  private def quineIdTimeRangeEntries(
+    map: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]],
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
-  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
-
+  ): Iterator[java.util.Map.Entry[QuineIdTimestampTuple, Array[Byte]]] = {
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
       case EventTime.MinValue => Array[AnyRef](id.array)
@@ -194,51 +196,44 @@ final class MapDbPersistor(
     val includeStartingKey = true
     val includeEndingKey = true
 
-    nodeChangeEvents
+    map
       .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
       .entrySet()
       .iterator()
       .asScala
-      .flatMap { entry =>
-        val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
-        val event = NodeChangeEventCodec.format.read(entry.getValue).get
-        Iterator.single(NodeEvent.WithTime(event, eventTime))
-      }
-      .toSeq
+  }
+
+  def getNodeChangeEventsWithTime(
+    id: QuineId,
+    startingAt: EventTime,
+    endingAt: EventTime
+  ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
+    quineIdTimeRangeEntries(nodeChangeEvents, id, startingAt, endingAt).map { entry =>
+      val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
+      val event = NodeChangeEventCodec.format.read(entry.getValue).get
+      NodeEvent.WithTime(event, eventTime)
+    }.toSeq
   }(blockingDispatcherEC)
-    .recoverWith { case e => logger.error("getNodeChangeEvents failed", e); Future.failed(e) }(nodeDispatcherEC)
+    .recoverWith { case e =>
+      logger.error("getNodeChangeEvents failed", e)
+      Future.failed(e)
+    }(nodeDispatcherEC)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = Future {
-
-    // missing values in array key = -infinity, `null` = +infinity
-    val startingKey: Array[AnyRef] = startingAt match {
-      case EventTime.MinValue => Array[AnyRef](id.array)
-      case _ => Array[AnyRef](id.array, Long.box(startingAt.eventTime))
-    }
-    val endingKey: Array[AnyRef] = endingAt match {
-      case EventTime.MaxValue => Array[AnyRef](id.array, null)
-      case _ => Array[AnyRef](id.array, Long.box(endingAt.eventTime))
-    }
-    val includeStartingKey = true
-    val includeEndingKey = true
-
-    domainIndexEvents
-      .subMap(startingKey, includeStartingKey, endingKey, includeEndingKey)
-      .entrySet()
-      .iterator()
-      .asScala
-      .flatMap { entry =>
-        val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
-        val event = DomainIndexEventCodec.format.read(entry.getValue).get
-        Iterator.single(NodeEvent.WithTime(event, eventTime))
-      }
-      .toSeq
+    quineIdTimeRangeEntries(domainIndexEvents, id, startingAt, endingAt).map { entry =>
+      val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
+      val event = DomainIndexEventCodec.format.read(entry.getValue).get
+      NodeEvent.WithTime(event, eventTime)
+    }.toSeq
   }(blockingDispatcherEC)
-    .recoverWith { case e => logger.error("getDomainIndexEvents failed", e); Future.failed(e) }(nodeDispatcherEC)
+    .recoverWith { case e =>
+      logger.error("getDomainIndexEvents failed", e)
+      Future.failed(e)
+    }(nodeDispatcherEC)
 
   def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future {
     val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
@@ -249,8 +244,24 @@ final class MapDbPersistor(
     }
     val _ = nodeChangeEvents.putAll((eventsMap toMap).asJava)
   }(blockingDispatcherEC).recoverWith { case e =>
-    logger.error("persist NodeChangeEvent failed.", e); Future.failed(e)
+    logger.error("persist NodeChangeEvent failed.", e)
+    Future.failed(e)
   }(nodeDispatcherEC)
+
+  private def deleteQuineIdEntries(
+    map: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]],
+    qid: QuineId,
+    methodName: String
+  ): Future[Unit] = Future {
+    quineIdTimeRangeEntries(map, qid, EventTime.MinValue, EventTime.MaxValue)
+      .foreach(entry => map.remove(entry.getKey))
+  }(blockingDispatcherEC).recoverWith { case e =>
+    logger.error(methodName + " failed.", e)
+    Future.failed(e)
+  }(nodeDispatcherEC)
+
+  override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] =
+    deleteQuineIdEntries(nodeChangeEvents, qid, "deleteNodeChangeEvents")
 
   def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
     val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
@@ -263,6 +274,9 @@ final class MapDbPersistor(
   }(blockingDispatcherEC).recoverWith { case e =>
     logger.error("persist DomainIndexEvent failed.", e); Future.failed(e)
   }(nodeDispatcherEC)
+
+  override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] =
+    deleteQuineIdEntries(domainIndexEvents, qid, "deleteDomainIndexEvents")
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     StreamConverters
@@ -298,8 +312,12 @@ final class MapDbPersistor(
     Future {
       val _ = snapshots.put(Array[AnyRef](id.array, Long.box(atTime.eventTime)), snapshotBytes)
     }(blockingDispatcherEC).recoverWith { case e =>
-      logger.error("persistSnapshot failed.", e); Future.failed(e)
+      logger.error("persistSnapshot failed.", e)
+      Future.failed(e)
     }(nodeDispatcherEC)
+
+  override def deleteSnapshots(qid: QuineId): Future[Unit] =
+    deleteQuineIdEntries(snapshots, qid, "deleteSnapshots")
 
   /* MapDB has a [bug](https://github.com/jankotek/mapdb/issues/966) that sporadically causes
    * errors in `getLatestSnapshot`. This is an attempt to reduce the likelihood of this error
@@ -404,6 +422,20 @@ final class MapDbPersistor(
         )
     }
   }(blockingDispatcherEC)
+
+  override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future {
+    val idBytes = id.array
+    multipleValuesStandingQueryStates.keySet().asScala.foreach { key =>
+      val keyIdBytes = key(1).asInstanceOf[Array[Byte]]
+      if (java.util.Arrays.equals(idBytes, keyIdBytes)) {
+        multipleValuesStandingQueryStates.remove(key)
+      }
+    }
+  }(blockingDispatcherEC)
+    .recoverWith { case e =>
+      logger.error("deleteMultipleValuesStandingQueryStates failed", e)
+      Future.failed(e)
+    }(nodeDispatcherEC)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future(Option(metaData.get(key)))(blockingDispatcherEC)
 
