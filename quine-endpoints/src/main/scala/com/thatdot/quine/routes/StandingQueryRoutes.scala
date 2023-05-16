@@ -159,7 +159,7 @@ object StandingQueryResultOutputUserDef {
   ) extends StandingQueryResultOutputUserDef
 
   @unnamed
-  @title("Publish to Kinesis Stream")
+  @title("Publish to Kinesis Data Stream")
   @docs(
     "Publishes a JSON record for each result to the provided Kinesis stream. For the format of the result record, see \"StandingQueryResult\"."
   )

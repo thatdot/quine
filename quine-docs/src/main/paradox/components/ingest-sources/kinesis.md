@@ -3,7 +3,7 @@ description: Quine streaming graph ingest events from a Kinesis source
 ---
 # AWS Kinesis Support
 
-## Reading Records from Kinesis
+## Reading Records from Kinesis Data Streams
 
 Quine has full support for reading records from Kinesis Data Streams. The means by which Quine interprets a record into some graph-structured data is highly configurable via the @ref:[REST API](../../reference/rest-api.md).
 

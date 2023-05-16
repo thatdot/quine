@@ -327,7 +327,7 @@ final case class PulsarIngest(
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration
 
-@title("Kinesis Ingest Stream")
+@title("Kinesis Data Stream")
 @unnamed
 @docs("A stream of data being ingested from Kinesis.")
 final case class KinesisIngest(

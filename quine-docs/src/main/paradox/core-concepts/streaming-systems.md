@@ -106,11 +106,11 @@ When Quine as positioned upstream in a data pipeline as an event source for Kafk
 
 ## Amazon Kinesis
 
-Amazon Kinesis is an Amazon Web Service designed to process large-scale data streams from a multitude of services in real time.
+Kinesis Data Stream is an Amazon Web Service designed to process large-scale data streams from a multitude of services in real time.
 
 ### Ingesting from a Kinesis topic
 
-Ingesting from a Kinesis stream as an event source is done by configuration an `ingest stream` using the `KinesisIngest` type. Quine supports ingest of raw bytes, JSON data, or structured data serialized in a protocol buffer.
+Ingesting from a Kinesis Data Stream as an event source is done by configuration an `ingest stream` using the `KinesisIngest` type. Quine supports ingest of raw bytes, JSON data, or structured data serialized in a protocol buffer.
 
 More information is contained in the *"[create a new ingest stream](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-ingest-name/post)"* API documentation. Be sure to select **Kinesis Ingest Stream** in the body section.
 
