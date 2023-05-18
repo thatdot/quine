@@ -48,9 +48,11 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
   def assertEmpty[A](actual: S[A])(implicit pos: Position): Assertion
   def valueOf[A](fa: F[A]): A
 
+  def edgeCount: Int = 100
+
   "The EdgeCollection" should "return the appropriate edges when variously queried" in {
     assume(runnable)
-    forAll(quineIdGen, Gen.listOfN(100, halfEdgeGen)) { (qid, edges) =>
+    forAll(quineIdGen, Gen.listOfN(edgeCount, halfEdgeGen)) { (qid, edges) =>
       // Given a bunch of edges coming in sequentially
       // When the edges are loaded into the EdgeCollection
       val edgeCollection = loadEdgeCollection(qid, edges)

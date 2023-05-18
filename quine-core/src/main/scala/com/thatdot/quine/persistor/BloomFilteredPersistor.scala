@@ -64,14 +64,7 @@ private class BloomFilteredPersistor(
 
   logger.info(s"Initialized persistor bloom filter with size: $bloomFilterSize records")
 
-  /** Indicates that the existing bloom filter state has been restored from the persistor
-    * and the bloom filter is therefore ready for use in short circuiting queries of known
-    * non-existent nodes.
-    */
-  private var bloomFilterIsReady: Boolean = false
-
-  private def mightContain(qid: QuineId): Boolean =
-    !bloomFilterIsReady || bloomFilter.mightContain(qid)
+  @volatile private var mightContain: QuineId => Boolean = (_: QuineId) => true
 
   override def emptyOfQuineData(): Future[Boolean] =
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
@@ -189,7 +182,7 @@ private class BloomFilteredPersistor(
           val d = System.currentTimeMillis - t0
           val c = bloomFilter.approximateElementCount()
           logger.info(s"Finished loading in duration: $d ms; node set size ~ $c QuineIDs)")
-          bloomFilterIsReady = true
+          mightContain = bloomFilter.mightContain
         case Failure(ex) =>
           logger.warn("Error loading; continuing to run in degraded state", ex)
       }(ExecutionContexts.parasitic)
