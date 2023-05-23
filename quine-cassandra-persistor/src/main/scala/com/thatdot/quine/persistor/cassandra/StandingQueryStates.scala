@@ -1,4 +1,4 @@
-package com.thatdot.quine.persistor.cassandra.vanilla
+package com.thatdot.quine.persistor.cassandra
 
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
@@ -7,14 +7,15 @@ import scala.concurrent.Future
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
 
-import cats.Monad
-import cats.implicits._
+import cats.Applicative
+import cats.syntax.apply._
 import com.datastax.dse.driver.api.core.cql.reactive.ReactiveRow
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, StandingQueryId}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.{T2, T4}
 
 trait StandingQueryStatesColumnNames {
@@ -85,13 +86,13 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
   )(implicit
-    futureMonad: Monad[Future],
+    futureInstance: Applicative[Future],
     mat: Materializer
   ): Future[StandingQueryStates] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureMonad.whenA(
+    val createdSchema = futureInstance.whenA(
       shouldCreateTables
     )(
       session.executeAsync(createTableStatement).toScala
@@ -124,7 +125,7 @@ class StandingQueryStates(
 
   import syntax._
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueryStates.arbitraryRowStatement)
+  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueryStates.firstRowStatement)
 
   def getMultipleValuesStandingQueryStates(
     id: QuineId

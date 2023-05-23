@@ -1,4 +1,4 @@
-package com.thatdot.quine.persistor.cassandra.vanilla
+package com.thatdot.quine.persistor.cassandra
 
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
@@ -6,24 +6,20 @@ import scala.concurrent.Future
 
 import akka.stream.Materializer
 
-import cats.Monad
-import cats.implicits._
+import cats.Applicative
+import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.`type`.codec.ExtraTypeCodecs.BLOB_TO_ARRAY
 import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
 import com.thatdot.quine.graph.{StandingQuery, StandingQueryId}
+import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.persistor.codecs.StandingQueryCodec
 import com.thatdot.quine.util.T2
 
 trait StandingQueriesColumnNames {
   import CassandraCodecs._
-  import syntax._
-  val standingQueryCodec: TypeCodec[StandingQuery] = {
-    val format = StandingQueryCodec.format
-    BLOB_TO_ARRAY.xmap(format.read(_).get, format.write)
-  }
+  val standingQueryCodec: TypeCodec[StandingQuery] = fromBinaryFormat(StandingQueryCodec.format)
   final protected val queryIdColumn: CassandraColumn[StandingQueryId] = CassandraColumn("query_id")
   final protected val queriesColumn: CassandraColumn[StandingQuery] = CassandraColumn("queries")(standingQueryCodec)
 }
@@ -53,12 +49,12 @@ object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
-    futureMonad: Monad[Future]
+    futureInstance: Applicative[Future]
   ): Future[StandingQueries] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureMonad.whenA(
+    val createdSchema = futureInstance.whenA(
       shouldCreateTables
     )(session.executeAsync(createTableStatement).toScala)
 
@@ -82,7 +78,7 @@ class StandingQueries(
 
   import syntax._
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.arbitraryRowStatement)
+  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.firstRowStatement)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
     executeFuture(insertStatement.bindColumns(queryIdColumn.set(standingQuery.id), queriesColumn.set(standingQuery)))

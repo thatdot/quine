@@ -7,9 +7,11 @@ import akka.actor.ActorSystem
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.Metrics
-import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, MapDb}
+import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, Keyspaces, MapDb}
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, CassandraStatementSettings}
+import com.thatdot.quine.persistor.cassandra.aws.KeyspacesPersistor
+import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
+import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
 
 /** Options for persistence */
 object PersistenceBuilder extends LazyLogging {
@@ -89,6 +91,23 @@ object PersistenceBuilder extends LazyLogging {
           ),
           c.endpoints,
           c.localDatacenter,
+          c.shouldCreateTables,
+          c.shouldCreateKeyspace,
+          Some(Metrics),
+          c.snapshotPartMaxSizeBytes
+        )
+        BloomFilteredPersistor.maybeBloomFilter(c.bloomFilterSize, db, persistenceConfig)
+
+      case c: Keyspaces =>
+        val db = new KeyspacesPersistor(
+          persistenceConfig,
+          c.keyspace,
+          c.awsRegion,
+          CassandraStatementSettings(
+            c.readConsistency,
+            c.readTimeout
+          ),
+          c.writeTimeout,
           c.shouldCreateTables,
           c.shouldCreateKeyspace,
           Some(Metrics),

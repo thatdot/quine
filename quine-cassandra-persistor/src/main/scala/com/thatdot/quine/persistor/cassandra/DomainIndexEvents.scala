@@ -1,4 +1,4 @@
-package com.thatdot.quine.persistor.cassandra.vanilla
+package com.thatdot.quine.persistor.cassandra
 
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
@@ -7,8 +7,8 @@ import scala.concurrent.Future
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
 
-import cats.Monad
-import cats.implicits._
+import cats.Applicative
+import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
@@ -19,6 +19,7 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.{T3, T9}
 
 trait DomainIndexEventColumnNames {
@@ -51,7 +52,7 @@ class DomainIndexEvents(
 
   import syntax._
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(DomainIndexEvents.arbitraryRowStatement)
+  def nonEmpty(): Future[Boolean] = yieldsResults(DomainIndexEvents.firstRowStatement)
 
   def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     executeFuture(
@@ -221,11 +222,11 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
-  )(implicit materializer: Materializer, futureMonad: Monad[Future]): Future[DomainIndexEvents] = {
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[DomainIndexEvents] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureMonad.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
+    val createdSchema = futureInstance.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.

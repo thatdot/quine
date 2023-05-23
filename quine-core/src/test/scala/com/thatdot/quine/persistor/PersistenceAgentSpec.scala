@@ -766,16 +766,15 @@ abstract class PersistenceAgentSpec
       persistor.persistDomainGraphNodes(generated) as succeed
     }
     it("read") {
-      persistor.getDomainGraphNodes().map { n =>
+      persistor.getDomainGraphNodes() map { n =>
         assert(n === generated)
       }
     }
     it("delete") {
-      persistor.removeDomainGraphNodes(generated.keySet) flatMap { _ =>
-        persistor.getDomainGraphNodes() map { n =>
-          assert(n.isEmpty)
-        }
-      }
+      for {
+        _ <- persistor.removeDomainGraphNodes(generated.keySet)
+        n <- persistor.getDomainGraphNodes()
+      } yield assert(n.isEmpty)
     }
   }
 

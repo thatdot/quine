@@ -101,6 +101,7 @@ lazy val `quine-cassandra-persistor`: Project = project
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-core" % catsV,
       "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
+      "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.github.stephenc.jcip", "jcip-annotations"),
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest
     )
   )

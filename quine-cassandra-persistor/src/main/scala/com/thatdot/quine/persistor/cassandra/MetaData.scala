@@ -1,4 +1,4 @@
-package com.thatdot.quine.persistor.cassandra.vanilla
+package com.thatdot.quine.persistor.cassandra
 
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
@@ -6,11 +6,12 @@ import scala.concurrent.Future
 
 import akka.stream.Materializer
 
-import cats.Monad
+import cats.Applicative
 import cats.implicits._
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
+import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.T2
 
 trait MetaDataColumnName {
@@ -51,12 +52,12 @@ object MetaData extends TableDefinition with MetaDataColumnName {
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
-    futureMonad: Monad[Future]
+    futureInstance: Applicative[Future]
   ): Future[MetaData] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureMonad.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
+    val createdSchema = futureInstance.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
 
     createdSchema.flatMap(_ =>
       (
@@ -80,9 +81,9 @@ class MetaData(
   import syntax._
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] =
-    queryFuture(
+    queryOne(
       selectSingleStatement.bindColumns(keyColumn.set(key)),
-      singleRow(valueColumn)
+      valueColumn
     )
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] =
@@ -96,5 +97,5 @@ class MetaData(
       }
     )
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(MetaData.arbitraryRowStatement)
+  def nonEmpty(): Future[Boolean] = yieldsResults(MetaData.firstRowStatement)
 }

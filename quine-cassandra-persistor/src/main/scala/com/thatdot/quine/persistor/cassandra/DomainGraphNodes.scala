@@ -1,4 +1,4 @@
-package com.thatdot.quine.persistor.cassandra.vanilla
+package com.thatdot.quine.persistor.cassandra
 
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
@@ -6,13 +6,14 @@ import scala.concurrent.Future
 
 import akka.stream.Materializer
 
-import cats.Monad
-import cats.implicits._
+import cats.Applicative
+import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.T2
 
 trait DomainGraphNodeColumnNames {
@@ -37,7 +38,7 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
   private val deleteStatement: SimpleStatement =
     delete
-      .where(domainGraphNodeIdColumn.is.in)
+      .where(domainGraphNodeIdColumn.is.eq)
       .build
 
   def create(
@@ -47,12 +48,12 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
-    futureMonad: Monad[Future]
+    futureInstance: Applicative[Future]
   ): Future[DomainGraphNodes] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureMonad.whenA(
+    val createdSchema = futureInstance.whenA(
       shouldCreateTables
     )(session.executeAsync(createTableStatement).toScala)
 
@@ -60,13 +61,14 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
         prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new DomainGraphNodes(session, _, _, _))
+      ).mapN(new DomainGraphNodes(session, writeSettings, _, _, _))
     )(ExecutionContexts.parasitic)
   }
 }
 
 class DomainGraphNodes(
   session: CqlSession,
+  writeSettings: CassandraStatementSettings,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement
@@ -76,24 +78,31 @@ class DomainGraphNodes(
 
   import syntax._
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.arbitraryRowStatement)
+  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.firstRowStatement)
 
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     executeFuture(
-      BatchStatement.newInstance(
-        BatchType.LOGGED,
-        domainGraphNodes.toSeq map { case (domainGraphNodeId, domainGraphNode) =>
-          insertStatement.bindColumns(
-            domainGraphNodeIdColumn.set(domainGraphNodeId),
-            dataColumn.set(domainGraphNode)
-          )
-        }: _*
+      writeSettings(
+        BatchStatement.newInstance(
+          BatchType.UNLOGGED,
+          domainGraphNodes.toSeq map { case (domainGraphNodeId, domainGraphNode) =>
+            insertStatement.bindColumns(
+              domainGraphNodeIdColumn.set(domainGraphNodeId),
+              dataColumn.set(domainGraphNode)
+            )
+          }: _*
+        )
       )
     )
 
   def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
     executeFuture(
-      deleteStatement.bindColumns(domainGraphNodeIdColumn.setSet(domainGraphNodeIds))
+      writeSettings(
+        BatchStatement.newInstance(
+          BatchType.UNLOGGED,
+          domainGraphNodeIds.toSeq.map(id => deleteStatement.bindColumns(domainGraphNodeIdColumn.set(id))): _*
+        )
+      )
     )
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =

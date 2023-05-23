@@ -12,6 +12,7 @@ import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLev
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
+import software.amazon.awssdk.regions.Region
 
 import com.thatdot.quine.persistor._
 
@@ -57,7 +58,7 @@ object PersistenceAgentType extends PureconfigInstances {
   val defaultCassandraPort = 9042
   def defaultCassandraAddress: List[InetSocketAddress] =
     sys.env
-      .getOrElse("CASSANDRA_ENDPOINTS", s"localhost:$defaultCassandraPort")
+      .getOrElse("CASSANDRA_ENDPOINTS", "localhost:9042")
       .split(',')
       .map(Address.parseHostAndPort(_, defaultCassandraPort))
       .toList
@@ -76,6 +77,25 @@ object PersistenceAgentType extends PureconfigInstances {
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
   ) extends PersistenceAgentType(false)
+
+  final case class Keyspaces(
+    keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),
+    awsRegion: Option[Region] = None,
+    readConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
+    writeTimeout: FiniteDuration = 10.seconds,
+    readTimeout: FiniteDuration = 10.seconds,
+    shouldCreateTables: Boolean = true,
+    shouldCreateKeyspace: Boolean = true,
+    bloomFilterSize: Option[Long] = None,
+    snapshotPartMaxSizeBytes: Int = 1000000
+  ) extends PersistenceAgentType(false) {
+    private val supportedReadConsistencies: Set[ConsistencyLevel] =
+      Set(ConsistencyLevel.ONE, ConsistencyLevel.LOCAL_ONE, ConsistencyLevel.LOCAL_QUORUM)
+    assert(
+      supportedReadConsistencies.contains(readConsistency),
+      "AWS Keyspaces only supports read constencies levels: " + supportedReadConsistencies.mkString(", ")
+    )
+  }
 
   implicit val cassandraConfigConvert: ConfigConvert[ConsistencyLevel] = {
     import ConfigReader.javaEnumReader

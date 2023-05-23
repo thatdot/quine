@@ -4,11 +4,12 @@ import java.net.{InetSocketAddress, Socket}
 import java.time.Duration
 import scala.util.Using
 import akka.actor.ActorSystem
-import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
+import com.datastax.oss.driver.api.core.ConsistencyLevel
 import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
+import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
+import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
-import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, CassandraStatementSettings}
 
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
@@ -40,7 +41,7 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
 
   lazy val persistor: PersistenceAgent = cassandraWrapper.instance
 
-  override def runnable: Boolean = persistor.isInstanceOf[CassandraPersistor]
+  override def runnable: Boolean = true
 }
 
 /** Wrap a test instance of cassandra.
@@ -50,8 +51,9 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
   * address and port
   * - If that fails will default to InMemoryPersistor
   */
-class CassandraInstanceWrapper[T](buildFromAddress: InetSocketAddress => T)(implicit val system: ActorSystem)
-    extends LazyLogging {
+class CassandraInstanceWrapper[T <: PersistenceAgent](buildFromAddress: InetSocketAddress => T)(implicit
+  val system: ActorSystem
+) extends LazyLogging {
 
   private var embeddedCassandra: Cassandra = _
 
@@ -111,7 +113,10 @@ class CassandraInstanceWrapper[T](buildFromAddress: InetSocketAddress => T)(impl
     }
   }
 
-  def stop(): Unit = if (embeddedCassandra != null) embeddedCassandra.stop()
+  def stop(): Unit = {
+    instance.shutdown()
+    if (embeddedCassandra != null) embeddedCassandra.stop()
+  }
 
   lazy val instance: T = buildFromAddress(runnableAddress)
 

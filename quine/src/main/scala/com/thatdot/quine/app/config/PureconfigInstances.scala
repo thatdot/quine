@@ -1,13 +1,15 @@
 package com.thatdot.quine.app.config
 
 import scala.concurrent.duration.FiniteDuration
+import scala.jdk.CollectionConverters._
 
 import akka.util.Timeout
 
 import pureconfig.BasicReaders.stringConfigReader
-import pureconfig.ConfigConvert
+import pureconfig.error.CannotConvert
 import pureconfig.generic.ProductHint
 import pureconfig.generic.semiauto.deriveEnumerationConvert
+import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceSchedule}
 import com.thatdot.quine.util.Config._
@@ -35,4 +37,11 @@ trait PureconfigInstances {
     ConfigConvert[String].xmap(s => Host(replaceHostSpecialValues(s)), _.asString)
   implicit val portConvert: ConfigConvert[Port] =
     ConfigConvert[Int].xmap(i => Port(replacePortSpecialValue(i)), _.asInt)
+
+  import software.amazon.awssdk.regions.Region
+  private val regions = Region.regions.asScala.map(r => r.id -> r).toMap
+  implicit val regionReader: ConfigReader[Region] = ConfigReader.fromNonEmptyString(s =>
+    regions.get(s.toLowerCase) toRight CannotConvert(s, "Region", "expected one of " + regions.keys.mkString(", "))
+  )
+  implicit val regionWriter: ConfigWriter[Region] = ConfigWriter.toString(_.id)
 }

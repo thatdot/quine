@@ -1,10 +1,12 @@
 package com.thatdot.quine.app.config
 
+import com.softwaremill.diffx.generic.auto._
+import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalatest.funsuite.AnyFunSuite
 import pureconfig.error.{ConfigReaderException, ConvertFailure, UnknownKey}
 import pureconfig.{ConfigSource, ConfigWriter}
 
-class QuineConfigTest extends AnyFunSuite {
+class QuineConfigTest extends AnyFunSuite with DiffShouldMatcher {
 
   def readConfig(config: String): QuineConfig =
     ConfigSource.string(config).loadOrThrow[QuineConfig]
@@ -15,17 +17,17 @@ class QuineConfigTest extends AnyFunSuite {
   test("Empty config") {
     val empty1 = readConfig("quine {}")
     val roundtripped1 = readConfig(writeConfig(empty1))
-    assert(empty1 === roundtripped1)
+    roundtripped1 shouldMatchTo empty1
 
     val empty3 = readConfig("")
     val roundtripped3 = readConfig(writeConfig(empty3))
-    assert(empty3 === roundtripped3)
+    roundtripped3 shouldMatchTo empty3
   }
 
   test("Unknown settings in `quine` cause errors") {
     val dumpConfig = readConfig("quine { dump-config = yes }")
     val roundtripped = readConfig(writeConfig(dumpConfig))
-    assert(dumpConfig === roundtripped)
+    roundtripped shouldMatchTo dumpConfig
 
     val error = intercept[ConfigReaderException[QuineConfig]](
       readConfig("quine { dumpConfig = yes }")
@@ -42,8 +44,8 @@ class QuineConfigTest extends AnyFunSuite {
     val annotated = readConfig(scala.io.Source.fromInputStream(configStream).mkString)
     val defaultConf = readConfig("")
     val roundtripped = readConfig(writeConfig(annotated))
-    assert(annotated === roundtripped)
-    assert(annotated === defaultConf)
+    roundtripped shouldMatchTo annotated
+    defaultConf shouldMatchTo annotated
   }
 
   test("Annotated default config for Cassandra parses and matches the empty config") {
@@ -51,7 +53,7 @@ class QuineConfigTest extends AnyFunSuite {
     val annotated = readConfig(scala.io.Source.fromInputStream(configStream).mkString)
     val defaultConf = QuineConfig(store = PersistenceAgentType.Cassandra())
     val roundtripped = readConfig(writeConfig(annotated))
-    assert(annotated === roundtripped)
-    assert(annotated === defaultConf)
+    roundtripped shouldMatchTo annotated
+    defaultConf shouldMatchTo annotated
   }
 }
