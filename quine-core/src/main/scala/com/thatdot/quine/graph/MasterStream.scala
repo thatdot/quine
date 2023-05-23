@@ -3,16 +3,16 @@ package com.thatdot.quine.graph
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import akka.Done
 import akka.stream.scaladsl.{MergeHub, Sink, Source}
 import akka.stream.{Materializer, UniqueKillSwitch}
+import akka.{Done, NotUsed}
 
 import com.typesafe.scalalogging.LazyLogging
 
 class MasterStream(mat: Materializer) extends LazyLogging {
   import MasterStream._
 
-  def addIngestSrc[T <: IngestControl](src: IngestSrcType[T]): Future[T] = ingestHub.runWith(src)(mat)
+  def addIngestSrc(src: IngestSrcType): NotUsed = ingestHub.runWith(src)(mat)
   def addSqResultsSrc(src: SqResultsSrcType): UniqueKillSwitch = sqResultsHub.runWith(src)(mat)
   def addNodeSleepSrc(src: NodeSleepSrcType): UniqueKillSwitch = nodeSleepHub.runWith(src)(mat)
   def addPersistorSrc(src: PersistorSrcType): UniqueKillSwitch = persistorHub.runWith(src)(mat)
@@ -56,7 +56,7 @@ case object MasterStream {
   final case class NodeSleepExecToken(name: String) extends ExecutionToken
   final case class PersistorExecToken(name: String) extends ExecutionToken
 
-  type IngestSrcType[+T <: IngestControl] = Source[IngestSrcExecToken, Future[T]]
+  type IngestSrcType = Source[IngestSrcExecToken, NotUsed]
   type SqResultsSrcType = Source[SqResultsExecToken, UniqueKillSwitch]
   type NodeSleepSrcType = Source[NodeSleepExecToken, UniqueKillSwitch]
   type PersistorSrcType = Source[PersistorExecToken, UniqueKillSwitch]

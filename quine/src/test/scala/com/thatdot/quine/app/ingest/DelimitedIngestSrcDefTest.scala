@@ -10,6 +10,7 @@ import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
 import akka.util.ByteString
 
+import cats.effect.unsafe.implicits.global
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
@@ -47,8 +48,10 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite {
         "local test"
       )
 
-    val (fc: Future[QuineAppIngestControl], probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken]) =
-      ingestSrcDef.stream().toMat(TestSink.probe)(Keep.both).run()
+    val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
+      ingestSrcDef.stream().toMat(TestSink.probe)(Keep.right).run()
+
+    val fc: Future[QuineAppIngestControl] = ingestSrcDef.getControl.unsafeToFuture()
 
     protected def writeBytes(bytes: Array[Byte]): Unit = writableInputStream.writeBytes(bytes)
 
@@ -205,7 +208,8 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite {
       ),
       SwitchMode.Open
     )
-    val (fc, done) = d.stream().toMat(Sink.ignore)(Keep.both).run()
+    val done = d.stream().toMat(Sink.ignore)(Keep.right).run()
+    val fc = d.getControl.unsafeToFuture()
     val c: QuineAppIngestControl = Await.result(fc, 3.seconds)
     val g = graph.asInstanceOf[LiteralOpsGraph]
     (1 to 10).foreach(i => istream.writeBytes(s"$i\n".getBytes()))

@@ -5,19 +5,21 @@ import java.nio.file.Paths
 import java.time.Duration
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
-import akka.stream.KillSwitches
 import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
 import akka.stream.alpakka.text.scaladsl.TextFlow
-import akka.stream.scaladsl.{Flow, Keep, Source, StreamConverters}
+import akka.stream.scaladsl.{Flow, Keep, RestartSource, Source, StreamConverters}
+import akka.stream.{KillSwitches, RestartSettings}
 import akka.util.ByteString
 import akka.{Done, NotUsed}
 
+import cats.effect.IO
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.kafka.common.KafkaException
 
 import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
@@ -105,19 +107,62 @@ abstract class IngestSrcDef(
   val writeToGraph: Flow[TryDeserialized, TryDeserialized, NotUsed] =
     Flow[TryDeserialized].mapAsyncUnordered(parallelism)(writeSuccessValues)
 
+  val restartSettings: RestartSettings =
+    RestartSettings(minBackoff = 10.seconds, maxBackoff = 10.seconds, 2.0)
+      .withMaxRestarts(3, 31.seconds)
+      .withRestartOn {
+        case _: KafkaException => true
+        case _ => false
+      }
+
   /** Assembled stream definition.
     */
-  def stream(): Source[IngestSrcExecToken, Future[QuineAppIngestControl]] =
-    sourceWithShutdown()
-      .viaMat(Valve(initialSwitchMode))(Keep.both)
-      .via(throttle())
-      .via(writeToGraph)
-      .via(ack)
-      .map(_ => ingestToken)
-      .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
-        b.map(v => ControlSwitches(a, v, c))(ExecutionContexts.parasitic)
+  def stream(): Source[IngestSrcExecToken, NotUsed] = stream(shouldResumeIngest = true, _ => ())
+  def stream(
+    shouldResumeIngest: Boolean,
+    registerTerminationHooks: Future[Done] => Unit
+  ): Source[IngestSrcExecToken, NotUsed] =
+    RestartSource.onFailuresWithBackoff(restartSettings) { () =>
+      sourceWithShutdown()
+        .viaMat(Valve(initialSwitchMode))(Keep.both)
+        .via(throttle())
+        .via(writeToGraph)
+        .via(ack)
+        .map(_ => ingestToken)
+        .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
+          b.map(v => ControlSwitches(a, v, c))(ExecutionContexts.parasitic)
+        }
+        .mapMaterializedValue(c => setControl(c, shouldResumeIngest, registerTerminationHooks))
+        .named(name)
+    }
+
+  private var ingestControl: Option[Future[QuineAppIngestControl]] = None
+  private val controlPromise: Promise[QuineAppIngestControl] = Promise()
+
+  private def setControl(
+    control: Future[QuineAppIngestControl],
+    shouldResumeIngest: Boolean,
+    registerTerminationHooks: Future[Done] => Unit
+  ): Unit = {
+
+    // Ensure valve is opened if required and termination hooks are registered
+    if (shouldResumeIngest) control.flatMap(c => c.valveHandle.flip(SwitchMode.Open))(graph.nodeDispatcherEC)
+    control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
+
+    // Set the appropriate ref and deferred ingest control
+    controlPromise.completeWith(control)
+    ingestControl = Some(control)
+  }
+
+  val getControl: IO[QuineAppIngestControl] =
+    for {
+      ctrl <- IO(ingestControl)
+      result <- ctrl match {
+        case Some(c) => IO.fromFuture(IO.pure(c))
+        case None => IO.fromFuture(IO.pure(controlPromise.future))
       }
-      .named(name)
+    } yield result
+
 }
 
 /** Define an ingest from a the definition of a Source of InputType. */

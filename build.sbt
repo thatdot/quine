@@ -33,7 +33,9 @@ lazy val `quine-core`: Project = project
       "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
       "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.8.3" % Test,
       "org.gnieh" % "logback-config" % logbackConfigV % Test,
-      "commons-io" % "commons-io" % commonsIoV % Test
+      "commons-io" % "commons-io" % commonsIoV % Test,
+      "org.typelevel" %% "cats-core" % catsV,
+      "org.typelevel" %% "cats-effect" % catsEffectV
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {

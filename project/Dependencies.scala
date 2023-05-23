@@ -13,6 +13,7 @@ object Dependencies {
   val bootstrapV = "5.2.3"
   val cassandraClientV = "4.15.0"
   val catsV = "2.9.0"
+  val catsEffectV = "3.5.0"
   val commonsCodecV = "1.15"
   val commonsTextV = "1.10.0"
   val commonsIoV = "2.11.0"

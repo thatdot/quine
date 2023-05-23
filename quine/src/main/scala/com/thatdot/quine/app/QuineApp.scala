@@ -6,13 +6,15 @@ import java.time.temporal.ChronoUnit.MILLIS
 import scala.collection.compat._
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.concurrent.{Await, Future, blocking}
+import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
+import akka.Done
 import akka.stream.scaladsl.Keep
 import akka.stream.{KillSwitches, UniqueKillSwitch}
 import akka.util.Timeout
 
+import cats.effect.unsafe.implicits.global
 import cats.implicits._
 import com.typesafe.scalalogging.LazyLogging
 
@@ -290,6 +292,25 @@ final class QuineApp(graph: GraphService)
   def getStandingQueryId(queryName: String): Option[StandingQueryId] =
     standingQueryOutputTargets.get(queryName).map(_._1)
 
+  def registerTerminationHooks(name: String, metrics: IngestMetrics)(ec: ExecutionContext): Future[Done] => Unit =
+    termSignal => {
+      termSignal.onComplete {
+        case Failure(err) =>
+          val now = Instant.now
+          metrics.stop(now)
+          logger.error(
+            s"Ingest stream '$name' has failed after ${metrics.millisSinceStart(now)}ms",
+            err
+          )
+
+        case Success(_) =>
+          val now = Instant.now
+          metrics.stop(now)
+          logger.info(
+            s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
+          )
+      }(ec)
+    }
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
@@ -306,23 +327,24 @@ final class QuineApp(graph: GraphService)
             settings,
             if (wasRestoredFromStorage) SwitchMode.Close else SwitchMode.Open
           )(graph)
-          val ingestSrc = ingestSrcDef.stream()
 
-          val controlFuture: Future[QuineAppIngestControl] = graph.masterStream.addIngestSrc(ingestSrc)
-          val ingestControl: QuineAppIngestControl = Await.result(controlFuture, timeout.duration)
+          val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
+          val ingestSrc = ingestSrcDef.stream(
+            shouldResumeIngest = false,
+            registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC)
+          )
+
+          graph.masterStream.addIngestSrc(ingestSrc)
 
           val streamDefWithControl = IngestStreamWithControl(
             settings,
-            IngestMetrics(Instant.now, None, ingestSrcDef.meter),
-            Future.successful(ingestControl.valveHandle),
+            metrics,
+            ingestSrcDef.getControl.map(_.valveHandle),
+            ingestSrcDef.getControl.map(_.termSignal),
+            ingestSrcDef.getControl.map { c => c.terminate(); () },
             restored = wasRestoredFromStorage
           )
-          streamDefWithControl.close = () => {
-            ingestControl.terminate()
-            ()
-          }
-          streamDefWithControl.terminated = ingestControl.termSignal
-          streamDefWithControl.registerTerminationHooks(name)(graph.system.dispatcher)
+
           ingestStreams += name -> streamDefWithControl
 
           val thisMemberId = 0
@@ -371,11 +393,14 @@ final class QuineApp(graph: GraphService)
   def startRestoredIngests(): Unit =
     ingestStreams.foreach {
       case (_, streamWithControl) if streamWithControl.restored =>
-        streamWithControl.valve.map { v =>
-          // In Quine App, this future is always created with `Future.success(…)`. This is ugly.
-          v.flip(SwitchMode.Open)
-          streamWithControl.restored = false // NB: this is not actually done in a separate thread. see previous comment
-        }(graph.system.dispatcher)
+        streamWithControl.valve
+          .unsafeToFuture()
+          .map { v =>
+            // In Quine App, this future is always created with `Future.success(…)`. This is ugly.
+            v.flip(SwitchMode.Open)
+            streamWithControl.restored =
+              false // NB: this is not actually done in a separate thread. see previous comment
+          }(graph.system.dispatcher)
       case _ => ()
     }
 
@@ -384,8 +409,8 @@ final class QuineApp(graph: GraphService)
       .traverse(ingestStreams: TraversableOnce[(String, IngestStreamWithControl[IngestStreamConfiguration])]) {
         case (name, ingest) =>
           IngestMetered.removeIngestMeter(name)
-          ingest.close()
-          ingest.terminated.recover { case _ => () }(graph.system.dispatcher)
+          ingest.close.unsafeRunAndForget()
+          ingest.terminated.recover { case _ => () }.unsafeToFuture()
       }(implicitly, graph.system.dispatcher)
       .map(_ => ())(graph.system.dispatcher)
 

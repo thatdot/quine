@@ -15,6 +15,8 @@ import akka.stream.{Materializer, StreamDetachedException}
 import akka.util.Timeout
 import akka.{Done, NotUsed}
 
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
@@ -41,6 +43,14 @@ trait IngestStreamState {
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
 }
 
+object IngestStreamWithControl {
+
+  /** Hooks to freeze metrics and log once the ingest stream terminates
+    *
+    * @param name name of the ingest stream
+    */
+}
+
 /** Adds to the ingest stream configuration extra information that will be
   * materialized only once the ingest stream is running and which may be
   * needed for stopping the stream
@@ -50,64 +60,78 @@ trait IngestStreamState {
 final private[thatdot] case class IngestStreamWithControl[+Conf](
   settings: Conf,
   metrics: IngestMetrics,
-  valve: Future[ValveSwitch],
+  valve: IO[ValveSwitch],
+  terminated: IO[Future[Done]],
+  close: IO[Unit],
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
-  var restored: Boolean = false,
-  var close: () => Unit = () => (),
-  var terminated: Future[Done] = Future.failed(new Exception("Stream never started"))
+  var restored: Boolean = false
 ) extends LazyLogging {
-  def status(implicit materializer: Materializer): Future[IngestStreamStatus] =
-    terminated.value match {
-      case Some(Success(Done)) => Future.successful(IngestStreamStatus.Completed)
-      case Some(Failure(_)) => Future.successful(IngestStreamStatus.Failed)
-      case None =>
-        valve.value match {
-          case Some(Success(valve)) =>
-            /* Add a timeout to work around <https://github.com/akka/akka-stream-contrib/issues/119>
-             *
-             * Race the actual call to `getMode` with a timeout action
-             */
-            val theStatus = Promise[IngestStreamStatus]()
-            theStatus.completeWith(
-              valve
-                .getMode()
-                .map {
-                  case SwitchMode.Open => IngestStreamStatus.Running
-                  case SwitchMode.Close if restored => IngestStreamStatus.Restored
-                  case SwitchMode.Close => IngestStreamStatus.Paused
-                }(materializer.executionContext)
-            )
-            materializer.system.scheduler.scheduleOnce(1.second) {
-              val _ = theStatus.trySuccess(IngestStreamStatus.Terminated)
-            }(materializer.executionContext)
-            theStatus.future
 
-          case _ =>
-            Future.successful(IngestStreamStatus.Running)
+  // Returns a simpler version of status. Only possible values are completed, failed, or running
+  private def checkTerminated(implicit materializer: Materializer): Future[IngestStreamStatus] = {
+    implicit val ec: ExecutionContext = materializer.executionContext
+    for {
+      terminated <- terminated.unsafeToFuture()
+      result = terminated.value match {
+        case Some(Success(Done)) => IngestStreamStatus.Completed
+        case Some(Failure(e)) =>
+          // If exception occurs, it means that the ingest stream has failed
+          println(e.toString)
+          IngestStreamStatus.Failed
+        case None => IngestStreamStatus.Running
+      }
+    } yield result
+  }
+
+  private def pendingStatusFuture(
+    valveSwitch: ValveSwitch
+  )(implicit materializer: Materializer): Future[IngestStreamStatus] = {
+    /* Add a timeout to work around <https://github.com/akka/akka-stream-contrib/issues/119>
+     *
+     * Race the actual call to `getMode` with a timeout action
+     */
+    val theStatus = Promise[IngestStreamStatus]()
+    theStatus.completeWith(
+      valveSwitch
+        .getMode()
+        .map {
+          case SwitchMode.Open => IngestStreamStatus.Running
+          case SwitchMode.Close if restored => IngestStreamStatus.Restored
+          case SwitchMode.Close => IngestStreamStatus.Paused
+        }(materializer.executionContext)
+    )
+    materializer.system.scheduler.scheduleOnce(1.second) {
+      val _ = theStatus.trySuccess(IngestStreamStatus.Terminated)
+    }(materializer.executionContext)
+    theStatus.future
+  }
+
+  def status(implicit materializer: Materializer): Future[IngestStreamStatus] = {
+
+    val getPendingStatus: IO[IngestStreamStatus] =
+      for {
+        vs <- valve
+        status <- IO.fromFuture(IO.pure(pendingStatusFuture(vs)))
+      } yield status
+
+    val getPendingStatusWithTimeout: IO[IngestStreamStatus] =
+      getPendingStatus.timeoutTo(50.milliseconds, IO.pure(IngestStreamStatus.Running))
+
+    val checkTerminatedStatus: IO[IngestStreamStatus] =
+      IO.fromFuture(IO.pure(checkTerminated))
+
+    val resultStatus: IO[IngestStreamStatus] =
+      for {
+        terminated <- checkTerminatedStatus
+        result <- terminated match {
+          case IngestStreamStatus.Completed => IO.pure(IngestStreamStatus.Completed)
+          case IngestStreamStatus.Failed => IO.pure(IngestStreamStatus.Failed)
+          case _ => getPendingStatusWithTimeout
         }
-    }
+      } yield result
 
-  /** Register hooks to freeze metrics and log once the ingest stream terminates
-    *
-    * @param name name of the ingest stream
-    */
-  def registerTerminationHooks(name: String)(ec: ExecutionContext): Unit =
-    terminated.onComplete {
-      case Failure(err) =>
-        val now = Instant.now
-        metrics.stop(now)
-        logger.error(
-          s"Ingest stream '$name' has failed after ${metrics.millisSinceStart(now)}ms",
-          err
-        )
-
-      case Success(_) =>
-        val now = Instant.now
-        metrics.stop(now)
-        logger.info(
-          s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
-        )
-    }(ec)
+    resultStatus.unsafeToFuture()
+  }
 }
 
 final private[thatdot] case class IngestMetrics(
@@ -155,7 +179,7 @@ trait IngestRoutesImpl
     conf.status.map { status =>
       IngestStreamInfo(
         status,
-        conf.terminated.value collect { case Failure(exception) => exception.toString },
+        conf.terminated.unsafeToFuture().value collect { case Failure(exception) => exception.toString },
         conf.settings,
         conf.metrics.toEndpointResponse
       )
@@ -183,7 +207,7 @@ trait IngestRoutesImpl
   private val ingestStreamStopRoute = ingestStreamStop.implementedByAsync { (name: String) =>
     serviceState.removeIngestStream(name) match {
       case None => Future.successful(None)
-      case Some(control @ IngestStreamWithControl(settings, metrics, valve @ _, _, _, close, terminated)) =>
+      case Some(control @ IngestStreamWithControl(settings, metrics, valve @ _, terminated, close, _, _)) =>
         val finalStatus = control.status.map { previousStatus =>
           import IngestStreamStatus._
           previousStatus match {
@@ -196,13 +220,17 @@ trait IngestRoutesImpl
 
         val terminationMessage: Future[Option[String]] = {
           // start terminating the ingest
-          close()
+          close.unsafeRunAndForget()
           // future will return when termination finishes
           terminated
-            .map({ case Done => None })(graph.shardDispatcherEC)
-            .recover({ case e =>
-              Some(e.toString)
-            })(graph.shardDispatcherEC)
+            .unsafeToFuture()
+            .flatMap(t =>
+              t
+                .map({ case Done => None })(graph.shardDispatcherEC)
+                .recover({ case e =>
+                  Some(e.toString)
+                })(graph.shardDispatcherEC)
+            )(graph.shardDispatcherEC)
         }
 
         finalStatus
@@ -247,7 +275,7 @@ trait IngestRoutesImpl
     serviceState.getIngestStream(name) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        val flippedValve = ingest.valve.flatMap(_.flip(newState))(graph.nodeDispatcherEC)
+        val flippedValve = ingest.valve.unsafeToFuture().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
         val ingestStatus = flippedValve.flatMap { _ =>
           ingest.restored = false; // FIXME not threadsafe
           stream2Info(ingest)
