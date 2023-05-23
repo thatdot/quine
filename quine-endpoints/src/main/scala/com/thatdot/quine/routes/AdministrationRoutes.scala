@@ -171,7 +171,7 @@ trait AdministrationRoutes
       request = get(admin / "liveness"),
       response = noContent(docs = Some("System is live")),
       docs = EndpointDocs()
-        .withSummary(Some("Is the process responsive?"))
+        .withSummary(Some("Process Liveness"))
         .withDescription(
           Some(
             """This is a basic no-op endpoint for use when checking if the system is hung or responsive.
@@ -190,7 +190,7 @@ trait AdministrationRoutes
         .orElse(serviceUnavailable(docs = Some("System is not ready")))
         .xmap(_.isLeft)(isReady => if (isReady) Left(()) else Right(())),
       docs = EndpointDocs()
-        .withSummary(Some("Is the system able to handle user requests?"))
+        .withSummary(Some("Process Readiness"))
         .withDescription(
           Some(
             """This indicates whether the system is fully up and ready to service user requests.
