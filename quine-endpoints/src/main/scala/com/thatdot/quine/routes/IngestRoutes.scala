@@ -161,7 +161,8 @@ object KafkaSecurityProtocol {
   case object PlainText extends KafkaSecurityProtocol("PLAINTEXT")
   case object Ssl extends KafkaSecurityProtocol("SSL")
   case object Sasl_Ssl extends KafkaSecurityProtocol("SASL_SSL")
-  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl)
+  case object Sasl_Plaintext extends KafkaSecurityProtocol("SASL_PLAINTEXT")
+  val values: Seq[KafkaSecurityProtocol] = Seq(PlainText, Ssl, Sasl_Ssl, Sasl_Plaintext)
 }
 
 @unnamed
@@ -245,13 +246,16 @@ final case class KafkaIngest(
     """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
       |whose values are partition indices.""".stripMargin
       .replace('\n', ' ')
-  ) topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
+  )
+  topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
   @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("A comma-separated list of Kafka broker servers.") bootstrapServers: String,
+  @docs("A comma-separated list of Kafka broker servers.")
+  bootstrapServers: String,
   @docs(
     "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream."
-  ) groupId: Option[String],
+  )
+  groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
@@ -262,7 +266,8 @@ final case class KafkaIngest(
   @docs(
     "The offset at which this stream should complete; offsets are sequential integers starting at 0."
   ) endingOffset: Option[Long],
-  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
+  @docs("Maximum records to process per second.")
+  maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input. The specified decodings are applied in declared array order.")
   @unnamed
   recordDecoders: Seq[RecordDecodingType] = Seq.empty

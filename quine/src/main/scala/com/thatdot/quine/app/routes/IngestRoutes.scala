@@ -21,6 +21,7 @@ import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
+import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
@@ -188,18 +189,34 @@ trait IngestRoutesImpl
   val serviceState: IngestStreamState
 
   /** Try to register a new ingest stream */
-  private val ingestStreamStartRoute = ingestStreamStart.implementedBy { case (name, settings) =>
-    serviceState.addIngestStream(name, settings, wasRestoredFromStorage = false, timeout) match {
-      case Success(false) =>
-        Left(
-          endpoints4s.Invalid(
-            s"Cannot create ingest stream `$name` (a stream with this name already exists)"
+  private val ingestStreamStartRoute = {
+    def addSettings(name: String, settings: IngestStreamConfiguration) =
+      serviceState.addIngestStream(name, settings, wasRestoredFromStorage = false, timeout) match {
+        case Success(false) =>
+          Left(
+            endpoints4s.Invalid(
+              s"Cannot create ingest stream `$name` (a stream with this name already exists)"
+            )
           )
-        )
 
-      case Success(true) => Right(())
-      case Failure(err) =>
-        err.printStackTrace; Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
+        case Success(true) => Right(())
+        case Failure(err) =>
+          err.printStackTrace; Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
+      }
+
+    ingestStreamStart.implementedBy {
+      case (name, settings: KafkaIngest) =>
+        KafkaSettingsValidator(settings).validate match {
+          case Some(errors) =>
+            Left(
+              endpoints4s.Invalid(
+                s"Cannot create ingest stream `$name`: ${errors.toList.mkString(",")}"
+              )
+            )
+          case None => addSettings(name, settings)
+        }
+      case (name, settings) => addSettings(name, settings)
+
     }
   }
 
