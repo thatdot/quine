@@ -4,7 +4,10 @@ import java.net.InetSocketAddress
 import java.util.Collections.singletonMap
 import javax.net.ssl.SSLContext
 
-import scala.concurrent.duration.FiniteDuration
+import scala.compat.ExecutionContexts
+import scala.compat.java8.FutureConverters._
+import scala.concurrent.Future
+import scala.concurrent.duration._
 
 import akka.NotUsed
 import akka.stream.Materializer
@@ -13,6 +16,7 @@ import akka.stream.scaladsl.Source
 import com.codahale.metrics.MetricRegistry
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession, CqlSessionBuilder, InvalidKeyspaceException}
+import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{literal, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.Region._
@@ -52,7 +56,6 @@ class KeyspacesPersistor(
   materializer: Materializer
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
-      keyspace,
       readSettings,
       CassandraStatementSettings(
         ConsistencyLevel.LOCAL_QUORUM, // Write consistency fixed by AWS Keyspaces
@@ -129,10 +132,45 @@ class KeyspacesPersistor(
       case _: InvalidKeyspaceException if shouldCreateKeyspace =>
         val sess = sessionBuilder.build
         sess.execute(createKeyspaceStatement)
-        // TODO: poll system_schema_mcs.keyspaces to wait for the keyspace to exist before proceeeding
-        // https://docs.aws.amazon.com/keyspaces/latest/devguide/working-with-keyspaces.html#keyspaces-create
+        val keyspaceExistsQuery = selectFrom("system_schema_mcs", "keyspaces")
+          .column("replication")
+          .whereColumn("keyspace_name")
+          .isEqualTo(literal(keyspace))
+          .build
+        while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
+          logger.info(s"Keyspace $keyspace does not yet exist, re-checking in 4s")
+          Thread.sleep(4000)
+        }
         sess.close()
         createQualifiedSession
     }
 
+  // Query "system_schema_mcs.tables" for the table creation status
+  private def tableStatusQuery(tableName: String): SimpleStatement = selectFrom("system_schema_mcs", "tables")
+    .column("status")
+    .whereColumn("keyspace_name")
+    .isEqualTo(literal(keyspace))
+    .whereColumn("table_name")
+    .isEqualTo(literal(tableName))
+    .build
+
+  // Delay by polling until  Keyspaces lists the table as ACTIVE, as per
+  // https://docs.aws.amazon.com/keyspaces/latest/devguide/working-with-tables.html#tables-create
+  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit] = akka.pattern.retry(
+    () =>
+      session
+        .executeAsync(tableStatusQuery(tableName))
+        .toScala
+        .flatMap { rs =>
+          val status = rs.one().getString("status")
+          if (status == "ACTIVE")
+            Future.unit
+          else {
+            logger.info(s"$tableName status is $status; polling status again")
+            Future.failed(new Exception(status))
+          }
+        }(ExecutionContexts.parasitic),
+    15,
+    4.seconds
+  )(materializer.executionContext, materializer.system.scheduler)
 }

@@ -96,6 +96,7 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
 
   def create(
     session: CqlSession,
+    verifyTable: String => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -103,7 +104,12 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
     import shapeless.syntax.std.tuple._ // to concatenate tuples
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
+    val createdSchema = futureInstance.whenA(shouldCreateTables)(
+      session
+        .executeAsync(createTableStatement)
+        .toScala
+        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    )
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.

@@ -219,6 +219,7 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
 
   def create(
     session: CqlSession,
+    verifyTable: String => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -226,7 +227,12 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
+    val createdSchema = futureInstance.whenA(shouldCreateTables)(
+      session
+        .executeAsync(createTableStatement)
+        .toScala
+        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    )
 
     // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
     // and we need the prepare statements to be executed after the table as been created.

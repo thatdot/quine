@@ -43,6 +43,7 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
   def create(
     session: CqlSession,
+    verifyTable: String => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -55,7 +56,12 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
     val createdSchema = futureInstance.whenA(
       shouldCreateTables
-    )(session.executeAsync(createTableStatement).toScala)
+    )(
+      session
+        .executeAsync(createTableStatement)
+        .toScala
+        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    )
 
     createdSchema.flatMap(_ =>
       (

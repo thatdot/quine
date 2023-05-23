@@ -31,7 +31,6 @@ import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, Persisten
 
 /** Persistence implementation backed by Cassandra.
   *
-  * @param keyspace The keyspace the quine tables should live in.
   * @param replicationFactor
   * @param readConsistency
   * @param writeConsistency
@@ -44,7 +43,6 @@ import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, Persisten
   */
 abstract class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
-  keyspace: String,
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings,
   shouldCreateTables: Boolean,
@@ -66,15 +64,12 @@ abstract class CassandraPersistor(
   protected def journalsTableDef: JournalsTableDefinition
   protected def snapshotsTableDef: SnapshotsTableDefinition
 
-  // Idea: implement the below abstract method in Future.unit in Cassandra,
-  // and as "poll the system table to see when the table is created" in Keyspaces
-  // as per https://docs.aws.amazon.com/keyspaces/latest/devguide/working-with-tables.html#tables-create
-  // and pass this function to all of the Table.create methods below, to delay between creating the table
-  // and subsequently preparing the statements.
-  // The alternative to passing a no-op "verify" method into vanilla Cassandra would be to diverge the below code?
-  // We could also just always catch "table not ready" exceptions on prepare and retry - though their docs say to poll
-  // the system keyspace.
-  // protected def verifyTable(session: CqlSession, tableName: String): Future[Unit]
+  /** An action verify the table before use. Use will be delayed until this Future completes
+    * @param session
+    * @param tableName
+    * @return
+    */
+  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit]
 
   // TODO: this is getting a bit cursed. Come up with a way to create this class without blocking on Future
   // to get the table definitions (prepared statements).
@@ -88,15 +83,15 @@ abstract class CassandraPersistor(
     domainIndexEvents
   ) = Await.result(
     (
-      journalsTableDef.create(session, readSettings, writeSettings, shouldCreateTables),
-      snapshotsTableDef.create(session, readSettings, writeSettings, shouldCreateTables),
-      StandingQueries.create(session, readSettings, writeSettings, shouldCreateTables),
-      StandingQueryStates.create(session, readSettings, writeSettings, shouldCreateTables),
-      MetaData.create(session, readSettings, writeSettings, shouldCreateTables),
-      DomainGraphNodes.create(session, readSettings, writeSettings, shouldCreateTables),
-      DomainIndexEvents.create(session, readSettings, writeSettings, shouldCreateTables)
+      journalsTableDef.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      snapshotsTableDef.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      StandingQueries.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      StandingQueryStates.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      MetaData.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      DomainGraphNodes.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      DomainIndexEvents.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables)
     ).tupled,
-    5.seconds
+    35.seconds
   )
 
   protected def dataTables: List[CassandraTable] =

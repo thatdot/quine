@@ -2,7 +2,7 @@ package com.thatdot.quine.persistor.cassandra.support
 
 import java.time.Duration
 
-import scala.compat.java8.FutureConverters.CompletionStageOps
+import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
 
 import com.datastax.oss.driver.api.core.cql.{AsyncCqlSession, PreparedStatement, SimpleStatement}

@@ -44,6 +44,7 @@ object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
 
   def create(
     session: CqlSession,
+    verifyTable: String => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -56,7 +57,12 @@ object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
 
     val createdSchema = futureInstance.whenA(
       shouldCreateTables
-    )(session.executeAsync(createTableStatement).toScala)
+    )(
+      session
+        .executeAsync(createTableStatement)
+        .toScala
+        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    )
 
     createdSchema.flatMap(_ =>
       (

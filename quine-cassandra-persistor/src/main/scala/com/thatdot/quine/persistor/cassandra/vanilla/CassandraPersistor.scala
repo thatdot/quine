@@ -2,6 +2,7 @@ package com.thatdot.quine.persistor.cassandra.vanilla
 
 import java.net.InetSocketAddress
 
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters._
 
@@ -45,7 +46,6 @@ class CassandraPersistor(
   materializer: Materializer
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
-      keyspace,
       readSettings,
       writeSettings,
       shouldCreateTables,
@@ -91,4 +91,6 @@ class CassandraPersistor(
         sess.close()
         createQualifiedSession
     }
+
+  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit] = Future.unit
 }

@@ -47,6 +47,7 @@ object MetaData extends TableDefinition with MetaDataColumnName {
 
   def create(
     session: CqlSession,
+    verifyTable: String => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -57,7 +58,12 @@ object MetaData extends TableDefinition with MetaDataColumnName {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(session.executeAsync(createTableStatement).toScala)
+    val createdSchema = futureInstance.whenA(shouldCreateTables)(
+      session
+        .executeAsync(createTableStatement)
+        .toScala
+        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    )
 
     createdSchema.flatMap(_ =>
       (
