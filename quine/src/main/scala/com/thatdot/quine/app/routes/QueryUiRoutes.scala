@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.routes
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.jdk.CollectionConverters._
@@ -354,7 +355,7 @@ trait QueryUiRoutesImpl
           case Success(a) => Success(Right(a))
           case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
           case Failure(err) => Failure(err)
-        }(graph.shardDispatcherEC)
+        }(ExecutionContexts.parasitic)
 
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
       catchCypherException {
@@ -363,7 +364,7 @@ trait QueryUiRoutesImpl
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-          .map(CypherQueryResult(columns, _))(graph.shardDispatcherEC)
+          .map(CypherQueryResult(columns, _))(ExecutionContexts.parasitic)
       }
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>

@@ -5,12 +5,28 @@ import java.util.regex.Pattern
 import scala.collection.compat._
 import scala.collection.compat.immutable._
 import scala.collection.mutable
+import scala.util.control.NoStackTrace
 
+import cats.data.NonEmptyList
+
+import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection, QuineId, QuineIdProvider, QuineValue}
 
-final case class InvalidQueryPattern(message: String) extends RuntimeException(message)
+sealed abstract class InvalidQueryPattern(val message: String) extends RuntimeException(message) with NoStackTrace
+object InvalidQueryPattern {
+  object MultipleValuesCantDistinct
+      extends InvalidQueryPattern("MultipleValues Standing Queries do not yet support `DISTINCT`") // QU-568
+  object NotConnected extends InvalidQueryPattern("Pattern is not connected")
+  object HasACycle extends InvalidQueryPattern("Pattern has a cycle")
+  object DistinctIdMustDistinct
+      extends InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
+  object DistinctIdCannotFilter extends InvalidQueryPattern("DistinctId queries cannot filter")
+  object DistinctIdCannotMap extends InvalidQueryPattern("DistinctId queries cannot map")
+  object DistinctIdMustId
+      extends InvalidQueryPattern("DistinctId queries must return exactly the `id` of the root node")
+}
 
 /** Representation of a graph query
   *
@@ -24,7 +40,7 @@ final case class InvalidQueryPattern(message: String) extends RuntimeException(m
   *                 (see [[com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode.DistinctId]])
   */
 final case class GraphQueryPattern(
-  nodes: Seq[GraphQueryPattern.NodePattern],
+  nodes: NonEmptyList[GraphQueryPattern.NodePattern],
   edges: Seq[GraphQueryPattern.EdgePattern],
   startingPoint: GraphQueryPattern.NodePatternId,
   toExtract: Seq[GraphQueryPattern.ReturnColumn],
@@ -32,7 +48,6 @@ final case class GraphQueryPattern(
   toReturn: Seq[(Symbol, cypher.Expr)],
   distinct: Boolean
 ) {
-  assert(nodes.nonEmpty, "A query pattern needs a non-zero number of nodes")
 
   import GraphQueryPattern._
 
@@ -56,28 +71,25 @@ final case class GraphQueryPattern(
     labelsProperty: Symbol
   ): (model.SingleBranch, ReturnColumn.Id) = {
 
-    if (nodes.isEmpty) {
-      throw InvalidQueryPattern("Pattern must be non-empty")
-    } else if (filterCond.nonEmpty) {
-      throw InvalidQueryPattern("DistinctId queries cannot filter")
-    } else if (toReturn.nonEmpty) {
-      throw InvalidQueryPattern("DistinctId queries cannot map")
-    }
+    if (filterCond.nonEmpty)
+      throw DistinctIdCannotFilter
+    else if (toReturn.nonEmpty)
+      throw DistinctIdCannotMap
 
     val returnColumn = toExtract match {
       case Seq(returnCol @ ReturnColumn.Id(returnNodeId, _, _)) if returnNodeId == startingPoint => returnCol
-      case _ => throw InvalidQueryPattern("DistinctId queries must return exactly the `id` of the root node")
+      case _ => throw DistinctIdMustId
     }
 
     // Keep track of which bits of the pattern are still unexplored
-    val remainingNodes = mutable.Map.apply(nodes.map(pat => pat.id -> pat): _*)
+    val remainingNodes = mutable.Map.from(nodes.map(pat => pat.id -> pat).toList)
     var remainingEdges = edges
 
     // Extract a DGB rooted at the given pattern
     def synthesizeBranch(id: NodePatternId): model.SingleBranch = {
 
       val NodePattern(_, labels, qidOpt, props) = remainingNodes.remove(id).getOrElse {
-        throw InvalidQueryPattern("Pattern has a cycle")
+        throw HasACycle
       }
 
       val (connectedEdges, otherEdges) = remainingEdges.partition(e => e.from == id || e.to == id)
@@ -139,7 +151,7 @@ final case class GraphQueryPattern(
     val query = synthesizeBranch(startingPoint)
 
     if (remainingNodes.nonEmpty) {
-      throw InvalidQueryPattern("Pattern is not connected")
+      throw NotConnected
     } else {
       query -> returnColumn
     }
@@ -156,10 +168,6 @@ final case class GraphQueryPattern(
     labelsProperty: Symbol,
     idProvider: QuineIdProvider
   ): MultipleValuesStandingQuery = {
-
-    if (nodes.isEmpty) {
-      throw InvalidQueryPattern("Pattern must be non-empty")
-    }
 
     val watchedProperties: Map[NodePatternId, Map[Symbol, Symbol]] = toExtract
       .collect { case p: ReturnColumn.Property => p }
@@ -180,16 +188,14 @@ final case class GraphQueryPattern(
       .toMap
 
     // Keep track of which bits of the pattern are still unexplored
-    val remainingNodes = mutable.Map.apply(nodes.map(pat => pat.id -> pat): _*)
+    val remainingNodes = mutable.Map.from(nodes.map(pat => pat.id -> pat).toList)
     var remainingEdges = edges
 
     // Extract a query rooted at the given pattern
     def synthesizeQuery(id: NodePatternId): MultipleValuesStandingQuery = {
       val subQueries = ArraySeq.newBuilder[MultipleValuesStandingQuery]
 
-      val NodePattern(_, labelOpt, qidOpt, props) = remainingNodes.remove(id).getOrElse {
-        throw InvalidQueryPattern("Pattern has a cycle")
-      }
+      val NodePattern(_, labelOpt, qidOpt, props) = remainingNodes.remove(id) getOrElse (throw HasACycle)
 
       // Sub-queries for local properties
       for ((propKey, propPattern) <- props) {
@@ -322,7 +328,7 @@ final case class GraphQueryPattern(
     }
 
     if (remainingNodes.nonEmpty) {
-      throw InvalidQueryPattern("Pattern is not connected")
+      throw NotConnected
     } else {
       query
     }

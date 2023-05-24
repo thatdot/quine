@@ -32,7 +32,7 @@ lazy val `quine-core`: Project = project
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
       "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.8.3" % Test,
-      "org.gnieh" % "logback-config" % logbackConfigV % Test,
+      "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV
@@ -117,8 +117,7 @@ lazy val `quine-gremlin`: Project = project
     libraryDependencies ++= Seq(
       "org.scala-lang.modules" %% "scala-parser-combinators" % scalaParserCombinatorsV,
       "org.apache.commons" % "commons-text" % commonsTextV,
-      "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "org.gnieh" % "logback-config" % logbackConfigV % Test
+      "org.scalatest" %% "scalatest" % scalaTestV % Test
     )
   )
 

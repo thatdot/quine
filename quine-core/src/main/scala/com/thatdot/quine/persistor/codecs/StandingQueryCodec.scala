@@ -3,6 +3,7 @@ package com.thatdot.quine.persistor.codecs
 import java.nio.ByteBuffer
 import java.util.regex.Pattern
 
+import cats.data.NonEmptyList
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
@@ -248,7 +249,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
   ): Offset = {
     val nodesOff: Offset = {
       val nodeOffs: Array[Offset] = new Array(pattern.nodes.length)
-      for ((node, i) <- pattern.nodes.zipWithIndex)
+      for ((node, i) <- pattern.nodes.zipWithIndex.toList)
         nodeOffs(i) = writeNodePattern(builder, node)
       persistence.GraphQueryPattern.createNodesVector(builder, nodeOffs)
     }
@@ -306,53 +307,28 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
   private[this] def readGraphQueryPattern(
     pattern: persistence.GraphQueryPattern
   ): GraphQueryPattern = {
-    val nodes: Seq[GraphQueryPattern.NodePattern] = {
-      val builder = Seq.newBuilder[GraphQueryPattern.NodePattern]
-      var i = 0
-      val nodesLength = pattern.nodesLength
-      while (i < nodesLength) {
-        builder += readNodePattern(pattern.nodes(i))
-        i += 1
-      }
-      builder.result()
-    }
-    val edges: Seq[GraphQueryPattern.EdgePattern] = {
-      val builder = Seq.newBuilder[GraphQueryPattern.EdgePattern]
-      var i = 0
-      val edgesLength = pattern.edgesLength
-      while (i < edgesLength) {
-        builder += readEdgePattern(pattern.edges(i))
-        i += 1
-      }
-      builder.result()
+    val nodes: NonEmptyList[GraphQueryPattern.NodePattern] =
+      // Throwing an exception here if nodes is empty - which would indicate a serialization error
+      NonEmptyList.fromListUnsafe(List.tabulate(pattern.nodesLength) { i =>
+        readNodePattern(pattern.nodes(i))
+      })
+    val edges: Seq[GraphQueryPattern.EdgePattern] = Seq.tabulate(pattern.edgesLength) { i =>
+      readEdgePattern(pattern.edges(i))
     }
     val startingPoint: GraphQueryPattern.NodePatternId = GraphQueryPattern.NodePatternId(pattern.startingPoint.id)
-    val toExtract: Seq[GraphQueryPattern.ReturnColumn] = {
-      val builder = Seq.newBuilder[GraphQueryPattern.ReturnColumn]
-      var i = 0
-      val toExtractLength = pattern.toExtractLength
-      while (i < toExtractLength) {
-        builder += readReturnColumn(pattern.toExtractType(i), pattern.toExtract(_, i))
-        i += 1
-      }
-      builder.result()
+    val toExtract: Seq[GraphQueryPattern.ReturnColumn] = Seq.tabulate(pattern.toExtractLength) { i =>
+      readReturnColumn(pattern.toExtractType(i), pattern.toExtract(_, i))
     }
     val filterCond: Option[cypher.Expr] = pattern.filterCondType match {
       case persistence.CypherExpr.NONE => None
       case typ => Some(readCypherExpr(typ, pattern.filterCond))
     }
-    val toReturn: Seq[(Symbol, cypher.Expr)] = {
-      val builder = Seq.newBuilder[(Symbol, cypher.Expr)]
-      var i = 0
-      val toReturnLength = pattern.toReturnLength
-      while (i < toReturnLength) {
-        val prop: persistence.CypherMapExprEntry = pattern.toReturn(i)
-        val returnExp = readCypherExpr(prop.valueType, prop.value)
-        builder += Symbol(prop.key) -> returnExp
-        i += 1
-      }
-      builder.result()
+    val toReturn: Seq[(Symbol, cypher.Expr)] = Seq.tabulate(pattern.toReturnLength) { i =>
+      val prop: persistence.CypherMapExprEntry = pattern.toReturn(i)
+      val returnExp = readCypherExpr(prop.valueType, prop.value)
+      Symbol(prop.key) -> returnExp
     }
+
     val distinct: Boolean = pattern.distinct
     GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, distinct)
   }

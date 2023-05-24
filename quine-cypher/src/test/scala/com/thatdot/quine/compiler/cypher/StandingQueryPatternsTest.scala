@@ -1,5 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
+import cats.data.NonEmptyList
 import org.scalactic.source
 import org.scalatest.Assertion
 import org.scalatest.funspec.AnyFunSpec
@@ -64,7 +65,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = 50 RETURN id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -85,7 +86,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = 50 RETURN DISTINCT id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -106,7 +107,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE strId(n) = '99' RETURN strId(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -127,7 +128,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = 50 AND id(n) = 50 RETURN DISTINCT id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -148,7 +149,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE strId(n) = '99' AND strId(n) = '99' RETURN DISTINCT strId(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -169,7 +170,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE strId(n) = '100' AND id(n) = 100 RETURN DISTINCT id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -190,7 +191,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = idFrom(-1) RETURN DISTINCT id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -211,7 +212,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE strId(n) = idFrom('hello', 'world') RETURN DISTINCT strId(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -241,7 +242,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       assert(
         compiled ===
           GraphQueryPattern(
-            List(
+            NonEmptyList.of(
               NodePattern(
                 NodePatternId(0),
                 Set(),
@@ -274,7 +275,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = 'hello' RETURN id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -295,7 +296,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n)-[:foo]->(m)-[:bar]->(o) WHERE id(n) <> id(o) RETURN id(m)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -337,7 +338,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n)-[:foo]->(m)-[:bar]->(o) WHERE parseJson(n.jsonField).baz = o.quz RETURN bytes(m.qux)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -400,7 +401,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE id(n) = 22 AND id(n) = 23 RETURN id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -421,7 +422,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
   testQuery(
     "MATCH (n { foo: \"bar\" }) return id(n)",
     GraphQueryPattern(
-      List(
+      NonEmptyList.of(
         NodePattern(
           NodePatternId(0),
           Set(),
@@ -442,7 +443,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) return n.name, id(n), strId(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -468,7 +469,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE n.foo = 'bar' RETURN id(n) AS idN",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -488,7 +489,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE n.foo = 'bar' RETURN DISTINCT id(n) AS idN",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -510,7 +511,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n { foo: \"bar\" }) RETURN id(n) AS n",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -530,7 +531,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n:Person { name: \"Joe\" }) RETURN id(n)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(Symbol("Person")),
@@ -550,7 +551,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n { baz: 7.0 })-[:bar]->(m)<-[:foo]-({ foo: \"BAR\" }) where exists(m.name) RETURN id(m)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -585,7 +586,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n)-[:bar]->(m)<-[:foo]-({ foo: \"BAR\" }) where m.name = [1,2] return id(m)",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),
@@ -629,7 +630,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     testQuery(
       "MATCH (n) WHERE exists(n.foo) AND n.foo % 3 = 1 RETURN n.foo AS fooValue, n.foo*3 AS fooValueTripled",
       GraphQueryPattern(
-        List(
+        NonEmptyList.of(
           NodePattern(
             NodePatternId(0),
             Set(),

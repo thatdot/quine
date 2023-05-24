@@ -17,6 +17,7 @@ import scala.collection.compat.immutable._
 import scala.collection.mutable.{Map => MutableMap, Set => MutableSet}
 import scala.language.higherKinds
 
+import cats.data.NonEmptyList
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.util.Buildable
 import org.scalacheck.{Arbitrary, Gen}
@@ -57,6 +58,19 @@ import com.thatdot.quine.model._
   * }}}
   */
 trait ArbitraryInstances {
+
+  /*
+  implicit def arbitraryNonEmptyList[A](implicit arbA: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
+    for {
+      head <- arbA.arbitrary
+      tail <- Gen.listOf(arbA.arbitrary)
+    } yield NonEmptyList(head, tail)
+  )
+
+   */
+  implicit def arbitraryNonEmptyList[A](implicit arbA: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
+    Gen.nonEmptyListOf(arbA.arbitrary) map NonEmptyList.fromListUnsafe
+  )
 
   // A Gen[DateTime] bounded by what fits into an int32 as epoch day
   // LocalDate.ofEpochDay(Int.MaxValue).getYear == 5,881,580
@@ -686,26 +700,16 @@ trait ArbitraryInstances {
     )
   }
 
-  val arbDistinctGraphPattern: Arbitrary[GraphQueryPattern] = Arbitrary {
-    Gen.resultOf[
-      Seq[GraphQueryPattern.NodePattern],
-      Seq[GraphQueryPattern.EdgePattern],
-      GraphQueryPattern.NodePatternId,
-      Seq[GraphQueryPattern.ReturnColumn],
-      Option[cypher.Expr],
-      Seq[(Symbol, cypher.Expr)],
-      Boolean,
-      GraphQueryPattern
-    ](GraphQueryPattern.apply)(
-      Arbitrary(arbitrary[Seq[GraphQueryPattern.NodePattern]].filter(_.nonEmpty)),
-      implicitly,
-      implicitly,
-      implicitly,
-      implicitly,
-      implicitly,
-      Arbitrary(Gen.const(true))
-    )
-  }
+  val arbDistinctGraphPattern: Arbitrary[GraphQueryPattern] = Arbitrary(
+    for {
+      nodes <- arbitrary[NonEmptyList[GraphQueryPattern.NodePattern]]
+      edges <- arbitrary[Seq[GraphQueryPattern.EdgePattern]]
+      startingPoint <- arbitrary[GraphQueryPattern.NodePatternId]
+      toExtract <- arbitrary[Seq[GraphQueryPattern.ReturnColumn]]
+      filterCond <- arbitrary[Option[cypher.Expr]]
+      toReturn <- arbitrary[Seq[(Symbol, cypher.Expr)]]
+    } yield GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, true)
+  )
   val arbNonDistinctGraphPattern: Arbitrary[GraphQueryPattern] = Arbitrary {
     arbDistinctGraphPattern.arbitrary.map(_.copy(distinct = false))
   }

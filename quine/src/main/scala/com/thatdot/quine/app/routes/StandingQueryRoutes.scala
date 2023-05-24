@@ -12,6 +12,7 @@ import akka.util.Timeout
 
 import endpoints4s.{Invalid, Valid}
 
+import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{InvalidQueryPattern, StandingQueryId, StandingQueryOpsGraph, StandingQueryResult}
 import com.thatdot.quine.routes._
 
@@ -61,8 +62,8 @@ trait StandingQueryRoutesImpl
         case true => Right(())
       }(graph.shardDispatcherEC)
     catch {
-      case InvalidQueryPattern(message) =>
-        Future.successful(Left(endpoints4s.Invalid(message)))
+      case iqp: InvalidQueryPattern => Future.successful(Left(endpoints4s.Invalid(iqp.message)))
+      case cypherException: CypherException => Future.successful(Left(endpoints4s.Invalid(cypherException.pretty)))
     }
   }
 

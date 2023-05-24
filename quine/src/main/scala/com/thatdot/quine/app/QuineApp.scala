@@ -14,23 +14,19 @@ import akka.stream.scaladsl.Keep
 import akka.stream.{KillSwitches, UniqueKillSwitch}
 import akka.util.Timeout
 
+import cats.Applicative
 import cats.effect.unsafe.implicits.global
-import cats.implicits._
+import cats.instances.future.catsStdInstancesForFuture
+import cats.syntax.all._
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ingest.IngestSrcDef
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
-import com.thatdot.quine.graph.{
-  GraphService,
-  HostQuineMetrics,
-  InvalidQueryPattern,
-  PatternOrigin,
-  StandingQuery,
-  StandingQueryId
-}
+import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, PatternOrigin, StandingQuery, StandingQueryId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -152,27 +148,27 @@ final class QuineApp(graph: GraphService)
           case StandingQueryPattern.Cypher(cypherQuery, mode) =>
             val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider)
             val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
-            if (mode == StandingQueryMode.DistinctId) {
-              if (!pattern.distinct) {
-                // TODO unit test this behavior
-                throw InvalidQueryPattern("DistinctId Standing Queries must specify a `DISTINCT` keyword")
-              }
-              val (branch, returnColumn) = pattern.compiledDomainGraphBranch(graph.labelsProperty)
-              val dgnPackage = branch.toDomainGraphNodePackage
-              val dgnPattern = DomainGraphNodeStandingQueryPattern(
-                dgnPackage.dgnId,
-                returnColumn.formatAsString,
-                returnColumn.aliasedAs,
-                query.includeCancellations,
-                origin
-              )
-              (dgnPattern, Some(dgnPackage))
-            } else {
-              if (pattern.distinct)
-                throw InvalidQueryPattern("MultipleValues Standing Queries do not yet support `DISTINCT`") // QU-568
-              val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
-              val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
-              (sqv4Pattern, None)
+            mode match {
+              case StandingQueryMode.DistinctId =>
+                if (!pattern.distinct) {
+                  // TODO unit test this behavior
+                  throw DistinctIdMustDistinct
+                }
+                val (branch, returnColumn) = pattern.compiledDomainGraphBranch(graph.labelsProperty)
+                val dgnPackage = branch.toDomainGraphNodePackage
+                val dgnPattern = DomainGraphNodeStandingQueryPattern(
+                  dgnPackage.dgnId,
+                  returnColumn.formatAsString,
+                  returnColumn.aliasedAs,
+                  query.includeCancellations,
+                  origin
+                )
+                (dgnPattern, Some(dgnPackage))
+              case StandingQueryMode.MultipleValues =>
+                if (pattern.distinct) throw MultipleValuesCantDistinct
+                val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
+                val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
+                (sqv4Pattern, None)
             }
         }
         (dgnPackage match {
@@ -191,7 +187,7 @@ final class QuineApp(graph: GraphService)
             name -> (out -> killSwitches(name))
           }
           standingQueryOutputTargets += queryName -> (sq.query.id -> outputsWithKillSwitches)
-          storeStandingQueries().map(_ => true)(graph.system.dispatcher)
+          storeStandingQueries().map(_ => true)(ExecutionContexts.parasitic)
         }(graph.system.dispatcher)
       }
     }
@@ -210,10 +206,9 @@ final class QuineApp(graph: GraphService)
     }
 
     // must be implicit for cats sequence
-    implicit val applicative: cats.Applicative[Future] = catsStdInstancesForFuture(graph.system.dispatcher)
+    implicit val applicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
 
-    cancelledSqState.sequence
-      .zipWith(storeStandingQueries())((toReturn, _) => toReturn)(graph.system.dispatcher)
+    cancelledSqState.sequence productL storeStandingQueries()
   }
 
   def addStandingQueryOutput(
@@ -233,13 +228,11 @@ final class QuineApp(graph: GraphService)
           .via(StandingQueryResultOutput.resultHandlingFlow(outputName, sqResultOutput, graph))
         val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
         standingQueryOutputTargets += queryName -> (sqId -> (outputs + (outputName -> (sqResultOutput -> killSwitch))))
-        storeStandingQueries().map(_ => true)(graph.system.dispatcher)
+        storeStandingQueries().map(_ => true)(ExecutionContexts.parasitic)
       }
 
-    optionFut match {
-      case None => Future.successful(None)
-      case Some(fut) => fut.map(Some(_))(graph.system.dispatcher)
-    }
+    implicit val futureApplicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+    optionFut.sequence
   }
 
   def removeStandingQueryOutput(
@@ -255,7 +248,7 @@ final class QuineApp(graph: GraphService)
       output
     }
 
-    storeStandingQueries().map(_ => outputOpt)(graph.system.dispatcher)
+    storeStandingQueries().map(_ => outputOpt)(ExecutionContexts.parasitic)
   }
 
   def getStandingQueries(): Future[List[RegisteredStandingQuery]] =

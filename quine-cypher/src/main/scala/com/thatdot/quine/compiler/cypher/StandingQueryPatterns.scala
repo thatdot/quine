@@ -4,6 +4,7 @@ import java.util.regex.Pattern
 
 import scala.collection.mutable
 
+import cats.data.NonEmptyList
 import com.typesafe.scalalogging.LazyLogging
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.util.UnNamedNameGenerator
@@ -67,7 +68,7 @@ object StandingQueryPatterns extends LazyLogging {
     // Accumulate up a set of node and edge patterns
     var nextId = 0
     val nodeIds = mutable.Map.empty[expressions.LogicalVariable, NodePatternId]
-    val nodePatterns = Seq.newBuilder[NodePattern]
+    val nodePatterns = List.newBuilder[NodePattern]
     val edgePatterns = Seq.newBuilder[EdgePattern]
 
     def addNodePattern(nodePattern: expressions.NodePattern): NodePatternId = {
@@ -99,7 +100,7 @@ object StandingQueryPatterns extends LazyLogging {
           )
       }
       val whereProps = nodePattern.variable
-        .flatMap(propertyConstraints.remove(_))
+        .flatMap(propertyConstraints.remove)
         .getOrElse(Map.empty)
 
       val idConstraint = nodePattern.variable.flatMap(idConstraints.remove)
@@ -256,7 +257,7 @@ object StandingQueryPatterns extends LazyLogging {
      */
     if (toExtract.length == toReturn.length && toReturn.forall(ve => Expr.Variable(ve._1) == ve._2)) {
       GraphQueryPattern(
-        nodePatterns.result(),
+        NonEmptyList.fromListUnsafe(nodePatterns.result()),
         edgePatterns.result(),
         rootId,
         toExtract.sortBy(col => toReturn.indexWhere(_._1 == col.aliasedAs)),
@@ -266,7 +267,8 @@ object StandingQueryPatterns extends LazyLogging {
       )
     } else {
       GraphQueryPattern(
-        nodePatterns.result(),
+        // We know this will always be non-empty at this point?
+        NonEmptyList.fromListUnsafe(nodePatterns.result()),
         edgePatterns.result(),
         rootId,
         toExtract,

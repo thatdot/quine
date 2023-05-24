@@ -2,8 +2,10 @@ package com.thatdot.quine.graph
 
 import scala.collection.compat.immutable._
 
+import cats.data.NonEmptyList
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.quine.graph.InvalidQueryPattern.{HasACycle, NotConnected}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model._
 
@@ -98,7 +100,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Single pattern") {
     val singlePattern = GraphQueryPattern(
-      nodes = Seq(node1),
+      nodes = NonEmptyList.of(node1),
       edges = Seq.empty,
       startingPoint = node1.id,
       toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
@@ -129,7 +131,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeB = EdgePattern(node2.id, node3.id, true, Symbol("b"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3),
+        nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA, edgeB),
         startingPoint = node1.id,
         toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
@@ -190,7 +192,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeB = EdgePattern(node2.id, node3.id, true, Symbol("b"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3),
+        nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA, edgeB),
         startingPoint = node2.id,
         toExtract = Seq(ReturnColumn.Id(node2.id, false, Symbol("id"))),
@@ -254,7 +256,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeF = EdgePattern(node3.id, node7.id, true, Symbol("f"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3, node4, node5, node6, node7),
+        nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF),
         startingPoint = node4.id,
         toExtract = Seq(ReturnColumn.Id(node4.id, false, Symbol("id"))),
@@ -383,7 +385,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3),
+        nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA),
         startingPoint = node1.id,
         toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
@@ -393,7 +395,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       )
     }
 
-    val expected = InvalidQueryPattern("Pattern is not connected")
+    val expected = NotConnected
     assert(
       intercept[InvalidQueryPattern](disconnectedPattern.compiledDomainGraphBranch(labelsProp)) == expected
     )
@@ -412,7 +414,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeD = EdgePattern(node1.id, node4.id, true, Symbol("d"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3, node4),
+        nodes = NonEmptyList.of(node1, node2, node3, node4),
         edges = Seq(edgeA, edgeB, edgeC, edgeD),
         startingPoint = node1.id,
         toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
@@ -422,8 +424,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       )
     }
 
-    val expected = InvalidQueryPattern("Pattern has a cycle")
-    assert(intercept[InvalidQueryPattern](diamondPattern.compiledDomainGraphBranch(labelsProp)) == expected)
+    assert(intercept[InvalidQueryPattern](diamondPattern.compiledDomainGraphBranch(labelsProp)) == HasACycle)
   }
 
   test("Complex graph pattern") {
@@ -441,7 +442,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeK = EdgePattern(node1.id, node8.id, true, Symbol("k"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3, node4, node5, node6, node7, node8, node9),
+        nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7, node8, node9),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF, edgeG, edgeH, edgeI, edgeJ, edgeK),
         startingPoint = node1.id,
         toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
@@ -451,8 +452,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       )
     }
 
-    val expected = InvalidQueryPattern("Pattern has a cycle")
-    assert(intercept[InvalidQueryPattern](graphPattern.compiledDomainGraphBranch(labelsProp)) == expected)
+    assert(intercept[InvalidQueryPattern](graphPattern.compiledDomainGraphBranch(labelsProp)) == HasACycle)
   }
 
   test("compiling a cypher GraphQueryPattern with ID constraint") {
@@ -466,7 +466,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       val edgeF = EdgePattern(node3.id, node7.id, true, Symbol("f"))
 
       GraphQueryPattern(
-        nodes = Seq(node1, node2, node3, node4, node5, node6, node7),
+        nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF),
         startingPoint = node4.id,
         toExtract = Seq(ReturnColumn.Id(node4.id, false, Symbol("id"))),
@@ -611,7 +611,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("compiling a cypher GQP with label constraint") {
     val graphPattern = GraphQueryPattern(
-      nodes = Seq(node1Labelled),
+      nodes = NonEmptyList.of(node1Labelled),
       edges = Seq(),
       startingPoint = node1Labelled.id,
       toExtract = Seq(
@@ -662,7 +662,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("compiling a cypher pattern containing both `id` and `strId`") {
     val graphPattern = GraphQueryPattern(
-      List(
+      NonEmptyList.of(
         NodePattern(
           NodePatternId(0),
           Set(),

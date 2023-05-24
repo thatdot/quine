@@ -25,7 +25,7 @@ sealed abstract class CypherException extends Exception with Product {
 
       "\n\n" + line.stripSuffix("\n") + "\n" + (" " * (pos.column - 1)) + "^"
     }
-    productPrefix + "Error " + positionStr + getMessage() + caretMessageOpt
+    productPrefix + "Error " + positionStr + getMessage + caretMessageOpt
   }
 }
 
@@ -38,15 +38,6 @@ final case class Position(
   offset: Int,
   source: SourceText
 )
-
-object Position {
-  def apply(row: Int, column: Int, offset: Int)(implicit
-    source: SourceText,
-    dummy: DummyImplicit
-  ): Position =
-    Position(row, column, offset, source)
-}
-
 object CypherException {
 
   /** Runtime mismatch in expected types compared to actual type

@@ -1,6 +1,7 @@
 package com.thatdot.quine.compiler
 
 import scala.concurrent.{ExecutionException, Future}
+import scala.util.control.NonFatal
 
 import akka.Done
 import akka.stream.scaladsl.{Framing, Keep, Sink, Source}
@@ -92,7 +93,7 @@ package object cypher {
        * Some design space needs to be explored here.
        */
       case _: ast.SchemaCommand =>
-        throw new CypherException.Compile(
+        throw CypherException.Compile(
           "Cypher commands are not supported (only queries)",
           Some(position(statement.position))
         )
@@ -275,11 +276,11 @@ package object cypher {
   def compileStandingQueryGraphPattern(
     queryText: String
   )(implicit idProvider: QuineIdProvider): GraphQueryPattern = {
-    implicit val source = SourceText(queryText)
+    val source = SourceText(queryText)
     val startPosition = InputPosition(0, 1, 1)
     // compile and do basic (front-end) semantic analysis on queryText
-    val astState = openCypherParseAndRewrite(queryText, Seq.empty, startPosition, openCypherStandingPipeline)
-    StandingQueryPatterns.compile(astState.statement, ParametersIndex.empty)
+    val astState = openCypherParseAndRewrite(queryText, Seq.empty, startPosition, openCypherStandingPipeline)(source)
+    StandingQueryPatterns.compile(astState.statement, ParametersIndex.empty)(source, idProvider)
   }
 
   /** Compile and run a query on the graph
@@ -493,7 +494,7 @@ package object cypher {
 
       // TODO: can something better than this be done? What sorts of errors
       // can these be?
-      case error: Throwable =>
+      case NonFatal(error) =>
         throw CypherException.Compile(
           wrapping = error.toString,
           position = None
