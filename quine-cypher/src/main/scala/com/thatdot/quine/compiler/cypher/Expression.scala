@@ -3,9 +3,14 @@ package com.thatdot.quine.compiler.cypher
 import cats.implicits._
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
-import org.opencypher.v9_0.frontend.phases.StatementRewriter
-import org.opencypher.v9_0.util.StepSequencer.Condition
-import org.opencypher.v9_0.util.{NodeNameGenerator, UnNamedNameGenerator}
+import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
+import org.opencypher.v9_0.frontend.phases.{BaseContext, BaseState, CompilationPhaseTracer, Phase, StatementRewriter}
+import org.opencypher.v9_0.rewriting.conditions.PatternExpressionsHaveSemanticInfo
+import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
+import org.opencypher.v9_0.rewriting.rewriters.{InnerVariableNamer, ProjectionClausesHaveSemanticInfo}
+import org.opencypher.v9_0.rewriting.{ListStepAccumulator, RewriterStep}
+import org.opencypher.v9_0.util.StepSequencer.{AccumulatedSteps, Condition}
+import org.opencypher.v9_0.util.{NodeNameGenerator, StepSequencer, UnNamedNameGenerator, inSequence}
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.model.EdgeDirection
@@ -404,7 +409,10 @@ object Expression {
       }
 
     case e @ expressions.PatternComprehension(namedPath, rel, pred, project) =>
-      require(namedPath.isEmpty) // TODO: is this an issue?
+      require(
+        namedPath.isEmpty,
+        s"During query compilation, encountered a pattern comprehension using a named path. This is a known issue when using exists() in standing query patterns. Named path was: ${namedPath.get}. Full expression was: ${e}."
+      )
 
       // Put the pattern into a form
       val pat = expressions.Pattern(Seq(expressions.EveryPath(rel.element)))(e.position)
@@ -701,4 +709,46 @@ case object patternExpressionAsComprehension extends StatementRewriter {
 
   // TODO: add to this
   override def postConditions: Set[Condition] = Set.empty
+}
+
+/** Custom version of [[org.opencypher.v9_0.frontend.phases.AstRewriting]] that allows opting in to only specific steps.
+  * Required to be run in the same position as AstRewriting (i.e., after preliminary semantic analysis)
+  * @see [[org.opencypher.v9_0.frontend.phases.ASTRewriter#orderedSteps]]
+  */
+class CustomAstRewriting(namer: InnerVariableNamer)(private val steps: StepSequencer.Step with ASTRewriterFactory*)
+    extends Phase[BaseContext, BaseState, BaseState]
+    with Product {
+  val phase: CompilationPhaseTracer.CompilationPhase = AST_REWRITE
+  private val AccumulatedSteps(orderedSteps, _) =
+    StepSequencer(ListStepAccumulator[StepSequencer.Step with ASTRewriterFactory]()).orderSteps(
+      steps.toSet,
+      initialConditions = Set(ProjectionClausesHaveSemanticInfo, PatternExpressionsHaveSemanticInfo)
+    )
+
+  def process(state: BaseState, context: BaseContext): BaseState = {
+    val rewriters = orderedSteps.map { step =>
+      val rewriter = step.getRewriter(
+        innerVariableNamer = namer,
+        semanticState = state.semantics(),
+        parameterTypeMapping = Map.empty,
+        cypherExceptionFactory = context.cypherExceptionFactory
+      )
+      RewriterStep.validatingRewriter(rewriter, step)
+    }
+
+    val combined = inSequence(rewriters: _*)
+
+    val rewritten = state.statement().endoRewrite(combined)
+    state.withStatement(rewritten)
+  }
+
+  val postConditions: Set[Condition] = Set.empty
+
+  // OC introduces an entirely unnecessary constraint that Phase <: Product... so we implement these
+  def productElement(n: Int): Any = steps(n)
+
+  val productArity: Int = steps.length
+
+  def canEqual(that: Any): Boolean =
+    that.isInstanceOf[CustomAstRewriting] && that.asInstanceOf[CustomAstRewriting].steps.length == steps.length
 }

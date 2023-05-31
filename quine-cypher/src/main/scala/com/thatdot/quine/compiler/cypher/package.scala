@@ -10,17 +10,36 @@ import akka.util.ByteString
 import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.google.common.util.concurrent.UncheckedExecutionException
-import org.opencypher.v9_0.ast.semantics
-import org.opencypher.v9_0.ast.semantics.SemanticFeature
+import com.typesafe.scalalogging.LazyLogging
+import org.opencypher.v9_0.ast.semantics.{SemanticFeature, SemanticState}
+import org.opencypher.v9_0.ast.{Where, semantics}
+import org.opencypher.v9_0.expressions.{
+  NodePattern,
+  PatternComprehension,
+  RelationshipPattern,
+  ShortestPathExpression,
+  Variable
+}
 import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.frontend.{PlannerName, phases}
-import org.opencypher.v9_0.rewriting.rewriters.SameNameNamer
+import org.opencypher.v9_0.rewriting.conditions.{
+  PatternExpressionsHaveSemanticInfo,
+  noUnnamedPatternElementsInPatternComprehension
+}
+import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
+import org.opencypher.v9_0.rewriting.rewriters.{InnerVariableNamer, ProjectionClausesHaveSemanticInfo, SameNameNamer}
 import org.opencypher.v9_0.util.OpenCypherExceptionFactory.SyntaxException
+import org.opencypher.v9_0.util.symbols.CypherType
 import org.opencypher.v9_0.util.{
   CypherExceptionFactory,
   InputPosition,
+  NodeNameGenerator,
   OpenCypherExceptionFactory,
   RecordingNotificationLogger,
+  RelNameGenerator,
+  Rewriter,
+  StepSequencer,
+  bottomUp,
   symbols
 }
 import org.opencypher.v9_0.{ast, expressions, rewriting}
@@ -333,7 +352,8 @@ package object cypher {
       patternExpressionAsComprehension                     andThen
       SemanticAnalysis(warn = true, supportedFeatures: _*) andThen
       AstRewriting(SameNameNamer)                          andThen
-      LiteralExtraction(rewriting.rewriters.Forced)
+      LiteralExtraction(rewriting.rewriters.Forced) andThen
+        Transformer.printAst("parsed ad hoc")
     }
 
     // format: off
@@ -399,7 +419,28 @@ package object cypher {
       Parsing                                              andThen
       patternExpressionAsComprehension                     andThen
       aliasReturns                                         andThen
-      SemanticAnalysis(warn = true, supportedFeatures: _*)
+      SemanticAnalysis(warn = true, supportedFeatures: _*) // andThen
+      // COMMENTARY ON QU-1292: There is a compilation error thrown when using exists() with
+      // pattern expressions/comprehensions in SQ pattern queries. Ethan spent a few days
+      // exploring options for fixing the issues, but ultimately it was not the most valuable use of time.
+      // There are 2 main options for fixing the bug, one by further fixing the OC pipeline (option 1),
+      // the other by extending Quine's SQ support for queries rewritten by OC pipelines (option 2).
+//            new CustomAstRewriting(SameNameNamer)(
+        // option 1: using nameAllPatternElementsInPatternComprehensions (a simplification of `nameAllPatternElements`
+        // implemented below) fixes the original error, but violates some unknown precondition for
+        // [[inlineNamedPathsInPatternComprehensions]] causing an unsafe None.get that throws a useless error message
+        // Possible fix: Reimplement the subset of inlineNamedPathsInPatternComprehensions that we need
+//        nameAllPatternElementsInPatternComprehensions,
+        // option 2: fixes the original error to something more helpful ("invalid use of node variable `n`),
+        // but rewrites anonymous edges to named edges, which we don't know how to support. Also sometimes
+        // adds node variables we don't know how to support. Possible fix: parse edge variables during SQ
+        // post-compilation checks and validate whether their uses are legitimate (as we do with node variables)
+//        nameAllPatternElements,
+//        normalizeMatchPredicates,
+        // In either case, finish up with this rewrite:
+//        inlineNamedPathsInPatternComprehensions, // (maybe also projectNamedPaths)
+//      ) andThen
+//      Transformer.printAst("parsed SQ")
     }
 
     // format: off
@@ -538,3 +579,49 @@ package object cypher {
     source
   )
 }
+
+/**
+  * Like [[nameAllPatternElements]], but does not rewrite naked pattern elements in MATCH clauses.
+  */
+case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazyLogging {
+
+  override def getRewriter(innerVariableNamer: InnerVariableNamer,
+                           semanticState: SemanticState,
+                           parameterTypeMapping: Map[String, CypherType],
+                           cypherExceptionFactory: CypherExceptionFactory): Rewriter = namingRewriter
+
+  override def preConditions: Set[StepSequencer.Condition] = Set.empty
+
+  override def postConditions: Set[StepSequencer.Condition] = Set(
+    noUnnamedPatternElementsInPatternComprehension
+  )
+
+  override def invalidatedConditions: Set[StepSequencer.Condition] = Set(
+    ProjectionClausesHaveSemanticInfo, // It can invalidate this condition by rewriting things inside WITH/RETURN.
+    PatternExpressionsHaveSemanticInfo, // It can invalidate this condition by rewriting things inside PatternExpressions.
+  )
+
+  override def apply(that: AnyRef): AnyRef = namingRewriter.apply(that)
+
+  private val patternRewriter: Rewriter = bottomUp(Rewriter.lift {
+    case pattern: NodePattern if pattern.variable.isEmpty =>
+      val syntheticName = NodeNameGenerator.name(pattern.position.newUniquePos())
+      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
+
+    case pattern: RelationshipPattern if pattern.variable.isEmpty =>
+      val syntheticName = RelNameGenerator.name(pattern.position.newUniquePos())
+      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
+  }, stopper = {
+    case _: ShortestPathExpression => true
+    case _ => false
+  })
+
+  private val namingRewriter: Rewriter = bottomUp(Rewriter.lift {
+    case patternComprehension: PatternComprehension => patternRewriter(patternComprehension)
+  }, stopper = {
+    case _: Where => true
+    case _: ShortestPathExpression => true
+    case _ => false
+  })
+}
+

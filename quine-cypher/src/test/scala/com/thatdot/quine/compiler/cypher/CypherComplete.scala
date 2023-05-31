@@ -204,7 +204,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     )
 
     testQuery(
-      "MATCH (p { last: \"Granger\" }) RETURN p.first",
+      "MATCH (p { last: 'Granger' }) RETURN p.first",
       expectedColumns = Vector("p.first"),
       expectedRows = Seq(
         Vector(Expr.Str("Mister")),
@@ -212,6 +212,18 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Str("Rose")),
         Vector(Expr.Str("Hugo")),
         Vector(Expr.Str("Missus"))
+      ),
+      expectedCanContainAllNodeScan = true,
+      ordered = false
+    )
+
+    testQuery(
+      "MATCH (p) WHERE exists((p)-[:has_father]->({last: 'Weasley'})) RETURN p.first",
+      expectedColumns = Vector("p.first"),
+      expectedRows = Seq(
+        Vector(Expr.Str("Rose")),
+        Vector(Expr.Str("Hugo")),
+        Vector(Expr.Str("Ron"))
       ),
       expectedCanContainAllNodeScan = true,
       ordered = false

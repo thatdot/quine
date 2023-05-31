@@ -656,6 +656,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
 
   describe("Error messages") {
 
+    // should reject illegal MATCH -- TODO enable this test (QU-1292)
+    {
+      val query = "MATCH (n) WHERE exists((n)--()) RETURN id(n)"
+      interceptQuery(query, CypherException.Compile("Illegal exists() clause in standing query", None), skip = true)
+    }
+
     // should reject ORDER BY clause (something more than just `MATCH ... WHERE ... RETURN [DISTINCT]`)
     {
       val query = "MATCH (n) WHERE exists(n.foo) RETURN id(n) ORDER BY n.qux"
