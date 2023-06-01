@@ -49,6 +49,21 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
 
 object MultipleValuesStandingQuery {
 
+  /* NOTE: UnitSq currently must be a case class and not an object (despite having no parameters)
+     This is because `id` is defined concretely as a val in the superclass in terms of the shapeless
+     generically-defined Hashable instance, and due to the way Generic's macro does pattern-matching
+     (to see which case of this sealed abstract class you passed it), the object must exist at that point when
+     matching. I'm not sure how it works to define a val (the hashcode) in the superclass terms of fields that
+     don't exist yet (aren't in scope) at that point. A less cursed arrangement might be to either:
+     A) if using "externally defined" (i.e. the generically-derived Hashable) things, use them externally.
+        I.e. call someHashableInstance.hash(foo) instead of trying to inline that into the superclass constructor
+        as foo.id
+     B) Leave id abstract in the superclass, and take advantage of normal OO inheritance / polymorphism /
+        dynamic dispatch and have the actual impl be in the subclasses. That way you don't have values in the
+        superclass that need to be implemented by pattern-matching on the `this` reference and use values that
+        aren't initialized yet.
+   */
+
   /** Produces exactly one result, as soon as initialized, with no columns */
   final case class UnitSq() extends MultipleValuesStandingQuery {
 
@@ -298,5 +313,5 @@ object MultipleValuesStandingQuery {
     // otherwise, traverse
     else sq.children.foldLeft(acc + sq)((acc, child) => indexableSubqueries(child, acc))
 
-  val hashable: Hashable[MultipleValuesStandingQuery] = implicitly[Hashable[MultipleValuesStandingQuery]]
+  val hashable: Hashable[MultipleValuesStandingQuery] = Hashable[MultipleValuesStandingQuery]
 }

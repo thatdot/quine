@@ -1,10 +1,11 @@
 package com.thatdot.quine.util
 
 import java.nio.ByteBuffer
-import java.nio.charset.StandardCharsets
 import java.time.{Duration, Instant, LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 import java.util.UUID
 
+import scala.collection.compat.immutable.ArraySeq
+import scala.collection.immutable.SortedMap
 import scala.language.higherKinds
 import scala.reflect.ClassTag
 
@@ -12,7 +13,7 @@ import com.google.common.hash.{HashFunction, Hasher}
 import shapeless._
 
 /** Class of types that can be converted to a hash value */
-trait Hashable[-A] {
+trait Hashable[A] {
 
   /** Add a value to a hashed
     *
@@ -47,10 +48,7 @@ trait Hashable[-A] {
 
   final def contramap[B](f: B => A): Hashable[B] =
     (hasher: Hasher, value: B) => addToHasher(hasher, f(value))
-}
 
-object Hashable extends BasicHashables with CompositeHashables1 {
-  def apply[A](implicit aHashable: Lazy[Hashable[A]]): Hashable[A] = aHashable.value
 }
 
 trait BasicHashables {
@@ -73,7 +71,7 @@ trait BasicHashables {
 
   implicit val short: Hashable[Short] = _.putShort(_)
 
-  implicit val string: Hashable[CharSequence] = _.putString(_, StandardCharsets.UTF_8)
+  implicit val string: Hashable[String] = _.putUnencodedChars(_)
 
   implicit val symbol: Hashable[Symbol] = string.contramap(_.name)
 
@@ -87,6 +85,7 @@ trait BasicHashables {
       hasher.putInt(value.getOffset.getTotalSeconds)
     }
   }
+
   implicit val localDateTime: Hashable[LocalDateTime] = new Hashable[LocalDateTime] {
     def addToHasher(hasher: Hasher, value: LocalDateTime): Hasher = {
       hasher.putLong(value.toLocalDate.toEpochDay)
@@ -123,89 +122,65 @@ trait BasicHashables {
   }
 }
 
-trait CompositeHashables1 extends CompositeHashables2 {
+trait CompositeHashables {
 
-  implicit def iterable1[A, F[X] <: Iterable[X]](implicit
-    hashableA: Lazy[Hashable[A]],
-    classTagFA: ClassTag[F[A]]
-  ): Hashable[F[A]] = {
-    val faSeed = classTagFA.runtimeClass.getName.hashCode
-    (hasher: Hasher, value: F[A]) => {
-      hasher.putInt(faSeed)
-      val hashA = hashableA.value
+  implicit def pairHashable[A, B](implicit hashA: Hashable[A], hashB: Hashable[B]): Hashable[(A, B)] =
+    (hasher: Hasher, pair: (A, B)) => {
+      hasher.putUnencodedChars("Pair")
+      hashA.addToHasher(hasher, pair._1)
+      hashB.addToHasher(hasher, pair._2)
+    }
+  def iterable[A, I[X] <: Iterable[X]](implicit
+    hashableA: Hashable[A],
+    classTagIA: ClassTag[I[A]]
+  ): Hashable[I[A]] = {
+    val iaSeed = classTagIA.runtimeClass.getName.hashCode
+    (hasher: Hasher, value: I[A]) => {
+      hasher.putInt(iaSeed)
+      val hashA = hashableA
       for (a <- value)
         hashA.addToHasher(hasher, a)
       hasher
     }
   }
+
+  implicit def optionHashable[A: Hashable]: Hashable[Option[A]] = iterable[A, Iterable].contramap(_.toList)
+  implicit def listHashable[A: Hashable]: Hashable[List[A]] = iterable
+  implicit def vectorHashable[A: Hashable]: Hashable[Vector[A]] = iterable
+  implicit def setHashable[A: Hashable]: Hashable[Set[A]] = iterable
+  implicit def arraySeqHashable[A: Hashable]: Hashable[ArraySeq[A]] = iterable
+  implicit def mapHashable[A: Hashable, B: Hashable]: Hashable[Map[A, B]] =
+    iterable[(A, B), Iterable].contramap(identity[Iterable[(A, B)]])
+  implicit def sortedMapHashable[A: Hashable, B: Hashable]: Hashable[SortedMap[A, B]] =
+    iterable[(A, B), Iterable].contramap(identity[Iterable[(A, B)]])
+  implicit def seqHashable[A: Hashable]: Hashable[Seq[A]] = iterable
 }
 
-/* The reason [[iterable2]] needs to exist in a different trait than [[iterable1]] is due to a
- * difference in 2.13 vs. 2.13:
- *
- *   - in 2.12, [[iterable1]] somehow works for type constructors of kinds other that just `F[_]`
- *     (it works for `Map[_, _]`, for example!)
- *
- *   - in 2.13, [[iterable1]] does not work for any kind other than `F[_]`
- *
- * We need [[iterable1]] and [[iterable2]] for 2.13 to compile, but we need them to not be the
- * same priority for 2.12 to compile
- */
-trait CompositeHashables2 extends GenericHashables {
-  implicit def iterable2[A, B, F[X, Y] <: Iterable[(X, Y)]](implicit
-    hashableA: Lazy[Hashable[A]],
-    hashableB: Lazy[Hashable[B]],
-    classTagFAB: ClassTag[F[A, B]]
-  ): Hashable[F[A, B]] = {
-    val fabSeed = classTagFAB.runtimeClass.getName.hashCode
-    (hasher: Hasher, value: F[A, B]) => {
-      hasher.putInt(fabSeed)
-      val hashA = hashableA.value
-      val hashB = hashableB.value
-      for ((a, b) <- value) {
-        hashA.addToHasher(hasher, a)
-        hashB.addToHasher(hasher, b)
+object Hashable extends TypeClassCompanion[Hashable] with BasicHashables with CompositeHashables {
+
+  object typeClass extends TypeClass[Hashable] {
+    val emptyProduct: Hashable[HNil] = (hasher: Hasher, value: HNil) => hasher
+    def product[H, T <: HList](hashHead: Hashable[H], hashTail: Hashable[T]): Hashable[H :: T] =
+      (hasher: Hasher, headTail: H :: T) => {
+        hashHead.addToHasher(hasher, headTail.head)
+        hashTail.addToHasher(hasher, headTail.tail)
       }
-      hasher
+
+    val emptyCoproduct: Hashable[CNil] = (hasher: Hasher, value: CNil) => hasher
+
+    def coproduct[L, R <: Coproduct](hashLeft: => Hashable[L], hashRight: => Hashable[R]): Hashable[L :+: R] =
+      (hasher: Hasher, leftRight: L :+: R) => {
+        leftRight.eliminate(
+          hashLeft.addToHasher(hasher, _),
+          hashRight.addToHasher(hasher, _)
+        )
+      }
+
+    def project[F, G](instance: => Hashable[G], to: F => G, from: G => F): Hashable[F] = (hasher: Hasher, rep: F) => {
+      val value = to(rep)
+      hasher.putInt(value.getClass.getName.hashCode)
+      instance.addToHasher(hasher, value)
     }
   }
-}
 
-trait GenericHashables {
-
-  implicit def generic[A, G](implicit
-    classTagA: ClassTag[A],
-    generic: Generic.Aux[A, G],
-    hashableG: Lazy[Hashable[G]]
-  ): Hashable[A] = {
-    val genericSeed = classTagA.runtimeClass.getName.hashCode
-    (hasher: Hasher, value: A) => {
-      hasher.putInt(genericSeed)
-      hashableG.value.addToHasher(hasher, generic.to(value))
-    }
-  }
-
-  implicit val hnil: Hashable[HNil] = (hasher: Hasher, value: HNil) => hasher
-
-  implicit def hcons[A, B <: HList](implicit
-    hashableA: Lazy[Hashable[A]],
-    hashableB: Lazy[Hashable[B]]
-  ): Hashable[A :: B] =
-    (hasher: Hasher, value: A :: B) => {
-      hashableA.value.addToHasher(hasher, value.head)
-      hashableB.value.addToHasher(hasher, value.tail)
-    }
-
-  implicit val cnil: Hashable[CNil] = (hasher: Hasher, value: CNil) => hasher
-
-  implicit def ccons[A, B <: Coproduct](implicit
-    hashableA: Lazy[Hashable[A]],
-    hashableB: Lazy[Hashable[B]]
-  ): Hashable[A :+: B] =
-    (hasher: Hasher, value: A :+: B) => {
-      value.eliminate(
-        hashableA.value.addToHasher(hasher, _),
-        hashableB.value.addToHasher(hasher, _)
-      )
-    }
 }

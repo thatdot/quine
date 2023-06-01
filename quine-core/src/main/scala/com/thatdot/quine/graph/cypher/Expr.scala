@@ -86,8 +86,8 @@ object Expr {
     case QuineValue.False => False
     case QuineValue.Null => Null
     case QuineValue.Bytes(arr) => Bytes(arr)
-    case QuineValue.List(vec) => List(vec.map(fromQuineValue(_)))
-    case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue(_)).toMap)
+    case QuineValue.List(vec) => List(vec.map(fromQuineValue))
+    case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue).toMap)
     case QuineValue.DateTime(datetime) => DateTime(datetime.toZonedDateTime)
     case QuineValue.Duration(duration) => Duration(duration)
     case QuineValue.Date(date) => Date(date)
