@@ -55,7 +55,7 @@ object Dependencies {
   // concerns, we cannot further upgrade akkaV, so we cannot easily upgrade scalaParserCombinatorsV
   val scalaParserCombinatorsV = "1.1.2" // scala-steward:off
   val scalaTestScalaCheckV = "3.2.11.0"
-  val scalaTestV = "3.2.15"
+  val scalaTestV = "3.2.16"
   val scalajsDomV = "2.3.0"
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
