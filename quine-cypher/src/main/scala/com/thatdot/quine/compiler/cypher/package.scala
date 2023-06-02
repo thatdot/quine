@@ -352,8 +352,8 @@ package object cypher {
       patternExpressionAsComprehension                     andThen
       SemanticAnalysis(warn = true, supportedFeatures: _*) andThen
       AstRewriting(SameNameNamer)                          andThen
-      LiteralExtraction(rewriting.rewriters.Forced) andThen
-        Transformer.printAst("parsed ad hoc")
+      LiteralExtraction(rewriting.rewriters.Forced)     // andThen
+      // Transformer.printAst("parsed ad hoc")
     }
 
     // format: off
