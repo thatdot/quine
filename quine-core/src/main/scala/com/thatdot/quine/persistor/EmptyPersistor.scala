@@ -5,6 +5,8 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
+
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -51,11 +53,12 @@ class EmptyPersistor(
     endingAt: EventTime
   ): Future[Vector[NodeEvent.WithTime[DomainIndexEvent]]] = Future.successful(Vector.empty)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future.unit
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+    Future.unit
 
   def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = Future.unit
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     Future.unit
 
   def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = Future.unit

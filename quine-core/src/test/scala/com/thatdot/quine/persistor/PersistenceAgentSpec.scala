@@ -9,6 +9,7 @@ import scala.util.Random
 
 import akka.actor.ActorSystem
 
+import cats.data.NonEmptyList
 import cats.syntax.functor._
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
@@ -28,6 +29,7 @@ import com.thatdot.quine.graph.{
   NodeEvent,
   PatternOrigin,
   QuineUUIDProvider,
+  ScalaTestInstances,
   StandingQuery,
   StandingQueryId,
   StandingQueryPattern
@@ -48,7 +50,8 @@ abstract class PersistenceAgentSpec
     with Matchers
     with Inspectors
     with OptionValues
-    with ArbitraryInstances {
+    with ArbitraryInstances
+    with ScalaTestInstances {
 
   implicit val system: ActorSystem = ActorSystem("test-system")
 
@@ -57,13 +60,11 @@ abstract class PersistenceAgentSpec
 
   def persistor: PersistenceAgent
 
-  def withRandomTime[T <: NodeEvent](events: Seq[T]): Seq[NodeEvent.WithTime[T]] =
+  def withRandomTime[T <: NodeEvent](events: NonEmptyList[T]): NonEmptyList[NodeEvent.WithTime[T]] =
     events.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(Random.nextLong())))
 
-  def sortedByTime[T <: NodeEvent](events: Seq[NodeEvent.WithTime[T]]): Seq[NodeEvent.WithTime[T]] =
-    events.sorted(Ordering.by { e: NodeEvent.WithTime[T] =>
-      e.atTime
-    })
+  def sortedByTime[T <: NodeEvent](events: NonEmptyList[NodeEvent.WithTime[T]]): NonEmptyList[NodeEvent.WithTime[T]] =
+    events.sortBy(_.atTime)
   override def afterAll(): Unit = {
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)
@@ -128,9 +129,9 @@ abstract class PersistenceAgentSpec
   describe("persistEvent") {
     it("can record events at various time") {
       allOfConcurrent(
-        persistor.persistEvents(
+        persistor.persistNodeChangeEvents(
           qid1,
-          Seq(
+          NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.fromRaw(34L)),
             NodeEvent.WithTime(event1, EventTime.fromRaw(36L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(38L)),
@@ -144,9 +145,9 @@ abstract class PersistenceAgentSpec
     it("supports EventTime.MaxValue and EventTime.MinValue") {
       allOfConcurrent(
         // "minimum qid" (all 0 bits)
-        persistor.persistEvents(
+        persistor.persistNodeChangeEvents(
           qid0,
-          Seq(
+          NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
@@ -154,9 +155,9 @@ abstract class PersistenceAgentSpec
           )
         ),
         // in between qid
-        persistor.persistEvents(
+        persistor.persistNodeChangeEvents(
           qid2,
-          Seq(
+          NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
@@ -164,9 +165,9 @@ abstract class PersistenceAgentSpec
           )
         ),
         // "maximum qid" (all 1 bits)
-        persistor.persistEvents(
+        persistor.persistNodeChangeEvents(
           qid4,
-          Seq(
+          NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
@@ -783,18 +784,20 @@ abstract class PersistenceAgentSpec
     val qid = idProvider.newQid()
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
     val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, Random.nextInt(10) + 1)
-    val withTimeUnsorted = withRandomTime(generated.toIndexedSeq)
+    val withTimeUnsorted = withRandomTime(NonEmptyList.fromListUnsafe(generated.toList))
     val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistEvents(qid, withTimeUnsorted) as succeed
+      persistor.persistNodeChangeEvents(qid, withTimeUnsorted) as succeed
     }
 
     it("read") {
       val minTime = sorted.head.atTime
       val maxTime = sorted.last.atTime
-      persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
+      persistor
+        .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
+        .map(_ should contain theSameElementsInOrderAs sorted.toList)
     }
   }
 
@@ -814,17 +817,19 @@ abstract class PersistenceAgentSpec
     val qid = idProvider.newQid()
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
     val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, Random.nextInt(10) + 1)
-    val withTimeUnsorted = withRandomTime(generated.toIndexedSeq)
+    val withTimeUnsorted = withRandomTime(NonEmptyList.fromListUnsafe(generated.toList))
     val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistEvents(qid, withTimeUnsorted) as succeed
+      persistor.persistDomainIndexEvents(qid, withTimeUnsorted) as succeed
     }
     it("read") {
       val minTime = sorted.head.atTime
       val maxTime = sorted.last.atTime
-      persistor.getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true).map(e => assert(e == sorted))
+      persistor
+        .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
+        .map(e => assert(e === sorted.toList))
     }
     it("delete") {
       for {
@@ -844,7 +849,7 @@ abstract class PersistenceAgentSpec
       .to(5)
       .map(_ =>
         idProvider.newQid() -> withRandomTime(
-          Seq(
+          NonEmptyList.of(
             CancelDomainNodeSubscription(dgnIds(0), generate1[QuineId](1)),
             CancelDomainNodeSubscription(dgnIds(1), generate1[QuineId](1))
           )

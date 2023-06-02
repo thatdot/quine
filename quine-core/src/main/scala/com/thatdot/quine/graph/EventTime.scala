@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import akka.event.LoggingAdapter
 
+import cats.Order
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.model.Milliseconds
@@ -106,6 +107,8 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
 
 }
 object EventTime extends LazyLogging {
+
+  implicit val ordering: Order[EventTime] = Order.fromOrdering
 
   final private val EventSequenceOffset: Int = 0
   final private val EventSequenceBits: Int = 8

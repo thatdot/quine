@@ -44,6 +44,7 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
   def create(
     session: CqlSession,
     verifyTable: String => Future[Unit],
+    chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -67,13 +68,14 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
         prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new DomainGraphNodes(session, writeSettings, _, _, _))
+      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, _, _, _))
     )(ExecutionContexts.parasitic)
   }
 }
 
 class DomainGraphNodes(
   session: CqlSession,
+  chunker: Chunker,
   writeSettings: CassandraStatementSettings,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
@@ -87,29 +89,33 @@ class DomainGraphNodes(
   def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.firstRowStatement)
 
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
-    executeFuture(
-      writeSettings(
-        BatchStatement.newInstance(
-          BatchType.UNLOGGED,
-          domainGraphNodes.toSeq map { case (domainGraphNodeId, domainGraphNode) =>
-            insertStatement.bindColumns(
-              domainGraphNodeIdColumn.set(domainGraphNodeId),
-              dataColumn.set(domainGraphNode)
-            )
-          }: _*
+    chunker(domainGraphNodes.toList) { dgns =>
+      executeFuture(
+        writeSettings(
+          BatchStatement.newInstance(
+            BatchType.UNLOGGED,
+            dgns.map { case (domainGraphNodeId, domainGraphNode) =>
+              insertStatement.bindColumns(
+                domainGraphNodeIdColumn.set(domainGraphNodeId),
+                dataColumn.set(domainGraphNode)
+              )
+            }: _*
+          )
         )
       )
-    )
+    }
 
   def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
-    executeFuture(
-      writeSettings(
-        BatchStatement.newInstance(
-          BatchType.UNLOGGED,
-          domainGraphNodeIds.toSeq.map(id => deleteStatement.bindColumns(domainGraphNodeIdColumn.set(id))): _*
+    chunker(domainGraphNodeIds.toList) { dgnIds =>
+      executeFuture(
+        writeSettings(
+          BatchStatement.newInstance(
+            BatchType.UNLOGGED,
+            dgnIds.map(id => deleteStatement.bindColumns(domainGraphNodeIdColumn.set(id))): _*
+          )
         )
       )
-    )
+    }
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
     selectColumns(selectAllStatement.bind(), domainGraphNodeIdColumn, dataColumn)

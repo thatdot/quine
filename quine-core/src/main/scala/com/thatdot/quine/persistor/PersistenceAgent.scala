@@ -7,6 +7,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
 import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
@@ -115,35 +116,18 @@ trait PersistenceAgent extends StrictLogging {
       () => emptyOfQuineData()
     )
 
-  protected def ifNonEmpty[A](seq: Seq[A], action: Seq[A] => Future[Unit]): Future[Unit] =
-    if (seq.nonEmpty) action(seq) else Future.unit
-
-  /** Persist a series of [[NodeEvent]]s affecting a node's state.
+  /** Persist a series of [[NodeChangeEvent]]s affecting a node's state.
     *
-    * @param id    affected node
+    * @param id     affected node
     * @param events event records to write
-    * @return something that completes 'after' the write finishes
+    * @return a Future that completes 'after' the write finishes
     */
-  final def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeEvent]]): Future[Unit] = {
-    val (domainIndexEvents, nodeChangeEvents) = events.partition(e => e.event.isInstanceOf[DomainIndexEvent])
-    ifNonEmpty(
-      domainIndexEvents.asInstanceOf[Seq[NodeEvent.WithTime[DomainIndexEvent]]],
-      persistDomainIndexEvents(id, _)
-    ).zipWith(
-      ifNonEmpty(
-        nodeChangeEvents.asInstanceOf[Seq[NodeEvent.WithTime[NodeChangeEvent]]],
-        persistNodeChangeEvents(id, _)
-      )
-    )((_, _) => ())(ExecutionContexts.parasitic)
-  }
-
-  /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit]
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit]
 
   def deleteNodeChangeEvents(qid: QuineId): Future[Unit]
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit]
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit]
 
   def deleteDomainIndexEvents(qid: QuineId): Future[Unit]
 

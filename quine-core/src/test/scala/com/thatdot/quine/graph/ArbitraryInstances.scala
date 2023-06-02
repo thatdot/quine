@@ -48,29 +48,8 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.{MultipleValuesSta
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model._
 
-/** The derived [[Arbitrary]] instances for some types get big fast. If the
-  * serialization tests ever start being too slow, you can get scalacheck to
-  * print out timing information for each property by adding the following to
-  * `build.sbt`:
-  *
-  * {{{
-  * testOptions in Test += Tests.Argument(TestFrameworks.ScalaCheck, "-verbosity", "3")
-  * }}}
-  */
-trait ArbitraryInstances {
-
-  /*
-  implicit def arbitraryNonEmptyList[A](implicit arbA: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
-    for {
-      head <- arbA.arbitrary
-      tail <- Gen.listOf(arbA.arbitrary)
-    } yield NonEmptyList(head, tail)
-  )
-
-   */
-  implicit def arbitraryNonEmptyList[A](implicit arbA: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
-    Gen.nonEmptyListOf(arbA.arbitrary) map NonEmptyList.fromListUnsafe
-  )
+object GenInstances {
+  def genNel[A](elemGen: Gen[A]): Gen[NonEmptyList[A]] = Gen.nonEmptyListOf(elemGen) map NonEmptyList.fromListUnsafe
 
   // A Gen[DateTime] bounded by what fits into an int32 as epoch day
   // LocalDate.ofEpochDay(Int.MaxValue).getYear == 5,881,580
@@ -95,6 +74,23 @@ trait ArbitraryInstances {
     datetime <- intBoundedLocalDateTimeGen
     offset <- offsetGen
   } yield OffsetDateTime.of(datetime, offset)
+}
+
+/** The derived [[Arbitrary]] instances for some types get big fast. If the
+  * serialization tests ever start being too slow, you can get scalacheck to
+  * print out timing information for each property by adding the following to
+  * `build.sbt`:
+  *
+  * {{{
+  * testOptions in Test += Tests.Argument(TestFrameworks.ScalaCheck, "-verbosity", "3")
+  * }}}
+  */
+trait ArbitraryInstances {
+  import GenInstances._
+
+  implicit def arbNel[A](implicit arbitraryElem: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
+    genNel(arbitraryElem.arbitrary)
+  )
 
   /* Tweak the containers so that the generation size does _not_ get passed
    * through straight away. Instead, we pick a container size and then scale

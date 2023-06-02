@@ -6,6 +6,8 @@ import scala.util.{Failure, Success}
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
+
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -22,9 +24,10 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 /** Reified version of persistor call for logging purposes
   */
 sealed abstract class PersistorCall
-case class PersistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]) extends PersistorCall
+case class PersistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]])
+    extends PersistorCall
 case class DeleteNodeChangeEvents(id: QuineId) extends PersistorCall
-case class PersistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]])
+case class PersistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]])
     extends PersistorCall
 case class DeleteDomainIndexEvents(id: QuineId) extends PersistorCall
 case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
@@ -70,16 +73,18 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
   }(ec)
 
   /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = leftMap(
-    new WrappedPersistorException(PersistNodeChangeEvents(id, events), _),
-    persistenceAgent.persistNodeChangeEvents(id, events)
-  )
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+    leftMap(
+      new WrappedPersistorException(PersistNodeChangeEvents(id, events), _),
+      persistenceAgent.persistNodeChangeEvents(id, events)
+    )
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = leftMap(
-    new WrappedPersistorException(PersistDomainIndexEvents(id, events), _),
-    persistenceAgent.persistDomainIndexEvents(id, events)
-  )
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+    leftMap(
+      new WrappedPersistorException(PersistDomainIndexEvents(id, events), _),
+      persistenceAgent.persistDomainIndexEvents(id, events)
+    )
 
   def getNodeChangeEventsWithTime(
     id: QuineId,

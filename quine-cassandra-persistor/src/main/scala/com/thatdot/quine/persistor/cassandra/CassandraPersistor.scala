@@ -1,5 +1,6 @@
 package com.thatdot.quine.persistor.cassandra
 
+import scala.collection.immutable
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration.DurationInt
@@ -11,6 +12,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 
 import cats.Applicative
+import cats.data.NonEmptyList
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 import com.datastax.oss.driver.api.core._
@@ -28,6 +30,14 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, PersistenceAgent, PersistenceConfig}
+
+/** This class exists because Scala 2 doesn't (natively) support polymorphic function values (lambdas),
+  * like Scala 3 does.
+  * Consider it an alias for the function signature it wraps.
+  */
+abstract class Chunker {
+  def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit]
+}
 
 /** Persistence implementation backed by Cassandra.
   *
@@ -63,6 +73,7 @@ abstract class CassandraPersistor(
   protected def session: CqlSession
   protected def journalsTableDef: JournalsTableDefinition
   protected def snapshotsTableDef: SnapshotsTableDefinition
+  protected def chunker: Chunker
 
   /** An action verify the table before use. Use will be delayed until this Future completes
     * @param session
@@ -83,13 +94,13 @@ abstract class CassandraPersistor(
     domainIndexEvents
   ) = Await.result(
     (
-      journalsTableDef.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+      journalsTableDef.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
       snapshotsTableDef.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
       StandingQueries.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
       StandingQueryStates.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
       MetaData.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      DomainGraphNodes.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      DomainIndexEvents.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables)
+      DomainGraphNodes.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
+      DomainIndexEvents.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables)
     ).tupled,
     35.seconds
   )
@@ -197,11 +208,17 @@ abstract class CassandraPersistor(
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
 
-  override def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+  override def persistNodeChangeEvents(
+    id: QuineId,
+    events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]
+  ): Future[Unit] =
     journals.persistEvents(id, events)
 
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = journals.deleteEvents(qid)
-  override def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+  override def persistDomainIndexEvents(
+    id: QuineId,
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+  ): Future[Unit] =
     domainIndexEvents.persistEvents(id, events)
   override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = domainIndexEvents.deleteEvents(qid)
 

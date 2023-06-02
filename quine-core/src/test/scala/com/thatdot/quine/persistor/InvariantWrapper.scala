@@ -7,6 +7,8 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
+
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -35,8 +37,11 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     else Future.successful(false)
 
   /** Persist [[NodeChangeEvent]] values. */
-  def persistNodeChangeEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
-    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
+  def persistNodeChangeEvents(
+    id: QuineId,
+    eventsWithTime: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]
+  ): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime.toList } {
       val previous = events
         .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
         .put(atTime, event)
@@ -49,8 +54,11 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
   }
 
   /** Persist [[DomainIndexEvent]] values. */
-  def persistDomainIndexEvents(id: QuineId, eventsWithTime: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
-    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime } {
+  def persistDomainIndexEvents(
+    id: QuineId,
+    eventsWithTime: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+  ): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- eventsWithTime.toList } {
       val previous = events
         .computeIfAbsent(id, _ => new ConcurrentHashMap[EventTime, NodeEvent]())
         .put(atTime, event)

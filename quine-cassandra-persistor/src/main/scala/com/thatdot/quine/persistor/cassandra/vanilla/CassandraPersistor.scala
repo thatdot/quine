@@ -2,6 +2,7 @@ package com.thatdot.quine.persistor.cassandra.vanilla
 
 import java.net.InetSocketAddress
 
+import scala.collection.immutable
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters._
@@ -14,7 +15,7 @@ import com.datastax.oss.driver.api.core.{CqlSession, CqlSessionBuilder, InvalidK
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.cassandra.{JournalsTableDefinition, SnapshotsTableDefinition}
+import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 
 /** Persistence implementation backed by Cassandra.
@@ -55,6 +56,10 @@ class CassandraPersistor(
 
   protected val journalsTableDef: JournalsTableDefinition = Journals
   protected val snapshotsTableDef: SnapshotsTableDefinition = Snapshots
+
+  protected val chunker: Chunker = new Chunker {
+    def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] = f(things)
+  }
 
   // This is mutable, so needs to be a def to get a new one w/out prior settings.
   private def sessionBuilder: CqlSessionBuilder = CqlSession.builder

@@ -6,6 +6,8 @@ import scala.concurrent.Future
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
+
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -39,10 +41,10 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
         .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     getAgent(id).persistNodeChangeEvents(id, events)
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     getAgent(id).persistDomainIndexEvents(id, events)
 
   def getNodeChangeEventsWithTime(

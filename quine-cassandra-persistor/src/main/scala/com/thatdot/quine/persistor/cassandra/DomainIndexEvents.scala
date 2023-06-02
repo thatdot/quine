@@ -8,6 +8,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
 
 import cats.Applicative
+import cats.data.NonEmptyList
 import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
@@ -32,6 +33,7 @@ trait DomainIndexEventColumnNames {
 
 class DomainIndexEvents(
   session: CqlSession,
+  chunker: Chunker,
   writeSettings: CassandraStatementSettings,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
@@ -54,23 +56,25 @@ class DomainIndexEvents(
 
   def nonEmpty(): Future[Boolean] = yieldsResults(DomainIndexEvents.firstRowStatement)
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
-    executeFuture(
-      writeSettings(
-        BatchStatement
-          .newInstance(
-            BatchType.UNLOGGED,
-            events.map { case NodeEvent.WithTime(event: DomainIndexEvent, atTime) =>
-              insert.bindColumns(
-                quineIdColumn.set(id),
-                timestampColumn.set(atTime),
-                dgnIdColumn.set(event.dgnId),
-                dataColumn.set(event)
-              )
-            }: _*
-          )
+  def persistEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+    chunker(events.toList) { events =>
+      executeFuture(
+        writeSettings(
+          BatchStatement
+            .newInstance(
+              BatchType.UNLOGGED,
+              events.map { case NodeEvent.WithTime(event: DomainIndexEvent, atTime) =>
+                insert.bindColumns(
+                  quineIdColumn.set(id),
+                  timestampColumn.set(atTime),
+                  dgnIdColumn.set(event.dgnId),
+                  dataColumn.set(event)
+                )
+              }.toList: _*
+            )
+        )
       )
-    )
+    }
 
   def getJournalWithTime(
     id: QuineId,
@@ -220,6 +224,7 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
   def create(
     session: CqlSession,
     verifyTable: String => Future[Unit],
+    chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -255,7 +260,7 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
         deleteAllByPartitionKeyStatement
       ).map(prepare(session, writeSettings))
       (selects ++ updates).mapN(
-        new DomainIndexEvents(session, writeSettings, _, _, _, _, _, _, _, _, _, _, _, _)
+        new DomainIndexEvents(session, chunker, writeSettings, _, _, _, _, _, _, _, _, _, _, _, _)
       )
     }(ExecutionContexts.parasitic)
 

@@ -8,6 +8,8 @@ import scala.jdk.CollectionConverters._
 import akka.NotUsed
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
+
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -58,8 +60,8 @@ class InMemoryPersistor(
       allTables.forall(_.isEmpty)
     )
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
-    for { NodeEvent.WithTime(event, atTime) <- events } journals
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- events.toList } journals
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit
@@ -70,8 +72,11 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
-    for { NodeEvent.WithTime(event, atTime) <- events } domainIndexEvents
+  def persistDomainIndexEvents(
+    id: QuineId,
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+  ): Future[Unit] = {
+    for { NodeEvent.WithTime(event, atTime) <- events.toList } domainIndexEvents
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
       .put(atTime, event)
     Future.unit

@@ -4,6 +4,7 @@ import java.net.InetSocketAddress
 import java.util.Collections.singletonMap
 import javax.net.ssl.SSLContext
 
+import scala.collection.immutable
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
@@ -11,7 +12,7 @@ import scala.concurrent.duration._
 
 import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Sink, Source}
 
 import com.codahale.metrics.MetricRegistry
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
@@ -25,22 +26,18 @@ import software.aws.mcs.auth.SigV4AuthProvider
 
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.cassandra.{JournalsTableDefinition, SnapshotsTableDefinition}
+import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.AkkaStreams.distinct
 
 /** Persistence implementation backed by AWS Keypaces.
   *
   * @param keyspace The keyspace the quine tables should live in.
-  * @param replicationFactor
   * @param readConsistency
-  * @param writeConsistency
   * @param writeTimeout How long to wait for a response when running an INSERT statement.
   * @param readTimeout How long to wait for a response when running a SELECT statement.
-  * @param endpoints address(s) (host and port) of the Cassandra cluster to connect to.
-  * @param localDatacenter If endpoints are specified, this argument is required. Default value on a new Cassandra install is 'datacenter1'.
   * @param shouldCreateTables Whether or not to create the required tables if they don't already exist.
-  * @param shouldCreateKeyspace Whether or not to create the specified keyspace if it doesn't already exist. If it doesn't exist, it'll run {{{CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}}}}
+  * @param shouldCreateKeyspace Whether or not to create the specified keyspace if it doesn't already exist. If it doesn't exist, it'll run {{{CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy'}}}}
   */
 class KeyspacesPersistor(
   persistenceConfig: PersistenceConfig,
@@ -65,6 +62,15 @@ class KeyspacesPersistor(
       shouldCreateKeyspace,
       snapshotPartMaxSizeBytes
     ) {
+
+  protected val chunker: Chunker = new Chunker {
+    import scala.collection.compat.{immutable => _, _} // for the .lengthIs
+    def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] =
+      if (things.lengthIs <= 30) // If it can be done as a single batch, just run it w/out Akka Streams
+        f(things)
+      else
+        Source(things).grouped(30).runWith(Sink.foreachAsync(6)(f)).map(_ => ())(ExecutionContexts.parasitic)
+  }
 
   protected val journalsTableDef: JournalsTableDefinition = Journals
   protected val snapshotsTableDef: SnapshotsTableDefinition = Snapshots

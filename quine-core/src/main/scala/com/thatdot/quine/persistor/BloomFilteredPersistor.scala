@@ -8,6 +8,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
 import com.google.common.hash.{BloomFilter, Funnel, PrimitiveSink}
 
 import com.thatdot.quine.graph.{
@@ -70,12 +71,15 @@ private class BloomFilteredPersistor(
     // TODO if bloomFilter.approximateElementCount() == 0 and the bloom filter is the only violation, that's also fine
     wrappedPersistor.emptyOfQuineData()
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistNodeChangeEvents(id, events)
   }
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = {
+  def persistDomainIndexEvents(
+    id: QuineId,
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+  ): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistDomainIndexEvents(id, events)
   }

@@ -15,6 +15,7 @@ import akka.NotUsed
 import akka.actor.{ActorSystem, Cancellable}
 import akka.stream.scaladsl.{Source, StreamConverters}
 
+import cats.data.NonEmptyList
 import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegistry}
 import com.typesafe.scalalogging.StrictLogging
 import org.mapdb._
@@ -235,18 +236,19 @@ final class MapDbPersistor(
       Future.failed(e)
     }(nodeDispatcherEC)
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future {
-    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
-      val serializedEvent = NodeChangeEventCodec.format.write(event)
-      nodeEventSize.update(serializedEvent.length)
-      nodeEventTotalSize.inc(serializedEvent.length.toLong)
-      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
-    }
-    val _ = nodeChangeEvents.putAll((eventsMap toMap).asJava)
-  }(blockingDispatcherEC).recoverWith { case e =>
-    logger.error("persist NodeChangeEvent failed.", e)
-    Future.failed(e)
-  }(nodeDispatcherEC)
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+    Future {
+      val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events.toList } yield {
+        val serializedEvent = NodeChangeEventCodec.format.write(event)
+        nodeEventSize.update(serializedEvent.length)
+        nodeEventTotalSize.inc(serializedEvent.length.toLong)
+        Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+      }
+      val _ = nodeChangeEvents.putAll((eventsMap.toMap).asJava)
+    }(blockingDispatcherEC).recoverWith { case e =>
+      logger.error("persist NodeChangeEvent failed.", e)
+      Future.failed(e)
+    }(nodeDispatcherEC)
 
   private def deleteQuineIdEntries(
     map: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]],
@@ -263,17 +265,18 @@ final class MapDbPersistor(
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] =
     deleteQuineIdEntries(nodeChangeEvents, qid, "deleteNodeChangeEvents")
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
-    val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events } yield {
-      val serializedEvent = DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
-      nodeEventSize.update(serializedEvent.length)
-      nodeEventTotalSize.inc(serializedEvent.length.toLong)
-      Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
-    }
-    val _ = domainIndexEvents.putAll((eventsMap toMap).asJava)
-  }(blockingDispatcherEC).recoverWith { case e =>
-    logger.error("persist DomainIndexEvent failed.", e); Future.failed(e)
-  }(nodeDispatcherEC)
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+    Future {
+      val eventsMap = for { NodeEvent.WithTime(event, atTime) <- events.toList } yield {
+        val serializedEvent = DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
+        nodeEventSize.update(serializedEvent.length)
+        nodeEventTotalSize.inc(serializedEvent.length.toLong)
+        Array[AnyRef](id.array, Long.box(atTime.eventTime)) -> serializedEvent
+      }
+      val _ = domainIndexEvents.putAll((eventsMap toMap).asJava)
+    }(blockingDispatcherEC).recoverWith { case e =>
+      logger.error("persist DomainIndexEvent failed.", e); Future.failed(e)
+    }(nodeDispatcherEC)
 
   override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] =
     deleteQuineIdEntries(domainIndexEvents, qid, "deleteDomainIndexEvents")

@@ -9,6 +9,7 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 
 import cats.Applicative
+import cats.data.NonEmptyList
 import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
@@ -97,6 +98,7 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
   def create(
     session: CqlSession,
     verifyTable: String => Future[Unit],
+    chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -130,7 +132,7 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
         T2(insertStatement, deleteAllByPartitionKeyStatement)
           .map(prepare(session, writeSettings))
           .toTuple
-      ).mapN(new Journals(session, writeSettings, firstRowStatement, _, _, _, _, _, _, _, _, _, _, _))
+      ).mapN(new Journals(session, chunker, writeSettings, firstRowStatement, _, _, _, _, _, _, _, _, _, _, _))
     )(ExecutionContexts.parasitic)
 
   }
@@ -138,6 +140,7 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
 
 class Journals(
   session: CqlSession,
+  chunker: Chunker,
   writeSettings: CassandraStatementSettings,
   firstRowStatement: SimpleStatement,
   selectAllQuineIds: PreparedStatement,
@@ -161,22 +164,24 @@ class Journals(
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")
 
-  def persistEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
-    executeFuture(
-      writeSettings(
-        BatchStatement
-          .newInstance(
-            BatchType.UNLOGGED,
-            events map { case NodeEvent.WithTime(event, atTime) =>
-              insert.bindColumns(
-                quineIdColumn.set(id),
-                timestampColumn.set(atTime),
-                dataColumn.set(event)
-              )
-            }: _*
-          )
+  def persistEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+    chunker(events.toList) { events =>
+      executeFuture(
+        writeSettings(
+          BatchStatement
+            .newInstance(
+              BatchType.UNLOGGED,
+              events.map { case NodeEvent.WithTime(event, atTime) =>
+                insert.bindColumns(
+                  quineIdColumn.set(id),
+                  timestampColumn.set(atTime),
+                  dataColumn.set(event)
+                )
+              }.toList: _*
+            )
+        )
       )
-    )
+    }
 
   def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(
     deleteByQuineId.bindColumns(quineIdColumn.set(qid))

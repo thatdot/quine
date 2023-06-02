@@ -104,7 +104,7 @@ abstract private[graph] class AbstractNodeActor(
     initialEdges.foreach(edgeCollection.addEdge)
     val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
       if (persistor.persistenceConfig.journalEnabled)
-        events => metrics.persistorPersistEventTimer.time(persistor.persistNodeChangeEvents(qid, events.toList))
+        events => metrics.persistorPersistEventTimer.time(persistor.persistNodeChangeEvents(qid, events))
       else
         _ => Future.unit
 
@@ -222,6 +222,7 @@ abstract private[graph] class AbstractNodeActor(
       atTime,
       persistAndApplyEventsEffectsInMemory[PropertyEvent](
         _,
+        persistor.persistNodeChangeEvents(qid, _),
         events => events.toList.foreach(applyPropertyEffect)
       )
     )
@@ -264,6 +265,7 @@ abstract private[graph] class AbstractNodeActor(
     refuseHistoricalUpdates(event :: Nil)(
       persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
         NonEmptyList.one(NodeEvent.WithTime(event, tickEventSequence())),
+        persistor.persistDomainIndexEvents(qid, _),
         // We know there is only one event here, because we're only passing one above.
         // So just calling .head works as well as .foreach
         events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true)
@@ -272,13 +274,14 @@ abstract private[graph] class AbstractNodeActor(
 
   protected def persistAndApplyEventsEffectsInMemory[A <: NodeEvent](
     effectingEvents: NonEmptyList[NodeEvent.WithTime[A]],
+    persistEvents: NonEmptyList[WithTime[A]] => Future[Unit],
     applyEventsEffectsInMemory: NonEmptyList[A] => Unit
   ): Future[Done.type] = {
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Unit] =
       if (persistenceConfig.journalEnabled) {
         metrics.persistorPersistEventTimer
-          .time(persistor.persistEvents(qid, effectingEvents.toList))
+          .time(persistEvents(effectingEvents))
           .transform(
             _ =>
               // TODO: add a metric to count `persistAttempts`

@@ -14,6 +14,7 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.Source
 
+import cats.data.NonEmptyList
 import org.rocksdb._
 
 import com.thatdot.quine.graph.{
@@ -289,18 +290,16 @@ final class RocksDbPersistor(
     }(ioDispatcher)
   }
 
-  def persistNodeChangeEvents(id: QuineId, events: Seq[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = Future {
-    val serializedEvents = {
-      //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
-      for {
-        NodeEvent.WithTime(event, atTime) <- events //.filter(n => n.event.isInstanceOf[NodeChangeEvent])
+  def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
+    Future {
+      val serializedEvents = for {
+        NodeEvent.WithTime(event, atTime) <- events.toList
       } yield qidAndTime2Key(
         id,
         atTime
       ) -> NodeChangeEventCodec.format.write(event)
-    }
-    putKeyValues(nodeEventsCF, serializedEvents toMap)
-  }(ioDispatcher)
+      putKeyValues(nodeEventsCF, serializedEvents toMap)
+    }(ioDispatcher)
 
   /** Delete rows from the given column family that start with the given QuineId. The keys of the column family are
     * expected to be a QuineId followed by an EventTime (8 bytes).
@@ -317,18 +316,17 @@ final class RocksDbPersistor(
 
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = deleteQid(qid, nodeEventsCF)
 
-  def persistDomainIndexEvents(id: QuineId, events: Seq[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] = Future {
-    val serializedEvents =
-      //TODO when we fully separate codecs and nodeEvent.WithTime this filter can be removed.
-      for {
-        NodeEvent.WithTime(event, atTime) <- events //.filter(n => n.event.isInstanceOf[DomainIndexEvent])
+  def persistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
+    Future {
+      val serializedEvents = for {
+        NodeEvent.WithTime(event, atTime) <- events.toList
       } yield qidAndTime2Key(
         id,
         atTime
-      ) -> DomainIndexEventCodec.format.write(event.asInstanceOf[DomainIndexEvent])
+      ) -> DomainIndexEventCodec.format.write(event)
 
-    putKeyValues(domainIndexEventsCF, serializedEvents toMap)
-  }(ioDispatcher)
+      putKeyValues(domainIndexEventsCF, serializedEvents toMap)
+    }(ioDispatcher)
 
   override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = deleteQid(qid, domainIndexEventsCF)
 
