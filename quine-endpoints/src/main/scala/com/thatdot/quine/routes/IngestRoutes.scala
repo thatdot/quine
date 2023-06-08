@@ -203,6 +203,16 @@ final case class KinesisCheckpointSettings(
 @docs("A specification of a data source and rules for consuming data from that source.")
 sealed abstract class IngestStreamConfiguration
 
+/** Type used to persist ingest stream configurations alongside their status for later restoration.
+  *
+  * @param config Ingest stream configuration
+  * @param status Status of the ingest stream
+  */
+final case class IngestStreamWithStatus(
+  config: IngestStreamConfiguration,
+  status: Option[IngestStreamStatus]
+)
+
 object KafkaIngest {
   // Takes a set of topic names
   type Topics = Set[String]
@@ -741,6 +751,9 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     genericRecord[IngestStreamInfoWithName].withExample(exampleIngestStreamInfoWithName)
   implicit lazy val fileIngestModeSchema: Enum[FileIngestMode] =
     stringEnumeration(FileIngestMode.values)(_.toString)
+
+  implicit lazy val ingestStreamWithStatus: Record[IngestStreamWithStatus] =
+    genericRecord[IngestStreamWithStatus]
 
 }
 

@@ -26,7 +26,14 @@ import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
-import com.thatdot.quine.graph.{GraphService, HostQuineMetrics, PatternOrigin, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{
+  GraphService,
+  HostQuineMetrics,
+  MemberIdx,
+  PatternOrigin,
+  StandingQuery,
+  StandingQueryId
+}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PersistenceAgent, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
@@ -108,6 +115,9 @@ final class QuineApp(graph: GraphService)
   @volatile
   private[this] var ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]] = Map.empty
   final private[this] val ingestStreamsLock = new AnyRef
+
+  // Constant member index 0 for Quine OSS
+  private val thisMemberIdx: MemberIdx = 0
 
   /** == Accessors == */
 
@@ -285,8 +295,8 @@ final class QuineApp(graph: GraphService)
   def getStandingQueryId(queryName: String): Option[StandingQueryId] =
     standingQueryOutputTargets.get(queryName).map(_._1)
 
-  def registerTerminationHooks(name: String, metrics: IngestMetrics)(ec: ExecutionContext): Future[Done] => Unit =
-    termSignal => {
+  def registerTerminationHooks(name: String, metrics: IngestMetrics)(ec: ExecutionContext): Future[Done] => Unit = {
+    termSignal =>
       termSignal.onComplete {
         case Failure(err) =>
           val now = Instant.now
@@ -295,6 +305,9 @@ final class QuineApp(graph: GraphService)
             s"Ingest stream '$name' has failed after ${metrics.millisSinceStart(now)}ms",
             err
           )
+          Try(blocking(ingestStreamsLock.synchronized {
+            Await.ready(syncIngestStreamsMetaData(thisMemberIdx), 5.seconds)
+          }))
 
         case Success(_) =>
           val now = Instant.now
@@ -302,8 +315,12 @@ final class QuineApp(graph: GraphService)
           logger.info(
             s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
           )
+          Try(blocking(ingestStreamsLock.synchronized {
+            Await.ready(syncIngestStreamsMetaData(thisMemberIdx), 5.seconds)
+          }))
       }(ec)
-    }
+  }
+
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
@@ -340,13 +357,8 @@ final class QuineApp(graph: GraphService)
 
           ingestStreams += name -> streamDefWithControl
 
-          val thisMemberId = 0
           Await.result(
-            storeLocalMetaData(
-              IngestStreamsKey,
-              thisMemberId,
-              ingestStreams.map { case (name, stream) => name -> stream.settings }.toMap
-            ),
+            syncIngestStreamsMetaData(thisMemberIdx),
             timeout.duration
           )
 
@@ -360,19 +372,37 @@ final class QuineApp(graph: GraphService)
   def getIngestStreams(): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
     ingestStreams
 
+  protected def getIngestStreamsWithStatus: Future[Map[String, IngestStreamWithStatus]] = {
+    implicit val ec: ExecutionContext = graph.nodeDispatcherEC
+    ingestStreams.toList
+      .traverse { case (name, stream) =>
+        for {
+          status <- stream.status(graph.materializer)
+        } yield (name, IngestStreamWithStatus(stream.settings, Some(status)))
+      }
+      .map(_.toMap)(ExecutionContexts.parasitic)
+  }
+
+  private def syncIngestStreamsMetaData(thisMemberId: Int): Future[Unit] = {
+    implicit val ec: ExecutionContext = graph.nodeDispatcherEC
+    for {
+      streamsWithStatus <- getIngestStreamsWithStatus
+      res <- storeLocalMetaData[Map[String, IngestStreamWithStatus]](
+        IngestStreamsKey,
+        thisMemberId,
+        streamsWithStatus
+      )
+    } yield res
+  }
+
   def removeIngestStream(
     name: String
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = Try {
-    val thisMemberId = 0
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(name).map { stream =>
         ingestStreams -= name
         Await.result(
-          storeLocalMetaData(
-            IngestStreamsKey,
-            thisMemberId,
-            ingestStreams.map { case (name, stream) => name -> stream.settings }.toMap
-          ),
+          syncIngestStreamsMetaData(thisMemberIdx),
           QuineApp.ConfigApiTimeout
         )
         stream
@@ -430,10 +460,18 @@ final class QuineApp(graph: GraphService)
       }.toMap
     )
     val ingestStreamFut =
-      getOrDefaultLocalMetaData(IngestStreamsKey, 0, Map.empty[String, IngestStreamConfiguration])
+      getOrDefaultLocalMetaDataWithFallback[Map[String, IngestStreamWithStatus], Map[
+        String,
+        IngestStreamConfiguration
+      ]](
+        IngestStreamsKey,
+        thisMemberIdx,
+        Map.empty[String, IngestStreamWithStatus],
+        _.mapValues(i => IngestStreamWithStatus(config = i, status = None))
+      )
 
     {
-      implicit val ec = graph.system.dispatcher
+      implicit val ec: ExecutionContext = graph.system.dispatcher
       for {
         sq <- sampleQueriesFut
         qq <- quickQueriesFut
@@ -469,13 +507,13 @@ final class QuineApp(graph: GraphService)
         sqId -> outputs
       }.toMap
 
-      is.foreach { case (name, settings) =>
-        addIngestStream(name, settings, wasRestoredFromStorage = true, timeout) match {
+      is.foreach { case (name, ingest) =>
+        addIngestStream(name, ingest.config, wasRestoredFromStorage = true, timeout) match {
           case Success(true) => ()
           case Success(false) =>
-            logger.error(s"Duplicate ingest stream attempted to start with name: $name and settings: $settings")
+            logger.error(s"Duplicate ingest stream attempted to start with name: $name and settings: ${ingest.config}")
           case Failure(e) =>
-            logger.error(s"Error when restoring ingest stream: $name with settings: $settings", e)
+            logger.error(s"Error when restoring ingest stream: $name with settings: ${ingest.config}", e)
         }
       }
       if (shouldResumeIngest) {
@@ -537,7 +575,7 @@ object QuineApp {
     * Remember to increment this if schemas in Quine app state evolve in
     * backwards incompatible ways.
     */
-  final val CurrentPersistenceVersion: Version = Version(1, 1, 0)
+  final val CurrentPersistenceVersion: Version = Version(1, 2, 0)
 
   def quineAppIsEmpty(persistenceAgent: PersistenceAgent): Future[Boolean] = {
     val metaDataKeys =

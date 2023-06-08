@@ -121,6 +121,42 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
         storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
     }(graph.system.dispatcher)
 
+  /** Retrieve a value associated with a key stored for this local app, but write and return in a default value
+    * if the key is not already defined for the local app. Upon encountering an unrecognized value, will attempt
+    * to decode as type B and convert to type A. Used for backwards-compatible migrations.
+    *
+    * @note NOT threadsafe. Should be used in synchronized contexts
+    * @note the value is serialized as the UTF-8 bytes of its JSON representation
+    * @param key          name of the setting
+    * @param defaultValue default setting value
+    * @param recovery     a function converting a value from the fallback schema to the desired schema
+    * @return the (possibly updated) value
+    */
+  final protected def getOrDefaultLocalMetaDataWithFallback[A: JsonSchema, B: JsonSchema](
+    key: String,
+    localMemberId: MemberIdx,
+    defaultValue: => A,
+    recovery: B => A
+  ): Future[A] = synchronized {
+    getLocalMetaData[A](key, localMemberId)
+      .flatMap {
+        case Some(value) => Future.successful(value)
+        case None =>
+          val defaulted = defaultValue
+          storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
+      }(graph.system.dispatcher)
+      .recoverWith { case _: MetaDataDeserializationException =>
+        getLocalMetaData[B](key, localMemberId).flatMap {
+          case Some(value) => Future.successful(recovery(value))
+          case None =>
+            val defaulted = defaultValue
+            storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
+        }(graph.system.dispatcher)
+      }(graph.nodeDispatcherEC)
+  }
+
+  (graph.system.dispatcher)
+
   /** Retrieve a value associated with a key stored for the entire graph as a
     * whole, but write and return in a default value if the key is not already
     * defined.

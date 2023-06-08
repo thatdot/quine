@@ -39,6 +39,8 @@ trait IngestStreamState {
 
   def getIngestStreams(): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
 
+  protected def getIngestStreamsWithStatus: Future[Map[String, IngestStreamWithStatus]]
+
   def removeIngestStream(
     name: String
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
