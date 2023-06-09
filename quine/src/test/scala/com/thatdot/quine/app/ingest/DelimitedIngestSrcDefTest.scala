@@ -157,19 +157,21 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite {
   }
 
   test("number format") {
-    val d: IngestSrcDef = IngestSrcDef.createIngestSrcDef(
-      "number input",
-      NumberIteratorIngest(
-        FileIngestFormat.CypherLine(
-          s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)"""
+    val d: IngestSrcDef = IngestSrcDef
+      .createIngestSrcDef(
+        "number input",
+        NumberIteratorIngest(
+          FileIngestFormat.CypherLine(
+            s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)"""
+          ),
+          0,
+          Some(11L),
+          None,
+          10
         ),
-        0,
-        Some(11L),
-        None,
-        10
-      ),
-      SwitchMode.Open
-    )
+        SwitchMode.Open
+      )
+      .valueOr(_ => ???)
     val g = graph.asInstanceOf[LiteralOpsGraph]
 
     Await.ready(
@@ -197,17 +199,19 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite {
 
     val istream = new StdInStream()
 
-    val d: IngestSrcDef = IngestSrcDef.createIngestSrcDef(
-      "stdin",
-      StandardInputIngest(
-        FileIngestFormat.CypherLine(s"""MATCH (x) WHERE id(x) = idFrom("stdin", $$that) SET x.value = $$that"""),
-        "UTF-8",
-        10,
-        1000,
-        None
-      ),
-      SwitchMode.Open
-    )
+    val d: IngestSrcDef = IngestSrcDef
+      .createIngestSrcDef(
+        "stdin",
+        StandardInputIngest(
+          FileIngestFormat.CypherLine(s"""MATCH (x) WHERE id(x) = idFrom("stdin", $$that) SET x.value = $$that"""),
+          "UTF-8",
+          10,
+          1000,
+          None
+        ),
+        SwitchMode.Open
+      )
+      .valueOr(_ => ???)
     val done = d.stream().toMat(Sink.ignore)(Keep.right).run()
     val fc = d.getControl.unsafeToFuture()
     val c: QuineAppIngestControl = Await.result(fc, 3.seconds)

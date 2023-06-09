@@ -331,39 +331,43 @@ final class QuineApp(graph: GraphService)
       if (ingestStreams.contains(name)) {
         Success(false)
       } else
-        Try {
-          val ingestSrcDef = IngestSrcDef.createIngestSrcDef(
+        IngestSrcDef
+          .createIngestSrcDef(
             name,
             settings,
             if (wasRestoredFromStorage) SwitchMode.Close else SwitchMode.Open
           )(graph)
+          .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
+          .map { ingestSrcDef =>
 
-          val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
-          val ingestSrc = ingestSrcDef.stream(
-            shouldResumeIngest = false,
-            registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC)
-          )
+            val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
+            val ingestSrc = ingestSrcDef.stream(
+              shouldResumeIngest = false,
+              registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC)
+            )
 
-          graph.masterStream.addIngestSrc(ingestSrc)
+            graph.masterStream.addIngestSrc(ingestSrc)
 
-          val streamDefWithControl = IngestStreamWithControl(
-            settings,
-            metrics,
-            ingestSrcDef.getControl.map(_.valveHandle),
-            ingestSrcDef.getControl.map(_.termSignal),
-            ingestSrcDef.getControl.map { c => c.terminate(); () },
-            restored = wasRestoredFromStorage
-          )
+            val streamDefWithControl = IngestStreamWithControl(
+              settings,
+              metrics,
+              ingestSrcDef.getControl.map(_.valveHandle),
+              ingestSrcDef.getControl.map(_.termSignal),
+              ingestSrcDef.getControl.map { c => c.terminate(); () },
+              restored = wasRestoredFromStorage
+            )
 
-          ingestStreams += name -> streamDefWithControl
+            ingestStreams += name -> streamDefWithControl
 
-          Await.result(
-            syncIngestStreamsMetaData(thisMemberIdx),
-            timeout.duration
-          )
+            Await.result(
+              syncIngestStreamsMetaData(thisMemberIdx),
+              timeout.duration
+            )
 
-          true
-        }
+            true
+          }
+          .toEither
+          .toTry
     })
 
   def getIngestStream(name: String): Option[IngestStreamWithControl[IngestStreamConfiguration]] =

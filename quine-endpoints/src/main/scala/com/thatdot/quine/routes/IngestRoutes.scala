@@ -2,6 +2,9 @@ package com.thatdot.quine.routes
 
 import java.time.Instant
 
+import scala.util.control.NoStackTrace
+
+import cats.data.NonEmptyList
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
@@ -202,6 +205,11 @@ final case class KinesisCheckpointSettings(
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
 sealed abstract class IngestStreamConfiguration
+object IngestStreamConfiguration {
+  case class InvalidStreamConfiguration(errors: NonEmptyList[String])
+      extends Exception(s"Encountered errors in provided ingest configuration: ${errors.toList.mkString("; ")}")
+      with NoStackTrace
+}
 
 /** Type used to persist ingest stream configurations alongside their status for later restoration.
   *

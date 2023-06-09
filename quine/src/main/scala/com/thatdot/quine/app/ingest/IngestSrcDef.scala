@@ -17,7 +17,9 @@ import akka.stream.{KillSwitches, RestartSettings}
 import akka.util.ByteString
 import akka.{Done, NotUsed}
 
+import cats.data.ValidatedNel
 import cats.effect.IO
+import cats.implicits.catsSyntaxValidatedId
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.KafkaException
 
@@ -252,7 +254,7 @@ object IngestSrcDef extends LazyLogging {
     initialSwitchMode: SwitchMode
   )(implicit
     graph: CypherOpsGraph
-  ): IngestSrcDef = settings match {
+  ): ValidatedNel[String, IngestSrcDef] = settings match {
     case KafkaIngest(
           format,
           topics,
@@ -312,7 +314,7 @@ object IngestSrcDef extends LazyLogging {
             numRetries,
             maxPerSecond,
             recordEncodings.map(ContentDecoder.apply)
-          )
+          ).valid
         case Some(settings) =>
           KinesisCheckpointSrcDef(
             name,
@@ -328,7 +330,7 @@ object IngestSrcDef extends LazyLogging {
             maxPerSecond,
             recordEncodings.map(ContentDecoder.apply),
             KinesisSchedulerCheckpointSettings.create(settings.maxBatchSize, Duration.ofMillis(settings.maxBatchWait))
-          )
+          ).valid
 
       }
 
@@ -353,7 +355,7 @@ object IngestSrcDef extends LazyLogging {
         parallelism,
         maximumPerSecond,
         recordEncodings.map(ContentDecoder.apply)
-      )
+      ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
       ServerSentEventsSrcDef(
@@ -364,7 +366,7 @@ object IngestSrcDef extends LazyLogging {
         parallelism,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply)
-      )
+      ).valid
 
     case SQSIngest(
           format,
@@ -389,7 +391,7 @@ object IngestSrcDef extends LazyLogging {
         deleteReadMessages,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply)
-      )
+      ).valid
 
     case WebsocketSimpleStartupIngest(
           format,
@@ -408,7 +410,7 @@ object IngestSrcDef extends LazyLogging {
         parallelism,
         encoding,
         initialSwitchMode
-      )
+      ).valid
 
     case FileIngest(
           format,
@@ -434,6 +436,7 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond,
           name
         )
+        .valid
 
     case StandardInputIngest(
           format,
@@ -455,6 +458,7 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond,
           name
         )
+        .valid
 
     case NumberIteratorIngest(format, startAt, ingestLimit, throttlePerSecond, parallelism) =>
       ContentDelimitedIngestSrcDef
@@ -470,6 +474,7 @@ object IngestSrcDef extends LazyLogging {
           throttlePerSecond,
           name
         )
+        .valid
   }
 
 }

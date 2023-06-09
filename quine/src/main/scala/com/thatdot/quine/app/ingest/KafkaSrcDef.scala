@@ -15,6 +15,8 @@ import akka.kafka.{
 import akka.stream.scaladsl.{Flow, Source}
 import akka.{Done, NotUsed}
 
+import cats.data.ValidatedNel
+import cats.implicits.catsSyntaxOption
 import org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerConfig.AUTO_OFFSET_RESET_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -23,6 +25,7 @@ import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserialize
 
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
@@ -89,7 +92,7 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph): IngestSrcDef = {
+  )(implicit graph: CypherOpsGraph): ValidatedNel[KafkaSettingsValidator.ErrorString, IngestSrcDef] = {
     val isSingleHost: Boolean = graph.isSingleHost
     val subscription: Subscription = topics.fold(
       KafkaSubscriptions.topics,
@@ -116,35 +119,41 @@ object KafkaSrcDef {
         decoders
       )
 
-    offsetCommitting match {
-      case None =>
-        val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
+    val complaintsFromValidator: ValidatedNel[String, Unit] =
+      KafkaSettingsValidator(consumerSettings.properties)
+        .validate(assumeConfigIsFinal = true)
+        .toInvalid(())
 
-        NonCommitting(
-          name,
-          format,
-          initialSwitchMode,
-          parallelism,
-          consumer,
-          endingOffset,
-          maxPerSecond,
-          decoders
-        )
-      case Some(koc @ KafkaOffsetCommitting.ExplicitCommit(_, _, _, _)) =>
-        val consumer: Source[WithOffset, Consumer.Control] =
-          Consumer.committableSource(consumerSettings, subscription)
+    complaintsFromValidator.map { _ =>
+      offsetCommitting match {
+        case None =>
+          val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
+          NonCommitting(
+            name,
+            format,
+            initialSwitchMode,
+            parallelism,
+            consumer,
+            endingOffset,
+            maxPerSecond,
+            decoders
+          )
+        case Some(koc @ KafkaOffsetCommitting.ExplicitCommit(_, _, _, _)) =>
+          val consumer: Source[WithOffset, Consumer.Control] =
+            Consumer.committableSource(consumerSettings, subscription)
 
-        Committing(
-          name,
-          format,
-          initialSwitchMode,
-          parallelism,
-          consumer,
-          endingOffset,
-          maxPerSecond,
-          koc,
-          decoders
-        )
+          Committing(
+            name,
+            format,
+            initialSwitchMode,
+            parallelism,
+            consumer,
+            endingOffset,
+            maxPerSecond,
+            koc,
+            decoders
+          )
+      }
     }
   }
 

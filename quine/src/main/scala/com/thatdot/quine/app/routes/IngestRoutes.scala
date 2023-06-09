@@ -200,15 +200,13 @@ trait IngestRoutesImpl
               s"Cannot create ingest stream `$name` (a stream with this name already exists)"
             )
           )
-
         case Success(true) => Right(())
-        case Failure(err) =>
-          err.printStackTrace; Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
+        case Failure(err) => Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
       }
 
     ingestStreamStart.implementedBy {
       case (name, settings: KafkaIngest) =>
-        KafkaSettingsValidator(settings).validate match {
+        KafkaSettingsValidator(settings.kafkaProperties, settings.groupId, settings.offsetCommitting).validate() match {
           case Some(errors) =>
             Left(
               endpoints4s.Invalid(
