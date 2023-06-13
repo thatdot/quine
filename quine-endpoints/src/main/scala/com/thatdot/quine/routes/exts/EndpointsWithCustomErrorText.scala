@@ -31,7 +31,7 @@ trait EndpointsWithCustomErrorText extends Endpoints {
           |  Contact support if you continue to have issues.""".stripMargin
 
   /** Manually generate a markdown bullet list from the list of message strings. */
-  private def buildErrorMessage(docs: String, messages: Seq[String]) =
+  private def buildErrorMessage(docs: String, messages: Seq[String]): String =
     if (messages.isEmpty) ""
     else {
       val bulletSeparator = "\n - "
@@ -46,10 +46,10 @@ trait EndpointsWithCustomErrorText extends Endpoints {
     internalServerError(docs = Some(f"${serverErrorDoc.format("")}"))
 
   def customBadRequest(messages: String*): Response[ClientErrors] = badRequest(
-    Some(buildErrorMessage(badRequestDoc, messages.toSeq))
+    Some(buildErrorMessage(badRequestDoc, messages))
   )
   def customServerError(messages: String*): Response[ServerError] = internalServerError(
-    Some(buildErrorMessage(serverErrorDoc, messages.toSeq))
+    Some(buildErrorMessage(serverErrorDoc, messages))
   )
 
 }

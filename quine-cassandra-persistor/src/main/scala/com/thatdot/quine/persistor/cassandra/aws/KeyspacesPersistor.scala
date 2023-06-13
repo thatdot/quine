@@ -29,6 +29,7 @@ import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.AkkaStreams.distinct
+import com.thatdot.quine.util.Retry
 
 /** Persistence implementation backed by AWS Keypaces.
   *
@@ -162,21 +163,20 @@ class KeyspacesPersistor(
 
   // Delay by polling until  Keyspaces lists the table as ACTIVE, as per
   // https://docs.aws.amazon.com/keyspaces/latest/devguide/working-with-tables.html#tables-create
-  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit] = akka.pattern.retry(
-    () =>
+  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit] = Retry
+    .until(
       session
         .executeAsync(tableStatusQuery(tableName))
         .toScala
-        .flatMap { rs =>
-          val status = rs.one().getString("status")
-          if (status == "ACTIVE")
-            Future.unit
-          else {
-            logger.info(s"$tableName status is $status; polling status again")
-            Future.failed(new Exception(status))
-          }
-        }(ExecutionContexts.parasitic),
-    15,
-    4.seconds
-  )(materializer.executionContext, materializer.system.scheduler)
+        .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContexts.parasitic),
+      (status: Option[String]) =>
+        (status contains "ACTIVE") || {
+          logger.info(s"$tableName status is $status; polling status again")
+          false
+        },
+      15,
+      4.seconds,
+      materializer.system.scheduler
+    )(materializer.executionContext)
+    .map(_ => ())(ExecutionContexts.parasitic)
 }
