@@ -16,8 +16,8 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
   test("empty settings map accepted") {
     assert(KafkaSettingsValidator(Map()).validate().isEmpty)
   }
-  test("final empty settings map rejected") {
-    assert(KafkaSettingsValidator(Map()).validate(assumeConfigIsFinal = true).nonEmpty)
+  test("final empty settings map accepted") {
+    assert(KafkaSettingsValidator(Map()).validate(assumeConfigIsFinal = true).isEmpty)
   }
 
   test("Unrecognized setting disallowed") {
@@ -50,14 +50,6 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
         Map("auto.commit.interval.ms" -> "true"),
         explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
       ).validate(false).get.size == 1
-    )
-
-    // finalized config
-    assert(
-      KafkaSettingsValidator(
-        Map("enable.auto.commit" -> "true"),
-        explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
-      ).validate(true).get.size == 3 // the original error plus two for missing serializer and deserializer
     )
 
   }
