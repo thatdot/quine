@@ -10,28 +10,37 @@ import endpoints4s.generic.{docs, title, unnamed}
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
 
-sealed abstract class IngestStreamStatus(val isTerminal: Boolean)
+sealed abstract class ValvePosition(position: String)
+
+object ValvePosition {
+
+  case object Open extends ValvePosition("Open")
+  case object Closed extends ValvePosition("Closed")
+
+}
+
+sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: ValvePosition)
 
 object IngestStreamStatus {
   @docs("The stream is currently actively running, and possibly waiting for new records to become available upstream.")
-  case object Running extends IngestStreamStatus(isTerminal = false)
+  case object Running extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Open)
 
   @docs("The stream has been paused by a user.")
-  case object Paused extends IngestStreamStatus(isTerminal = false)
+  case object Paused extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs("The stream has processed all records, and the upstream data source will not make more records available.")
-  case object Completed extends IngestStreamStatus(isTerminal = true)
+  case object Completed extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
 
   @docs("The stream has been stopped by a user.")
-  case object Terminated extends IngestStreamStatus(isTerminal = true)
+  case object Terminated extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
 
   @docs(
     "The stream has been restored from a saved state, but is not yet running: For example, after restarting Quine."
   )
-  case object Restored extends IngestStreamStatus(isTerminal = false)
+  case object Restored extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs("The stream has been stopped by a failure during processing.")
-  case object Failed extends IngestStreamStatus(isTerminal = true)
+  case object Failed extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
 
   val states: Seq[IngestStreamStatus] = Seq(Running, Paused, Completed, Terminated, Restored, Failed)
 }

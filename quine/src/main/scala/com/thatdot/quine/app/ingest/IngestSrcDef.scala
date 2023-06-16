@@ -119,9 +119,8 @@ abstract class IngestSrcDef(
 
   /** Assembled stream definition.
     */
-  def stream(): Source[IngestSrcExecToken, NotUsed] = stream(shouldResumeIngest = true, _ => ())
+  def stream(): Source[IngestSrcExecToken, NotUsed] = stream(_ => ())
   def stream(
-    shouldResumeIngest: Boolean,
     registerTerminationHooks: Future[Done] => Unit
   ): Source[IngestSrcExecToken, NotUsed] =
     RestartSource.onFailuresWithBackoff(restartSettings) { () =>
@@ -134,7 +133,7 @@ abstract class IngestSrcDef(
         .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
           b.map(v => ControlSwitches(a, v, c))(ExecutionContexts.parasitic)
         }
-        .mapMaterializedValue(c => setControl(c, shouldResumeIngest, registerTerminationHooks))
+        .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
         .named(name)
     }
 
@@ -143,12 +142,12 @@ abstract class IngestSrcDef(
 
   private def setControl(
     control: Future[QuineAppIngestControl],
-    shouldResumeIngest: Boolean,
+    desiredSwitchMode: SwitchMode,
     registerTerminationHooks: Future[Done] => Unit
   ): Unit = {
 
     // Ensure valve is opened if required and termination hooks are registered
-    if (shouldResumeIngest) control.flatMap(c => c.valveHandle.flip(SwitchMode.Open))(graph.nodeDispatcherEC)
+    control.foreach(c => c.valveHandle.flip(desiredSwitchMode))(graph.nodeDispatcherEC)
     control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 
     // Set the appropriate ref and deferred ingest control

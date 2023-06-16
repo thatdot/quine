@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit.MILLIS
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 
 import akka.http.scaladsl.server.Directives._
@@ -19,6 +20,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
+import endpoints4s.Invalid
 import io.circe.Json
 
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
@@ -31,7 +33,8 @@ trait IngestStreamState {
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
-    wasRestoredFromStorage: Boolean,
+    restoredStatus: Option[IngestStreamStatus],
+    shouldRestoreIngest: Boolean,
     timeout: Timeout
   ): Try[Boolean]
 
@@ -66,8 +69,8 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   valve: IO[ValveSwitch],
   terminated: IO[Future[Done]],
   close: IO[Unit],
-  var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
-  var restored: Boolean = false
+  var restoredStatus: Option[IngestStreamStatus] = None,
+  var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None
 ) extends LazyLogging {
 
   // Returns a simpler version of status. Only possible values are completed, failed, or running
@@ -99,8 +102,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
         .getMode()
         .map {
           case SwitchMode.Open => IngestStreamStatus.Running
-          case SwitchMode.Close if restored => IngestStreamStatus.Restored
-          case SwitchMode.Close => IngestStreamStatus.Paused
+          case SwitchMode.Close => restoredStatus getOrElse IngestStreamStatus.Paused
         }(materializer.executionContext)
     )
     materializer.system.scheduler.scheduleOnce(1.second) {
@@ -193,7 +195,7 @@ trait IngestRoutesImpl
   /** Try to register a new ingest stream */
   private val ingestStreamStartRoute = {
     def addSettings(name: String, settings: IngestStreamConfiguration) =
-      serviceState.addIngestStream(name, settings, wasRestoredFromStorage = false, timeout) match {
+      serviceState.addIngestStream(name, settings, None, shouldRestoreIngest = false, timeout) match {
         case Success(false) =>
           Left(
             endpoints4s.Invalid(
@@ -285,6 +287,13 @@ trait IngestRoutesImpl
       .map(_.toMap)(graph.shardDispatcherEC)
   }
 
+  sealed private case class PauseOperationException(statusMsg: String) extends Exception with NoStackTrace
+
+  private object PauseOperationException {
+    object Completed extends PauseOperationException("completed")
+    object Terminated extends PauseOperationException("terminated")
+    object Failed extends PauseOperationException("failed")
+  }
   private[this] def setIngestStreamPauseState(
     name: String,
     newState: SwitchMode
@@ -292,28 +301,38 @@ trait IngestRoutesImpl
     serviceState.getIngestStream(name) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        val flippedValve = ingest.valve.unsafeToFuture().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
-        val ingestStatus = flippedValve.flatMap { _ =>
-          ingest.restored = false; // FIXME not threadsafe
-          stream2Info(ingest)
-        }(graph.nodeDispatcherEC)
-        ingestStatus.map(status => Some(status.withName(name)))(ExecutionContexts.parasitic)
+        ingest.restoredStatus match {
+          case Some(IngestStreamStatus.Completed) => Future.failed(PauseOperationException.Completed)
+          case Some(IngestStreamStatus.Terminated) => Future.failed(PauseOperationException.Terminated)
+          case Some(IngestStreamStatus.Failed) => Future.failed(PauseOperationException.Failed)
+          case _ =>
+            val flippedValve = ingest.valve.unsafeToFuture().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
+            val ingestStatus = flippedValve.flatMap { _ =>
+              ingest.restoredStatus = None; // FIXME not threadsafe
+              stream2Info(ingest)
+            }(graph.nodeDispatcherEC)
+            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContexts.parasitic)
+        }
     }
+
+  private def mkPauseOperationError(operation: String): PartialFunction[Throwable, Either[Invalid, Nothing]] = {
+    case _: StreamDetachedException =>
+      // A StreamDetachedException always occurs when the ingest has failed
+      Left(endpoints4s.Invalid(s"Cannot ${operation} a failed ingest."))
+    case e: PauseOperationException =>
+      Left(endpoints4s.Invalid(s"Cannot ${operation} a ${e.statusMsg} ingest."))
+  }
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { (name: String) =>
     setIngestStreamPauseState(name, SwitchMode.Close)
       .map(Right(_))(ExecutionContexts.parasitic)
-      .recover { case _: StreamDetachedException =>
-        Left(endpoints4s.Invalid("Cannot pause a failed ingest."))
-      }(ExecutionContexts.parasitic)
+      .recover(mkPauseOperationError("pause"))(ExecutionContexts.parasitic)
   }
 
   private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { (name: String) =>
     setIngestStreamPauseState(name, SwitchMode.Open)
       .map(Right(_))(ExecutionContexts.parasitic)
-      .recover { case _: StreamDetachedException =>
-        Left(endpoints4s.Invalid("Cannot resume a failed ingest."))
-      }(ExecutionContexts.parasitic)
+      .recover(mkPauseOperationError("resume"))(ExecutionContexts.parasitic)
   }
 
   final val ingestRoutes: Route = {

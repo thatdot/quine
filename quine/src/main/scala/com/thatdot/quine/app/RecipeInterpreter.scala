@@ -84,7 +84,8 @@ object RecipeInterpreter {
       appState.addIngestStream(
         ingestStreamName,
         ingestStream,
-        wasRestoredFromStorage = false,
+        restoredStatus = None,
+        shouldRestoreIngest = true,
         timeout = 5 seconds
       ) match {
         case Failure(ex) =>

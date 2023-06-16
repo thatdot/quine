@@ -305,9 +305,6 @@ final class QuineApp(graph: GraphService)
             s"Ingest stream '$name' has failed after ${metrics.millisSinceStart(now)}ms",
             err
           )
-          Try(blocking(ingestStreamsLock.synchronized {
-            Await.ready(syncIngestStreamsMetaData(thisMemberIdx), 5.seconds)
-          }))
 
         case Success(_) =>
           val now = Instant.now
@@ -315,19 +312,30 @@ final class QuineApp(graph: GraphService)
           logger.info(
             s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
           )
-          Try(blocking(ingestStreamsLock.synchronized {
-            Await.ready(syncIngestStreamsMetaData(thisMemberIdx), 5.seconds)
-          }))
       }(ec)
   }
 
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
-    wasRestoredFromStorage: Boolean,
+    // restoredStatus is None if stream was not restored at all
+    restoredStatus: Option[IngestStreamStatus],
+    shouldRestoreIngest: Boolean,
     timeout: Timeout
   ): Try[Boolean] =
     blocking(ingestStreamsLock.synchronized {
+      val valveSwitchMode = restoredStatus match {
+        case Some(restoredStatus) if shouldRestoreIngest =>
+          restoredStatus.position match {
+            case ValvePosition.Open => SwitchMode.Open
+            case ValvePosition.Closed => SwitchMode.Close
+          }
+        case Some(_) =>
+          SwitchMode.Close
+        case None =>
+          SwitchMode.Open
+      }
+
       if (ingestStreams.contains(name)) {
         Success(false)
       } else
@@ -335,14 +343,13 @@ final class QuineApp(graph: GraphService)
           .createIngestSrcDef(
             name,
             settings,
-            if (wasRestoredFromStorage) SwitchMode.Close else SwitchMode.Open
+            valveSwitchMode
           )(graph)
           .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
           .map { ingestSrcDef =>
 
             val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
             val ingestSrc = ingestSrcDef.stream(
-              shouldResumeIngest = false,
               registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC)
             )
 
@@ -354,7 +361,7 @@ final class QuineApp(graph: GraphService)
               ingestSrcDef.getControl.map(_.valveHandle),
               ingestSrcDef.getControl.map(_.termSignal),
               ingestSrcDef.getControl.map { c => c.terminate(); () },
-              restored = wasRestoredFromStorage
+              restoredStatus = restoredStatus
             )
 
             ingestStreams += name -> streamDefWithControl
@@ -416,21 +423,6 @@ final class QuineApp(graph: GraphService)
 
   /** == Utilities == */
 
-  /** If any ingest streams are currently in the `RESTORED` state, start them all. */
-  def startRestoredIngests(): Unit =
-    ingestStreams.foreach {
-      case (_, streamWithControl) if streamWithControl.restored =>
-        streamWithControl.valve
-          .unsafeToFuture()
-          .map { v =>
-            // In Quine App, this future is always created with `Future.success(…)`. This is ugly.
-            v.flip(SwitchMode.Open)
-            streamWithControl.restored =
-              false // NB: this is not actually done in a separate thread. see previous comment
-          }(graph.system.dispatcher)
-      case _ => ()
-    }
-
   private def stopAllIngestStreams(): Future[Unit] =
     Future
       .traverse(ingestStreams: TraversableOnce[(String, IngestStreamWithControl[IngestStreamConfiguration])]) {
@@ -442,8 +434,11 @@ final class QuineApp(graph: GraphService)
       .map(_ => ())(graph.system.dispatcher)
 
   /** Prepare for a shutdown */
-  def shutdown(): Future[Unit] =
-    stopAllIngestStreams() // ... but don't update what is saved to disk
+  def shutdown()(implicit ec: ExecutionContext): Future[Unit] =
+    for {
+      _ <- syncIngestStreamsMetaData(thisMemberIdx)
+      _ <- stopAllIngestStreams() // ... but don't update what is saved to disk
+    } yield ()
 
   /** Load all the state from the persistor
     *
@@ -512,16 +507,13 @@ final class QuineApp(graph: GraphService)
       }.toMap
 
       is.foreach { case (name, ingest) =>
-        addIngestStream(name, ingest.config, wasRestoredFromStorage = true, timeout) match {
+        addIngestStream(name, ingest.config, restoredStatus = ingest.status, shouldResumeIngest, timeout) match {
           case Success(true) => ()
           case Success(false) =>
             logger.error(s"Duplicate ingest stream attempted to start with name: $name and settings: ${ingest.config}")
           case Failure(e) =>
             logger.error(s"Error when restoring ingest stream: $name with settings: ${ingest.config}", e)
         }
-      }
-      if (shouldResumeIngest) {
-        startRestoredIngests()
       }
     }(graph.system.dispatcher)
   }

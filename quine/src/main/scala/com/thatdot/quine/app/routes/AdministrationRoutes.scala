@@ -3,7 +3,7 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -20,7 +20,7 @@ import com.thatdot.quine.routes._
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo}
 
 trait AdministrationRoutesState {
-  def shutdown(): Future[Unit]
+  def shutdown()(implicit ec: ExecutionContext): Future[Unit]
 }
 
 /** The Akka HTTP implementation of [[AdministrationRoutes]] */

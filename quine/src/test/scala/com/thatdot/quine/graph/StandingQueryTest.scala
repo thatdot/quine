@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import java.io.{File, PrintStream}
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext}
 import scala.io.{BufferedSource, Source}
@@ -29,7 +30,7 @@ class StandingQueryTest extends AnyFunSuite with BeforeAndAfterAll with Matchers
   val quineApp = new QuineApp(graph)
   override def afterAll: Unit = {
     Await.result(graph.shutdown(), 1.second)
-    Await.result(quineApp.shutdown(), 1.second)
+    Await.result(quineApp.shutdown()(ExecutionContexts.parasitic), 1.second)
   }
 
   /** Run a recipe and return a file that can be examined for output */
