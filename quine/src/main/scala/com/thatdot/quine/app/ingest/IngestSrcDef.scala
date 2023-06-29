@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.ingest
 
+import java.io.FileNotFoundException
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 import java.time.Duration
@@ -11,6 +12,8 @@ import scala.util.{Failure, Success, Try}
 
 import akka.actor.ActorSystem
 import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
+import akka.stream.alpakka.s3.scaladsl.S3
+import akka.stream.alpakka.s3.{ObjectMetadata, S3Attributes, S3Ext, S3Settings}
 import akka.stream.alpakka.text.scaladsl.TextFlow
 import akka.stream.scaladsl.{Flow, Keep, RestartSource, Source, StreamConverters}
 import akka.stream.{KillSwitches, RestartSettings}
@@ -24,6 +27,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.KafkaException
 
 import com.thatdot.quine.app.ingest.serialization._
+import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{AkkaKillSwitch, ControlSwitches, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.CypherOpsGraph
@@ -332,7 +336,6 @@ object IngestSrcDef extends LazyLogging {
           ).valid
 
       }
-
     case PulsarIngest(
           format,
           topics,
@@ -436,6 +439,50 @@ object IngestSrcDef extends LazyLogging {
           name
         )
         .valid
+
+    case S3Ingest(
+          format,
+          bucketName,
+          key,
+          encoding,
+          parallelism,
+          credsOpt,
+          maxLineSize,
+          offset,
+          ingestLimit,
+          maxPerSecond
+        ) =>
+      val source: Source[ByteString, NotUsed] = {
+        val downloadStream: Source[Option[(Source[ByteString, NotUsed], ObjectMetadata)], NotUsed] = credsOpt match {
+          case None =>
+            S3.download(bucketName, key)
+          case creds @ Some(_) =>
+            // TODO: See example: https://stackoverflow.com/questions/61938052/alpakka-s3-connection-issue
+            val settings: S3Settings =
+              S3Ext(graph.system).settings.withCredentialsProvider(AwsOps.staticCredentialsProvider(creds))
+            val attributes = S3Attributes.settings(settings)
+            S3.download(bucketName, key).withAttributes(attributes)
+        }
+        downloadStream.flatMapConcat {
+          case Some((fileSource, objectMeta @ _)) => fileSource
+          case None =>
+            Source.failed(
+              new FileNotFoundException(s"Unable to get file from S3 in bucket: $bucketName with key: $key")
+            )
+        }
+      }
+      ContentDelimitedIngestSrcDef(
+        initialSwitchMode,
+        format,
+        source,
+        encoding,
+        parallelism,
+        maxLineSize,
+        offset,
+        ingestLimit,
+        maxPerSecond,
+        name
+      ).valid // TODO move what validations can be done ahead, ahead.
 
     case StandardInputIngest(
           format,

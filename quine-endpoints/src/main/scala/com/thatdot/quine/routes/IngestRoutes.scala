@@ -548,6 +548,40 @@ final case class FileIngest(
   ) fileIngestMode: Option[FileIngestMode]
 ) extends IngestStreamConfiguration
 
+@title("S3 File ingest (Experimental)")
+@unnamed
+@docs(
+  """An ingest stream from a file in S3, newline delimited. This ingest source is
+    |experimental and is subject to change without warning. In particular, there are
+    |known issues with durability when the stream is inactive for at least 1 minute.""".stripMargin
+    .replace('\n', ' ')
+)
+final case class S3Ingest(
+  @docs("format used to decode each incoming line from a file in S3")
+  format: FileIngestFormat = IngestRoutes.defaultTextFileFormat,
+  @docs("S3 bucket name")
+  bucket: String,
+  @docs("S3 file name")
+  key: String,
+  @docs(
+    "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
+    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
+  )
+  encoding: String = "UTF-8",
+  @docs("maximum number of records being processed at once")
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
+  credentials: Option[AwsCredentials],
+  @docs("maximum size (in bytes) of any line in the file")
+  maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
+  @docs(s"""start at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
+       |resuming ingest from a partially consumed file""".stripMargin)
+  startAtOffset: Long = 0L,
+  @docs(s"optionally limit how many records are ingested from this file.")
+  ingestLimit: Option[Long],
+  @docs("maximum records to process per second")
+  maximumPerSecond: Option[Int]
+) extends IngestStreamConfiguration
+
 /** Standard input ingest stream configuration */
 @title("Standard Input Ingest Stream")
 @unnamed
@@ -782,6 +816,9 @@ object IngestRoutes {
   val defaultNumberFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
     "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)"
   )
+  val defaultTextFileFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
+    "MATCH (x) WHERE id(x) = idFrom($that) SET x.content = $that"
+  )
 }
 trait IngestRoutes
     extends EndpointsWithCustomErrorText
@@ -809,11 +846,11 @@ trait IngestRoutes
         .withSummary(Some("Create Ingest Stream"))
         .withDescription(
           Some(
-            """Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html) 
+            """Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
               |that connects a streaming event source to Quine and loads data into the graph.
               |
-              |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`, 
-              |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate 
+              |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
+              |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate
               |on the event stream data to create nodes and relationships in the graph.""".stripMargin
           )
         )
@@ -831,8 +868,8 @@ trait IngestRoutes
         .withDescription(
           Some(
             """Immediately halt and remove the named ingest stream from Quine.
-              | 
-              |The ingest stream will complete any pending operations and return stream information 
+              |
+              |The ingest stream will complete any pending operations and return stream information
               |once the operation is complete.""".stripMargin
           )
         )

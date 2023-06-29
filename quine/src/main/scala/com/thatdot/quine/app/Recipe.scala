@@ -354,6 +354,7 @@ object Recipe {
               fileIngestMode
             )
           )
+        case i: S3Ingest => Validated.valid(i)
         case i: StandardInputIngest => Validated.valid(i)
         case i: NumberIteratorIngest => Validated.valid(i)
       }

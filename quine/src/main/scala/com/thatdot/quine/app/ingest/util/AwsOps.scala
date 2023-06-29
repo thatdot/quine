@@ -5,6 +5,7 @@ import scala.reflect.{ClassTag, classTag}
 import com.typesafe.scalalogging.LazyLogging
 import software.amazon.awssdk.auth.credentials.{
   AwsBasicCredentials,
+  AwsCredentialsProvider,
   DefaultCredentialsProvider,
   StaticCredentialsProvider
 }
@@ -17,6 +18,13 @@ case object AwsOps extends LazyLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
   // invariant: all AWS clients using HTTP will set this as a maximum concurrency value
   val httpConcurrencyPerClient = 100
+
+  def staticCredentialsProvider(credsOpt: Option[AwsCredentials]): AwsCredentialsProvider =
+    credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.create()) { credentials =>
+      StaticCredentialsProvider.create(
+        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey)
+      )
+    }
 
   implicit class AwsBuilderOps[Client: ClassTag, Builder <: AwsClientBuilder[Builder, Client]](
     builder: AwsClientBuilder[Builder, Client]
@@ -37,20 +45,15 @@ case object AwsOps extends LazyLogging {
       * @param credsOpt if set, aws credentials to use explicitly
       * @return
       */
-    def credentials(credsOpt: Option[AwsCredentials]): Builder =
-      credsOpt.fold {
+    def credentials(credsOpt: Option[AwsCredentials]): Builder = {
+      val creds = credsOpt.orElse {
         logger.info(
           s"No AWS credentials provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental credentials."
         )
-        builder.credentialsProvider(DefaultCredentialsProvider.create())
-      } { credentials =>
-        builder
-          .credentialsProvider(
-            StaticCredentialsProvider.create(
-              AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey)
-            )
-          )
+        None
       }
+      builder.credentialsProvider(staticCredentialsProvider(creds))
+    }
 
     def region(regionOpt: Option[AwsRegion]): Builder =
       regionOpt.fold {
