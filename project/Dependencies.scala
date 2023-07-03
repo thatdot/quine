@@ -48,7 +48,7 @@ object Dependencies {
   val reactV = "17.0.2"
   val rocksdbV = "7.10.2"
   val scalaCheckV = "1.17.0"
-  val scalaCollectionCompatV = "2.10.0"
+  val scalaCollectionCompatV = "2.11.0"
   val scalaJavaTimeV = "2.5.0"
   val scalaLoggingV = "3.9.5"
   // scalaParserCombinatorsV could be at 2.1.1 (or higher), but doing so conflicts with akka 2.6. Due to licensing
