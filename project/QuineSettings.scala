@@ -8,7 +8,7 @@ import scala.util.Try
 
 object QuineSettings {
 
-  val scalaV212 = "2.12.17"
+  val scalaV212 = "2.12.18"
   val scalaV213 = "2.13.10"
   val `scala 2.12 to 2.13`: Seq[Setting[_]] = Seq(
     scalaVersion := scalaV212,
