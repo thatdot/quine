@@ -30,7 +30,7 @@ lazy val `quine-core`: Project = project
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
-      "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
+      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.8.3" % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
@@ -272,7 +272,7 @@ lazy val `quine`: Project = project
       "de.heikoseeberger" %% "akka-http-circe" % "1.39.2",
       "io.circe" %% "circe-yaml-v12" % "0.14.3-RC3",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "org.scalatestplus" %% "scalacheck-1-15" % scalaTestScalaCheckV % Test,
+      "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
       "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
       // for the akka-streams integration
