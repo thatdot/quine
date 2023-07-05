@@ -67,5 +67,5 @@ object Dependencies {
   val ujsonV = "1.6.0"
   val circeV = "0.14.5"
   val visNetworkV = "8.2.0"
-  val webjarsLocatorV = "0.46"
+  val webjarsLocatorV = "0.47"
 }
