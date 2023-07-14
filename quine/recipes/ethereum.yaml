@@ -13,7 +13,9 @@ description: |-
   blocks mined by that account. Quick queries allow marking an account as "tainted".
   The tainted flag is propagated along outgoing transaction paths via Standing Queries
   to record the least degree of separation between a tainted source and an account
-  receiving a transaction.
+  receiving a transaction. Canonical (node-provided) capitalization is maintained where
+  possible, with `toLower` being used for idFrom-based ID resolution to reflect the
+  case-insensitive nature of bytestrings (eg addresses, hashes) used by Ethereum.
 
   The Ethereum diamond logo is property of the Ethereum Foundation, used under the
   terms of the Creative Commons Attribution 3.0 License.
@@ -23,10 +25,10 @@ ingestStreams:
       query: |-
         MATCH (BA), (minerAcc), (blk), (parentBlk)
         WHERE
-          id(blk) = idFrom('block', $that.hash)
-          AND id(parentBlk) = idFrom('block', $that.parentHash)
-          AND id(BA) = idFrom('block_assoc', $that.hash)
-          AND id(minerAcc) = idFrom('account', $that.miner)
+          id(blk) = idFrom('block', toLower($that.hash))
+          AND id(parentBlk) = idFrom('block', toLower($that.parentHash))
+          AND id(BA) = idFrom('block_assoc', toLower($that.hash))
+          AND id(minerAcc) = idFrom('account', toLower($that.miner))
         CREATE
           (minerAcc)<-[:mined_by]-(blk)-[:header_for]->(BA),
           (blk)-[:preceded_by]->(parentBlk)
@@ -45,10 +47,10 @@ ingestStreams:
       query: |-
         MATCH (BA), (toAcc), (fromAcc), (tx)
         WHERE
-          id(BA) = idFrom('block_assoc', $that.blockHash)
-          AND id(toAcc) = idFrom('account', $that.to)
-          AND id(fromAcc) = idFrom('account', $that.from)
-          AND id(tx) = idFrom('transaction', $that.hash)
+          id(BA) = idFrom('block_assoc', toLower($that.blockHash))
+          AND id(toAcc) = idFrom('account', toLower($that.to))
+          AND id(fromAcc) = idFrom('account', toLower($that.from))
+          AND id(tx) = idFrom('transaction', toLower($that.hash))
         CREATE
           (tx)-[:defined_in]->(BA),
           (tx)-[:from]->(fromAcc),
@@ -72,7 +74,6 @@ standingQueries:
           (tx)-[:defined_in]->(ba:block_assoc)
         WHERE
           tainted.tainted IS NOT NULL
-          AND NOT EXISTS(ba.orphaned)
         RETURN
           id(tainted) AS accountId,
           tainted.tainted AS oldTaintedLevel,
@@ -97,16 +98,6 @@ standingQueries:
         andThen:
           type: PrintToStandardOut
 nodeAppearances:
-  - predicate:
-      dbLabel: block
-      propertyKeys: [ ]
-      knownValues:
-        orphaned: true
-    icon: ion-backspace-outline
-    label:
-      prefix: 'Orphaned '
-      key: number
-      type: Property
   - predicate:
       dbLabel: block
       propertyKeys: [ ]
@@ -207,8 +198,15 @@ quickQueries:
       knownValues: { }
       dbLabel: account
     quickQuery:
-      name: Mark as tainted
-      querySuffix: SET n.tainted = 0 RETURN n
+      name: Mark as tainted and refresh
+      querySuffix:
+        SET n.tainted = 0
+        WITH id(n) AS nId
+        CALL { WITH nId
+          MATCH (n) WHERE id(n) = nId
+          RETURN n
+        }
+        RETURN n
       queryLanguage: Cypher
       sort: Node
   - predicate:
@@ -217,8 +215,9 @@ quickQueries:
       dbLabel: account
     quickQuery:
       name: Incoming tainted transactions
-      querySuffix: MATCH (n)<-[:to]-(tx)-[:from]->(m:account) WHERE m.tainted IS NOT
-        NULL AND m<>n RETURN m
+      querySuffix:
+        MATCH (n)<-[:to]-(tx)-[:from]->(m:account)
+        WHERE m.tainted IS NOT NULL AND m<>n RETURN m
       edgeLabel: Got Tainted From
       queryLanguage: Cypher
       sort: Node
