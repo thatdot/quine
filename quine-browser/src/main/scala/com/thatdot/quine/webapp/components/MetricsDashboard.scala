@@ -106,10 +106,11 @@ object MetricsDashboard {
         (BigDecimal(bytes) / MB_IN_B).setScale(3, RoundingMode.HALF_UP).toDouble
       }
       for {
+        maxGauge <- state.metrics.gauges.find(_.name == maxGaugeName)
+        if maxGauge.value > 0
+        maxGaugeVal = normalizeMb(maxGauge.value)
         currGauge <- state.metrics.gauges.find(_.name == currGaugeName)
         currGaugeVal = normalizeMb(currGauge.value)
-        maxGauge <- state.metrics.gauges.find(_.name == maxGaugeName)
-        maxGaugeVal = normalizeMb(maxGauge.value)
       } yield {
         val card: ReactElement = Card(
           title = title,
