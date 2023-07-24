@@ -151,7 +151,11 @@ abstract class IngestSrcDef(
   ): Unit = {
 
     // Ensure valve is opened if required and termination hooks are registered
-    control.foreach(c => c.valveHandle.flip(desiredSwitchMode))(graph.nodeDispatcherEC)
+    control.foreach(c =>
+      c.valveHandle
+        .flip(desiredSwitchMode)
+        .recover { case _: akka.stream.StreamDetachedException => () }(graph.nodeDispatcherEC)
+    )(graph.nodeDispatcherEC)
     control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 
     // Set the appropriate ref and deferred ingest control

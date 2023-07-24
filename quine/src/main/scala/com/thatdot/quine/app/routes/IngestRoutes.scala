@@ -104,6 +104,9 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
           case SwitchMode.Open => IngestStreamStatus.Running
           case SwitchMode.Close => restoredStatus getOrElse IngestStreamStatus.Paused
         }(materializer.executionContext)
+        .recover { case _: akka.stream.StreamDetachedException =>
+          IngestStreamStatus.Terminated
+        }(materializer.executionContext)
     )
     materializer.system.scheduler.scheduleOnce(1.second) {
       val _ = theStatus.trySuccess(IngestStreamStatus.Terminated)
