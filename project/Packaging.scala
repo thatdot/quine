@@ -27,6 +27,8 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "native-image", "org.mongodb", "bson", "native-image.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard
+    case PathList("META-INF", "native-image", "io.netty", "netty-common", "native-image.properties") =>
+      MergeStrategy.discard
     case PathList("META-INF", "native-image", "io.netty", "codec-http", "native-image.properties") =>
       MergeStrategy.discard
     case "findbugsExclude.xml" => MergeStrategy.discard

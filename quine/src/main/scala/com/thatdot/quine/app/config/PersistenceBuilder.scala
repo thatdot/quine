@@ -103,6 +103,7 @@ object PersistenceBuilder extends LazyLogging {
           persistenceConfig,
           c.keyspace,
           c.awsRegion,
+          c.awsRoleArn,
           CassandraStatementSettings(
             c.readConsistency,
             c.readTimeout

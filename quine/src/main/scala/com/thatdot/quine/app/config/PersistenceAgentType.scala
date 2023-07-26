@@ -81,6 +81,7 @@ object PersistenceAgentType extends PureconfigInstances {
   final case class Keyspaces(
     keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),
     awsRegion: Option[Region] = None,
+    awsRoleArn: Option[String] = None,
     readConsistency: ConsistencyLevel = ConsistencyLevel.LOCAL_QUORUM,
     writeTimeout: FiniteDuration = 10.seconds,
     readTimeout: FiniteDuration = 10.seconds,

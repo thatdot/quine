@@ -17,6 +17,7 @@ class KeyspacesPersistorSpec extends PersistenceAgentSpec {
     PersistenceConfig(),
     keyspace = sys.env.getOrElse("CI_AKS_KEYSPACE", "blah"),
     awsRegion = None,
+    awsRoleArn = None,
     readSettings = statementSettings,
     writeTimeout = 1.second,
     shouldCreateTables = true,

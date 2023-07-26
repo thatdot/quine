@@ -19,9 +19,14 @@ import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, CqlSession, CqlSessionBuilder, InvalidKeyspaceException}
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{literal, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
+import software.amazon.awssdk.auth.credentials.{AwsCredentialsProvider, DefaultCredentialsProvider}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.regions.Region._
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
+import software.amazon.awssdk.services.sts.StsClient
+import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider
+import software.amazon.awssdk.services.sts.model.AssumeRoleRequest
+import software.amazon.awssdk.utils.SdkAutoCloseable
 import software.aws.mcs.auth.SigV4AuthProvider
 
 import com.thatdot.quine.model.QuineId
@@ -44,6 +49,7 @@ class KeyspacesPersistor(
   persistenceConfig: PersistenceConfig,
   keyspace: String,
   awsRegion: Option[Region],
+  awsRoleArn: Option[String],
   readSettings: CassandraStatementSettings,
   writeTimeout: FiniteDuration,
   shouldCreateTables: Boolean,
@@ -116,14 +122,28 @@ class KeyspacesPersistor(
     ),
     9142
   )
+
+  private val credsProvider: AwsCredentialsProvider with SdkAutoCloseable = awsRoleArn match {
+    case None =>
+      // TODO: support passing in key and secret explicitly, instead of getting from environment?
+      DefaultCredentialsProvider.create
+    case Some(roleArn) =>
+      val sessionName = "quine-keyspaces"
+      val stsClient = StsClient.builder.region(region).build
+      val assumeRoleRequest = AssumeRoleRequest.builder.roleArn(roleArn).roleSessionName(sessionName).build
+      StsAssumeRoleCredentialsProvider.builder
+        .stsClient(stsClient)
+        .refreshRequest(assumeRoleRequest)
+        .asyncCredentialUpdateEnabled(true)
+        .build
+  }
   // This is mutable, so needs to be a def to get a new one w/out prior settings.
   private def sessionBuilder: CqlSessionBuilder = CqlSession.builder
     .addContactPoint(endpoint)
     .withLocalDatacenter(region.id)
     .withMetricRegistry(metricRegistry.orNull)
     .withSslContext(SSLContext.getDefault)
-    // TODO: support passing in key and secret explicitly, instead of getting from environment?
-    .withAuthProvider(new SigV4AuthProvider(region.id))
+    .withAuthProvider(new SigV4AuthProvider(credsProvider, region.id))
 
   private def createQualifiedSession: CqlSession = sessionBuilder
     .withKeyspace(keyspace)
@@ -152,6 +172,8 @@ class KeyspacesPersistor(
         createQualifiedSession
     }
 
+  override def shutdown(): Future[Unit] =
+    super.shutdown().map(_ => credsProvider.close())(materializer.executionContext)
   // Query "system_schema_mcs.tables" for the table creation status
   private def tableStatusQuery(tableName: String): SimpleStatement = selectFrom("system_schema_mcs", "tables")
     .column("status")
