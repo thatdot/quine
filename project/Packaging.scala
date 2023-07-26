@@ -24,6 +24,7 @@ object Packaging extends AutoPlugin {
     case "version.conf" => MergeStrategy.concat
     case PathList("META-INF", "LICENSES.txt") | "AUTHORS" => MergeStrategy.concat
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
+    case PathList("META-INF", "native-image", "org.mongodb", "bson", "native-image.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard
     case PathList("META-INF", "native-image", "io.netty", "codec-http", "native-image.properties") =>
