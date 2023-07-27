@@ -688,7 +688,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
     }
   }
-  describe("purgeNode on a node must remove all of its properteis and edges") {
+  describe("purgeNode on a node must remove all of its properties and edges") {
     val molly = people.find(_.first == "Molly").get.id
     testQuery(
       s"CALL purgeNode($molly)",
@@ -814,6 +814,28 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedIsReadOnly = false,
       expectedIsIdempotent = true,
       ordered = false
+    )
+  }
+  describe("setProperty procedure") {
+    testQuery(
+      """
+        |// Setup query
+        |MATCH (n) WHERE id(n) = idFrom(42424242)
+        |CALL create.setProperty(n, 'test', [1, '2', false])
+        |WITH id(n) as nId
+        |// Subquery to ensure updates will be reflected
+        |CALL {
+        | MATCH (n) WHERE id(n) = idFrom(42424242)
+        | RETURN n
+        |}
+        |RETURN n.test
+        |""".stripMargin,
+      Vector("n.test"),
+      Vector(
+        Vector(Expr.List(Expr.Integer(1), Expr.Str("2"), Expr.False))
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
     )
   }
 }

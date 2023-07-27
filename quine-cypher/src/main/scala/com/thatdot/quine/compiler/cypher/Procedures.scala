@@ -22,6 +22,7 @@ import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewriter, bottomUp}
 
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.graph.cypher.Expr.toQuineValue
 import com.thatdot.quine.graph.cypher.{
   CypherException,
   Expr,
@@ -45,7 +46,7 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   StandingQueryResult
 }
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 
 /** Like [[UnresolvedCall]] but where the procedure has been resolved
   *
@@ -89,6 +90,7 @@ case object resolveCalls extends StatementRewriter {
     CypherRunTimeboxed,
     CypherSleep,
     CypherCreateRelationship,
+    CypherCreateSetProperty,
     CypherCreateSetLabels,
     RecentNodes,
     RecentNodeIds,
@@ -1354,7 +1356,10 @@ object CypherCreateRelationship extends UserDefinedProcedure {
     import location._
 
     val (from, label, to): (QuineId, Symbol, QuineId) = arguments match {
-      case Seq(Expr.Node(from, _, _), Expr.Str(name), Expr.Map(_), Expr.Node(to, _, _)) => (from, Symbol(name), to)
+      case args @ Seq(fromNodeLike, Expr.Str(name), Expr.Map(_), toNodeLike) =>
+        val from = UserDefinedProcedure.extractQuineId(fromNodeLike).getOrElse(throw wrongSignature(args))
+        val to = UserDefinedProcedure.extractQuineId(toNodeLike).getOrElse(throw wrongSignature(args))
+        (from, Symbol(name), to)
       case other => throw wrongSignature(other)
     }
 
@@ -1366,6 +1371,40 @@ object CypherCreateRelationship extends UserDefinedProcedure {
   }
 }
 
+object CypherCreateSetProperty extends UserDefinedProcedure {
+  val name = "create.setProperty"
+  val canContainUpdates = true
+  val isIdempotent = true
+  val canContainAllNodeScan = false
+  val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
+    arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "value" -> Type.Anything),
+    outputs = Vector.empty,
+    description = "Set the property with the provided key on the specified input node"
+  )
+
+  def call(
+    context: QueryContext,
+    arguments: Seq[Value],
+    location: ProcedureExecutionLocation
+  )(implicit
+    parameters: Parameters,
+    timeout: Timeout
+  ): Source[Vector[Value], NotUsed] = {
+    import location._
+
+    val (node, key, value): (QuineId, String, Value) = arguments match {
+      case args @ Seq(nodeLike, Expr.Str(key), value) =>
+        val node = UserDefinedProcedure.extractQuineId(nodeLike).getOrElse(throw wrongSignature(args))
+        (node, key, value)
+      case other => throw wrongSignature(other)
+    }
+
+    Source
+      .lazyFuture(() => node ? (SetPropertyCommand(Symbol(key), PropertyValue(toQuineValue(value)), _)))
+      .map(_ => Vector.empty[Value])
+  }
+}
+
 object CypherCreateSetLabels extends UserDefinedProcedure {
   val name = "create.setLabels"
   val canContainUpdates = true
@@ -1374,7 +1413,7 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Node, "labels" -> Type.List(Type.Str)),
     outputs = Vector.empty,
-    description = "Set the label on the specified input nodes"
+    description = "Set the labels on the specified input node, overriding any previously set labels"
   )
 
   def call(
@@ -1388,12 +1427,13 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
     import location._
 
     val (node, labels): (QuineId, Set[Symbol]) = arguments match {
-      case Seq(Expr.Node(from, _, _), Expr.List(labels)) =>
+      case args @ Seq(fromNodeLike, Expr.List(labels)) =>
+        val from = UserDefinedProcedure.extractQuineId(fromNodeLike).getOrElse(throw wrongSignature(args))
         val stringLabels = Set.newBuilder[Symbol]
         for (label <- labels)
           label match {
             case Expr.Str(l) => stringLabels += Symbol(l)
-            case _ => throw wrongSignature(arguments)
+            case _ => throw wrongSignature(args)
           }
         from -> stringLabels.result()
       case other => throw wrongSignature(other)
