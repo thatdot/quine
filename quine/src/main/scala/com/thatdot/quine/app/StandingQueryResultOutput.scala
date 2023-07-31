@@ -1,6 +1,7 @@
 package com.thatdot.quine.app
 
 import java.nio.file.{Paths, StandardOpenOption}
+import java.util.concurrent.atomic.AtomicReference
 
 import scala.concurrent.duration._
 import scala.language.implicitConversions
@@ -66,6 +67,16 @@ object StandingQueryResultOutput extends LazyLogging {
     val execToken = SqResultsExecToken(s"SQ: $name")
     output match {
       case Drop => Flow[StandingQueryResult].map(_ => execToken)
+      case iq: InternalQueue =>
+        Flow[StandingQueryResult].map { r =>
+          iq.results
+            .asInstanceOf[AtomicReference[Vector[StandingQueryResult]]] // ugh. gross.
+            .getAndUpdate(results => results :+ r)
+          execToken
+        // TODO: Note that enqueuing a result does not properly respect the spirit of `execToken` in that the work
+        //       of processing the result in the queue has not been done before emitting the token. But this
+        //       `InternalQueue` is only meant for internal testing.
+        }
       case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
         // TODO: use a host connection pool
 

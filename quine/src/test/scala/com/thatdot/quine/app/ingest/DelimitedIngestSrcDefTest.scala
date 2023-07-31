@@ -1,29 +1,37 @@
 package com.thatdot.quine.app.ingest
 
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Success, Try}
 
 import akka.NotUsed
+import akka.actor.ActorSystem
 import akka.stream.scaladsl.{Keep, Sink, Source, StreamConverters}
 import akka.stream.testkit.TestSubscriber
 import akka.stream.testkit.scaladsl.TestSink
-import akka.util.ByteString
+import akka.util.{ByteString, Timeout}
 
 import cats.effect.unsafe.implicits.global
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
-import com.thatdot.quine.app.{QuineAppIngestControl, StdInStream, WritableInputStream}
+import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, MasterStream, idFrom}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, idFrom}
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
 import com.thatdot.quine.util.SwitchMode
 
-class DelimitedIngestSrcDefTest extends AnyFunSuite {
-  import com.thatdot.quine.app.IngestTestGraph._
+class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
+
+  implicit val graph: GraphService = IngestTestGraph.makeGraph()
+  implicit val system: ActorSystem = graph.system
+  implicit val timeout: Timeout = Timeout(2.seconds)
+  implicit val ec: ExecutionContextExecutor = system.dispatcher
+
+  override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 
   abstract class LocalIngestTestContext[Q <: QuineValue](name: String, fileIngestFormat: FileIngestFormat)(implicit
     val graph: CypherOpsGraph

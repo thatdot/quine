@@ -2,6 +2,7 @@ package com.thatdot.quine.routes
 
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
@@ -290,6 +291,35 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Drop")
   final case object Drop extends StandingQueryResultOutputUserDef
+
+  /** Queue for collecting standing query results to be used programmatically.
+    * Meant for internal use in Quine for testing.
+    *
+    * To use this, instantiate a `scala.collection.mutable.Queue[StandingQueryResult]` elsewhere (in tests)
+    * and pass it to the constructor. E.g.:
+    * ```
+    *   val sqResultsQueue = new mutable.Queue[StandingQueryResult]()
+    *   val sqOutput = StandingQueryResultOutputUserDef.InternalQueue(sqResultsQueue)
+    * ```
+    *
+    * Ideally, the queue would be a concurrent queue, but since this is meant for testing, there is companion
+    * code in `StandingQueryResultOutput.resultHandlingFlow` which uses a simple `.map` to only enqueue items singly.
+    *
+    * Note that `StandingQueryResult` is not accessible in this place, and so the existential types below are
+    * a hack to work around the type checker.
+    */
+  @unnamed
+  @title("Internal Queue") // TODO: Keep this unpublished (or ideally, unavailable) in OpenAPI docs/REST API.
+  final case class InternalQueue() extends StandingQueryResultOutputUserDef {
+    var results: AtomicReference[_] = _
+  }
+  case object InternalQueue {
+    def apply(resultsRef: AtomicReference[_]): InternalQueue = {
+      val q = InternalQueue()
+      q.results = resultsRef
+      q
+    }
+  }
 }
 
 @unnamed

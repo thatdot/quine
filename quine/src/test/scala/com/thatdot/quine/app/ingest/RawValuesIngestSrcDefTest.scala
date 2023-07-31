@@ -17,16 +17,20 @@ import akka.stream.testkit.scaladsl.TestSink
 import akka.util.ByteString
 
 import io.circe.Json
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphService}
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
-class RawValuesIngestSrcDefTest extends AnyFunSuite {
+class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
-  import com.thatdot.quine.app.IngestTestGraph._
+  implicit val graph: GraphService = IngestTestGraph.makeGraph()
+  implicit val system: ActorSystem = graph.system
+
+  override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 
   /** An ingest class that accepts data from a piped input stream
     * so that bytes can be directly written in tests.
@@ -42,7 +46,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite {
         maxPerSecond,
         decoders,
         label
-      )(IngestTestGraph.graph) {
+      ) {
 
     type InputType = ByteString
 

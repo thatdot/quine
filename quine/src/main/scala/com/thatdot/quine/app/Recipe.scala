@@ -117,6 +117,7 @@ object Recipe {
     implicit class SubStandingQueryOutputSubs(soo: StandingQueryResultOutputUserDef) {
       def subs: ValidatedNel[UnboundVariableError, StandingQueryResultOutputUserDef] = soo match {
         case Drop => Validated.valid(Drop)
+        case q: InternalQueue => Validated.valid(q)
         case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
           (
             url.subs

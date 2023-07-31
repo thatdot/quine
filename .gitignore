@@ -24,6 +24,7 @@ project/metals.sbt
 project/project/
 project/target/
 target/
+.sbtopts
 
 # eclipse
 build/

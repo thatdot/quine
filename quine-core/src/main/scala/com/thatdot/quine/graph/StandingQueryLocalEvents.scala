@@ -156,26 +156,26 @@ final case class StandingQueryLocalEventIndex(
     }
 
   /** Invokes [[retainSubscriberPredicate]] with subscribers interested in a given node event.
-    * Callback [[retainSubscriberPredicate]] returns false to indicate the record is invalid and should be removed.
+    * Callback [[removeSubscriberPredicate]] returns true to indicate the record is invalid and should be removed.
     */
   def standingQueriesWatchingNodeEvent(
     event: NodeChangeEvent,
-    retainSubscriberPredicate: EventSubscriber => Boolean
+    removeSubscriberPredicate: EventSubscriber => Boolean
   ): Unit = event match {
     case EdgeAdded(halfEdge) =>
       watchingForEdge
         .get(halfEdge.edgeType)
-        .foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
-      watchingForAnyEdge.filter(retainSubscriberPredicate).foreach(watchingForAnyEdge.remove)
+        .foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
+      watchingForAnyEdge.filter(removeSubscriberPredicate).foreach(watchingForAnyEdge.remove)
     case EdgeRemoved(halfEdge) =>
       watchingForEdge
         .get(halfEdge.edgeType)
-        .foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
-      watchingForAnyEdge.filter(retainSubscriberPredicate).foreach(watchingForAnyEdge.remove)
+        .foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
+      watchingForAnyEdge.filter(removeSubscriberPredicate).foreach(watchingForAnyEdge.remove)
     case PropertySet(propKey, _) =>
-      watchingForProperty.get(propKey).foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+      watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
     case PropertyRemoved(propKey, _) =>
-      watchingForProperty.get(propKey).foreach(index => index.filter(retainSubscriberPredicate).foreach(index.remove))
+      watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
     case _ => ()
   }
 }

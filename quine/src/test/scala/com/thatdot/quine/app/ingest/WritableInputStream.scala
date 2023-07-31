@@ -2,14 +2,11 @@ package com.thatdot.quine.app
 
 import java.io.{InputStream, PipedInputStream, PipedOutputStream}
 
+import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, ExecutionContext}
-
-import akka.actor.ActorSystem
-import akka.util.Timeout
 
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, QuineIdLongProvider}
+import com.thatdot.quine.graph.{GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
 /** An input stream that can be written to for testing input-stream based  ingest types. */
@@ -49,19 +46,13 @@ object IngestTestGraph {
     Metrics.meter("test_bytes")
   )
 
-  def makeGraph(): GraphService = Await.result(
+  def makeGraph(graphName: String = "test-service"): GraphService = Await.result(
     GraphService(
-      "test-service",
-      effectOrder = EventEffectOrder.MemoryFirst,
+      graphName,
+      effectOrder = EventEffectOrder.PersistorFirst,
       persistor = _ => InMemoryPersistor.empty,
       idProvider = QuineIdLongProvider()
     ),
     5.seconds
   )
-
-  implicit val timeout: Timeout = 10.seconds
-  implicit val graph: CypherOpsGraph = makeGraph()
-  implicit val system: ActorSystem = graph.system
-  implicit val ec: ExecutionContext = graph.system.dispatcher
-
 }
