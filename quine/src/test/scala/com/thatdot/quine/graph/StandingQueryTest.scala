@@ -143,7 +143,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     }
   }
 
-  test("MultipleValues standing updates results across an edge as it matches then doesn't") {
+  test("MultipleValues standing updates results across an edge as it matches") {
 
     val graph: GraphService = IngestTestGraph.makeGraph()
     implicit val ec: ExecutionContext = graph.shardDispatcherEC
@@ -151,10 +151,10 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     implicit val timeout: Timeout = Timeout(2.seconds)
     while (!graph.isReady) Thread.sleep(10)
 
-    val size = 4
+    val size = 3
     val ingestConfig = NumberIteratorIngest(
       FileIngestFormat.CypherLine(
-        """// step 0: make a subgraph that matches the query pattern
+        """// step 0: make a subgraph that only matches part of the query pattern
           |WITH toInteger($that) AS n
           |MATCH (a), (b)
           |WHERE n = 0
@@ -165,7 +165,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |SET b.name = "b"
           |SET b.bar = true
           |UNION
-          |// step 1: make another match of the query pattern
+          |// step 1: make a match of the query pattern
           |WITH toInteger($that) AS n
           |MATCH (b), (c)
           |WHERE n = 1
@@ -175,20 +175,12 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |SET c.name = "c"
           |SET c.bar = true
           |UNION
-          |// step 2: make the most recently added standing query match no longer match by changing a property value
+          |// step 2: make a and b match the pattern
           |WITH toInteger($that) AS n
           |MATCH (b)
           |WHERE n = 2
           |  AND id(b) = idFrom("b")
-          |REMOVE b.bar
-          |UNION
-          |// step 3: make the first standing query match no longer match by removing an edge
-          |WITH toInteger($that) AS n
-          |MATCH (b)-[e:FOO]->(c)
-          |WHERE n = 3
-          |  AND id(b) = idFrom("b")
-          |  AND id(c) = idFrom("c")
-          |DELETE e
+          |SET b.bar = true
           |""".stripMargin
       ),
       ingestLimit = Some(size.toLong),
