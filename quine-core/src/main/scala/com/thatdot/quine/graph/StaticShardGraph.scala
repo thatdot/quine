@@ -72,7 +72,8 @@ trait StaticShardGraph extends BaseGraph {
     quineRef: QuineRef,
     message: QuineMessage,
     originalSender: ActorRef = ActorRef.noSender
-  ): Unit =
+  ): Unit = {
+    metrics.relayTellMetrics.markLocal()
     quineRef match {
       case qidAtTime: QuineIdAtTime =>
         val shardIdx = idProvider.nodeLocation(qidAtTime.id).shardIdx
@@ -90,6 +91,7 @@ trait StaticShardGraph extends BaseGraph {
       case wrappedRef: WrappedActorRef =>
         wrappedRef.ref.tell(message, originalSender)
     }
+  }
 
   def relayAsk[Resp](
     quineRef: QuineRef,
@@ -116,7 +118,8 @@ trait StaticShardGraph extends BaseGraph {
               originalSender,
               promise,
               timeout.duration,
-              resultHandler
+              resultHandler,
+              metrics.relayAskMetrics
             )
           ).withDispatcher(QuineDispatchers.nodeDispatcherName)
         )
@@ -131,7 +134,6 @@ trait StaticShardGraph extends BaseGraph {
           val envelope = Envelope(message, originalSender, system)
           NodeActorMailboxExtension(system).enqueueIntoMessageQueueAndWakeup(qidAtTime, shard.localRef, envelope)
         }
-        promise.future
 
       case wrappedRef: WrappedActorRef =>
         // Destination for response
@@ -144,7 +146,8 @@ trait StaticShardGraph extends BaseGraph {
               originalSender,
               promise,
               timeout.duration,
-              resultHandler
+              resultHandler,
+              metrics.relayAskMetrics
             )
           ).withDispatcher(QuineDispatchers.nodeDispatcherName)
         )
@@ -153,6 +156,8 @@ trait StaticShardGraph extends BaseGraph {
         val message = unattributedMessage(WrappedActorRef(askActorRef))
         wrappedRef.ref.tell(message, originalSender)
     }
+
+    metrics.relayAskMetrics.markLocal()
     promise.future
   }
 

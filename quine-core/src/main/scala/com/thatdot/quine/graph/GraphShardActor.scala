@@ -90,6 +90,11 @@ final private[quine] class GraphShardActor(
     */
   private[this] val name = self.path.name
 
+  /** Meter tracking instances of nodes being evicted from the shard's in-memory cache (this should closely
+    * match the node sleep counters). Does NOT include nodes evicted manually via `removeNodesIf`
+    */
+  private[this] val nodeEvictionsMeter = graph.metrics.shardNodeEvictionsMeter(name)
+
   private[this] val messagesDeduplicatedCounter = graph.metrics.shardMessagesDeduplicatedCounter(name)
 
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard
@@ -160,7 +165,10 @@ final private[quine] class GraphShardActor(
             throw new IllegalStateException(s"Programmer error: $id refers to a non-awake node")
         }
 
-        def expiryListener(cause: ExpiringLruSet.RemovalCause, id: QuineIdAtTime): Unit = sleepActor(id)
+        def expiryListener(cause: ExpiringLruSet.RemovalCause, id: QuineIdAtTime): Unit = {
+          nodeEvictionsMeter.mark()
+          sleepActor(id)
+        }
       }
 
     case _ => new ExpiringLruSet.Noop[QuineIdAtTime]

@@ -6,7 +6,10 @@ import scala.util.Random
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
 
+import com.codahale.metrics.Timer
+
 import com.thatdot.quine.graph.Expires
+import com.thatdot.quine.graph.HostQuineMetrics.RelayAskMetric
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Temporary actor facilitating asks to nodes with exactly-once delivery across the Quine graph
@@ -41,14 +44,19 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
   originalSender: ActorRef,
   promisedResult: Promise[Resp],
   timeout: FiniteDuration,
-  resultHandler: ResultHandler[Resp]
+  resultHandler: ResultHandler[Resp],
+  metrics: RelayAskMetric
 ) extends Actor
     with ActorLogging
     with Timers {
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
 
+  private val timerContext: Timer.Context = metrics.timeMessageSend()
+
   private val retryTimeout: Cancellable = remoteShardTarget match {
-    case None => Cancellable.alreadyCancelled // node is local, message already sent
+    case None =>
+      timerContext.stop()
+      Cancellable.alreadyCancelled // node is local, message already sent
     case Some(shardTarget) =>
       // The node is remote, so send its shard the wrapped message until it acks
       val dedupId = Random.nextLong()
@@ -80,12 +88,16 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
 
   private def receiveResponse(response: QuineResponse): Unit = {
     resultHandler.receiveResponse(response, promisedResult)(context.system)
-    retryTimeout.cancel() // It is possible to get a reply back before the Ack
+    if (!retryTimeout.isCancelled) { // It is possible to get a reply back before the Ack
+      timerContext.stop()
+      retryTimeout.cancel()
+    }
     context.system.stop(self)
   }
 
   def receive: Receive = {
     case BaseMessage.Ack =>
+      timerContext.stop()
       retryTimeout.cancel()
       ()
 
@@ -101,6 +113,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
     case GiveUpWaiting =>
       val name = recipient.toInternalString
       val typedName = recipient.debug(idProvider)
+      timerContext.stop()
       val neverGotAcked = retryTimeout.cancel()
       val throughShard = remoteShardTarget.fold("")(" through remote shard " + _)
 

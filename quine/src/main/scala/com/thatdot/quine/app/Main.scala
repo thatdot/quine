@@ -133,7 +133,8 @@ object Main extends App with LazyLogging {
           maxCatchUpSleepMillis = config.maxCatchUpSleep.toMillis,
           labelsProperty = config.labelsProperty,
           edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
-          metricRegistry = Metrics
+          metricRegistry = Metrics,
+          enableDebugMetrics = config.metrics.enableDebugMetrics
         ).flatMap(graph =>
           graph.persistor
             .syncVersion(

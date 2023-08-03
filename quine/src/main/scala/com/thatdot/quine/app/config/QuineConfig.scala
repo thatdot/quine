@@ -37,7 +37,8 @@ final case class QuineConfig(
   store: PersistenceAgentType = PersistenceAgentType.RocksDb(),
   persistence: PersistenceConfig = PersistenceConfig(),
   labelsProperty: Symbol = Symbol("__LABEL"),
-  metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx)
+  metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx),
+  metrics: MetricsConfig = MetricsConfig()
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig

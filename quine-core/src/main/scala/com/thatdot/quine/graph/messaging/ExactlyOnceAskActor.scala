@@ -6,6 +6,10 @@ import scala.util.Random
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
 
+import com.codahale.metrics.Timer
+
+import com.thatdot.quine.graph.HostQuineMetrics.RelayAskMetric
+
 /** Temporary actor facilitating asks with exactly-once delivery across the Quine graph
   *
   * @note when the destination actor is local, we do the sending of the message directly in
@@ -36,11 +40,14 @@ final private[quine] class ExactlyOnceAskActor[Resp](
   originalSender: ActorRef,
   promisedResult: Promise[Resp],
   timeout: FiniteDuration,
-  resultHandler: ResultHandler[Resp]
+  resultHandler: ResultHandler[Resp],
+  metrics: RelayAskMetric
 ) extends Actor
     with ActorLogging
     with Timers {
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
+
+  private val timerContext: Timer.Context = metrics.timeMessageSend()
 
   // Remote messages get retried
   private val retryTimeout: Cancellable = if (refIsRemote) {
@@ -56,6 +63,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       message = toSend
     )(context.dispatcher, self)
   } else {
+    timerContext.stop()
     Cancellable.alreadyCancelled
   }
 
@@ -68,7 +76,10 @@ final private[quine] class ExactlyOnceAskActor[Resp](
 
   private def receiveResponse(response: QuineResponse): Unit = {
     resultHandler.receiveResponse(response, promisedResult)(context.system)
-    retryTimeout.cancel() // It is possible to get a reply back before the Ack
+    if (!retryTimeout.isCancelled) { // It is possible to get a reply back before the Ack
+      timerContext.stop()
+      retryTimeout.cancel()
+    }
     context.system.stop(self)
   }
 
@@ -79,6 +90,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
    */
   def receive: Receive = {
     case BaseMessage.Ack =>
+      timerContext.stop()
       retryTimeout.cancel()
       ()
 
@@ -94,6 +106,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       receiveResponse(r)
 
     case GiveUpWaiting =>
+      timerContext.stop()
       val neverGotAcked = retryTimeout.cancel()
       val waitingFor = if (neverGotAcked && refIsRemote) "`Ack`/reply" else "reply"
       val timeoutException = new ExactlyOnceTimeoutException(

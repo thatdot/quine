@@ -116,7 +116,8 @@ object GraphService {
     maxCatchUpSleepMillis: Long = 2000L,
     labelsProperty: Symbol = Symbol("__LABEL"),
     edgeCollectionFactory: QuineId => SyncEdgeCollection = new ReverseOrderedEdgeCollection(_),
-    metricRegistry: MetricRegistry = new MetricRegistry
+    metricRegistry: MetricRegistry = new MetricRegistry,
+    enableDebugMetrics: Boolean = false
   ): Future[GraphService] =
     try {
       // Must happen before instantiating the actor system extensions
@@ -151,7 +152,7 @@ object GraphService {
         maxCatchUpSleepMillis,
         labelsProperty,
         edgeCollectionFactory,
-        HostQuineMetrics(metricRegistry)
+        HostQuineMetrics(enableDebugMetrics, metricRegistry)
       )
     } catch {
       case NonFatal(e) => Future.failed(e)

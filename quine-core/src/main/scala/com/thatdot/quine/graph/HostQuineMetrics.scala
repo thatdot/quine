@@ -4,14 +4,27 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.LongAdder
 
 import scala.collection.concurrent
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
-import com.codahale.metrics.{Counter, Histogram, Meter, MetricFilter, MetricRegistry, Timer}
+import com.codahale.metrics.{Counter, Histogram, Meter, MetricFilter, MetricRegistry, NoopMetricRegistry, Timer}
 
+import com.thatdot.quine.graph.HostQuineMetrics.{
+  DefaultRelayAskMetrics,
+  DefaultRelayTellMetrics,
+  NoOpMessageMetric,
+  RelayAskMetric,
+  RelayTellMetric
+}
 import com.thatdot.quine.util.SharedValve
 
-// A MetricRegistry, wrapped with canonical accessors for common Quine metrics
-final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
+/** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
+  * @param enableDebugMetrics whether debugging-focused metrics should be included that have a noticeable \
+  *                            impact on runtime performance.
+  * @param metricRegistry      the registry to wrap
+  */
+final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: MetricRegistry) {
+  lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
   val nodePropertyCounter: BinaryHistogramCounter =
     BinaryHistogramCounter(metricRegistry, MetricRegistry.name("node", "property-counts"))
@@ -31,8 +44,17 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   val persistorGetMultipleValuesStandingQueryStatesTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
 
+  def shardNodeEvictionsMeter(shardName: String): Meter =
+    (if (enableDebugMetrics) metricRegistry else noOpRegistry)
+      .meter(MetricRegistry.name("shard", shardName, "nodes-evicted"))
   def shardMessagesDeduplicatedCounter(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-deduplicated"))
+
+  // Meters that track relayAsk/relayTell messaging volume and latency
+  val relayTellMetrics: RelayTellMetric =
+    if (enableDebugMetrics) new DefaultRelayTellMetrics(metricRegistry) else NoOpMessageMetric
+  val relayAskMetrics: RelayAskMetric =
+    if (enableDebugMetrics) new DefaultRelayAskMetrics(metricRegistry) else NoOpMessageMetric
 
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard
   def shardNodesWokenUpCounter(shardName: String): Counter =
@@ -98,8 +120,59 @@ final case class HostQuineMetrics(metricRegistry: MetricRegistry) {
   }
 }
 object HostQuineMetrics {
-
   val MetricsRegistryName = "quine-metrics"
+
+  sealed trait MessagingMetric {
+    def markLocal(): Unit
+    def markRemote(): Unit
+    def timeMessageSend[T](send: => Future[T]): Future[T]
+
+    def timeMessageSend(): Timer.Context
+  }
+  sealed trait RelayAskMetric extends MessagingMetric
+  sealed trait RelayTellMetric extends MessagingMetric
+
+  sealed abstract class DefaultMessagingMetric(metricRegistry: MetricRegistry, val messageProtocol: String) {
+    protected[this] val totalMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "sent"))
+    protected[this] val localMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "sent", "local"))
+    protected[this] val remoteMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "sent", "remote"))
+    // tracks time between initiating a message send and receiving an ack (or a result, if a result comes sooner)
+    protected[this] val sendTimer: Timer =
+      metricRegistry.timer(MetricRegistry.name("messaging", messageProtocol, "latency"))
+    def markLocal(): Unit = {
+      totalMeter.mark()
+      localMeter.mark()
+    }
+
+    def markRemote(): Unit = {
+      totalMeter.mark()
+      remoteMeter.mark()
+    }
+    def timeMessageSend[T](send: => Future[T]): Future[T] =
+      sendTimer.time(send)
+
+    def timeMessageSend(): Timer.Context = sendTimer.time()
+  }
+  final class DefaultRelayTellMetrics(metricRegistry: MetricRegistry)
+      extends DefaultMessagingMetric(metricRegistry, "relayTell")
+      with RelayTellMetric
+  final class DefaultRelayAskMetrics(metricRegistry: MetricRegistry)
+      extends DefaultMessagingMetric(metricRegistry, "relayAsk")
+      with RelayAskMetric
+
+  final object NoOpMessageMetric extends MessagingMetric with RelayAskMetric with RelayTellMetric {
+    val noOpTimer: Timer = new com.codahale.metrics.NoopMetricRegistry().timer("unused-timer-name")
+    def markLocal(): Unit = ()
+
+    def markRemote(): Unit = ()
+
+    def timeMessageSend[T](send: => Future[T]): Future[T] = send
+
+    def timeMessageSend(): Timer.Context = noOpTimer.time()
+  }
 }
 
 /** Histogram where elements can be added or removed

@@ -13,7 +13,7 @@ import akka.dispatch.{
 
 import com.codahale.metrics.InstrumentedExecutorService
 import com.google.common.cache.{Cache, CacheBuilder}
-import com.typesafe.config.{Config => TypesafeConfig, ConfigRenderOptions}
+import com.typesafe.config.{Config => TypesafeConfig, ConfigException, ConfigRenderOptions}
 import com.typesafe.scalalogging.LazyLogging
 import pureconfig.ConfigWriter
 
@@ -75,9 +75,22 @@ object MeteredExecutors extends LazyLogging {
   private def mergeConfigWithUnderlying(config: TypesafeConfig, underlyingConfigKey: String): TypesafeConfig =
     config.withFallback(config.getConfig(underlyingConfigKey))
 
-  val quineMetrics: HostQuineMetrics = HostQuineMetrics(
-    Metrics
-  ) // INV the metrics instance here matches the one used by the app's Main
+  def quineMetrics(config: TypesafeConfig): HostQuineMetrics = {
+    val ConfigPath = "quine.metrics.enable-debug-metrics"
+    val useEnhancedMetrics: Boolean =
+      try config.getBoolean(ConfigPath)
+      catch {
+        case _: ConfigException.Missing => false
+        case wrongType: ConfigException.WrongType =>
+          logger.warn(s"Found invalid setting for boolean config key $ConfigPath", wrongType)
+          false
+      }
+
+    HostQuineMetrics(
+      useEnhancedMetrics,
+      Metrics
+    ) // INV the metrics instance here matches the one used by the app's Main
+  }
 
   /** An Executor that delegates execution to an Akka [[ThreadPoolExecutorConfigurator]], wrapped in an
     * [[InstrumentedExecutorService]].
@@ -92,7 +105,7 @@ object MeteredExecutors extends LazyLogging {
         mergeConfigWithUnderlying(config, "thread-pool-executor"),
         prerequisites,
         new ThreadPoolExecutorConfigurator(mergeConfigWithUnderlying(config, "thread-pool-executor"), prerequisites),
-        quineMetrics
+        quineMetrics(config)
       )
 
   /** An Executor that delegates execution to an Akka [[ForkJoinExecutorConfigurator]], wrapped in an
@@ -111,7 +124,7 @@ object MeteredExecutors extends LazyLogging {
           mergeConfigWithUnderlying(config, "fork-join-executor"),
           prerequisites
         ),
-        quineMetrics
+        quineMetrics(config)
       )
 
   /** An Executor that delegates execution to an Akka [[DefaultExecutorServiceConfigurator]], wrapped in an
@@ -140,7 +153,7 @@ object MeteredExecutors extends LazyLogging {
             )
           )
         },
-        quineMetrics
+        quineMetrics(config)
       )
 
   // AffinityPoolConfigurator is private and @ApiMayChange as of 2.6.16, so there is no MeteredAffinityPoolConfigurator
