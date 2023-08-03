@@ -999,7 +999,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
                 .fromIterator(() =>
                   new Iterator[QueryContext] {
                     def hasNext = !queue.isEmpty
-                    def next = queue.removeFirst
+                    def next() = queue.removeFirst()
                   }
                 )
                 .take(capacity)

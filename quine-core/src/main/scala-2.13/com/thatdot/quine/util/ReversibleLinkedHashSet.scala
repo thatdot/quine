@@ -1,5 +1,6 @@
 package com.thatdot.quine.util
 
+import annotation.nowarn
 import scala.collection.generic.DefaultSerializable
 import scala.collection.{Iterator, IterableFactory, IterableFactoryDefaults, StrictOptimizedIterableOps}
 import scala.collection.mutable.{LinkedHashSet, SetOps, Growable, GrowableBuilder}
@@ -8,6 +9,7 @@ import scala.collection.mutable.{LinkedHashSet, SetOps, Growable, GrowableBuilde
   * Subclassing is necessary, as `lastEntry` is marked protected.
   * @tparam A
   */
+@nowarn // LinkedHashSet was re-implemented in 2.13.11, and also extending it was marked deprecated at the same time
 class ReversibleLinkedHashSet[A]
     extends LinkedHashSet[A]
     with SetOps[A, ReversibleLinkedHashSet, ReversibleLinkedHashSet[A]]
