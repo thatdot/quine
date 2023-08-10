@@ -456,6 +456,8 @@ object StandingQueryPatterns extends LazyLogging {
      *   - `nodeVariable.someProperty <> <someLiteral>`
      *   - `EXISTS(nodeVariable.someProperty)` or `nodeVariable.someProperty IS NOT NULL`
      *   - `NOT EXISTS(nodeVariable.someProperty)` or `nodeVariable.someProperty IS NULL`
+     *   - `nodeVariable.someProperty =~ "stringPattern`
+     *   - TODO QU-1453 will add `nodeVariable.someProperty IN [...]`
      */
     val propertyConstraints =
       mutable.Map.empty[expressions.LogicalVariable, Map[Symbol, PropertyValuePattern]]

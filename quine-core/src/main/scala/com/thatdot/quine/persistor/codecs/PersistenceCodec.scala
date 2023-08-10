@@ -1492,6 +1492,9 @@ trait PersistenceCodec[T] extends LazyLogging {
           persistence.CypherValueConstraintListContains.createValuesVector(builder, valuesOffs)
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintListContains, off)
+
+      case MultipleValuesStandingQuery.LocalProperty.Unconditional =>
+        TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintUnconditional, emptyTable(builder))
     }
 
   private[this] def readCypherValueConstraint(
@@ -1537,6 +1540,9 @@ trait PersistenceCodec[T] extends LazyLogging {
           builder.result()
         }
         MultipleValuesStandingQuery.LocalProperty.ListContains(values)
+
+      case persistence.CypherValueConstraint.CypherValueConstraintUnconditional =>
+        MultipleValuesStandingQuery.LocalProperty.Unconditional
 
       case other =>
         throw new InvalidUnionType(other, persistence.CypherValueConstraint.names)

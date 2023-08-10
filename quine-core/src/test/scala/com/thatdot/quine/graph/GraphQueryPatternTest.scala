@@ -688,7 +688,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       ArraySeq(
         MultipleValuesStandingQuery.LocalProperty(
           Symbol("name"),
-          MultipleValuesStandingQuery.LocalProperty.Any,
+          MultipleValuesStandingQuery.LocalProperty.Unconditional,
           Some(Symbol("n.name"))
         ),
         MultipleValuesStandingQuery.LocalId(

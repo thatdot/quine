@@ -242,7 +242,7 @@ final case class GraphQueryPattern(
       )
         subQueries += MultipleValuesStandingQuery.LocalProperty(
           propKey,
-          MultipleValuesStandingQuery.LocalProperty.Any,
+          MultipleValuesStandingQuery.LocalProperty.Unconditional,
           Some(alias)
         )
 

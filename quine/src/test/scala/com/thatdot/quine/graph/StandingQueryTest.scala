@@ -214,7 +214,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     eventually(Eventually.timeout(10.seconds), interval(500.millis)) {
       val results = sqResultsRef.get()
       val names = results.flatMap(r => r.data.get("name")).toSet
-      assert(names == Set(QuineValue("a"), QuineValue("b")))
+      assert(names == Set(QuineValue.Null, QuineValue("a"), QuineValue("b")))
     }
   }
 

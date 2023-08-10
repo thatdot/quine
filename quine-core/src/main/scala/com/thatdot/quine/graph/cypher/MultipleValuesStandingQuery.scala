@@ -141,6 +141,14 @@ object MultipleValuesStandingQuery {
       val satisfiedByNone = false
       override def apply(value: Value): Boolean = notEqualTo != value
     }
+
+    /** Emits for a property key, regardless of what that key's value is (or if that key is unset)
+      * Emits any time either `Any` emits, or `None` emits
+      */
+    case object Unconditional extends ValueConstraint {
+      val satisfiedByNone = true
+      override def apply(value: Value): Boolean = true
+    }
     case object Any extends ValueConstraint {
       val satisfiedByNone = false
       override def apply(value: Value): Boolean = true

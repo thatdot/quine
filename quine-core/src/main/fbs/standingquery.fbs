@@ -60,6 +60,7 @@ union CypherValueConstraint {
   CypherValueConstraintNone,
   CypherValueConstraintRegex,
   CypherValueConstraintListContains,
+  CypherValueConstraintUnconditional,
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Equal]]
@@ -78,7 +79,7 @@ table CypherValueConstraintAny { }
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.None]]
 table CypherValueConstraintNone { }
 
-// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.None]]
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Regex]]
 table CypherValueConstraintRegex {
   pattern: string (required);
 }
@@ -87,6 +88,9 @@ table CypherValueConstraintRegex {
 table CypherValueConstraintListContains {
   values: [CypherValue];
 }
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Unconditional]]
+table CypherValueConstraintUnconditional { }
 
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.UnitSq]]
