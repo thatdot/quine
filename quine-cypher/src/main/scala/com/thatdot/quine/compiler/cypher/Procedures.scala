@@ -745,12 +745,9 @@ object CypherDebugNode extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
-        UserDefinedProcedure.extractQuineId(nodeLike) match {
-          case None =>
-            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
-          case Some(qid) =>
-            qid
-        }
+        UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
+          s"`$name` expects a node or node ID argument, but got $nodeLike"
+        ))
       case other =>
         throw wrongSignature(other)
     }
@@ -821,12 +818,9 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
-        UserDefinedProcedure.extractQuineId(nodeLike) match {
-          case None =>
-            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
-          case Some(qid) =>
-            qid
-        }
+        UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
+          s"`$name` expects a node or node ID argument, but got $nodeLike"
+        ))
       case other =>
         throw wrongSignature(other)
     }
@@ -875,12 +869,9 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
-        UserDefinedProcedure.extractQuineId(nodeLike) match {
-          case None =>
-            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
-          case Some(qid) =>
-            qid
-        }
+        UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
+          s"`$name` expects a node or node ID argument, but got $nodeLike"
+        ))
       case other =>
         throw wrongSignature(other)
     }
@@ -928,12 +919,9 @@ object PurgeNode extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
-        UserDefinedProcedure.extractQuineId(nodeLike) match {
-          case None =>
-            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
-          case Some(qid) =>
-            qid
-        }
+        UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
+          s"`$name` expects a node or node ID argument, but got $nodeLike"
+        ))
       case other =>
         throw wrongSignature(other)
     }
@@ -968,12 +956,9 @@ object CypherDebugSleep extends UserDefinedProcedure {
 
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
-        UserDefinedProcedure.extractQuineId(nodeLike) match {
-          case None =>
-            throw CypherException.Runtime(s"`$name` expects a node or node ID argument, but got $nodeLike")
-          case Some(qid) =>
-            qid
-        }
+        UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
+          s"`$name` expects a node or node ID argument, but got $nodeLike"
+        ))
       case other =>
         throw wrongSignature(other)
     }
@@ -1571,10 +1556,9 @@ object RandomWalk extends UserDefinedProcedure {
     val graph = AlgorithmGraph.getOrThrow(s"`$name` procedure", location.graph)
 
     def toQid(nodeLike: Value): QuineId = UserDefinedProcedure
-      .extractQuineId(nodeLike)(graph.idProvider)
-      .getOrElse(
-        throw CypherException.Runtime(s"`$name` expects a node or node ID as the first argument, but got: $nodeLike")
-      )
+      .extractQuineId(nodeLike)(graph.idProvider) getOrElse (throw CypherException.Runtime(
+      s"`$name` expects a node or node ID as the first argument, but got: $nodeLike"
+    ))
 
     val compiledQuery = cypher.compile(AlgorithmGraph.defaults.walkQuery, unfixedParameters = List("n"))
 

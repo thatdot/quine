@@ -16,6 +16,7 @@ import cats.data.NonEmptyList
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 import com.datastax.oss.driver.api.core._
+import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
 
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
@@ -53,6 +54,7 @@ abstract class Chunker {
   */
 abstract class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
+  keyspace: String,
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings,
   shouldCreateTables: Boolean,
@@ -224,4 +226,5 @@ abstract class CassandraPersistor(
 
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
     domainIndexEvents.deleteByDgnId(dgnId)
+  def delete(): Future[Unit] = session.executeAsync(dropKeyspace(keyspace).build).thenApply[Unit](_ => ()).toScala
 }

@@ -109,7 +109,7 @@ object PersistenceAgentType extends PureconfigInstances {
     ConfigConvert(reader, writer)
   }
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
-    // TODO: this assumes the Cassandra port if port is omitted! (so beware about re-using it)
+    // This assumes the Cassandra port if port is omitted! (so beware about re-using it)
     @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
       ConfigConvert.viaNonEmptyString[InetSocketAddress](
         s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),

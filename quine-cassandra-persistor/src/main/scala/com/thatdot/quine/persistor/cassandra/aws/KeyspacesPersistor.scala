@@ -60,6 +60,7 @@ class KeyspacesPersistor(
   materializer: Materializer
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
+      keyspace,
       readSettings,
       CassandraStatementSettings(
         ConsistencyLevel.LOCAL_QUORUM, // Write consistency fixed by AWS Keyspaces

@@ -47,6 +47,7 @@ class CassandraPersistor(
   materializer: Materializer
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
+      keyspace,
       readSettings,
       writeSettings,
       shouldCreateTables,
@@ -82,9 +83,8 @@ class CassandraPersistor(
       for {
         keyspaceMetadata <- sess.getMetadata.getKeyspace(keyspace).toScala
         keyspaceReplicationConfig = keyspaceMetadata.getReplication.asScala.toMap
-        clazz <- keyspaceReplicationConfig.get("class")
-        factor <- keyspaceReplicationConfig.get("replication_factor")
-        if clazz == "org.apache.cassandra.locator.SimpleStrategy" && factor.toInt != replicationFactor
+        clazz <- keyspaceReplicationConfig.get("class") if clazz == "org.apache.cassandra.locator.SimpleStrategy"
+        factor <- keyspaceReplicationConfig.get("replication_factor") if factor.toInt != replicationFactor
       } logger.info(
         s"Unexpected replication factor: $factor (expected: $replicationFactor) for Cassandra keyspace: $keyspace"
       )
