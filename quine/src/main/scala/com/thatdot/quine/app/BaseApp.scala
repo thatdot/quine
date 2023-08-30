@@ -77,6 +77,17 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
         }
       }(graph.system.dispatcher)
 
+  /** Retrieves all metadata starting with a prefix. This is not efficient (relies on filtering the entire
+    * metadata set).
+    */
+  protected def getAllGlobalMetaDataByPrefix[A](
+    prefix: String
+  )(implicit schema: JsonSchema[A]): Future[Map[String, A]] =
+    graph.persistor
+      .getAllMetaData()
+      .map(_.filterKeys(_.startsWith(prefix)))(graph.system.dispatcher)
+      .map(m => m.mapValues(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))))(graph.system.dispatcher)
+
   /** Deserialize a value intended to be stored as metadata
     *
     * @param value the value serialized value as the UTF-8 bytes of its JSON representation to be deserialized
