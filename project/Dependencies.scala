@@ -64,7 +64,7 @@ object Dependencies {
   val slinkyV = "0.7.3"
   val snakeYamlV = "2.7"
   val sugarV = "2.0.6"
-  val stoplightElementsV = "7.7.8"
+  val stoplightElementsV = "7.12.0"
   val ujsonV = "1.6.0"
   val circeV = "0.14.6"
   val circeOpticsV = "0.14.1"
