@@ -35,6 +35,9 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
   final protected def storeGlobalMetaData[A: JsonSchema](key: String, value: A): Future[Unit] =
     graph.persistor.setMetaData(key, Some(encodeMetaData(value)))
 
+  final protected def deleteGlobalMetaData(key: String): Future[Unit] =
+    graph.persistor.setMetaData(key, None)
+
   /** Serialize a value intended to be stored as metadata
     *
     * @param value the value to be serialized as the UTF-8 bytes of its JSON representation
