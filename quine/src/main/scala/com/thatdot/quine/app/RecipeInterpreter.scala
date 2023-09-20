@@ -1,7 +1,6 @@
 package com.thatdot.quine.app
 
 import java.lang.System.lineSeparator
-import java.net.URL
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -11,10 +10,9 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import akka.actor.Cancellable
+import akka.http.scaladsl.model.Uri
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Keep, Sink}
-
-import com.google.common.net.PercentEscaper
 
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
 import com.thatdot.quine.graph.cypher.{QueryResults, Value}
@@ -36,7 +34,7 @@ object RecipeInterpreter {
     recipe: Recipe,
     appState: RecipeState,
     graphService: CypherOpsGraph,
-    quineWebserverUrl: Option[URL]
+    quineWebserverUri: Option[Uri]
   )(implicit idProvider: QuineIdProvider): Cancellable = {
     statusLines.info(s"Running Recipe: ${recipe.title}")
 
@@ -102,9 +100,8 @@ object RecipeInterpreter {
         statusQuery @ StatusQuery(cypherQuery) <- recipe.statusQuery
       } {
         for {
-          url <- quineWebserverUrl
-          escapedQuery = new PercentEscaper("", false).escape(cypherQuery)
-        } statusLines.info(s"Status query URL is $url#$escapedQuery")
+          url <- quineWebserverUri
+        } statusLines.info("Status query URL is " + url.withFragment(cypherQuery))
         tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
       }
     }

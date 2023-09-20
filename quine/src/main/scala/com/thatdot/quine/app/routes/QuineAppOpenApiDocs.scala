@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.routes
 
-import java.net.URL
-
+import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.server.Route
 
 import endpoints4s.openapi.model._
@@ -107,7 +106,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
   *
   * @param graph the Quine graph
   */
-final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: URL)
+final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)
     extends endpoints4s.akkahttp.server.Endpoints
     with endpoints4s.akkahttp.server.JsonEntitiesFromEncodersAndDecoders {
 
@@ -118,7 +117,7 @@ final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: URL)
       get(path / "docs" / "openapi.json"),
       ok(
         jsonResponse[endpoints4s.openapi.model.OpenApi](
-          OpenApiRenderer.stringEncoder(Some(Seq(OpenApiServer(url.toString))))
+          OpenApiRenderer.stringEncoder(Some(Seq(OpenApiServer(uri.toString))))
         )
       )
     )

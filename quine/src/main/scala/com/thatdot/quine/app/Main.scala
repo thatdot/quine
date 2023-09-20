@@ -1,7 +1,6 @@
 package com.thatdot.quine.app
 
 import java.io.File
-import java.net.URL
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
@@ -14,6 +13,7 @@ import scala.util.{Failure, Success}
 
 import akka.Done
 import akka.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
+import akka.http.scaladsl.model.Uri
 import akka.util.Timeout
 
 import cats.syntax.either._
@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
-import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig}
+import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
@@ -169,9 +169,14 @@ object Main extends App with LazyLogging {
   statusLines.info("Graph is ready")
 
   // The web service is started unless it was disabled.
-  val bindUrl: Option[URL] = Option.when(config.webserver.enabled)(config.webserver.toURL)
-  val canonicalUrl: Option[URL] =
-    Option.when(config.webserver.enabled)(config.webserverAdvertise.map(_.toURL)).flatten
+  val bindAndResolvableAddresses: Option[(WebServerConfig, Uri)] = Option.when(config.webserver.enabled) {
+    import config.webserver
+    // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
+    // from the bind URL
+    webserver -> config.webserverAdvertise.fold(webserver.asResolveableUrl)(
+      _.overrideHostAndPort(webserver.asResolveableUrl)
+    )
+  }
 
   @volatile
   var recipeInterpreterTask: Option[Cancellable] = None
@@ -182,7 +187,7 @@ object Main extends App with LazyLogging {
       .onComplete {
         case Success(()) =>
           recipeInterpreterTask = recipe.map(r =>
-            RecipeInterpreter(statusLines, r, appState, graph, canonicalUrl)(
+            RecipeInterpreter(statusLines, r, appState, graph, bindAndResolvableAddresses.map(_._2))(
               graph.idProvider
             )
           )
@@ -197,26 +202,9 @@ object Main extends App with LazyLogging {
 
   attemptAppLoad()
 
-  bindUrl foreach { url =>
-    // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
-    // from the bind URL
-    val resolvableUrl = canonicalUrl.getOrElse {
-      // hack: if using the bindURL when host is "0.0.0.0" or "::" (INADDR_ANY and IN6ADDR_ANY's most common
-      // serialized forms) present the URL as "localhost" to the user. This is necessary because while
-      // INADDR_ANY as a source  address means "bind to all interfaces", it cannot necessarily be used as
-      // a destination address
-      val resolvableHost =
-        if (Set("0.0.0.0", "::").contains(url.getHost)) "localhost" else url.getHost
-      new java.net.URL(
-        url.getProtocol,
-        resolvableHost,
-        url.getPort,
-        url.getFile
-      )
-    }
-
+  bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, resolvableUrl, timeout)
-      .bindWebServer(interface = url.getHost, port = url.getPort)
+      .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)

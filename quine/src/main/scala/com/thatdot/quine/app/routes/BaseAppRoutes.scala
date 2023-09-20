@@ -1,23 +1,48 @@
 package com.thatdot.quine.app.routes
 
+import java.io.{File, FileInputStream}
+import java.security.{KeyStore, SecureRandom}
+import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
+
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.util.Using
 
-import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.headers._
 import akka.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Route, StandardRoute}
+import akka.http.scaladsl.{ConnectionContext, Http}
 import akka.stream.Materializer
 import akka.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.app.config.SslConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 
 object MediaTypes {
   val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
+}
+object SslHelper {
+
+  /** Create an SSL context given the path to a Java keystore and its password
+    * @param path
+    * @param password
+    * @return
+    */
+  def sslContextFromKeystore(path: File, password: Array[Char]): SSLContext = {
+    val keystore = KeyStore.getInstance(KeyStore.getDefaultType)
+    Using.resource(new FileInputStream(path))(keystoreFile => keystore.load(keystoreFile, password))
+    val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+    keyManagerFactory.init(keystore, password)
+    val trustManagerFacotry = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
+    trustManagerFacotry.init(keystore)
+    val sslContext = SSLContext.getInstance("TLS")
+    sslContext.init(keyManagerFactory.getKeyManagers, trustManagerFacotry.getTrustManagers, new SecureRandom)
+    sslContext
+  }
 }
 trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoints {
 
@@ -57,16 +82,22 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
     }
 
   /** Bind a webserver to server up the main route */
-  def bindWebServer(interface: String, port: Int): Future[Http.ServerBinding] = {
-    implicit val sys = graph.system
-    val route = mainRoute
-    Http()
+  def bindWebServer(interface: String, port: Int, ssl: Option[SslConfig]): Future[Http.ServerBinding] = {
+    import graph.system
+    val serverBuilder = Http()(system)
       .newServerAt(interface, port)
       .adaptSettings(
         // See https://doc.akka.io/docs/akka-http/10.0/common/http-model.html#registering-custom-media-types
         _.mapWebsocketSettings(_.withPeriodicKeepAliveMaxIdle(10.seconds))
           .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`))
       )
-      .bind(route)
+
+    ssl
+      .fold(serverBuilder) { ssl =>
+        serverBuilder.enableHttps(
+          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password))
+        )
+      }
+      .bind(Route.toFunction(mainRoute)(system))
   }
 }

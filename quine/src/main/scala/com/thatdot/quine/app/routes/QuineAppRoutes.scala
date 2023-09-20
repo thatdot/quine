@@ -1,9 +1,8 @@
 package com.thatdot.quine.app.routes
 
-import java.net.URL
-
 import scala.util.{Failure, Success, Try}
 
+import akka.http.scaladsl.model.Uri
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.{Directives, Route}
 import akka.util.Timeout
@@ -35,7 +34,7 @@ class QuineAppRoutes(
     with StandingQueryStore
     with IngestStreamState,
   val currentConfig: Json,
-  val url: URL,
+  val uri: Uri,
   val timeout: Timeout
 ) extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -81,7 +80,7 @@ class QuineAppRoutes(
   }
 
   /** OpenAPI route */
-  lazy val openApiRoute: Route = QuineAppOpenApiDocsRoutes(graph, url).route
+  lazy val openApiRoute: Route = QuineAppOpenApiDocsRoutes(graph, uri).route
 
   /** Rest API route */
   lazy val apiRoute: Route = {
