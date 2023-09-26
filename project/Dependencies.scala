@@ -40,7 +40,6 @@ object Dependencies {
   val openCypherV = "9.0.20210312"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
-  val pulsar4sV = "2.9.0"
   val plotlyV = "1.57.1"
   val protobufV = "3.21.10"
   val protobufCommonV = "2.14.2"

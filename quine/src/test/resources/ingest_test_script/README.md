@@ -33,6 +33,7 @@ python ingest_test.py -e 'Base64,Zlib' kinesis --name ingest-test-stream --regio
 
 
 ### pulsar
+    Currently unimplemented in Quine (removed because upstream library was dead and wouldn't move off Akka Streams).
 
 
 ## Operation

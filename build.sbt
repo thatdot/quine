@@ -275,9 +275,6 @@ lazy val `quine`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
-      "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
-      // for the akka-streams integration
-      "com.clever-cloud.pulsar4s" %% "pulsar4s-akka-streams" % pulsar4sV,
       // WebJars (javascript dependencies masquerading as JARs)
       "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.npm" % "vis-network" % visNetworkV,

@@ -115,7 +115,7 @@ ingestStreams:
 An Ingest may specify a list of decoders to support decompression. Decoders are applied in the order they are
 specified and are applied per-record.
 - Decoding is applied in the order specified in the **recordDecoders** array.
-- **recordDecoders** are currently supported _only_ for **Kafka**, **Pulsar**, **Kinesis**, **ServerSentEvents**, and **SQS** ingests.
+- **recordDecoders** are currently supported _only_ for **Kafka**, **Kinesis**, **ServerSentEvents**, and **SQS** ingests.
 - Decoding types currently supported are **Base64**, **Gzip**, and **Zlib**.
 - The **recordDecoders** member is optional.
 

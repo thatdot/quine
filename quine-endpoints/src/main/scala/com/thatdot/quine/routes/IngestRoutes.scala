@@ -342,23 +342,6 @@ object KinesisIngest {
   }
 }
 
-@title("Pulsar Ingest Stream")
-@unnamed
-@docs("A stream of data being ingested from Pulsar.")
-final case class PulsarIngest(
-  @docs("The format used to decode each Pulsar record.")
-  format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
-  @docs("Name of the Pulsar topic to ingest.") topics: Seq[String],
-  @docs("Pulsar service url.") pulsarUrl: String,
-  @docs("Pulsar subscription key.") subscriptionName: String,
-  @docs("Pulsar subscription type.") subscriptionType: PulsarSubscriptionType,
-  @docs("Maximum number of records to write simultaneously.")
-  parallelism: Int = IngestRoutes.defaultWriteParallelism,
-  @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
-  @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
-  recordDecoders: Seq[RecordDecodingType] = Seq.empty
-) extends IngestStreamConfiguration
-
 @title("Kinesis Data Stream")
 @unnamed
 @docs("A stream of data being ingested from Kinesis.")
@@ -698,15 +681,6 @@ object FileIngestMode {
   val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
 }
 
-sealed trait PulsarSubscriptionType {}
-object PulsarSubscriptionType {
-  case object Exclusive extends PulsarSubscriptionType
-  case object Shared extends PulsarSubscriptionType
-  case object Failover extends PulsarSubscriptionType
-  case object KeyShared extends PulsarSubscriptionType
-  val values: Seq[PulsarSubscriptionType] = Seq(Exclusive, Shared, Failover, KeyShared)
-}
-
 sealed trait CsvCharacter { def byte: Byte }
 object CsvCharacter {
   case object Backslash extends CsvCharacter { def byte: Byte = '\\' }
@@ -780,8 +754,6 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     exampleIngestStreamInfo.withName("log1-entity-ingest-source")
 
   // TODO review which of these are necessary
-  implicit lazy val pulsarSubscriptTypeSchema: Enum[PulsarSubscriptionType] =
-    stringEnumeration(PulsarSubscriptionType.values)(_.toString)
   implicit lazy val kafkaSubscriptionSchema: JsonSchema[Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments]] =
     orFallbackToJsonSchema[KafkaIngest.Topics, KafkaIngest.PartitionAssignments](implicitly, implicitly)
   implicit lazy val kafkaSecurityProtocolSchema: Enum[KafkaSecurityProtocol] =

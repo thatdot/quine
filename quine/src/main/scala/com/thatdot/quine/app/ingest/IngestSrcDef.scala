@@ -340,28 +340,6 @@ object IngestSrcDef extends LazyLogging {
           ).valid
 
       }
-    case PulsarIngest(
-          format,
-          topics,
-          serviceUrl,
-          subscriptionName,
-          subscriptionType,
-          parallelism,
-          maximumPerSecond,
-          recordEncodings
-        ) =>
-      PulsarSrcDef(
-        name,
-        serviceUrl,
-        topics,
-        subscriptionName,
-        subscriptionType,
-        importFormatFor(format),
-        initialSwitchMode,
-        parallelism,
-        maximumPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
-      ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
       ServerSentEventsSrcDef(

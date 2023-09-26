@@ -1,7 +1,7 @@
 package com.thatdot.quine.app
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 import akka.Done
 import akka.stream.UniqueKillSwitch
@@ -41,11 +41,4 @@ case class AkkaKillSwitch(killSwitch: UniqueKillSwitch) extends ShutdownSwitch {
 case class KafkaKillSwitch(killSwitch: akka.kafka.scaladsl.Consumer.Control) extends ShutdownSwitch {
   def terminate(termSignal: Future[akka.Done]): Future[akka.Done] =
     killSwitch.drainAndShutdown(termSignal)(ExecutionContexts.parasitic)
-}
-
-case class PulsarKillSwitch(control: com.sksamuel.pulsar4s.akka.streams.Control, ctx: ExecutionContext)
-    extends ShutdownSwitch {
-  def terminate(termSignal: Future[akka.Done]): Future[Done] =
-    termSignal.flatMap(_ => control.shutdown()(ctx))(ExecutionContexts.parasitic)
-
 }
