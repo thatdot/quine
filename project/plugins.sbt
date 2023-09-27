@@ -21,3 +21,4 @@ addSbtPlugin("pl.project13.scala" % "sbt-jmh" % "0.4.5")
 libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
 libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "6.6.0.202305301015-r"
 addSbtPlugin("io.spray" % "sbt-boilerplate" % "0.6.1")
+addSbtPlugin("net.vonbuchholtz" % "sbt-dependency-check" % "5.1.0")
