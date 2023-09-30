@@ -27,8 +27,12 @@ object Dependencies {
   val flatbuffersV = "23.5.26"
   val guavaV = "32.1.2-jre"
   val ioniconsV = "2.0.1"
+  // jackson version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
+  // [[kclAkkaV]], but with a fix for CVE-2020-28491
+  val jacksonCborV = "2.11.4"
   val jnrPosixV = "3.1.16"
   val jqueryV = "3.6.3"
+  val kclAkkaV = "5.0.0"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.4.11"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
@@ -62,6 +66,10 @@ object Dependencies {
   val shapelessV = "2.3.10"
   val slinkyV = "0.7.3"
   val snakeYamlV = "2.7"
+  // snappy version explicitly specified is binary-compatible with the versions included in alpakka-kafka 2.1.1
+  // [[alpakkaKafkaV]] and kcl-akka-stream 5.0.0 [[kclAkkaV]], but with fixes for CVE-2023-34453, CVE-2023-34454,
+  // CVE-2023-34455
+  val snappyV = "1.1.10.5"
   val sugarV = "2.0.6"
   val stoplightElementsV = "7.12.0"
   val ujsonV = "1.6.0"
