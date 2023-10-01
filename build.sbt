@@ -31,7 +31,7 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.8.3" % Test,
+      "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.9.0" % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
