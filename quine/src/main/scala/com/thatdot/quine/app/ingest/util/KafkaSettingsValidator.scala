@@ -10,6 +10,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.config.ConfigDef
+import org.apache.kafka.common.config.SaslConfigs.SASL_JAAS_CONFIG
 
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.{ErrorString, underlyingValidator}
 import com.thatdot.quine.routes.KafkaIngest.KafkaProperties
@@ -35,6 +36,11 @@ case class KafkaSettingsValidator(
       if (usedKeys.nonEmpty) Some(f"Property value conflicts with property ${usedKeys.mkString(",")}") else None
     case _ => None
   }
+
+  private def disallowSubstring(forbiddenValue: String)(key: String): Option[ErrorString] =
+    if (properties.get(key).exists((userSetValue: String) => userSetValue.contains(forbiddenValue)))
+      Some(s"$key may not be set to: ${properties(key)}, as it contains: $forbiddenValue")
+    else None
 
   /** Field conflicts with an explicitly set property on the ingest. Use this when
     * the setting MUST be provided via the API
@@ -88,30 +94,47 @@ case class KafkaSettingsValidator(
         } yield s"Error in Kafka setting $configName: $err"
       } else {
         // config is not yet merged (multiple sources of truth), so we can look for conflicts between the parts of config
-        List(
-          findConflict(Set(CommonClientConfigs.GROUP_ID_CONFIG), explicitGroupId),
-          findConflict(
-            Set(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG),
-            Some(explicitOffsetCommitting)
-          ),
-          //boostrap servers is mandatory on ingest. If it is set in properties that's a conflict
-          disallowField(
-            CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
-            "Please use the Kafka ingest `bootstrapServers` field."
-          ),
-          disallowField(
-            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
-          ),
-          disallowField(
-            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
-          ),
-          disallowField(
-            CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
-            "Please use the Kafka ingest `securityProtocol` field."
-          ),
-          disallowField(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "Please use the Kafka ingest `autoOffsetReset` field.")
+        (
+          List(
+            findConflict(Set(CommonClientConfigs.GROUP_ID_CONFIG), explicitGroupId),
+            findConflict(
+              Set(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG),
+              Some(explicitOffsetCommitting)
+            ),
+            //boostrap servers is mandatory on ingest. If it is set in properties that's a conflict
+            disallowField(
+              CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
+              "Please use the Kafka ingest `bootstrapServers` field."
+            ),
+            disallowField(
+              ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+              "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
+            ),
+            disallowField(
+              ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+              "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
+            ),
+            disallowField(
+              CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
+              "Please use the Kafka ingest `securityProtocol` field."
+            ),
+            disallowField(
+              ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+              "Please use the Kafka ingest `autoOffsetReset` field."
+            )
+          ) ::: { // Conservative fix for CVE-2023-25194: disable keys including ${SaslConfigs.SASL_JAAS_CONFIG}
+            val forbiddenJaasModule = "com.sun.security.auth.module.JndiLoginModule"
+            (disallowSubstring(forbiddenJaasModule)(SASL_JAAS_CONFIG) :: List(
+              // these 3 config scopes may allow "overrides" -- the security advisory at https://archive.ph/P6q2A
+              // recommends blacklisting the `override` subkey for each scope. These are already considered
+              // invalid by `unrecognizedProperties`, but better safe than sorry.
+              "producer",
+              "consumer",
+              "admin"
+            )
+              .map(scope => s"$scope.override.$SASL_JAAS_CONFIG")
+              .map(disallowSubstring(forbiddenJaasModule)))
+          }
         ).flatten
       }
 

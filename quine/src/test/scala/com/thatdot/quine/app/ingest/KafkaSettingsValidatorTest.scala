@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.ingest
 
+import org.scalatest.Inspectors.forAll
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
@@ -85,6 +86,22 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
     )
     // key
     assert(KafkaSettingsValidator(Map("ssl.key.password" -> "epsilon")).validate(false).isEmpty)
+  }
+  test("Spooky SASL selections disallowed") {
+    // CVE-2023-25194
+    val badModuleNoBiscuit = "com.sun.security.auth.module.JndiLoginModule"
+    val bannedSettings = Seq(
+      "producer.override.sasl.jaas.config" -> badModuleNoBiscuit,
+      "consumer.override.sasl.jaas.config" -> badModuleNoBiscuit,
+      "admin.override.sasl.jaas.config" -> badModuleNoBiscuit,
+      "sasl.jaas.config" -> badModuleNoBiscuit
+    )
+    // Each of these settings should be rejected for at least 1 reason
+    forAll(bannedSettings) { setting =>
+      assert(
+        KafkaSettingsValidator(Map(setting)).validate(false).nonEmpty
+      )
+    }
   }
 
 }
