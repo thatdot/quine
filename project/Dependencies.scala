@@ -60,7 +60,7 @@ object Dependencies {
   val scalaParserCombinatorsV = "1.1.2" // scala-steward:off
   val scalaTestScalaCheckV = "3.2.16.0"
   val scalajsDomV = "2.6.0"
-  val scalaTestV = "3.2.16"
+  val scalaTestV = "3.2.17"
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.10"
