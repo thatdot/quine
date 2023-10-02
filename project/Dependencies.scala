@@ -30,7 +30,7 @@ object Dependencies {
   // jackson version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
   // [[kclAkkaV]], but with a fix for CVE-2020-28491
   val jacksonCborV = "2.11.4"
-  val jnrPosixV = "3.1.16"
+  val jnrPosixV = "3.1.18"
   val jqueryV = "3.6.3"
   val kclAkkaV = "5.0.0"
   val logbackConfigV = "0.4.0"
