@@ -266,6 +266,7 @@ lazy val `quine`: Project = project
       "com.lightbend.akka" %% "akka-stream-alpakka-text" % alpakkaTextV,
       "com.lightbend.akka" %% "akka-stream-alpakka-s3" % alpakkaS3V,
       "io.github.streetcontxt" %% "kcl-akka-stream" % kclAkkaV,
+      "org.apache.commons" % "commons-compress" % commonsCompressV,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % jacksonCborV,
       "org.xerial.snappy" % "snappy-java" % snappyV,
       // akka-http-xml is not a direct dep, but pulled in transitively by Alpakka modules above.

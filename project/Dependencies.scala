@@ -16,6 +16,10 @@ object Dependencies {
   val catsV = "2.10.0"
   val catsEffectV = "3.5.2"
   val commonsCodecV = "1.15"
+  // commons-compress version explicitly specified is as close as possible to the version included in kcl-akka-stream
+  // 5.0.0 [[kclAkkaV]] and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]], but with fixes for CVE-2021-35515,
+  // CVE-2021-35516, CVE-2021-35517, CVE-2021-36090
+  val commonsCompressV = "1.24.0"
   val commonsTextV = "1.10.0"
   val commonsIoV = "2.14.0"
   val dropwizardMetricsV = "4.2.20"
