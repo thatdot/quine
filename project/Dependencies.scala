@@ -10,6 +10,9 @@ object Dependencies {
   val alpakkaSnsV = "3.0.4"
   val alpakkaSseV = "3.0.4"
   val alpakkaTextV = "3.0.4"
+  // avro version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
+  // [[kclAkkaV]], and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]], but with a fix for CVE-2023-39410
+  val avroV = "1.11.3"
   val betterMonadicForV = "0.3.1"
   val bootstrapV = "5.3.0"
   val cassandraClientV = "4.15.0"
@@ -36,15 +39,21 @@ object Dependencies {
   val jacksonCborV = "2.15.2"
   val jnrPosixV = "3.1.18"
   val jqueryV = "3.6.3"
+  // kafka-clients version explicitly specified is as close as possible to the version included in akka-stream-kafka
+  // 2.1.1 [[alpakkaKafkaV]], kcl-akka-stream 5.0.0 [[kclAkkaV]], and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]],
+  // but with a fix for CVE-2021-38153
+  val kafkaClientsV = "2.7.2"
   val kclAkkaV = "5.0.0"
+  // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb
+  // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
+  val kotlinStdlibV = "1.9.10"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.4.11"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
-  val mapDbV = "3.0.9"
+  val mapDbV = "3.0.10"
   val memeIdV = "0.8.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.6"
-  val nettyNioClientV = "2.17.288" // scala-steward:off
   val openCypherV = "9.0.20210312"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"

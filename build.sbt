@@ -71,8 +71,6 @@ lazy val `quine-mapdb-persistor`: Project = project
      * adapted to this change quickly. However, since other parts of the Java
      * ecosystem _have_ (example: `akka-stream kafka`), we need to exclude the
      * bad JAR and explicitly pull in the good one.
-     *
-     * This is fixed in <https://github.com/jankotek/mapdb/pull/992>
      */
     libraryDependencies ++= Seq(
       ("org.mapdb" % "mapdb" % mapDbV).exclude("net.jpountz.lz4", "lz4"),
@@ -256,9 +254,10 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
       "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
-      "software.amazon.awssdk" % "netty-nio-client" % nettyNioClientV,
       "com.typesafe.akka" %% "akka-stream-kafka" % alpakkaKafkaV,
+      "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "com.lightbend.akka" %% "akka-stream-alpakka-kinesis" % alpakkaKinesisV exclude ("org.rocksdb", "rocksdbjni"),
+      "commons-io" % "commons-io" % commonsIoV,
       "com.lightbend.akka" %% "akka-stream-alpakka-sqs" % alpakkaSQSV,
       "com.lightbend.akka" %% "akka-stream-alpakka-sse" % alpakkaSseV,
       "com.lightbend.akka" %% "akka-stream-alpakka-sns" % alpakkaSnsV,
@@ -266,6 +265,7 @@ lazy val `quine`: Project = project
       "com.lightbend.akka" %% "akka-stream-alpakka-text" % alpakkaTextV,
       "com.lightbend.akka" %% "akka-stream-alpakka-s3" % alpakkaS3V,
       "io.github.streetcontxt" %% "kcl-akka-stream" % kclAkkaV,
+      "org.apache.avro" % "avro" % avroV,
       "org.apache.commons" % "commons-compress" % commonsCompressV,
       "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % jacksonCborV,
       "org.xerial.snappy" % "snappy-java" % snappyV,
