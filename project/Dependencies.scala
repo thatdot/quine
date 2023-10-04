@@ -13,6 +13,7 @@ object Dependencies {
   // avro version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
   // [[kclAkkaV]], and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]], but with a fix for CVE-2023-39410
   val avroV = "1.11.3"
+  val awsSdkV = "2.20.159"
   val betterMonadicForV = "0.3.1"
   val bootstrapV = "5.3.0"
   val cassandraClientV = "4.15.0"
