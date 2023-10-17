@@ -72,7 +72,7 @@ object Dependencies {
   // scalaParserCombinatorsV could be at 2.1.1 (or higher), but doing so conflicts with akka 2.6. Due to licensing
   // concerns, we cannot further upgrade akkaV, so we cannot easily upgrade scalaParserCombinatorsV
   val scalaParserCombinatorsV = "1.1.2" // scala-steward:off
-  val scalaTestScalaCheckV = "3.2.16.0"
+  val scalaTestScalaCheckV = "3.2.17.0"
   val scalajsDomV = "2.6.0"
   val scalaTestV = "3.2.17"
   val scalajsMacroTaskExecutorV = "1.1.1"
