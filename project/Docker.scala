@@ -37,7 +37,7 @@ object Docker extends AutoPlugin {
             registry = Some("public.ecr.aws"),
             namespace = Some("thatdot"),
             repository = "eclipse-temurin",
-            tag = Some("20.0.1_9-jre-jammy")
+            tag = Some("21_35-jre-jammy")
           )
         )
         expose(8080)
