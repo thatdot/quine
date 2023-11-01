@@ -33,7 +33,7 @@ object Dependencies {
   val endpoints4sOpenapiV = "4.3.0"
   val endpoints4sXhrClientV = "5.2.0"
   val flatbuffersV = "23.5.26"
-  val guavaV = "32.1.2-jre"
+  val guavaV = "32.1.3-jre"
   val ioniconsV = "2.0.1"
   // jackson version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
   // [[kclAkkaV]], but with a fix for CVE-2020-28491
