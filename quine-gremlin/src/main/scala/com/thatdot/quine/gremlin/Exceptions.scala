@@ -2,7 +2,7 @@ package com.thatdot.quine.gremlin
 
 import scala.util.parsing.input.Position
 
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /** The sort of exceptions that can be thrown when interpreting Gremlin queries.
   *
@@ -109,6 +109,6 @@ final case class FailedDeserializationError(
     errorString(
       "FailedDeserializationError",
       s"property `$property` could not be unpickled.\n" +
-      s"  Raw bytes: ${HexConversions.formatHexBinary(rawBytes)}"
+      s"  Raw bytes: ${ByteConversions.formatHexBinary(rawBytes)}"
     )
 }

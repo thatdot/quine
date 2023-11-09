@@ -2,7 +2,7 @@ package com.thatdot.quine.model
 
 import scala.util.{Success, Try}
 
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /** Abstraction for values that are being read to, written to, and stored on
   * nodes.
@@ -120,7 +120,7 @@ object PropertyValue {
 
     override def toString: String = {
       val value = if (deserializedReady && deserialized.isSuccess) deserialized.get.toString else ""
-      s"Serialized(${HexConversions.formatHexBinary(serialized)}$value)"
+      s"Serialized(${ByteConversions.formatHexBinary(serialized)}$value)"
     }
 
     def quineType: Try[QuineType] = Try(QuineValue.readMsgPackType(serialized))

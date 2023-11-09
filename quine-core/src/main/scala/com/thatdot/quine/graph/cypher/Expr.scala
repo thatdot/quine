@@ -15,7 +15,7 @@ import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.{HexConversions, TypeclassInstances}
+import com.thatdot.quine.util.{ByteConversions, TypeclassInstances}
 
 /** Maps directly onto Cypher's expressions
   *
@@ -401,7 +401,7 @@ object Expr {
       }
 
     override def toString(): String =
-      s"Bytes(${HexConversions.formatHexBinary(b)})"
+      s"Bytes(${ByteConversions.formatHexBinary(b)})"
 
     def typ = Type.Bytes
 
@@ -2419,7 +2419,7 @@ sealed abstract class Value extends Expr {
     case Expr.Null => "null"
     case Expr.Bytes(b, representsId) =>
       val prefix = if (representsId) "#" else "" // #-prefix matches [[qidToPrettyString]]
-      prefix + HexConversions.formatHexBinary(b)
+      prefix + ByteConversions.formatHexBinary(b)
 
     case Expr.Node(id, lbls, props) =>
       val propsStr = props

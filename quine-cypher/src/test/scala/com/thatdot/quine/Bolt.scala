@@ -16,10 +16,10 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.quine.bolt.Protocol
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
-  def toHex(str: String): ByteString = ByteString(HexConversions.parseHexBinary(str.filter(_ != ' ')))
+  def toHex(str: String): ByteString = ByteString(ByteConversions.parseHexBinary(str.filter(_ != ' ')))
 
   implicit val timeout: Timeout = Timeout(3600 seconds)
   implicit val graph: CypherOpsGraph = Await.result(

@@ -6,7 +6,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.QuineIdLongProvider
 import com.thatdot.quine.graph.cypher.{Expr, Value}
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /* This tests the examples given in https://boltprotocol.org/v1/#serialization.
  * Note that the tests themselves use `HexConversions`.
@@ -16,7 +16,7 @@ import com.thatdot.quine.util.HexConversions
  */
 class BoltSerialization extends AnyFunSuite {
 
-  def toHex(str: String): ByteString = ByteString(HexConversions.parseHexBinary(str.filter(_ != ' ')))
+  def toHex(str: String): ByteString = ByteString(ByteConversions.parseHexBinary(str.filter(_ != ' ')))
 
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
   val bolt: Serialization = Serialization()

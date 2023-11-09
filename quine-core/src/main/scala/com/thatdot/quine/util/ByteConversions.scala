@@ -1,7 +1,12 @@
 package com.thatdot.quine.util
 
+import java.nio.ByteBuffer
+import java.util.UUID
+
+import memeid4s.{UUID => UUID4s}
+
 /** Conversions back and forth between arrays of bytes and strings of hexadecimal characters */
-object HexConversions {
+object ByteConversions {
   final private val HexArray = Array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F')
 
   /** Convert a byte array into an even-length string of hexadecimal characters
@@ -52,5 +57,22 @@ object HexConversions {
       j += 1
     }
     bytes
+  }
+
+  /** Turn a UUID losslessly into a freshly-allocated 16-byte (128-bit) array */
+  final def uuidToBytes(u: UUID): Array[Byte] =
+    ByteBuffer.allocate(16).putLong(u.getMostSignificantBits).putLong(u.getLeastSignificantBits).array()
+
+  /** Wrapper over [[uuidToBytes]] for memeid UUIDs
+    */
+  final def uuidToBytes(u: UUID4s): Array[Byte] = uuidToBytes(u.asJava())
+
+  object UuidConversions {
+    implicit class ByteableUuid(private val u: UUID) extends AnyVal {
+      def bytes: Array[Byte] = uuidToBytes(u)
+    }
+    implicit class ByteableUuid4s(private val u: UUID4s) extends AnyVal {
+      def bytes: Array[Byte] = uuidToBytes(u)
+    }
   }
 }

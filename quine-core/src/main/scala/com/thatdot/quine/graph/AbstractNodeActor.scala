@@ -42,7 +42,7 @@ import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceConfig}
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /** The fundamental graph unit for both data storage (eg [[properties]]) and
   * computation (as an Akka actor).
@@ -474,7 +474,7 @@ abstract private[graph] class AbstractNodeActor(
     // Return a string that (if possible) shows the deserialized representation
     def propertyValue2String(propertyValue: PropertyValue): String =
       propertyValue.deserialized.fold(
-        _ => HexConversions.formatHexBinary(propertyValue.serialized),
+        _ => ByteConversions.formatHexBinary(propertyValue.serialized),
         _.toString
       )
 

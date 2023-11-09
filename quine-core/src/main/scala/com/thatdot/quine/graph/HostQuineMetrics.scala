@@ -19,9 +19,9 @@ import com.thatdot.quine.graph.HostQuineMetrics.{
 import com.thatdot.quine.util.SharedValve
 
 /** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
-  * @param enableDebugMetrics whether debugging-focused metrics should be included that have a noticeable \
-  *                            impact on runtime performance.
-  * @param metricRegistry      the registry to wrap
+  * @param enableDebugMetrics whether debugging-focused metrics should be included that have
+  *                           a noticeable impact on runtime performance.
+  * @param metricRegistry     the registry to wrap
   */
 final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: MetricRegistry) {
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
@@ -43,6 +43,12 @@ final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: M
     metricRegistry.timer(MetricRegistry.name("persistor", "set-standing-query-state"))
   val persistorGetMultipleValuesStandingQueryStatesTimer: Timer =
     metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
+
+  /** @param context the context for which this timer is being used -- for
+    *                example, "ingest-XYZ-deduplication" or "http-webpage-serve"
+    */
+  def cacheTimer(context: String): Timer =
+    metricRegistry.timer(MetricRegistry.name("cache", context, "insert"))
 
   def shardNodeEvictionsMeter(shardName: String): Meter =
     (if (enableDebugMetrics) metricRegistry else noOpRegistry)

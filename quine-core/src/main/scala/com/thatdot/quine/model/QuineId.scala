@@ -6,7 +6,7 @@ import scala.util.hashing.MurmurHash3
 
 import com.google.common.collect.{Interner, Interners}
 
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 import com.thatdot.quine.util.TypeclassInstances.ByteArrOrdering
 
 /** The internal ID type used by Quine for identifying nodes.
@@ -44,9 +44,9 @@ final case class QuineId private (array: Array[Byte]) extends Ordered[QuineId] {
     */
   def toInternalString: String =
     if (array.isEmpty) "empty"
-    else HexConversions.formatHexBinary(array)
+    else ByteConversions.formatHexBinary(array)
 
-  override def toString: String = s"QuineId(${HexConversions.formatHexBinary(array)})"
+  override def toString: String = s"QuineId(${ByteConversions.formatHexBinary(array)})"
 }
 object QuineId {
 
@@ -60,7 +60,7 @@ object QuineId {
   @throws[IllegalArgumentException]("if the input string is not a valid internal ID")
   def fromInternalString(str: String): QuineId =
     if (str == "empty") empty
-    else QuineId(HexConversions.parseHexBinary(str))
+    else QuineId(ByteConversions.parseHexBinary(str))
 
   private val empty = QuineId(Array.emptyByteArray)
 }

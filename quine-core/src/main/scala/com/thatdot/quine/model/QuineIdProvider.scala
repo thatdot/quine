@@ -8,7 +8,7 @@ import scala.util.{Failure, Try}
 
 import com.typesafe.scalalogging.StrictLogging
 
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /** Used to map user node IDs to the representation used internally by Quine.
   *
@@ -102,7 +102,7 @@ abstract class QuineIdProvider extends StrictLogging {
   def qidToPrettyString(qid: QuineId): String =
     customIdFromQid(qid).fold(
       err => {
-        val qidStr = "#" + HexConversions.formatHexBinary(qid.array)
+        val qidStr = "#" + ByteConversions.formatHexBinary(qid.array)
         logger.info(s"Failed to serialize QID ${qidStr} with the configured ID provider.", err)
         qidStr
       },
@@ -117,7 +117,7 @@ abstract class QuineIdProvider extends StrictLogging {
   final def qidFromPrettyString(str: String): Try[QuineId] =
     customIdStringToQid(str).recoverWith {
       case err if str.head == '#' =>
-        Try(QuineId(HexConversions.parseHexBinary(str.tail))) orElse Failure(err)
+        Try(QuineId(ByteConversions.parseHexBinary(str.tail))) orElse Failure(err)
     }
 
   /** Extract a Quine-internal ID from a runtime Quine value representation

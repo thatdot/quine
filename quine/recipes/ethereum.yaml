@@ -13,7 +13,7 @@ description: |-
   blocks mined by that account. Quick queries allow marking an account as "tainted".
   The tainted flag is propagated along outgoing transaction paths via Standing Queries
   to record the least degree of separation between a tainted source and an account
-  receiving a transaction. Canonical (node-provided) capitalization is maintained where
+  receiving a transaction. Canonical (eth-node-provided) capitalization is maintained where
   possible, with `toLower` being used for idFrom-based ID resolution to reflect the
   case-insensitive nature of bytestrings (eg addresses, hashes) used by Ethereum.
 

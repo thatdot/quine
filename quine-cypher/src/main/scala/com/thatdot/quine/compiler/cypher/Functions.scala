@@ -38,7 +38,7 @@ import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineId, QuineIdProvider}
-import com.thatdot.quine.util.HexConversions
+import com.thatdot.quine.util.ByteConversions
 
 /** Class that wraps a Quine UDF into something that openCypher accepts as a function
   *
@@ -253,7 +253,7 @@ object CypherBytes extends UserDefinedFunction {
     args match {
       case Vector(Expr.Str(hexStr)) =>
         val noSpaceHexStr = hexStr.filter(!_.isWhitespace)
-        try Expr.Bytes(HexConversions.parseHexBinary(noSpaceHexStr))
+        try Expr.Bytes(ByteConversions.parseHexBinary(noSpaceHexStr))
         catch {
           case _: IllegalArgumentException => Expr.Null
         }

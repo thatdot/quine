@@ -11,6 +11,7 @@ import scala.util.{Failure, Success, Try}
 import memeid.{UUID => UUID4s}
 
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineGraphLocation, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.ByteConversions.uuidToBytes
 
 /** This provider is special: it is a no-op provider in the sense that none of the
   * conversions do any work. [[com.thatdot.quine.model.QuineId]] is the ID type.
@@ -454,10 +455,6 @@ sealed abstract class SingleVersionUuidProvider[UuidV <: UUID4s: ClassTag] exten
         UUID4s.from(bb.getLong(), bb.getLong())
       }.flatMap(asJavaUuid)
 
-  /** Turn a UUID losslessly into a freshly-allocated 16-byte (128-bit) array */
-  final protected[this] def uuidToBytes(u: UUID4s): Array[Byte] =
-    ByteBuffer.allocate(16).putLong(u.getMostSignificantBits).putLong(u.getLeastSignificantBits).array()
-
   /** Given a UUID of knowable version, convert it to a java UUID only if the version matches [[UuidV]]
     * @param u the uuid to convert
     * @return Success(uuid) where uuid is a valid java UUID matching the provided version. Failure otherwise
@@ -487,7 +484,7 @@ final case class Uuid5Provider(defaultNamespace: UUID = UUID4s.NIL.asJava())
   /** Generate a fresh UUIDv5 with `defaultNamespace` as a namespace and a V4 (random) UUID's underlying bytes as a
     * value
     */
-  def newCustomId(): UUID = UUID4s.V5.from(defaultNamespace4s, UUID4s.V4.random(), uuidToBytes).asJava()
+  def newCustomId(): UUID = UUID4s.V5.from[UUID4s](defaultNamespace4s, UUID4s.V4.random(), uuidToBytes).asJava()
 
   /** Generates a UUIDv5 with [[defaultNamespace]] as a namespace and [[bytes]] as a name
     */
@@ -516,7 +513,7 @@ final case class Uuid3Provider(defaultNamespace: UUID = UUID4s.NIL.asJava())
   /** Generate a fresh UUIDv3 with `defaultNamespace` as a namespace and a V4 (random) UUID's underlying bytes as a
     * value
     */
-  def newCustomId(): UUID = UUID4s.V3.from(defaultNamespace4s, UUID4s.V4.random(), uuidToBytes).asJava()
+  def newCustomId(): UUID = UUID4s.V3.from[UUID4s](defaultNamespace4s, UUID4s.V4.random(), uuidToBytes).asJava()
 
   /** Generates a UUIDv3 with [[defaultNamespace]] as a namespace and [[bytes]] as a name
     */
