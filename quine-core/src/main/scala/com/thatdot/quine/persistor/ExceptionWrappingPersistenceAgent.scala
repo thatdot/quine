@@ -31,6 +31,7 @@ case class PersistDomainIndexEvents(id: QuineId, events: NonEmptyList[NodeEvent.
     extends PersistorCall
 case class DeleteDomainIndexEvents(id: QuineId) extends PersistorCall
 case class GetJournal(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
+case class GetDomainIndexEvents(id: QuineId, startingAt: EventTime, endingAt: EventTime) extends PersistorCall
 case object EnumerateJournalNodeIds extends PersistorCall
 case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
@@ -55,7 +56,7 @@ case class RemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]) ex
 case class RemoveDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId) extends PersistorCall
 case object GetDomainGraphNodes extends PersistorCall
 
-class WrappedPersistorException(persistorCall: PersistorCall, wrapped: Throwable)
+class WrappedPersistorException(val persistorCall: PersistorCall, wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
     with NoStackTrace
 
@@ -100,7 +101,7 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: PersistenceAgent, ec: 
     startingAt: EventTime,
     endingAt: EventTime
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = leftMap(
-    new WrappedPersistorException(GetJournal(id, startingAt, endingAt), _),
+    new WrappedPersistorException(GetDomainIndexEvents(id, startingAt, endingAt), _),
     persistenceAgent.getDomainIndexEventsWithTime(id, startingAt, endingAt)
   )
 

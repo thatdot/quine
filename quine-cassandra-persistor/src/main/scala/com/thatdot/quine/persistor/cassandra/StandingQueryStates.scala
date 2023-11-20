@@ -23,7 +23,7 @@ trait StandingQueryStatesColumnNames {
   final protected val standingQueryIdColumn: CassandraColumn[StandingQueryId] =
     CassandraColumn[StandingQueryId]("standing_query_id")
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")
-  final protected val MultipleValuesStandingQueryPartIdColumn: CassandraColumn[MultipleValuesStandingQueryPartId] =
+  final protected val multipleValuesStandingQueryPartIdColumn: CassandraColumn[MultipleValuesStandingQueryPartId] =
     CassandraColumn[MultipleValuesStandingQueryPartId]("standing_query_part_id")
   final protected val dataColumn: CassandraColumn[Array[Byte]] = CassandraColumn[Array[Byte]]("data")
 }
@@ -33,7 +33,7 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
   //protected val indexName = "standing_query_states_idx"
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[_]] =
-    List(standingQueryIdColumn, MultipleValuesStandingQueryPartIdColumn)
+    List(standingQueryIdColumn, multipleValuesStandingQueryPartIdColumn)
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(dataColumn)
 
   private val createTableStatement: SimpleStatement =
@@ -50,7 +50,7 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
 
   private val getMultipleValuesStandingQueryStates =
     select
-      .columns(standingQueryIdColumn.name, MultipleValuesStandingQueryPartIdColumn.name, dataColumn.name)
+      .columns(standingQueryIdColumn.name, multipleValuesStandingQueryPartIdColumn.name, dataColumn.name)
       .where(quineIdColumn.is.eq)
       .build()
 
@@ -59,7 +59,7 @@ object StandingQueryStates extends TableDefinition with StandingQueryStatesColum
       .where(
         quineIdColumn.is.eq,
         standingQueryIdColumn.is.eq,
-        MultipleValuesStandingQueryPartIdColumn.is.eq
+        multipleValuesStandingQueryPartIdColumn.is.eq
       )
       .build()
       .setIdempotent(true)
@@ -138,7 +138,7 @@ class StandingQueryStates(
       (StandingQueryId, MultipleValuesStandingQueryPartId),
       Array[Byte]
     ]](getMultipleValuesStandingQueryStatesStatement.bindColumns(quineIdColumn.set(id)))(row =>
-      (standingQueryIdColumn.get(row) -> MultipleValuesStandingQueryPartIdColumn.get(row)) -> dataColumn.get(row)
+      (standingQueryIdColumn.get(row) -> multipleValuesStandingQueryPartIdColumn.get(row)) -> dataColumn.get(row)
     )
 
   def setStandingQueryState(
@@ -153,14 +153,14 @@ class StandingQueryStates(
           removeStandingQueryStateStatement.bindColumns(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
-            MultipleValuesStandingQueryPartIdColumn.set(standingQueryId)
+            multipleValuesStandingQueryPartIdColumn.set(standingQueryId)
           )
 
         case Some(bytes) =>
           insertStatement.bindColumns(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
-            MultipleValuesStandingQueryPartIdColumn.set(standingQueryId),
+            multipleValuesStandingQueryPartIdColumn.set(standingQueryId),
             dataColumn.set(bytes)
           )
       }
