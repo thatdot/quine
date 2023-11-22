@@ -71,6 +71,8 @@
     <logger name="thatdot.StandingQueryResultsSampled" level="DEBUG" additivity="false">
         <appender-ref ref="asyncTimestamped"/>
     </logger>
+    <!-- influx reporting can generate huge numbers of log messages -->
+    <logger name="metrics_influxdb" level="ERROR"/>
     <!--
      An "interactive" logger - a heuristic for when to use this is to imagine a user who can only see the most recent
      log line. For example, "Graph is ready!", "Quine is shutting down..." might be
@@ -80,6 +82,7 @@
      additivity = false means we avoid duplicated log lines in standard out, at the cost of less consistent log
      formatting. In a production deployment, this should be set to "true" (or commented out).
      -->
+
     <logger name="thatdot.Interactive" level="INFO" additivity="false">
         <appender-ref ref="consoleSimple"/>
     </logger>
