@@ -274,7 +274,7 @@ lazy val `quine`: Project = project
       // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
       "com.typesafe.akka" %% "akka-http-xml" % akkaHttpV,
       "de.heikoseeberger" %% "akka-http-circe" % "1.39.2",
-      "io.circe" %% "circe-yaml-v12" % "0.14.3-RC3",
+      "io.circe" %% "circe-yaml-v12" % "0.15.1",
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
