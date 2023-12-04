@@ -49,7 +49,7 @@ object Dependencies {
   // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
   val kotlinStdlibV = "1.9.10"
   val logbackConfigV = "0.4.0"
-  val logbackV = "1.4.11"
+  val logbackV = "1.4.13"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.0.10"
   val memeIdV = "0.8.0"
