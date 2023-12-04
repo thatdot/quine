@@ -25,7 +25,7 @@ object Dependencies {
   // CVE-2021-35516, CVE-2021-35517, CVE-2021-36090
   val commonsCompressV = "1.24.0"
   val commonsTextV = "1.10.0"
-  val commonsIoV = "2.14.0"
+  val commonsIoV = "2.15.1"
   val dropwizardMetricsV = "4.2.20"
   val embeddedCassandraV = "4.0.7"
   val endpoints4sDefaultV = "1.9.0"
