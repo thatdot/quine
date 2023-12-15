@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph
 
 import scala.collection.compat.immutable.ArraySeq
+import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
@@ -94,11 +95,15 @@ class GraphService(
    */
   @volatile var isReady = true
 
-  override def shutdown(): Future[Unit] = {
-    isReady = false
+  override def shutdown(): Future[Unit] =
     shutdownStandingQueries()
-      .flatMap(_ => super.shutdown())(shardDispatcherEC)
-  }
+      .flatMap(_ =>
+        super
+          .shutdown()
+          .map { _ =>
+            isReady = false
+          }(ExecutionContexts.parasitic)
+      )(nodeDispatcherEC)
 }
 
 object GraphService {

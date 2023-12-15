@@ -169,8 +169,8 @@ trait StaticShardGraph extends BaseGraph {
     def pollShutdownProgress(): Future[Int] = Future
       .traverse(shards) { (shard: LocalShardRef) =>
         relayAsk(shard.quineRef, InitiateShardShutdown(_))(5.seconds, implicitly)
-      }(implicitly, shardDispatcherEC)
-      .map(_.view.map(_.remainingNodeActorCount).sum)(shardDispatcherEC)
+      }(implicitly, nodeDispatcherEC)
+      .map(_.view.map(_.remainingNodeActorCount).sum)(nodeDispatcherEC)
     Retry
       .until[Int](
         pollShutdownProgress(),
@@ -178,9 +178,9 @@ trait StaticShardGraph extends BaseGraph {
         maxPollAttempts,
         delayBetweenPollAttempts,
         system.scheduler
-      )(shardDispatcherEC)
-      .flatMap(_ => persistor.syncVersion())(shardDispatcherEC)
-      .flatMap(_ => persistor.shutdown())(shardDispatcherEC)
+      )(nodeDispatcherEC)
+      .flatMap(_ => persistor.syncVersion())(nodeDispatcherEC)
+      .flatMap(_ => persistor.shutdown())(nodeDispatcherEC)
   }
 
   def isOnThisHost(quineRef: QuineRef): Boolean = true
