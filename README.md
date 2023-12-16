@@ -5,7 +5,7 @@
 
 <div style="padding-top: 10px;">
   <div style="vertical-align:middle;">
-    <img width="400" height="100%" src="https://docs.quine.io/assets/images/quine_logo.svg">
+    <img width="400" height="100%" src="https://quine.io/assets/images/quine_logo.svg">
   </div>
   <div style="vertical-align:middle;">
     <p>Quine is a streaming graph interpreter; a server-side program that consumes data, builds it into a stateful graph structure, and runs live computation on that graph to answer questions or compute results. Those results stream out in real-time.
