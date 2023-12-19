@@ -66,7 +66,6 @@ object Dependencies {
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
   val rocksdbV = "7.10.2"
-  val rollbarV = "1.10.0" // interface library for rollbar.com error monitoring
   val scalaCheckV = "1.17.0"
   val scalaCollectionCompatV = "2.11.0"
   val scalaJavaTimeV = "2.5.0"
