@@ -1375,6 +1375,10 @@ import com.thatdot.{visnetwork => vis}
     def stepBackMany = () => updateHistory(_.stepBack(), () => stepBackToCheckpoint())
     def stepForwardMany = () => updateHistory(_.stepForward(), () => stepForwardToCheckpoint())
 
+    val updateQuery = (newQuery: String) => {
+      setState(s => s.copy(queryBarColor = None, query = newQuery))
+    }
+
     if (props.isQueryBarVisible) {
       val pendingTextQueries = state.pendingTextQueries
       elements += TopBar(
@@ -1384,8 +1388,8 @@ import com.thatdot.{visnetwork => vis}
         state.sampleQueries,
         state.foundNodesCount,
         state.foundEdgesCount,
-        (newQuery: String) => setState(s => s.copy(queryBarColor = None, query = newQuery)),
-        (shiftHeld: Boolean) => submitQuery(if (shiftHeld) UiQueryType.Text else UiQueryType.Node),
+        updateQuery,
+        (ctrlHeld: Boolean) => submitQuery(if (ctrlHeld) UiQueryType.Text else UiQueryType.Node),
         () => cancelQueries(Some(pendingTextQueries)),
         HistoryNavigationButtons.Props(
           undoMany = when(state.history.canStepBackward, stepBackMany),

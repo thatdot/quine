@@ -1,7 +1,5 @@
 package com.thatdot.quine.webapp.queryui
 
-import scala.scalajs.js.Dynamic.{literal => jsObj}
-
 import slinky.core._
 import slinky.core.annotations.react
 import slinky.web.html._
@@ -22,49 +20,26 @@ import com.thatdot.quine.webapp.{Styles, ThatDotLogoImg}
     foundNodesCount: Option[Int],
     foundEdgesCount: Option[Int],
     updateQuery: String => Unit,
-    submitButton: Boolean => Unit,
+    submitButton: (Boolean) => Unit,
     cancelButton: () => Unit,
     navButtons: HistoryNavigationButtons.Props,
     downloadSvg: () => Unit
   )
 
   val component: FunctionalComponent[TopBar.Props] = FunctionalComponent[Props] { props =>
-    val queryInputStyle = if (props.runningTextQuery) {
-      jsObj(animation = "activequery 1.5s ease infinite")
-    } else {
-      jsObj(backgroundColor = props.queryBarColor.getOrElse[String]("white"))
-    }
-
-    val buttonTitle: String =
-      if (props.runningTextQuery) "Cancel query"
-      else "Hold \"Shift\" to return results as a table"
-
     div(className := Styles.navBar)(
       img(
         src := ThatDotLogoImg.toString,
         className := Styles.navBarLogo,
         onClick := (e => if (e.shiftKey) props.downloadSvg())
       ),
-      div(className := Styles.queryInput)(
-        input(
-          `type` := "text",
-          list := "starting-queries",
-          placeholder := "Query returning nodes",
-          className := Styles.queryInputInput,
-          style := queryInputStyle,
-          value := props.query,
-          onChange := (e => props.updateQuery(e.target.value)),
-          onKeyUp := (e => if (e.key == "Enter") props.submitButton(e.shiftKey)),
-          disabled := props.runningTextQuery
-        ),
-        datalist(id := "starting-queries")(
-          props.sampleQueries.map(q => option(value := q.query)(q.name)): _*
-        ),
-        button(
-          className := s"${Styles.grayClickable} ${Styles.queryInputButton}",
-          onClick := (e => if (props.runningTextQuery) props.cancelButton() else props.submitButton(e.shiftKey)),
-          title := buttonTitle
-        )(if (props.runningTextQuery) "Cancel" else "Query")
+      QueryTextareaInput(
+        props.runningTextQuery,
+        props.updateQuery,
+        props.query,
+        props.submitButton,
+        props.cancelButton,
+        props.sampleQueries
       ),
       HistoryNavigationButtons(
         props.navButtons.undoMany,

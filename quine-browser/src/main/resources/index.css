@@ -55,6 +55,37 @@ pre.wrap {
   border-radius: 0 .2em .2em 0;
 }
 
+.query-textarea-input {
+  resize: both;
+  flex-grow: 1;
+  margin: .4em 0 .4em .4em;
+  padding: .2em;
+  border-radius: .2em 0 0 .2em;
+  border: none;
+  font-size: 1.2em;
+  background-color: #fff;
+}
+
+.sample-queries {
+  opacity: 0;
+  height: auto;
+  max-height: 70vh;
+  width: auto;
+  max-width: 70vw;
+  background-color: hsl(0, 0%, 95%);
+  bottom: 50px;
+  right: 50px;
+  transform: translateX(200%);
+  transition:
+    transform 0.3s ease-in-out,
+    opacity 0.3s ease-in-out;
+}
+
+.focused {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 .nav-bar {
   display: flex;
   flex-wrap: wrap;

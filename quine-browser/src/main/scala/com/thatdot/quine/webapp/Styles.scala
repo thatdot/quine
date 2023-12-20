@@ -26,6 +26,9 @@ object Styles {
   val queryInput = "query-input"
   val queryInputInput = "query-input-input"
   val queryInputButton = "query-input-button"
+  val queryTextareaInput = "query-textarea-input"
+  val sampleQueries = "sample-queries"
+  val focused = "focused"
 
   val cypherResultsTable = "cypher-results"
 
