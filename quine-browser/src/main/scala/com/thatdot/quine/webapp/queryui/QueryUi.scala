@@ -851,16 +851,16 @@ import com.thatdot.{visnetwork => vis}
           contents += pre(className := "wrap")(if (message.isEmpty) "Cannot connect to server" else message)
           if (message.startsWith("TypeMismatchError Expected type(s) Node but got value")) {
             val failedQuery = state.query
-            contents += a(
-              onClick := { () =>
+            contents += button(
+              className := "btn btn-link",
+              onClick := { _ =>
                 setState(
                   _.copy(
                     query = failedQuery
                   )
                 )
                 submitQuery(UiQueryType.Text)
-              },
-              href := "#"
+              }
             )("Run again as text query")
           }
           setState(s =>
