@@ -33,7 +33,7 @@ All together, Quine can:
 
 This collection of capabilities is profoundly powerful! It represents a complete system for stateful event-driven arbitrary computation in a platform scalable to any size of data or desired throughput.
 
-Read the docs at [docs.quine.io](https://docs.quine.io) to learn more.  
+Read the docs at [quine.io](https://quine.io) to learn more.  
 
 ## Building from source
 
@@ -75,29 +75,31 @@ Usage: quine [options]
   -v, --version            print Quine program version
 ```
 
-For example, to run the [Wikipedia page ingest](https://quine.io/recipes/wikipedia-page-ingest) getting started recipe:
+For example, to run the [Wikipedia page ingest](https://quine.io/recipes/wikipedia/) getting started recipe:
 
-```shell
+``` shell
 ❯ java -jar quine-x.x.x.jar -r wikipedia
  ```
 
 With Docker installed, run Quine from Docker Hub.
-```shell
+
+``` shell
 ❯ docker run -p 8080:8080 thatdot/quine
 ```
-The [quick start](https://docs.quine.io/getting-started/quick-start.html) guide will get you up and running the first time, ingesting data, and submitting your first query.
+
+The [quick start](https://quine.io/getting-started/quick-start/) guide will get you up and running the first time, ingesting data, and submitting your first query.
 
 ## Quine Recipes
 
 Quine recipes are a great way to get started developing with Quine. A recipe is a document that contains all the information necessary for Quine to execute any data processing task. Ingest data from batch sources like `.json` or `.csv` files hosted locally, or connect streaming data from Kafka or Kinesis. 
 
-[Recipes](https://docs.quine.io/core-concepts/about-recipes.html) are `yaml` documents containing components including:
+[Recipes](https://quine.io/components/recipe-ref-manual/) are `yaml` documents containing the configuration for components including:
 
-* [Ingest Streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html) to read streaming data from sources and update graph data
-* [Standing Queries](https://docs.quine.io/components/standing-query-outputs.html) to transform graph data, and to produce aggregates and other outputs
+* [Ingest Streams](https://quine.io/components/ingest-sources/) to read streaming data from sources and update graph data
+* [Standing Queries](https://quine.io/components/standing-queries/) to transform graph data, and to produce aggregates and other outputs
 * UI configuration to specialize the web user interface for the use-case that is the subject of the Recipe
 
-Please see [Quine’s Recipe repository](https://quine.io/recipes) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
+Please see [Quine’s Recipe repository](https://quine.io/recipes/) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
 
 ## Contributing to Quine
 
