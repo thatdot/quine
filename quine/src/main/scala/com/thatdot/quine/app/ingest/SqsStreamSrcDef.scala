@@ -68,7 +68,7 @@ final case class SqsStreamSrcDef(
 
   graph.system.registerOnTermination(client.close())
 
-  override def ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name: $queueURL")
+  override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name: $queueURL")
 
   def source(): Source[Message, NotUsed] =
     SqsSource(queueURL, SqsSourceSettings().withParallelRequests(readParallelism))

@@ -46,7 +46,7 @@ final case class WebsocketSimpleStartupSrcDef(
 
   val baseHttpClientSettings: ClientConnectionSettings = ClientConnectionSettings(system)
 
-  override def ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name $wsUrl")
+  override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name $wsUrl")
 
   /** placeholder for compile; unused */
   override def rawBytes(value: ByteString): Array[Byte] = value.toArray

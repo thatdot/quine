@@ -94,7 +94,7 @@ abstract class IngestSrcDef(
       .via(graph.ingestThrottleFlow)
 
   /** Extend for by-instance naming (e.g. to include url) */
-  def ingestToken: IngestSrcExecToken = IngestSrcExecToken(name)
+  val ingestToken: IngestSrcExecToken = IngestSrcExecToken(name)
 
   /** Write successful values to the graph. */
   protected val writeSuccessValues: TryDeserialized => Future[TryDeserialized] = { t: TryDeserialized =>

@@ -69,7 +69,7 @@ final case class KinesisSrcDef(
 
   type InputType = kinesisModel.Record
 
-  override def ingestToken: IngestSrcExecToken = IngestSrcExecToken(format.label)
+  override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(format.label)
 
   def rawBytes(record: kinesisModel.Record): Array[Byte] = record.data().asByteArray()
 

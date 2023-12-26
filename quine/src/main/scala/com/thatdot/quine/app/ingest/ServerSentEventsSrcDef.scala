@@ -32,7 +32,7 @@ final case class ServerSentEventsSrcDef(
 
   type InputType = ServerSentEvent
 
-  override def ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name: $url")
+  override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name: $url")
 
   def source(): Source[ServerSentEvent, NotUsed] = EventSource(uri = Uri(url), send = Http().singleRequest(_))
 
