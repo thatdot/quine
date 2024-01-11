@@ -290,7 +290,7 @@ trait BaseGraph extends StrictLogging {
         shardId -> sendMessageToShard
       }
 
-    if (!remainingAdjustments.isEmpty) {
+    if (remainingAdjustments.nonEmpty) {
       val msg = s"The following shards do not exist: ${remainingAdjustments.keys.mkString(", ")}"
       Future.failed(new IllegalArgumentException(msg))
     } else {

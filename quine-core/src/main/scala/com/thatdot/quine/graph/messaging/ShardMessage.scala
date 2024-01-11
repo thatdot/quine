@@ -65,23 +65,18 @@ object ShardMessage {
 
   final case class AwakeNode(quineId: QuineId) extends ShardMessage
 
-  final case class GetShardStats(replyTo: QuineRef) extends ShardMessage with AskableQuineMessage[ShardStats]
-
   /** Report stats about nodes managed by a shard
     *
-    * @param nodesAwake nodes with active actors backing them
-    * @param nodesAskedToSleep nodes asked to sleep, but who haven't confirmed
-    * @param nodesSleeping nodes asked to sleep, who have confirmed
+    * @param awake nodes with active actors backing them
+    * @param askedToSleep nodes asked to sleep, but who haven't confirmed
+    * @param sleeping nodes asked to sleep, who have confirmed
     */
   final case class ShardStats(
-    nodesAwake: Int,
-    nodesAskedToSleep: Int,
-    nodesSleeping: Int
+    awake: Int,
+    askedToSleep: Int,
+    sleeping: Int
   ) extends ShardMessage {
-    def awake: Int = nodesAwake
-    def sleeping: Int = nodesSleeping
-    def nodesGoingToSleep: Int = nodesAskedToSleep + nodesSleeping
-    def goingToSleep: Int = nodesGoingToSleep
+    def goingToSleep: Int = askedToSleep + sleeping
     def total: Int = awake + goingToSleep
   }
 

@@ -20,7 +20,6 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
   AwakeNode,
   CurrentInMemoryLimits,
   GetInMemoryLimits,
-  GetShardStats,
   InitiateShardShutdown,
   LocalPredicate,
   PurgeNode,
@@ -222,7 +221,7 @@ final private[quine] class GraphShardActor(
     *
     * @return statistics about the nodes managed by the shard
     */
-  private def shardStats(): ShardStats = {
+  private def shardStats: ShardStats = {
     var nodesAwake = 0
     var nodesAskedToSleep = 0
     var nodesSleeping = 0
@@ -309,19 +308,12 @@ final private[quine] class GraphShardActor(
           nodes.keys.iterator
             .collect { case QuineIdAtTime(qid, t) if t == atTime => AwakeNode(qid) }
             .take(toTake)
-            .toVector
-        else {
-          val lastN = collection.mutable.Queue.empty[AwakeNode]
-          for (qidAtTime <- inMemoryActorList.iterator) {
-            val QuineIdAtTime(qid, t) = qidAtTime
-            if (t == atTime) {
-              lastN.enqueue(AwakeNode(qid))
-              if (lastN.size > toTake)
-                lastN.dequeue()
-            }
-          }
-          lastN.toList
-        }
+            .toList
+        else
+          inMemoryActorList.iterator
+            .collect { case QuineIdAtTime(qid, t) if t == atTime => AwakeNode(qid) }
+            .take(toTake)
+            .toList
       s ?! Source(sampled)
 
     case DeliveryRelay(msg, dedupId, needsAck) =>
@@ -373,8 +365,6 @@ final private[quine] class GraphShardActor(
               ()
           }
       }
-
-    case msg: GetShardStats => msg ?! shardStats()
 
     case msg: GetInMemoryLimits =>
       msg ?! CurrentInMemoryLimits(inMemoryLimit)
@@ -475,7 +465,7 @@ final private[quine] class GraphShardActor(
         case LivenessStatus.WakingUp => ()
         case badOutcome if remaining <= 0 =>
           unlikelyWakeupFailed.inc()
-          val stats = shardStats()
+          val stats = shardStats
           if (log.isErrorEnabled)
             log.error(
               s"No more retries waking up: ${id.debug} " +
