@@ -34,15 +34,20 @@ import com.thatdot.quine.webapp.hooks.LocalStorageHook.useLocalStorage
     }
 
     val textareaOnBlur: SyntheticFocusEvent[textarea.tag.RefType] => Unit = { _ =>
-      val height = textareaRef.current.style.height
-      val width = textareaRef.current.style.width
+      val _ = window.setTimeout(
+        { () =>
+          val height = textareaRef.current.style.height
+          val width = textareaRef.current.style.width
 
-      setTextareaHeight(
-        if (height != "" && height.dropRight(2).toInt > 40) height else ""
+          setTextareaHeight(
+            if (height != "" && height.dropRight(2).toInt > 40) height else ""
+          )
+          setTextareaWidth(if (width != "" && width.dropRight(2).toInt < window.innerWidth * 0.95) width else "")
+
+          textareaRef.current.style = ""
+        },
+        150
       )
-      setTextareaWidth(if (width != "" && width.dropRight(2).toInt < window.innerWidth * 0.95) width else "")
-
-      textareaRef.current.style = ""
     }
 
     val handleTextareaOnKeyDown: SyntheticKeyboardEvent[textarea.tag.RefType] => Unit = { e =>
