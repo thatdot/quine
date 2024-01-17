@@ -6,9 +6,9 @@ import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
 
-import akka.NotUsed
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import com.datastax.dse.driver.api.core.cql.reactive.ReactiveRow
 import com.datastax.oss.driver.api.core.CqlSession
@@ -23,10 +23,10 @@ abstract class CassandraTable(session: CqlSession) {
   protected def pair[A, B](columnA: CassandraColumn[A], columnB: CassandraColumn[B])(row: GettableById): (A, B) =
     (columnA.get(row), columnB.get(row))
 
-  /** Helper method for wrapping Java Reactive Streams CQL execution in Akka Streams
+  /** Helper method for wrapping Java Reactive Streams CQL execution in Pekko Streams
     *
     * @param statement A CQL statement to be executed - either prepared or not.
-    * @return an Akka Source of result rows - intended for things that return multiple results
+    * @return a Pekko Source of result rows - intended for things that return multiple results
     */
   final protected def executeSource(statement: Statement[_]): Source[ReactiveRow, NotUsed] =
     Source.fromPublisher(session.executeReactive(statement))

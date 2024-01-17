@@ -2,8 +2,8 @@ package com.thatdot.quine.graph.messaging
 
 import scala.concurrent.Future
 
-import akka.actor.ActorRef
-import akka.util.Timeout
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.{Milliseconds, QuineId}

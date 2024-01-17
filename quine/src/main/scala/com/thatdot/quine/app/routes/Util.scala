@@ -2,20 +2,20 @@ package com.thatdot.quine.app.routes
 
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
-import akka.NotUsed
-import akka.http.scaladsl.model.headers.{CacheDirectives, RawHeader, `Cache-Control`}
-import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.http.scaladsl.server
-import akka.http.scaladsl.server.Directives.{complete, respondWithHeader, respondWithHeaders}
-import akka.stream.scaladsl.{Flow, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.model.headers.{CacheDirectives, RawHeader, `Cache-Control`}
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.server
+import org.apache.pekko.http.scaladsl.server.Directives.{complete, respondWithHeader, respondWithHeaders}
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 object Util {
 
-  /** Given a stream of ServerSentEvents, produce an akka-http Route to stream results from behind
+  /** Given a stream of ServerSentEvents, produce a pekko-http Route to stream results from behind
     * a reverse proxy (assuming the proxy allows for long-running http/1.1 connections and respects
     * cache headers + X-Accel-Buffering)
     * @see https://serverfault.com/questions/801628/for-server-sent-events-sse-what-nginx-proxy-configuration-is-appropriate
-    * @param events the serversentevents stream to lift to an akka route
+    * @param events the serversentevents stream to lift to a pekko route
     * @return the constructed route
     */
   def sseRoute(events: Source[ServerSentEvent, NotUsed]): server.Route =
@@ -24,12 +24,12 @@ object Util {
       RawHeader("X-Accel-Buffering", "no")
     ) { // reverse proxy friendly headers
       // this implicit allows marshalling a Source[ServerSentEvent] to an SSE endpoint
-      import akka.http.scaladsl.marshalling.sse.EventStreamMarshalling.toEventStream
+      import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling.toEventStream
       complete {
         events
           // promptly reply with _something_, so the client event stream can be opened
           .prepend(Source.single(ServerSentEvent.heartbeat))
-          // akka defaults to 20sec, firefox's default http request timeout is 15sec
+          // pekko defaults to 20sec, firefox's default http request timeout is 15sec
           // most importantly, this keeps reverse proxies from dropping the keepalive connection over http/1.1
           .keepAlive(10.seconds, () => ServerSentEvent.heartbeat)
           .named("sse-server-flow")
@@ -40,7 +40,8 @@ object Util {
     * @param underlying the route to protect
     * @return the augmented route
     *
-    * TODO replace this with a better implementation once https://github.com/akka/akka-http/issues/155 is resolved
+    * TODO replace this with a better implementation once the issue described in
+    * https://github.com/akka/akka-http/issues/155 is resolved in pekko-http
     */
   def xssHarden(underlying: server.Route): server.Route =
     respondWithHeader(

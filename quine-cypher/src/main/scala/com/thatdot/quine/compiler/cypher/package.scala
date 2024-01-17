@@ -3,9 +3,9 @@ package com.thatdot.quine.compiler
 import scala.concurrent.{ExecutionException, Future}
 import scala.util.control.NonFatal
 
-import akka.Done
-import akka.stream.scaladsl.{Framing, Keep, Sink, Source}
-import akka.util.ByteString
+import org.apache.pekko.Done
+import org.apache.pekko.stream.scaladsl.{Framing, Keep, Sink, Source}
+import org.apache.pekko.util.ByteString
 
 import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}

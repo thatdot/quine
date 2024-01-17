@@ -1,17 +1,16 @@
 object Dependencies {
-
-  val akkaHttpV = "10.2.10"
-  val akkaV = "2.6.20"
-  val alpakkaCsvV = "3.0.4"
-  val alpakkaKafkaV = "2.1.1"
-  val alpakkaKinesisV = "3.0.4"
-  val alpakkaS3V = "3.0.4"
-  val alpakkaSQSV = "3.0.4"
-  val alpakkaSnsV = "3.0.4"
-  val alpakkaSseV = "3.0.4"
-  val alpakkaTextV = "3.0.4"
-  // avro version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
-  // [[kclAkkaV]], and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]], but with a fix for CVE-2023-39410
+  val pekkoV = "1.0.1"
+  val pekkoHttpV = "1.0.0"
+  val pekkoStreamV = "1.0.1"
+  val pekkoCsvV = "1.0.1"
+  val pekkoKafkaV = "1.0.0"
+  val pekkoKinesisV = "1.0.1"
+  val pekkoS3V = "1.0.1"
+  val pekkoSQSV = "1.0.1"
+  val pekkoSnsV = "1.0.1"
+  val pekkoSseV = "1.0.1"
+  val pekkoTextV = "1.0.1"
+  // Must be at least 1.11.3 to fix CVE-2023-39410
   val avroV = "1.11.3"
   val awsSdkV = "2.20.159"
   val betterMonadicForV = "0.3.1"
@@ -20,34 +19,29 @@ object Dependencies {
   val catsV = "2.10.0"
   val catsEffectV = "3.5.2"
   val commonsCodecV = "1.15"
-  // commons-compress version explicitly specified is as close as possible to the version included in kcl-akka-stream
-  // 5.0.0 [[kclAkkaV]] and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]], but with fixes for CVE-2021-35515,
-  // CVE-2021-35516, CVE-2021-35517, CVE-2021-36090
+  // Must be at least 1.21 to address CVE-2021-36090
   val commonsCompressV = "1.25.0"
   val commonsTextV = "1.10.0"
   val commonsIoV = "2.15.1"
   val dropwizardMetricsV = "4.2.20"
   val embeddedCassandraV = "4.0.7"
-  val endpoints4sDefaultV = "1.9.0"
-  val endpoints4sHttpServerV = "7.1.0"
-  val endpoints4sOpenapiV = "4.3.0"
-  val endpoints4sXhrClientV = "5.2.0"
+  val endpoints4sDefaultV = "1.11.1"
+  val endpoints4sHttpServerV = "1.0.1"
+  val endpoints4sOpenapiV = "4.5.1"
+  val endpoints4sXhrClientV = "5.3.0"
   val flatbuffersV = "23.5.26"
   val guavaV = "32.1.3-jre"
   val ioniconsV = "2.0.1"
-  // jackson version explicitly specified is as close as possible to the version included in kcl-akka-stream 5.0.0
-  // [[kclAkkaV]], but with a fix for CVE-2020-28491
-  val jacksonCborV = "2.15.2"
   val jnrPosixV = "3.1.18"
   val jqueryV = "3.6.3"
-  // kafka-clients version explicitly specified is as close as possible to the version included in akka-stream-kafka
-  // 2.1.1 [[alpakkaKafkaV]], kcl-akka-stream 5.0.0 [[kclAkkaV]], and alpakka-kinesis 3.0.4 [[alpakkaKinesisV]],
-  // but with a fix for CVE-2021-38153
-  val kafkaClientsV = "2.7.2"
-  val kclAkkaV = "5.0.0"
+  // pekko-connectors-kinesis 1.0.1 indirectly depends on kaml 0.20.0 which is vulnerable to CVE-2023-28118
+  // Must be at least 0.53.0
+  val kamlV = "0.53.0"
+  // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
+  val kafkaClientsV = "3.0.2"
   // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb
   // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
-  val kotlinStdlibV = "1.9.10"
+  val kotlinStdlibV = "1.9.22"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.4.13"
   val logstashLogbackV = "7.4"
@@ -68,11 +62,10 @@ object Dependencies {
   val rocksdbV = "7.10.2"
   val scalaCheckV = "1.17.0"
   val scalaCollectionCompatV = "2.11.0"
+  val scalaJava8CompatV = "1.0.2"
   val scalaJavaTimeV = "2.5.0"
   val scalaLoggingV = "3.9.5"
-  // scalaParserCombinatorsV could be at 2.1.1 (or higher), but doing so conflicts with akka 2.6. Due to licensing
-  // concerns, we cannot further upgrade akkaV, so we cannot easily upgrade scalaParserCombinatorsV
-  val scalaParserCombinatorsV = "1.1.2" // scala-steward:off
+  val scalaParserCombinatorsV = "2.3.0"
   val scalaTestScalaCheckV = "3.2.17.0"
   val scalajsDomV = "2.6.0"
   val scalaTestV = "3.2.17"
@@ -81,9 +74,9 @@ object Dependencies {
   val shapelessV = "2.3.10"
   val slinkyV = "0.7.3"
   val snakeYamlV = "2.7"
-  // snappy version explicitly specified is binary-compatible with the versions included in alpakka-kafka 2.1.1
-  // [[alpakkaKafkaV]] and kcl-akka-stream 5.0.0 [[kclAkkaV]], but with fixes for CVE-2023-34453, CVE-2023-34454,
-  // CVE-2023-34455
+  // pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
+  // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
+  // vulnerabilities.
   val snappyV = "1.1.10.5"
   val sugarV = "2.0.6"
   val stoplightElementsV = "7.12.0"

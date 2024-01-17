@@ -7,7 +7,7 @@ import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
-import akka.actor._
+import org.apache.pekko.actor._
 
 import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
@@ -131,11 +131,11 @@ object GraphService {
       val baseConfig = ConfigFactory
         .load()
         .withValue(
-          "akka.actor.provider",
+          "pekko.actor.provider",
           ConfigValueFactory.fromAnyRef("local")
         )
         .withValue(
-          "akka.extensions",
+          "pekko.extensions",
           ConfigValueFactory.fromIterable(List("com.thatdot.quine.graph.messaging.NodeActorMailboxExtension").asJava)
         )
       val system = ActorSystem(name, baseConfig)

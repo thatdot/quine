@@ -6,7 +6,7 @@
              %date defaults to RFC 3339 datetime, which is almost the same as ISO 8601 except that the latter uses "T" to
              separate the date and time, while RFC3339 allows any separator - Logback uses a single space ' '
             -->
-            <pattern>%date %level [%mdc{akkaSource:-NotFromActor}] [%thread] %logger - %msg%n%ex</pattern>
+            <pattern>%date %level [%mdc{pekkoSource:-NotFromActor}] [%thread] %logger - %msg%n%ex</pattern>
             <charset>UTF-8</charset>
         </encoder>
     </appender>

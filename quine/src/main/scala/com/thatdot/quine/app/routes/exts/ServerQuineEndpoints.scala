@@ -2,7 +2,7 @@ package com.thatdot.quine.app.routes.exts
 
 import scala.util.{Failure, Success}
 
-import akka.util.ByteString
+import org.apache.pekko.util.ByteString
 
 import endpoints4s.{Codec, Invalid, Valid, Validated}
 

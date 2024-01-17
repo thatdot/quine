@@ -2,13 +2,13 @@ package com.thatdot.quine.app.routes
 
 import scala.concurrent.Future
 
-import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.http.scaladsl.model.ws
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{Route, ValidationRejection}
-import akka.stream.scaladsl.{Flow, Sink}
-import akka.stream.{Materializer, OverflowStrategy}
-import akka.util.Timeout
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.http.scaladsl.model.ws
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{Route, ValidationRejection}
+import org.apache.pekko.stream.scaladsl.{Flow, Sink}
+import org.apache.pekko.stream.{Materializer, OverflowStrategy}
+import org.apache.pekko.util.Timeout
 
 import endpoints4s.{Invalid, Valid}
 
@@ -40,11 +40,11 @@ trait StandingQueryStore {
   def getStandingQueryId(queryName: String): Option[StandingQueryId]
 }
 
-/** The Akka HTTP implementation of [[StandingQueryRoutes]] */
+/** The Pekko HTTP implementation of [[StandingQueryRoutes]] */
 trait StandingQueryRoutesImpl
     extends StandingQueryRoutes
     with endpoints4s.circe.JsonSchemas
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 

@@ -10,9 +10,9 @@ import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import akka.NotUsed
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import com.codahale.metrics.MetricRegistry
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
@@ -33,7 +33,7 @@ import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
-import com.thatdot.quine.util.AkkaStreams.distinct
+import com.thatdot.quine.util.PekkoStreams.distinct
 import com.thatdot.quine.util.Retry
 
 /** Persistence implementation backed by AWS Keypaces.
@@ -74,7 +74,7 @@ class KeyspacesPersistor(
   protected val chunker: Chunker = new Chunker {
     import scala.collection.compat.{immutable => _, _} // for the .lengthIs
     def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] =
-      if (things.lengthIs <= 30) // If it can be done as a single batch, just run it w/out Akka Streams
+      if (things.lengthIs <= 30) // If it can be done as a single batch, just run it w/out Pekko Streams
         f(things)
       else
         Source(things).grouped(30).runWith(Sink.foreachAsync(6)(f)).map(_ => ())(ExecutionContexts.parasitic)

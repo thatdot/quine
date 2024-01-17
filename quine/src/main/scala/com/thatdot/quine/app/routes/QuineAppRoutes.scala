@@ -2,10 +2,10 @@ package com.thatdot.quine.app.routes
 
 import scala.util.{Failure, Success, Try}
 
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{Directives, Route}
-import akka.util.Timeout
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{Directives, Route}
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json

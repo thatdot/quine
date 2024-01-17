@@ -7,19 +7,19 @@ import scala.concurrent.duration._
 import scala.language.implicitConversions
 import scala.util.{Failure, Random, Success, Try}
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.MediaTypes.`application/json`
-import akka.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest}
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.kafka.scaladsl.{Producer => KafkaProducer}
-import akka.kafka.{ProducerMessage, ProducerSettings}
-import akka.stream.alpakka.kinesis.KinesisFlowSettings
-import akka.stream.alpakka.kinesis.scaladsl.KinesisFlow
-import akka.stream.alpakka.sns.scaladsl.SnsPublisher
-import akka.stream.scaladsl.{FileIO, Flow, Keep}
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.MediaTypes.`application/json`
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest}
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
+import org.apache.pekko.kafka.scaladsl.{Producer => KafkaProducer}
+import org.apache.pekko.kafka.{ProducerMessage, ProducerSettings}
+import org.apache.pekko.stream.connectors.kinesis.KinesisFlowSettings
+import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisFlow
+import org.apache.pekko.stream.connectors.sns.scaladsl.SnsPublisher
+import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep}
+import org.apache.pekko.util.ByteString
 
 import cats.syntax.either._
 import com.typesafe.scalalogging.{LazyLogging, Logger}
@@ -198,7 +198,7 @@ object StandingQueryResultOutput extends LazyLogging {
           )
           .build()
 
-        // NOTE alpakka requires we close the SNS client
+        // NOTE pekko-connectors requires we close the SNS client
         graph.system.registerOnTermination(awsSnsClient.close()) // TODO
 
         // NB: by default, this will make 10 parallel requests [configurable via parameter to SnsPublisher.flow]

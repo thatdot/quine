@@ -9,10 +9,10 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
-import akka.Done
-import akka.stream.scaladsl.Keep
-import akka.stream.{KillSwitches, UniqueKillSwitch}
-import akka.util.Timeout
+import org.apache.pekko.Done
+import org.apache.pekko.stream.scaladsl.Keep
+import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
+import org.apache.pekko.util.Timeout
 
 import cats.Applicative
 import cats.effect.unsafe.implicits.global

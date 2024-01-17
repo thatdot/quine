@@ -7,8 +7,8 @@ import java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME
 import scala.collection.Set
 import scala.concurrent.Future
 
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.cypher.CypherException.ConstraintViolation
 import com.thatdot.quine.graph.cypher._

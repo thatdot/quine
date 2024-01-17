@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters._
 
-import akka.stream.Materializer
+import org.apache.pekko.stream.Materializer
 
 import com.codahale.metrics.MetricRegistry
 import com.datastax.oss.driver.api.core.cql.SimpleStatement

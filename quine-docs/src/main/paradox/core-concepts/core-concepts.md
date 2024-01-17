@@ -86,7 +86,7 @@ A backpressured system does not buffer, and it causes producers upstream to not 
 
 Backpressure is a [protocol](https://www.reactive-streams.org/) that defines how to send a logical signal back UP the stream with information about the downstream consumers readiness to receive more data. If downstream is not ready to consume, then upstream does not send new data.
 
-Quine uses a reactive stream implementation of backpressure, [Akka Streams](https://doc.akka.io/docs/akka/current/stream/stream-flows-and-basics.html#core-concepts), built on top of the actor model to ensure that the ingestion and processing of streams are resilient.
+Quine uses a reactive stream implementation of backpressure, [Pekko Streams](https://pekko.apache.org/docs/pekko/current/stream/stream-flows-and-basics.html#core-concepts), built on top of the actor model to ensure that the ingestion and processing of streams are resilient.
 
 ## Stateful Event-Driven Computation
 

@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-import akka.util.Timeout
+import org.apache.pekko.util.Timeout
 
 import org.scalatest.concurrent.Eventually
 import org.scalatest.concurrent.Eventually.eventually

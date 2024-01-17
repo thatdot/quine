@@ -3,7 +3,7 @@ package com.thatdot.quine.persistor
 import java.nio.file.Files
 import java.util.Properties
 
-import akka.actor.{ActorSystem, CoordinatedShutdown}
+import org.apache.pekko.actor.{ActorSystem, CoordinatedShutdown}
 
 import org.apache.commons.io.FileUtils
 

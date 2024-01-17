@@ -6,11 +6,11 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-import akka.NotUsed
-import akka.actor.{Actor, ActorRef}
-import akka.pattern.extended.ask
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.{Actor, ActorRef}
+import org.apache.pekko.pattern.extended.ask
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.google.common.collect.MinMaxPriorityQueue
 import com.typesafe.scalalogging.LazyLogging
@@ -271,7 +271,7 @@ trait OnNodeInterpreter
     // TODO: This can be optimized by calling `interpret` here directly `if (!query.canDirectlyTouchNode)`, except
     //       that it must be guaranteed to be run single-threaded on an actor while a message is being processed.
     Source
-      .lazyFutureSource[QueryContextResult, akka.NotUsed] { () =>
+      .lazyFutureSource[QueryContextResult, NotUsed] { () =>
         qidAtTime ? (QueryPackage(query, parameters, context, _))
       }
       .map(_.result)

@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph
 
-import akka.event.LoggingAdapter
+import org.apache.pekko.event.LoggingAdapter
 
 import cats.Order
 import com.typesafe.scalalogging.LazyLogging

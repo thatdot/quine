@@ -9,12 +9,12 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
-import akka.stream.scaladsl.Sink
-import akka.stream.{Materializer, StreamDetachedException}
-import akka.util.Timeout
-import akka.{Done, NotUsed}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.stream.scaladsl.Sink
+import org.apache.pekko.stream.{Materializer, StreamDetachedException}
+import org.apache.pekko.util.Timeout
+import org.apache.pekko.{Done, NotUsed}
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
@@ -104,7 +104,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
           case SwitchMode.Open => IngestStreamStatus.Running
           case SwitchMode.Close => restoredStatus getOrElse IngestStreamStatus.Paused
         }(materializer.executionContext)
-        .recover { case _: akka.stream.StreamDetachedException =>
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException =>
           IngestStreamStatus.Terminated
         }(materializer.executionContext)
     )
@@ -172,10 +172,10 @@ final private[thatdot] case class IngestMetrics(
   )
 }
 
-/** The Akka HTTP implementation of [[IngestRoutes]] */
+/** The Pekko HTTP implementation of [[IngestRoutes]] */
 trait IngestRoutesImpl
     extends IngestRoutes
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 

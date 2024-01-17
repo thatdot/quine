@@ -7,11 +7,11 @@ import scala.concurrent.Future
 import scala.util.Try
 import scala.util.control.NonFatal
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
-import akka.stream.alpakka.s3.scaladsl.S3
-import akka.stream.scaladsl.FileIO
-import akka.util.Timeout
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.stream.connectors.s3.scaladsl.S3
+import org.apache.pekko.stream.scaladsl.FileIO
+import org.apache.pekko.util.Timeout
 
 import endpoints4s.Invalid
 
@@ -24,7 +24,7 @@ import com.thatdot.quine.routes.AlgorithmRoutes
 
 trait AlgorithmRoutesImpl
     extends AlgorithmRoutes
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 

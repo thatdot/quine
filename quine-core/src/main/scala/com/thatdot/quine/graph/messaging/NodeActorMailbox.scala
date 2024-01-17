@@ -4,9 +4,9 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Comparator, Queue}
 
-import akka.actor._
-import akka.dispatch._
-import akka.util.StablePriorityBlockingQueue
+import org.apache.pekko.actor._
+import org.apache.pekko.dispatch._
+import org.apache.pekko.util.StablePriorityBlockingQueue
 
 import com.codahale.metrics.{MetricRegistry, SharedMetricRegistries}
 import com.typesafe.config.Config

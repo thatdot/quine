@@ -3,6 +3,7 @@ package com.thatdot.quine.compiler.cypher
 import scala.concurrent.Future
 
 import cats.implicits._
+import org.apache.pekko
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.{
@@ -885,10 +886,10 @@ object MyUnwind extends UserDefinedProcedure {
     location: cypher.ProcedureExecutionLocation
   )(implicit
     parameters: cypher.Parameters,
-    timeout: akka.util.Timeout
-  ): akka.stream.scaladsl.Source[Vector[cypher.Value], _] =
+    timeout: pekko.util.Timeout
+  ): pekko.stream.scaladsl.Source[Vector[cypher.Value], _] =
     arguments match {
-      case Seq(Expr.List(l)) => akka.stream.scaladsl.Source(l.map(Vector(_)))
+      case Seq(Expr.List(l)) => pekko.stream.scaladsl.Source(l.map(Vector(_)))
       case _ => throw wrongSignature(arguments)
     }
 }

@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.behavior
 import scala.collection.mutable
 import scala.concurrent.Future
 
-import akka.actor.Actor
+import org.apache.pekko.actor.Actor
 
 import com.typesafe.scalalogging.LazyLogging
 

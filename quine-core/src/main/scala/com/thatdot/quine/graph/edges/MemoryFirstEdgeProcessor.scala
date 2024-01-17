@@ -5,10 +5,11 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 
-import akka.actor.ActorSystem
-import akka.dispatch.MessageDispatcher
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.dispatch.MessageDispatcher
 
 import cats.data.NonEmptyList
+import org.apache.pekko
 
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime, NodeChangeEvent, NodeEvent}
@@ -55,7 +56,7 @@ class MemoryFirstEdgeProcessor(
     updateSnapshotTimestamp()
     runPostActions(effectingEvents.toList)
 
-    akka.pattern
+    pekko.pattern
       .retry(
         () => persistEventsToJournal(),
         Int.MaxValue,

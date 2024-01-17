@@ -3,10 +3,10 @@ package com.thatdot.quine.app.ingest
 import scala.concurrent.Future
 import scala.util.{Success, Try}
 
-import akka.stream.alpakka.sqs.scaladsl.{SqsAckSink, SqsSource}
-import akka.stream.alpakka.sqs.{MessageAction, SqsSourceSettings}
-import akka.stream.scaladsl.{Flow, Sink, Source}
-import akka.{Done, NotUsed}
+import org.apache.pekko.stream.connectors.sqs.scaladsl.{SqsAckSink, SqsSource}
+import org.apache.pekko.stream.connectors.sqs.{MessageAction, SqsSourceSettings}
+import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
+import org.apache.pekko.{Done, NotUsed}
 
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sqs.SqsAsyncClient

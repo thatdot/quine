@@ -5,9 +5,9 @@ import java.time.Instant
 import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
-import akka.util.{ByteString, Timeout}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.util.{ByteString, Timeout}
 
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
@@ -23,10 +23,10 @@ trait AdministrationRoutesState {
   def shutdown()(implicit ec: ExecutionContext): Future[Unit]
 }
 
-/** The Akka HTTP implementation of [[AdministrationRoutes]] */
+/** The Pekko HTTP implementation of [[AdministrationRoutes]] */
 trait AdministrationRoutesImpl
     extends AdministrationRoutes
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints { self: LazyLogging =>
 

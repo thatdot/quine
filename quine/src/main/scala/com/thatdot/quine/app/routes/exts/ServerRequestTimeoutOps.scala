@@ -5,10 +5,10 @@ import scala.concurrent.duration.Duration
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{ExceptionHandler, Route}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{ExceptionHandler, Route}
 
-trait ServerRequestTimeoutOps { self: endpoints4s.akkahttp.server.Endpoints =>
+trait ServerRequestTimeoutOps { self: endpoints4s.pekkohttp.server.Endpoints =>
 
   implicit class EndpointOps[A, B](val endpoint: Endpoint[A, B]) {
 
@@ -18,7 +18,7 @@ trait ServerRequestTimeoutOps { self: endpoints4s.akkahttp.server.Endpoints =>
       *
       * @param requestedTimeout optional override for the request timeout
       * @param implementation how to produce a result
-      * @return Akka HTTP route
+      * @return Pekko HTTP route
       */
     def implementedByAsyncWithRequestTimeout(requestedTimeout: A => Option[Duration])(
       implementation: (A, Duration) => Future[B]

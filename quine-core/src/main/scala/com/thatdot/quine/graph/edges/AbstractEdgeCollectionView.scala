@@ -5,9 +5,9 @@ import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 import scala.language.higherKinds
 
-import akka.NotUsed
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 
 import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
 

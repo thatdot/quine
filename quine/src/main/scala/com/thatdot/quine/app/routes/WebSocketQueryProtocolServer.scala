@@ -5,12 +5,12 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 
-import akka.http.scaladsl.model.ws
-import akka.http.scaladsl.server.Directives.handleWebSocketMessages
-import akka.http.scaladsl.server.Route
-import akka.stream._
-import akka.stream.scaladsl._
-import akka.{Done, NotUsed}
+import org.apache.pekko.http.scaladsl.model.ws
+import org.apache.pekko.http.scaladsl.server.Directives.handleWebSocketMessages
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.{Done, NotUsed}
 
 import cats.syntax.either._
 import com.typesafe.scalalogging.LazyLogging

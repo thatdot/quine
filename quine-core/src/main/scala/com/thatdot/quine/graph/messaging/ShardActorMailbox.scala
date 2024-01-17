@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.messaging
 
-import akka.actor.ActorSystem
-import akka.dispatch.{PriorityGenerator, UnboundedStablePriorityMailbox}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.dispatch.{PriorityGenerator, UnboundedStablePriorityMailbox}
 
 import com.typesafe.config.Config
 

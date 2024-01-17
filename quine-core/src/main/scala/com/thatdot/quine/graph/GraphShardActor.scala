@@ -10,9 +10,9 @@ import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteD
 import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success}
 
-import akka.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, Timers}
-import akka.dispatch.Envelope
-import akka.stream.scaladsl.Source
+import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, Timers}
+import org.apache.pekko.dispatch.Envelope
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.GraphShardActor.{LivenessStatus, NodeState}
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
@@ -337,7 +337,7 @@ final private[quine] class GraphShardActor(
       val props = Props(
         graph.nodeStaticSupport.nodeClass.runtimeClass,
         finalNodeArgs: _*
-      ).withMailbox("akka.quine.node-mailbox")
+      ).withMailbox("pekko.quine.node-mailbox")
         .withDispatcher(QuineDispatchers.nodeDispatcherName)
       try {
         val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
@@ -345,13 +345,13 @@ final private[quine] class GraphShardActor(
         inMemoryActorList.update(id)
         nodesWokenUpCounter.inc()
       } catch {
-        // Akka may not have finished freeing the name even if the actor is shut down.
+        // Pekko may not have finished freeing the name even if the actor is shut down.
         // InvalidActorNameException is thrown for a variety of different reasons, see
-        // https://github.com/akka/akka/search?q=%22throw+InvalidActorNameException%22
+        // https://github.com/apache/incubator-pekko/search?q=%22throw+InvalidActorNameException%22
         // Here we're only interested in catching the case where the actor name is syntactically
-        // valid, but at runtime Akka still thinks there's another Actor with that same name.
+        // valid, but at runtime Pekko still thinks there's another Actor with that same name.
         // e.g. specifically:
-        // https://github.com/akka/akka/blob/7abc41cf4e7e8827393b181cd06c5f8ea684e696/akka-actor/src/main/scala/akka/actor/dungeon/ChildrenContainer.scala#L134
+        // https://github.com/apache/incubator-pekko/blob/58fa510455190bd62d04f92a83c9506a7588d29c/actor/src/main/scala/org/apache/pekko/actor/dungeon/ChildrenContainer.scala#L144
         case InvalidActorNameException(msg) if msg endsWith "is not unique!" =>
           nodes.remove(id)
           unlikelyActorNameRsvdCounter.inc()
@@ -612,7 +612,7 @@ object GraphShardActor {
       * can be sure that the transition is valid).
       *
       * @param costToSleep  measure of how costly it is to sleep the node
-      * @param actorRef     Akka reference for sending to the actor
+      * @param actorRef     Pekko reference for sending to the actor
       * @param actorRefLock lock to ensure the liveness of the actor behind `actorRef`
       * @param wakefulState where is the node at in the sleep cycle?
       */
@@ -766,7 +766,7 @@ final private[quine] case class StillAwake(id: QuineIdAtTime) extends ShardContr
   *
   * @param id which node to wake up
   * @param snapshotOpt snapshot with which to restore the node
-  * @param remainingRetries how many retries left (waiting for Akka to free up the name)
+  * @param remainingRetries how many retries left (waiting for Pekko to free up the name)
   */
 final private[quine] case class WakeUp(
   id: QuineIdAtTime,

@@ -5,24 +5,21 @@ import java.time.Instant
 import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
-import scala.concurrent.duration.{Duration, DurationInt}
+import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
-import akka.NotUsed
-import akka.stream.alpakka.kinesis.ShardIterator._
-import akka.stream.alpakka.kinesis.ShardSettings
-import akka.stream.alpakka.kinesis.scaladsl.KinesisSource
-import akka.stream.scaladsl.{Flow, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.connectors.kinesis.ShardIterator._
+import org.apache.pekko.stream.connectors.kinesis.ShardSettings
+import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisSource
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
-import com.contxt.kinesis.{ConsumerStats, KinesisRecord, NoopConsumerStats}
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.core.retry.RetryPolicy
 import software.amazon.awssdk.core.retry.backoff.BackoffStrategy
 import software.amazon.awssdk.core.retry.conditions.RetryCondition
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
-import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
-import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
@@ -180,68 +177,4 @@ object KinesisSrcDef {
     builder.build
   }
 
-}
-import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
-
-// based on https://github.com/StreetContxt/kcl-akka-stream
-final case class KinesisCheckpointSrcDef(
-  override val name: String,
-  streamName: String,
-  format: ImportFormat,
-  initialSwitchMode: SwitchMode,
-  parallelism: Int,
-  credentialsOpt: Option[AwsCredentials],
-  regionOpt: Option[AwsRegion],
-  numRetries: Int,
-  maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder],
-  checkpointSettings: KinesisSchedulerCheckpointSettings
-)(implicit val graph: CypherOpsGraph)
-    extends RawValuesIngestSrcDef(
-      format,
-      initialSwitchMode,
-      parallelism,
-      maxPerSecond,
-      decoders,
-      s"$name (Kinesis CP ingest)"
-    ) {
-
-  type InputType = KinesisRecord
-
-  import com.contxt.kinesis.{ConsumerConfig, KinesisSource}
-
-  private val maxWaitForCompletionOnStreamShutdown = Duration.Inf //shorter waits throw an IterationException
-  private val shardCheckpointConfig = com.contxt.kinesis.ShardCheckpointConfig(
-    checkpointSettings.maxBatchWait,
-    checkpointSettings.maxBatchSize,
-    maxWaitForCompletionOnStreamShutdown
-  )
-
-  private val kinesisClient: KinesisAsyncClient = KinesisSrcDef.buildAsyncClient(credentialsOpt, regionOpt, numRetries)
-  private val dynamoClient: DynamoDbAsyncClient = DynamoDbAsyncClient.builder
-    .credentials(credentialsOpt)
-    .httpClient(KinesisSrcDef.buildAsyncHttpClient)
-    .region(regionOpt)
-    .build
-  private val cloudWatchClient: CloudWatchAsyncClient = CloudWatchAsyncClient.builder
-    .credentials(credentialsOpt)
-    .httpClient(KinesisSrcDef.buildAsyncHttpClient)
-    .region(regionOpt)
-    .build
-
-  private val consumerConfig =
-    ConsumerConfig(streamName, "atLeastOnceApp")(kinesisClient, dynamoClient, cloudWatchClient)
-  private val stats: ConsumerStats = new NoopConsumerStats
-
-  def source(): Source[KinesisRecord, NotUsed.type] = KinesisSource
-    .apply(consumerConfig, shardCheckpointConfig, stats)
-    .map { message =>
-      // After a record is marked as processed, it is eligible to be checkpointed in DynamoDb.
-      message.markProcessed()
-      message
-    }
-    .mapMaterializedValue(_ => NotUsed)
-
-  /** Define a way to extract raw bytes from a single input event */
-  override def rawBytes(value: KinesisRecord): Array[Byte] = value.data.toArray
 }

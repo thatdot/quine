@@ -3,7 +3,7 @@ package com.thatdot.quine.persistor
 import java.net.{InetSocketAddress, Socket}
 import java.time.Duration
 import scala.util.Using
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 import com.datastax.oss.driver.api.core.ConsistencyLevel
 import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
 import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor

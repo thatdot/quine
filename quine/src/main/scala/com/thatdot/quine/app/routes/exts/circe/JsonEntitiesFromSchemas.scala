@@ -1,11 +1,11 @@
 package com.thatdot.quine.app.routes.exts.circe
 
-import akka.http.scaladsl.server.{Directive1, Directives}
-import akka.http.scaladsl.unmarshalling.Unmarshaller
+import org.apache.pekko.http.scaladsl.server.{Directive1, Directives}
+import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshaller
 
 import cats.data.ValidatedNel
-import de.heikoseeberger.akkahttpcirce.ErrorAccumulatingCirceSupport
-import endpoints4s.akkahttp.server.EndpointsWithCustomErrors
+import com.github.pjfanning.pekkohttpcirce.ErrorAccumulatingCirceSupport
+import endpoints4s.pekkohttp.server.EndpointsWithCustomErrors
 import endpoints4s.{algebra, circe}
 
 trait JsonEntitiesFromSchemas

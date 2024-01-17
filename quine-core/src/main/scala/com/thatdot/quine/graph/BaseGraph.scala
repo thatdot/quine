@@ -5,12 +5,12 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.reflect.{ClassTag, classTag}
 
-import akka.NotUsed
-import akka.actor.{ActorRef, ActorSystem}
-import akka.dispatch.MessageDispatcher
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Flow, Sink, Source}
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.{ActorRef, ActorSystem}
+import org.apache.pekko.dispatch.MessageDispatcher
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.StrictLogging
 

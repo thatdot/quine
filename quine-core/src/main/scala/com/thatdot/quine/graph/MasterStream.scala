@@ -3,11 +3,12 @@ package com.thatdot.quine.graph
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import akka.stream.scaladsl.{MergeHub, Sink, Source}
-import akka.stream.{Materializer, UniqueKillSwitch}
-import akka.{Done, NotUsed}
+import org.apache.pekko.stream.scaladsl.{MergeHub, Sink, Source}
+import org.apache.pekko.stream.{Materializer, UniqueKillSwitch}
+import org.apache.pekko.{Done, NotUsed}
 
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.pekko
 
 class MasterStream(mat: Materializer) extends LazyLogging {
   import MasterStream._
@@ -33,7 +34,7 @@ class MasterStream(mat: Materializer) extends LazyLogging {
     .source[PersistorExecToken]
     .mapMaterializedValue(_.named("master-stream-persistor-mergehub"))
     .preMaterialize()(mat)
-  private val preferNewHubOverUpstream = false // Akka docs are misleading. `false` gives the desired merge preference.
+  private val preferNewHubOverUpstream = false // Pekko docs are misleading. `false` gives the desired merge preference.
 
   val loggingSink: Sink[ExecutionToken, Future[Done]] =
     Sink.foreach[ExecutionToken](x => logger.trace(x.name)).named("master-stream-logging-sink")
@@ -65,5 +66,5 @@ case object MasterStream {
 trait IngestControl {
   def pause(): Future[Boolean]
   def unpause(): Future[Boolean]
-  def terminate(): Future[akka.Done]
+  def terminate(): Future[pekko.Done]
 }

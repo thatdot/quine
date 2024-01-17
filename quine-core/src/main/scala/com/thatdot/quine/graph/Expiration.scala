@@ -2,7 +2,7 @@ package com.thatdot.quine.graph
 
 import scala.concurrent.duration._
 
-import akka.util.Timeout
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.messaging.QuineMessage
 // TODO: adapt comment for type

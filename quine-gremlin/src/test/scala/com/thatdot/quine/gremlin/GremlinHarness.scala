@@ -3,9 +3,9 @@ package com.thatdot.quine.gremlin
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 
-import akka.stream.scaladsl.{Keep, Sink}
-import akka.stream.{KillSwitches, Materializer}
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.{Keep, Sink}
+import org.apache.pekko.stream.{KillSwitches, Materializer}
+import org.apache.pekko.util.Timeout
 
 import org.scalactic.source.Position
 import org.scalatest.funsuite.AsyncFunSuite

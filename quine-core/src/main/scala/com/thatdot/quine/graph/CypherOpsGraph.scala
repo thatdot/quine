@@ -2,12 +2,13 @@ package com.thatdot.quine.graph
 
 import scala.concurrent.duration.DurationInt
 
-import akka.NotUsed
-import akka.actor.{ActorRef, PoisonPill}
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.{ActorRef, PoisonPill}
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache, RemovalCause, RemovalNotification}
+import org.apache.pekko
 
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.model._
@@ -62,7 +63,7 @@ trait CypherOpsGraph extends BaseGraph {
         }
         .build(new CacheLoader[(Query[Location.External], Option[Milliseconds]), ActorRef] {
           def load(key: (Query[Location.External], Option[Milliseconds])): ActorRef =
-            system.actorOf(akka.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key._1, key._2)))
+            system.actorOf(pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key._1, key._2)))
         })
 
     /* We do a lot of queries on the thoroughgoing present, so cache an instance

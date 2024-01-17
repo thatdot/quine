@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph
 
-import akka.actor.SupervisorStrategy._
-import akka.actor.{OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
+import org.apache.pekko.actor.SupervisorStrategy._
+import org.apache.pekko.actor.{OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
 
 import com.typesafe.scalalogging.LazyLogging
 class NodeAndShardSupervisorStrategy extends SupervisorStrategyConfigurator with LazyLogging {

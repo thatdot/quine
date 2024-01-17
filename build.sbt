@@ -6,6 +6,7 @@ addCommandAlias("scala213", "++" + scalaV213)
 addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
 
 //ThisBuild / evictionErrorLevel := Level.Warn
+ThisBuild / evictionErrorLevel := Level.Info
 
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
@@ -15,11 +16,11 @@ lazy val `quine-core`: Project = project
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % shapelessV,
       "com.google.guava" % "guava" % guavaV,
-      "org.scala-lang.modules" %% "scala-java8-compat" % (if (scalaVersion.value == scalaV212) "0.9.1" else "1.0.2"),
       "org.scala-lang.modules" %% "scala-collection-compat" % scalaCollectionCompatV,
-      "com.typesafe.akka" %% "akka-actor" % akkaV,
-      "com.typesafe.akka" %% "akka-stream" % akkaV,
-      "com.typesafe.akka" %% "akka-slf4j" % akkaV,
+      "org.scala-lang.modules" %% "scala-java8-compat" % scalaJava8CompatV,
+      "org.apache.pekko" %% "pekko-actor" % pekkoV,
+      "org.apache.pekko" %% "pekko-stream" % pekkoStreamV,
+      "org.apache.pekko" %% "pekko-slf4j" % pekkoV,
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.circe" %% "circe-parser" % circeV,
@@ -69,7 +70,7 @@ lazy val `quine-mapdb-persistor`: Project = project
   .settings(
     /* `net.jpountz.lz4:lz4` was moved to `org.lz4:lz4-java`, but MapDB hasn't
      * adapted to this change quickly. However, since other parts of the Java
-     * ecosystem _have_ (example: `akka-stream kafka`), we need to exclude the
+     * ecosystem _have_ (example: `pekko-connectors-kafka`), we need to exclude the
      * bad JAR and explicitly pull in the good one.
      */
     libraryDependencies ++= Seq(
@@ -134,7 +135,7 @@ lazy val `quine-cypher`: Project = project
       "org.opencypher" % "util-9.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
+      "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
     ),
     addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full),
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % betterMonadicForV)
@@ -247,52 +248,54 @@ lazy val `quine`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % logbackV,
+      "com.charleskorn.kaml" % "kaml" % kamlV,
+      "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
+      "com.github.jnr" % "jnr-posix" % jnrPosixV,
+      "com.github.pjfanning" %% "aws-spi-pekko-http" % "0.1.0",
+      "com.github.pjfanning" %% "pekko-http-circe" % "2.1.0",
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
+      "com.github.scopt" %% "scopt" % scoptV,
+      "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
+      "com.google.guava" % "guava" % guavaV,
+      "com.google.protobuf" % "protobuf-java" % protobufV,
+      "commons-io" % "commons-io" % commonsIoV,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.3",
+      "io.circe" %% "circe-yaml-v12" % "0.15.1",
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
-      "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
-      "com.typesafe.akka" %% "akka-stream-kafka" % alpakkaKafkaV,
-      "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-kinesis" % alpakkaKinesisV exclude ("org.rocksdb", "rocksdbjni"),
-      "commons-io" % "commons-io" % commonsIoV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-sqs" % alpakkaSQSV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-sse" % alpakkaSseV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-sns" % alpakkaSnsV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-csv" % alpakkaCsvV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-text" % alpakkaTextV,
-      "com.lightbend.akka" %% "akka-stream-alpakka-s3" % alpakkaS3V,
-      "io.github.streetcontxt" %% "kcl-akka-stream" % kclAkkaV,
       "org.apache.avro" % "avro" % avroV,
       "org.apache.commons" % "commons-compress" % commonsCompressV,
-      "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % jacksonCborV,
-      "org.xerial.snappy" % "snappy-java" % snappyV,
-      // akka-http-xml is not a direct dep, but pulled in transitively by Alpakka modules above.
-      // All akka-http module version numbers need to match exactly, or else it
+      "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
+      "org.apache.pekko" %% "pekko-connectors-csv" % pekkoCsvV,
+      "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
+      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoKinesisV exclude ("org.rocksdb", "rocksdbjni"),
+      "org.apache.pekko" %% "pekko-connectors-s3" % pekkoS3V,
+      "org.apache.pekko" %% "pekko-connectors-sns" % pekkoSnsV,
+      "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoSQSV,
+      "org.apache.pekko" %% "pekko-connectors-sse" % pekkoSseV,
+      "org.apache.pekko" %% "pekko-connectors-text" % pekkoTextV,
+      // pekko-http-xml is not a direct dep, but pulled in transitively by connector modules above.
+      // All pekko-http module version numbers need to match exactly, or else it
       // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
-      "com.typesafe.akka" %% "akka-http-xml" % akkaHttpV,
-      "de.heikoseeberger" %% "akka-http-circe" % "1.39.2",
-      "io.circe" %% "circe-yaml-v12" % "0.15.1",
+      "org.apache.pekko" %% "pekko-http-xml" % pekkoHttpV,
+      "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test,
+      "org.endpoints4s" %% "pekko-http-server" % endpoints4sHttpServerV,
+      "org.jetbrains.kotlin" % "kotlin-stdlib" % kotlinStdlibV,
+      "org.jetbrains.kotlin" % "kotlin-stdlib-jdk8" % kotlinStdlibV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
-      "org.endpoints4s" %% "akka-http-server" % endpoints4sHttpServerV,
+      "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,
       // WebJars (javascript dependencies masquerading as JARs)
-      "org.webjars" % "webjars-locator" % webjarsLocatorV,
-      "org.webjars.npm" % "vis-network" % visNetworkV,
+      "org.webjars" % "bootstrap" % bootstrapV,
       "org.webjars" % "ionicons" % ioniconsV,
       "org.webjars" % "jquery" % jqueryV,
-      "org.webjars" % "bootstrap" % bootstrapV,
-      "org.webjars.npm" % "sugar-date" % sugarV,
+      "org.webjars" % "webjars-locator" % webjarsLocatorV,
       "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
-      "com.google.guava" % "guava" % guavaV,
-      "com.google.protobuf" % "protobuf-java" % protobufV,
-      "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
-      "com.github.jnr" % "jnr-posix" % jnrPosixV,
-      "com.github.scopt" %% "scopt" % scoptV,
-      "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,
-      "com.typesafe.akka" %% "akka-stream-testkit" % akkaV % Test
+      "org.webjars.npm" % "sugar-date" % sugarV,
+      "org.webjars.npm" % "vis-network" % visNetworkV,
+      "org.xerial.snappy" % "snappy-java" % snappyV
     )
   )
   .enablePlugins(WebScalaJSBundlerPlugin)

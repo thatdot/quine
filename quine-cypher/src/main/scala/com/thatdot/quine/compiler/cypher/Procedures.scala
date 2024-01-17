@@ -9,9 +9,9 @@ import scala.collection.concurrent
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationLong
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
 import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
@@ -1432,7 +1432,7 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
 
 /** Lookup a standing query by user-facing name, yielding its [[StandingQueryResults]] as they are produced
   * Registered by registerUserDefinedProcedure at runtime by product entrypoint and in docs' GenerateCypherTables
-  * NB despite the name including `wiretap`, this is implemented as an akka-streams map
+  * NB despite the name including `wiretap`, this is implemented as an pekko-streams map
   */
 class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) extends UserDefinedProcedure {
   val name = "standing.wiretap"

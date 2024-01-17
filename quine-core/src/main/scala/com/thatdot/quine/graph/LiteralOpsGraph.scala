@@ -3,8 +3,8 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
-import akka.stream.scaladsl.{Sink, Source}
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.ShardMessage.PurgeNode

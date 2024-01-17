@@ -2,8 +2,8 @@ package com.thatdot.quine.graph
 
 import scala.concurrent.Future
 
-import akka.stream.scaladsl.{Sink, Source}
-import akka.util.{ByteString, Timeout}
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.util.{ByteString, Timeout}
 
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage.{GetRandomWalk, RandomWalkResult}

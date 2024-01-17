@@ -4,10 +4,10 @@ import scala.collection.compat._
 import scala.reflect.{ClassTag, classTag}
 import scala.util.matching.Regex
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.LiteralOpsGraph
 import com.thatdot.quine.model.{Milliseconds, QuineValue}

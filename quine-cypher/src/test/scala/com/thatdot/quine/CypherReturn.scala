@@ -3,7 +3,7 @@ package com.thatdot.quine.compiler.cypher
 import scala.annotation.nowarn
 import scala.util.Try
 
-import akka.stream.scaladsl.Sink
+import org.apache.pekko.stream.scaladsl.Sink
 
 import org.opencypher.v9_0.expressions.functions.Category
 import org.scalatest.AppendedClues

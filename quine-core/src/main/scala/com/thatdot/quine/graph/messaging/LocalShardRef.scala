@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.messaging
 
 import scala.collection.concurrent
 
-import akka.actor.ActorRef
+import org.apache.pekko.actor.ActorRef
 
 import com.thatdot.quine.graph.GraphShardActor.NodeState
 

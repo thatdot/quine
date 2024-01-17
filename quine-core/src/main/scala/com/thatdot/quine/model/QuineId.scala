@@ -38,7 +38,7 @@ final case class QuineId private (array: Array[Byte]) extends Ordered[QuineId] {
     * This is always either the literal string "empty" or else a non-empty even-length string
     * containing only numbers and uppercase A-F. The choice of using "empty" instead of an empty
     * string is because we use this in places where an empty string is problematic (eg. naming
-    * Akka actors).
+    * Pekko actors).
     *
     * @see [[QuineId.fromInternalString]]
     */

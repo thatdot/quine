@@ -5,12 +5,12 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success}
 
-import akka.NotUsed
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.ws._
-import akka.http.scaladsl.settings.ClientConnectionSettings
-import akka.stream.scaladsl.{Flow, Keep, Source}
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.ws._
+import org.apache.pekko.http.scaladsl.settings.ClientConnectionSettings
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
+import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.ingest.serialization.ImportFormat

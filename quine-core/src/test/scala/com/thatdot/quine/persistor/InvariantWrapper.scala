@@ -4,8 +4,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 import scala.concurrent.Future
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 

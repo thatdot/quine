@@ -3,7 +3,7 @@ package com.thatdot.quine.app.config
 import java.io.File
 import java.net.InetAddress
 
-import akka.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.Uri
 
 import com.thatdot.quine.util.{Host, Port}
 

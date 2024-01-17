@@ -6,9 +6,9 @@ import scala.collection.{immutable, mutable}
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
-import akka.actor.{Actor, ActorLogging}
-import akka.event.LoggingAdapter
-import akka.stream.scaladsl.Source
+import org.apache.pekko.actor.{Actor, ActorLogging}
+import org.apache.pekko.event.LoggingAdapter
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
@@ -377,7 +377,7 @@ trait DomainNodeIndexBehavior
   }
 
   protected def domainNodeIndexBehavior(command: DomainNodeSubscriptionCommand): Unit = {
-    // Convert Akka message model to node journal model
+    // Convert Pekko message model to node journal model
     val event = command match {
       case CreateDomainNodeSubscription(dgnId, Left(quineId), relatedQueries) =>
         DomainIndexEvent.CreateDomainNodeSubscription(dgnId, quineId, relatedQueries)

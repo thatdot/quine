@@ -3,9 +3,9 @@ package com.thatdot.quine.app.routes
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
-import akka.util.Timeout
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.util.Timeout
 
 import io.circe.Json
 
@@ -22,10 +22,10 @@ import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
 import com.thatdot.quine.routes._
 
-/** The Akka HTTP implementation of [[DebugOpsRoutes]] */
+/** The Pekko HTTP implementation of [[DebugOpsRoutes]] */
 trait DebugRoutesImpl
     extends DebugOpsRoutes
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 

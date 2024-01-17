@@ -2,10 +2,10 @@ package com.thatdot.quine.app.ingest
 
 import scala.util.Success
 
-import akka.NotUsed
-import akka.stream.alpakka.csv.scaladsl.{CsvParsing, CsvToMap}
-import akka.stream.scaladsl.{Flow, Framing, Source}
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
+import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
+import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.serialization.{
   CypherImportFormat,

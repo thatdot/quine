@@ -3,7 +3,7 @@ package com.thatdot.quine.bolt
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets.UTF_8
 
-import akka.util.{ByteIterator, ByteString, ByteStringBuilder}
+import org.apache.pekko.util.{ByteIterator, ByteString, ByteStringBuilder}
 
 import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.QuineIdProvider
@@ -59,7 +59,7 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
     ).map(s => s.signature -> s).toMap
 
   /** Given a de-serialization function acting on an iterator, read a value
-    * entirely from a [[akka.util.ByteString]], expecting no leftover bytes.
+    * entirely from a [[org.apache.pekko.util.ByteString]], expecting no leftover bytes.
     *
     * @param readingFunction how to extract a value from the bytes
     * @param payload the bytes
@@ -82,7 +82,7 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
   }
 
   /** Given a serialization function acting on a bytestring builder, write a
-    * value to a [[akka.util.ByteString]].
+    * value to a [[org.apache.pekko.util.ByteString]].
     *
     * @param writingFunction how to convert the value to bytes
     * @param value the values

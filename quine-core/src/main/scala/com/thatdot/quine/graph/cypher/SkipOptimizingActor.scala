@@ -2,9 +2,9 @@ package com.thatdot.quine.graph.cypher
 
 import scala.compat.ExecutionContexts
 
-import akka.NotUsed
-import akka.actor.{Actor, ActorLogging, ActorRef}
-import akka.stream.scaladsl.{BroadcastHub, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef}
+import org.apache.pekko.stream.scaladsl.{BroadcastHub, Source}
 
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Query.Return

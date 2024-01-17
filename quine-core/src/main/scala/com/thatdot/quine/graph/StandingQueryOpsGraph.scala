@@ -12,10 +12,10 @@ import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
-import akka.stream.scaladsl.{BroadcastHub, Flow, Keep, Source}
-import akka.stream.{BoundedSourceQueue, KillSwitches, QueueOfferResult, UniqueKillSwitch}
-import akka.util.Timeout
-import akka.{Done, NotUsed}
+import org.apache.pekko.stream.scaladsl.{BroadcastHub, Flow, Keep, Source}
+import org.apache.pekko.stream.{BoundedSourceQueue, KillSwitches, QueueOfferResult, UniqueKillSwitch}
+import org.apache.pekko.util.Timeout
+import org.apache.pekko.{Done, NotUsed}
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 

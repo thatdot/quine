@@ -4,8 +4,8 @@ import scala.compat.CompatBuildFrom.implicitlyBF
 import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 import com.typesafe.scalalogging.StrictLogging

@@ -17,8 +17,8 @@ package com.thatdot.quine.util
 
 import scala.concurrent.{Future, Promise}
 
-import akka.stream._
-import akka.stream.stage.{GraphStageLogic, GraphStageWithMaterializedValue, InHandler, OutHandler}
+import org.apache.pekko.stream._
+import org.apache.pekko.stream.stage.{GraphStageLogic, GraphStageWithMaterializedValue, InHandler, OutHandler}
 
 import com.thatdot.quine.util.SwitchMode.{Close, Open}
 

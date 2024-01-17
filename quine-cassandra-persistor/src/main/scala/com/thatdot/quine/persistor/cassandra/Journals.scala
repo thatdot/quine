@@ -4,9 +4,9 @@ import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
 
-import akka.NotUsed
-import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.Applicative
 import cats.data.NonEmptyList

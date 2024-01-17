@@ -3,10 +3,11 @@ package com.thatdot.quine.app.util
 import scala.concurrent.Future
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.pekko
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.cypher.Location
@@ -52,7 +53,7 @@ final case class AtLeastOnceCypherQuery(
       catch {
         case RetriableQueryFailure(e) =>
           // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above
-          Source.future(akka.pattern.after(startupRetryDelay)(Future.failed(e))(graph.system))
+          Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(e))(graph.system))
       }
 
     bestEffortSource
@@ -92,9 +93,9 @@ object AtLeastOnceCypherQuery {
       case _: WrappedPersistorException => Some(e)
       case _: com.datastax.oss.driver.api.core.DriverException => Some(e)
       // Retriable failures related to StreamRefs:
-      case _: akka.stream.RemoteStreamRefActorTerminatedException => Some(e)
-      case _: akka.stream.StreamRefSubscriptionTimeoutException => Some(e)
-      case _: akka.stream.InvalidSequenceNumberException => Some(e)
+      case _: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException => Some(e)
+      case _: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException => Some(e)
+      case _: org.apache.pekko.stream.InvalidSequenceNumberException => Some(e)
       case _ => None
     }
   }

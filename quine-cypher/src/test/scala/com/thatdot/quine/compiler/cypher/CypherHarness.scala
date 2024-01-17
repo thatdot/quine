@@ -6,9 +6,9 @@ import scala.concurrent.{Await, Future}
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
-import akka.stream.scaladsl.{Keep, Sink}
-import akka.stream.{KillSwitches, Materializer}
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.{Keep, Sink}
+import org.apache.pekko.stream.{KillSwitches, Materializer}
+import org.apache.pekko.util.Timeout
 
 import org.scalactic.source.Position
 import org.scalatest.funspec.AsyncFunSpec

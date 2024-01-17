@@ -1,6 +1,6 @@
 package com.thatdot.quine.persistor
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import com.thatdot.quine.graph.HistoricalQueryTests
 

@@ -3,11 +3,11 @@ package com.thatdot.quine
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.scaladsl._
-import akka.stream.testkit.scaladsl._
-import akka.util.{ByteString, Timeout}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.stream.testkit.scaladsl._
+import org.apache.pekko.util.{ByteString, Timeout}
 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite

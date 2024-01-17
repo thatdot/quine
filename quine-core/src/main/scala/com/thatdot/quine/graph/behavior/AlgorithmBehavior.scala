@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.behavior
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 
-import akka.stream.scaladsl.Sink
+import org.apache.pekko.stream.scaladsl.Sink
 
 import com.typesafe.scalalogging.LazyLogging
 

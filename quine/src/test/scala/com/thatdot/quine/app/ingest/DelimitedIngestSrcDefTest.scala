@@ -4,12 +4,12 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 import scala.util.{Success, Try}
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Keep, Sink, Source, StreamConverters}
-import akka.stream.testkit.TestSubscriber
-import akka.stream.testkit.scaladsl.TestSink
-import akka.util.{ByteString, Timeout}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.{Keep, Sink, Source, StreamConverters}
+import org.apache.pekko.stream.testkit.TestSubscriber
+import org.apache.pekko.stream.testkit.scaladsl.TestSink
+import org.apache.pekko.util.{ByteString, Timeout}
 
 import cats.effect.unsafe.implicits.global
 import org.scalatest.BeforeAndAfterAll

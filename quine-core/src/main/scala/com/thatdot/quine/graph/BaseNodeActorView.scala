@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph
 
-import akka.actor.Actor
-import akka.stream.Materializer
+import org.apache.pekko.actor.Actor
+import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.graph.messaging.QuineIdAtTime

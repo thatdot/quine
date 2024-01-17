@@ -6,7 +6,7 @@ import java.net.InetSocketAddress
 import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
 import pureconfig.generic.auto._

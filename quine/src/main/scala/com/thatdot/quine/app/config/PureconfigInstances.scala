@@ -3,7 +3,7 @@ package com.thatdot.quine.app.config
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
-import akka.util.Timeout
+import org.apache.pekko.util.Timeout
 
 import pureconfig.BasicReaders.stringConfigReader
 import pureconfig.error.CannotConvert

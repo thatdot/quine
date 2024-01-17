@@ -5,9 +5,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util._
 import scala.util.parsing.input.{Position, Positional}
 
-import akka.NotUsed
-import akka.stream.scaladsl.{Flow, Source}
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 

@@ -7,9 +7,10 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success}
 
-import akka.actor.{ActorRef, Scheduler}
+import org.apache.pekko.actor.{ActorRef, Scheduler}
 
 import com.codahale.metrics.Timer
+import org.apache.pekko
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
@@ -44,7 +45,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
   private def retryPersistence[T](timer: Timer, op: => Future[T], ec: ExecutionContext)(implicit
     scheduler: Scheduler
   ): Future[T] =
-    akka.pattern.retry(
+    pekko.pattern.retry(
       () => timer.time(op),
       attempts = 5,
       minBackoff = 100.millis,

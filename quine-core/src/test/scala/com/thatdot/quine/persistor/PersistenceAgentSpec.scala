@@ -7,7 +7,7 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.util.Random
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import cats.data.NonEmptyList
 import cats.syntax.functor._

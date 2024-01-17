@@ -8,13 +8,13 @@ import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Flow, Framing, Keep, Source, StreamConverters}
-import akka.stream.testkit.TestSubscriber
-import akka.stream.testkit.scaladsl.TestSink
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Flow, Framing, Keep, Source, StreamConverters}
+import org.apache.pekko.stream.testkit.TestSubscriber
+import org.apache.pekko.stream.testkit.scaladsl.TestSink
+import org.apache.pekko.util.ByteString
 
 import io.circe.Json
 import org.scalatest.BeforeAndAfterAll

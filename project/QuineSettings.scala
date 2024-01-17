@@ -14,6 +14,7 @@ object QuineSettings {
     scalaVersion := scalaV212,
     crossScalaVersions := Seq(scalaV212, scalaV213)
   )
+
   val `scala 2.12`: Seq[Setting[_]] = Seq(
     scalaVersion := scalaV212,
     crossScalaVersions := Seq(scalaV212)

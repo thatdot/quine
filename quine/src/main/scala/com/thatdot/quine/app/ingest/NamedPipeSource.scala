@@ -8,11 +8,11 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.util.{Failure, Success, Try}
 
-import akka.NotUsed
-import akka.stream.scaladsl.{FileIO, Source}
-import akka.stream.stage._
-import akka.stream.{Attributes, Outlet, SourceShape}
-import akka.util.ByteString
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.{FileIO, Source}
+import org.apache.pekko.stream.stage._
+import org.apache.pekko.stream.{Attributes, Outlet, SourceShape}
+import org.apache.pekko.util.ByteString
 
 import com.typesafe.scalalogging.LazyLogging
 import jnr.posix.POSIXFactory
@@ -65,7 +65,7 @@ object NamedPipeSource extends LazyLogging {
   * - Even after reading all the bytes in the file, the reader must tail for more data, because
   *   data may be appended to the named pipe at any time
   *
-  * - Named pipes do not support seek, which is used by [[akka.stream.impl.io.FileSource]]
+  * - Named pipes do not support seek, which is used by [[org.apache.pekko.stream.impl.io.FileSource]]
   *
   * @param path named pipe file name
   * @param chunkSize size of memory buffer allocated for this graph stage

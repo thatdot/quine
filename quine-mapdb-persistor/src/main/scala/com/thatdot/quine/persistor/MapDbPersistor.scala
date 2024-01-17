@@ -11,9 +11,9 @@ import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
-import akka.NotUsed
-import akka.actor.{ActorSystem, Cancellable}
-import akka.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.{ActorSystem, Cancellable}
+import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 
 import cats.data.NonEmptyList
 import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegistry}
@@ -84,7 +84,7 @@ final class MapDbPersistor(
   private val quineDispatchers = new QuineDispatchers(actorSystem)
   import quineDispatchers.{blockingDispatcherEC, nodeDispatcherEC}
 
-  // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `akka.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
+  // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `pekko.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
   // TODO: don't hardcode magical values - config them
   protected val db: DB = {
     val dbBuilder1 = filePath

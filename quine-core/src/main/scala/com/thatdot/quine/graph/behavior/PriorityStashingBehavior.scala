@@ -7,8 +7,8 @@ import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 import scala.util.Try
 
-import akka.actor.{Actor, ActorLogging}
-import akka.dispatch.Envelope
+import org.apache.pekko.actor.{Actor, ActorLogging}
+import org.apache.pekko.dispatch.Envelope
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 

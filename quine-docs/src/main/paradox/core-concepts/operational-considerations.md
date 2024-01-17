@@ -11,7 +11,7 @@ Quine is a backpressured system; it will deliberately slow down when resource-co
 
 ### CPU
 
-As a distributed system, Quine is designed from the ground up to take advantage of multiple CPU cores. Quine will automatically configure increased parallelism where there are more CPU cores available. This configuration can be customized using the Akka configuration settings for the `default-dispatcher` when starting up Quine.
+As a distributed system, Quine is designed from the ground up to take advantage of multiple CPU cores. Quine will automatically configure increased parallelism where there are more CPU cores available. This configuration can be customized using the Pekko configuration settings for the `default-dispatcher` when starting up Quine.
 
 ### RAM
 

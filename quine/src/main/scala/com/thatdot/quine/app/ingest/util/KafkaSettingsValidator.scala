@@ -87,7 +87,7 @@ case class KafkaSettingsValidator(
           validatedConfigEntry <- validator.validate(properties.asJava).asScala
           configName = validatedConfigEntry.name()
           // TODO why does a finalized config not have key.deserializer set?
-          //      Does akka tack it on in settings.consumerFactory?
+          //      Does pekko tack it on in settings.consumerFactory?
           if configName != ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG
           if configName != ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG
           err: ErrorString <- validatedConfigEntry.errorMessages.asScala

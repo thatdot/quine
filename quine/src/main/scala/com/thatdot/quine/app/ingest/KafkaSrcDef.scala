@@ -3,8 +3,8 @@ package com.thatdot.quine.app.ingest
 import scala.concurrent.duration.{Duration, FiniteDuration, MILLISECONDS}
 import scala.util.Try
 
-import akka.kafka.scaladsl.{Committer, Consumer}
-import akka.kafka.{
+import org.apache.pekko.kafka.scaladsl.{Committer, Consumer}
+import org.apache.pekko.kafka.{
   CommitDelivery,
   CommitterSettings,
   ConsumerMessage,
@@ -12,8 +12,8 @@ import akka.kafka.{
   Subscription,
   Subscriptions => KafkaSubscriptions
 }
-import akka.stream.scaladsl.{Flow, Source}
-import akka.{Done, NotUsed}
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
+import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxOption
@@ -71,7 +71,7 @@ object KafkaSrcDef {
       .withGroupId(groupId)
       // Note: The ConsumerSettings stop-timeout delays stopping the Kafka Consumer
       // and the stream, but when using drainAndShutdown that delay is not required and can be set to zero (as below).
-      // https://doc.akka.io/docs/alpakka-kafka/current/consumer.html#draining-control
+      // https://pekko.apache.org/docs/pekko-connectors-kafka/current/consumer.html#draining-control
       // We're calling .drainAndShutdown on the Kafka [[Consumer.Control]]
       .withStopTimeout(Duration.Zero)
       .withProperties(properties)
@@ -221,8 +221,8 @@ object KafkaSrcDef {
           )
 
       // Note - In cases where we are in ExplicitCommit mode with CommitDelivery.WaitForAck _and_ there is an
-      // endingOffset set , we will get a akka.kafka.CommitTimeoutException here, since the commit delivery is
-      // batched and it's possible to have remaining commit offsets remaining that don't get sent.
+      // endingOffset set, we will get an org.apache.pekko.kafka.CommitTimeoutException here, since the commit delivery
+      // is batched and it's possible to have remaining commit offsets remaining that don't get sent.
       //
       // e.g. partition holds 1000 values, we set koc.maxBatch=100, and endingOffset to 150. Last ack sent will
       // be 100, last 50 will not be sent.

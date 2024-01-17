@@ -5,9 +5,9 @@ import java.time.Instant
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
-import akka.stream.BoundedSourceQueue
-import akka.stream.scaladsl.Source
-import akka.{Done, NotUsed}
+import org.apache.pekko.stream.BoundedSourceQueue
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter}
 import com.typesafe.scalalogging.LazyLogging
@@ -19,7 +19,7 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
   *
   * ==Queue size and backpressuring==
   *
-  * Standing query results get buffered up into an Akka source queue. There are two somewhat
+  * Standing query results get buffered up into a Pekko source queue. There are two somewhat
   * arbitrary parameters we must choose in relation to this queue:
   *
   *   1. at what queue size do we start backpressuring ingest (see [[BaseGraph.ingestValve]])?
@@ -57,9 +57,9 @@ object StandingQuery {
 
   /** @see [[StandingQuery.queueBackpressureThreshold]]
     *
-    * The queue backpressure threshold is similar in function to the small internal buffers Akka
+    * The queue backpressure threshold is similar in function to the small internal buffers Pekko
     * adds at async boundaries: a value of 1 is the most natural choice, but larger values may lead
-    * to increased throughput. Akka's default for `akka.stream.materializer.max-input-buffer-size`
+    * to increased throughput. Pekko's default for `pekko.stream.materializer.max-input-buffer-size`
     * is 16.
     *
     * Experimentally, we've found we get optimal throughput around 32 (larger than that leads to

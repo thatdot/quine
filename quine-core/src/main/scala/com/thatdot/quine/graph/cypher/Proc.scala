@@ -6,8 +6,8 @@ import scala.collection.concurrent
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.LiteralOpsGraph
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}

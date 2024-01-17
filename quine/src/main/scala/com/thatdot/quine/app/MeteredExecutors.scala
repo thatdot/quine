@@ -2,7 +2,7 @@ package com.thatdot.quine.app
 
 import java.util.concurrent.{ExecutorService, ThreadFactory}
 
-import akka.dispatch.{
+import org.apache.pekko.dispatch.{
   DefaultExecutorServiceConfigurator,
   DispatcherPrerequisites,
   ExecutorServiceConfigurator,
@@ -64,10 +64,10 @@ object MeteredExecutors extends LazyLogging {
       }
   }
 
-  /** merges config with one of its own keys -- akka's AbstractDispatcher "normally" passes the full `config` to a
-    * custom Configurator, but it special cases akka's own configurators, instead passing them only a part of the config
+  /** merges config with one of its own keys -- pekko's AbstractDispatcher "normally" passes the full `config` to a
+    * custom Configurator, but it special cases pekko's own configurators, instead passing them only a part of the config
     * based on some key -- this function returns a config which will default to the same behavior as
-    * AbstractDispatcher's scoping, but fall back to akka's default but fall back to akka's special casing
+    * AbstractDispatcher's scoping, but fall back to pekko's default but fall back to pekko's special casing
     *
     * In effect, this allows using only a single config block for both the underlying configurator *and* the metering
     * wrapper itself, making it easier to switch between the two
@@ -92,10 +92,10 @@ object MeteredExecutors extends LazyLogging {
     ) // INV the metrics instance here matches the one used by the app's Main
   }
 
-  /** An Executor that delegates execution to an Akka [[ThreadPoolExecutorConfigurator]], wrapped in an
+  /** An Executor that delegates execution to a Pekko [[ThreadPoolExecutorConfigurator]], wrapped in an
     * [[InstrumentedExecutorService]].
     *
-    * @note this may used by adding a line within any akka "dispatcher" config block as follows:
+    * @note this may used by adding a line within any pekko "dispatcher" config block as follows:
     *       `executor = "com.thatdot.quine.app.MeteredExecutors$MeteredThreadPoolConfigurator"`.
     *       Options may still be passed to the underlying thread-pool-executor as normal
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L60-L75>
@@ -108,10 +108,10 @@ object MeteredExecutors extends LazyLogging {
         quineMetrics(config)
       )
 
-  /** An Executor that delegates execution to an Akka [[ForkJoinExecutorConfigurator]], wrapped in an
+  /** An Executor that delegates execution to a Pekko [[ForkJoinExecutorConfigurator]], wrapped in an
     * [[InstrumentedExecutorService]].
     *
-    * @note this may used by adding a line within any akka "dispatcher" config block as follows:
+    * @note this may used by adding a line within any pekko "dispatcher" config block as follows:
     *       `executor = "com.thatdot.quine.app.MeteredExecutors$MeteredForkJoinConfigurator"`.
     *       Options may still be passed to the underlying fork-join-executor as normal
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L77-L85>
@@ -127,13 +127,13 @@ object MeteredExecutors extends LazyLogging {
         quineMetrics(config)
       )
 
-  /** An Executor that delegates execution to an Akka [[DefaultExecutorServiceConfigurator]], wrapped in an
+  /** An Executor that delegates execution to a Pekko [[DefaultExecutorServiceConfigurator]], wrapped in an
     * [[InstrumentedExecutorService]].
     *
-    * @note this may used by adding a line within any akka "dispatcher" config block as follows:
+    * @note this may used by adding a line within any pekko "dispatcher" config block as follows:
     *       `executor = "com.thatdot.quine.app.MeteredExecutors$MeteredDefaultConfigurator"`.
     *       Options may still be passed to the underlying default-executor as normal, except that
-    *       default-executor.fallback is ignored in favor of MeteredForkJoin (chosen because the default value as of akka 2.6.16 was fork-join-executor)
+    *       default-executor.fallback is ignored in favor of MeteredForkJoin (chosen because the default value as of pekko 1.0.0 was fork-join-executor)
     */
   final class MeteredDefaultConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)
       extends Configurator(
@@ -141,8 +141,8 @@ object MeteredExecutors extends LazyLogging {
         prerequisites, {
           if (prerequisites.defaultExecutionContext.isEmpty)
             logger.warn(
-              "The default akka executor should only be metered in conjunction with an explicit default executor" +
-              " (this may be set at akka.actor.default-dispatcher.default-executor). Defaulting to fork-join"
+              "The default pekko executor should only be metered in conjunction with an explicit default executor" +
+              " (this may be set at pekko.actor.default-dispatcher.default-executor). Defaulting to fork-join"
             )
           new DefaultExecutorServiceConfigurator(
             mergeConfigWithUnderlying(config, "default-executor"),

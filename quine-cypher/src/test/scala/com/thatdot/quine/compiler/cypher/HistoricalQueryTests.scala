@@ -3,8 +3,8 @@ package com.thatdot.quine.compiler.cypher
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContextExecutor, Future, Promise}
 
-import akka.pattern.Patterns
-import akka.stream.scaladsl.{Keep, Sink}
+import org.apache.pekko.pattern.Patterns
+import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import org.scalatest.Assertion
 

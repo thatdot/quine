@@ -8,9 +8,9 @@ import scala.concurrent.duration._
 import scala.concurrent.{Future, Promise}
 import scala.jdk.CollectionConverters._
 
-import akka.actor.{ActorRef, Props}
-import akka.dispatch.Envelope
-import akka.util.Timeout
+import org.apache.pekko.actor.{ActorRef, Props}
+import org.apache.pekko.dispatch.Envelope
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.messaging.ShardMessage._
 import com.thatdot.quine.graph.messaging.{
@@ -60,7 +60,7 @@ trait StaticShardGraph extends BaseGraph {
 
       val localRef: ActorRef = system.actorOf(
         Props(new GraphShardActor(this, shardId, nodeMap, initialShardInMemoryLimit))
-          .withMailbox("akka.quine.shard-mailbox")
+          .withMailbox("pekko.quine.shard-mailbox")
           .withDispatcher(QuineDispatchers.shardDispatcherName),
         name = GraphShardActor.name(shardId)
       )

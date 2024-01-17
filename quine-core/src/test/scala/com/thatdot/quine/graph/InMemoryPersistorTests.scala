@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import com.thatdot.quine.persistor.{InMemoryPersistor, PersistenceAgent}
 

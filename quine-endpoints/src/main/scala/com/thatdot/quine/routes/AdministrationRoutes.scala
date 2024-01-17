@@ -157,7 +157,7 @@ trait AdministrationRoutes
               |options, and default values.
               |
               |This does _not_ include external options, for example, the
-              |Akka HTTP option `akka.http.server.request-timeout` can be used to adjust the web
+              |Pekko HTTP option `org.apache.pekko.http.server.request-timeout` can be used to adjust the web
               |server request timeout of this REST API, but it won't show up in the response of this
               |endpoint.
               |""".stripMargin

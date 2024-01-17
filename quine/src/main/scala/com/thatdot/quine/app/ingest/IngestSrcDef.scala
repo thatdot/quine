@@ -1,24 +1,21 @@
 package com.thatdot.quine.app.ingest
 
-import java.io.FileNotFoundException
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
-import java.time.Duration
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success, Try}
 
-import akka.actor.ActorSystem
-import akka.stream.alpakka.kinesis.KinesisSchedulerCheckpointSettings
-import akka.stream.alpakka.s3.scaladsl.S3
-import akka.stream.alpakka.s3.{ObjectMetadata, S3Attributes, S3Ext, S3Settings}
-import akka.stream.alpakka.text.scaladsl.TextFlow
-import akka.stream.scaladsl.{Flow, Keep, RestartSource, Source, StreamConverters}
-import akka.stream.{KillSwitches, RestartSettings}
-import akka.util.ByteString
-import akka.{Done, NotUsed}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.connectors.s3.scaladsl.S3
+import org.apache.pekko.stream.connectors.s3.{ObjectMetadata, S3Attributes, S3Ext, S3Settings}
+import org.apache.pekko.stream.connectors.text.scaladsl.TextFlow
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Source, StreamConverters}
+import org.apache.pekko.stream.{KillSwitches, RestartSettings}
+import org.apache.pekko.util.ByteString
+import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.ValidatedNel
 import cats.effect.IO
@@ -29,7 +26,7 @@ import org.apache.kafka.common.KafkaException
 import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
-import com.thatdot.quine.app.{AkkaKillSwitch, ControlSwitches, QuineAppIngestControl, ShutdownSwitch}
+import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
@@ -154,7 +151,7 @@ abstract class IngestSrcDef(
     control.foreach(c =>
       c.valveHandle
         .flip(desiredSwitchMode)
-        .recover { case _: akka.stream.StreamDetachedException => () }(graph.nodeDispatcherEC)
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException => () }(graph.nodeDispatcherEC)
     )(graph.nodeDispatcherEC)
     control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 
@@ -208,7 +205,7 @@ abstract class RawValuesIngestSrcDef(
   def sourceWithShutdown(): Source[TryDeserialized, ShutdownSwitch] =
     source()
       .viaMat(KillSwitches.single)(Keep.right)
-      .mapMaterializedValue(ks => AkkaKillSwitch(ks))
+      .mapMaterializedValue(ks => PekkoKillSwitch(ks))
       .via(deserializeAndMeter)
 
 }
@@ -304,42 +301,22 @@ object IngestSrcDef extends LazyLogging {
           numRetries,
           maxPerSecond,
           recordEncodings,
-          checkpointSettings
+          _
         ) =>
-      checkpointSettings match {
-        case None =>
-          KinesisSrcDef(
-            name,
-            streamName,
-            shardIds,
-            importFormatFor(format),
-            initialSwitchMode,
-            parallelism,
-            creds,
-            region,
-            iteratorType,
-            numRetries,
-            maxPerSecond,
-            recordEncodings.map(ContentDecoder.apply)
-          ).valid
-        case Some(settings) =>
-          KinesisCheckpointSrcDef(
-            name,
-            streamName,
-            //shardIds,
-            importFormatFor(format),
-            initialSwitchMode,
-            parallelism,
-            creds,
-            region,
-            numRetries,
-            //iteratorType,
-            maxPerSecond,
-            recordEncodings.map(ContentDecoder.apply),
-            KinesisSchedulerCheckpointSettings.create(settings.maxBatchSize, Duration.ofMillis(settings.maxBatchWait))
-          ).valid
-
-      }
+      KinesisSrcDef(
+        name,
+        streamName,
+        shardIds,
+        importFormatFor(format),
+        initialSwitchMode,
+        parallelism,
+        creds,
+        region,
+        iteratorType,
+        numRetries,
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply)
+      ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
       ServerSentEventsSrcDef(
@@ -435,23 +412,17 @@ object IngestSrcDef extends LazyLogging {
           maxPerSecond
         ) =>
       val source: Source[ByteString, NotUsed] = {
-        val downloadStream: Source[Option[(Source[ByteString, NotUsed], ObjectMetadata)], NotUsed] = credsOpt match {
+        val downloadStream: Source[ByteString, Future[ObjectMetadata]] = credsOpt match {
           case None =>
-            S3.download(bucketName, key)
+            S3.getObject(bucketName, key)
           case creds @ Some(_) =>
             // TODO: See example: https://stackoverflow.com/questions/61938052/alpakka-s3-connection-issue
             val settings: S3Settings =
               S3Ext(graph.system).settings.withCredentialsProvider(AwsOps.staticCredentialsProvider(creds))
             val attributes = S3Attributes.settings(settings)
-            S3.download(bucketName, key).withAttributes(attributes)
+            S3.getObject(bucketName, key).withAttributes(attributes)
         }
-        downloadStream.flatMapConcat {
-          case Some((fileSource, objectMeta @ _)) => fileSource
-          case None =>
-            Source.failed(
-              new FileNotFoundException(s"Unable to get file from S3 in bucket: $bucketName with key: $key")
-            )
-        }
+        downloadStream.mapMaterializedValue(_ => NotUsed)
       }
       ContentDelimitedIngestSrcDef(
         initialSwitchMode,

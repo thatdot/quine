@@ -5,8 +5,8 @@ import java.util.concurrent._
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 

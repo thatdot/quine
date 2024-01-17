@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.messaging
 
 import scala.concurrent.duration.{DurationDouble, DurationLong, FiniteDuration}
 
-import akka.actor.ActorRef
+import org.apache.pekko.actor.ActorRef
 
 /** Messages that are re-used in the most basic protocols in Quine */
 sealed abstract class BaseMessage extends QuineMessage

@@ -1,7 +1,7 @@
 package com.thatdot.quine.graph.messaging
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.model.HalfEdge

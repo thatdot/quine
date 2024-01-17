@@ -3,9 +3,9 @@ package com.thatdot.quine.graph
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContextExecutor, Future, Promise}
 
-import akka.actor.ActorSystem
-import akka.pattern.Patterns
-import akka.util.Timeout
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.pattern.Patterns
+import org.apache.pekko.util.Timeout
 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AsyncFunSuite

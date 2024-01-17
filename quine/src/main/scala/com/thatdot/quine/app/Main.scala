@@ -11,10 +11,10 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import akka.Done
-import akka.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
-import akka.http.scaladsl.model.Uri
-import akka.util.Timeout
+import org.apache.pekko.Done
+import org.apache.pekko.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
 import ch.qos.logback.classic.LoggerContext
@@ -209,7 +209,7 @@ object Main extends App with LazyLogging {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
           statusLines.info(s"Quine web server available at $resolvableUrl")
-        case Failure(_) => // akka will have logged a stacktrace to the debug logger
+        case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
   }
 

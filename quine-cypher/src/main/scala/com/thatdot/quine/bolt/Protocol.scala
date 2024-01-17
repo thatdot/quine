@@ -2,9 +2,9 @@ package com.thatdot.quine.bolt
 
 import scala.util.Try
 
-import akka.NotUsed
-import akka.stream.scaladsl._
-import akka.util.{ByteString, ByteStringBuilder, Timeout}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl._
+import org.apache.pekko.util.{ByteString, ByteStringBuilder, Timeout}
 
 import com.typesafe.scalalogging.LazyLogging
 
@@ -185,7 +185,7 @@ object Protocol extends LazyLogging {
       }
     }
 
-    // This state should be unreachable given the nature of akka-streams
+    // This state should be unreachable given the nature of pekko-streams
 //    case object Interrupted extends State {
 //      override def handleMessage(implicit graph: CypherOperations, timeout: Timeout) = ???
 //    }

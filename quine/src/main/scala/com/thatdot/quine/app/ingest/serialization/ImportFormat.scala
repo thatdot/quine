@@ -5,8 +5,8 @@ import java.net.URL
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
-import akka.Done
-import akka.stream.scaladsl.Sink
+import org.apache.pekko.Done
+import org.apache.pekko.stream.scaladsl.Sink
 
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.LazyLogging
@@ -31,18 +31,18 @@ trait ImportFormat {
     */
   protected def importBytes(data: Array[Byte]): Try[cypher.Value]
 
-  /** Defers to [[importBytes]] but also checks that input data can (probably) be safely sent via akka clustered messaging.
-    * This is checked based on [[ImportFormat.akkaMessageSizeLimit]]
+  /** Defers to [[importBytes]] but also checks that input data can (probably) be safely sent via pekko clustered messaging.
+    * This is checked based on [[ImportFormat.pekkoMessageSizeLimit]]
     *
     * @param data         byte payload
     * @param isSingleHost is the cluster just one host (in which case there is no risk of oversize payloads)
     * @return
     */
   final def importMessageSafeBytes(data: Array[Byte], isSingleHost: Boolean): Try[cypher.Value] =
-    if (!isSingleHost && data.length > akkaMessageSizeLimit)
+    if (!isSingleHost && data.length > pekkoMessageSizeLimit)
       Failure(
         new Exception(
-          s"Attempted to decode ${data.length} bytes, but records larger than $akkaMessageSizeLimit bytes are prohibited."
+          s"Attempted to decode ${data.length} bytes, but records larger than $pekkoMessageSizeLimit bytes are prohibited."
         )
       )
     else importBytes(data)
@@ -51,9 +51,9 @@ trait ImportFormat {
     */
   def label: String
 
-  /** An estimated limit on record size (based on the akka remote frame size with 15kb of headspace) */
-  lazy val akkaMessageSizeLimit: Long =
-    ConfigFactory.load().getBytes("akka.remote.artery.advanced.maximum-frame-size") - 15 * 1024
+  /** An estimated limit on record size (based on the pekko remote frame size with 15kb of headspace) */
+  lazy val pekkoMessageSizeLimit: Long =
+    ConfigFactory.load().getBytes("pekko.remote.artery.advanced.maximum-frame-size") - 15 * 1024
 
   def writeValueToGraph(
     graph: CypherOpsGraph,

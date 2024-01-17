@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import akka.actor.ActorRef
+import org.apache.pekko.actor.ActorRef
 
 import com.thatdot.quine.graph.messaging.QuineIdOps
 import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph}

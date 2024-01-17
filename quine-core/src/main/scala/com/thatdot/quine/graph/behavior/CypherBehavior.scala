@@ -2,8 +2,8 @@ package com.thatdot.quine.graph.behavior
 
 import scala.compat.ExecutionContexts
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, QueryResults}

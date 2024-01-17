@@ -4,9 +4,9 @@ import java.util.concurrent.atomic._
 
 import scala.concurrent.{Future, Promise}
 
-import akka.NotUsed
-import akka.stream.stage._
-import akka.stream.{Attributes, FlowShape, Graph, Inlet, Outlet}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.stage._
+import org.apache.pekko.stream.{Attributes, FlowShape, Graph, Inlet, Outlet}
 
 /** Valve which can be closed/opened from many different places at once.
   *

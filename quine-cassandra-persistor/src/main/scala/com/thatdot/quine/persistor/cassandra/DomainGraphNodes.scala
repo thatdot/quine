@@ -4,7 +4,7 @@ import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
 
-import akka.stream.Materializer
+import org.apache.pekko.stream.Materializer
 
 import cats.Applicative
 import cats.syntax.apply._

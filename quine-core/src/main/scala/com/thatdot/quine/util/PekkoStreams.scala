@@ -2,10 +2,10 @@ package com.thatdot.quine.util
 
 import scala.concurrent.Future
 
-import akka.NotUsed
-import akka.stream.scaladsl.{Flow, Sink}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.scaladsl.{Flow, Sink}
 
-object AkkaStreams {
+object PekkoStreams {
 
   def count: Sink[Any, Future[Int]] = Sink.fold[Int, Any](0)((n, _) => n + 1)
 

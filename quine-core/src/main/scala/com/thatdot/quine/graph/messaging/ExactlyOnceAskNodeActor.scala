@@ -4,7 +4,7 @@ import scala.concurrent.Promise
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.util.Random
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
+import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
 
 import com.codahale.metrics.Timer
 
@@ -32,7 +32,7 @@ import com.thatdot.quine.model.QuineIdProvider
   * @param recipient node receiving the message
   * @param remoteShardTarget if in a different JVM, shard actor responsible for the node
   * @param idProvider for debuggind purposes - used to pretty-print the node ID
-  * @param originalSender for debuggging purposes - what Akka's `sender()` will report
+  * @param originalSender for debuggging purposes - what Pekko's `sender()` will report
   * @param promisedResult promise that is fulfilled with the response
   * @param timeout time to wait until the promise fails with a timeout
   */

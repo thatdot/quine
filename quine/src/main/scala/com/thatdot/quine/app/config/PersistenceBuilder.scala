@@ -2,7 +2,7 @@ package com.thatdot.quine.app.config
 
 import java.io.File
 
-import akka.actor.ActorSystem
+import org.apache.pekko.actor.ActorSystem
 
 import com.typesafe.scalalogging.LazyLogging
 

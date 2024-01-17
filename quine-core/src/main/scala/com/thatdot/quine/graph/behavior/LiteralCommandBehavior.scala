@@ -7,8 +7,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Success
 
-import akka.stream.scaladsl.Source
-import akka.util.Timeout
+import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}

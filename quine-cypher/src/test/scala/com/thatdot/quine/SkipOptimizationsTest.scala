@@ -2,10 +2,10 @@ package com.thatdot.quine;
 
 import scala.concurrent.Future
 
-import akka.NotUsed
-import akka.actor.ActorRef
-import akka.pattern.extended.ask
-import akka.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.pattern.extended.ask
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{EitherValues, OptionValues}

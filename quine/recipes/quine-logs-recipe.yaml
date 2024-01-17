@@ -11,12 +11,12 @@ ingestStreams:
     format:
       type: CypherLine
       query: |-
-        // Quine log pattern "%date %level [%mdc{akkaSource:-NotFromActor}] [%thread] %logger - %msg%n%ex"
+        // Quine log pattern "%date %level [%mdc{pekkoSource:-NotFromActor}] [%thread] %logger - %msg%n%ex"
         WITH text.regexFirstMatch($that, "(^\\d{4}-\\d{2}-\\d{2} \\d{1,2}:\\d{2}:\\d{2},\\d{3}) (FATAL|ERROR|WARN|INFO|DEBUG) \\[(\\S*)\\] \\[(\\S*)\\] (\\S*) - (.*)") AS r WHERE r IS NOT NULL 
         // 0: whole matched line
         // 1: date time string
         // 2: log level
-        // 3: actor address. Might be inside of `akka.stream.Log(…)`
+        // 3: actor address. Might be inside of `org.apache.pekko.stream.Log(…)`
         // 4: thread name
         // 5: logging class
         // 6: Message

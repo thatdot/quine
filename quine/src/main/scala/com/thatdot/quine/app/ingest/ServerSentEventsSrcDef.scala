@@ -1,11 +1,11 @@
 package com.thatdot.quine.app.ingest
 
-import akka.NotUsed
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.stream.alpakka.sse.scaladsl.EventSource
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
+import org.apache.pekko.stream.connectors.sse.scaladsl.EventSource
+import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.CypherOpsGraph

@@ -11,9 +11,10 @@ import scala.concurrent.duration.DurationInt
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import akka.actor.{Actor, ActorLogging}
+import org.apache.pekko.actor.{Actor, ActorLogging}
 
 import cats.data.NonEmptyList
+import org.apache.pekko
 
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
@@ -45,7 +46,7 @@ import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, Persiste
 import com.thatdot.quine.util.ByteConversions
 
 /** The fundamental graph unit for both data storage (eg [[properties]]) and
-  * computation (as an Akka actor).
+  * computation (as a Pekko actor).
   * At most one [[AbstractNodeActor]] exists in the actor system ([[graph.system]]) per node per moment in
   * time (see [[qidAtTime]]).
   *
@@ -53,7 +54,7 @@ import com.thatdot.quine.util.ByteConversions
   * [[BaseNodeActorView]]. Classes extending [[AbstractNodeActor]] (e.g., [[NodeActor]]) should be kept as lightweight
   * as possible, ideally including only construction-time logic and an [[Actor.receive]] implementation.
   *
-  * @param qidAtTime    the ID that comprises this node's notion of nominal identity -- analogous to akka's ActorRef
+  * @param qidAtTime    the ID that comprises this node's notion of nominal identity -- analogous to pekko's ActorRef
   * @param graph        a reference to the graph in which this node exists
   * @param costToSleep  see [[CostToSleep]]
   * @param wakefulState an atomic reference used like a variable to track the current lifecycle state of this node.
@@ -302,7 +303,7 @@ abstract private[graph] class AbstractNodeActor(
         val events = effectingEvents.map(_.event)
         applyEventsEffectsInMemory(events)
         notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
-        akka.pattern
+        pekko.pattern
           .retry(
             () => persistEventsToJournal(),
             Int.MaxValue,

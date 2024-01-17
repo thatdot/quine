@@ -28,11 +28,11 @@ case class NodeConstructorArgs(
 )
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
-  * computation (as an Akka actor).
+  * computation (as an Pekko actor).
   * At most one [[NodeActor]] exists in the actor system ([[graph.system]]) per node per moment in
   * time (see [[atTime]]).
   *
-  * @param qidAtTime the ID that comprises this node's notion of nominal identity -- analogous to akka's ActorRef
+  * @param qidAtTime the ID that comprises this node's notion of nominal identity -- analogous to pekko's ActorRef
   * @param graph a reference to the graph in which this node exists
   * @param costToSleep @see [[CostToSleep]]
   * @param wakefulState an atomic reference used like a variable to track the current lifecycle state of this node.

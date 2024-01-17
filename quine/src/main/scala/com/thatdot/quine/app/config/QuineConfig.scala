@@ -3,7 +3,7 @@ package com.thatdot.quine.app.config
 import scala.annotation.nowarn
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
-import akka.util.Timeout
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.config.{Config, ConfigObject}
 import pureconfig._

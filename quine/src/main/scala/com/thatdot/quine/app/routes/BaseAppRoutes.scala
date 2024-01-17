@@ -8,13 +8,13 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Using
 
-import akka.http.scaladsl.model.headers._
-import akka.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.{Route, StandardRoute}
-import akka.http.scaladsl.{ConnectionContext, Http}
-import akka.stream.Materializer
-import akka.util.Timeout
+import org.apache.pekko.http.scaladsl.model.headers._
+import org.apache.pekko.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.{Route, StandardRoute}
+import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 
@@ -44,7 +44,7 @@ object SslHelper {
     sslContext
   }
 }
-trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoints {
+trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoints {
 
   val graph: BaseGraph
 
@@ -87,7 +87,7 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.akkahttp.server.Endpoin
     val serverBuilder = Http()(system)
       .newServerAt(interface, port)
       .adaptSettings(
-        // See https://doc.akka.io/docs/akka-http/10.0/common/http-model.html#registering-custom-media-types
+        // See https://pekko.apache.org/docs/pekko-http/current//common/http-model.html#registering-custom-media-types
         _.mapWebsocketSettings(_.withPeriodicKeepAliveMaxIdle(10.seconds))
           .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`))
       )

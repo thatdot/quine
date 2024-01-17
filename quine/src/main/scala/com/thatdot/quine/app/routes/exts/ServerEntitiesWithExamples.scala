@@ -4,12 +4,12 @@ import java.io.InputStream
 
 import scala.concurrent.Future
 
-import akka.http.scaladsl.model.{ContentTypeRange, HttpEntity, MediaTypes, StatusCodes}
-import akka.http.scaladsl.server.{Directive1, Directives}
-import akka.http.scaladsl.unmarshalling._
-import akka.stream.Materializer
-import akka.stream.alpakka.csv.scaladsl.CsvParsing
-import akka.stream.scaladsl.{Sink, StreamConverters}
+import org.apache.pekko.http.scaladsl.model.{ContentTypeRange, HttpEntity, MediaTypes, StatusCodes}
+import org.apache.pekko.http.scaladsl.server.{Directive1, Directives}
+import org.apache.pekko.http.scaladsl.unmarshalling._
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.connectors.csv.scaladsl.CsvParsing
+import org.apache.pekko.stream.scaladsl.{Sink, StreamConverters}
 
 import io.circe.yaml.v12.Parser
 import org.snakeyaml.engine.v2.api.YamlUnicodeReader
@@ -21,9 +21,9 @@ import com.thatdot.quine.util.QuineDispatchers
 trait ServerEntitiesWithExamples
     extends NoopEntitiesWithExamples
     with JsonEntitiesFromSchemas
-    with endpoints4s.akkahttp.server.EndpointsWithCustomErrors {
+    with endpoints4s.pekkohttp.server.EndpointsWithCustomErrors {
 
-  /** Helper function for turning an HTTP request body => A function into an Akka Unmarshaller / Directive */
+  /** Helper function for turning an HTTP request body => A function into a Pekko Unmarshaller / Directive */
   protected def unmarshallerFor[A](
     contentType: ContentTypeRange
   )(
@@ -49,7 +49,7 @@ trait ServerEntitiesWithExamples
   def yamlRequest[A](implicit schema: JsonSchema[A]): RequestEntity[A] =
     unmarshallerFor(QuineMediaTypes.`application/yaml`)((mat, entity) =>
       Future {
-        // While the conversion from Akka Stream Source to a java.io.InputStream
+        // While the conversion from Pekko Stream Source to a java.io.InputStream
         // does not block, the subsequent use of the InputStream (yaml.parseToJson)
         // does involve blocking "io", hence that is done on a blocking thread.
         // "the users of the materialized value, InputStream, [...] will block" - akka/akka#30831

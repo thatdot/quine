@@ -10,9 +10,9 @@ import java.util.concurrent.locks.StampedLock
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Using
 
-import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.scaladsl.Source
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 import org.rocksdb._

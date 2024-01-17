@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes
 
-import akka.http.scaladsl.model.Uri
-import akka.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.server.Route
 
 import endpoints4s.openapi.model._
 
@@ -101,14 +101,14 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
 
 }
 
-/** The Akka HTTP implementation of routes serving up the OpenAPI specification
+/** The Pekko HTTP implementation of routes serving up the OpenAPI specification
   * of our API
   *
   * @param graph the Quine graph
   */
 final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)
-    extends endpoints4s.akkahttp.server.Endpoints
-    with endpoints4s.akkahttp.server.JsonEntitiesFromEncodersAndDecoders {
+    extends endpoints4s.pekkohttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.JsonEntitiesFromEncodersAndDecoders {
 
   val doc = new QuineAppOpenApiDocs(graph.idProvider)
 

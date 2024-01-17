@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import akka.NotUsed
+import org.apache.pekko.NotUsed
 
 /** Packages together all the information about a query that can be run
   *

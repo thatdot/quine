@@ -7,12 +7,12 @@ import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
-import akka.NotUsed
-import akka.http.scaladsl.server.Directives._
-import akka.http.scaladsl.server.Route
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Sink, Source}
-import akka.util.Timeout
+import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.server.Directives._
+import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
@@ -32,7 +32,7 @@ import com.thatdot.quine.routes.{CypherQuery, CypherQueryResult, GremlinQuery, Q
 
 trait QueryUiRoutesImpl
     extends QueryUiRoutes
-    with endpoints4s.akkahttp.server.Endpoints
+    with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints
     with exts.ServerRequestTimeoutOps

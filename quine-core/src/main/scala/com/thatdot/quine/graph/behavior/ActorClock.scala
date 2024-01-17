@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.behavior
 import scala.concurrent.Promise
 import scala.concurrent.duration.DurationLong
 
-import akka.actor.ActorLogging
+import org.apache.pekko.actor.ActorLogging
 
 import com.thatdot.quine.graph.{BaseNodeActorView, EventTime}
 import com.thatdot.quine.model.Milliseconds
