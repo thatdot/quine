@@ -116,7 +116,7 @@ final class QuineApp(graph: GraphService)
   private[this] var ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]] = Map.empty
   final private[this] val ingestStreamsLock = new AnyRef
 
-  // Constant member index 0 for Quine OSS
+  // Constant member index 0 for Quine
   private val thisMemberIdx: MemberIdx = 0
 
   /** == Accessors == */
