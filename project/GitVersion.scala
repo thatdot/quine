@@ -1,7 +1,7 @@
 import sbt.{AutoPlugin, SettingKey}
 import sbt.Keys.version
-
 import com.github.sbt.git.SbtGit.GitKeys.gitReader
+import com.github.sbt.git.GitReadonlyInterface
 
 object GitVersion extends AutoPlugin {
 
@@ -12,16 +12,15 @@ object GitVersion extends AutoPlugin {
   }
   import autoImport._
 
+  private def tagWithPrefix(git: GitReadonlyInterface, prefix: String): Option[String] =
+    git.describedVersion(Seq(prefix + '*')).map(_.stripPrefix(prefix))
+
   override lazy val projectSettings = Seq(
     tagPrefix := "quine/",
-    version := {
-      val prefix = tagPrefix.value
-      gitReader.value
-        .withGit(_.describedVersion(Seq(prefix + '*')).map(_.stripPrefix(prefix)))
-        // When running in the OSS repo, expect a "v" prefix instead of "quine/"
-        .orElse(gitReader.value.withGit(_.describedVersion(Seq("v*"))).map(_.stripPrefix("v")))
-        .getOrElse("UNKNOWN")
-    }
+    version := gitReader.value.withGit(git =>
+      // Try "v" as a fallback option to support just "v" as the tag prefix in the OSS repo
+      tagWithPrefix(git, tagPrefix.value) orElse tagWithPrefix(git, "v") getOrElse "UNKNOWN"
+    )
   )
 
 }
