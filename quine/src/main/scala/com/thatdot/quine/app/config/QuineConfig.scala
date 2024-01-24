@@ -38,7 +38,8 @@ final case class QuineConfig(
   persistence: PersistenceConfig = PersistenceConfig(),
   labelsProperty: Symbol = Symbol("__LABEL"),
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx),
-  metrics: MetricsConfig = MetricsConfig()
+  metrics: MetricsConfig = MetricsConfig(),
+  helpMakeQuineBetter: Boolean = true
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig

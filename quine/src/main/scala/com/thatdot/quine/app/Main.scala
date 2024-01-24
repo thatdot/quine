@@ -202,6 +202,14 @@ object Main extends App with LazyLogging {
 
   attemptAppLoad()
 
+  private val improveQuine = ImproveQuine(
+    config.helpMakeQuineBetter,
+    BuildInfo.version,
+    Uri("https://improve.quine.io/event"),
+    system
+  )
+  improveQuine.started()
+
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, appState, config.loadedConfigJson, resolvableUrl, timeout)
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
