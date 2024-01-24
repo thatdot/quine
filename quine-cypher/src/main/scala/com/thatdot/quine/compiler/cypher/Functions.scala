@@ -181,7 +181,7 @@ case object resolveFunctions extends StatementRewriter {
       }
   }
 
-  override def instance(ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift(rewriteFunc))
+  override def instance(bs: BaseState, ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift(rewriteFunc))
 
   // TODO: add to this
   override def postConditions: Set[Condition] = Set.empty
@@ -681,7 +681,7 @@ object CypherTextSplit extends UserDefinedFunction {
       case Vector(Expr.Str(t), Expr.Str(r), Expr.Integer(l)) => t.split(r, l.toInt)
       case other => throw wrongSignature(other)
     }
-    Expr.List(arr.view.map(Expr.Str).toVector)
+    Expr.List(arr.toVector.map(Expr.Str))
   }
 }
 
@@ -990,6 +990,8 @@ object CypherLocalDateTime extends UserDefinedFunction {
 
           // When passing other arguments, start at the absolute offset of Jan 1, 0000
           case (None, None) => JavaLocalDateTime.of(0, 1, 1, 0, 0)
+
+          case _ => throw new RuntimeException(s"Unexpected pattern ($baseDate, $timeZone).")
         }
 
         // TODO: consider detecting non-sensical combinations of units

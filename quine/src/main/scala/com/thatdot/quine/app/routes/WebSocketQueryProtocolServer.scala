@@ -124,6 +124,8 @@ trait WebSocketQueryProtocolServer
                     try processClientMessage(clientMessage, runningQueries, sink)
                     catch {
                       case NonFatal(err) => MessageError(serverExceptionMessage(err))
+                      case other: Throwable =>
+                        MessageError(serverExceptionMessage(other)) // This might expose more than we want
                     }
                   )
                 case Left(err: MessageError) =>
@@ -135,6 +137,7 @@ trait WebSocketQueryProtocolServer
                   runningQueries = runningQueriesMat
                   sink = sinkMat
                   Nil
+                case other => throw new RuntimeException(s"Unexpected value: $other")
               }
             } ~> responseAndResultMerge.preferred
 

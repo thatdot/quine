@@ -8,7 +8,7 @@ import scala.jdk.CollectionConverters._
 import com.google.protobuf.Descriptors.EnumValueDescriptor
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
-import com.google.protobuf.{ByteString, DynamicMessage}
+import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
 
 import com.thatdot.quine.app.serialization.ProtobufSchema
 import com.thatdot.quine.graph.cypher
@@ -30,7 +30,7 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
     val setOptionals = optionals.map(_.getField(0)).filter(message.hasField)
     // Find which field in each oneOf is set
     val oneOfFields = realOneOfs.flatMap(oneOf => oneOf.getFields.asScala.find(message.hasField))
-    val regularFields = descriptor.getFields.asScala.view diff oneOfs.flatMap(_.getFields.asScala)
+    val regularFields = descriptor.getFields.asScala.view diff oneOfs.flatMap(_.getFields.asScala).toVector
     (setOptionals ++ oneOfFields ++ regularFields)
       .map(field =>
         (
@@ -51,7 +51,11 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
                       }
                       We already know what fields it contains.
                      */
-                    val mutable.Buffer(k, v) = mapEntry.getDescriptorForType.getFields.asScala
+                    val buffer: mutable.Buffer[Descriptors.FieldDescriptor] =
+                      mapEntry.getDescriptorForType.getFields.asScala
+                    assert(buffer.length == 2)
+                    val k = buffer.head
+                    val v = buffer.tail.head
                     assert(k.getName == "key")
                     assert(v.getName == "value")
                     val key = k.getJavaType match {

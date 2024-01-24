@@ -360,8 +360,8 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       "UNWIND [1,3,2] AS x UNWIND [1,2,3] AS y WITH count(*) AS cnt, x + y AS sum ORDER BY cnt WHERE sum <> 3 RETURN *",
       expectedColumns = Vector("cnt", "sum"),
       expectedRows = Seq(
-        Vector(Expr.Integer(1L), Expr.Integer(2L)),
         Vector(Expr.Integer(1L), Expr.Integer(6L)),
+        Vector(Expr.Integer(1L), Expr.Integer(2L)),
         Vector(Expr.Integer(2L), Expr.Integer(5L)),
         Vector(Expr.Integer(3L), Expr.Integer(4L))
       )

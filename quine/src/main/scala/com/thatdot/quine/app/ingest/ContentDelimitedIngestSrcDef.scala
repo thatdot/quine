@@ -114,11 +114,11 @@ case class CsvIngestSrcDef(
       case Right(h) =>
         CsvToMap
           .withHeaders(h: _*)
-          .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+          .map(m => cypher.Expr.Map(m.view.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
       case Left(true) =>
         CsvToMap
           .toMap()
-          .map(m => cypher.Expr.Map(m.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+          .map(m => cypher.Expr.Map(m.view.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
       case Left(false) =>
         Flow[List[ByteString]]
           .map(l => cypher.Expr.List(l.map(bs => cypher.Expr.Str(bs.decodeString(charset))).toVector))

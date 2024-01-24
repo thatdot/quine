@@ -154,6 +154,7 @@ class NamedPipeSource(path: Path, chunkSize: Int, pollInterval: FiniteDuration)
 
       override def onTimer(timerKey: Any): Unit = timerKey match {
         case "poll" => onPull()
+        case _ => throw new Exception(s"Unhandled timer key $timerKey")
       }
     }
 

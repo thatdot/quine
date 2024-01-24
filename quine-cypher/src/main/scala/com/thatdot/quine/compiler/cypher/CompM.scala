@@ -5,6 +5,7 @@ import cats.arrow.FunctionK
 import cats.data.{EitherT, IndexedReaderWriterStateT, ReaderWriterState}
 import org.opencypher.v9_0.expressions.LogicalVariable
 import org.opencypher.v9_0.util
+import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, SourceText}
 import com.thatdot.quine.utils.MonadErrorVia
@@ -83,7 +84,9 @@ object CompM {
     */
   def getParameter(parameterName: String, astNode: util.ASTNode): CompM[Expr.Parameter] =
     for {
-      paramIdxOpt <- liftRWS[Option[Int]](ReaderWriterState.ask.map(_._1.index.get(parameterName)))
+      paramIdxOpt <- liftRWS[Option[Int]](
+        ReaderWriterState.ask[ReaderPart, WriterPart, StatePart].map(_._1.index.get(parameterName))
+      )
       paramExpr <- paramIdxOpt match {
         case Some(idx) => CompM.pure(Expr.Parameter(idx))
         case None => CompM.raiseCompileError(s"Unknown parameter `$parameterName`", astNode)
@@ -109,7 +112,8 @@ object CompM {
     getVariable(logicalVariable2Symbol(variable), astNode)
 
   /** @return original query source text */
-  val getSourceText: CompM[SourceText] = liftRWS(ReaderWriterState.ask.map(_._2))
+  val getSourceText: CompM[SourceText] =
+    liftRWS[SourceText](ReaderWriterState.ask[ReaderPart, WriterPart, StatePart].map(_._2))
 
   // TODO: remove this - this is too general/uninformative (right now, it is just glue to stick
   // the non-monadic code to the monadic code)
@@ -127,7 +131,7 @@ object CompM {
 
   /** Clear all anchors for node variables */
   def clearAnchors: CompM[Unit] =
-    liftRWS(ReaderWriterState.modify((nc: QueryScopeInfo) => nc.withoutAnchors))
+    liftRWS(ReaderWriterState.modify((st: StatePart) => st.withoutAnchors))
 
   /** Append a variable to the end of the context
     *
@@ -150,11 +154,11 @@ object CompM {
     * @return whether the variable is in the current columns
     */
   def hasColumn(variable: Symbol): CompM[Boolean] =
-    liftRWS(ReaderWriterState.inspect((nc: QueryScopeInfo) => nc.getVariable(variable).isDefined))
+    liftRWS(ReaderWriterState.inspect((st: StatePart) => st.getVariable(variable).isDefined))
 
   /** Remove all variables from the query scope */
   def clearColumns: CompM[Unit] =
-    liftRWS(ReaderWriterState.modify((nc: QueryScopeInfo) => nc.clearColumns))
+    liftRWS(ReaderWriterState.modify((st: StatePart) => st.clearColumns))
 
   /** @return columns in scope */
   def getColumns: CompM[Vector[Symbol]] =

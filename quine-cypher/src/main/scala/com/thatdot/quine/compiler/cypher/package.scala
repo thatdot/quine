@@ -1,6 +1,7 @@
 package com.thatdot.quine.compiler
 
 import scala.concurrent.{ExecutionException, Future}
+import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 import org.apache.pekko.Done
@@ -11,9 +12,10 @@ import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.google.common.util.concurrent.UncheckedExecutionException
 import com.typesafe.scalalogging.LazyLogging
-import org.opencypher.v9_0.ast.semantics.{SemanticFeature, SemanticState}
+import org.opencypher.v9_0.ast.semantics.{SemanticErrorDef, SemanticFeature, SemanticState}
 import org.opencypher.v9_0.ast.{Where, semantics}
 import org.opencypher.v9_0.expressions.{
+  LabelExpression,
   NodePattern,
   PatternComprehension,
   RelationshipPattern,
@@ -21,22 +23,25 @@ import org.opencypher.v9_0.expressions.{
   Variable
 }
 import org.opencypher.v9_0.frontend.phases._
+import org.opencypher.v9_0.frontend.phases.rewriting.cnf.{CNFNormalizer, rewriteEqualityToInPredicate}
 import org.opencypher.v9_0.frontend.{PlannerName, phases}
+import org.opencypher.v9_0.rewriting.Deprecations.{semanticallyDeprecatedFeatures, syntacticallyDeprecatedFeatures}
 import org.opencypher.v9_0.rewriting.conditions.{
   PatternExpressionsHaveSemanticInfo,
   noUnnamedPatternElementsInPatternComprehension
 }
 import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
-import org.opencypher.v9_0.rewriting.rewriters.{InnerVariableNamer, ProjectionClausesHaveSemanticInfo, SameNameNamer}
+import org.opencypher.v9_0.rewriting.rewriters.{Forced, ProjectionClausesHaveSemanticInfo, literalReplacement}
 import org.opencypher.v9_0.util.OpenCypherExceptionFactory.SyntaxException
 import org.opencypher.v9_0.util.symbols.CypherType
 import org.opencypher.v9_0.util.{
+  AnonymousVariableNameGenerator,
+  CancellationChecker,
   CypherExceptionFactory,
+  ErrorMessageProvider,
   InputPosition,
-  NodeNameGenerator,
   OpenCypherExceptionFactory,
   RecordingNotificationLogger,
-  RelNameGenerator,
   Rewriter,
   StepSequencer,
   bottomUp,
@@ -95,6 +100,7 @@ package object cypher {
     */
   def compileStatement(
     statement: ast.Statement,
+    avng: AnonymousVariableNameGenerator,
     paramsIdx: ParametersIndex,
     initialCols: Vector[Symbol]
   )(implicit
@@ -121,9 +127,15 @@ package object cypher {
        *       transactions when running `LOAD CSV`. See
        *       <https://neo4j.com/docs/cypher-manual/current/query-tuning/using/#query-using-periodic-commit-hint>
        */
-      case ast.Query(periodicCommitHint @ _, queryPart) =>
+      case ast.Query(queryPart) =>
         val queryScopeInfo = initialCols.foldLeft(QueryScopeInfo.empty)(_.addColumn(_)._1)
-        QueryPart.compile(queryPart).run(paramsIdx, source, queryScopeInfo).valueOr(throw _)
+        QueryPart.compile(queryPart, avng).run(paramsIdx, source, queryScopeInfo).valueOr(throw _)
+
+      case other =>
+        throw CypherException.Compile(
+          wrapping = s"Unexpected AST element: $other",
+          position = Some(position(other.position))
+        )
     }
 
   // Guava (thread-safe) cache
@@ -165,7 +177,7 @@ package object cypher {
       }
 
       val paramArray = IndexedSeq.newBuilder[Value]
-      for ((paramName, paramJavaValue) <- astState.extractedParams) {
+      for ((paramName, paramJavaValue) <- astState.extractedParams()) {
         val paramValue = Value.fromAny(paramJavaValue)
         paramsIdxMap += (paramName -> idx)
         paramArray += paramValue
@@ -177,7 +189,9 @@ package object cypher {
 
     val initialCols: Vector[Symbol] = queryIdentity.initialColumns.view.map(c => Symbol(c._1)).toVector
     val compiled = VariableRewriter.convertAnyQuery(
-      compileStatement(astState.statement, paramsIdx, initialCols)(SourceText(queryIdentity.queryText)),
+      compileStatement(astState.statement(), astState.anonymousVariableNameGenerator, paramsIdx, initialCols)(
+        SourceText(queryIdentity.queryText)
+      ),
       Columns.Specified.empty
     )
     (compiled, fixedParameters)
@@ -299,7 +313,10 @@ package object cypher {
     val startPosition = InputPosition(0, 1, 1)
     // compile and do basic (front-end) semantic analysis on queryText
     val astState = openCypherParseAndRewrite(queryText, Seq.empty, startPosition, openCypherStandingPipeline)(source)
-    StandingQueryPatterns.compile(astState.statement, ParametersIndex.empty)(source, idProvider)
+    StandingQueryPatterns.compile(astState.statement(), astState.anonymousVariableNameGenerator, ParametersIndex.empty)(
+      source,
+      idProvider
+    )
   }
 
   /** Compile and run a query on the graph
@@ -342,37 +359,42 @@ package object cypher {
   private val openCypherPipeline: Transformer[BaseContext, BaseState, BaseState] = {
     import org.opencypher.v9_0.frontend.phases._
 
-    val supportedFeatures = Array[SemanticFeature](SemanticFeature.CorrelatedSubQueries)
-
+    // TODO What is the semantic equivalent of SemanticFeature.CorrelatedSubQueries
+    val supportedFeatures = Array.empty[SemanticFeature]
     // format: off
     val parsingPhase = {
-      Parsing                                              andThen
-      SyntaxDeprecationWarnings(rewriting.Deprecations.V1) andThen
-      PreparatoryRewriting(rewriting.Deprecations.V1)      andThen
-      patternExpressionAsComprehension                     andThen
-      SemanticAnalysis(warn = true, supportedFeatures: _*) andThen
-      AstRewriting(SameNameNamer)                          andThen
-      LiteralExtraction(rewriting.rewriters.Forced)     // andThen
-      // Transformer.printAst("parsed ad hoc")
+      ourCoolParsingPhase                                                       andThen
+      SyntaxDeprecationWarningsAndReplacements(syntacticallyDeprecatedFeatures) andThen
+      PreparatoryRewriting                                                      andThen
+      patternExpressionAsComprehension                                          andThen
+      SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*)                      andThen
+      SyntaxDeprecationWarningsAndReplacements(semanticallyDeprecatedFeatures)  andThen
+      AstRewriting()                                                            andThen
+      LiteralExtraction(Forced)
+      //Transformer.printAst("parsed ad hoc")
     }
+
+    val stepList = CNFNormalizer.steps.toList
+    val first: Transformer[BaseContext,BaseState,BaseState] = stepList.head
+    val rest: List[Transformer[BaseContext,BaseState,BaseState]] = stepList.tail
 
     // format: off
     val rewritePhase = {
       isolateAggregation andThen
-      SemanticAnalysis(warn = false, supportedFeatures: _*) andThen
+      SemanticAnalysis(warn = false, supportedFeatures.toIndexedSeq: _*) andThen
       Namespacer andThen
       transitiveClosure andThen
       rewriteEqualityToInPredicate andThen
-      CNFNormalizer andThen
+      rest.foldLeft(first)(_ andThen _) andThen
       collapseMultipleInPredicates andThen
-      SemanticAnalysis(warn = false, supportedFeatures: _*)
+      SemanticAnalysis(warn = false, supportedFeatures.toIndexedSeq: _*)
     } // CompilationPhases.lateAstRewriting
 
     // format: off
     val pipeline = {
       parsingPhase              andThen
       resolveFunctions          andThen
-      // Transformer.printAst("resolved") andThen
+      //Transformer.printAst("resolved") andThen
       resolveCalls              andThen
       rewritePhase
     }
@@ -401,11 +423,11 @@ package object cypher {
     import org.opencypher.v9_0.rewriting.rewriters.normalizeWithAndReturnClauses
     import org.opencypher.v9_0.util.StepSequencer
 
-    val supportedFeatures = Array[SemanticFeature](SemanticFeature.CorrelatedSubQueries)
+    val supportedFeatures = Array[SemanticFeature]()
 
     case object aliasReturns extends Phase[BaseContext, BaseState, BaseState] {
       override def process(from: BaseState, context: BaseContext): BaseState = {
-        val rewriter = normalizeWithAndReturnClauses.getRewriter(Deprecations.V1, context.cypherExceptionFactory, context.notificationLogger)
+        val rewriter = normalizeWithAndReturnClauses.getRewriter(context.cypherExceptionFactory, context.notificationLogger)
         val rewrittenStatement = from.statement().endoRewrite(rewriter)
         from.withStatement(rewrittenStatement)
       }
@@ -416,10 +438,10 @@ package object cypher {
 
     // format: off
     val parsingPhase = {
-      Parsing                                              andThen
+      ourCoolParsingPhase                                  andThen
       patternExpressionAsComprehension                     andThen
       aliasReturns                                         andThen
-      SemanticAnalysis(warn = true, supportedFeatures: _*) // andThen
+      SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*) // andThen
       // COMMENTARY ON QU-1292: There is a compilation error thrown when using exists() with
       // pattern expressions/comprehensions in SQ pattern queries. Ethan spent a few days
       // exploring options for fixing the issues, but ultimately it was not the most valuable use of time.
@@ -481,15 +503,26 @@ package object cypher {
       queryText = queryText,
       startPosition = Some(startPosition),
       plannerName = openCypherPlanner,
-      initialFields = initialColumns.toMap
+      anonymousVariableNameGenerator = new AnonymousVariableNameGenerator(),
+      maybeStatement = None,
+      maybeSemantics = None,
+      maybeExtractedParams = None,
+      maybeSemanticTable = None,
+      accumulatedConditions = Set(),
+      maybeReturnColumns = None,
+      maybeObfuscationMetadata = None
     )
 
     val errors = collection.mutable.ListBuffer.empty[semantics.SemanticErrorDef]
     val baseContext = new BaseContext {
 
       override def tracer = phases.CompilationPhaseTracer.NO_TRACING
+
       override def notificationLogger = new RecordingNotificationLogger()
+
       override def cypherExceptionFactory: CypherExceptionFactory = OpenCypherExceptionFactory(initial.startPosition)
+
+
 
       /* This is gross. The only way I found to understand how to reasonably
        * implement this was to look at the corresponding code in Neo4j. I'm
@@ -501,29 +534,39 @@ package object cypher {
 
         import scala.reflect.{ClassTag, classTag}
 
-        def newMonitor[T <: AnyRef: ClassTag](tags: String*): T = {
+        override def addMonitorListener[T](monitor: T, tags: String*): Unit = ()
+
+        override def newMonitor[T <: AnyRef : ClassTag](tags: String*): T = {
           val cls: Class[_] = classTag[T].runtimeClass
           require(cls.isInterface(), "Monitor expects interface")
 
           val invocationHandler = new InvocationHandler {
             override def invoke(
-              proxy: AnyRef,
-              method: Method,
-              args: Array[AnyRef]
-            ): AnyRef = ().asInstanceOf[AnyRef]
+                                 proxy: AnyRef,
+                                 method: Method,
+                                 args: Array[AnyRef]
+                               ): AnyRef = new Object()
           }
 
           Proxy
             .newProxyInstance(cls.getClassLoader, Array(cls), invocationHandler)
             .asInstanceOf[T]
         }
-
-        def addMonitorListener[T](monitor: T, tags: String*) = ()
       }
-      override def errorHandler: Seq[semantics.SemanticErrorDef] => Unit =
-        (errs: Seq[semantics.SemanticErrorDef]) => errors ++= errs
-    }
 
+
+      override def errorHandler: scala.collection.Seq[SemanticErrorDef] => Unit = _ => ()
+
+      override def errorMessageProvider: ErrorMessageProvider = new ErrorMessageProvider {
+        override def createMissingPropertyLabelHintError(operatorDescription: String, hintStringification: String, missingThingDescription: String, foundThingsDescription: String, entityDescription: String, entityName: String, additionalInfo: String): String = "NYI"
+
+        override def createSelfReferenceError(name: String, variableType: String): String = "NYI"
+      }
+
+      override def cancellationChecker: CancellationChecker = new CancellationChecker {
+        override def throwIfCancelled(): Unit = ()
+      }
+    }
     // Run the pipeline
     val output = try pipeline.transform(initial, baseContext)
     catch {
@@ -569,7 +612,7 @@ package object cypher {
     Proc.userDefinedProcedures += udp.name.toLowerCase -> udp
 
   /** Convert an openCypher variable into what our compilation APIs want */
-  private[cypher] def logicalVariable2Symbol(lv: expressions.LogicalVariable): Symbol =
+  def logicalVariable2Symbol(lv: expressions.LogicalVariable): Symbol =
     Symbol(lv.name)
 
   def position(input: InputPosition)(implicit source: SourceText): Position = Position(
@@ -578,50 +621,69 @@ package object cypher {
     input.offset,
     source
   )
+
+  //TODO Bugs and things to do and everything is awful
+  def handleLabelExpression(le: LabelExpression, maybeLoc: Option[Position]): Set[Symbol] =
+    le.replaceColonSyntax match {
+      case LabelExpression.Leaf(name) => Set(Symbol(name.name))
+      case LabelExpression.Conjunctions(children) =>
+        children.foldLeft(Set.empty[Symbol])( (labels, le) => labels.union(handleLabelExpression(le, maybeLoc)))
+//      case LabelExpression.ColonConjunction(lhs, rhs) =>
+//        handleLabelExpression(lhs, maybeLoc).union(handleLabelExpression(rhs, maybeLoc))
+      case LabelExpression.Disjunctions(children)  =>
+        children.foldLeft(Set.empty[Symbol])( (labels, le) => labels.union(handleLabelExpression(le, maybeLoc)))
+//      case LabelExpression.ColonDisjunction(lhs, rhs) =>
+//        handleLabelExpression(lhs, maybeLoc).union(handleLabelExpression(rhs, maybeLoc))
+      case _ =>
+        throw CypherException.Compile(
+          s"We don't currently support complex label expressions! (got $le)",
+          maybeLoc)
+    }
+
 }
 
 /**
   * Like [[nameAllPatternElements]], but does not rewrite naked pattern elements in MATCH clauses.
   */
-case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazyLogging {
-
-  override def getRewriter(innerVariableNamer: InnerVariableNamer,
-                           semanticState: SemanticState,
-                           parameterTypeMapping: Map[String, CypherType],
-                           cypherExceptionFactory: CypherExceptionFactory): Rewriter = namingRewriter
-
-  override def preConditions: Set[StepSequencer.Condition] = Set.empty
-
-  override def postConditions: Set[StepSequencer.Condition] = Set(
-    noUnnamedPatternElementsInPatternComprehension
-  )
-
-  override def invalidatedConditions: Set[StepSequencer.Condition] = Set(
-    ProjectionClausesHaveSemanticInfo, // It can invalidate this condition by rewriting things inside WITH/RETURN.
-    PatternExpressionsHaveSemanticInfo, // It can invalidate this condition by rewriting things inside PatternExpressions.
-  )
-
-  override def apply(that: AnyRef): AnyRef = namingRewriter.apply(that)
-
-  private val patternRewriter: Rewriter = bottomUp(Rewriter.lift {
-    case pattern: NodePattern if pattern.variable.isEmpty =>
-      val syntheticName = NodeNameGenerator.name(pattern.position.newUniquePos())
-      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
-
-    case pattern: RelationshipPattern if pattern.variable.isEmpty =>
-      val syntheticName = RelNameGenerator.name(pattern.position.newUniquePos())
-      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
-  }, stopper = {
-    case _: ShortestPathExpression => true
-    case _ => false
-  })
-
-  private val namingRewriter: Rewriter = bottomUp(Rewriter.lift {
-    case patternComprehension: PatternComprehension => patternRewriter(patternComprehension)
-  }, stopper = {
-    case _: Where => true
-    case _: ShortestPathExpression => true
-    case _ => false
-  })
-}
+//case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazyLogging {
+//
+//  override def getRewriter(innerVariableNamer: InnerVariableNamer,
+//                           semanticState: SemanticState,
+//                           parameterTypeMapping: Map[String, CypherType],
+//                           cypherExceptionFactory: CypherExceptionFactory): Rewriter = namingRewriter
+//
+//  override def preConditions: Set[StepSequencer.Condition] = Set.empty
+//
+//  override def postConditions: Set[StepSequencer.Condition] = Set(
+//    noUnnamedPatternElementsInPatternComprehension
+//  )
+//
+//  override def invalidatedConditions: Set[StepSequencer.Condition] = Set(
+//    ProjectionClausesHaveSemanticInfo, // It can invalidate this condition by rewriting things inside WITH/RETURN.
+//    PatternExpressionsHaveSemanticInfo, // It can invalidate this condition by rewriting things inside PatternExpressions.
+//  )
+//
+//  override def apply(that: AnyRef): AnyRef = namingRewriter.apply(that)
+//
+//  private val patternRewriter: Rewriter = bottomUp(Rewriter.lift {
+//    case pattern: NodePattern if pattern.variable.isEmpty =>
+//      val syntheticName = NodeNameGenerator.name(pattern.position.newUniquePos())
+//      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
+//
+//    case pattern: RelationshipPattern if pattern.variable.isEmpty =>
+//      val syntheticName = RelNameGenerator.name(pattern.position.newUniquePos())
+//      pattern.copy(variable = Some(Variable(syntheticName)(pattern.position)))(pattern.position)
+//  }, stopper = {
+//    case _: ShortestPathExpression => true
+//    case _ => false
+//  })
+//
+//  private val namingRewriter: Rewriter = bottomUp(Rewriter.lift {
+//    case patternComprehension: PatternComprehension => patternRewriter(patternComprehension)
+//  }, stopper = {
+//    case _: Where => true
+//    case _: ShortestPathExpression => true
+//    case _ => false
+//  })
+//}
 

@@ -1,25 +1,37 @@
 package com.thatdot.quine.compiler.cypher
 
 import cats.implicits._
+import org.opencypher.v9_0.ast.Statement
+import org.opencypher.v9_0.ast.factory.neo4j.JavaCCParser
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
+import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase
 import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
-import org.opencypher.v9_0.frontend.phases.{BaseContext, BaseState, CompilationPhaseTracer, Phase, StatementRewriter}
+import org.opencypher.v9_0.frontend.phases.{
+  BaseContains,
+  BaseContext,
+  BaseState,
+  CompilationPhaseTracer,
+  Phase,
+  StatementRewriter
+}
+import org.opencypher.v9_0.parser.javacc.Cypher
 import org.opencypher.v9_0.rewriting.conditions.PatternExpressionsHaveSemanticInfo
+import org.opencypher.v9_0.rewriting.rewriters.ProjectionClausesHaveSemanticInfo
 import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
-import org.opencypher.v9_0.rewriting.rewriters.{InnerVariableNamer, ProjectionClausesHaveSemanticInfo}
 import org.opencypher.v9_0.rewriting.{ListStepAccumulator, RewriterStep}
 import org.opencypher.v9_0.util.StepSequencer.{AccumulatedSteps, Condition}
-import org.opencypher.v9_0.util.{NodeNameGenerator, StepSequencer, UnNamedNameGenerator, inSequence}
+import org.opencypher.v9_0.util.{AnonymousVariableNameGenerator, StepSequencer, inSequence}
 
 import com.thatdot.quine.graph.cypher
+import com.thatdot.quine.graph.cypher.SourceText
 import com.thatdot.quine.model.EdgeDirection
 
 object Expression {
 
   /** Monadic version of [[compile]] */
-  def compileM(e: expressions.Expression): CompM[WithQuery[cypher.Expr]] =
-    compile(e).runWithQuery
+  def compileM(e: expressions.Expression, avng: AnonymousVariableNameGenerator): CompM[WithQuery[cypher.Expr]] =
+    compile(e, avng).runWithQuery
 
   /** Run an action in a new scope.
     *
@@ -48,66 +60,69 @@ object Expression {
     *
     * @return the compiled expression and some side-effecting query
     */
-  def compile(e: expressions.Expression): WithQueryT[CompM, cypher.Expr] = e match {
+  def compile(e: expressions.Expression, avng: AnonymousVariableNameGenerator): WithQueryT[CompM, cypher.Expr] =
+    e match {
 
-    case i: expressions.IntegerLiteral => WithQueryT.pure(cypher.Expr.Integer(i.value))
-    case d: expressions.DoubleLiteral => WithQueryT.pure(cypher.Expr.Floating(d.value))
-    case s: expressions.StringLiteral => WithQueryT.pure(cypher.Expr.Str(s.value))
-    case _: expressions.Null => WithQueryT.pure(cypher.Expr.Null)
-    case _: expressions.True => WithQueryT.pure(cypher.Expr.True)
-    case _: expressions.False => WithQueryT.pure(cypher.Expr.False)
+      case i: expressions.IntegerLiteral => WithQueryT.pure(cypher.Expr.Integer(i.value))
+      case d: expressions.DoubleLiteral => WithQueryT.pure(cypher.Expr.Floating(d.value))
+      case s: expressions.StringLiteral => WithQueryT.pure(cypher.Expr.Str(s.value))
+      case _: expressions.Null => WithQueryT.pure(cypher.Expr.Null)
+      case _: expressions.True => WithQueryT.pure(cypher.Expr.True)
+      case _: expressions.False => WithQueryT.pure(cypher.Expr.False)
 
-    case expressions.ListLiteral(exprs) =>
-      exprs.toVector
-        .traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-        .map(xs => cypher.Expr.ListLiteral(xs.toVector))
+      case expressions.ListLiteral(exprs) =>
+        exprs.toVector
+          .traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+          .map(xs => cypher.Expr.ListLiteral(xs.toVector))
 
-    case expressions.MapExpression(items) =>
-      items.toList
-        .traverse[WithQueryT[CompM, *], (String, cypher.Expr)] { case (k, v) =>
-          compile(v).map(k.name -> _)
-        }
-        .map(xs => cypher.Expr.MapLiteral(xs.toMap))
+      case expressions.MapExpression(items) =>
+        items.toList
+          .traverse[WithQueryT[CompM, *], (String, cypher.Expr)] { case (k, v) =>
+            compile(v, avng).map(k.name -> _)
+          }
+          .map(xs => cypher.Expr.MapLiteral(xs.toMap))
 
-    case expressions.DesugaredMapProjection(variable, items, includeAll) =>
-      for {
-        keyValues <- items.toList.traverse[WithQueryT[CompM, *], (String, cypher.Expr)] {
-          case expressions.LiteralEntry(k, v) => compile(v).map(k.name -> _)
-        }
-        theMap <- WithQueryT.lift(CompM.getVariable(variable, e))
-      } yield cypher.Expr.MapProjection(theMap, keyValues, includeAll)
+      case expressions.DesugaredMapProjection(variable, items, includeAll) =>
+        for {
+          keyValues <- items.toList.traverse[WithQueryT[CompM, *], (String, cypher.Expr)] {
+            case expressions.LiteralEntry(k, v) => compile(v, avng).map(k.name -> _)
+          }
+          theMap <- WithQueryT.lift(CompM.getVariable(variable, e))
+        } yield cypher.Expr.MapProjection(theMap, keyValues, includeAll)
 
-    case lv: expressions.Variable =>
-      WithQueryT(CompM.getVariable(lv, e).map(WithQuery[cypher.Expr](_)))
+      case lv: expressions.Variable =>
+        WithQueryT(CompM.getVariable(lv, e).map(WithQuery[cypher.Expr](_)))
 
-    case expressions.Parameter(name, _) =>
-      WithQueryT(CompM.getParameter(name, e).map(WithQuery[cypher.Expr](_)))
+      case expressions.Parameter(name, _) =>
+        WithQueryT(CompM.getParameter(name, e).map(WithQuery[cypher.Expr](_)))
 
-    case expressions.Property(expr, expressions.PropertyKeyName(keyStr)) =>
-      for { expr1 <- compile(expr) } yield cypher.Expr.Property(expr1, Symbol(keyStr))
+      case expressions.Property(expr, expressions.PropertyKeyName(keyStr)) =>
+        for { expr1 <- compile(expr, avng) } yield cypher.Expr.Property(expr1, Symbol(keyStr))
 
-    case expressions.ContainerIndex(expr, idx) =>
-      for { expr1 <- compile(expr); idx1 <- compile(idx) } yield cypher.Expr
-        .DynamicProperty(expr1, idx1)
+      case expressions.ContainerIndex(expr, idx) =>
+        for { expr1 <- compile(expr, avng); idx1 <- compile(idx, avng) } yield cypher.Expr
+          .DynamicProperty(expr1, idx1)
 
-    case expressions.ListSlice(expr, start, end) =>
-      for {
-        expr1 <- compile(expr)
-        start1 <- start.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-        end1 <- end.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-      } yield cypher.Expr.ListSlice(expr1, start1, end1)
+      case expressions.ListSlice(expr, start, end) =>
+        for {
+          expr1 <- compile(expr, avng)
+          start1 <- start.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+          end1 <- end.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+        } yield cypher.Expr.ListSlice(expr1, start1, end1)
 
-    /* All of these turn into list comprehensions
-     *
-     * Also, for reasons that aren't clear to me, this is one place in openCyphe
-     * where the `variable` being bound may not have been freshened (it may shadow
-     * another variable of the same name). Since the rest of our compilation
-     * scoping assumes fresh names, we defensively manually replace the bound
-     * variable with a fresh one.
-     */
-    case expressions.FilterExpression(expressions.FilterScope(variable, predOpt), list) =>
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
+      /* All of these turn into list comprehensions
+       *
+       * Also, for reasons that aren't clear to me, this is one place in openCypher
+       * where the `variable` being bound may not have been freshened (it may shadow
+       * another variable of the same name). Since the rest of our compilation
+       * scoping assumes fresh names, we defensively manually replace the bound
+       * variable with a fresh one.
+       */
+      /*
+    case fe: expressions.FilteringExpression =>
+      //TODO Maybe we should check to see if named...
+      val freshVar = fe.variable.renameId(avng.nextName)
+      val freshPredOpt = fe.innerPredicate.map(_.replaceAllOccurrencesBy(fe.variable, freshVar))
       for {
         (varExpr, predicate) <- scoped {
           for {
@@ -116,7 +131,7 @@ object Expression {
             predicate = predicateOpt.getOrElse(cypher.Expr.True)
           } yield (varExpr, predicate)
         }
-        list1 <- compile(list)
+        list1 <- compile(fe.expression, avng)
       } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, varExpr)
     case expressions.ExtractExpression(expressions.ExtractScope(variable, predOpt, extOpt), list) =>
       val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
@@ -134,441 +149,446 @@ object Expression {
         }
         list1 <- compile(list)
       } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
-    case expressions.ListComprehension(expressions.ExtractScope(variable, predOpt, extOpt), list) =>
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
-      val freshExtOpt = extOpt.map(_.copyAndReplace(variable).by(freshVar))
-      for {
-        (varExpr, predicate, extract) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-            predicate = predicateOpt.getOrElse(cypher.Expr.True)
-            extractOpt <- freshExtOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-            extract = extractOpt.getOrElse(varExpr)
-          } yield (varExpr, predicate, extract)
-        }
-        list1 <- compile(list)
-      } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
 
-    case expressions.ReduceExpression(expressions.ReduceScope(acc, variable, expr), init, list) =>
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshAcc = acc.renameId(UnNamedNameGenerator.name(acc.position.newUniquePos()))
-      val freshExpr = expr
-        .copyAndReplace(variable)
-        .by(freshVar)
-        .copyAndReplace(acc)
-        .by(freshAcc)
-      for {
-        init1 <- compile(init)
-        list1 <- compile(list)
-        (varExpr, accExpr, expr1) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            accExpr <- WithQueryT.lift(CompM.addColumn(freshAcc))
-            expr1 <- compile(freshExpr)
-          } yield (varExpr, accExpr, expr1)
-        }
-      } yield cypher.Expr.ReduceList(accExpr.id, init1, varExpr.id, list1, expr1)
-
-    case expressions.AllIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
-      require(predOpt.nonEmpty)
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
-      for {
-        list1 <- compile(list)
-        (varExpr, pred1) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            pred1 <- compile(freshPredOpt.get)
-          } yield (varExpr, pred1)
-        }
-      } yield cypher.Expr.AllInList(varExpr.id, list1, pred1)
-    case expressions.AnyIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
-      require(predOpt.nonEmpty)
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
-      for {
-        list1 <- compile(list)
-        (varExpr, pred1) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            pred1 <- compile(freshPredOpt.get)
-          } yield (varExpr, pred1)
-        }
-      } yield cypher.Expr.AnyInList(varExpr.id, list1, pred1)
-    case expressions.NoneIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
-      require(predOpt.nonEmpty)
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
-      for {
-        list1 <- compile(list)
-        (varExpr, pred1) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            pred1 <- compile(freshPredOpt.get)
-          } yield (varExpr, pred1)
-        }
-      } yield cypher.Expr.Not(cypher.Expr.AnyInList(varExpr.id, list1, pred1))
-    case expressions.SingleIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
-      require(predOpt.nonEmpty)
-      val freshVar = variable.renameId(UnNamedNameGenerator.name(variable.position.newUniquePos()))
-      val freshPredOpt = predOpt.map(_.copyAndReplace(variable).by(freshVar))
-      for {
-        list1 <- compile(list)
-        (varExpr, pred1) <- scoped {
-          for {
-            varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
-            pred1 <- compile(freshPredOpt.get)
-          } yield (varExpr, pred1)
-        }
-      } yield cypher.Expr.SingleInList(varExpr.id, list1, pred1)
-
-    case expressions.Add(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Add(lhs1, rhs1)
-    case expressions.Subtract(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Subtract(lhs1, rhs1)
-    case expressions.Multiply(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Multiply(lhs1, rhs1)
-    case expressions.Divide(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Divide(lhs1, rhs1)
-    case expressions.Modulo(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Modulo(lhs1, rhs1)
-    case expressions.Pow(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Exponentiate(lhs1, rhs1)
-    case expressions.UnaryAdd(rhs) =>
-      for { rhs1 <- compile(rhs) } yield cypher.Expr.UnaryAdd(rhs1)
-    case expressions.UnarySubtract(rhs) =>
-      for { rhs1 <- compile(rhs) } yield cypher.Expr.UnarySubtract(rhs1)
-
-    case expressions.Not(arg) =>
-      for { arg1 <- compile(arg) } yield cypher.Expr.Not(arg1)
-    case expressions.And(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.And(Vector(lhs1, rhs1))
-    case expressions.Ands(conjuncts) =>
-      for {
-        conjs1 <- conjuncts.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-      } yield cypher.Expr.And(conjs1)
-    case expressions.Or(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Or(Vector(lhs1, rhs1))
-    case expressions.Ors(disjuncts) =>
-      for {
-        disjs1 <- disjuncts.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-      } yield cypher.Expr.Or(disjs1)
-
-    case expressions.Equals(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Equal(lhs1, rhs1)
-    case expressions.In(lhs, expressions.ListLiteral(Seq(rhs))) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Equal(lhs1, rhs1)
-    case expressions.NotEquals(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Not(
-        cypher.Expr.Equal(lhs1, rhs1)
-      )
-    case expressions.LessThan(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Less(lhs1, rhs1)
-    case expressions.GreaterThan(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Greater(lhs1, rhs1)
-    case expressions.LessThanOrEqual(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.LessEqual(lhs1, rhs1)
-    case expressions.GreaterThanOrEqual(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.GreaterEqual(lhs1, rhs1)
-    case expressions.In(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.InList(lhs1, rhs1)
-
-    case expressions.StartsWith(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.StartsWith(lhs1, rhs1)
-    case expressions.EndsWith(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.EndsWith(lhs1, rhs1)
-    case expressions.Contains(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Contains(lhs1, rhs1)
-    case expressions.RegexMatch(lhs, rhs) =>
-      for { lhs1 <- compile(lhs); rhs1 <- compile(rhs) } yield cypher.Expr.Regex(lhs1, rhs1)
-
-    case expressions.IsNull(arg) =>
-      for { arg1 <- compile(arg) } yield cypher.Expr.IsNull(arg1)
-    case expressions.IsNotNull(arg) =>
-      for { arg1 <- compile(arg) } yield cypher.Expr.IsNotNull(arg1)
-
-    case expressions.CaseExpression(expOpt, alts, default) =>
-      for {
-        expOpt1 <- expOpt.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-        alts1 <- alts.toVector.traverse[WithQueryT[CompM, *], (cypher.Expr, cypher.Expr)] { case (k, v) =>
-          compile(k).flatMap(k1 => compile(v).map(k1 -> _))
-        }
-        default1 <- default.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-      } yield cypher.Expr.Case(expOpt1, alts1, default1)
-
-    // This is for functions we manually resolved
-    case qf: QuineFunctionInvocation =>
-      for {
-        args1 <- qf.args.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](compile)
-      } yield cypher.Expr.Function(cypher.Func.UserDefined(qf.function.name), args1)
-
-    case f: expressions.FunctionInvocation =>
-      f.args.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](compile).flatMap { args =>
-
-        if (f.function == functions.StartNode) {
-          require(args.length == 1, "`startNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
-          val nodeVariable = expressions.Variable(nodeName)(f.position)
-
-          WithQueryT[CompM, cypher.Expr] {
-            CompM.addColumn(nodeVariable).map { nodeVarExpr =>
-              WithQuery[cypher.Expr](
-                result = nodeVarExpr,
-                query = cypher.Query.ArgumentEntry(
-                  cypher.Expr.RelationshipStart(args.head),
-                  cypher.Query.LocalNode(
-                    labelsOpt = None,
-                    propertiesOpt = None,
-                    bindName = Some(nodeVarExpr.id)
-                  )
-                )
-              )
-            }
-          }
-        } else if (f.function == functions.Exists) {
-          require(args.length == 1, "`exists` has one argument")
-
-          /* The case where the argument is a pattern expression has already
-           * been rewritten in `patternExpressionAsComprehension`, so the only
-           * remaining variant of `exists` is the one that checks whether
-           * accessing a property or field produces `null`
-           */
-          WithQueryT.pure[CompM, cypher.Expr](cypher.Expr.IsNotNull(args.head))
-        } else if (f.function == functions.EndNode) {
-          require(args.length == 1, "`endNode` has one argument")
-          val nodeName = NodeNameGenerator.name(f.position.newUniquePos())
-          val nodeVariable = expressions.Variable(nodeName)(f.position)
-
-          WithQueryT[CompM, cypher.Expr] {
-            CompM.addColumn(nodeVariable).map { nodeVarExpr =>
-              WithQuery[cypher.Expr](
-                result = nodeVarExpr,
-                query = cypher.Query.ArgumentEntry(
-                  cypher.Expr.RelationshipEnd(args.head),
-                  cypher.Query.LocalNode(
-                    labelsOpt = None,
-                    propertiesOpt = None,
-                    bindName = Some(nodeVarExpr.id)
-                  )
-                )
-              )
-            }
-          }
-        } else {
-          WithQueryT[CompM, cypher.Expr](
-            compileBuiltinScalarFunction(f.function, f).map { func =>
-              WithQuery[cypher.Expr](cypher.Expr.Function(func, args.toVector))
-            }
-          )
-        }
-      }
-
-    case e @ expressions.GetDegree(node, relType, dir) =>
-      val bindName = UnNamedNameGenerator.name(e.position.newUniquePos())
-      val bindVariable = expressions.Variable(bindName)(e.position)
-
-      WithQueryT[CompM, cypher.Expr] {
+       */
+      case expressions.ListComprehension(expressions.ExtractScope(variable, predOpt, extOpt), list) =>
+        val freshVar = variable.renameId(avng.nextName)
+        val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+        val freshExtOpt = extOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
         for {
-          nodeExprWc: WithQuery[cypher.Expr] <- compileM(node)
-          bindVarExpr <- CompM.addColumn(bindVariable)
-          direction = dir match {
-            case expressions.SemanticDirection.OUTGOING => EdgeDirection.Outgoing
-            case expressions.SemanticDirection.INCOMING => EdgeDirection.Incoming
-            case expressions.SemanticDirection.BOTH => EdgeDirection.Undirected
+          (varExpr, predicate, extract) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              predicateOpt <- freshPredOpt.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+              predicate = predicateOpt.getOrElse(cypher.Expr.True)
+              extractOpt <- freshExtOpt.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+              extract = extractOpt.getOrElse(varExpr)
+            } yield (varExpr, predicate, extract)
           }
-        } yield nodeExprWc.flatMap[cypher.Expr] { nodeExpr =>
-          WithQuery(
-            result = bindVarExpr,
+          list1 <- compile(list, avng)
+        } yield cypher.Expr.ListComprehension(varExpr.id, list1, predicate, extract)
+
+      case expressions.ReduceExpression(expressions.ReduceScope(acc, variable, expr), init, list) =>
+        val freshVar = variable.renameId(avng.nextName)
+        val freshAcc = acc.renameId(avng.nextName)
+        val freshExpr = expr
+          .replaceAllOccurrencesBy(variable, freshVar)
+          .replaceAllOccurrencesBy(acc, freshAcc)
+        for {
+          init1 <- compile(init, avng)
+          list1 <- compile(list, avng)
+          (varExpr, accExpr, expr1) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              accExpr <- WithQueryT.lift(CompM.addColumn(freshAcc))
+              expr1 <- compile(freshExpr, avng)
+            } yield (varExpr, accExpr, expr1)
+          }
+        } yield cypher.Expr.ReduceList(accExpr.id, init1, varExpr.id, list1, expr1)
+
+      case expressions.AllIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
+        require(predOpt.nonEmpty)
+        val freshVar = variable.renameId(avng.nextName)
+        val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+        for {
+          list1 <- compile(list, avng)
+          (varExpr, pred1) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              pred1 <- compile(freshPredOpt.get, avng)
+            } yield (varExpr, pred1)
+          }
+        } yield cypher.Expr.AllInList(varExpr.id, list1, pred1)
+      case expressions.AnyIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
+        require(predOpt.nonEmpty)
+        val freshVar = variable.renameId(avng.nextName)
+        val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+        for {
+          list1 <- compile(list, avng)
+          (varExpr, pred1) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              pred1 <- compile(freshPredOpt.get, avng)
+            } yield (varExpr, pred1)
+          }
+        } yield cypher.Expr.AnyInList(varExpr.id, list1, pred1)
+      case expressions.NoneIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
+        require(predOpt.nonEmpty)
+        val freshVar = variable.renameId(avng.nextName)
+        val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+        for {
+          list1 <- compile(list, avng)
+          (varExpr, pred1) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              pred1 <- compile(freshPredOpt.get, avng)
+            } yield (varExpr, pred1)
+          }
+        } yield cypher.Expr.Not(cypher.Expr.AnyInList(varExpr.id, list1, pred1))
+      case expressions.SingleIterablePredicate(expressions.FilterScope(variable, predOpt), list) =>
+        require(predOpt.nonEmpty)
+        val freshVar = variable.renameId(avng.nextName)
+        val freshPredOpt = predOpt.map(_.replaceAllOccurrencesBy(variable, freshVar))
+        for {
+          list1 <- compile(list, avng)
+          (varExpr, pred1) <- scoped {
+            for {
+              varExpr <- WithQueryT.lift(CompM.addColumn(freshVar))
+              pred1 <- compile(freshPredOpt.get, avng)
+            } yield (varExpr, pred1)
+          }
+        } yield cypher.Expr.SingleInList(varExpr.id, list1, pred1)
+
+      case expressions.Add(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Add(lhs1, rhs1)
+      case expressions.Subtract(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Subtract(lhs1, rhs1)
+      case expressions.Multiply(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Multiply(lhs1, rhs1)
+      case expressions.Divide(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Divide(lhs1, rhs1)
+      case expressions.Modulo(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Modulo(lhs1, rhs1)
+      case expressions.Pow(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Exponentiate(lhs1, rhs1)
+      case expressions.UnaryAdd(rhs) =>
+        for { rhs1 <- compile(rhs, avng) } yield cypher.Expr.UnaryAdd(rhs1)
+      case expressions.UnarySubtract(rhs) =>
+        for { rhs1 <- compile(rhs, avng) } yield cypher.Expr.UnarySubtract(rhs1)
+
+      case expressions.Not(arg) =>
+        for { arg1 <- compile(arg, avng) } yield cypher.Expr.Not(arg1)
+      case expressions.And(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.And(Vector(lhs1, rhs1))
+      case expressions.Ands(conjuncts) =>
+        for {
+          conjs1 <- conjuncts.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+        } yield cypher.Expr.And(conjs1)
+      case expressions.Or(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Or(Vector(lhs1, rhs1))
+      case expressions.Ors(disjuncts) =>
+        for {
+          disjs1 <- disjuncts.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+        } yield cypher.Expr.Or(disjs1)
+
+      case expressions.Equals(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Equal(lhs1, rhs1)
+      case expressions.In(lhs, expressions.ListLiteral(Seq(rhs))) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Equal(lhs1, rhs1)
+      case expressions.NotEquals(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Not(
+          cypher.Expr.Equal(lhs1, rhs1)
+        )
+      case expressions.LessThan(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Less(lhs1, rhs1)
+      case expressions.GreaterThan(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Greater(lhs1, rhs1)
+      case expressions.LessThanOrEqual(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.LessEqual(lhs1, rhs1)
+      case expressions.GreaterThanOrEqual(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.GreaterEqual(lhs1, rhs1)
+      case expressions.In(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.InList(lhs1, rhs1)
+
+      case expressions.StartsWith(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.StartsWith(lhs1, rhs1)
+      case expressions.EndsWith(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.EndsWith(lhs1, rhs1)
+      case expressions.Contains(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Contains(lhs1, rhs1)
+      case expressions.RegexMatch(lhs, rhs) =>
+        for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Regex(lhs1, rhs1)
+
+      case expressions.IsNull(arg) =>
+        for { arg1 <- compile(arg, avng) } yield cypher.Expr.IsNull(arg1)
+      case expressions.IsNotNull(arg) =>
+        for { arg1 <- compile(arg, avng) } yield cypher.Expr.IsNotNull(arg1)
+
+      case expressions.CaseExpression(expOpt, alts, default) =>
+        for {
+          expOpt1 <- expOpt.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+          alts1 <- alts.toVector.traverse[WithQueryT[CompM, *], (cypher.Expr, cypher.Expr)] { case (k, v) =>
+            compile(k, avng).flatMap(k1 => compile(v, avng).map(k1 -> _))
+          }
+          default1 <- default.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+        } yield cypher.Expr.Case(expOpt1, alts1, default1)
+
+      // This is for functions we manually resolved
+      case qf: QuineFunctionInvocation =>
+        for {
+          args1 <- qf.args.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng))
+        } yield cypher.Expr.Function(cypher.Func.UserDefined(qf.function.name), args1)
+
+      case f: expressions.FunctionInvocation =>
+        f.args.toVector.traverse[WithQueryT[CompM, *], cypher.Expr](e => compile(e, avng)).flatMap { args =>
+
+          if (f.function == functions.StartNode) {
+            require(args.length == 1, "`startNode` has one argument")
+            val nodeName = avng.nextName
+            val nodeVariable = expressions.Variable(nodeName)(f.position)
+
+            WithQueryT[CompM, cypher.Expr] {
+              CompM.addColumn(nodeVariable).map { nodeVarExpr =>
+                WithQuery[cypher.Expr](
+                  result = nodeVarExpr,
+                  query = cypher.Query.ArgumentEntry(
+                    cypher.Expr.RelationshipStart(args.head),
+                    cypher.Query.LocalNode(
+                      labelsOpt = None,
+                      propertiesOpt = None,
+                      bindName = Some(nodeVarExpr.id)
+                    )
+                  )
+                )
+              }
+            }
+          } else if (f.function == functions.Exists) {
+            require(args.length == 1, "`exists` has one argument")
+
+            /* The case where the argument is a pattern expression has already
+             * been rewritten in `patternExpressionAsComprehension`, so the only
+             * remaining variant of `exists` is the one that checks whether
+             * accessing a property or field produces `null`
+             */
+            WithQueryT.pure[CompM, cypher.Expr](cypher.Expr.IsNotNull(args.head))
+          } else if (f.function == functions.EndNode) {
+            require(args.length == 1, "`endNode` has one argument")
+            val nodeName = avng.nextName
+            val nodeVariable = expressions.Variable(nodeName)(f.position)
+
+            WithQueryT[CompM, cypher.Expr] {
+              CompM.addColumn(nodeVariable).map { nodeVarExpr =>
+                WithQuery[cypher.Expr](
+                  result = nodeVarExpr,
+                  query = cypher.Query.ArgumentEntry(
+                    cypher.Expr.RelationshipEnd(args.head),
+                    cypher.Query.LocalNode(
+                      labelsOpt = None,
+                      propertiesOpt = None,
+                      bindName = Some(nodeVarExpr.id)
+                    )
+                  )
+                )
+              }
+            }
+          } else {
+            WithQueryT[CompM, cypher.Expr](
+              compileBuiltinScalarFunction(f.function, f).map { func =>
+                WithQuery[cypher.Expr](cypher.Expr.Function(func, args.toVector))
+              }
+            )
+          }
+        }
+
+      case e @ expressions.GetDegree(node, relType, dir) =>
+        val bindName = avng.nextName
+        val bindVariable = expressions.Variable(bindName)(e.position)
+
+        WithQueryT[CompM, cypher.Expr] {
+          for {
+            nodeExprWc: WithQuery[cypher.Expr] <- compileM(node, avng)
+            bindVarExpr <- CompM.addColumn(bindVariable)
+            direction = dir match {
+              case expressions.SemanticDirection.OUTGOING => EdgeDirection.Outgoing
+              case expressions.SemanticDirection.INCOMING => EdgeDirection.Incoming
+              case expressions.SemanticDirection.BOTH => EdgeDirection.Undirected
+            }
+          } yield nodeExprWc.flatMap[cypher.Expr] { nodeExpr =>
+            WithQuery(
+              result = bindVarExpr,
+              query = cypher.Query.ArgumentEntry(
+                nodeExpr,
+                cypher.Query.GetDegree(
+                  edgeName = relType.map(r => Symbol(r.name)),
+                  direction,
+                  bindName = bindVarExpr.id
+                )
+              )
+            )
+          }
+        }
+
+      case expressions.HasLabels(expr, labels) =>
+        compile(expr, avng).flatMap { (nodeExpr: cypher.Expr) =>
+          WithQueryT[CompM, cypher.Expr](
+            result = cypher.Expr.True,
             query = cypher.Query.ArgumentEntry(
               nodeExpr,
-              cypher.Query.GetDegree(
-                edgeName = relType.map(r => Symbol(r.name)),
-                direction,
-                bindName = bindVarExpr.id
+              cypher.Query.LocalNode(
+                labelsOpt = Some(labels.map(lbl => Symbol(lbl.name)).toVector),
+                propertiesOpt = None,
+                bindName = None
               )
             )
           )
         }
-      }
 
-    case expressions.HasLabels(expr, labels) =>
-      compile(expr).flatMap { (nodeExpr: cypher.Expr) =>
-        WithQueryT[CompM, cypher.Expr](
-          result = cypher.Expr.True,
-          query = cypher.Query.ArgumentEntry(
-            nodeExpr,
-            cypher.Query.LocalNode(
-              labelsOpt = Some(labels.map(lbl => Symbol(lbl.name))),
-              propertiesOpt = None,
-              bindName = None
-            )
-          )
+      case e @ expressions.PatternComprehension(namedPath, rel, pred, project) =>
+        require(
+          namedPath.isEmpty,
+          s"During query compilation, encountered a pattern comprehension using a named path. This is a known issue when using exists() in standing query patterns. Named path was: ${namedPath.get}. Full expression was: ${e}."
         )
-      }
 
-    case e @ expressions.PatternComprehension(namedPath, rel, pred, project) =>
-      require(
-        namedPath.isEmpty,
-        s"During query compilation, encountered a pattern comprehension using a named path. This is a known issue when using exists() in standing query patterns. Named path was: ${namedPath.get}. Full expression was: ${e}."
-      )
+        // Put the pattern into a form
+        val pat = expressions.Pattern(Seq(expressions.EveryPath(rel.element)))(e.position)
+        val pathName = avng.nextName
+        val pathVariable = expressions.Variable(pathName)(e.position)
 
-      // Put the pattern into a form
-      val pat = expressions.Pattern(Seq(expressions.EveryPath(rel.element)))(e.position)
-      val pathName = UnNamedNameGenerator.name(e.position.newUniquePos())
-      val pathVariable = expressions.Variable(pathName)(e.position)
+        WithQueryT {
+          CompM.withIsolatedContext {
+            for {
+              graph <- Graph.fromPattern(pat)
+              patQuery <- graph.synthesizeFetch(WithFreeVariables.empty, avng)
+              predWqOpt <- pred.traverse(e => compileM(e, avng))
+              projectWq <- compileM(project, avng)
+              pathVarExpr <- CompM.addColumn(pathVariable)
+            } yield projectWq.flatMap { (returnExpr: cypher.Expr) =>
+              val queryPart = cypher.Query.EagerAggregation(
+                aggregateAlong = Vector.empty,
+                aggregateWith = Vector(
+                  pathVarExpr.id -> cypher.Aggregator.collect(
+                    distinct = false,
+                    returnExpr
+                  )
+                ),
+                toAggregate = predWqOpt.sequence.toQuery {
+                  case None => patQuery
+                  case Some(filterCond) => cypher.Query.filter(filterCond, patQuery)
+                },
+                keepExisting = true
+              )
 
-      WithQueryT {
-        CompM.withIsolatedContext {
-          for {
-            graph <- Graph.fromPattern(pat)
-            patQuery <- graph.synthesizeFetch(WithFreeVariables.empty)
-            predWqOpt <- pred.traverse(compileM)
-            projectWq <- compileM(project)
-            pathVarExpr <- CompM.addColumn(pathVariable)
-          } yield projectWq.flatMap { (returnExpr: cypher.Expr) =>
-            val queryPart = cypher.Query.EagerAggregation(
-              aggregateAlong = Vector.empty,
-              aggregateWith = Vector(
-                pathVarExpr.id -> cypher.Aggregator.collect(
-                  distinct = false,
-                  returnExpr
-                )
-              ),
-              toAggregate = predWqOpt.sequence.toQuery {
-                case None => patQuery
-                case Some(filterCond) => cypher.Query.filter(filterCond, patQuery)
-              },
-              keepExisting = true
-            )
-
-            WithQuery(pathVarExpr, queryPart)
+              WithQuery(pathVarExpr, queryPart)
+            }
           }
         }
-      }
 
-    case _: expressions.PatternExpression =>
-      // Should be impossible, thanks to [[patternExpressionAsComprehension]]
-      WithQueryT {
-        CompM.raiseCompileError("Unexpected pattern expression", e)
-      }
+      case _: expressions.PatternExpression =>
+        // Should be impossible, thanks to [[patternExpressionAsComprehension]]
+        WithQueryT {
+          CompM.raiseCompileError("Unexpected pattern expression", e)
+        }
 
-    case expressions.PathExpression(steps) =>
-      // TODO: gain some confidence in the exhaustiveness/correctness of this
-      def visitPath(path: expressions.PathStep): WithQueryT[CompM, List[cypher.Expr]] = path match {
-        case expressions.NilPathStep => WithQueryT.pure(Nil)
-        case expressions.NodePathStep(node, restPath) =>
-          for {
-            head <- compile(node)
-            tail <- visitPath(restPath)
-          } yield (head :: tail)
-        case expressions.SingleRelationshipPathStep(
-              rel,
-              _,
-              _,
-              restPath: expressions.NodePathStep
-            ) =>
-          for {
-            head <- compile(rel)
-            tail <- visitPath(restPath)
-          } yield (head :: tail)
-        case expressions.SingleRelationshipPathStep(rel, _, toNode, restPath) =>
-          require(toNode.nonEmpty)
-          for {
-            head1 <- compile(rel)
-            head2 <- compile(toNode.get)
-            tail <- visitPath(restPath)
-          } yield (head1 :: head2 :: tail)
-        case _ =>
-          WithQueryT {
-            CompM.raiseCompileError("Unsupported path expression", e)
-          }
-      }
-
-      visitPath(steps).map(l => cypher.Expr.PathExpression(l.toVector))
-
-    case e @ expressions.ShortestPathExpression(expressions.ShortestPaths(elem, true)) =>
-      // shortest path, implemented as syntactic sugar over a procedure call to [[ShortestPath]]
-      elem match {
-        case expressions.RelationshipChain(
-              expressions.NodePattern(Some(startNodeLv), Seq(), None, None),
-              expressions.RelationshipPattern(None, edgeTypes, length, None, direction, _, None),
-              expressions.NodePattern(Some(endNodeLv), Seq(), None, None)
-            ) =>
-          // An APOC-style map of optional arguments passed to the algorithms.shortestPath procedure
-
-          // length options
-          val lengthOptions = length match {
-            // eg (n)-[:has_father]->(m)
-            case None =>
-              Map("maxLength" -> cypher.Expr.Integer(1L))
-            // eg (n)-[:has_father*]->(m)
-            case Some(None) =>
-              Map.empty
-            // eg (n)-[:has_father*2..6]->(m) or (n)-[:has_father*..6]->(m) or (n)-[:has_father2*..]->(m)
-            case Some(Some(expressions.Range(loOpt, hiOpt))) =>
-              loOpt.map { lo =>
-                "minLength" -> cypher.Expr.Integer(lo.value.toLong)
-              }.toMap ++
-                hiOpt.map { hi =>
-                  "maxLength" -> cypher.Expr.Integer(hi.value.toLong)
-                }
-          }
-
-          // direction (initially w.r.t. startNodeLv)
-          val directionOption = direction match {
-            case expressions.SemanticDirection.OUTGOING =>
-              Map("direction" -> cypher.Expr.Str("outgoing"))
-            case expressions.SemanticDirection.INCOMING =>
-              Map("direction" -> cypher.Expr.Str("incoming"))
-            case expressions.SemanticDirection.BOTH =>
-              Map.empty
-          }
-
-          // edge types
-          val edgeTypeOption = edgeTypes match {
-            case Seq() =>
-              Map.empty
-            case edges =>
-              val edgesStrVect = edges.map(rel => cypher.Expr.Str(rel.name)).toVector
-              Map("types" -> cypher.Expr.List(edgesStrVect))
-          }
-
-          val shortestPathName = UnNamedNameGenerator.name(e.position.newUniquePos())
-          val shortestPathVariable = expressions.Variable(shortestPathName)(e.position)
-
-          WithQueryT {
+      case expressions.PathExpression(steps) =>
+        // TODO: gain some confidence in the exhaustiveness/correctness of this
+        def visitPath(path: expressions.PathStep): WithQueryT[CompM, List[cypher.Expr]] = path match {
+          case expressions.NilPathStep() => WithQueryT.pure(Nil)
+          case expressions.NodePathStep(node, restPath) =>
             for {
-              startNode <- CompM.getVariable(startNodeLv, e)
-              endNode <- CompM.getVariable(endNodeLv, e)
-              shortestPathVarExpr <- CompM.addColumn(shortestPathVariable)
-            } yield WithQuery[cypher.Expr](
-              shortestPathVarExpr,
-              cypher.Query.ProcedureCall(
-                cypher.Proc.ShortestPath,
-                Vector(
-                  startNode,
-                  endNode,
-                  cypher.Expr.Map(lengthOptions ++ directionOption ++ edgeTypeOption)
-                ),
-                Some(Map(cypher.Proc.ShortestPath.retColumnPathName -> shortestPathVarExpr.id))
+              head <- compile(node, avng)
+              tail <- visitPath(restPath)
+            } yield (head :: tail)
+          case expressions.SingleRelationshipPathStep(
+                rel,
+                _,
+                _,
+                restPath: expressions.NodePathStep
+              ) =>
+            for {
+              head <- compile(rel, avng)
+              tail <- visitPath(restPath)
+            } yield (head :: tail)
+          case expressions.SingleRelationshipPathStep(rel, _, toNode, restPath) =>
+            require(toNode.nonEmpty)
+            for {
+              head1 <- compile(rel, avng)
+              head2 <- compile(toNode.get, avng)
+              tail <- visitPath(restPath)
+            } yield (head1 :: head2 :: tail)
+          case _ =>
+            WithQueryT {
+              CompM.raiseCompileError("Unsupported path expression", e)
+            }
+        }
+
+        visitPath(steps).map(l => cypher.Expr.PathExpression(l.toVector))
+
+      case e @ expressions.ShortestPathExpression(expressions.ShortestPaths(elem, true)) =>
+        // shortest path, implemented as syntactic sugar over a procedure call to [[ShortestPath]]
+        elem match {
+          case expressions.RelationshipChain(
+                expressions.NodePattern(Some(startNodeLv), None, None, None),
+                expressions.RelationshipPattern(None, edgeTypes, length, None, _, direction),
+                expressions.NodePattern(Some(endNodeLv), None, None, None)
+              ) =>
+            // An APOC-style map of optional arguments passed to the algorithms.shortestPath procedure
+
+            // length options
+            val lengthOptions = length match {
+              // eg (n)-[:has_father]->(m)
+              case None =>
+                Map("maxLength" -> cypher.Expr.Integer(1L))
+              // eg (n)-[:has_father*]->(m)
+              case Some(None) =>
+                Map.empty
+              // eg (n)-[:has_father*2..6]->(m) or (n)-[:has_father*..6]->(m) or (n)-[:has_father2*..]->(m)
+              case Some(Some(expressions.Range(loOpt, hiOpt))) =>
+                loOpt.map { lo =>
+                  "minLength" -> cypher.Expr.Integer(lo.value.toLong)
+                }.toMap ++
+                  hiOpt.map { hi =>
+                    "maxLength" -> cypher.Expr.Integer(hi.value.toLong)
+                  }
+            }
+
+            // direction (initially w.r.t. startNodeLv)
+            val directionOption = direction match {
+              case expressions.SemanticDirection.OUTGOING =>
+                Map("direction" -> cypher.Expr.Str("outgoing"))
+              case expressions.SemanticDirection.INCOMING =>
+                Map("direction" -> cypher.Expr.Str("incoming"))
+              case expressions.SemanticDirection.BOTH =>
+                Map.empty
+            }
+
+            // edge types
+            val edgeTypeOption = edgeTypes
+              .fold(Set[Symbol]())(le =>
+                handleLabelExpression(le, Some(position(e.position)(SourceText(e.asCanonicalStringVal))))
+              ) match {
+              case edges if edges.isEmpty => Map.empty
+              case edges =>
+                val edgesStrVect = edges.map(rel => cypher.Expr.Str(rel.name)).toVector
+                Map("types" -> cypher.Expr.List(edgesStrVect))
+            }
+
+            val shortestPathName = avng.nextName
+            val shortestPathVariable = expressions.Variable(shortestPathName)(e.position)
+
+            WithQueryT {
+              for {
+                startNode <- CompM.getVariable(startNodeLv, e)
+                endNode <- CompM.getVariable(endNodeLv, e)
+                shortestPathVarExpr <- CompM.addColumn(shortestPathVariable)
+              } yield WithQuery[cypher.Expr](
+                shortestPathVarExpr,
+                cypher.Query.ProcedureCall(
+                  cypher.Proc.ShortestPath,
+                  Vector(
+                    startNode,
+                    endNode,
+                    cypher.Expr.Map(lengthOptions ++ directionOption ++ edgeTypeOption)
+                  ),
+                  Some(Map(cypher.Proc.ShortestPath.retColumnPathName -> shortestPathVarExpr.id))
+                )
               )
-            )
-          }
+            }
 
-        // TODO: make this a little more informative...
-        case p =>
-          WithQueryT {
-            CompM.raiseCompileError("Unsupported shortest path expression", p)
-          }
-      }
+          // TODO: make this a little more informative...
+          case p =>
+            WithQueryT {
+              CompM.raiseCompileError("Unsupported shortest path expression", p)
+            }
+        }
 
-    case e =>
-      WithQueryT {
-        CompM.raiseCompileError("Unsupported expression", e)
-      }
-  }
+      case expressions.NaN() =>
+        WithQueryT.pure(cypher.Expr.Floating(Float.NaN))
+
+      case e =>
+        WithQueryT {
+          CompM.raiseCompileError("Unsupported expression", e)
+        }
+    }
 
   /** Map a simple scalar function into its IR equivalent.
     *
@@ -656,6 +676,17 @@ object Expression {
     }
 }
 
+case object ourCoolParsingPhase extends Phase[BaseContext, BaseState, BaseState] {
+  override def phase: CompilationPhase = CompilationPhase.PARSING
+
+  override def process(from: BaseState, context: BaseContext): BaseState =
+    from.withStatement(JavaCCParser.parse(from.queryText, context.cypherExceptionFactory))
+
+  override def postConditions: Set[Condition] = Set(
+    BaseContains[Statement]()
+  )
+}
+
 /** Turns all pattern expressions into pattern comprehensions
   *
   * This happens for two reasons:
@@ -667,14 +698,21 @@ object Expression {
   *       pattern comprehensions, so `(a)<--(b)` won't produce a result where
   *       `a = b`. Inspiration: `AddUniquenessPredicates`
   */
-case object patternExpressionAsComprehension extends StatementRewriter {
+case object patternExpressionAsComprehension extends Phase[BaseContext, BaseState, BaseState] {
 
   import org.opencypher.v9_0.frontend.phases._
   import org.opencypher.v9_0.util.{bottomUp, Rewriter}
 
-  override def instance(ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift {
+  override val phase: CompilationPhase = CompilationPhase.AST_REWRITE
+
+  override def process(from: BaseState, context: BaseContext): BaseState = {
+    val rewritten = from.statement().endoRewrite(instance(context, from.anonymousVariableNameGenerator))
+    from.withStatement(rewritten)
+  }
+
+  def instance(ctx: BaseContext, avng: AnonymousVariableNameGenerator): Rewriter = bottomUp(Rewriter.lift {
     case e: expressions.PatternExpression =>
-      patternExpr2Comp(e)
+      patternExpr2Comp(e, avng)
 
     /* Rewrite `exists(patternComprehension)` into `patternComprehension <> []`.
      *
@@ -693,10 +731,13 @@ case object patternExpressionAsComprehension extends StatementRewriter {
       expressions.NotEquals(patternComp, emptyList)(fi.position)
   })
 
-  def patternExpr2Comp(e: expressions.PatternExpression): expressions.PatternComprehension = {
+  def patternExpr2Comp(
+    e: expressions.PatternExpression,
+    avng: AnonymousVariableNameGenerator
+  ): expressions.PatternComprehension = {
     val expressions.PatternExpression(relsPat) = e
 
-    val freshName = UnNamedNameGenerator.name(e.position.newUniquePos())
+    val freshName = avng.nextName
     val freshVariable = expressions.Variable(freshName)(e.position)
 
     expressions.PatternComprehension(
@@ -715,6 +756,7 @@ case object patternExpressionAsComprehension extends StatementRewriter {
   * Required to be run in the same position as AstRewriting (i.e., after preliminary semantic analysis)
   * @see [[org.opencypher.v9_0.frontend.phases.ASTRewriter#orderedSteps]]
   */
+/*
 class CustomAstRewriting(namer: InnerVariableNamer)(private val steps: StepSequencer.Step with ASTRewriterFactory*)
     extends Phase[BaseContext, BaseState, BaseState]
     with Product {
@@ -752,3 +794,4 @@ class CustomAstRewriting(namer: InnerVariableNamer)(private val steps: StepSeque
   def canEqual(that: Any): Boolean =
     that.isInstanceOf[CustomAstRewriting] && that.asInstanceOf[CustomAstRewriting].steps.length == steps.length
 }
+ */

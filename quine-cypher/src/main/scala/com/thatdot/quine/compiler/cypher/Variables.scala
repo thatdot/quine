@@ -23,8 +23,8 @@ object VariableRewriter {
       case Columns.Omitted => converted
       case Columns.Specified(mangledCols) => // if columns are specified, de-mangle them
 
-        val demangledCols = mangledCols.map { case Symbol(mangledName) =>
-          val col = NameDeduplicator.removeGeneratedNamesAndParams(mangledName)
+        val demangledCols = mangledCols.map { s =>
+          val col = NameDeduplicator.removeGeneratedNamesAndParams(s.name)
           Symbol(col)
         }
 

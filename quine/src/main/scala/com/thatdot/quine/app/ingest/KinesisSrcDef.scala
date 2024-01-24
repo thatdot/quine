@@ -6,7 +6,7 @@ import scala.collection.Set
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.jdk.CollectionConverters.asScalaBufferConverter
+import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.kinesis.ShardIterator._

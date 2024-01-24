@@ -84,7 +84,7 @@ case class KafkaSettingsValidator(
       if (assumeConfigIsFinal) {
         // config is already merged, so we can rely on the kafka-provided validator for any errors
         for {
-          validatedConfigEntry <- validator.validate(properties.asJava).asScala
+          validatedConfigEntry <- validator.validate(properties.asJava).asScala.toVector
           configName = validatedConfigEntry.name()
           // TODO why does a finalized config not have key.deserializer set?
           //      Does pekko tack it on in settings.consumerFactory?

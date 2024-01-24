@@ -27,8 +27,8 @@ trait AdministrationRoutesState {
 trait AdministrationRoutesImpl
     extends AdministrationRoutes
     with endpoints4s.pekkohttp.server.Endpoints
-    with exts.circe.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints { self: LazyLogging =>
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints { self: LazyLogging =>
 
   def graph: BaseGraph
   implicit def timeout: Timeout
@@ -142,7 +142,7 @@ trait AdministrationRoutesImpl
 
   private val shardSizesRoute = shardSizes.implementedByAsync { resizes =>
     graph
-      .shardInMemoryLimits(resizes.mapValues(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
+      .shardInMemoryLimits(resizes.view.mapValues(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)).toMap)
       .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
         shardIdx -> ShardInMemoryLimit(soft, hard)
       })(ExecutionContexts.parasitic)

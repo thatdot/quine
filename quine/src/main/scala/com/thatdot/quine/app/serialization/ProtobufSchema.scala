@@ -14,7 +14,7 @@ abstract class ProtobufSchema(schemaUrl: URL, typeName: String) {
   // be done in a different mechanism, not blocking the thread at class construction time
   // and throwing exceptions.
   private val files: Seq[FileDescriptorProto] =
-    Using.resource(schemaUrl.openStream)(FileDescriptorSet.parseFrom).getFileList.asScala
+    Using.resource(schemaUrl.openStream)(FileDescriptorSet.parseFrom).getFileList.asScala.toVector
   private val fileMap = files.map(f => f.getName -> f).toMap
   private val fileDescriptorDeps: mutable.Map[FileDescriptorProto, FileDescriptor] =
     mutable.Map.empty[FileDescriptorProto, FileDescriptor]

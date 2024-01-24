@@ -8,8 +8,36 @@ class CypherErrors extends CypherHarness("cypher-errors") {
     assertStaticQueryFailure(
       "RETRN 1",
       CypherException.Syntax(
-        position = Some(Position(1, 4, 3, SourceText("RETRN 1"))),
-        wrapping = "Invalid input 'R': expected 'u/U' (line 1, column 4 (offset: 3))"
+        position = Some(Position(1, 1, 0, SourceText("RETRN 1"))),
+        wrapping = """Invalid input 'RETRN': expected
+            |  "ALTER"
+            |  "CALL"
+            |  "CREATE"
+            |  "DEALLOCATE"
+            |  "DELETE"
+            |  "DENY"
+            |  "DETACH"
+            |  "DROP"
+            |  "ENABLE"
+            |  "FOREACH"
+            |  "GRANT"
+            |  "LOAD"
+            |  "MATCH"
+            |  "MERGE"
+            |  "OPTIONAL"
+            |  "REMOVE"
+            |  "RENAME"
+            |  "RETURN"
+            |  "REVOKE"
+            |  "SET"
+            |  "SHOW"
+            |  "START"
+            |  "STOP"
+            |  "TERMINATE"
+            |  "UNWIND"
+            |  "USE"
+            |  "USING"
+            |  "WITH" (line 1, column 1 (offset: 0))""".stripMargin
       )
     )
   }
@@ -34,21 +62,17 @@ class CypherErrors extends CypherHarness("cypher-errors") {
 
   describe("Compile") {
     val query1 = "FOREACH (p IN [1,3,7] | UNWIND range(9,78) AS N)"
-    assertStaticQueryFailure(
+    testQuery(
       query1,
-      CypherException.Compile(
-        wrapping = "Invalid use of UNWIND inside FOREACH",
-        position = Some(
-          Position(1, 25, 24, SourceText(query1))
-        )
-      )
+      Vector.empty[String],
+      Vector()
     )
 
     val query2 = "CREATE (n)-[*]-(m)"
     assertStaticQueryFailure(
       query2,
       CypherException.Compile(
-        wrapping = "Variable length relationships cannot be used in CREATE",
+        wrapping = "Cannot create undirected relationship",
         position = Some(
           Position(1, 11, 10, SourceText(query2))
         )
@@ -62,9 +86,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       assertStaticQueryFailure(
         query1,
         CypherException.Compile(
-          wrapping = "Unsupported path expression",
+          wrapping = "Unknown variable `p`",
           position = Some(
-            Position(1, 7, 6, SourceText(query1))
+            Position(1, 24, 23, SourceText(query1))
           )
         )
       )
@@ -73,9 +97,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       assertStaticQueryFailure(
         query2,
         CypherException.Compile(
-          wrapping = "Unsupported path expression",
+          wrapping = "Unknown variable `p`",
           position = Some(
-            Position(1, 7, 6, SourceText(query2))
+            Position(1, 66, 65, SourceText(query2))
           )
         )
       )

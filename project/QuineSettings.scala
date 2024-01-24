@@ -8,17 +8,7 @@ import scala.util.Try
 
 object QuineSettings {
 
-  val scalaV212 = "2.12.18"
-  val scalaV213 = "2.13.12"
-  val `scala 2.12 to 2.13`: Seq[Setting[_]] = Seq(
-    scalaVersion := scalaV212,
-    crossScalaVersions := Seq(scalaV212, scalaV213)
-  )
-
-  val `scala 2.12`: Seq[Setting[_]] = Seq(
-    scalaVersion := scalaV212,
-    crossScalaVersions := Seq(scalaV212)
-  )
+  val scalaV = "2.13.12"
 
   val nodeLegacySslArg = "--openssl-legacy-provider"
   // See if node accepts this arg. Give it an expression to evaluate {} so it returns instead of entering the repl
@@ -42,28 +32,15 @@ object QuineSettings {
       "11"
     ),
     autoAPIMappings := true,
-    scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, 12)) =>
-        Seq(
-          "-Xlint:-unused,-missing-interpolator,_",
-          "-Ywarn-dead-code",
-          "-Ywarn-numeric-widen",
-          "-Ywarn-value-discard",
-          "-Ywarn-unused:privates,locals,patvars,imports",
-          "-Ypartial-unification"
-        ) ++ (if (insideCI.value) Seq("-Xfatal-warnings") else Seq.empty)
-      case Some((2, 13)) =>
-        Seq(
-          "-Xlint:-byname-implicit,-unused,-missing-interpolator,_",
-          "-Wdead-code",
-          "-Wnumeric-widen",
-          "-Wvalue-discard",
-          // "-Wunused:imports", // See https://github.com/scala/scala-collection-compat/issues/240
-          "-Wunused:privates,locals,patvars"
-        ) ++ (if (insideCI.value) Seq("-Werror") else Seq.empty)
-      case _ =>
-        Seq.empty
-    }),
+    scalacOptions ++=
+      Seq(
+        "-Xlint:-byname-implicit,-unused,-missing-interpolator,_",
+        "-Wdead-code",
+        "-Wnumeric-widen",
+        "-Wvalue-discard",
+        // "-Wunused:imports", // See https://github.com/scala/scala-collection-compat/issues/240
+        "-Wunused:privates,locals,patvars"
+      ) ++ (if (insideCI.value) Seq("-Werror") else Seq.empty),
     javacOptions ++= Seq("--release", "11"),
     // Circe is binary compatible between 0.13 and 0.14
     // Circe projects from other orgs sometimes pull in older versions of circe (0.13):
@@ -105,19 +82,7 @@ object QuineSettings {
       "react" -> Dependencies.reactV,
       "react-dom" -> Dependencies.reactV
     ),
-    // Needed for the `@react` macro annotation in `slinky`
-    libraryDependencies ++= (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, 12)) =>
-        Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
-      case _ =>
-        Nil
-    }),
-    scalacOptions ++= (CrossVersion.partialVersion(scalaVersion.value) match {
-      case Some((2, 12)) =>
-        Nil
-      case _ =>
-        Seq("-Ymacro-annotations")
-    }),
+    scalacOptions ++= Seq("-Ymacro-annotations"),
     doc := file("phony-no-doc-file"), // Avoid <https://github.com/shadaj/slinky/issues/380>
     packageDoc / publishArtifact := false // Avoid <https://github.com/shadaj/slinky/issues/380>
   )

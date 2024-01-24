@@ -176,8 +176,8 @@ final private[thatdot] case class IngestMetrics(
 trait IngestRoutesImpl
     extends IngestRoutes
     with endpoints4s.pekkohttp.server.Endpoints
-    with exts.circe.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints {
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
 
   implicit def timeout: Timeout
   implicit def materializer: Materializer
@@ -283,7 +283,7 @@ trait IngestRoutesImpl
   private val ingestStreamListRoute = ingestStreamList.implementedByAsync { _ =>
     Future
       .traverse(
-        serviceState.getIngestStreams(): TraversableOnce[(String, IngestStreamWithControl[IngestStreamConfiguration])]
+        serviceState.getIngestStreams().toList
       ) { case (name, ingest) =>
         stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
       }(implicitly, graph.shardDispatcherEC)

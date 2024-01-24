@@ -52,7 +52,7 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
-    - run: sbt -v 'scala212 test' quine/assembly quine-docs/makeSite 'scalafixAll --check'
+    - run: sbt -v 'scala213 test' quine/assembly quine-docs/makeSite 'scalafixAll --check'
 
   scalafmt:
     name: Scalafmt

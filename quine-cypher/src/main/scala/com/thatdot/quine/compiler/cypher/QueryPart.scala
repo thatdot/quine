@@ -1,7 +1,8 @@
 package com.thatdot.quine.compiler.cypher
 
 import cats.implicits._
-import org.opencypher.v9_0.expressions.{LogicalVariable, functions}
+import org.opencypher.v9_0.expressions.{LogicalVariable, Pattern, functions}
+import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 import org.opencypher.v9_0.{ast, expressions, util}
 
 import com.thatdot.quine.graph.cypher
@@ -18,13 +19,14 @@ object QueryPart {
     */
   def compile(
     queryPart: ast.QueryPart,
+    avng: AnonymousVariableNameGenerator,
     isEntireQuery: Boolean = true,
     isSubQuery: Boolean = false
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     queryPart match {
       case sq: ast.SingleQuery =>
         if (!isSubQuery) {
-          compileClauses(sq.clauses, isEntireQuery)
+          compileClauses(sq.clauses, avng, isEntireQuery)
         } else {
           for {
             // Prepare for the subquery to run by setting the imported columns
@@ -39,7 +41,7 @@ object QueryPart {
             () <- importedVariables.traverse_(CompM.addColumn)
 
             // Compile the subquery
-            subQuery <- compileClauses(sq.clausesExceptImportWith, isEntireQuery)
+            subQuery <- compileClauses(sq.clausesExceptLeadingImportWith, avng, isEntireQuery)
 
             // Update the columns by appending back all of the initial columns
             () <- initialColumns.traverse_(CompM.addColumn)
@@ -52,13 +54,13 @@ object QueryPart {
             .flatMap(_.traverse((col: Symbol) => CompM.getVariable(col, union).map(col -> _)))
           compiledPart <- CompM.withIsolatedContext {
             for {
-              p <- compile(union.part, false, isSubQuery)
+              p <- compile(union.part, avng, false, isSubQuery)
               mapping <- compileUnionMapping(isPart = true, union.unionMappings, union.part)
             } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, p)
           }
           compiledSingle <- CompM.withIsolatedContext {
             for {
-              q <- compile(union.query, false, isSubQuery)
+              q <- compile(union.query, avng, false, isSubQuery)
               mapping <- compileUnionMapping(isPart = false, union.unionMappings, union.query)
             } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, q)
           }
@@ -103,8 +105,10 @@ object QueryPart {
   }
 
   private def compileMatchClause(
-    matchClause: ast.Match
+    matchClause: ast.Match,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
+
     // TODO: use `hints`
     val ast.Match(isOptional, pattern, hints @ _, whereOpt) = matchClause
 
@@ -112,13 +116,13 @@ object QueryPart {
       case None =>
         for {
           graph <- Graph.fromPattern(pattern)
-          query <- graph.synthesizeFetch(WithFreeVariables.empty)
+          query <- graph.synthesizeFetch(WithFreeVariables.empty, avng)
         } yield query
       case Some(ast.Where(expr)) =>
         for {
           // Separate `WHERE` into ID constraints and everything else
           (anchoredIds, other) <- CompM.getContextParametersAndSource.map { ctx =>
-            partitionWhereConstraints(expr)(ctx._1, ctx._2, ctx._3)
+            partitionWhereConstraints(expr, avng)(ctx._1, ctx._2, ctx._3)
           }
           _ <- CompM.addNewAnchors(anchoredIds)
           cols <- CompM.getColumns.map(_.toSet)
@@ -133,12 +137,12 @@ object QueryPart {
 
           // Filter expressions that can be applied before the match even runs :O
           beforeFilter: WithQuery[cypher.Expr] <- filters
-            .traverse[WithQueryT[CompM, *], cypher.Expr](Expression.compile(_))
-            .map(constraints => cypher.Expr.And(constraints.toVector))
+            .traverse[WithQueryT[CompM, *], cypher.Expr](e => Expression.compile(e, avng))
+            .map[cypher.Expr.And](constraints => cypher.Expr.And(constraints.toVector))
             .runWithQuery
 
           graph <- Graph.fromPattern(pattern)
-          fetchPattern <- graph.synthesizeFetch(constraints)
+          fetchPattern <- graph.synthesizeFetch(constraints, avng)
           _ <- CompM.clearAnchors
         } yield beforeFilter.toQuery(cypher.Query.filter(_, fetchPattern))
     }
@@ -150,7 +154,10 @@ object QueryPart {
     }
   }
 
-  private def compileLoadCSV(l: ast.LoadCSV): CompM[cypher.Query[cypher.Location.Anywhere]] = {
+  private def compileLoadCSV(
+    l: ast.LoadCSV,
+    avng: AnonymousVariableNameGenerator
+  ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.LoadCSV(withHeaders, urlString, variable, fieldTerm) = l
     val fieldTermChar: Char = fieldTerm match {
       case None => ','
@@ -158,7 +165,7 @@ object QueryPart {
     }
 
     for {
-      urlWc <- Expression.compileM(urlString)
+      urlWc <- Expression.compileM(urlString, avng)
       varExpr <- CompM.addColumn(variable)
     } yield urlWc.toQuery { (url: cypher.Expr) =>
       cypher.Query.LoadCSV(withHeaders, url, varExpr.id, fieldTermChar)
@@ -166,14 +173,36 @@ object QueryPart {
   }
 
   private def compileSetClause(
-    setClause: ast.SetClause
+    setClause: ast.SetClause,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     setClause.items.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] {
+        case ast.SetPropertyItems(expMap, items) =>
+          for {
+            nodeWc <- Expression.compileM(expMap, avng)
+            propsWC <- items.toList.traverse { p =>
+              Expression.compileM(p._2, avng).map(ce => p._1 -> ce)
+            }
+          } yield nodeWc.toQuery { (nodeExpr: cypher.Expr) =>
+            cypher.Query.ArgumentEntry(
+              node = nodeExpr,
+              andThen = propsWC
+                .traverse { p =>
+                  p._2.map(v => p._1.name -> v)
+                }
+                .toNodeQuery { (props: List[(String, cypher.Expr)]) =>
+                  cypher.Query.SetProperties(
+                    properties = cypher.Expr.MapLiteral(props.toMap),
+                    includeExisting = false
+                  )
+                }
+            )
+          }
         case ast.SetPropertyItem(prop, expression) =>
           for {
-            nodeWC <- Expression.compileM(prop.map)
-            valueWC <- Expression.compileM(expression)
+            nodeWC <- Expression.compileM(prop.map, avng)
+            valueWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
@@ -188,8 +217,8 @@ object QueryPart {
 
         case ast.SetExactPropertiesFromMapItem(variable, expression) =>
           for {
-            nodeWC <- Expression.compileM(variable)
-            propsWC <- Expression.compileM(expression)
+            nodeWC <- Expression.compileM(variable, avng)
+            propsWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
@@ -204,8 +233,8 @@ object QueryPart {
 
         case ast.SetIncludingPropertiesFromMapItem(variable, expression) =>
           for {
-            nodeWC <- Expression.compileM(variable)
-            propsWC <- Expression.compileM(expression)
+            nodeWC <- Expression.compileM(variable, avng)
+            propsWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
@@ -220,12 +249,12 @@ object QueryPart {
 
         case ast.SetLabelItem(variable, labels) =>
           for {
-            nodeWC <- Expression.compileM(variable)
+            nodeWC <- Expression.compileM(variable, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = cypher.Query.SetLabels(
-                labels.map(lbl => Symbol(lbl.name)),
+                labels.map(lbl => Symbol(lbl.name)).toVector,
                 add = true
               )
             )
@@ -238,13 +267,14 @@ object QueryPart {
       )
 
   private def compileRemoveClause(
-    removeClause: ast.Remove
+    removeClause: ast.Remove,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     removeClause.items.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] {
         case ast.RemovePropertyItem(prop) =>
           Expression
-            .compileM(prop.map)
+            .compileM(prop.map, avng)
             .map(_.toQuery { (nodeExpr: cypher.Expr) =>
               cypher.Query.ArgumentEntry(
                 node = nodeExpr,
@@ -257,12 +287,12 @@ object QueryPart {
 
         case ast.RemoveLabelItem(variable, labels) =>
           Expression
-            .compileM(variable)
+            .compileM(variable, avng)
             .map(_.toQuery { (nodeExpr: cypher.Expr) =>
               cypher.Query.ArgumentEntry(
                 node = nodeExpr,
                 andThen = cypher.Query.SetLabels(
-                  labels.map(lbl => Symbol(lbl.name)),
+                  labels.map(lbl => Symbol(lbl.name)).toVector,
                   add = false
                 )
               )
@@ -276,13 +306,14 @@ object QueryPart {
 
   // TODO: this won't delete paths (and it should)
   private def compileDeleteClause(
-    deleteClause: ast.Delete
+    deleteClause: ast.Delete,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.Delete(exprs, forced) = deleteClause
     exprs.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] { expr =>
         Expression
-          .compileM(expr)
+          .compileM(expr, avng)
           .map(_.toQuery { (targetExpr: cypher.Expr) =>
             cypher.Query.Delete(targetExpr, detach = forced)
           })
@@ -295,23 +326,25 @@ object QueryPart {
   }
 
   private def compileCreateClause(
-    createClause: ast.Create
+    createClause: ast.Create,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
-    Graph.fromPattern(createClause.pattern).flatMap(_.synthesizeCreate)
+    Graph.fromPattern(createClause.pattern).flatMap(_.synthesizeCreate(avng))
 
   private def compileMergeClause(
-    mergeClause: ast.Merge
+    mergeClause: ast.Merge,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     // TODO: is a non-empty where clause here ever possible?
     val ast.Merge(pattern, mergeAction, whereCls @ _) = mergeClause
 
     // Match and then run all the "on match" clauses
     def tryFirst(graph: Graph) = for {
-      findQuery <- graph.synthesizeFetch(WithFreeVariables.empty)
+      findQuery <- graph.synthesizeFetch(WithFreeVariables.empty, avng)
       matchActionsQuery <- mergeAction.view
         .collect { case ast.OnMatch(c) => c }
         .toVector
-        .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](compileSetClause(_))
+        .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](sc => compileSetClause(sc, avng))
         .map {
           _.foldRight[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit())(
             cypher.Query.apply(_, _)
@@ -321,11 +354,11 @@ object QueryPart {
 
     // Create and then fun all the "on create" clauses
     def trySecond(graph: Graph) = for {
-      createQuery <- graph.synthesizeCreate
+      createQuery <- graph.synthesizeCreate(avng)
       createActionsQuery <- mergeAction.view
         .collect { case ast.OnCreate(c) => c }
         .toVector
-        .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](compileSetClause(_))
+        .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](sc => compileSetClause(sc, avng))
         .map {
           _.foldRight[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit())(
             cypher.Query.apply(_, _)
@@ -338,7 +371,7 @@ object QueryPart {
      * or else `CREATE` if `MATCH` found nothing
      */
     for {
-      graph <- Graph.fromPattern(pattern)
+      graph <- Graph.fromPattern(Pattern(List(pattern))(pattern.position))
       tryFirstQuery <- CompM.withIsolatedContext(tryFirst(graph))
       trySecondQuery <- trySecond(graph)
 
@@ -360,11 +393,12 @@ object QueryPart {
   }
 
   private def compileUnwind(
-    unwindClause: ast.Unwind
+    unwindClause: ast.Unwind,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.Unwind(expr, asVar) = unwindClause
     for {
-      listWc <- Expression.compileM(expr)
+      listWc <- Expression.compileM(expr, avng)
       asVarExpr <- CompM.addColumn(asVar)
     } yield listWc.toQuery { (list: cypher.Expr) =>
       cypher.Query.Unwind(list, asVarExpr.id, cypher.Query.Unit())
@@ -372,16 +406,17 @@ object QueryPart {
   }
 
   private def compileForeach(
-    foreachClause: ast.Foreach
+    foreachClause: ast.Foreach,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     // TODO: can we get away with this?
     val ast.Foreach(asVar, expr, updates) = foreachClause
     for {
-      listExpr <- Expression.compileM(expr)
+      listExpr <- Expression.compileM(expr, avng)
       (asVarExpr, foreachBody) <- CompM.withIsolatedContext {
         for {
           asVarExpr <- CompM.addColumn(asVar)
-          foreachBody <- compileClauses(updates, false)
+          foreachBody <- compileClauses(updates.toVector, avng, false)
         } yield (asVarExpr, foreachBody)
       }
     } yield listExpr.toQuery { (list: cypher.Expr) =>
@@ -405,10 +440,11 @@ object QueryPart {
     querySoFar: Query[cypher.Location.Anywhere],
     returnItems: ast.ReturnItems,
     orderByOpt: Option[ast.OrderBy],
-    whereOpt: Option[ast.Where]
+    whereOpt: Option[ast.Where],
+    avng: AnonymousVariableNameGenerator
   ): CompM[Query[Location.Anywhere]] = {
     for {
-      compiledReturnItems <- compileReturnItems(returnItems)
+      compiledReturnItems <- compileReturnItems(returnItems, avng)
       WithQuery((groupers, aggregators), setupQuery) = compiledReturnItems
       grouped <-
         if (aggregators.isEmpty) {
@@ -430,7 +466,7 @@ object QueryPart {
             filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
               case None => CompM.pure(adjusted)
               case Some(ast.Where(expr)) =>
-                Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, adjusted)))
+                Expression.compileM(expr, avng).map(_.toQuery(cypher.Query.filter(_, adjusted)))
             }
 
             // ORDER BY
@@ -439,8 +475,8 @@ object QueryPart {
               case Some(ast.OrderBy(sortItems)) =>
                 sortItems.toVector
                   .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
-                    case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
-                    case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
+                    case ast.AscSortItem(e) => Expression.compileM(e, avng).map(_.map(_ -> true))
+                    case ast.DescSortItem(e) => Expression.compileM(e, avng).map(_.map(_ -> false))
                   }
                   .map(_.sequence)
                   .map { case WithQuery(sortBy, setupSort) =>
@@ -497,7 +533,7 @@ object QueryPart {
             filtered: cypher.Query[cypher.Location.Anywhere] <- whereOpt match {
               case None => CompM.pure(aggregated)
               case Some(ast.Where(expr)) =>
-                Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, aggregated)))
+                Expression.compileM(expr, avng).map(_.toQuery(cypher.Query.filter(_, aggregated)))
             }
 
             // ORDER BY
@@ -506,8 +542,8 @@ object QueryPart {
               case Some(ast.OrderBy(sortItems)) =>
                 sortItems.toVector
                   .traverse[CompM, WithQuery[(cypher.Expr, Boolean)]] {
-                    case ast.AscSortItem(e) => Expression.compileM(e).map(_.map(_ -> true))
-                    case ast.DescSortItem(e) => Expression.compileM(e).map(_.map(_ -> false))
+                    case ast.AscSortItem(e) => Expression.compileM(e, avng).map(_.map(_ -> true))
+                    case ast.DescSortItem(e) => Expression.compileM(e, avng).map(_.map(_ -> false))
                   }
                   .map(_.sequence.toQuery(cypher.Query.Sort(_, filtered)))
             }
@@ -522,7 +558,8 @@ object QueryPart {
     * @return items by which to group and aggregations for these groups
     */
   private def compileReturnItems(
-    items: ast.ReturnItems
+    items: ast.ReturnItems,
+    avng: AnonymousVariableNameGenerator
   ): CompM[WithQuery[(Vector[(Symbol, cypher.Expr)], Vector[(Symbol, cypher.Aggregator)])]] =
     items.items.toVector
       .traverse[WithQueryT[CompM, *], Either[(Symbol, cypher.Expr), (Symbol, cypher.Aggregator)]] {
@@ -543,50 +580,50 @@ object QueryPart {
             case expressions.IsAggregate(fi: expressions.FunctionInvocation) =>
               fi.function match {
                 case expressions.functions.Count =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.count(fi.distinct, arg))
                   }
                 case expressions.functions.Collect =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.collect(fi.distinct, arg))
                   }
                 case expressions.functions.Sum =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.sum(fi.distinct, arg))
                   }
                 case expressions.functions.Avg =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.avg(fi.distinct, arg))
                   }
                 case expressions.functions.Min =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.min(arg))
                   }
                 case expressions.functions.Max =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.max(arg))
                   }
 
                 case expressions.functions.StdDev =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.StDev(arg, partialSampling = true))
                   }
 
                 case expressions.functions.StdDevP =>
-                  Expression.compile(fi.args(0)).map { arg =>
+                  Expression.compile(fi.args(0), avng).map { arg =>
                     Right(retSym -> cypher.Aggregator.StDev(arg, partialSampling = false))
                   }
 
                 case expressions.functions.PercentileCont =>
                   for {
-                    expr <- Expression.compile(fi.args(0))
-                    perc <- Expression.compile(fi.args(1))
+                    expr <- Expression.compile(fi.args(0), avng)
+                    perc <- Expression.compile(fi.args(1), avng)
                   } yield Right(retSym -> cypher.Aggregator.Percentile(expr, perc, continuous = true))
 
                 case expressions.functions.PercentileDisc =>
                   for {
-                    expr <- Expression.compile(fi.args(0))
-                    perc <- Expression.compile(fi.args(1))
+                    expr <- Expression.compile(fi.args(0), avng)
+                    perc <- Expression.compile(fi.args(1), avng)
                   } yield Right(retSym -> cypher.Aggregator.Percentile(expr, perc, continuous = false))
 
                 case func =>
@@ -599,7 +636,7 @@ object QueryPart {
               }
 
             case _ =>
-              Expression.compile(ret.expression).map { arg =>
+              Expression.compile(ret.expression, avng).map { arg =>
                 Left(retSym -> arg)
               }
           }
@@ -615,39 +652,40 @@ object QueryPart {
     */
   private def compileClauses(
     clauses: Seq[ast.Clause],
+    avng: AnonymousVariableNameGenerator,
     isEntireQuery: Boolean
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = clauses.toVector
     .foldLeftM[CompM, cypher.Query[cypher.Location.Anywhere]](cypher.Query.unit) {
       case (accQuery, m: ast.Match) =>
-        compileMatchClause(m).map(cypher.Query.apply(accQuery, _))
+        compileMatchClause(m, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, c: ast.Create) =>
-        compileCreateClause(c).map(cypher.Query.apply(accQuery, _))
+        compileCreateClause(c, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, m: ast.Merge) =>
-        compileMergeClause(m).map(cypher.Query.apply(accQuery, _))
+        compileMergeClause(m, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, s: ast.SetClause) =>
-        compileSetClause(s).map(cypher.Query.apply(accQuery, _))
+        compileSetClause(s, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, r: ast.Remove) =>
-        compileRemoveClause(r).map(cypher.Query.apply(accQuery, _))
+        compileRemoveClause(r, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, d: ast.Delete) =>
-        compileDeleteClause(d).map(cypher.Query.apply(accQuery, _))
+        compileDeleteClause(d, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, l: ast.LoadCSV) =>
-        compileLoadCSV(l).map(cypher.Query.apply(accQuery, _))
+        compileLoadCSV(l, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, u: ast.Unwind) =>
-        compileUnwind(u).map(cypher.Query.apply(accQuery, _))
+        compileUnwind(u, avng).map(cypher.Query.apply(accQuery, _))
 
       case (accQuery, f: ast.Foreach) =>
-        compileForeach(f).map(cypher.Query.apply(accQuery, _))
+        compileForeach(f, avng).map(cypher.Query.apply(accQuery, _))
 
-      case (accQuery, ast.SubQuery(part)) =>
+      case (accQuery, ast.SubqueryCall(part, _)) =>
         for {
-          subQuery <- compile(part, isEntireQuery = false, isSubQuery = true)
+          subQuery <- compile(part, avng, isEntireQuery = false, isSubQuery = true)
         } yield cypher.Query.apply(accQuery, subQuery)
 
       case (accQuery, QuineProcedureCall(proc, unresolvedCall)) =>
@@ -701,7 +739,7 @@ object QueryPart {
           args: WithQuery[Vector[cypher.Expr]] <- unresolvedCall.declaredArguments match {
             case Some(args) =>
               args.toVector
-                .traverse(Expression.compileM(_))
+                .traverse(e => Expression.compileM(e, avng))
                 .map(_.sequence)
 
             case None if callIsWholeQuery =>
@@ -732,7 +770,7 @@ object QueryPart {
             case None => CompM.pure(callQuery)
             case Some(ast.Where(expr)) =>
               // TODO: SemiApply for path predicates in top-level conjunction
-              Expression.compileM(expr).map(_.toQuery(cypher.Query.filter(_, callQuery)))
+              Expression.compileM(expr, avng).map(_.toQuery(cypher.Query.filter(_, callQuery)))
           }
         } yield filteredCall
 
@@ -758,7 +796,13 @@ object QueryPart {
           ) if !clause.isReturn =>
         for {
           // Handle aggregations, ORDER BY, and grouping, if any
-          grouped: Query[Location.Anywhere] <- compileSortFilterAndAggregate(accQuery, items, orderByOpt, whereOpt)
+          grouped: Query[Location.Anywhere] <- compileSortFilterAndAggregate(
+            accQuery,
+            items,
+            orderByOpt,
+            whereOpt,
+            avng
+          )
 
           // DISTINCT
           deduped <- isDistinct match {
@@ -773,14 +817,14 @@ object QueryPart {
           skipped <- skipOpt match {
             case None => CompM.pure[cypher.Query[cypher.Location.Anywhere]](deduped)
             case Some(ast.Skip(expr)) =>
-              Expression.compileM(expr).map(_.toQuery(cypher.Query.Skip(_, deduped)))
+              Expression.compileM(expr, avng).map(_.toQuery(cypher.Query.Skip(_, deduped)))
           }
 
           // LIMIT
           limited <- limitOpt match {
             case None => CompM.pure[cypher.Query[cypher.Location.Anywhere]](skipped)
             case Some(ast.Limit(expr)) =>
-              Expression.compileM(expr).map(_.toQuery(cypher.Query.Limit(_, skipped)))
+              Expression.compileM(expr, avng).map(_.toQuery(cypher.Query.Limit(_, skipped)))
           }
         } yield limited
       case (
@@ -791,10 +835,11 @@ object QueryPart {
               orderByOpt,
               skipOpt,
               limitOpt,
-              excludedNames @ _
+              excludedNames @ _,
+              _
             )
           ) =>
-        compileReturnItems(items).flatMap {
+        compileReturnItems(items, avng).flatMap {
           case WithQuery((groupers, aggregators), setupQuery) if aggregators.isEmpty =>
             /** non-aggregating RETURN: We can compile directly to a single fused [[cypher.Query.Return]]
               */
@@ -817,8 +862,8 @@ object QueryPart {
                 case Some(ast.OrderBy(sortItems)) =>
                   sortItems.toVector
                     .traverse[WithQueryT[CompM, *], (cypher.Expr, Boolean)] {
-                      case ast.AscSortItem(e) => Expression.compile(e).map(_ -> true)
-                      case ast.DescSortItem(e) => Expression.compile(e).map(_ -> false)
+                      case ast.AscSortItem(e) => Expression.compile(e, avng).map(_ -> true)
+                      case ast.DescSortItem(e) => Expression.compile(e, avng).map(_ -> false)
                     }
                     .map(Some(_))
                     .runWithQuery
@@ -837,14 +882,14 @@ object QueryPart {
               dropWQ: WithQuery[Option[cypher.Query.Skip.Drop]] <- skipOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Skip(expr)) =>
-                  Expression.compile(expr).map(Some(_)).runWithQuery
+                  Expression.compile(expr, avng).map(Some(_)).runWithQuery
               }
               WithQuery(dropRule, dropQueryPart) = dropWQ
               // compile the LIMIT rule and any query necessary to set up an environment to run the rule
               limitWQ: WithQuery[Option[cypher.Query.Limit.Take]] <- limitOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Limit(expr)) =>
-                  Expression.compile(expr).map(Some(_)).runWithQuery
+                  Expression.compile(expr, avng).map(Some(_)).runWithQuery
               }
               WithQuery(takeRule, takeQueryPart) = limitWQ
               // unprojected query (plus setup for ordering and (implicitly) deduplication)
@@ -895,7 +940,8 @@ object QueryPart {
                 accQuery,
                 items,
                 orderByOpt,
-                whereOpt = None
+                whereOpt = None,
+                avng
               )
               dedupeRule: Option[cypher.Query.Distinct.DistinctBy] <- isDistinct match {
                 case false => CompM.pure(None)
@@ -909,14 +955,14 @@ object QueryPart {
               dropWQ: WithQuery[Option[cypher.Query.Skip.Drop]] <- skipOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Skip(expr)) =>
-                  Expression.compile(expr).map(Some(_)).runWithQuery
+                  Expression.compile(expr, avng).map(Some(_)).runWithQuery
               }
               WithQuery(dropRule, dropQueryPart) = dropWQ
               // compile the LIMIT rule and any query necessary to set up an environment to run the rule
               limitWQ: WithQuery[Option[cypher.Query.Limit.Take]] <- limitOpt match {
                 case None => CompM.pure(WithQuery(None))
                 case Some(ast.Limit(expr)) =>
-                  Expression.compile(expr).map(Some(_)).runWithQuery
+                  Expression.compile(expr, avng).map(Some(_)).runWithQuery
               }
               WithQuery(takeRule, takeQueryPart) = limitWQ
               returnQueryWithDedupe = Query.Return(
@@ -984,7 +1030,8 @@ object QueryPart {
     * @return node ID constraints, other filters
     */
   private def partitionWhereConstraints(
-    whereExpr: expressions.Expression
+    whereExpr: expressions.Expression,
+    avng: AnonymousVariableNameGenerator
   )(implicit
     scopeInfo: QueryScopeInfo,
     paramIdx: ParametersIndex,
@@ -1003,9 +1050,10 @@ object QueryPart {
     def visitPossibleConstraint(
       v: LogicalVariable,
       arg: expressions.Expression,
-      fullExpr: expressions.Expression
+      fullExpr: expressions.Expression,
+      avng: AnonymousVariableNameGenerator
     ): Unit =
-      Expression.compileM(arg).run(paramIdx, source, scopeInfo) match {
+      Expression.compileM(arg, avng).run(paramIdx, source, scopeInfo) match {
         case Right(WithQuery(expr, cypher.Query.Unit(_))) => constraints += (logicalVariable2Symbol(v) -> expr)
         case _ => conjuncts += fullExpr
       }
@@ -1022,21 +1070,21 @@ object QueryPart {
     }
 
     // Collect all constraints and other filters
-    def visit(e: expressions.Expression): Unit = e match {
+    def visit(e: expressions.Expression, avng: AnonymousVariableNameGenerator): Unit = e match {
       case expressions.And(lhs, rhs) =>
-        visit(lhs)
-        visit(rhs)
+        visit(lhs, avng)
+        visit(rhs, avng)
       case expressions.Ands(conjs) =>
-        conjs.foreach(visit)
+        conjs.foreach(conj => visit(conj, avng))
 
       case EqualLike(IdFunc(variable), arg) =>
-        visitPossibleConstraint(variable, arg, e)
+        visitPossibleConstraint(variable, arg, e, avng)
       case EqualLike(arg, IdFunc(variable)) =>
-        visitPossibleConstraint(variable, arg, e)
+        visitPossibleConstraint(variable, arg, e, avng)
 
       case other => conjuncts += other
     }
-    visit(whereExpr)
+    visit(whereExpr, avng)
 
     (constraints.result(), conjuncts.result())
   }

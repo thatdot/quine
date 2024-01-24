@@ -144,7 +144,7 @@ object CypherException {
     wrapping: String,
     position: Option[Position]
   ) extends CypherException {
-    override def getMessage(): String = wrapping
+    override def getMessage(): String = s"$wrapping @ $position"
   }
 
   /** Compile-time syntax exception

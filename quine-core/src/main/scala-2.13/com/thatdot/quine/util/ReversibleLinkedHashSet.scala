@@ -1,9 +1,10 @@
 package com.thatdot.quine.util
 
-import annotation.nowarn
 import scala.collection.generic.DefaultSerializable
-import scala.collection.{Iterator, IterableFactory, IterableFactoryDefaults, StrictOptimizedIterableOps}
-import scala.collection.mutable.{LinkedHashSet, SetOps, Growable, GrowableBuilder}
+import scala.collection.mutable.{Growable, GrowableBuilder, LinkedHashSet, SetOps}
+import scala.collection.{IterableFactory, IterableFactoryDefaults, Iterator, StrictOptimizedIterableOps}
+
+import annotation.nowarn
 
 /** Subclass LinkedHashSet to be able to iterate in reverse order.
   * Subclassing is necessary, as `lastEntry` is marked protected.
@@ -25,7 +26,7 @@ object ReversibleLinkedHashSet extends IterableFactory[ReversibleLinkedHashSet] 
 
   override def empty[A]: ReversibleLinkedHashSet[A] = new ReversibleLinkedHashSet[A]
 
-  def from[E](it: collection.IterableOnce[E]) =
+  def from[E](it: collection.IterableOnce[E]): ReversibleLinkedHashSet[E] =
     it match {
       case rlhs: ReversibleLinkedHashSet[E] => rlhs
       case _ => Growable.from(empty[E], it)

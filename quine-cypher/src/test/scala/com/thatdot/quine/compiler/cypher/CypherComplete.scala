@@ -383,12 +383,13 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       testQuery(
         "UNWIND [1,1,2] AS x UNWIND [4,5,6] AS y RETURN count(x), y",
         expectedColumns = Vector("count(x)", "y"),
-        expectedRows = Seq(
+        expectedRows = Vector(
           Vector(Expr.Integer(3L), Expr.Integer(5L)),
           Vector(Expr.Integer(3L), Expr.Integer(6L)),
           Vector(Expr.Integer(3L), Expr.Integer(4L))
         ),
-        expectedCannotFail = true
+        expectedCannotFail = true,
+        ordered = false
       )
 
       testQuery(
@@ -867,6 +868,7 @@ object MyReverse extends UserDefinedFunction {
     args match {
       case Vector(Expr.Str(str)) => Expr.Str(str.reverse)
       case Vector(Expr.List(lst)) => Expr.List(lst.reverse)
+      case _ => throw new Exception("This should never happen.")
     }
 }
 object MyUnwind extends UserDefinedProcedure {

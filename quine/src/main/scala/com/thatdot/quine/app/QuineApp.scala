@@ -15,6 +15,7 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
+import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
@@ -211,7 +212,13 @@ final class QuineApp(graph: GraphService)
     } yield {
       standingQueryOutputTargets -= queryName
       cancelledSq.map { case (internalSq, startTime, bufferSize) =>
-        makeRegisteredStandingQuery(internalSq, outputs.mapValues(_._1), startTime, bufferSize, graph.metrics)
+        makeRegisteredStandingQuery(
+          internalSq,
+          outputs.view.mapValues(_._1).toMap,
+          startTime,
+          bufferSize,
+          graph.metrics
+        )
       }(graph.system.dispatcher)
     }
 
@@ -283,7 +290,7 @@ final class QuineApp(graph: GraphService)
         (internalSq, startTime, bufferSize) <- graph.listStandingQueries.get(sqId)
       } yield makeRegisteredStandingQuery(
         internalSq,
-        outputs.mapValues(_._1),
+        outputs.view.mapValues(_._1).toMap,
         startTime,
         bufferSize,
         graph.metrics
@@ -425,11 +432,10 @@ final class QuineApp(graph: GraphService)
 
   private def stopAllIngestStreams(): Future[Unit] =
     Future
-      .traverse(ingestStreams: TraversableOnce[(String, IngestStreamWithControl[IngestStreamConfiguration])]) {
-        case (name, ingest) =>
-          IngestMetered.removeIngestMeter(name)
-          ingest.close.unsafeRunAndForget()
-          ingest.terminated.recover { case _ => () }.unsafeToFuture()
+      .traverse(ingestStreams.toList) { case (name, ingest) =>
+        IngestMetered.removeIngestMeter(name)
+        ingest.close.unsafeRunAndForget()
+        ingest.terminated.recover { case _ => Future.successful(Done) }.unsafeToFuture().flatten
       }(implicitly, graph.system.dispatcher)
       .map(_ => ())(graph.system.dispatcher)
 
@@ -466,7 +472,7 @@ final class QuineApp(graph: GraphService)
         IngestStreamsKey,
         thisMemberIdx,
         Map.empty[String, IngestStreamWithStatus],
-        _.mapValues(i => IngestStreamWithStatus(config = i, status = None))
+        _.view.mapValues(i => IngestStreamWithStatus(config = i, status = None)).toMap
       )
 
     {

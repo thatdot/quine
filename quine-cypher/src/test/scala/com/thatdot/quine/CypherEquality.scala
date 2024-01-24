@@ -86,7 +86,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
 
   describe("NaN equality") {
     testExpression("0.0/0.0 = 0.0/0.0", Expr.False, expectedCannotFail = true)
-    testExpression("0.0/0.0 <> 0.0/0.0", Expr.True)
+    testExpression("0.0/0.0 <> 0.0/0.0", Expr.True, expectedCannotFail = true)
     testExpression(
       "0.0/0.0 = nan",
       Expr.False,
@@ -132,7 +132,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
     testExpression("1.0/0.0 < 0.0/0.0", Expr.False, expectedCannotFail = true)
     testExpression("-1.0/0.0 < 0.0/0.0", Expr.False, expectedCannotFail = true)
     testExpression("1.0/0.0 = 0.0/0.0", Expr.False, expectedCannotFail = true)
-    testExpression("1.0/0.0 <> 0.0/0.0", Expr.True)
+    testExpression("1.0/0.0 <> 0.0/0.0", Expr.True, expectedCannotFail = true)
   }
 
   describe("NULL equality") {

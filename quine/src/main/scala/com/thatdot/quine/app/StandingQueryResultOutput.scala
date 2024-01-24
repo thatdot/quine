@@ -563,6 +563,7 @@ object StandingQueryResultOutput extends LazyLogging {
             })
           )
         )
+      case _ => throw new Exception(s"Unexpected value $newResults")
     }
 
     val cancellationBlocks: Vector[Json] = newCancellations match {

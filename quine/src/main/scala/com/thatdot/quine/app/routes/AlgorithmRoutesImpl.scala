@@ -105,6 +105,7 @@ trait AlgorithmRoutesImpl
           case e: CypherException => Invalid(s"Invalid query: ${e.getMessage}")
           case e: IllegalArgumentException => Invalid(e.getMessage)
           case NonFatal(e) => throw e // Return an Internal Server Error
+          case other => throw other // This might expose more than we want
         }
   }
 
@@ -120,6 +121,7 @@ trait AlgorithmRoutesImpl
           case e: CypherException => Invalid(s"Invalid query: ${e.getMessage}")
           case e: IllegalArgumentException => Invalid(e.getMessage)
           case NonFatal(e) => throw e // Return an Internal Server Error
+          case other => throw other // this might expose more than we want
         }
       if (errors.isLeft) Future.successful[Either[Invalid, List[String]]](errors)
       else

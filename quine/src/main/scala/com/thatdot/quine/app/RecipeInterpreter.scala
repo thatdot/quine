@@ -295,7 +295,7 @@ class OnChanged[T] {
 class MultiCancellable(tasks: List[Cancellable]) extends Cancellable {
 
   /** Cancel all the tasks, returning true if any task cancel returns true. */
-  override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel || a)
+  override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)
 
   /** Returns true if all the tasks report isCancelled true. */
   override def isCancelled: Boolean = tasks.forall(_.isCancelled)

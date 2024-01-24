@@ -45,8 +45,8 @@ trait StandingQueryRoutesImpl
     extends StandingQueryRoutes
     with endpoints4s.circe.JsonSchemas
     with endpoints4s.pekkohttp.server.Endpoints
-    with exts.circe.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints {
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
 
   implicit def graph: StandingQueryOpsGraph
   implicit def timeout: Timeout

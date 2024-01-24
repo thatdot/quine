@@ -26,8 +26,8 @@ import com.thatdot.quine.routes._
 trait DebugRoutesImpl
     extends DebugOpsRoutes
     with endpoints4s.pekkohttp.server.Endpoints
-    with exts.circe.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints {
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
 
   private def toEdgeDirection(dir: model.EdgeDirection): EdgeDirection = dir match {
     case model.EdgeDirection.Outgoing => Outgoing
@@ -88,7 +88,7 @@ trait DebugRoutesImpl
   }
 
   private val debugPostRoute = debugOpsPut.implementedByAsync { case (qid: QuineId, node: LiteralNode[QuineId]) =>
-    val propsF = Future.traverse(node.properties: TraversableOnce[(String, Json)]) { case (typ, value) =>
+    val propsF = Future.traverse(node.properties.toList) { case (typ, value) =>
       graph.literalOps.setProp(qid, typ, QuineValue.fromJson(value))
     }(implicitly, graph.nodeDispatcherEC)
     val edgesF = Future.traverse(node.edges) {

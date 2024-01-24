@@ -84,7 +84,7 @@ object GenerateRecipeDirectory extends App {
     }
     builder ++= "@@@\n"
 
-    builder.result
+    builder.result()
   }
 
   /** Render a markdown page associated with a recipe

@@ -151,7 +151,7 @@ abstract class IngestSrcDef(
     control.foreach(c =>
       c.valveHandle
         .flip(desiredSwitchMode)
-        .recover { case _: org.apache.pekko.stream.StreamDetachedException => () }(graph.nodeDispatcherEC)
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(graph.nodeDispatcherEC)
     )(graph.nodeDispatcherEC)
     control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 

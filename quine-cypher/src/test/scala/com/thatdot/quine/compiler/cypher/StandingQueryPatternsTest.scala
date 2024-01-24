@@ -322,12 +322,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Id(NodePatternId(2), false, Symbol("anon_49")),
           ReturnColumn.Id(NodePatternId(1), false, Symbol("id(m)")),
-          ReturnColumn.Id(NodePatternId(0), false, Symbol("anon_40"))
+          ReturnColumn.Id(NodePatternId(0), false, Symbol("anon_0")),
+          ReturnColumn.Id(NodePatternId(2), false, Symbol("anon_1"))
         ),
         Some(
-          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_40")), Expr.Variable(Symbol("anon_49"))))
+          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_0")), Expr.Variable(Symbol("anon_1"))))
         ),
         Seq(Symbol("id(m)") -> Expr.Variable(Symbol("id(m)"))),
         distinct = false
@@ -364,26 +364,26 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
-          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_71")),
-          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_52")),
-          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_90"))
+          ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_0")),
+          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_2")),
+          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_1"))
         ),
         Some(
           Expr.Equal(
             Expr.Property(
               Expr.Function(
                 Func.UserDefined("parseJson"),
-                Vector(Expr.Variable(Symbol("anon_52")))
+                Vector(Expr.Variable(Symbol("anon_1")))
               ),
               Symbol("baz")
             ),
-            Expr.Variable(Symbol("anon_71"))
+            Expr.Variable(Symbol("anon_2"))
           )
         ),
         Seq(
           Symbol("bytes(m.qux)") -> Expr.Function(
             Func.UserDefined("bytes"),
-            Vector(Expr.Variable(Symbol("anon_90")))
+            Vector(Expr.Variable(Symbol("anon_0")))
           )
         ),
         distinct = false
@@ -427,7 +427,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
           NodePatternId(0),
           Set(),
           None,
-          Map('foo -> PropertyValuePattern.Value(QuineValue.Str("bar")))
+          Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
         )
       ),
       List(),
@@ -516,7 +516,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map('foo -> PropertyValuePattern.Value(QuineValue.Str("bar")))
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
           )
         ),
         List(),
@@ -536,7 +536,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(Symbol("Person")),
             None,
-            Map('name -> PropertyValuePattern.Value(QuineValue.Str("Joe")))
+            Map(Symbol("name") -> PropertyValuePattern.Value(QuineValue.Str("Joe")))
           )
         ),
         List(),
@@ -556,24 +556,24 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map('baz -> PropertyValuePattern.Value(QuineValue.Floating(7.0)))
+            Map(Symbol("baz") -> PropertyValuePattern.Value(QuineValue.Floating(7.0)))
           ),
           NodePattern(
             NodePatternId(1),
             Set(),
             None,
-            Map('name -> PropertyValuePattern.AnyValue)
+            Map(Symbol("name") -> PropertyValuePattern.AnyValue)
           ),
           NodePattern(
             NodePatternId(2),
             Set(),
             None,
-            Map('foo -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
           )
         ),
         List(
-          EdgePattern(NodePatternId(0), NodePatternId(1), true, 'bar),
-          EdgePattern(NodePatternId(2), NodePatternId(1), true, 'foo)
+          EdgePattern(NodePatternId(0), NodePatternId(1), true, Symbol("bar")),
+          EdgePattern(NodePatternId(2), NodePatternId(1), true, Symbol("foo"))
         ),
         NodePatternId(1),
         Seq(ReturnColumn.Id(NodePatternId(1), false, Symbol("id(m)"))),
@@ -598,7 +598,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             Set(),
             None,
             Map(
-              'name -> PropertyValuePattern.Value(
+              Symbol("name") -> PropertyValuePattern.Value(
                 QuineValue.List(
                   Vector(
                     QuineValue.Integer(1L),
@@ -612,12 +612,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(2),
             Set(),
             None,
-            Map('foo -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
           )
         ),
         List(
-          EdgePattern(NodePatternId(0), NodePatternId(1), true, 'bar),
-          EdgePattern(NodePatternId(2), NodePatternId(1), true, 'foo)
+          EdgePattern(NodePatternId(0), NodePatternId(1), true, Symbol("bar")),
+          EdgePattern(NodePatternId(2), NodePatternId(1), true, Symbol("foo"))
         ),
         NodePatternId(1),
         Seq(ReturnColumn.Id(NodePatternId(1), false, Symbol("id(m)"))),
@@ -636,17 +636,17 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             Set(),
             None,
             Map(
-              'foo -> PropertyValuePattern.AnyValue
+              Symbol("foo") -> PropertyValuePattern.AnyValue
             )
           )
         ),
         Nil,
         NodePatternId(0),
         Seq(ReturnColumn.Property(NodePatternId(0), Symbol("foo"), Symbol("fooValue"))),
-        Some(Expr.Equal(Expr.Modulo(Expr.Variable('fooValue), Expr.Integer(3L)), Expr.Integer(1L))),
+        Some(Expr.Equal(Expr.Modulo(Expr.Variable(Symbol("fooValue")), Expr.Integer(3L)), Expr.Integer(1L))),
         List(
-          Symbol("fooValue") -> Expr.Variable('fooValue),
-          Symbol("fooValueTripled") -> Expr.Multiply(Expr.Variable('fooValue), Expr.Integer(3L))
+          Symbol("fooValue") -> Expr.Variable(Symbol("fooValue")),
+          Symbol("fooValueTripled") -> Expr.Multiply(Expr.Variable(Symbol("fooValue")), Expr.Integer(3L))
         ),
         distinct = false
       )
@@ -692,7 +692,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       interceptQuery(
         query,
         CypherException.Compile(
-          "Edges in standing query patterns must have exactly one label (got :Foo, :Bar)",
+          "Edges in standing query patterns must have exactly one label (got ColonDisjunction(Leaf(RelTypeName(Foo)),Leaf(RelTypeName(Bar))))",
           Some(Position(1, 10, 9, SourceText(query)))
         )
       )
@@ -728,7 +728,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       interceptQuery(
         query,
         CypherException.Compile(
-          "Variable `m` not defined",
+          "Unknown variable `m`",
           Some(Position(1, 18, 17, SourceText(query)))
         )
       )

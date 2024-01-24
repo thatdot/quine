@@ -1,6 +1,8 @@
 *.db
 *.data
 *.class
+quine-*.jar
+novelty-*.jar
 
 # local settings
 .java-version

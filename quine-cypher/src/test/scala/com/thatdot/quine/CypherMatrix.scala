@@ -44,18 +44,18 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
       |order by id(startNode(r)), id(endNode(r)), type(r)""".stripMargin,
     expectedColumns = Vector("thing"),
     expectedRows = Seq(
+      Vector(agentSmithNode),
       Vector(neoNode),
       Vector(morpheusNode),
       Vector(trinityNode),
-      Vector(cypherNode),
-      Vector(agentSmithNode),
       Vector(architectNode),
+      Vector(cypherNode),
+      Vector(Expr.Relationship(agentSmithNode.id, Symbol("CODED_BY"), Map.empty, architectNode.id)),
       Vector(Expr.Relationship(neoNode.id, Symbol("KNOWS"), Map.empty, morpheusNode.id)),
       Vector(Expr.Relationship(neoNode.id, Symbol("LOVES"), Map.empty, trinityNode.id)),
       Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, trinityNode.id)),
       Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, cypherNode.id)),
-      Vector(Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id)),
-      Vector(Expr.Relationship(agentSmithNode.id, Symbol("CODED_BY"), Map.empty, architectNode.id))
+      Vector(Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id))
     ),
     expectedCanContainAllNodeScan = true
   )

@@ -88,8 +88,10 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
   )(implicit schema: JsonSchema[A]): Future[Map[String, A]] =
     graph.persistor
       .getAllMetaData()
-      .map(_.filterKeys(_.startsWith(prefix)))(graph.system.dispatcher)
-      .map(m => m.mapValues(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))))(graph.system.dispatcher)
+      .map(_.view.filterKeys(_.startsWith(prefix)))(graph.system.dispatcher)
+      .map(mv => mv.mapValues(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))).toMap)(
+        graph.system.dispatcher
+      )
 
   /** Deserialize a value intended to be stored as metadata
     *

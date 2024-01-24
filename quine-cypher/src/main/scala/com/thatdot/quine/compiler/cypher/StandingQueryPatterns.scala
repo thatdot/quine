@@ -5,9 +5,11 @@ import java.util.regex.Pattern
 import scala.collection.mutable
 
 import cats.data.NonEmptyList
+import cats.implicits.toTraverseOps
 import com.typesafe.scalalogging.LazyLogging
-import org.opencypher.v9_0.expressions.functions
-import org.opencypher.v9_0.util.UnNamedNameGenerator
+import org.opencypher.v9_0.ast.ReturnItem
+import org.opencypher.v9_0.expressions.{LabelExpression, PropertyKeyName, functions}
+import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 import org.opencypher.v9_0.util.helpers.NameDeduplicator
 import org.opencypher.v9_0.{ast, expressions}
 
@@ -30,6 +32,7 @@ object StandingQueryPatterns extends LazyLogging {
     */
   def compile(
     statement: ast.Statement,
+    avng: AnonymousVariableNameGenerator,
     paramsIdx: ParametersIndex
   )(implicit
     source: SourceText,
@@ -37,17 +40,17 @@ object StandingQueryPatterns extends LazyLogging {
   ): GraphQueryPattern = {
     val (parts, whereOpt, hints, returnItems, distinct) = statement match {
       case ast.Query(
-            _,
             ast.SingleQuery(
               Seq(
                 ast.Match(false, expressions.Pattern(parts), hints, whereOpt),
                 ast.Return(
                   distinct,
-                  ast.ReturnItems(false, returnItems),
+                  ast.ReturnItems(false, returnItems, _),
                   None,
                   None,
                   None,
-                  emptySet
+                  emptySet,
+                  _
                 )
               )
             )
@@ -107,7 +110,9 @@ object StandingQueryPatterns extends LazyLogging {
 
       nodePatterns += NodePattern(
         nodePatternId,
-        nodePattern.labels.map(l => Symbol(l.name)).toSet,
+        nodePattern.labelExpression.fold(Set.empty[Symbol])(le =>
+          handleLabelExpression(le, Some(position(nodePattern.position)))
+        ),
         idConstraint,
         whereProps ++ constraintProps
       )
@@ -132,12 +137,17 @@ object StandingQueryPatterns extends LazyLogging {
           throw CypherException.Compile("Properties on edges are not yet supported", relPos)
         }
 
-        val edgeLabel = rel.types match {
-          case List(edge) => Symbol(edge.name)
-          case labels =>
-            val badLabels = labels.map(x => ":" + x.name).mkString(", ")
+        val edgeLabel = rel.labelExpression match {
+          case Some(LabelExpression.Leaf(name)) => Symbol(name.name)
+          case Some(badLabels) =>
+            //val badLabels = labels.map(x => ":" + x.name).mkString(", ")
             throw CypherException.Compile(
-              s"Edges in standing query patterns must have exactly one label (got $badLabels)",
+              s"Edges in standing query patterns must have exactly one label (got ${badLabels.asCanonicalStringVal})",
+              relPos
+            )
+          case None =>
+            throw CypherException.Compile(
+              s"Must include exactly one label in a standing query pattern (got none)",
               relPos
             )
         }
@@ -159,6 +169,12 @@ object StandingQueryPatterns extends LazyLogging {
         rightNodeId
 
       case n: expressions.NodePattern => addNodePattern(n)
+
+      case other =>
+        throw CypherException.Compile(
+          wrapping = s"Unexpected pattern: $other",
+          position = Some(position(other.position))
+        )
     }
 
     parts.foreach {
@@ -184,7 +200,7 @@ object StandingQueryPatterns extends LazyLogging {
     val idsWatched = mutable.Map.empty[(Boolean, expressions.LogicalVariable), expressions.LogicalVariable]
 
     // These are all of the columns we will be returning
-    val toReturn: Seq[(Symbol, Expr)] = returnItems.map { (item: ast.ReturnItem) =>
+    val toReturn: Seq[(Symbol, Expr)] = Seq.concat[ReturnItem](returnItems).map { (item: ast.ReturnItem) =>
       val colName = Symbol(item.name)
       val expr = compileStandingExpression(
         item.expression,
@@ -192,12 +208,13 @@ object StandingQueryPatterns extends LazyLogging {
         variableNamer = (subExpr: expressions.Expression) => {
           if (subExpr == item.expression) colName.name
           else
-            NameDeduplicator.removeGeneratedNamesAndParams(UnNamedNameGenerator.name(subExpr.position.newUniquePos()))
+            NameDeduplicator.removeGeneratedNamesAndParams(avng.nextName)
         },
         nodeIds.keySet,
         propertiesWatched,
         idsWatched,
-        "Returned column"
+        "Returned column",
+        avng
       )
       colName -> expr
     }
@@ -209,12 +226,13 @@ object StandingQueryPatterns extends LazyLogging {
           otherConstraint,
           paramsIdx,
           variableNamer = (subExpr: expressions.Expression) => {
-            NameDeduplicator.removeGeneratedNamesAndParams(UnNamedNameGenerator.name(subExpr.position.newUniquePos()))
+            NameDeduplicator.removeGeneratedNamesAndParams(avng.nextName)
           },
           nodeIds.keySet,
           propertiesWatched,
           idsWatched,
-          "Filter condition"
+          "Filter condition",
+          avng
         )
       }
       Some(if (conjuncts.length == 1) conjuncts.head else Expr.And(conjuncts.toVector))
@@ -239,7 +257,7 @@ object StandingQueryPatterns extends LazyLogging {
       case (Seq(ast.UsingScanHint(nodeVar, label @ _)), _) =>
         nodeIds.getOrElse(
           nodeVar,
-          throw new CypherException.Compile(
+          throw CypherException.Compile(
             wrapping = s"Using hint refers to undefined variable `${nodeVar.name}`",
             position = Some(position(nodeVar.position))
           )
@@ -301,7 +319,8 @@ object StandingQueryPatterns extends LazyLogging {
       expressions.LogicalVariable
     ],
     idsWatched: mutable.Map[(Boolean, expressions.LogicalVariable), expressions.LogicalVariable],
-    contextName: String
+    contextName: String,
+    avng: AnonymousVariableNameGenerator
   )(implicit
     source: SourceText
   ): Expr = {
@@ -326,7 +345,7 @@ object StandingQueryPatterns extends LazyLogging {
     // First compilation pass
     val initialScope =
       nodesInScope.foldLeft(QueryScopeInfo.empty)((scope, colLv) => scope.addColumn(logicalVariable2Symbol(colLv))._1)
-    Expression.compileM(expr).run(paramsIdx, source, initialScope) match {
+    Expression.compileM(expr, avng).run(paramsIdx, source, initialScope) match {
       case Left(err) => throw err
       case Right(_) => // do nothing - the compilation output we use is from the second pass
     }
@@ -382,7 +401,7 @@ object StandingQueryPatterns extends LazyLogging {
     // Second compilation pass
     val rewrittenScope = (propertiesWatched.values.toSet | idsWatched.values.toSet)
       .foldLeft(QueryScopeInfo.empty)((scope, col) => scope.addColumn(logicalVariable2Symbol(col))._1)
-    Expression.compileM(rewritten).run(paramsIdx, source, rewrittenScope) match {
+    Expression.compileM(rewritten, avng).run(paramsIdx, source, rewrittenScope) match {
       case Left(err) =>
         throw err
       case Right(WithQuery(pureExpr, Query.Unit(_))) =>
@@ -405,31 +424,19 @@ object StandingQueryPatterns extends LazyLogging {
     */
   object QuineValueLiteral {
     def unapply(literal: expressions.Expression): Option[QuineValue] =
-      Some(literal match {
-        case i: expressions.IntegerLiteral => QuineValue.Integer(i.value)
-        case d: expressions.DoubleLiteral => QuineValue.Floating(d.value)
-        case expressions.StringLiteral(str) => QuineValue.Str(str)
-        case expressions.Null() => QuineValue.Null
-        case expressions.True() => QuineValue.True
-        case expressions.False() => QuineValue.False
+      literal match {
+        case i: expressions.IntegerLiteral => Some(QuineValue.Integer(i.value))
+        case d: expressions.DoubleLiteral => Some(QuineValue.Floating(d.value))
+        case expressions.StringLiteral(str) => Some(QuineValue.Str(str))
+        case expressions.Null() => Some(QuineValue.Null)
+        case expressions.True() => Some(QuineValue.True)
+        case expressions.False() => Some(QuineValue.False)
         case expressions.ListLiteral(exps) =>
-          val elems = Vector.newBuilder[QuineValue]
-          for (exp <- exps)
-            unapply(exp) match {
-              case None => return None
-              case Some(elem) => elems += elem
-            }
-          QuineValue.List(elems.result())
+          exps.toVector.traverse(unapply).map(QuineValue.List)
         case expressions.MapExpression(expItems) =>
-          val elems = Map.newBuilder[String, QuineValue]
-          for ((key, valExp) <- expItems)
-            unapply(valExp) match {
-              case None => return None
-              case Some(elem) => elems += (key.name -> elem)
-            }
-          QuineValue.Map(elems.result())
-        case _ => return None
-      })
+          expItems.toList.traverse(p => unapply(p._2).map(v => p._1.name -> v)).map(QuineValue.Map(_))
+        case _ => None
+      }
   }
 
   /** Decompose the where constraint into property and ID constraints (and throw an
@@ -583,7 +590,7 @@ object StandingQueryPatterns extends LazyLogging {
                 false,
                 args
               ) if functionName.toLowerCase == CypherIdFrom.name.toLowerCase =>
-            Some(CypherIdFrom -> args)
+            Some(CypherIdFrom -> args.toVector)
           // locIdFrom with at least 2 args
           case expressions.FunctionInvocation(
                 _,
@@ -591,7 +598,7 @@ object StandingQueryPatterns extends LazyLogging {
                 false,
                 args
               ) if functionName.toLowerCase == CypherLocIdFrom.name.toLowerCase && args.length >= 2 =>
-            Some(CypherLocIdFrom -> args)
+            Some(CypherLocIdFrom -> args.toVector)
           case _ => None
         }
         // ensure all arguments to the function are QuineValue-compatible literals

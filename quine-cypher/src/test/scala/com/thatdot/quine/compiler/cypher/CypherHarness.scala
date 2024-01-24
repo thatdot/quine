@@ -157,6 +157,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
   ): Unit = {
     def theTest(): Assertion = {
       val actual = intercept[E](queryCypherValues(queryText)(graph))
+
       assert(actual == expectedError, "Query construction did not fail with expected error")
     }
     it(queryText)(theTest())

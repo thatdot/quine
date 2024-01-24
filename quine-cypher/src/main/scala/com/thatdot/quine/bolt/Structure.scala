@@ -146,6 +146,7 @@ object Structured extends LazyLogging {
               )
             }
           )
+        case unknown => sys.error(s"Expected a specific list structure, but got $unknown instead")
       }
     }
 

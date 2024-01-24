@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.util.Using
 
 import com.google.common.io.ByteStreams
-import com.google.protobuf.DynamicMessage
+import com.google.protobuf.{Descriptors, DynamicMessage}
 import org.scalatest.EitherValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -74,7 +74,17 @@ class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
   "The protobuf serializer" should "map QuineValue to a Protobuf DynamicMessage" in {
 
     val message = maybeMessage.value
-    val List(name, id, email) = List("name", "id", "email").map(message.getDescriptorForType.findFieldByName)
+
+    def extractList(
+      xs: List[Descriptors.FieldDescriptor]
+    ): (Descriptors.FieldDescriptor, Descriptors.FieldDescriptor, Descriptors.FieldDescriptor) =
+      xs match {
+        case List(name, id, email) => (name, id, email)
+        case _ => sys.error("This shouldn't happen.")
+      }
+
+    val (name, id, email) = extractList(List("name", "id", "email").map(message.getDescriptorForType.findFieldByName))
+
     message.getField(name) shouldBe "Bob"
     message.getField(id) shouldBe 10L
     message.getField(email) shouldBe "bob@example.com"

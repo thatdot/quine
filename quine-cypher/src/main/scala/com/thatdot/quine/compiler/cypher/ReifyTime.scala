@@ -112,6 +112,10 @@ object ReifyTime extends UserDefinedProcedure {
       val previousNodeId = timeNodeId(previousPeriodSourceTime, period)
       val nextNodeId = timeNodeId(nextPeriodSourceTime, period)
       val parentNodeId = parentPeriod.map(timeNodeId(sourceTime, _))
+
+      //TODO GROSS!!!!! 🤮
+      implicit val localEC = location.graph.nodeDispatcherEC
+
       val effects = Future
         .sequence(
           List(
@@ -138,7 +142,7 @@ object ReifyTime extends UserDefinedProcedure {
               List(graph.literalOps.addEdge(pid, nodeId, periodEdgeName))
             case None => List.empty
           })
-        )(implicitly, location.graph.nodeDispatcherEC)
+        ) //(implicitly, location.graph.nodeDispatcherEC)
         .map(_ => ())(location.graph.nodeDispatcherEC)
       (nodeId, effects)
     }
@@ -156,14 +160,17 @@ object ReifyTime extends UserDefinedProcedure {
       .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
       .map(Vector(_))
 
+    //TODO GROSS!!!!! 🤮
+    implicit val localEC = location.graph.nodeDispatcherEC
+
     // Return a source that blocks until graph node commands have been responded to,
     // and contains the single smallest period time node
     Source
-      .future(Future.sequence(generateTimeNodeResult.map(_._2))(implicitly, location.graph.nodeDispatcherEC))
+      .future(Future.sequence(generateTimeNodeResult.map(_._2))) //(implicitly, location.graph.nodeDispatcherEC))
       .map(_ => Left(()))
       .concat(timeNodeSource.map(Right(_)))
       .dropWhile(_.isLeft)
-      .map(_.right.get)
+      .map(_.toOption.get)
   }
 
   private type PeriodKey = String

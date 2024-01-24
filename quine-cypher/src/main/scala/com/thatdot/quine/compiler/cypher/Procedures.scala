@@ -60,7 +60,9 @@ final case class QuineProcedureCall(
   unresolvedCall: ast.UnresolvedCall
 ) extends ast.CallClause {
 
-  override def semanticCheck = unresolvedCall.semanticCheck
+  override def clauseSpecificSemanticCheck = unresolvedCall.semanticCheck
+
+  override def yieldAll: Boolean = true
 
   override def returnColumns = unresolvedCall.returnColumns
 
@@ -125,7 +127,7 @@ case object resolveCalls extends StatementRewriter {
     }
   }
 
-  override def instance(ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift(rewriteCall))
+  override def instance(bs: BaseState, ctx: BaseContext): Rewriter = bottomUp(Rewriter.lift(rewriteCall))
 
   // TODO: add to this
   override def postConditions: Set[Condition] = Set.empty
@@ -836,7 +838,7 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
                 Expr.Str(s.qid.pretty),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
               )
-            }.toIterator
+            }.iterator
           }
         )(location.graph.nodeDispatcherEC)
     }
@@ -887,7 +889,7 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
                 Expr.Str(s.qid.pretty),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
               )
-            }.toIterator
+            }.iterator
           }
         )(location.graph.nodeDispatcherEC)
     }
@@ -1111,12 +1113,17 @@ object CypherDoWhen extends UserDefinedProcedure {
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
 
-    val (cond: Boolean, ifQ: String, elseQ: String, params: Map[String, Value]) = arguments match {
+    // This helper function is to work around an (possibly compiler) error for the subsequent
+    // `val`. If you try to inline the pattern match with the `val`, you'll get a warning
+    // from the exhaustiveness checker.
+    def extractSeq(values: Seq[Value]): (Boolean, String, String, Map[String, Value]) = values match {
       case Seq(Expr.Bool(c), Expr.Str(ifQ)) => (c, ifQ, "", Map.empty)
       case Seq(Expr.Bool(c), Expr.Str(ifQ), Expr.Str(elseQ)) => (c, ifQ, elseQ, Map.empty)
       case Seq(Expr.Bool(c), Expr.Str(ifQ), Expr.Str(elseQ), Expr.Map(p)) => (c, ifQ, elseQ, p)
       case other => throw wrongSignature(other)
     }
+
+    val (cond: Boolean, ifQ: String, elseQ: String, params: Map[String, Value]) = extractSeq(arguments)
 
     val queryToExecute = if (cond) ifQ else elseQ
 
@@ -1159,11 +1166,13 @@ object CypherDoIt extends UserDefinedProcedure {
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
 
-    val (query: String, parameters: Map[String, Value]) = arguments match {
+    def extractSeq(values: Seq[Value]): (String, Map[String, Value]) = arguments match {
       case Seq(Expr.Str(query)) => query -> Map.empty
       case Seq(Expr.Str(query), Expr.Map(parameters)) => (query, parameters)
       case other => throw wrongSignature(other)
     }
+
+    val (query: String, parameters: Map[String, Value]) = extractSeq(arguments)
 
     val subQueryResults = queryCypherValues(
       query,
@@ -1200,12 +1209,14 @@ object CypherDoCase extends UserDefinedProcedure {
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
 
-    val (conditionals: Vector[Value], elseQuery: String, parameters: Map[String, Value]) = arguments match {
+    def extractSeq(values: Seq[Value]): (Vector[Value], String, Map[String, Value]) = arguments match {
       case Seq(Expr.List(conds)) => (conds, "", Map.empty)
       case Seq(Expr.List(conds), Expr.Str(els)) => (conds, els, Map.empty)
       case Seq(Expr.List(conds), Expr.Str(els), Expr.Map(params)) => (conds, els, params)
       case other => throw wrongSignature(other)
     }
+
+    val (conditionals: Vector[Value], elseQuery: String, parameters: Map[String, Value]) = extractSeq(arguments)
 
     // Iterate through the conditions and queries to find the right matching query
     val matchingQuery: Option[String] = conditionals

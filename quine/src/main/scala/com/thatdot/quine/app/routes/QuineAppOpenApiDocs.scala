@@ -27,7 +27,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
     with StandingQueryRoutes
     with endpoints4s.openapi.Endpoints
     with endpoints4s.openapi.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints
     with com.thatdot.quine.routes.exts.OpenApiEntitiesWithExamples
     with com.thatdot.quine.routes.exts.OpenApiAnySchema {
 

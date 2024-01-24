@@ -7,9 +7,10 @@ import cats.Endo
 import cats.implicits._
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.{LogicalVariable, Range, RelationshipPattern}
-import org.opencypher.v9_0.util.NodeNameGenerator
+import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 
 import com.thatdot.quine.graph.cypher
+import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Represents a pattern graph like what you would find in a `MATCH` or `CREATE`
@@ -43,7 +44,8 @@ final case class Graph(
     * @return a query which fetches the pattern from the graph
     */
   def synthesizeFetch(
-    freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression]
+    freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression],
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = for {
 
     // If possible, we want to jump straight to an anchor node
@@ -58,7 +60,7 @@ final case class Graph(
       /* There is a starting spot */
       case Some((otherNodeLv, otherNodeAnchorExpr)) =>
         for {
-          andThen <- synthesizeFetchOnNode(otherNodeLv, freeConstraints)
+          andThen <- synthesizeFetchOnNode(otherNodeLv, freeConstraints, avng)
           enterAndThen = cypher.Query.ArgumentEntry(otherNodeAnchorExpr, andThen)
         } yield enterAndThen
 
@@ -80,7 +82,7 @@ final case class Graph(
       case None =>
         val (nodeLv, _) = nodes.head
         for {
-          andThen <- synthesizeFetchOnNode(nodeLv, freeConstraints)
+          andThen <- synthesizeFetchOnNode(nodeLv, freeConstraints, avng)
           enterAndThen = cypher.Query.AnchoredEntry(cypher.EntryPoint.AllNodesScan, andThen)
         } yield enterAndThen
     }
@@ -93,7 +95,8 @@ final case class Graph(
     */
   def synthesizeFetchOnNode(
     atNode: expressions.LogicalVariable,
-    freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression]
+    freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression],
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.OnNode]] = for {
     scopeInfo: QueryScopeInfo <- CompM.getQueryScopeInfo
 
@@ -108,7 +111,7 @@ final case class Graph(
     ) match {
 
       case (Some(cypherVar), None) =>
-        val tempBindName = NodeNameGenerator.name(atNode.position.newUniquePos())
+        val tempBindName = avng.nextName
         val tempLv = expressions.Variable(tempBindName)(atNode.position)
 
         for {
@@ -134,7 +137,7 @@ final case class Graph(
         for {
           nodeWQ <- nodePat.properties match {
             case None => CompM.pure(WithQuery(None))
-            case Some(p) => Expression.compileM(p).map(_.map(Some(_)))
+            case Some(p) => Expression.compileM(p, avng).map(_.map(Some(_)))
           }
 
           // Avoid re-aliasing something that is already aliased
@@ -148,19 +151,19 @@ final case class Graph(
           // Find and apply any predicates that are now closed
           (closedConstraints, newFreeConstraints) = freeConstraints.bindVariable(atNode)
           constraintsWQ <- closedConstraints
-            .traverse[WithQueryT[CompM, *], cypher.Expr](Expression.compile(_))
+            .traverse[WithQueryT[CompM, *], cypher.Expr](e => Expression.compile(e, avng))
             .map(constraints => cypher.Expr.And(constraints.toVector))
             .runWithQuery
 
-          labelsOpt =
-            if (nodePat.labels.isEmpty) {
-              None
-            } else {
-              Some(nodePat.labels.map(v => Symbol(v.name)))
-            }
+          labelsOpt = nodePat.labelExpression.fold(Set.empty[Symbol])(le =>
+            handleLabelExpression(
+              le,
+              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString)))
+            )
+          )
           localNode = nodeWQ.toNodeQuery { (props: Option[cypher.Expr]) =>
             cypher.Query.LocalNode(
-              labelsOpt,
+              Some(labelsOpt.toVector),
               propertiesOpt = props,
               bindName
             )
@@ -200,15 +203,21 @@ final case class Graph(
          * query.
          */
         Graph(remainingNodes, relationships, namedParts)
-          .synthesizeFetch(constraints1)
+          .synthesizeFetch(constraints1, avng)
           .map(q => q: cypher.Query[cypher.Location.OnNode])
 
       case Some((otherNodeLv, rel, remainingEdges)) =>
-        val edgeName = if (rel.types.isEmpty) {
-          None
-        } else {
-          Some(rel.types.map(v => Symbol(v.name)))
-        }
+        val edgeName = rel.labelExpression.map(le =>
+          handleLabelExpression(
+            le,
+            Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString)))
+          )
+        )
+//        val edgeName = if (rel.types.isEmpty) {
+//          None
+//        } else {
+//          Some(rel.types.map(v => Symbol(v.name)))
+//        }
 
         val direction = rel.direction match {
           case expressions.SemanticDirection.OUTGOING => EdgeDirection.Outgoing
@@ -234,7 +243,7 @@ final case class Graph(
             case Some(lv) => constraints1.bindVariable(lv)
           }
           constraintsWQ: WithQuery[cypher.Expr] <- closedConstraints
-            .traverse[WithQueryT[CompM, *], cypher.Expr](Expression.compile(_))
+            .traverse[WithQueryT[CompM, *], cypher.Expr](e => Expression.compile(e, avng))
             .map(constraints => cypher.Expr.And(constraints.toVector))
             .runWithQuery
 
@@ -246,9 +255,9 @@ final case class Graph(
           }
 
           remainingGraph = Graph(remainingNodes, remainingEdges, namedParts)
-          andThen <- remainingGraph.synthesizeFetchOnNode(otherNodeLv, constraints2)
+          andThen <- remainingGraph.synthesizeFetchOnNode(otherNodeLv, constraints2, avng)
         } yield cypher.Query.Expand(
-          edgeName,
+          edgeName.map(_.toVector),
           toNode = otherNode,
           direction,
           bindRelation,
@@ -263,7 +272,7 @@ final case class Graph(
     *
     * @return a query which synthesizes the pattern in the graph
     */
-  def synthesizeCreate: CompM[cypher.Query[cypher.Location.Anywhere]] = for {
+  def synthesizeCreate(avng: AnonymousVariableNameGenerator): CompM[cypher.Query[cypher.Location.Anywhere]] = for {
 
     // If possible, we want to jump straight to an anchor node
     scopeInfo <- CompM.getQueryScopeInfo
@@ -277,7 +286,7 @@ final case class Graph(
       /* There is a starting spot */
       case Some((otherNodeLv, otherNodeAnchorExpr)) =>
         for {
-          andThen <- synthesizeCreateOnNode(otherNodeLv)
+          andThen <- synthesizeCreateOnNode(otherNodeLv, avng)
           enterAndThen = cypher.Query.ArgumentEntry(otherNodeAnchorExpr, andThen)
         } yield enterAndThen
 
@@ -290,7 +299,7 @@ final case class Graph(
       case None =>
         val (nodeLv, _) = nodes.head
         for {
-          andThen <- synthesizeCreateOnNode(nodeLv)
+          andThen <- synthesizeCreateOnNode(nodeLv, avng)
           createAndThen = cypher.Query.ArgumentEntry(cypher.Expr.FreshNodeId, andThen)
         } yield createAndThen
     }
@@ -298,7 +307,8 @@ final case class Graph(
 
   /** Like [[synthesizeCreate]] but starts already in the graph */
   def synthesizeCreateOnNode(
-    atNode: expressions.LogicalVariable
+    atNode: expressions.LogicalVariable,
+    avng: AnonymousVariableNameGenerator
   ): CompM[cypher.Query[cypher.Location.OnNode]] = for {
     scopeInfo <- CompM.getQueryScopeInfo
 
@@ -313,16 +323,24 @@ final case class Graph(
         (CompM.pure(returnQuery), newNodes)
 
       case (None, Some(nodePat)) =>
-        val labelsOpt = if (nodePat.labels.isEmpty) {
-          None
-        } else {
-          Some(nodePat.labels.map(v => Symbol(v.name)))
-        }
+        val labelsOpt: Option[Set[Symbol]] = Some(
+          nodePat.labelExpression.fold(Set.empty[Symbol])(le =>
+            handleLabelExpression(
+              le,
+              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString)))
+            )
+          )
+        )
+//        val labelsOpt = if (nodePat.labels.isEmpty) {
+//          None
+//        } else {
+//          Some(nodePat.labels.map(v => Symbol(v.name)))
+//        }
 
         val returnQueryM: CompM[Endo[cypher.Query[cypher.Location.OnNode]]] = for {
           nodeWC <- nodePat.properties match {
             case None => CompM.pure(WithQuery(None))
-            case Some(p) => Expression.compileM(p).map(_.map(Some(_)))
+            case Some(p) => Expression.compileM(p, avng).map(_.map(Some(_)))
           }
           atNodeExpr <- CompM.addColumn(atNode)
 
@@ -337,7 +355,7 @@ final case class Graph(
               includeExisting = true
             )
             val setLabels = labelsOpt match {
-              case Some(lbls) => cypher.Query.SetLabels(lbls, add = true)
+              case Some(lbls) => cypher.Query.SetLabels(lbls.toVector, add = true)
               case None => cypher.Query.Unit()
             }
             cypher.Query.apply(setProps, setLabels)
@@ -376,7 +394,7 @@ final case class Graph(
          * of the query. It is time to find another entry point for the rest of the
          * query.
          */
-        Graph(remainingNodes, relationships, namedParts).synthesizeCreate.map(q => q)
+        Graph(remainingNodes, relationships, namedParts).synthesizeCreate(avng).map(q => q)
 
       case Some((otherNodeLv, rel, remainingEdges)) =>
         // Find an expression for the other node either in the context, or as a fresh node
@@ -390,16 +408,21 @@ final case class Graph(
               CompM.raiseCompileError("Cannot create undirected relationship", rel)
           }
 
-          edgeName: Symbol <- rel.types match {
-            case List(edge) => CompM.pure(Symbol(edge.name))
-            case labels =>
+          edgeName: Symbol <- rel.labelExpression.map(le =>
+            handleLabelExpression(
+              le,
+              Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString)))
+            )
+          ) match {
+            case Some(edges) => CompM.pure(edges.head)
+            case labels @ _ =>
               CompM.raiseCompileError(
-                s"Edges must be created with exactly one label (got ${labels.map(_.name).mkString(", ")})",
+                s"Edges must be created with exactly one label (got ${rel.labelExpression.map(_.asCanonicalStringVal)})",
                 rel
               )
           }
 
-          () <-
+          _ <-
             if (rel.properties.nonEmpty) {
               CompM.raiseCompileError("Properties on edges are not yet supported", rel)
             } else {
@@ -411,7 +434,7 @@ final case class Graph(
             case Some(lv) => CompM.addColumn(lv).map(v => Some(v.id))
           }
           remainingGraph = Graph(remainingNodes, remainingEdges, namedParts)
-          andThen <- remainingGraph.synthesizeCreateOnNode(otherNodeLv)
+          andThen <- remainingGraph.synthesizeCreateOnNode(otherNodeLv, avng)
         } yield cypher.Query.SetEdge(
           edgeName,
           direction,
@@ -444,7 +467,7 @@ object Graph {
 
       // The variable has already been defined
       case true =>
-        assert(nodePat.labels.isEmpty && nodePat.properties.isEmpty, s"Variable `$nodeVar` is already defined")
+        assert(nodePat.labelExpression.isEmpty && nodePat.properties.isEmpty, s"Variable `$nodeVar` is already defined")
     }
 
     /* Add to `nodes`, `relationships`, and `namedParts` builders. */
@@ -485,6 +508,8 @@ object Graph {
           val nodeVar = nodeVarOpt.get //  variable is filled in by semantic analysis
           addNodePattern(nodeVar, nodePat)
           nodeVar
+
+        case _ => throw new RuntimeException(s"Unexpected pattern $pat.")
       }
 
     CompM.getSourceText.flatMap[Graph] { implicit sourceText =>

@@ -1,8 +1,10 @@
 import QuineSettings._
 import Dependencies._
 
-addCommandAlias("scala212", "++" + scalaV212)
-addCommandAlias("scala213", "++" + scalaV213)
+ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/snapshot/"
+
+ThisBuild / scalaVersion := scalaV
+
 addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
 
 //ThisBuild / evictionErrorLevel := Level.Warn
@@ -11,7 +13,6 @@ ThisBuild / evictionErrorLevel := Level.Info
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .settings(
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % shapelessV,
@@ -40,11 +41,7 @@ lazy val `quine-core`: Project = project
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {
-      val sourceDir = (Compile / sourceDirectory).value
-      CrossVersion.partialVersion(scalaVersion.value) match {
-        case Some((2, n)) if n >= 13 => sourceDir / "scala-2.13"
-        case _ => sourceDir / "scala-2.12"
-      }
+      (Compile / sourceDirectory).value / "scala-2.13"
     }
   )
   .enablePlugins(BuildInfoPlugin, FlatcPlugin)
@@ -65,7 +62,6 @@ lazy val `quine-core`: Project = project
 // MapDB implementation of a Quine persistor
 lazy val `quine-mapdb-persistor`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     /* `net.jpountz.lz4:lz4` was moved to `org.lz4:lz4-java`, but MapDB hasn't
@@ -82,7 +78,6 @@ lazy val `quine-mapdb-persistor`: Project = project
 // RocksDB implementation of a Quine persistor
 lazy val `quine-rocksdb-persistor`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
@@ -95,7 +90,6 @@ lazy val `quine-cassandra-persistor`: Project = project
   .configs(IntegrationTest)
   .settings(Defaults.itSettings)
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-core` % "compile->compile;it->test")
   .enablePlugins(spray.boilerplate.BoilerplatePlugin)
   .settings(
@@ -111,7 +105,6 @@ lazy val `quine-cassandra-persistor`: Project = project
 // Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-core`, `quine-mapdb-persistor` % "test->test")
   .settings(
     libraryDependencies ++= Seq(
@@ -124,15 +117,17 @@ lazy val `quine-gremlin`: Project = project
 // Compiler for compiling [Cypher](https://neo4j.com/docs/cypher-manual/current/) into Quine queries
 lazy val `quine-cypher`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12`)
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
-    scalacOptions += "-language:reflectiveCalls",
+    scalacOptions ++= Seq(
+      "-language:reflectiveCalls",
+      "-Xlog-implicits"
+    ),
     libraryDependencies ++= Seq(
-      "org.opencypher" % "expressions-9.0" % openCypherV,
-      "org.opencypher" % "front-end-9.0" % openCypherV,
-      "org.opencypher" % "parser-9.0" % openCypherV,
-      "org.opencypher" % "util-9.0" % openCypherV,
+      "org.opencypher" %% "expressions-9.0" % openCypherV,
+      "org.opencypher" %% "front-end-9.0" % openCypherV,
+      "org.opencypher" %% "opencypher-cypher-ast-factory-9.0" % openCypherV,
+      "org.opencypher" %% "util-9.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
@@ -161,7 +156,6 @@ lazy val `quine-cypher`: Project = project
  */
 lazy val `visnetwork-facade`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .enablePlugins(ScalaJSPlugin)
   .settings(
     libraryDependencies ++= Seq(
@@ -174,7 +168,6 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Pure)
   .in(file("quine-endpoints"))
   .settings(commonSettings)
-  .settings(`scala 2.12 to 2.13`)
   .settings(
     libraryDependencies ++= Seq(
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
@@ -193,7 +186,6 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
 // Quine web application
 lazy val `quine-browser`: Project = project
   .settings(commonSettings, slinkySettings)
-  .settings(`scala 2.12 to 2.13`)
   .dependsOn(`quine-endpoints`.js, `visnetwork-facade`)
   .enablePlugins(ScalaJSBundlerPlugin)
   .settings(
@@ -235,7 +227,6 @@ lazy val `quine-browser`: Project = project
 // Streaming graph application built on top of the Quine library
 lazy val `quine`: Project = project
   .settings(commonSettings)
-  .settings(`scala 2.12`)
   .dependsOn(
     `quine-core` % "compile->compile;test->test",
     `quine-cypher`,
@@ -327,7 +318,6 @@ lazy val `quine-docs`: Project = {
   Project("quine-docs", file("quine-docs"))
     .dependsOn(`quine`)
     .settings(commonSettings)
-    .settings(`scala 2.12`)
     .enablePlugins(ParadoxThatdot, GhpagesPlugin)
     .settings(
       projectName := "Quine",

@@ -220,7 +220,7 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       )
     )
     testExpression(
-      """text.utf8Encode("\uD83C\uDF08")""", // 🌈
+      """text.utf8Encode("🌈")""", // \uD83C\uDF08
       Expr.Bytes(Array(0xF0, 0x9F, 0x8C, 0x88).map(_.toByte))
     )
     testExpression(

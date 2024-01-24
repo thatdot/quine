@@ -15,11 +15,11 @@ import com.thatdot.quine.model.{QuineType, QuineValue}
 
 // TODO: at pretty string representations of these errors.
 sealed abstract class ConversionFailure
-final case class TypeMismatch(given: QuineType, expected: JavaType) extends ConversionFailure {
-  def message: String = s"Can't coerce $given into $expected"
+final case class TypeMismatch(provided: QuineType, expected: JavaType) extends ConversionFailure {
+  def message: String = s"Can't coerce $provided into $expected"
 }
 case object NotAList extends ConversionFailure
-final case class InvalidEnumValue(given: String, expected: Seq[EnumValueDescriptor]) extends ConversionFailure
+final case class InvalidEnumValue(provided: String, expected: Seq[EnumValueDescriptor]) extends ConversionFailure
 final case class FieldError(fieldName: String, conversionFailure: ConversionFailure) extends ConversionFailure {
   //override def message: String = s"Error converting field '$fieldName': $conversionFailure"
 }
@@ -69,8 +69,8 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
       field.getJavaType match {
         case JavaType.STRING => Right(string)
         case JavaType.ENUM =>
-          val enum = field.getEnumType
-          Option(enum.findValueByName(string)) toRight InvalidEnumValue(string, enum.getValues.asScala)
+          val pbEnum = field.getEnumType
+          Option(pbEnum.findValueByName(string)) toRight InvalidEnumValue(string, pbEnum.getValues.asScala.toVector)
         case other => Left(TypeMismatch(qv.quineType, other))
       }
     case QuineValue.Integer(long) =>
