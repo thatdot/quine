@@ -34,7 +34,7 @@ PUSH_TRANSFORMATIONS = [
 ]
 
 PR_INCLUDE = ["**"]
-PR_EXCLUDE = []
+PR_EXCLUDE = ["project/GitVersionPrefix.scala"]
 PR_TRANSFORMATIONS = [
     core.move("", "public", paths = glob(["**"])),
     core.move("public/.github/workflows/", ".github/workflows/", paths = glob(["copybara.yml", "copy.bara.sky"])),
