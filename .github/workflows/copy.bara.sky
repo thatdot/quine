@@ -41,7 +41,10 @@ PR_TRANSFORMATIONS = [
     core.move("public/.scalafix.conf", ".scalafix.conf"),
     core.move("public/.scalafmt.conf", ".scalafmt.conf"),
     core.move("public/.gitignore", ".gitignore"),
-    core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE))
+    core.move("public/project/", "project/", paths = glob(PROJECT_LEVEL_INCLUDE)),
+    # GitVersionPrefix.scala is specifically NOT copied between repos, because quine-plus uses a different tag scheme.
+    # Invariant: These files will both contain an object `GitVersionPrefix` with a single member `string` with type `String`
+    core.move("public/project/GitVersionPrefix.scala", "project/GitVersionPrefix.scala")
 ]
 
 SCRUB_MESSAGE = [
