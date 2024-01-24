@@ -17,6 +17,8 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, Uri}
 import org.apache.pekko.pattern.retry
 
+import com.typesafe.scalalogging.StrictLogging
+
 trait ImproveQuine {
   def started(): Future[Unit]
 }
@@ -31,7 +33,8 @@ object ImproveQuine {
     hostHash: String,
     eventUri: Uri,
     system: ActorSystem
-  ) extends ImproveQuine {
+  ) extends ImproveQuine
+      with StrictLogging {
     implicit private val actorSystem: ActorSystem = system
     implicit private val executionContext: ExecutionContext = system.dispatcher
     implicit private val scheduler: Scheduler = system.scheduler
@@ -56,6 +59,7 @@ object ImproveQuine {
             )
           )
 
+      logger.info(s"Sending anonymous usage data: $body")
       retry(send, 3, 5.seconds)
         .transform(_ => Success(()))
     }
