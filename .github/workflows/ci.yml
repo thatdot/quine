@@ -18,8 +18,8 @@ env:
     --add-opens java.base/java.lang=ALL-UNNAMED
 
 jobs:
-  test_scala_213:
-    name: Test (Scala 2.13)
+  test_scala:
+    name: Test
     runs-on: ubuntu-latest
 
     steps:
@@ -37,22 +37,7 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
-    - run: sbt -v 'scala213 test'
-
-  test_scala_212:
-    name: Test (Scala 2.12)
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - uses: coursier/cache-action@v6
-      with:
-        extraKey: '2.12'
-    - uses: actions/setup-java@v3
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-    - run: sbt -v 'scala213 test' quine/assembly quine-docs/makeSite 'scalafixAll --check'
+    - run: sbt -v test quine/assembly quine-docs/makeSite 'scalafixAll --check'
 
   scalafmt:
     name: Scalafmt
