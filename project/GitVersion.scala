@@ -13,10 +13,14 @@ object GitVersion extends AutoPlugin {
   import autoImport._
 
   override lazy val projectSettings = Seq(
-    tagPrefix := GitVersionPrefix.string,
+    tagPrefix := "quine/",
     version := {
       val prefix = tagPrefix.value
-      gitReader.value.withGit(_.describedVersion(Seq(prefix + '*'))).fold("UNKNOWN")(_.stripPrefix(prefix))
+      gitReader.value
+        .withGit(_.describedVersion(Seq(prefix + '*')).map(_.stripPrefix(prefix)))
+        // When running in the OSS repo, expect a "v" prefix instead of "quine/"
+        .orElse(gitReader.value.withGit(_.describedVersion(Seq("v*"))).map(_.stripPrefix("v")))
+        .getOrElse("UNKNOWN")
     }
   )
 
