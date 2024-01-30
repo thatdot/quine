@@ -74,7 +74,7 @@ package object webapp {
           DocumentationIcon,
           "Interactive Docs",
           "/docs",
-          StoplightElements(options.documentationUrl, logo = options.baseURI + "favicon.svg"),
+          StoplightElements(options.documentationUrl, logo = options.baseURI + "favicon.ico"),
           options.baseURI
         ),
         Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI)

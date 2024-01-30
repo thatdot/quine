@@ -2,7 +2,7 @@ package com.thatdot.quine.app.routes
 
 import scala.util.{Failure, Success, Try}
 
-import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.http.scaladsl.model.{StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 import org.apache.pekko.util.Timeout
@@ -67,8 +67,29 @@ class QuineAppRoutes(
     Directives.path("quine-ui-startup.js") {
       getFromResource("web/quine-ui-startup.js")
     } ~
+    Directives.path("browserconfig.xml") {
+      getFromResource("web/browserconfig.xml")
+    } ~
     Directives.path("favicon.svg") {
-      getFromResource("web/favicon.svg")
+      redirect("favicon.ico", StatusCodes.PermanentRedirect)
+    } ~
+    Directives.path("favicon.ico") {
+      getFromResource("web/favicon.ico")
+    } ~
+    Directives.path("apple-touch-icon.png") {
+      getFromResource("web/apple-touch-icon.png")
+    } ~
+    Directives.path("favicon-32x32.png") {
+      getFromResource("web/favicon-32x32.png")
+    } ~
+    Directives.path("favicon-16x16.png") {
+      getFromResource("web/favicon-16x16.png")
+    } ~
+    Directives.path("site.webmanifest") {
+      getFromResource("web/site.webmanifest")
+    } ~
+    Directives.path("safari-pinned-tab.svg") {
+      getFromResource("web/safari-pinned-tab.svg")
     } ~
     Directives.extractUnmatchedPath { path =>
       Try(webJarAssetLocator.getFullPath(path.toString)) match {
