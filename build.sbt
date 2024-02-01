@@ -1,7 +1,7 @@
 import QuineSettings._
 import Dependencies._
 
-ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/snapshot/"
+ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
 
 ThisBuild / scalaVersion := scalaV
 
@@ -124,10 +124,10 @@ lazy val `quine-cypher`: Project = project
       "-Xlog-implicits"
     ),
     libraryDependencies ++= Seq(
-      "org.opencypher" %% "expressions-9.0" % openCypherV,
-      "org.opencypher" %% "front-end-9.0" % openCypherV,
-      "org.opencypher" %% "opencypher-cypher-ast-factory-9.0" % openCypherV,
-      "org.opencypher" %% "util-9.0" % openCypherV,
+      "com.thatdot" %% "expressions-9.1.0" % openCypherV,
+      "com.thatdot" %% "front-end-9.1.0" % openCypherV,
+      "com.thatdot" %% "opencypher-cypher-ast-factory-9.1.0" % openCypherV,
+      "com.thatdot" %% "util-9.1.0" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
