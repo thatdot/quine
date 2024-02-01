@@ -445,9 +445,9 @@ object Func {
       args match {
         case Vector(map: Expr.Map) => map
         case Vector(Expr.Node(_, _, map)) =>
-          Expr.Map(map.map(kv => kv._1.name -> kv._2).toMap)
+          Expr.Map(map.map(kv => kv._1.name -> kv._2))
         case Vector(Expr.Relationship(_, _, map, _)) =>
-          Expr.Map(map.map(kv => kv._1.name -> kv._2).toMap)
+          Expr.Map(map.map(kv => kv._1.name -> kv._2))
         case other => throw wrongSignature(other)
       }
   }

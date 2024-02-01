@@ -95,7 +95,7 @@ object StandingQueryPatterns extends LazyLogging {
         case None =>
           Map.empty
         case Some(QuineValueLiteral(QuineValue.Map(props))) =>
-          props.map { case (k, v) => Symbol(k) -> PropertyValuePattern.Value(v) }.toMap
+          props.map { case (k, v) => Symbol(k) -> PropertyValuePattern.Value(v) }
         case _ =>
           throw CypherException.Compile(
             wrapping = "Invalid node constraint (expected a map literal)",

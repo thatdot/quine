@@ -13,6 +13,7 @@ import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
+import cats.implicits._
 import io.circe.Json
 import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
 import org.msgpack.core.{ExtensionTypeHeader, MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
@@ -271,7 +272,7 @@ object QuineValue {
     num => num.toLong.fold[QuineValue](QuineValue.Floating(num.toDouble))(QuineValue.Integer(_)),
     QuineValue.Str,
     jsonVals => QuineValue.List(jsonVals map fromJson),
-    jsonObj => QuineValue.Map(jsonObj.toMap.view.mapValues(fromJson))
+    jsonObj => QuineValue.Map(jsonObj.toMap.fmap(fromJson))
   )
 
   /** Encode a Quine value into JSON

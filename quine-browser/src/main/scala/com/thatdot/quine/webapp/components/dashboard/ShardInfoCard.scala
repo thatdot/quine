@@ -89,7 +89,7 @@ object ShardInfoCard {
   override def initialState: State = {
     val silencedAlerts = props.info.alertCounters.map { case (alertName, _) =>
       alertName -> ShardInfoCard.DefaultAlertThreshold
-    }.toMap
+    }
     State(silencedAlerts = silencedAlerts)
   }
 

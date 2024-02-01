@@ -10,6 +10,7 @@ import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 
+import cats.implicits._
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
@@ -87,7 +88,7 @@ object Expr {
     case QuineValue.Null => Null
     case QuineValue.Bytes(arr) => Bytes(arr)
     case QuineValue.List(vec) => List(vec.map(fromQuineValue))
-    case QuineValue.Map(map) => Map(map.view.mapValues(fromQuineValue).toMap)
+    case QuineValue.Map(map) => Map(map.fmap(fromQuineValue))
     case QuineValue.DateTime(datetime) => DateTime(datetime.toZonedDateTime)
     case QuineValue.Duration(duration) => Duration(duration)
     case QuineValue.Date(date) => Date(date)
@@ -106,8 +107,8 @@ object Expr {
     case Null => QuineValue.Null
     case Bytes(arr, false) => QuineValue.Bytes(arr)
     case Bytes(arr, true) => QuineValue.Id(QuineId(arr))
-    case List(vec) => QuineValue.List(vec.map(toQuineValue(_)))
-    case Map(map) => QuineValue.Map(map.view.mapValues(toQuineValue(_)).toMap)
+    case List(vec) => QuineValue.List(vec.map(toQuineValue))
+    case Map(map) => QuineValue.Map(map.fmap(toQuineValue))
     case DateTime(zonedDateTime) => QuineValue.DateTime(zonedDateTime.toOffsetDateTime)
     case Duration(duration) => QuineValue.Duration(duration)
     case Date(d) => QuineValue.Date(d)
@@ -977,11 +978,11 @@ object Expr {
     def cannotFail: Boolean = entries.values.forall(_.cannotFail)
 
     def substitute(parameters: ScalaMap[Parameter, Value]): MapLiteral = copy(
-      entries = entries.view.mapValues(_.substitute(parameters)).toMap
+      entries = entries.fmap(_.substitute(parameters))
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
-      Map(entries.view.mapValues(_.eval(qc)).toMap)
+      Map(entries.fmap(_.eval(qc)))
   }
 
   /** A map projection
@@ -1018,8 +1019,8 @@ object Expr {
       val baseMap: ScalaMap[String, Value] = original.eval(qc) match {
         case Null => return Null
         case Map(theMap) => theMap
-        case Node(_, _, theMap) => theMap.map { case (k, v) => k.name -> v }.toMap
-        case Relationship(_, _, theMap, _) => theMap.map { case (k, v) => k.name -> v }.toMap
+        case Node(_, _, theMap) => theMap.map { case (k, v) => k.name -> v }
+        case Relationship(_, _, theMap, _) => theMap.map { case (k, v) => k.name -> v }
         case other =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Map, Type.Node, Type.Relationship),
@@ -2394,7 +2395,7 @@ sealed abstract class Value extends Expr {
       )
 
     case Expr.List(cypherList) => cypherList.map(_.toAny)
-    case Expr.Map(cypherMap) => cypherMap.view.mapValues(_.toAny).toMap
+    case Expr.Map(cypherMap) => cypherMap.fmap(_.toAny)
 
     case Expr.LocalDateTime(localDateTime) => localDateTime
     case Expr.DateTime(instant) => instant
@@ -2857,7 +2858,7 @@ object Value {
       },
     (s: String) => Expr.Str(s),
     (u: Seq[Json]) => Expr.List(u.map(fromJson): _*),
-    (m: JsonObject) => Expr.Map(m.toMap.view.mapValues(fromJson))
+    (m: JsonObject) => Expr.Map(m.toMap.fmap(fromJson))
   )
 
   /** Encode a Cypher value into JSON

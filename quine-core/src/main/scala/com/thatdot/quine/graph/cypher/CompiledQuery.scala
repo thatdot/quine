@@ -66,7 +66,7 @@ final case class CompiledQuery[+Start <: Location](
       QueryContext.empty
     } else {
       QueryContext(
-        initialColumns.view
+        initialColumns
           .map(colName => Symbol(colName) -> initialColumnValues.getOrElse(colName, Expr.Null))
           .toMap
       )

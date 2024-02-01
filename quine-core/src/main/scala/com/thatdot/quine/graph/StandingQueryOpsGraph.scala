@@ -17,6 +17,7 @@ import org.apache.pekko.stream.{BoundedSourceQueue, KillSwitches, QueueOfferResu
 import org.apache.pekko.util.Timeout
 import org.apache.pekko.{Done, NotUsed}
 
+import cats.implicits._
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
@@ -206,7 +207,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
         standingQueryPartIndex.putAll(
           MultipleValuesStandingQuery
             .indexableSubqueries(runsAsCypher.compiledQuery)
-            .view
             .map(sq => sq.id -> sq)
             .toMap
             .asJava
@@ -256,7 +256,9 @@ trait StandingQueryOpsGraph extends BaseGraph {
   def listStandingQueries: Map[StandingQueryId, (StandingQuery, Instant, Int)] = {
     requireCompatibleNodeType()
     requiredGraphIsReady()
-    runningStandingQueries.view.mapValues(sq => (sq.query, sq.startTime, sq.bufferCount)).toMap
+    // The `.toMap` below converts to an immutable map to use the cats
+    // extension method
+    runningStandingQueries.toMap.fmap(sq => (sq.query, sq.startTime, sq.bufferCount))
   }
 
   /** Fetch a source to wire-tap a standing query

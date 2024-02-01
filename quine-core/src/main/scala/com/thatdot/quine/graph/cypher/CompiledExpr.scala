@@ -49,7 +49,7 @@ final case class CompiledExpr(
       QueryContext.empty
     } else {
       QueryContext(
-        initialColumns.view
+        initialColumns
           .map(colName => Symbol(colName) -> initialColumnValues.getOrElse(colName, Expr.Null))
           .toMap
       )

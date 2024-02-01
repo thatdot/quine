@@ -9,6 +9,7 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.util.{ByteString, Timeout}
 
+import cats.implicits._
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
@@ -137,12 +138,12 @@ trait AdministrationRoutesImpl
   private val metaDataRoute = metaData.implementedByAsync { _ =>
     graph.persistor
       .getAllMetaData()
-      .map(_.view.map { case (k, v) => k -> ByteString(v) }.toMap)(graph.shardDispatcherEC)
+      .map(_.fmap(ByteString(_)))(graph.shardDispatcherEC)
   }
 
   private val shardSizesRoute = shardSizes.implementedByAsync { resizes =>
     graph
-      .shardInMemoryLimits(resizes.view.mapValues(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)).toMap)
+      .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
       .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
         shardIdx -> ShardInMemoryLimit(soft, hard)
       })(ExecutionContexts.parasitic)

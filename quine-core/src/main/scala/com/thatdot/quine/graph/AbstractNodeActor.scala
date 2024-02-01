@@ -14,6 +14,7 @@ import scala.util.{Failure, Success}
 import org.apache.pekko.actor.{Actor, ActorLogging}
 
 import cats.data.NonEmptyList
+import cats.implicits._
 import org.apache.pekko
 
 import com.thatdot.quine.graph.NodeEvent.WithTime
@@ -493,18 +494,18 @@ abstract private[graph] class AbstractNodeActor(
       .map(_.toString)
 
     val dgnLocalEventIndexSummary = {
-      val propsIdx = localEventIndex.watchingForProperty.view.map { case (propertyName, notifiables) =>
+      val propsIdx = localEventIndex.watchingForProperty.toMap.map { case (propertyName, notifiables) =>
         propertyName.name -> notifiables.toList.collect {
           case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
             dgnId
         }
-      }.toMap
-      val edgesIdx = localEventIndex.watchingForEdge.view.map { case (edgeLabel, notifiables) =>
+      }
+      val edgesIdx = localEventIndex.watchingForEdge.toMap.map { case (edgeLabel, notifiables) =>
         edgeLabel.name -> notifiables.toList.collect {
           case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
             dgnId
         }
-      }.toMap
+      }
       val anyEdgesIdx = localEventIndex.watchingForAnyEdge.collect {
         case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
           dgnId
@@ -532,7 +533,7 @@ abstract private[graph] class AbstractNodeActor(
       .map { journal =>
         NodeInternalState(
           atTime,
-          properties.view.mapValues(propertyValue2String).toMap,
+          properties.fmap(propertyValue2String),
           edges.toSet,
           latestUpdateAfterSnapshot,
           subscribersStrings,

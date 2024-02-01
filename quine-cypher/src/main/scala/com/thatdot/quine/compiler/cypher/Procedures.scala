@@ -777,7 +777,7 @@ object CypherDebugNode extends UserDefinedProcedure {
                   Expr.DateTime(ZonedDateTime.ofInstant(Instant.ofEpochMilli(t.millis), ZoneId.systemDefault()))
                 )
                 .getOrElse(Expr.Null),
-              Expr.Map(properties.view.map(kv => kv._1.name -> Expr.Str(kv._2)).toMap),
+              Expr.Map(properties.map(kv => kv._1.name -> Expr.Str(kv._2))),
               Expr.List(edges.view.map(halfEdge2Value).toVector),
               latestUpdateMillisAfterSnapshot match {
                 case None => Expr.Null
@@ -1140,7 +1140,7 @@ object CypherDoWhen extends UserDefinedProcedure {
       )
 
       subQueryResults.results.map { (row: Vector[Value]) =>
-        Vector(Expr.Map(subQueryResults.columns.view.map(_.name).zip(row.view).toMap))
+        Vector(Expr.Map(subQueryResults.columns.map(_.name).zip(row.view)))
       }
     }
   }
@@ -1184,7 +1184,7 @@ object CypherDoIt extends UserDefinedProcedure {
     )
 
     subQueryResults.results.map { (row: Vector[Value]) =>
-      Vector(Expr.Map(subQueryResults.columns.view.map(_.name).zip(row.view).toMap))
+      Vector(Expr.Map(subQueryResults.columns.map(_.name).zip(row.view)))
     }
   }
 }
@@ -1250,7 +1250,7 @@ object CypherDoCase extends UserDefinedProcedure {
         )
 
         subQueryResults.results.map { (row: Vector[Value]) =>
-          Vector(Expr.Map(subQueryResults.columns.view.map(_.name).zip(row.view).toMap))
+          Vector(Expr.Map(subQueryResults.columns.map(_.name).zip(row.view)))
         }
     }
   }
@@ -1294,7 +1294,7 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
       .completionTimeout(t.milliseconds)
       .recoverWithRetries(1, { case _: TimeoutException => Source.empty })
       .map { (row: Vector[Value]) =>
-        Vector(Expr.Map(subQueryResults.columns.view.map(_.name).zip(row.view).toMap))
+        Vector(Expr.Map(subQueryResults.columns.map(_.name).zip(row.view)))
       }
   }
 }

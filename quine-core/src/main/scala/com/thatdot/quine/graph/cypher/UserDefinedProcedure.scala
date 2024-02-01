@@ -7,6 +7,8 @@ import scala.util.Try
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
+import cats.implicits._
+
 import com.thatdot.quine.graph.LiteralOpsGraph
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 
@@ -80,7 +82,7 @@ object UserDefinedProcedure {
         Expr.Node(
           qid,
           labels.getOrElse(Set.empty),
-          props.view.mapValues(pv => Expr.fromQuineValue(pv.deserialized.get)).toMap
+          props.fmap(pv => Expr.fromQuineValue(pv.deserialized.get))
         )
       }(graph.nodeDispatcherEC)
 

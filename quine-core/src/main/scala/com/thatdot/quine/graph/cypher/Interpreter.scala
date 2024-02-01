@@ -478,12 +478,12 @@ trait OnNodeInterpreter
       }
     }
 
-    val cypherProps: Map[Symbol, Value] = properties.view.flatMap { case (key, value) =>
+    val cypherProps: Map[Symbol, Value] = properties.flatMap { case (key, value) =>
       value.deserialized.toOption.map(v => key -> Expr.fromQuineValue(v))
-    }.toMap
+    }
 
     // Weed out cases where the node is missing a required property values
-    def missingRequiredProp = requiredPropsOpt.exists { requiredProps =>
+    def missingRequiredProp: Boolean = requiredPropsOpt.exists { requiredProps =>
       requiredProps.exists { case (key, expectedValue) =>
         !cypherProps.get(Symbol(key)).exists(_ == expectedValue)
       }
@@ -550,7 +550,7 @@ trait OnNodeInterpreter
     parameters: Parameters
   ): Source[QueryContext, _] = {
     val map: Map[Symbol, Value] = query.properties.eval(context) match {
-      case Expr.Map(map) => map.map { case (k, v) => Symbol(k) -> v }.toMap
+      case Expr.Map(map) => map.map { case (k, v) => Symbol(k) -> v }
       case Expr.Node(_, _, props) => props
       case Expr.Relationship(_, _, props, _) => props
       case otherVal =>

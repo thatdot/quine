@@ -40,16 +40,15 @@ final case class QueryContext(
   def subcontext(importedColumns: Seq[Symbol]): QueryContext =
     // TODO: if `QueryContext` was ordered, re-order it according to `importedColumns`
     QueryContext(
-      environment.view
-        .filterKeys(importedColumns.contains)
-        .toMap
+      environment
+        .filter(p => importedColumns.contains(p._1))
     )
 
   def pretty: String = environment
     .map { case (k, v) => s"${k.name}: ${v.pretty}" }
     .mkString("{ ", ", ", " }")
 
-  def prettyMap: Map[String, String] = environment.map { case (k, v) => k.name -> v.pretty }.toMap
+  def prettyMap: Map[String, String] = environment.map { case (k, v) => k.name -> v.pretty }
 }
 object QueryContext {
   val empty: QueryContext = QueryContext(Map.empty)

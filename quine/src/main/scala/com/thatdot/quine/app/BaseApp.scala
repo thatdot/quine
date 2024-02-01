@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 import scala.concurrent.Future
 
+import cats.implicits._
 import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.jawn
 
@@ -88,8 +89,8 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
   )(implicit schema: JsonSchema[A]): Future[Map[String, A]] =
     graph.persistor
       .getAllMetaData()
-      .map(_.view.filterKeys(_.startsWith(prefix)))(graph.system.dispatcher)
-      .map(mv => mv.mapValues(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))).toMap)(
+      .map(_.filter(p => p._1.startsWith(prefix)))(graph.system.dispatcher)
+      .map(mv => mv.fmap(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))))(
         graph.system.dispatcher
       )
 

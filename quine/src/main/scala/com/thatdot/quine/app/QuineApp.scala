@@ -214,7 +214,7 @@ final class QuineApp(graph: GraphService)
       cancelledSq.map { case (internalSq, startTime, bufferSize) =>
         makeRegisteredStandingQuery(
           internalSq,
-          outputs.view.mapValues(_._1).toMap,
+          outputs.fmap(_._1),
           startTime,
           bufferSize,
           graph.metrics
@@ -290,7 +290,7 @@ final class QuineApp(graph: GraphService)
         (internalSq, startTime, bufferSize) <- graph.listStandingQueries.get(sqId)
       } yield makeRegisteredStandingQuery(
         internalSq,
-        outputs.view.mapValues(_._1).toMap,
+        outputs.fmap(_._1),
         startTime,
         bufferSize,
         graph.metrics
@@ -472,7 +472,7 @@ final class QuineApp(graph: GraphService)
         IngestStreamsKey,
         thisMemberIdx,
         Map.empty[String, IngestStreamWithStatus],
-        _.view.mapValues(i => IngestStreamWithStatus(config = i, status = None)).toMap
+        _.fmap(i => IngestStreamWithStatus(config = i, status = None))
       )
 
     {
@@ -490,27 +490,27 @@ final class QuineApp(graph: GraphService)
       nodeAppearances = na
 
       var graphStandingQueryIds = graph.listStandingQueries
-      val filterDeleted = st.view.filter { case (_, (sqId, _)) =>
+      val filterDeleted = st.filter { case (_, (sqId, _)) =>
         val queryExists = graphStandingQueryIds.contains(sqId)
         graphStandingQueryIds -= sqId
         queryExists
-      }.toMap
+      }
       val augmented = filterDeleted ++ graphStandingQueryIds
         .map { case (sqId, runningSq) =>
           runningSq._1.name -> (sqId -> Map.empty[String, StandingQueryResultOutputUserDef])
         }
-      standingQueryOutputTargets = augmented.view.mapValues { case (sqId, outputsStored) =>
+      standingQueryOutputTargets = augmented.fmap { case (sqId, outputsStored) =>
         val sqResultSource = graph.wireTapStandingQuery(sqId).get // we check above the SQ exists
-        val outputs = outputsStored.view.map { case (outputName, sqResultOutput) =>
+        val outputs = outputsStored.map { case (outputName, sqResultOutput) =>
           val sqResultSrc: SqResultsSrcType = sqResultSource
             .viaMat(KillSwitches.single)(Keep.right)
             .via(StandingQueryResultOutput.resultHandlingFlow(outputName, sqResultOutput, graph))
           val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
           outputName -> (sqResultOutput -> killSwitch)
-        }.toMap
+        }
 
         sqId -> outputs
-      }.toMap
+      }
 
       is.foreach { case (name, ingest) =>
         addIngestStream(name, ingest.config, restoredStatus = ingest.status, shouldResumeIngest, timeout) match {
@@ -538,8 +538,8 @@ final class QuineApp(graph: GraphService)
     storeGlobalMetaData(
       StandingQueryOutputsKey,
       standingQueryOutputTargets.map { case (name, (id, outputsMap)) =>
-        name -> (id -> outputsMap.view.mapValues(_._1).toMap)
-      }.toMap
+        name -> (id -> outputsMap.fmap(_._1))
+      }
     )
 }
 

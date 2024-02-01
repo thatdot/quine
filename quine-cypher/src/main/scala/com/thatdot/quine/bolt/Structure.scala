@@ -87,7 +87,7 @@ object Structured extends LazyLogging {
           Expr.Node(
             id = nodeQid,
             labels = lblSet.result(),
-            properties = props.view.map(kv => Symbol(kv._1) -> kv._2).toMap
+            properties = props.map(kv => Symbol(kv._1) -> kv._2)
           )
 
         case _ =>
@@ -109,7 +109,7 @@ object Structured extends LazyLogging {
           other
       },
       Expr.List(node.labels.map(lbl => Expr.Str(lbl.name)).toVector),
-      Expr.Map(node.properties.view.map(kv => kv._1.name -> kv._2).toMap)
+      Expr.Map(node.properties.map(kv => kv._1.name -> kv._2))
     )
 
   }
@@ -139,7 +139,7 @@ object Structured extends LazyLogging {
               )
             },
             Symbol(typ),
-            props.view.map(kv => Symbol(kv._1) -> kv._2).toMap,
+            props.map(kv => Symbol(kv._1) -> kv._2),
             idp.valueToQid(Expr.toQuineValue(endId)).getOrElse {
               throw new IllegalArgumentException(
                 s"Cannot deserialize edge $structure whose end cannot be read as an ID"

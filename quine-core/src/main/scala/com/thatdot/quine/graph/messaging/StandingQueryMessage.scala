@@ -85,7 +85,7 @@ object StandingQueryMessage {
       val qvResult: Map[String, QuineValue] =
         result.environment.map { case (col, value) =>
           col.name -> cypher.Expr.toQuineValue(value)
-        }.toMap
+        }
       StandingQueryResult(isPositiveMatch = isPositive, resultId = resultId, data = qvResult)
     }
   }

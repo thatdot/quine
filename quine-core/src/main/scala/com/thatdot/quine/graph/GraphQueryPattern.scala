@@ -8,6 +8,7 @@ import scala.collection.mutable
 import scala.util.control.NoStackTrace
 
 import cats.data.NonEmptyList
+import cats.implicits._
 
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
@@ -118,7 +119,7 @@ final case class GraphQueryPattern(
             )
           }
 
-      val localProps = props.view.mapValues {
+      val localProps = props.fmap {
         case PropertyValuePattern.AnyValue =>
           model.PropertyComparisonFunctions.Wildcard -> None
         case PropertyValuePattern.Value(value) =>
@@ -129,7 +130,7 @@ final case class GraphQueryPattern(
           model.PropertyComparisonFunctions.NoValue -> None
         case PropertyValuePattern.RegexMatch(pattern) =>
           model.PropertyComparisonFunctions.RegexMatch(pattern.pattern) -> None
-      }.toMap
+      }
 
       val localPropsWithLabels = if (labels.nonEmpty) {
         val labelSet = labels.map(qv => QuineValue.Str(qv.name)).toSet[QuineValue]
@@ -172,20 +173,16 @@ final case class GraphQueryPattern(
     val watchedProperties: Map[NodePatternId, Map[Symbol, Symbol]] = toExtract
       .collect { case p: ReturnColumn.Property => p }
       .groupBy(_.node)
-      .view
-      .mapValues { props =>
+      .fmap { props =>
         props.map { case ReturnColumn.Property(_, key, pat) => key -> pat }.toMap
       }
-      .toMap
 
     val watchedIds: Map[NodePatternId, Map[Boolean, Symbol]] = toExtract.view
       .collect { case r: ReturnColumn.Id => r }
       .groupBy(_.node)
-      .view
-      .mapValues { ids =>
+      .fmap { ids =>
         ids.map { case ReturnColumn.Id(_, asStr, pat) => asStr -> pat }.toMap
       }
-      .toMap
 
     // Keep track of which bits of the pattern are still unexplored
     val remainingNodes = mutable.Map.from(nodes.map(pat => pat.id -> pat).toList)

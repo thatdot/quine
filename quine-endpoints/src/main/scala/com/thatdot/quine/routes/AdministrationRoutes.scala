@@ -279,7 +279,7 @@ trait AdministrationRoutes
           } yield acc + (intKey -> limit)
         }
       } {
-        _.map { case (intKey, limit) => intKey.toString -> limit }.toMap
+        _.map { case (intKey, limit) => intKey.toString -> limit }
       }
       .withTitle("Shard Sizes Map")
       .withDescription("A map of shard IDs to shard in-memory node limits")

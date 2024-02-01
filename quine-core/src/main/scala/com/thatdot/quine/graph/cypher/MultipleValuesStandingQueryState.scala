@@ -212,7 +212,7 @@ final case class UnitState(
       logger.error(s"$this cannot be re-initialized")
 
   def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultId.view.map(_ -> QueryContext.empty).toMap
+    resultId.map(_ -> QueryContext.empty).toMap
 }
 
 /** State needed to process a [[MultipleValuesStandingQuery.Cross]]
@@ -381,14 +381,14 @@ final case class CrossState(
     }
 
   def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultDependency.view.map { case (resultId, dependsOnResultIds) =>
+    resultDependency.toMap.map { case (resultId, dependsOnResultIds) =>
       val recreatedResult = accumulatedResults.view
         .map(
           dependsOnResultIds.collectFirst(_).get
         ) // TODO: handle `get` with an error explaining what invariant is violated
         .foldLeft(QueryContext.empty)(_ ++ _)
       resultId -> recreatedResult
-    }.toMap
+    }
 }
 
 /** State needed to process a [[MultipleValuesStandingQuery.LocalProperty]]
