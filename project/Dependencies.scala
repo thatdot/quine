@@ -59,7 +59,7 @@ object Dependencies {
   val pureconfigV = "0.17.4"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
-  val rocksdbV = "7.10.2"
+  val rocksdbV = "8.5.4"
   val scalaCheckV = "1.17.0"
   val scalaCollectionCompatV = "2.11.0"
   val scalaJava8CompatV = "1.0.2"
