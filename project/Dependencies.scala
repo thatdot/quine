@@ -24,7 +24,7 @@ object Dependencies {
   val commonsTextV = "1.10.0"
   val commonsIoV = "2.15.1"
   val dropwizardMetricsV = "4.2.20"
-  val embeddedCassandraV = "4.0.7"
+  val embeddedCassandraV = "4.1.0"
   val endpoints4sDefaultV = "1.11.1"
   val endpoints4sHttpServerV = "1.0.1"
   val endpoints4sOpenapiV = "4.5.1"
