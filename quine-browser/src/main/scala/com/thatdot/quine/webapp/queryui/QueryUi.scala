@@ -15,7 +15,7 @@ import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 import slinky.core._
 import slinky.core.annotations.react
-import slinky.core.facade.ReactElement
+import slinky.core.facade.{React, ReactElement, ReactRef}
 import slinky.web.SyntheticKeyboardEvent
 import slinky.web.html.{`type` => _, _}
 
@@ -85,7 +85,8 @@ import com.thatdot.{visnetwork => vis}
     contextMenuOpt: Option[ContextMenu.Props],
     uiNodeQuickQueries: Vector[UiNodeQuickQuery],
     uiNodeAppearances: Vector[UiNodeAppearance],
-    atTime: Option[Long]
+    atTime: Option[Long],
+    areSampleQueriesVisible: Boolean
   )
 
   def initialState: com.thatdot.quine.webapp.queryui.QueryUi.State = State(
@@ -102,13 +103,16 @@ import com.thatdot.{visnetwork => vis}
     contextMenuOpt = None,
     uiNodeQuickQueries = UiNodeQuickQuery.defaults,
     uiNodeAppearances = Vector.empty,
-    atTime = props.initialAtTime
+    atTime = props.initialAtTime,
+    areSampleQueriesVisible = false
   )
 
   private[this] var network: Option[vis.Network] = None
   private[this] var layout: NetworkLayout = NetworkLayout.Graph
   private[this] var webSocketClientFut: Future[WebSocketQueryClient] =
     Future.failed(new Exception("Client not initialized"))
+
+  private val textareaRef = React.createRef[textarea.tag.RefType]
 
   /** Get a websocket client
     *
@@ -1421,7 +1425,10 @@ import com.thatdot.{visnetwork => vis}
           toggleLayout = toggleNetworkLayout,
           recenterViewport = recenterNetworkViewport
         ),
-        downloadSvg = () => downloadSvgSnapshot()
+        downloadSvg = () => downloadSvgSnapshot(),
+        state.areSampleQueriesVisible,
+        (isVisible: Boolean) => setState(_.copy(areSampleQueriesVisible = isVisible)),
+        this.textareaRef
       )
     }
 

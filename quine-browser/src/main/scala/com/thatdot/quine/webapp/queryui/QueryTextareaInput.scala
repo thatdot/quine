@@ -1,9 +1,13 @@
 package com.thatdot.quine.webapp.queryui
 
+import scala.scalajs.js
+
+import org.scalajs.dom
 import org.scalajs.dom.window
 import slinky.core._
 import slinky.core.annotations.react
 import slinky.core.facade.Hooks._
+import slinky.core.facade.ReactRef
 import slinky.web.html._
 import slinky.web.{SyntheticFocusEvent, SyntheticKeyboardEvent, SyntheticMouseEvent}
 
@@ -18,109 +22,101 @@ import com.thatdot.quine.webapp.hooks.LocalStorageHook.useLocalStorage
     query: String,
     submitButton: (Boolean) => Unit,
     cancelButton: () => Unit,
-    sampleQueries: Seq[SampleQuery]
+    sampleQueries: Seq[SampleQuery],
+    areSampleQueriesVisible: Boolean,
+    setAreSampleQueriesVisible: Boolean => Unit,
+    textareaRef: ReactRef[textarea.tag.RefType],
+    textareaWidth: String,
+    textareaHeight: String,
+    setTextareaWidth: String => Unit,
+    setTextareaHeight: String => Unit
   )
 
   val component: FunctionalComponent[QueryTextareaInput.Props] = FunctionalComponent[Props] { props =>
-    val textareaRef = useRef[textarea.tag.RefType](null)
-    val (areSampleQueriesVisible, setAreSampleQueriesVisible) = useState(false)
-    val (textareaWidth, setTextareaWidth) = useLocalStorage("textareaWidth", "")
-    val (textareaHeight, setTextareaHeight) = useLocalStorage("textareaHeight", "")
+    val saveAndResetTextAreaSize = { () =>
+      val computedStyle = window.getComputedStyle(props.textareaRef.current)
 
-    val textareaOnFocus: SyntheticFocusEvent[textarea.tag.RefType] => Unit = { _ =>
-      textareaRef.current.style.height = textareaHeight
-      textareaRef.current.style.width = textareaWidth
-      setAreSampleQueriesVisible(true)
+      val height = computedStyle.height
+      val width = computedStyle.width
+
+      props.setTextareaHeight(
+        if (height != "" && height.dropRight(2).toFloat > 40) height else ""
+      )
+      props.setTextareaWidth(if (width != "" && width.dropRight(2).toFloat < window.innerWidth * 0.95) width else "")
+
+      props.textareaRef.current.style = ""
     }
 
-    val textareaOnBlur: SyntheticFocusEvent[textarea.tag.RefType] => Unit = { _ =>
-      val _ = window.setTimeout(
-        { () =>
-          val height = textareaRef.current.style.height
-          val width = textareaRef.current.style.width
+    useEffect(
+      { () =>
+        val handleClickOutside: js.Function1[dom.MouseEvent, Unit] = { event =>
+          event.target match {
+            case node: dom.Node =>
+              if (!props.textareaRef.current.contains(node)) {
+                val styleAttribute = props.textareaRef.current.getAttribute("style")
+                val _ = if (styleAttribute != "") saveAndResetTextAreaSize()
+              }
+            case _ =>
+            // do nothing, not a dom node
+          }
+        }
+        window.addEventListener("click", handleClickOutside)
 
-          setTextareaHeight(
-            if (height != "" && height.dropRight(2).toInt > 40) height else ""
-          )
-          setTextareaWidth(if (width != "" && width.dropRight(2).toInt < window.innerWidth * 0.95) width else "")
+        () => window.removeEventListener("click", handleClickOutside)
+      },
+      Seq()
+    )
 
-          textareaRef.current.style = ""
-        },
-        150
-      )
+    val textareaOnFocus: SyntheticFocusEvent[textarea.tag.RefType] => Unit = { _ =>
+      props.textareaRef.current.style.height = props.textareaHeight
+      props.textareaRef.current.style.width = props.textareaWidth
+      props.setAreSampleQueriesVisible(props.query == "")
     }
 
     val handleTextareaOnKeyDown: SyntheticKeyboardEvent[textarea.tag.RefType] => Unit = { e =>
       if (e.key == "Enter" && !e.shiftKey) {
         e.preventDefault()
         props.submitButton(e.ctrlKey)
-        textareaRef.current.blur()
-        setAreSampleQueriesVisible(false)
+        props.textareaRef.current.blur()
+        props.setAreSampleQueriesVisible(false)
       }
+    }
+
+    val handleTextareaOnBlur: SyntheticFocusEvent[textarea.tag.RefType] => Unit = { _ =>
+      saveAndResetTextAreaSize()
+      props.setAreSampleQueriesVisible(false)
     }
 
     val handleButtonOnClick: SyntheticMouseEvent[button.tag.RefType] => Unit = { e =>
       if (props.runningTextQuery) props.cancelButton()
       else {
         props.submitButton(e.ctrlKey)
-        setAreSampleQueriesVisible(false)
       }
     }
 
-    val sampleQueriesCardClasses =
-      s"position-fixed rounded border border-primary-subtle p-2 overflow-scroll ${Styles.sampleQueries}${if (areSampleQueriesVisible)
-        s" ${Styles.focused}"
-      else ""}"
-
-    val handleSampleQueryClick: SampleQuery => SyntheticMouseEvent[button.tag.RefType] => Unit = { query => _ =>
-      props.updateQuery(query.query)
-      textareaRef.current.focus()
+    val handleTextareaChange: SyntheticEvent[textarea.tag.RefType, dom.Event] => Unit = { e =>
+      val newQuery = e.target.value
+      props.updateQuery(newQuery)
+      props.setAreSampleQueriesVisible(newQuery == "")
     }
 
     div(className := Styles.queryInput)(
       textarea(
-        ref := textareaRef,
+        ref := props.textareaRef,
         placeholder := "Query returning nodes",
         className := Styles.queryTextareaInput,
         value := props.query,
-        onChange := { e => props.updateQuery(e.target.value) },
+        onChange := handleTextareaChange,
         onKeyDown := handleTextareaOnKeyDown,
-        onBlur := textareaOnBlur,
         onFocus := textareaOnFocus,
+        onBlur := handleTextareaOnBlur,
         disabled := props.runningTextQuery,
         rows := "1"
       ),
       button(
         className := s"${Styles.grayClickable} ${Styles.queryInputButton}",
-        onClick := handleButtonOnClick
-      )(if (props.runningTextQuery) "Cancel" else "Query"),
-      div(
-        className := sampleQueriesCardClasses
-      )(
-        div(className := "d-flex justify-content-between")(
-          div(className := "mb-2 fs-3")("Sample Queries"),
-          button(
-            className := "btn-close",
-            `type` := "button",
-            onClick := { _ =>
-              setAreSampleQueriesVisible(false)
-            }
-          )
-        ),
-        div(className := "list-group")(
-          props.sampleQueries.map(query =>
-            button(
-              key := query.name,
-              `type` := "button",
-              className := s"list-group-item text-start${if (query.query == props.query) " active" else ""}",
-              onClick := handleSampleQueryClick(query)
-            )(
-              div(strong(query.name)),
-              div(className := "font-monospace text-body-secondary")(query.query)
-            )
-          ): _*
-        )
-      )
+        onMouseDown := handleButtonOnClick
+      )(if (props.runningTextQuery) "Cancel" else "Query")
     )
   }
 }

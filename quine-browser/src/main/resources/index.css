@@ -74,16 +74,19 @@ pre.wrap {
   max-width: 70vw;
   background-color: hsl(0, 0%, 95%);
   bottom: 50px;
-  right: 50px;
-  transform: translateX(200%);
+  left: 90px;
+  visibility: hidden;
   transition:
-    transform 0.3s ease-in-out,
-    opacity 0.3s ease-in-out;
+    opacity 0.3s ease-in-out,
+    visibility 0s linear 0.3s;
 }
 
 .focused {
   opacity: 1;
-  transform: translateX(0);
+  visibility: visible;
+  transition:
+    opacity 0.3s ease-in-out,
+    visibility 0s linear 0s;
 }
 
 .nav-bar {

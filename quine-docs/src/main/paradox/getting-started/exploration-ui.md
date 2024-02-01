@@ -1,6 +1,7 @@
 ---
 description: Introducing Quine streaming graph exploration user interface
 ---
+
 # Exploration UI
 
 Quine's Exploration UI is an interactive canvas for exploring specific sub-graphs of data. While Quine overall is a streaming graph interpreter, the Exploration UI gives a user the ability to explore subsets of data in a style more similar to a database. This tool is particularly useful for investigating specific data found via the streaming capabilities built into the rest of the system. It facilitates an ad hoc, interactive exploration of small subsets of data.
@@ -42,19 +43,19 @@ Nodes often contain properties, which can be viewed by hovering the mouse over p
 
 ![A node with properties](./ex-ui/node-properties.png)
 
-----------------------
+---
 
 When new results are returned to the canvas, the canvas animates briefly to layout all results. Nodes can be selected and moved around the canvas, or pinned so that they do not move when the canvas is animated. Additional, contextually relevant queries can be easily initiated by right-clicking a node and choosing the appropriate query.
 
 ![Quick Queries shown when right-clicking a node](./ex-ui/quick-queries.png)
 
-----------------------
+---
 
 When a query is issued that is not expected to return nodes, a text area with green background appears at the bottom of the canvas to show the results. Error messages are also returned in this text area, with a pale red background. Textual results can be dismissed with the "X" in the corner of the text area.
 
 ![Textual results](./ex-ui/text-results.png)
 
-----------------------
+---
 
 Node appearances, contextual queries, and default starting queries in the query bar can be customized by using the corresponding @ref:[API calls documented](../reference/rest-api.md) under the heading of "UI Styling".
 
@@ -84,7 +85,7 @@ By default, queries issued in the Exploration UI are expected to return nodes (a
 
 One query is -issued- at a time, but any number of queries can be executing simultaneously. As new queries are issued, the in-progress spinner on the right reports the number of currently executing queries. Hovering the mouse over the spinner/counter will turn it into an "X" which can be clicked to cancel all in-progress queries. Since some queries can can continue forever (e.g. wiretapping a Standing Query), clicking the "X" that appears in the progress spinner is the only way to gracefully end the query.
 
-In addition to node-centric queries, queries can return textual or tabular results. These results are not rendered on the canvas directly but into a text area that appears at the bottom of the canvas. By default, all queries entered into the query bar are expected to return nodes or an error will be thrown. To deliberately run a query that is expected to return text, hold the Shift key while executing the query. Query and system errors are also reported in the text area. Results can continue to stream through the text area in perpetuity, so the right side also includes a button to scroll to the very top or bottom of the results. The text area can be resized by dragging its top border, or closed manually by the clicking the "X".
+In addition to node-centric queries, queries can return textual or tabular results. These results are not rendered on the canvas directly but into a text area that appears at the bottom of the canvas. By default, all queries entered into the query bar are expected to return nodes or an error will be thrown. To deliberately run a query that is expected to return text, hold the Ctrl key while executing the query. Query and system errors are also reported in the text area. Results can continue to stream through the text area in perpetuity, so the right side also includes a button to scroll to the very top or bottom of the results. The text area can be resized by dragging its top border, or closed manually by the clicking the "X".
 
 Quine includes many utility functions built in, and the ability to add in custom user-defined queries. To list all available functions which can be included in queries, you can execute the text query `CALL help.functions()` or `CALL help.procedures()` to print out the name, signature, and documentation for all currently supported functions and procedures.
 
@@ -92,7 +93,7 @@ Quine includes many utility functions built in, and the ability to add in custom
 
 ### Interacting With Data
 
-A quick query is a pre-programmed query that is made available for execution by right-clicking a relevant starting node. Any number of quick queries can be pre-programmed into the system, and each quick query can define on which kind of node it becomes available. The node on which the quick query is executed is provided as input into the query. 
+A quick query is a pre-programmed query that is made available for execution by right-clicking a relevant starting node. Any number of quick queries can be pre-programmed into the system, and each quick query can define on which kind of node it becomes available. The node on which the quick query is executed is provided as input into the query.
 
 Quick queries that are configured with an `edgeLabel` will produce a "synthetic edge" in the Exploration UI. A synthetic edge is rendered as a purple dotted edge in the Exploration UI. A synthetic edge does not directly exist in the underlying data; it exists only in the canvas. A synthetic edge connects the starting node from a quick query with all the results returned from that quick query. Synthetic edges enable displaying a complex result (e.g. the result of a complex graph traversal) as a simple single edge.
 
@@ -119,7 +120,7 @@ Querying for a matched node is especially useful if there is a Cypher query regi
 ## Reference: Key Combinations
 
 - **Enter**: when in the query bar, equivalent to clicking the "Query" button.
-- **Shift-Enter**: when in the query bar, execute a text query; equivalent to Shift-clicking the "Query" button.
+- **Ctrl-Enter**: when in the query bar, execute a text query; equivalent to Ctrl-clicking the "Query" button.
 - **Ctrl-A**: select all nodes on the canvas.
 - **Backspace**: remove the selected node(s) from the canvas.
 - **Shift-click and drag**: draw a box to select multiple nodes.
