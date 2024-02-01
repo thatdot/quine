@@ -17,7 +17,7 @@ object Dependencies {
   val bootstrapV = "5.3.0"
   val cassandraClientV = "4.15.0"
   val catsV = "2.10.0"
-  val catsEffectV = "3.5.2"
+  val catsEffectV = "3.5.3"
   val commonsCodecV = "1.15"
   // Must be at least 1.21 to address CVE-2021-36090
   val commonsCompressV = "1.25.0"
