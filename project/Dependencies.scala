@@ -21,7 +21,7 @@ object Dependencies {
   val commonsCodecV = "1.15"
   // Must be at least 1.21 to address CVE-2021-36090
   val commonsCompressV = "1.25.0"
-  val commonsTextV = "1.10.0"
+  val commonsTextV = "1.11.0"
   val commonsIoV = "2.15.1"
   val dropwizardMetricsV = "4.2.20"
   val embeddedCassandraV = "4.1.0"
