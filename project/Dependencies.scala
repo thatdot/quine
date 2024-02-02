@@ -56,7 +56,7 @@ object Dependencies {
   val plotlyV = "1.57.1"
   val protobufV = "3.21.10"
   val protobufCommonV = "2.14.2"
-  val pureconfigV = "0.17.4"
+  val pureconfigV = "0.17.5"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
   val rocksdbV = "8.5.4"
