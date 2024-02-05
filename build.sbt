@@ -124,10 +124,10 @@ lazy val `quine-cypher`: Project = project
       "-Xlog-implicits"
     ),
     libraryDependencies ++= Seq(
-      "com.thatdot" %% "expressions-9.1.0" % openCypherV,
-      "com.thatdot" %% "front-end-9.1.0" % openCypherV,
-      "com.thatdot" %% "opencypher-cypher-ast-factory-9.1.0" % openCypherV,
-      "com.thatdot" %% "util-9.1.0" % openCypherV,
+      "com.thatdot" %% s"expressions-${openCypherV}" % openCypherV,
+      "com.thatdot" %% s"front-end-${openCypherV}" % openCypherV,
+      "com.thatdot" %% s"opencypher-cypher-ast-factory-${openCypherV}" % openCypherV,
+      "com.thatdot" %% s"util-${openCypherV}" % openCypherV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
