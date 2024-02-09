@@ -62,17 +62,21 @@ class CypherErrors extends CypherHarness("cypher-errors") {
 
   describe("Compile") {
     val query1 = "FOREACH (p IN [1,3,7] | UNWIND range(9,78) AS N)"
-    testQuery(
+    assertStaticQueryFailure(
       query1,
-      Vector.empty[String],
-      Vector()
+      CypherException.Compile(
+        wrapping = "Invalid use of UNWIND inside FOREACH",
+        position = Some(
+          Position(1, 25, 24, SourceText(query1))
+        )
+      )
     )
 
     val query2 = "CREATE (n)-[*]-(m)"
     assertStaticQueryFailure(
       query2,
       CypherException.Compile(
-        wrapping = "Cannot create undirected relationship",
+        wrapping = "Variable length relationships cannot be used in CREATE",
         position = Some(
           Position(1, 11, 10, SourceText(query2))
         )

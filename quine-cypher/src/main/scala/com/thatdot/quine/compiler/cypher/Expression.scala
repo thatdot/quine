@@ -6,7 +6,7 @@ import org.opencypher.v9_0.ast.factory.neo4j.JavaCCParser
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
+import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.{AST_REWRITE, PARSING}
 import org.opencypher.v9_0.frontend.phases.{
   BaseContains,
   BaseContext,
@@ -21,7 +21,7 @@ import org.opencypher.v9_0.rewriting.rewriters.ProjectionClausesHaveSemanticInfo
 import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
 import org.opencypher.v9_0.rewriting.{ListStepAccumulator, RewriterStep}
 import org.opencypher.v9_0.util.StepSequencer.{AccumulatedSteps, Condition}
-import org.opencypher.v9_0.util.{AnonymousVariableNameGenerator, StepSequencer, inSequence}
+import org.opencypher.v9_0.util.{AnonymousVariableNameGenerator, OpenCypherExceptionFactory, StepSequencer, inSequence}
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.SourceText
@@ -676,15 +676,17 @@ object Expression {
     }
 }
 
-case object ourCoolParsingPhase extends Phase[BaseContext, BaseState, BaseState] {
-  override def phase: CompilationPhase = CompilationPhase.PARSING
+case object OpenCypherJavaCCParsing extends Phase[BaseContext, BaseState, BaseState] {
+  private val exceptionFactory = OpenCypherExceptionFactory(None)
 
-  override def process(from: BaseState, context: BaseContext): BaseState =
-    from.withStatement(JavaCCParser.parse(from.queryText, context.cypherExceptionFactory))
+  override def process(in: BaseState, context: BaseContext): BaseState = {
+    val statement = JavaCCParser.parse(in.queryText, exceptionFactory)
+    in.withStatement(statement)
+  }
 
-  override def postConditions: Set[Condition] = Set(
-    BaseContains[Statement]()
-  )
+  override val phase = PARSING
+
+  override def postConditions: Set[StepSequencer.Condition] = Set(BaseContains[Statement]())
 }
 
 /** Turns all pattern expressions into pattern comprehensions

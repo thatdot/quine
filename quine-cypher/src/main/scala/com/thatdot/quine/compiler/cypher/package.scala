@@ -40,11 +40,15 @@ import org.opencypher.v9_0.util.{
   CypherExceptionFactory,
   ErrorMessageProvider,
   InputPosition,
+  InternalNotification,
+  InternalNotificationLogger,
+  NotImplementedErrorMessageProvider,
   OpenCypherExceptionFactory,
   RecordingNotificationLogger,
   Rewriter,
   StepSequencer,
   bottomUp,
+  devNullLogger,
   symbols
 }
 import org.opencypher.v9_0.{ast, expressions, rewriting}
@@ -363,11 +367,11 @@ package object cypher {
     val supportedFeatures = Array.empty[SemanticFeature]
     // format: off
     val parsingPhase = {
-      ourCoolParsingPhase                                                       andThen
+      OpenCypherJavaCCParsing                                                   andThen
       SyntaxDeprecationWarningsAndReplacements(syntacticallyDeprecatedFeatures) andThen
       PreparatoryRewriting                                                      andThen
       patternExpressionAsComprehension                                          andThen
-      SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*)                      andThen
+      SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*)         andThen
       SyntaxDeprecationWarningsAndReplacements(semanticallyDeprecatedFeatures)  andThen
       AstRewriting()                                                            andThen
       LiteralExtraction(Forced)
@@ -438,9 +442,9 @@ package object cypher {
 
     // format: off
     val parsingPhase = {
-      ourCoolParsingPhase                                  andThen
-      patternExpressionAsComprehension                     andThen
-      aliasReturns                                         andThen
+      OpenCypherJavaCCParsing                                           andThen
+      patternExpressionAsComprehension                                  andThen
+      aliasReturns                                                      andThen
       SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*) // andThen
       // COMMENTARY ON QU-1292: There is a compilation error thrown when using exists() with
       // pattern expressions/comprehensions in SQ pattern queries. Ethan spent a few days
@@ -522,7 +526,9 @@ package object cypher {
 
       override def cypherExceptionFactory: CypherExceptionFactory = OpenCypherExceptionFactory(initial.startPosition)
 
+      override def errorMessageProvider: ErrorMessageProvider = NotImplementedErrorMessageProvider
 
+      override def cancellationChecker: CancellationChecker = CancellationChecker.NeverCancelled
 
       /* This is gross. The only way I found to understand how to reasonably
        * implement this was to look at the corresponding code in Neo4j. I'm
@@ -534,9 +540,7 @@ package object cypher {
 
         import scala.reflect.{ClassTag, classTag}
 
-        override def addMonitorListener[T](monitor: T, tags: String*): Unit = ()
-
-        override def newMonitor[T <: AnyRef : ClassTag](tags: String*): T = {
+        def newMonitor[T <: AnyRef : ClassTag](tags: String*): T = {
           val cls: Class[_] = classTag[T].runtimeClass
           require(cls.isInterface(), "Monitor expects interface")
 
@@ -552,21 +556,14 @@ package object cypher {
             .newProxyInstance(cls.getClassLoader, Array(cls), invocationHandler)
             .asInstanceOf[T]
         }
+
+        def addMonitorListener[T](monitor: T, tags: String*) = ()
       }
 
-
-      override def errorHandler: scala.collection.Seq[SemanticErrorDef] => Unit = _ => ()
-
-      override def errorMessageProvider: ErrorMessageProvider = new ErrorMessageProvider {
-        override def createMissingPropertyLabelHintError(operatorDescription: String, hintStringification: String, missingThingDescription: String, foundThingsDescription: String, entityDescription: String, entityName: String, additionalInfo: String): String = "NYI"
-
-        override def createSelfReferenceError(name: String, variableType: String): String = "NYI"
-      }
-
-      override def cancellationChecker: CancellationChecker = new CancellationChecker {
-        override def throwIfCancelled(): Unit = ()
-      }
+      override def errorHandler: Seq[semantics.SemanticErrorDef] => Unit =
+        (errs: Seq[semantics.SemanticErrorDef]) => errors ++= errs
     }
+
     // Run the pipeline
     val output = try pipeline.transform(initial, baseContext)
     catch {

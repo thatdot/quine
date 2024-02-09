@@ -24,7 +24,7 @@ standingQueries:
   - pattern:
       query: |-
         MATCH (a)-[:div_by_ten]->(b)-[:div_by_ten]->(c)
-        WHERE exists(c.prop)
+        WHERE c.prop IS NOT NULL
         RETURN DISTINCT id(c) as id
       type: Cypher
     outputs:

@@ -395,7 +395,7 @@ trait StandingQuerySchemas
   val sqExample: StandingQueryDefinition =
     StandingQueryDefinition(
       pattern = StandingQueryPattern.Cypher(
-        "MATCH (n)-[:has_father]->(m) WHERE exists(n.name) AND exists(m.name) RETURN DISTINCT strId(n) AS kidWithDad"
+        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad"
       ),
       outputs = Map(
         "file-of-results" -> StandingQueryResultOutputUserDef.WriteToFile("kidsWithDads.jsonl")

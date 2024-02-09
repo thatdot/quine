@@ -602,16 +602,15 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     )
 
     // This is the first real test: using the parsed value directly with UNWIND is possible
-    val unwind = s"WITH parseJson('$testJson') AS json UNWIND keys(json) AS key RETURN key"
-    testQuery(
-      unwind,
-      Vector("key"),
-      Vector(
-        Vector(Expr.Str("hello")),
-        Vector(Expr.Str("arr")),
-        Vector(Expr.Str("sub"))
-      ),
-      ordered = false
+    val failedUnwind = s"WITH parseJson('$testJson') AS json UNWIND keys(json) AS key RETURN key"
+    assertStaticQueryFailure(
+      failedUnwind,
+      CypherException.Compile(
+        "Type mismatch: expected Map, Node or Relationship but was Any",
+        Some(
+          com.thatdot.quine.graph.cypher.Position(1, 103, 102, SourceText(failedUnwind))
+        )
+      )
     )
     // But with castOrThrow, all is well:
     testQuery(

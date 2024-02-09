@@ -10,7 +10,7 @@ ingestStreams: []
 standingQueries:
   - pattern:
       type: Cypher
-      query: MATCH (n:arctan) WHERE exists(n.approximation) AND exists(n.denominator) RETURN DISTINCT id(n) AS id
+      query: MATCH (n:arctan) WHERE n.approximation IS NOT NULL AND n.denominator IS NOT NULL RETURN DISTINCT id(n) AS id
     outputs:
       # iterate over arctan
       iterate:
@@ -46,7 +46,7 @@ sampleQueries:
     query:
       CALL recentNodes(15) YIELD node AS nId
       MATCH (n)
-      WHERE id(n) = nId AND exists(n.approximatedPi)
+      WHERE id(n) = nId AND n.approximatedPi IS NOT NULL
       RETURN n.approximatedPi LIMIT 1
   - name: Repeatedly Get Best Approximation (So far)
     query:
@@ -55,7 +55,7 @@ sampleQueries:
       CALL cypher.doIt("
         CALL recentNodes(15) YIELD node AS nId
         MATCH (n)
-        WHERE id(n) = nId AND exists(n.approximatedPi)
+        WHERE id(n) = nId AND n.approximatedPi IS NOT NULL
         RETURN n.approximatedPi AS approximatedPi LIMIT 1
       ") YIELD value
       RETURN value.approximatedPi AS approximatedPi, abs(pi() - value.approximatedPi) AS error

@@ -549,7 +549,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     )
 
     testQuery(
-      "MATCH (n { baz: 7.0 })-[:bar]->(m)<-[:foo]-({ foo: \"BAR\" }) where exists(m.name) RETURN id(m)",
+      "MATCH (n { baz: 7.0 })-[:bar]->(m)<-[:foo]-({ foo: \"BAR\" }) where m.name IS NOT NULL RETURN id(m)",
       GraphQueryPattern(
         NonEmptyList.of(
           NodePattern(
@@ -628,7 +628,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     )
 
     testQuery(
-      "MATCH (n) WHERE exists(n.foo) AND n.foo % 3 = 1 RETURN n.foo AS fooValue, n.foo*3 AS fooValueTripled",
+      "MATCH (n) WHERE n.foo IS NOT NULL AND n.foo % 3 = 1 RETURN n.foo AS fooValue, n.foo*3 AS fooValueTripled",
       GraphQueryPattern(
         NonEmptyList.of(
           NodePattern(
@@ -664,7 +664,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
 
     // should reject ORDER BY clause (something more than just `MATCH ... WHERE ... RETURN [DISTINCT]`)
     {
-      val query = "MATCH (n) WHERE exists(n.foo) RETURN id(n) ORDER BY n.qux"
+      val query = "MATCH (n) WHERE n.foo IS NOT NULL RETURN id(n) ORDER BY n.qux"
       interceptQuery(
         query,
         CypherException.Compile(
@@ -728,7 +728,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       interceptQuery(
         query,
         CypherException.Compile(
-          "Unknown variable `m`",
+          "Variable `m` not defined",
           Some(Position(1, 18, 17, SourceText(query)))
         )
       )

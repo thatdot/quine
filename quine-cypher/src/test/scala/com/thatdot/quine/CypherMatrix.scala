@@ -130,7 +130,7 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
   )
 
   testQuery(
-    "match (n) where exists(n.name) return count(*)",
+    "match (n) where n.name IS NOT NULL return count(*)",
     expectedColumns = Vector("count(*)"),
     expectedRows = Seq(Vector(Expr.Integer(6L))),
     expectedCanContainAllNodeScan = true,

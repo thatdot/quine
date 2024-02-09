@@ -47,7 +47,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
 
     val sqPattern = SqPattern.Cypher(
       """MATCH (a)-[:next]->(b)
-        |WHERE exists(a.id) AND exists(b.id)
+        |WHERE a.id IS NOT NULL AND b.id IS NOT NULL
         |RETURN DISTINCT id(a) as id
         |""".stripMargin
     )
@@ -121,8 +121,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     val sqDef = StandingQueryDefinition(
       SqPattern.Cypher(
         ("""MATCH (a)-[:next]->(b)
-           |WHERE exists(a.id)
-           |  AND exists(b.id)
+           |WHERE a.id IS NOT NULL
+           |  AND b.id IS NOT NULL
            |  AND a.id % """ + mod.toString + """ = 0
            |RETURN a.id, b.id, b.id-a.id""").stripMargin,
         StandingQueryMode.MultipleValues

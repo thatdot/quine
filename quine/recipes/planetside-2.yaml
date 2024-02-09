@@ -43,7 +43,7 @@ standingQueries:
   - pattern:
       type: Cypher
       # match each new character-label node
-      query: MATCH (newCharacter:character) WHERE exists(newCharacter.character_id) RETURN DISTINCT id(newCharacter) AS id
+      query: MATCH (newCharacter:character) WHERE newCharacter.character_id IS NOT NULL RETURN DISTINCT id(newCharacter) AS id
     outputs:
       populate-fresh-character:
         type: CypherQuery
@@ -55,7 +55,7 @@ standingQueries:
   # Populate weapon data
   - pattern:
       type: Cypher
-      query: MATCH (weapon:weapon) WHERE weapon.uninitialized = true AND exists(weapon.weapon_id) RETURN DISTINCT id(weapon) AS id
+      query: MATCH (weapon:weapon) WHERE weapon.uninitialized = true AND weapon.weapon_id IS NOT NULL RETURN DISTINCT id(weapon) AS id
     outputs:
       populate-weapon:
         type: CypherQuery

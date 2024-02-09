@@ -46,7 +46,7 @@ standingQueries:
       type: Cypher
       query: |-
         MATCH (n)
-        WHERE EXISTS(n.comment)
+        WHERE n.comment IS NOT NULL
         RETURN DISTINCT id(n) AS id
     outputs:
       output-1:
@@ -63,7 +63,7 @@ sampleQueries:
   - name: Show time nodes
     query: >
       MATCH (n)
-      WHERE EXISTS(n.period)
+      WHERE n.period IS NOT NULL
       RETURN n
   - name: Show revision nodes
     query: >

@@ -83,8 +83,8 @@ The following constraints apply to Cypher contained in the pattern `query` strin
 
      * `nodeName.property = 123` - the property has the literal value on the right
      * `nodeName.property <> 123` - the property must exist but be different than the literal value on the right
-     * `exists(nodeName.property)` - the property must exist
-     * `NOT exists(nodeName.property)` - the property must not exist
+     * `nodeName.property IS NOT NULL` - the property must exist
+     * `nodeName.property IS NULL` - the property must not exist
      * `nodeName.property =~ "regex"` - the property must be a string matching the regex
      * `strId(nodeName) = "1234"` - the string version of the ID of the node must be exactly the literal value on the right
      * `strId(nodeName) = idFrom('values', 'to', 'hash')` - the ID of the node must match exactly the `idFrom()` computed from the literal values on the right
