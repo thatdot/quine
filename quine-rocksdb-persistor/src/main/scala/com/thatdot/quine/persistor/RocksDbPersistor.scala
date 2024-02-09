@@ -11,7 +11,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Using
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
@@ -21,6 +20,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -34,7 +34,6 @@ import com.thatdot.quine.persistor.codecs.{
   NodeChangeEventCodec,
   StandingQueryCodec
 }
-import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on RocksDB
   *
@@ -46,12 +45,12 @@ import com.thatdot.quine.util.QuineDispatchers
   */
 final class RocksDbPersistor(
   filePath: String,
+  val namespace: NamespaceId,
   writeAheadLog: Boolean,
   syncWrites: Boolean,
   dbOptionProperties: java.util.Properties,
-  val persistenceConfig: PersistenceConfig
-)(implicit
-  actorSystem: ActorSystem
+  val persistenceConfig: PersistenceConfig,
+  ioDispatcher: ExecutionContext
 ) extends PersistenceAgent {
 
   /* TODO: which other `DBOptions` should we expose? Maybe `setIncreaseParallelism` (as per the
@@ -68,9 +67,6 @@ final class RocksDbPersistor(
    */
 
   import RocksDbPersistor._
-
-  val ioDispatcher: ExecutionContext =
-    new QuineDispatchers(actorSystem).blockingDispatcherEC
 
   /* All mutable fields below are mutated only when this lock is held exclusively
    *
@@ -683,12 +679,12 @@ final class RocksDbPersistor(
 
   def shutdown(): Future[Unit] = Future(shutdownSync())(ioDispatcher)
 
-  def delete(): Unit = {
+  def delete(): Future[Unit] = Future {
     shutdownSync()
     logger.info(s"Destroying RocksDB at $filePath...")
     RocksDB.destroyDB(filePath, new Options())
     logger.info(s"Destroyed RocksDB at $filePath.")
-  }
+  }(ioDispatcher)
 }
 
 object RocksDbPersistor {

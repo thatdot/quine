@@ -11,15 +11,17 @@ import com.thatdot.quine.graph.QuineUUIDProvider
 
 object GenerateOpenApi extends App {
 
-  val outputPath: Path = args match {
-    case Array(stringPath) => Paths.get(stringPath)
+  private val (outputPath: Path, isEnterprise: Boolean) = args match {
+    case Array(stringPath) => (Paths.get(stringPath), false)
+    case Array(stringPath, isEnterprise) => (Paths.get(stringPath), isEnterprise == "true")
     case _ =>
-      println(s"GenerateOpenApi expected one path argument but got: ${args.mkString(",")}")
+      println(s"GenerateOpenApi expected a path and optional isEnterprise argument but got: ${args.mkString(",")}")
       sys.exit(1)
   }
 
   val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider).api
-  val openApiDocumentationJson: String = OpenApiRenderer.stringEncoder(servers = None).encode(openApiRoutes)
+  val openApiDocumentationJson: String =
+    OpenApiRenderer(isEnterprise).stringEncoder(servers = None).encode(openApiRoutes)
 
   Files.createDirectories(outputPath.getParent())
   Files.write(

@@ -18,6 +18,7 @@ import io.circe
 import io.circe.{Decoder, Encoder}
 
 import com.thatdot.quine.graph.cypher.CypherException
+import com.thatdot.quine.graph.namespaceFromParam
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.{
@@ -100,7 +101,7 @@ trait WebSocketQueryProtocolServer
                   .fold("")(_ + _)
                   .map(deserializeClientTextMessage)
               case _: ws.BinaryMessage =>
-                val msg = "Binary websocket messages are not yet supported"
+                val msg = "Binary websocket messages are not supported"
                 Source.single(Left(QueryProtocolMessage.MessageError(msg)))
             } ~> processClientRequests.in(1)
 
@@ -200,6 +201,7 @@ trait WebSocketQueryProtocolServer
               input.groupedWithin(batchOpt.getOrElse(Int.MaxValue), maxMillis.millis)
           }
         val atTime = run.atTime.map(Milliseconds.apply)
+        val namespace = namespaceFromParam(run.namespace)
 
         // Depending on the sort of query and query language, build up different server messages
         val (results, isReadOnly, canContainAllNodeScan, columns): (
@@ -214,9 +216,17 @@ trait WebSocketQueryProtocolServer
               val (results, isReadOnly, canContainAllNodeScan): (Source[UiNode[Id], NotUsed], Boolean, Boolean) =
                 run.language match {
                   case QueryLanguage.Gremlin =>
-                    (queryGremlinNodes(GremlinQuery(run.query, run.parameters), atTime), true, true)
+                    (
+                      queryGremlinNodes(
+                        GremlinQuery(run.query, run.parameters),
+                        namespace,
+                        atTime
+                      ),
+                      true,
+                      true
+                    )
                   case QueryLanguage.Cypher =>
-                    queryCypherNodes(CypherQuery(run.query, run.parameters), atTime)
+                    queryCypherNodes(CypherQuery(run.query, run.parameters), namespace, atTime)
                 }
               val batches = batched(results.viaMat(KillSwitches.single)(Keep.right))
               (batches.map(NodeResults(run.queryId, _)), isReadOnly, canContainAllNodeScan, None)
@@ -225,9 +235,17 @@ trait WebSocketQueryProtocolServer
               val (results, isReadOnly, canContainAllNodeScan): (Source[UiEdge[Id], NotUsed], Boolean, Boolean) =
                 run.language match {
                   case QueryLanguage.Gremlin =>
-                    (queryGremlinEdges(GremlinQuery(run.query, run.parameters), atTime), true, true)
+                    (
+                      queryGremlinEdges(
+                        GremlinQuery(run.query, run.parameters),
+                        namespace,
+                        atTime
+                      ),
+                      true,
+                      true
+                    )
                   case QueryLanguage.Cypher =>
-                    queryCypherEdges(CypherQuery(run.query, run.parameters), atTime)
+                    queryCypherEdges(CypherQuery(run.query, run.parameters), namespace, atTime)
                 }
               val batches = batched(results.viaMat(KillSwitches.single)(Keep.right))
               (batches.map(EdgeResults(run.queryId, _)), isReadOnly, canContainAllNodeScan, None)
@@ -235,14 +253,18 @@ trait WebSocketQueryProtocolServer
             case TextSort =>
               run.language match {
                 case QueryLanguage.Gremlin =>
-                  val results = queryGremlinGeneric(GremlinQuery(run.query, run.parameters), atTime)
+                  val results = queryGremlinGeneric(
+                    GremlinQuery(run.query, run.parameters),
+                    namespace,
+                    atTime
+                  )
                   val batches = batched(results.viaMat(KillSwitches.single)(Keep.right))
                   (batches.map(NonTabularResults(run.queryId, _)), true, true, None)
 
                 case QueryLanguage.Cypher =>
                   val cypherQuery = CypherQuery(run.query, run.parameters)
                   val (columns, results, isReadOnly, canContainAllNodeScan) =
-                    queryCypherGeneric(cypherQuery, atTime)
+                    queryCypherGeneric(cypherQuery, namespace, atTime)
                   val batches = batched(results.viaMat(KillSwitches.single)(Keep.right))
                   (
                     batches.map(TabularResults(run.queryId, columns, _)),

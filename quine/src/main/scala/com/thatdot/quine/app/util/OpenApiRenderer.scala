@@ -26,7 +26,8 @@ import ujson.circe.CirceJson
 
 import com.thatdot.quine.routes.exts.{OpenApiServer, OpenApiServerVariable}
 
-object OpenApiRenderer {
+case class OpenApiRenderer(isEnterprise: Boolean) {
+  import OpenApiRenderer._
 
   val openApiVersion = "3.0.0"
 
@@ -236,7 +237,9 @@ object OpenApiRenderer {
     }
     if (operation.parameters.nonEmpty) {
       fields += "parameters" -> ujson.Arr(
-        operation.parameters.map(parameterJson): _*
+        operation.parameters
+          .filter(param => isEnterprise || !enterpriseParams.contains(param.name))
+          .map(parameterJson): _*
       )
     }
     operation.requestBody.foreach { requestBody =>
@@ -397,4 +400,8 @@ object OpenApiRenderer {
   def stringEncoder(servers: Option[Seq[OpenApiServer]]): Encoder[OpenApi, String] =
     openApi => jsonEncoder(servers).encode(openApi).transform(ujson.StringRenderer()).toString
 
+}
+
+object OpenApiRenderer {
+  val enterpriseParams: Set[String] = Set("namespace")
 }

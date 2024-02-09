@@ -729,7 +729,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
   registerUserDefinedFunction(SnitchFunction)
   it("only evaluates projected expressions once") {
     SnitchFunction.reset()
-    val theQuery = queryCypherValues("RETURN snitch(rand())")(graph)
+    val theQuery = queryCypherValues("RETURN snitch(rand())", cypherHarnessNamespace)(graph)
     assert(theQuery.columns === Vector(Symbol("snitch(rand())")))
     theQuery.results.runWith(Sink.seq).map { results =>
       assert(results.length === 1, "query only requests 1 row")

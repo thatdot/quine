@@ -4,7 +4,7 @@ import org.apache.pekko.actor.Actor
 import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.edges.EdgeCollectionView
-import com.thatdot.quine.graph.messaging.QuineIdAtTime
+import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 
 /** Read-only view of a node actor */
@@ -34,7 +34,10 @@ trait BaseNodeActorView extends Actor {
     */
   def atTime: Option[Milliseconds]
 
-  def qidAtTime: QuineIdAtTime
+  /** Namespace this node is a part of */
+  def namespace: NamespaceId
+
+  def qidAtTime: SpaceTimeQuineId
 
   /** ID provider */
   implicit def idProvider: QuineIdProvider

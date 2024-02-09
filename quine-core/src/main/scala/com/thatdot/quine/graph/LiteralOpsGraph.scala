@@ -8,7 +8,7 @@ import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.ShardMessage.PurgeNode
-import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdAtTime}
+import com.thatdot.quine.graph.messaging.{BaseMessage, SpaceTimeQuineId}
 import com.thatdot.quine.model._
 
 /** Functionality for directly modifying the runtime property graph. Always prefer using something else. */
@@ -16,11 +16,12 @@ trait LiteralOpsGraph extends BaseGraph {
   private[this] def requireCompatibleNodeType(): Unit =
     requireBehavior[LiteralOpsGraph, behavior.LiteralCommandBehavior]
 
-  // TODO: should we keep this object indirection? It serves no purpose other than namespacing...
-  object literalOps {
+  def literalOps(namespaceId: NamespaceId): LiteralOps = LiteralOps(namespaceId)
+
+  case class LiteralOps(namespace: NamespaceId) {
     def purgeNode(qid: QuineId)(implicit timeout: Timeout): Future[BaseMessage.Done.type] = {
       requiredGraphIsReady()
-      relayAsk(shardFromNode(qid).quineRef, PurgeNode(qid, _)).flatten
+      relayAsk(shardFromNode(qid).quineRef, PurgeNode(namespace, qid, _)).flatten
     }
 
     /** Assemble together debugging information about a node's internal state
@@ -35,19 +36,19 @@ trait LiteralOpsGraph extends BaseGraph {
     ): Future[NodeInternalState] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, atTime), LogInternalState).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, atTime), LogInternalState).flatten
     }
 
     def getSqResults(node: QuineId)(implicit timeout: Timeout): Future[SqStateResults] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, None), GetSqState)
+      relayAsk(SpaceTimeQuineId(node, namespace, None), GetSqState)
     }
 
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, None), DeleteNodeCommand(true, _)).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, None), DeleteNodeCommand(true, _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 
@@ -72,7 +73,7 @@ trait LiteralOpsGraph extends BaseGraph {
     ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      val futureSource = relayAsk(QuineIdAtTime(node, atTime), GetPropertiesCommand)
+      val futureSource = relayAsk(SpaceTimeQuineId(node, namespace, atTime), GetPropertiesCommand)
       Source
         .futureSource(futureSource)
         .runFold((Map.empty[Symbol, PropertyValue], Set.empty[Symbol])) {
@@ -98,7 +99,7 @@ trait LiteralOpsGraph extends BaseGraph {
     ): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, None), SetLabels(labels.map(Symbol(_)), _)).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, None), SetLabels(labels.map(Symbol(_)), _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 
@@ -122,7 +123,10 @@ trait LiteralOpsGraph extends BaseGraph {
     ): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, None), SetPropertyCommand(Symbol(key), PropertyValue(value), _)).flatten
+      relayAsk(
+        SpaceTimeQuineId(node, namespace, None),
+        SetPropertyCommand(Symbol(key), PropertyValue(value), _)
+      ).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 
@@ -133,14 +137,14 @@ trait LiteralOpsGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       val propVal = PropertyValue.fromBytes(value)
-      relayAsk(QuineIdAtTime(node, None), SetPropertyCommand(Symbol(key), propVal, _)).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, None), SetPropertyCommand(Symbol(key), propVal, _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 
     def removeProp(node: QuineId, key: String)(implicit timeout: Timeout): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(QuineIdAtTime(node, None), RemovePropertyCommand(Symbol(key), _)).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, None), RemovePropertyCommand(Symbol(key), _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 
@@ -156,7 +160,10 @@ trait LiteralOpsGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       val halfEdgesSource =
-        relayAsk(QuineIdAtTime(node, atTime), GetHalfEdgesCommand(withType, withDir, withId, withLimit, _))
+        relayAsk(
+          SpaceTimeQuineId(node, namespace, atTime),
+          GetHalfEdgesCommand(withType, withDir, withId, withLimit, _)
+        )
       Source.futureSource(halfEdgesSource).map(_.halfEdge).runWith(Sink.collection)
     }
 
@@ -195,11 +202,11 @@ trait LiteralOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(
-        QuineIdAtTime(from, None),
+        SpaceTimeQuineId(from, namespace, None),
         AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _)
       )
       val two = relayAsk(
-        QuineIdAtTime(to, None),
+        SpaceTimeQuineId(to, namespace, None),
         AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)
@@ -212,11 +219,11 @@ trait LiteralOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(
-        QuineIdAtTime(from, None),
+        SpaceTimeQuineId(from, namespace, None),
         RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _)
       )
       val two = relayAsk(
-        QuineIdAtTime(to, None),
+        SpaceTimeQuineId(to, namespace, None),
         RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)

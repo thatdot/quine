@@ -12,7 +12,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.{ActorSystem, Cancellable}
+import org.apache.pekko.actor.{Cancellable, Scheduler}
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 
 import cats.data.NonEmptyList
@@ -25,6 +25,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -69,19 +70,20 @@ import com.thatdot.quine.util.QuineDispatchers
   */
 final class MapDbPersistor(
   filePath: MapDbPersistor.DbPath,
+  val namespace: NamespaceId,
   writeAheadLog: Boolean = false,
   transactionCommitInterval: Option[FiniteDuration] = None,
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
-  metricRegistry: MetricRegistry = new NoopMetricRegistry()
-)(implicit val actorSystem: ActorSystem)
-    extends PersistenceAgent {
+  metricRegistry: MetricRegistry = new NoopMetricRegistry(),
+  quineDispatchers: QuineDispatchers,
+  scheduler: Scheduler
+) extends PersistenceAgent {
 
   val nodeEventSize: Histogram =
     metricRegistry.histogram(MetricRegistry.name("map-db-persistor", "journal-event-size"))
   val nodeEventTotalSize: Counter =
     metricRegistry.counter(MetricRegistry.name("map-db-persistor", "journal-event-total-size"))
 
-  private val quineDispatchers = new QuineDispatchers(actorSystem)
   import quineDispatchers.{blockingDispatcherEC, nodeDispatcherEC}
 
   // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `pekko.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
@@ -100,7 +102,7 @@ final class MapDbPersistor(
   val transactionCommitCancellable: Cancellable = transactionCommitInterval match {
     case None => Cancellable.alreadyCancelled
     case Some(dur) =>
-      actorSystem.scheduler.scheduleWithFixedDelay(dur, dur)(() => db.commit())(
+      scheduler.scheduleWithFixedDelay(dur, dur)(() => db.commit())(
         blockingDispatcherEC
       )
   }
@@ -485,7 +487,7 @@ final class MapDbPersistor(
     *
     * This doesn't work on Windows
     */
-  def delete(): Unit = {
+  def delete(): Future[Unit] = {
     val files: List[String] = db.getStore.getAllFiles.asScala.toList
     transactionCommitCancellable.cancel()
     db.close()
@@ -495,6 +497,7 @@ final class MapDbPersistor(
         case NonFatal(err) =>
           logger.error("Failed to delete DB file {} ({})", file, err)
       }
+    Future.unit // FIXME: Don't block the calling thread
   }
 
   /** Delete all [[DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
@@ -532,12 +535,12 @@ object MapDbPersistor {
   case object InMemoryDb extends DbPath
   final case class PersistedDb(path: File) extends DbPath
   object PersistedDb extends StrictLogging {
-    def makeDirIfNotExists(createParentDir: Boolean, path: File): DbPath = {
-      if (createParentDir) {
-        val parentDir = path.getAbsoluteFile.getParentFile
+    def makeDirIfNotExists(createParentDir: Boolean, path: File): PersistedDb = {
+      val parentDir = path.getAbsoluteFile.getParentFile
+      if (createParentDir)
         if (parentDir.mkdirs())
           logger.warn("Parent directory: {} of requested persistence location did not exist; created.", parentDir)
-      }
+        else if (!parentDir.isDirectory) sys.error(s"$parentDir is not a directory")
       PersistedDb(path)
     }
   }

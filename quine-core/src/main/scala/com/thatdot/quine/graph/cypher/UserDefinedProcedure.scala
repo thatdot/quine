@@ -9,7 +9,7 @@ import org.apache.pekko.util.Timeout
 
 import cats.implicits._
 
-import com.thatdot.quine.graph.LiteralOpsGraph
+import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 
 /** Cypher user defined procedures (UDP) must extend this class
@@ -73,10 +73,11 @@ object UserDefinedProcedure {
     * @param graph graph
     * @return Cypher-compatible representation of the node
     */
-  def getAsCypherNode(qid: QuineId, atTime: Option[Milliseconds], graph: LiteralOpsGraph)(implicit
-    timeout: Timeout
+  def getAsCypherNode(qid: QuineId, namespace: NamespaceId, atTime: Option[Milliseconds], graph: LiteralOpsGraph)(
+    implicit timeout: Timeout
   ): Future[Expr.Node] =
-    graph.literalOps
+    graph
+      .literalOps(namespace)
       .getPropsAndLabels(qid, atTime)
       .map { case (props, labels) =>
         Expr.Node(

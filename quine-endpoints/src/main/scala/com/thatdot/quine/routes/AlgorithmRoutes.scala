@@ -4,6 +4,7 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 trait AlgorithmRoutes
     extends EndpointsWithCustomErrorText
@@ -106,6 +107,7 @@ trait AlgorithmRoutes
       Option[Double],
       Option[Double],
       Option[String],
+      NamespaceParameter,
       AtTime,
       Int,
       SaveLocation
@@ -116,7 +118,7 @@ trait AlgorithmRoutes
       request = put(
         url = algorithmsPrefix / "walk" /?
           (walkLength & numberOfWalks & onNodeQuery & returnParameter &
-          inOutParameter & randomSeedOpt & atTime & parallelism),
+          inOutParameter & randomSeedOpt & namespace & atTime & parallelism),
         entity = jsonRequestWithExample[SaveLocation](example = S3Bucket("your-s3-bucket-name", None))
       ),
       response = customBadRequest("Invalid file")
@@ -163,13 +165,13 @@ trait AlgorithmRoutes
     )
 
   final val algorithmRandomWalk: Endpoint[
-    (Id, (Option[Int], Option[String], Option[Double], Option[Double], Option[String], AtTime)),
+    (Id, (Option[Int], Option[String], Option[Double], Option[Double], Option[String], AtTime, NamespaceParameter)),
     Either[ClientErrors, List[String]]
   ] =
     endpoint(
       request = get(
         algorithmsPrefix / "walk" / nodeIdSegment /?
-        (walkLength & onNodeQuery & returnParameter & inOutParameter & randomSeedOpt & atTime)
+        (walkLength & onNodeQuery & returnParameter & inOutParameter & randomSeedOpt & atTime & namespace)
       ),
       response = badRequest().orElse(ok(jsonResponse[List[String]])),
       docs = EndpointDocs()

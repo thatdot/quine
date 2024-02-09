@@ -24,7 +24,7 @@ import endpoints4s.Invalid
 import io.circe.Json
 
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.graph.BaseGraph
+import com.thatdot.quine.graph.{BaseGraph, NamespaceId, namespaceFromParam}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
@@ -33,28 +33,26 @@ trait IngestStreamState {
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
+    intoNamespace: NamespaceId,
     restoredStatus: Option[IngestStreamStatus],
     shouldRestoreIngest: Boolean,
-    timeout: Timeout
+    timeout: Timeout,
+    shouldSaveMetadata: Boolean = true
   ): Try[Boolean]
 
-  def getIngestStream(name: String): Option[IngestStreamWithControl[IngestStreamConfiguration]]
+  def getIngestStream(
+    name: String,
+    namespace: NamespaceId
+  ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
 
-  def getIngestStreams(): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
+  def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
 
-  protected def getIngestStreamsWithStatus: Future[Map[String, IngestStreamWithStatus]]
+  protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[String, IngestStreamWithStatus]]
 
   def removeIngestStream(
-    name: String
+    name: String,
+    namespace: NamespaceId
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
-}
-
-object IngestStreamWithControl {
-
-  /** Hooks to freeze metrics and log once the ingest stream terminates
-    *
-    * @param name name of the ingest stream
-    */
 }
 
 /** Adds to the ingest stream configuration extra information that will be
@@ -82,7 +80,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
         case Some(Success(Done)) => IngestStreamStatus.Completed
         case Some(Failure(e)) =>
           // If exception occurs, it means that the ingest stream has failed
-          println(e.toString)
+          logger.warn(s"Ingest stream: ${settings} failed.", e)
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       }
@@ -193,12 +191,19 @@ trait IngestRoutesImpl
       )
     }(graph.shardDispatcherEC)
 
-  val serviceState: IngestStreamState
+  val quineApp: IngestStreamState
 
   /** Try to register a new ingest stream */
-  private val ingestStreamStartRoute = {
-    def addSettings(name: String, settings: IngestStreamConfiguration) =
-      serviceState.addIngestStream(name, settings, None, shouldRestoreIngest = false, timeout) match {
+  private val ingestStreamStartRoute: Route = {
+    def addSettings(name: String, intoNamespace: NamespaceId, settings: IngestStreamConfiguration) =
+      quineApp.addIngestStream(
+        name,
+        settings,
+        intoNamespace,
+        None,
+        shouldRestoreIngest = false,
+        timeout
+      ) match {
         case Success(false) =>
           Left(
             endpoints4s.Invalid(
@@ -206,28 +211,31 @@ trait IngestRoutesImpl
             )
           )
         case Success(true) => Right(())
-        case Failure(err) => Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: $err"))
+        case Failure(err) => Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: ${err.getMessage}"))
       }
 
     ingestStreamStart.implementedBy {
-      case (name, settings: KafkaIngest) =>
+      case (ingestName, namespaceParam, settings: KafkaIngest) =>
+        val namespace = namespaceFromParam(namespaceParam)
         KafkaSettingsValidator(settings.kafkaProperties, settings.groupId, settings.offsetCommitting).validate() match {
           case Some(errors) =>
             Left(
               endpoints4s.Invalid(
-                s"Cannot create ingest stream `$name`: ${errors.toList.mkString(",")}"
+                s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}"
               )
             )
-          case None => addSettings(name, settings)
+          case None => addSettings(ingestName, namespace, settings)
         }
-      case (name, settings) => addSettings(name, settings)
+      case (ingestName, namespaceParam, settings) =>
+        val namespace = namespaceFromParam(namespaceParam)
+        addSettings(ingestName, namespace, settings)
 
     }
   }
 
   /** Try to stop an ingest stream */
-  private val ingestStreamStopRoute = ingestStreamStop.implementedByAsync { (name: String) =>
-    serviceState.removeIngestStream(name) match {
+  private val ingestStreamStopRoute = ingestStreamStop.implementedByAsync { case (ingestName, namespaceParam) =>
+    quineApp.removeIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
       case None => Future.successful(None)
       case Some(control @ IngestStreamWithControl(settings, metrics, valve @ _, terminated, close, _, _)) =>
         val finalStatus = control.status.map { previousStatus =>
@@ -260,7 +268,7 @@ trait IngestRoutesImpl
           .map { case (newStatus, message) =>
             Some(
               IngestStreamInfoWithName(
-                name,
+                ingestName,
                 newStatus,
                 message,
                 settings,
@@ -272,18 +280,18 @@ trait IngestRoutesImpl
   }
 
   /** Query out a particular ingest stream */
-  private val ingestStreamLookupRoute = ingestStreamLookup.implementedByAsync { (name: String) =>
-    serviceState.getIngestStream(name) match {
+  private val ingestStreamLookupRoute = ingestStreamLookup.implementedByAsync { case (ingestName, namespaceParam) =>
+    quineApp.getIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
       case None => Future.successful(None)
-      case Some(stream) => stream2Info(stream).map(s => Some(s.withName(name)))(graph.shardDispatcherEC)
+      case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(graph.shardDispatcherEC)
     }
   }
 
   /** List out all of the currently active ingest streams */
-  private val ingestStreamListRoute = ingestStreamList.implementedByAsync { _ =>
+  private val ingestStreamListRoute = ingestStreamList.implementedByAsync { namespaceParam =>
     Future
       .traverse(
-        serviceState.getIngestStreams().toList
+        quineApp.getIngestStreams(namespaceFromParam(namespaceParam)).toList
       ) { case (name, ingest) =>
         stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
       }(implicitly, graph.shardDispatcherEC)
@@ -299,9 +307,10 @@ trait IngestRoutesImpl
   }
   private[this] def setIngestStreamPauseState(
     name: String,
+    namespace: NamespaceId,
     newState: SwitchMode
   ): Future[Option[IngestStreamInfoWithName]] =
-    serviceState.getIngestStream(name) match {
+    quineApp.getIngestStream(name, namespace) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
         ingest.restoredStatus match {
@@ -326,14 +335,14 @@ trait IngestRoutesImpl
       Left(endpoints4s.Invalid(s"Cannot ${operation} a ${e.statusMsg} ingest."))
   }
 
-  private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { (name: String) =>
-    setIngestStreamPauseState(name, SwitchMode.Close)
+  private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { case (ingestName, namespaceParam) =>
+    setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Close)
       .map(Right(_))(ExecutionContexts.parasitic)
       .recover(mkPauseOperationError("pause"))(ExecutionContexts.parasitic)
   }
 
-  private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { (name: String) =>
-    setIngestStreamPauseState(name, SwitchMode.Open)
+  private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { case (ingestName, namespaceParam) =>
+    setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Open)
       .map(Right(_))(ExecutionContexts.parasitic)
       .recover(mkPauseOperationError("resume"))(ExecutionContexts.parasitic)
   }

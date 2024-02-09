@@ -157,19 +157,6 @@ trait MultipleValuesStandingQueryLookupInfo {
   /** ID provider */
   val idProvider: QuineIdProvider
 }
-object MultipleValuesStandingQueryLookupInfo {
-  def apply(
-    lookupQuery: MultipleValuesStandingQueryPartId => MultipleValuesStandingQuery,
-    id: QuineId,
-    idProv: QuineIdProvider
-  ): MultipleValuesStandingQueryLookupInfo = new MultipleValuesStandingQueryLookupInfo {
-    def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = lookupQuery(
-      queryPartId
-    )
-    val node: QuineId = id
-    val idProvider: QuineIdProvider = idProv
-  }
-}
 
 /** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make */
 trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLookupInfo {

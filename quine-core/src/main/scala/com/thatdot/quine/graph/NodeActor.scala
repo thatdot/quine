@@ -11,7 +11,7 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.LiteralCommand
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
-import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdAtTime}
+import com.thatdot.quine.graph.messaging.{AlgorithmCommand, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 
@@ -42,7 +42,7 @@ case class NodeConstructorArgs(
   *                     sent to it)
   */
 private[graph] class NodeActor(
-  qidAtTime: QuineIdAtTime,
+  qidAtTime: SpaceTimeQuineId,
   graph: StandingQueryOpsGraph with CypherOpsGraph,
   costToSleep: CostToSleep,
   wakefulState: AtomicReference[WakefulState],
@@ -113,7 +113,9 @@ private[graph] class NodeActor(
     // potentially-rooted on this node)
     // see: [[updateDistinctIdStandingQueriesOnNode]]
     val newDistinctIdSqDgns = for {
-      (sqId, runningSq) <- graph.runningStandingQueries
+      (sqId, runningSq) <- graph
+        .standingQueries(namespace) // Silently ignore absent namespace.
+        .fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
       dgnId <- runningSq.query.query match {
         case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
         case _ => None

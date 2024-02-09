@@ -10,11 +10,14 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.BuildInfo
 import com.thatdot.quine.compiler.cypher
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher._
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 
 object Protocol extends LazyLogging {
+
+  // Namespaces other than the default are not supported in the Bolt Protocol.
+  val namespace: NamespaceId = None
 
   /** Possible states of a BOLT connection.
     */
@@ -73,6 +76,7 @@ object Protocol extends LazyLogging {
             }
             val queryResult: QueryResults = cypher.queryCypherValues(
               cleanedStatement,
+              namespace,
               parameters
             )
 

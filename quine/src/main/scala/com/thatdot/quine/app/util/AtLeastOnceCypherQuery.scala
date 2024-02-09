@@ -12,7 +12,7 @@ import org.apache.pekko
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, ShardNotAvailableException, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, NamespaceId, ShardNotAvailableException, cypher}
 import com.thatdot.quine.persistor.WrappedPersistorException
 
 /** A Cypher query that will be retried against the graph until the entire query succeeds
@@ -41,7 +41,7 @@ final case class AtLeastOnceCypherQuery(
     *         as [[cypherParameterName]]. This can be thought of as returning a weaker version of a
     *          [[com.thatdot.quine.graph.cypher.QueryResults]]
     */
-  def stream(value: cypher.Value)(implicit
+  def stream(value: cypher.Value, intoNamespace: NamespaceId)(implicit
     graph: CypherOpsGraph
   ): Source[Vector[cypher.Value], NotUsed] = {
     // this Source represents the work that would be needed to query over one specific `value`
@@ -49,7 +49,14 @@ final case class AtLeastOnceCypherQuery(
     // If a recoverable error occurs, instead return a Source that will fail after a small delay
     // so that recoverWithRetries (below) can retry the query
     def bestEffortSource: Source[Vector[cypher.Value], NotUsed] =
-      try graph.cypherOps.query(query, atTime = None, parameters = Map(cypherParameterName -> value)).results
+      try graph.cypherOps
+        .query(
+          query,
+          namespace = intoNamespace,
+          atTime = None,
+          parameters = Map(cypherParameterName -> value)
+        )
+        .results
       catch {
         case RetriableQueryFailure(e) =>
           // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above

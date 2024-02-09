@@ -16,6 +16,7 @@ import com.thatdot.quine.graph.{
   EventTime,
   MemberIdx,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -23,7 +24,6 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
 
 object PersistenceAgent {
 
@@ -34,8 +34,15 @@ object PersistenceAgent {
   val VersionMetadataKey = "serialization_version"
 }
 
-/** Interface for a Quine storage layer */
-trait PersistenceAgent extends StrictLogging {
+/** Interface for a Quine storage layer that only exposes a namespace's data */
+trait NamespacedPersistenceAgent extends StrictLogging {
+
+  /** Each persistor is instantiated with exactly one namespace which it is allowed to access, and prohibited from
+    * accessing any other namespace. The allowed namespace is determined and passed in by the system instantiating
+    * the persistor. There may be multiple instances of the same PersistenceAgent subtype if each one has a distinct
+    * `namespace` value.
+    */
+  val namespace: NamespaceId
 
   /** Returns `true` if this persistor definitely contains no Quine-core data
     * May return `true` even when the persistor contains application (eg Quine) metadata
@@ -45,83 +52,14 @@ trait PersistenceAgent extends StrictLogging {
     *
     * This is used to determine when an existing persistor's data may be safely used by any Quine version.
     */
-  def emptyOfQuineData(): Future[Boolean] = Future.successful(false)
+  def emptyOfQuineData(): Future[Boolean]
 
-  /** Get the version that will be used for a certain subset of data
-    *
-    * This will return a failed future if the version is incompatible.
-    *
-    * @see IncompatibleVersion
-    * @param context what is the versioned data? This is only used in logs and error messages.
-    * @param versionMetaDataKey key in the metadata table
-    * @param currentVersion persistence version tracked by current code
-    * @param isDataEmpty check whether there is any data relevant to the version
+  /** Provides the [[BaseGraph]] instance to the [[PersistenceAgent]] when the [[BaseGraph]] is ready for use.
+    * Used to trigger initialization behaviors that depend on [[BaseGraph]].
+    * Default implementation is a no op.
     */
-  def syncVersion(
-    context: String,
-    versionMetaDataKey: String,
-    currentVersion: Version,
-    isDataEmpty: () => Future[Boolean]
-  ): Future[Unit] =
-    getMetaData(versionMetaDataKey).flatMap {
-      case None =>
-        logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
-        setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
+  def declareReady(graph: BaseGraph): Unit = ()
 
-      case Some(persistedVBytes) =>
-        Version.fromBytes(persistedVBytes) match {
-          case None =>
-            val msg = s"Persistence backend cannot parse version for: $context at: $versionMetaDataKey"
-            Future.failed(new IllegalStateException(msg))
-          case Some(compatibleV) if currentVersion.canReadFrom(compatibleV) =>
-            if (currentVersion <= compatibleV) {
-              logger.info(
-                s"Persistence backend for: $context is at: $compatibleV, this is usable as-is by: $currentVersion"
-              )
-              Future.unit
-            } else {
-              logger.info(
-                s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
-              )
-              setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
-            }
-          case Some(incompatibleV) =>
-            isDataEmpty().flatMap {
-              case true =>
-                logger.warn(
-                  s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
-                )
-                setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
-              case false =>
-                Future.failed(new IncompatibleVersion(context, incompatibleV, currentVersion))
-            }(ExecutionContexts.parasitic)
-        }
-    }(ExecutionContexts.parasitic)
-
-  /** Gets the version of data last stored by this persistor, or PersistenceAgent.CurrentVersion
-    *
-    * Invariant: This will implicitly set the version to CurrentVersion if the previous version
-    * is forwards-compatible with CurrentVersion
-    *
-    * This Future may be a Failure if the persistor abstracts over mutually-incompatible data
-    * (eg a sharded persistor with underlying persistors operating over different format versions)
-    *
-    * The default implementation defers to the metadata storage API
-    */
-  def syncVersion(): Future[Unit] =
-    syncVersion(
-      "core quine data",
-      PersistenceAgent.VersionMetadataKey,
-      CurrentVersion,
-      () => emptyOfQuineData()
-    )
-
-  /** Persist a series of [[NodeChangeEvent]]s affecting a node's state.
-    *
-    * @param id     affected node
-    * @param events event records to write
-    * @return a Future that completes 'after' the write finishes
-    */
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit]
 
   def deleteNodeChangeEvents(qid: QuineId): Future[Unit]
@@ -266,74 +204,6 @@ trait PersistenceAgent extends StrictLogging {
 
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit]
 
-  /** Fetch a metadata value with a known name
-    *
-    * @param key name of the metadata
-    * @return metadata (or [[None]] if no corresponding data was found)
-    */
-  def getMetaData(key: String): Future[Option[Array[Byte]]]
-
-  /** Get a key scoped to this process. For a local persistor, this is the same
-    * as getMetaData.
-    *
-    * @param key           name of the local metadata
-    * @param localMemberId Identifier for this member's position in the cluster.
-    * @return              metadata (or [[None]] if no corresponding data was found)
-    */
-  def getLocalMetaData(key: String, localMemberId: MemberIdx): Future[Option[Array[Byte]]] =
-    getMetaData(s"$localMemberId-$key")
-
-  /** Fetch all defined metadata values
-    *
-    * @return metadata key-value pairs
-    */
-  def getAllMetaData(): Future[Map[String, Array[Byte]]]
-
-  /** Update (or remove) a given metadata key
-    *
-    * @param key      name of the metadata - must be nonempty
-    * @param newValue what to store ([[None]] corresponds to clearing out the value)
-    */
-  def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
-
-  /** Update (or remove) a local metadata key.
-    * For a local persistor, this is the same as setMetaData.
-    *
-    * @param key           name of the metadata - must be nonempty
-    * @param localMemberId Identifier for this member's position in the cluster.
-    * @param newValue      what to store ([[None]] corresponds to clearing out the value)
-    */
-  def setLocalMetaData(key: String, localMemberId: MemberIdx, newValue: Option[Array[Byte]]): Future[Unit] =
-    setMetaData(s"$localMemberId-$key", newValue)
-
-  /** Provides the [[BaseGraph]] instance to the [[PersistenceAgent]] when the [[BaseGraph]] is ready for use.
-    * Used to trigger initialization behaviors that depend on [[BaseGraph]].
-    * Default implementation is a no op.
-    */
-  def ready(graph: BaseGraph): Unit = ()
-
-  /** Saves [[DomainGraphNode]]s to persistent storage.
-    *
-    * Note that [[DomainGraphNodeId]] is fully computed from [[DomainGraphNode]], therefore a
-    * Domain Graph Node cannot be updated. Calling this function with [[DomainGraphNode]] that
-    * is already stored is a no-op.
-    *
-    * @param domainGraphNodes [[DomainGraphNode]]s to be saved
-    * @return Future completes successfully when the external operation completes successfully
-    */
-  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit]
-
-  /** Removes [[DomainGraphNode]]s from persistent storage.
-    *
-    * @param domainGraphNodeIds IDs of DGNs to remove
-    * @return Future completes successfully when the external operation completes successfully
-    */
-  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit]
-
-  /** @return All [[DomainGraphNode]]s stored in persistent storage.
-    */
-  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]]
-
   /** Delete all [DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
     * this may be an extremely slow operation.
     * @param dgnId
@@ -348,6 +218,8 @@ trait PersistenceAgent extends StrictLogging {
     */
   def shutdown(): Future[Unit]
 
+  def delete(): Future[Unit]
+
   /** Configuration that determines how the client of PersistenceAgent should use it.
     */
   def persistenceConfig: PersistenceConfig
@@ -358,12 +230,12 @@ object MultipartSnapshotPersistenceAgent {
   case class MultipartSnapshotPart(partBytes: Array[Byte], multipartIndex: Int, multipartCount: Int)
 }
 
-/** Mixin for [[PersistenceAgent]] that stores snapshot blobs as smaller multi-part blobs.
+/** Mixin for [[NamespacedPersistenceAgent]] that stores snapshot blobs as smaller multi-part blobs.
   * Because this makes snapshot writes non-atomic, it is possible only part of a snapshot will be
   * successfully written. Therefore, when a snapshot is read, the snapshot's integrity is checked.
   */
 trait MultipartSnapshotPersistenceAgent {
-  this: PersistenceAgent =>
+  this: NamespacedPersistenceAgent =>
 
   import MultipartSnapshotPersistenceAgent._
 
@@ -422,4 +294,74 @@ trait MultipartSnapshotPersistenceAgent {
     id: QuineId,
     upToTime: EventTime
   ): Future[Option[MultipartSnapshot]]
+}
+
+/** A namespaced persistence agent that also exposes global data (metadata, domain graph nodes)
+  * Intended as a legacy shim for persistor impls where those app data and namespaced graph data are
+  * still stored in he same place.
+  */
+trait PersistenceAgent extends NamespacedPersistenceAgent {
+
+  /** Fetch a metadata value with a known name
+    *
+    * @param key name of the metadata
+    * @return metadata (or [[None]] if no corresponding data was found)
+    */
+  def getMetaData(key: String): Future[Option[Array[Byte]]]
+
+  /** Get a key scoped to this process. For a local persistor, this is the same
+    * as getMetaData.
+    *
+    * @param key           name of the local metadata
+    * @param localMemberId Identifier for this member's position in the cluster.
+    * @return              metadata (or [[None]] if no corresponding data was found)
+    */
+  def getLocalMetaData(key: String, localMemberId: MemberIdx): Future[Option[Array[Byte]]] =
+    getMetaData(s"$localMemberId-$key")
+
+  /** Fetch all defined metadata values
+    *
+    * @return metadata key-value pairs
+    */
+  def getAllMetaData(): Future[Map[String, Array[Byte]]]
+
+  /** Update (or remove) a given metadata key
+    *
+    * @param key      name of the metadata - must be nonempty
+    * @param newValue what to store ([[None]] corresponds to clearing out the value)
+    */
+  def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
+
+  /** Update (or remove) a local metadata key.
+    * For a local persistor, this is the same as setMetaData.
+    *
+    * @param key           name of the metadata - must be nonempty
+    * @param localMemberId Identifier for this member's position in the cluster.
+    * @param newValue      what to store ([[None]] corresponds to clearing out the value)
+    */
+  def setLocalMetaData(key: String, localMemberId: MemberIdx, newValue: Option[Array[Byte]]): Future[Unit] =
+    setMetaData(s"$localMemberId-$key", newValue)
+
+  /** Saves [[DomainGraphNode]]s to persistent storage.
+    *
+    * Note that [[DomainGraphNodeId]] is fully computed from [[DomainGraphNode]], therefore a
+    * Domain Graph Node cannot be updated. Calling this function with [[DomainGraphNode]] that
+    * is already stored is a no-op.
+    *
+    * @param domainGraphNodes [[DomainGraphNode]]s to be saved
+    * @return Future completes successfully when the external operation completes successfully
+    */
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit]
+
+  /** Removes [[DomainGraphNode]]s from persistent storage.
+    *
+    * @param domainGraphNodeIds IDs of DGNs to remove
+    * @return Future completes successfully when the external operation completes successfully
+    */
+  def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit]
+
+  /** @return All [[DomainGraphNode]]s stored in persistent storage.
+    */
+  def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]]
+
 }

@@ -1,7 +1,7 @@
 package com.thatdot.quine.persistor
 
 import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
@@ -28,11 +28,11 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 abstract class PartitionedPersistenceAgent extends PersistenceAgent {
 
   /** Find the persistence agent that is responsible for a given node */
-  def getAgent(id: QuineId): PersistenceAgent
+  protected def getAgent(id: QuineId): PersistenceAgent
 
-  def getAgents: Iterator[PersistenceAgent]
+  protected def getAgents: Iterator[PersistenceAgent]
 
-  def rootAgent: PersistenceAgent
+  protected def rootAgent: PersistenceAgent
 
   override def emptyOfQuineData(): Future[Boolean] =
     if (getAgents.isEmpty) Future.successful(true)
@@ -112,8 +112,8 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
     rootAgent.setMetaData(key, newValue)
 
-  override def ready(graph: BaseGraph): Unit =
-    getAgents.foreach(_.ready(graph))
+  override def declareReady(graph: BaseGraph): Unit =
+    getAgents.foreach(_.declareReady(graph))
 
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     rootAgent.persistDomainGraphNodes(domainGraphNodes)
@@ -129,6 +129,10 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
 
   override def shutdown(): Future[Unit] =
     Future
-      .traverse(getAgents.toSeq)(_.shutdown())(implicitly, ExecutionContexts.parasitic)
+      .traverse(getAgents)(_.shutdown())(implicitly, ExecutionContexts.parasitic)
       .map(_ => ())(ExecutionContexts.parasitic)
+
+  override def delete(): Future[Unit] = Future
+    .traverse(getAgents)(_.delete())(implicitly, ExecutionContext.parasitic)
+    .map(_ => ())(ExecutionContext.parasitic)
 }

@@ -12,14 +12,21 @@ import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import com.datastax.dse.driver.api.core.cql.reactive.ReactiveRow
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{AsyncResultSet, Row, Statement}
+import com.datastax.oss.driver.api.core.cql.{AsyncResultSet, Row, SimpleStatement, Statement}
 import com.datastax.oss.driver.api.core.data.GettableById
 
-abstract class CassandraTable(session: CqlSession) {
+abstract class CassandraTable(
+  session: CqlSession,
+  firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement
+) {
 
   /** Does the table have any rows?
     */
-  def nonEmpty(): Future[Boolean]
+  def isEmpty(): Future[Boolean] = yieldsResults(firstRowStatement).map(!_)(ExecutionContexts.parasitic)
+
+  def delete(): Future[Unit] = executeFuture(dropTableStatement)
+
   protected def pair[A, B](columnA: CassandraColumn[A], columnB: CassandraColumn[B])(row: GettableById): (A, B) =
     (columnA.get(row), columnB.get(row))
 

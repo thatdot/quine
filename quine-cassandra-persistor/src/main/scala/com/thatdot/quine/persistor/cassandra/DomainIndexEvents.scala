@@ -10,14 +10,14 @@ import org.apache.pekko.stream.scaladsl.Sink
 import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.apply._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NodeEvent}
+import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NamespaceId, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support._
@@ -35,6 +35,8 @@ class DomainIndexEvents(
   session: CqlSession,
   chunker: Chunker,
   writeSettings: CassandraStatementSettings,
+  firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
   selectByQuineIdUntilTimestamp: PreparedStatement,
@@ -48,13 +50,11 @@ class DomainIndexEvents(
   deleteByQuineIdTimestamp: PreparedStatement,
   deleteByQuineId: PreparedStatement
 )(implicit materializer: Materializer)
-    extends CassandraTable(session)
+    extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with DomainIndexEventColumnNames
     with LazyLogging {
 
   import syntax._
-
-  def nonEmpty(): Future[Boolean] = yieldsResults(DomainIndexEvents.firstRowStatement)
 
   def persistEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]): Future[Unit] =
     chunker(events.toList) { events =>
@@ -155,13 +155,14 @@ class DomainIndexEvents(
 
 }
 
-object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnNames {
-  protected val tableName = "domain_index_events"
+class DomainIndexEventsDefinition(namespace: NamespaceId)
+    extends TableDefinition[DomainIndexEvents]("domain_index_events", namespace)
+    with DomainIndexEventColumnNames {
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
   protected val dataColumns: List[CassandraColumn[_]] = List(dgnIdColumn, dataColumn)
 
-  private val createTableStatement: SimpleStatement =
+  protected val createTableStatement: SimpleStatement =
     makeCreateTableStatement
       .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
@@ -223,46 +224,50 @@ object DomainIndexEvents extends TableDefinition with DomainIndexEventColumnName
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    writeSettings: CassandraStatementSettings
   )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[DomainIndexEvents] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(
-      session
-        .executeAsync(createTableStatement)
-        .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
-    )
-
-    // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
-    // and we need the prepare statements to be executed after the table as been created.
-    // Even though there is no "explicit" dependency being passed between the two parts.
-    createdSchema.flatMap { _ =>
-      val selects = T9(
-        selectByQuineIdQuery.build,
-        selectByQuineIdSinceTimestampQuery,
-        selectByQuineIdUntilTimestampQuery,
-        selectByQuineIdSinceUntilTimestampQuery,
-        selectWithTimeByQuineIdQuery.build,
-        selectWithTimeByQuineIdSinceTimestampQuery,
-        selectWithTimeByQuineIdUntilTimestampQuery,
-        selectWithTimeByQuineIdSinceUntilTimestampQuery,
-        selectByDgnId
-      ).map(prepare(session, readSettings))
-      val updates = T3(
-        insertStatement,
-        deleteStatement,
-        deleteAllByPartitionKeyStatement
-      ).map(prepare(session, writeSettings))
-      (selects ++ updates).mapN(
-        new DomainIndexEvents(session, chunker, writeSettings, _, _, _, _, _, _, _, _, _, _, _, _)
+    val selects = T9(
+      selectByQuineIdQuery.build,
+      selectByQuineIdSinceTimestampQuery,
+      selectByQuineIdUntilTimestampQuery,
+      selectByQuineIdSinceUntilTimestampQuery,
+      selectWithTimeByQuineIdQuery.build,
+      selectWithTimeByQuineIdSinceTimestampQuery,
+      selectWithTimeByQuineIdUntilTimestampQuery,
+      selectWithTimeByQuineIdSinceUntilTimestampQuery,
+      selectByDgnId
+    ).map(prepare(session, readSettings))
+    val updates = T3(
+      insertStatement,
+      deleteStatement,
+      deleteAllByPartitionKeyStatement
+    ).map(prepare(session, writeSettings))
+    (selects ++ updates).mapN(
+      new DomainIndexEvents(
+        session,
+        chunker,
+        writeSettings,
+        firstRowStatement,
+        dropTableStatement,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _
       )
-    }(ExecutionContexts.parasitic)
+    )
 
   }
 }

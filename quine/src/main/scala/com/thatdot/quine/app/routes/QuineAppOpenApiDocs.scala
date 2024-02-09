@@ -117,7 +117,7 @@ final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)
       get(path / "docs" / "openapi.json"),
       ok(
         jsonResponse[endpoints4s.openapi.model.OpenApi](
-          OpenApiRenderer.stringEncoder(Some(Seq(OpenApiServer(uri.toString))))
+          OpenApiRenderer(isEnterprise = false).stringEncoder(Some(Seq(OpenApiServer(uri.toString))))
         )
       )
     )

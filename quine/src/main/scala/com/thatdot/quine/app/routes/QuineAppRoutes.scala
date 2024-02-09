@@ -1,10 +1,11 @@
 package com.thatdot.quine.app.routes
 
+import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-import org.apache.pekko.http.scaladsl.model.{StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{HttpResponse, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.{Directives, Route}
+import org.apache.pekko.http.scaladsl.server.{Directives, ExceptionHandler, Route}
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
@@ -15,24 +16,21 @@ import com.thatdot.quine.app.BuildInfo
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.routes.exts.NamespaceNotFoundException
 
 /** Main webserver routes for Quine
   *
   * This is responsible for serving up the REST API as well as static resources.
   *
   * @param graph underlying graph
-  * @param serviceState quine application state
+  * @param quineApp quine application state
   * @param currentConfig rendered JSON config
-  * @param ec execution context
-  * @param url The url from which these routes will be served (used for docs generation)
+  * @param uri The url from which these routes will be served (used for docs generation)
   * @param timeout timeout
   */
 class QuineAppRoutes(
   val graph: LiteralOpsGraph with AlgorithmGraph with CypherOpsGraph with StandingQueryOpsGraph,
-  val serviceState: AdministrationRoutesState
-    with QueryUiConfigurationState
-    with StandingQueryStore
-    with IngestStreamState,
+  val quineApp: AdministrationRoutesState with QueryUiConfigurationState with StandingQueryStore with IngestStreamState,
   val currentConfig: Json,
   val uri: Uri,
   val timeout: Timeout
@@ -55,6 +53,9 @@ class QuineAppRoutes(
   val webJarAssetLocator = new WebJarAssetLocator()
 
   override def hostIndex(qid: QuineId): Int = 0
+
+  override def namespaceExists(namespace: String): Boolean =
+    graph.getNamespaces.contains(namespaceFromString(namespace))
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */
   lazy val staticFilesRoute: Route = {

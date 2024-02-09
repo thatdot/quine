@@ -5,12 +5,13 @@ import scala.concurrent.Future
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.util.Timeout
 
-import com.thatdot.quine.graph.BaseGraph
+import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 trait QuineIdOps {
 
   protected def graph: BaseGraph
+  def namespace: NamespaceId
   def atTime: Option[Milliseconds]
 
   /** Support sending typed messages to some other node in the graph, which
@@ -24,7 +25,7 @@ trait QuineIdOps {
       * @param originalSender who originally sent the message (for debug only)
       */
     def !(message: QuineMessage)(implicit originalSender: ActorRef): Unit =
-      graph.relayTell(QuineIdAtTime(quineId, atTime), message, originalSender)
+      graph.relayTell(SpaceTimeQuineId(quineId, namespace, atTime), message, originalSender)
 
     /** Ask a message to some node in the same time and graph
       *
@@ -38,6 +39,6 @@ trait QuineIdOps {
       originalSender: ActorRef,
       resultHandler: ResultHandler[A]
     ): Future[A] =
-      graph.relayAsk[A](QuineIdAtTime(quineId, atTime), unattributedMessage, originalSender)
+      graph.relayAsk[A](SpaceTimeQuineId(quineId, namespace, atTime), unattributedMessage, originalSender)
   }
 }

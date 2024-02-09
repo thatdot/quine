@@ -27,9 +27,9 @@ import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
@@ -61,7 +61,10 @@ abstract class IngestSrcDef(
     extends LazyLogging {
   implicit val system: ActorSystem = graph.system
   val isSingleHost: Boolean = graph.isSingleHost
-  val meter: IngestMeter = IngestMetered.ingestMeter(name)
+  val intoNamespace: NamespaceId
+  // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
+  // to thread a constructor parameter through every level.
+  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name)
 
   /** The type of a single value to be ingested. Data sources will be defined
     * as suppliers of this type.
@@ -94,21 +97,22 @@ abstract class IngestSrcDef(
   val ingestToken: IngestSrcExecToken = IngestSrcExecToken(name)
 
   /** Write successful values to the graph. */
-  protected val writeSuccessValues: TryDeserialized => Future[TryDeserialized] = { t: TryDeserialized =>
-    t._1 match {
-      case Success(deserialized) =>
-        format.writeValueToGraph(graph, deserialized).map(_ => t)(ExecutionContexts.parasitic)
-      case Failure(err) =>
-        logger.info(s"Deserialization failure {} {}", name, err)
-        Future.failed(err)
-    }
+  protected def writeSuccessValues(intoNamespace: NamespaceId): TryDeserialized => Future[TryDeserialized] = {
+    t: TryDeserialized =>
+      t._1 match {
+        case Success(deserialized) =>
+          format.writeValueToGraph(graph, intoNamespace, deserialized).map(_ => t)(ExecutionContexts.parasitic)
+        case Failure(err) =>
+          logger.info(s"Deserialization failure {} {}", name, err)
+          Future.failed(err)
+      }
   }
 
   /** If the input value is properly deserialized, insert into the graph, otherwise
     * propagate the error.
     */
-  val writeToGraph: Flow[TryDeserialized, TryDeserialized, NotUsed] =
-    Flow[TryDeserialized].mapAsyncUnordered(parallelism)(writeSuccessValues)
+  def writeToGraph(intoNamespace: NamespaceId): Flow[TryDeserialized, TryDeserialized, NotUsed] =
+    Flow[TryDeserialized].mapAsyncUnordered(parallelism)(writeSuccessValues(intoNamespace))
 
   val restartSettings: RestartSettings =
     RestartSettings(minBackoff = 10.seconds, maxBackoff = 10.seconds, 2.0)
@@ -118,17 +122,16 @@ abstract class IngestSrcDef(
         case _ => false
       }
 
-  /** Assembled stream definition.
-    */
-  def stream(): Source[IngestSrcExecToken, NotUsed] = stream(_ => ())
+  /** Assembled stream definition. */
   def stream(
+    intoNamespace: NamespaceId,
     registerTerminationHooks: Future[Done] => Unit
   ): Source[IngestSrcExecToken, NotUsed] =
     RestartSource.onFailuresWithBackoff(restartSettings) { () =>
       sourceWithShutdown()
         .viaMat(Valve(initialSwitchMode))(Keep.both)
         .via(throttle())
-        .via(writeToGraph)
+        .via(writeToGraph(intoNamespace))
         .via(ack)
         .map(_ => ingestToken)
         .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
@@ -254,6 +257,7 @@ object IngestSrcDef extends LazyLogging {
 
   def createIngestSrcDef(
     name: String,
+    intoNamespace: NamespaceId,
     settings: IngestStreamConfiguration,
     initialSwitchMode: SwitchMode
   )(implicit
@@ -275,6 +279,7 @@ object IngestSrcDef extends LazyLogging {
         ) =>
       KafkaSrcDef(
         name,
+        intoNamespace,
         topics,
         bootstrapServers,
         groupId.getOrElse(name),
@@ -305,6 +310,7 @@ object IngestSrcDef extends LazyLogging {
         ) =>
       KinesisSrcDef(
         name,
+        intoNamespace,
         streamName,
         shardIds,
         importFormatFor(format),
@@ -321,6 +327,7 @@ object IngestSrcDef extends LazyLogging {
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
       ServerSentEventsSrcDef(
         name,
+        intoNamespace,
         url,
         importFormatFor(format),
         initialSwitchMode,
@@ -342,6 +349,7 @@ object IngestSrcDef extends LazyLogging {
         ) =>
       SqsStreamSrcDef(
         name,
+        intoNamespace,
         queueURL,
         importFormatFor(format),
         initialSwitchMode,
@@ -364,6 +372,7 @@ object IngestSrcDef extends LazyLogging {
         ) =>
       WebsocketSimpleStartupSrcDef(
         name,
+        intoNamespace,
         importFormatFor(format),
         wsUrl,
         initMessages,
@@ -395,7 +404,8 @@ object IngestSrcDef extends LazyLogging {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          name
+          name,
+          intoNamespace
         )
         .valid
 
@@ -434,7 +444,8 @@ object IngestSrcDef extends LazyLogging {
         offset,
         ingestLimit,
         maxPerSecond,
-        name
+        name,
+        intoNamespace
       ).valid // TODO move what validations can be done ahead, ahead.
 
     case StandardInputIngest(
@@ -455,7 +466,8 @@ object IngestSrcDef extends LazyLogging {
           startAtOffset = 0L,
           ingestLimit = None,
           maxPerSecond,
-          name
+          name,
+          intoNamespace
         )
         .valid
 
@@ -471,7 +483,8 @@ object IngestSrcDef extends LazyLogging {
           0,
           ingestLimit,
           throttlePerSecond,
-          name
+          name,
+          intoNamespace
         )
         .valid
   }

@@ -8,6 +8,7 @@ import endpoints4s.{Valid, Validated}
 import io.circe.Json
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 /** Build information exposed to the user */
 @title("System Build Information")
@@ -308,9 +309,9 @@ trait AdministrationRoutes
     )
   }
 
-  final val requestNodeSleep: Endpoint[Id, Unit] =
+  final val requestNodeSleep: Endpoint[(Id, NamespaceParameter), Unit] =
     endpoint(
-      request = post(admin / "request-node-sleep" / nodeIdSegment, emptyRequest),
+      request = post(admin / "request-node-sleep" / nodeIdSegment /? namespace, emptyRequest),
       response = accepted(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Sleep Node"))
@@ -320,9 +321,9 @@ trait AdministrationRoutes
         .withTags(List(adminTag))
     )
 
-  final val graphHashCode: Endpoint[AtTime, GraphHashCode] =
+  final val graphHashCode: Endpoint[(AtTime, NamespaceParameter), GraphHashCode] =
     endpoint(
-      request = get(admin / "graph-hash-code" /? atTime),
+      request = get(admin / "graph-hash-code" /? (atTime & namespace)),
       response = ok(jsonResponse[GraphHashCode]),
       docs = EndpointDocs()
         .withSummary(Some("Graph Hash Code"))

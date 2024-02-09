@@ -5,20 +5,32 @@ import scala.concurrent.{Await, ExecutionContextExecutor, Future, Promise}
 
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.pattern.Patterns
+import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AsyncFunSuite
 
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineValue}
-import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor, PersistenceAgent}
+import com.thatdot.quine.persistor.{
+  EventEffectOrder,
+  InMemoryPersistor,
+  PersistenceConfig,
+  PrimePersistor,
+  StatelessPrimePersistor
+}
 
 class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
 
-  def makePersistor(system: ActorSystem): PersistenceAgent = InMemoryPersistor.empty
+  def makePersistor(system: ActorSystem): PrimePersistor =
+    new StatelessPrimePersistor(
+      PersistenceConfig(),
+      None,
+      (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
+    )(Materializer.matFromSystem(system))
 
   implicit val timeout: Timeout = Timeout(10.seconds)
   val idProvider: QuineIdLongProvider = QuineIdLongProvider()
@@ -26,12 +38,13 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
     GraphService(
       "historical-query-tests",
       effectOrder = EventEffectOrder.PersistorFirst,
-      persistor = makePersistor,
+      persistorMaker = makePersistor,
       idProvider = idProvider
     ),
     timeout.duration
   )
   implicit val ec: ExecutionContextExecutor = graph.system.dispatcher
+  val namespace: NamespaceId = None // Use default namespace
 
   var t0: Milliseconds = Milliseconds(0L)
   var t1: Milliseconds = Milliseconds(0L)
@@ -61,23 +74,23 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
         )
         _ = (t0 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop1", QuineValue.Integer(1L))
+        _ <- graph.literalOps(namespace).setProp(qid, "prop1", QuineValue.Integer(1L))
         _ <- pause()
         _ = (t1 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop2", QuineValue.Integer(2L))
+        _ <- graph.literalOps(namespace).setProp(qid, "prop2", QuineValue.Integer(2L))
         _ <- pause()
         _ = (t2 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.requestNodeSleep(qid)
+        _ <- graph.requestNodeSleep(namespace, qid)
         _ <- pause()
         _ = (t3 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop3", QuineValue.Integer(3L))
+        _ <- graph.literalOps(namespace).setProp(qid, "prop3", QuineValue.Integer(3L))
         _ <- pause()
         _ = (t4 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.requestNodeSleep(qid)
+        _ <- graph.requestNodeSleep(namespace, qid)
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
@@ -90,28 +103,28 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query before any events or sleeps") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t0)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t0)).map { props =>
       assert(props == Map.empty)
     }
   }
 
   test("logState properties before any events or sleeps") {
     assume(runnable)
-    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+    graph.literalOps(namespace).logState(qid, atTime = Some(t0)).map { s =>
       assert(s.properties.isEmpty)
     }
   }
 
   test("logState journal before any events or sleeps") {
     assume(runnable)
-    graph.literalOps.logState(qid, atTime = Some(t0)).map { s =>
+    graph.literalOps(namespace).logState(qid, atTime = Some(t0)).map { s =>
       assert(s.journal.isEmpty)
     }
   }
 
   test("query after first event") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t1)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t1)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L))
       )
@@ -121,7 +134,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query after second event") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t2)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t2)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L))
@@ -132,7 +145,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query after first sleep") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t3)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t3)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L))
@@ -143,7 +156,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query after first event after sleep") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t4)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t4)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
@@ -155,7 +168,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query after last sleep") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = Some(t5)).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = Some(t5)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
@@ -167,7 +180,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   test("query in present") {
     assume(runnable)
-    graph.literalOps.getProps(qid, atTime = None).map { props =>
+    graph.literalOps(namespace).getProps(qid, atTime = None).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),

@@ -11,7 +11,7 @@ import org.scalactic.source.Position
 import org.scalatest.funsuite.AsyncFunSuite
 import org.scalatest.{Assertion, BeforeAndAfterAll}
 
-import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, QuineUUIDProvider}
+import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, NamespaceId, QuineUUIDProvider}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -23,12 +23,14 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     GraphService(
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
-      persistor = _ => InMemoryPersistor.empty,
+      persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = idProv
     ),
     timeout.duration
   )
   implicit val materializer: Materializer = graph.materializer
+  val gremlinHarnessNamespace: NamespaceId = None // Use default namespace
+  val literalOps: graph.LiteralOps = graph.literalOps(gremlinHarnessNamespace)
 
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)
 

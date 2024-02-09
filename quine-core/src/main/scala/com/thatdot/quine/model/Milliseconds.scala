@@ -16,4 +16,7 @@ object Milliseconds {
 
   @inline
   final def currentTime(): Milliseconds = Milliseconds(System.currentTimeMillis())
+
+  @throws[NumberFormatException]
+  def fromString(atTimeString: String): Milliseconds = Milliseconds(java.lang.Long.parseUnsignedLong(atTimeString, 10))
 }

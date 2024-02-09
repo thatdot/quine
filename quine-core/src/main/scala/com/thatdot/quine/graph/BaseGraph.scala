@@ -3,6 +3,7 @@ package com.thatdot.quine.graph
 import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.jdk.CollectionConverters.SetHasAsScala
 import scala.reflect.{ClassTag, classTag}
 
 import org.apache.pekko.NotUsed
@@ -16,18 +17,19 @@ import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edges.SyncEdgeCollection
 import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
-import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
+import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace, RequestNodeSleep}
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
-  QuineIdAtTime,
+  LocalShardRef,
   QuineMessage,
   QuineRef,
   ResultHandler,
   ShardMessage,
-  ShardRef
+  ShardRef,
+  SpaceTimeQuineId
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PersistenceAgent}
+import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
 import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictLogging {
@@ -45,7 +47,7 @@ trait BaseGraph extends StrictLogging {
 
   def idProvider: QuineIdProvider
 
-  def persistor: PersistenceAgent
+  val namespacePersistor: PrimePersistor
 
   val metrics: HostQuineMetrics
 
@@ -168,6 +170,26 @@ trait BaseGraph extends StrictLogging {
     */
   def shutdown(): Future[Unit]
 
+  /** Make a new namespace. The outer future indicates success or failure. The inner Boolean indicates whether a
+    * change was made.
+    */
+  def createNamespace(namespace: NamespaceId)(implicit timeout: Timeout): Future[Boolean]
+
+  /** Remove an existing namespace. The outer future indicates success or failure. The inner Boolean indicates whether
+    * a change was made.
+    */
+  def deleteNamespace(namespace: NamespaceId)(implicit timeout: Timeout): Future[Boolean]
+
+  /** Get a set of existing namespaces. This is served by a local cache and meant to be fast and inexpensive.
+    * `getNamespaces.contains(myNamespace)` can be called before every operation that uses a non-default namespace to
+    * ensure the namespace exists, or otherwise fail fast before other actions.
+    */
+  def getNamespaces: collection.Set[NamespaceId]
+
+  private[graph] val namespaceCache: scala.collection.mutable.Set[NamespaceId] =
+    new java.util.concurrent.ConcurrentHashMap[NamespaceId, java.lang.Boolean]().keySet(true).asScala
+  namespaceCache.add(defaultNamespaceId)
+
   /** Assert that the graph must have a node type with the specified behavior
     * as a supertype.
     *
@@ -192,16 +214,20 @@ trait BaseGraph extends StrictLogging {
   /** Uses the appropriate persistor method (journals or snapshot) to enumerate all node IDs.
     * Augments the list with in-memory nodes that may not yet have reached the persistor yet.
     */
-  def enumerateAllNodeIds(): Source[QuineId, NotUsed] = {
+  def enumerateAllNodeIds(namespace: NamespaceId): Source[QuineId, NotUsed] = {
     requiredGraphIsReady()
-    if (!persistor.persistenceConfig.journalEnabled || persistor.isInstanceOf[EmptyPersistor]) {
+    if (
+      !namespacePersistor.persistenceConfig.journalEnabled ||
+      WrappedPersistenceAgent.unwrap(namespacePersistor.getDefault).isInstanceOf[EmptyPersistor]
+    ) {
       // TODO: don't hardcode
       implicit val timeout = Timeout(5.seconds)
 
       // Collect nodes that may be only in memory
       val inMemoryNodesFut: Future[Set[QuineId]] = Future
         .traverse(shards) { shardRef =>
-          val awakeNodes = relayAsk(shardRef.quineRef, ShardMessage.SampleAwakeNodes(limit = None, atTime = None, _))
+          val awakeNodes =
+            relayAsk(shardRef.quineRef, ShardMessage.SampleAwakeNodes(namespace, limit = None, atTime = None, _))
           Source
             .futureSource(awakeNodes)
             .map(_.quineId)
@@ -213,15 +239,17 @@ trait BaseGraph extends StrictLogging {
       // Return those nodes, plus the ones the persistor produces
       val combinedSource = Source.futureSource {
         inMemoryNodesFut.map { (inMemoryNodes: Set[QuineId]) =>
-          val persistorNodes =
-            persistor.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains)
+          val persistorNodes = namespacePersistor(namespace).fold(Source.empty[QuineId])(
+            _.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains)
+          )
           Source(inMemoryNodes) ++ persistorNodes
         }(shardDispatcherEC)
       }
-
       combinedSource.mapMaterializedValue(_ => NotUsed).named("all-node-scan-snapshot-based")
     } else {
-      persistor.enumerateJournalNodeIds().named("all-node-scan-journal-based")
+      namespacePersistor(namespace)
+        .fold(Source.empty[QuineId])(_.enumerateJournalNodeIds())
+        .named("all-node-scan-journal-based")
     }
   }
 
@@ -241,6 +269,7 @@ trait BaseGraph extends StrictLogging {
     */
   def recentNodes(
     limit: Int,
+    namespace: NamespaceId,
     atTime: Option[Milliseconds] = None
   )(implicit timeout: Timeout): Future[Set[QuineId]] = {
     requiredGraphIsReady()
@@ -254,7 +283,7 @@ trait BaseGraph extends StrictLogging {
     Future
       .traverse(shards zip shardAskSizes) { case (shard, lim) =>
         Source
-          .futureSource(relayAsk(shard.quineRef, ShardMessage.SampleAwakeNodes(Some(lim), atTime, _)))
+          .futureSource(relayAsk(shard.quineRef, ShardMessage.SampleAwakeNodes(namespace, Some(lim), atTime, _)))
           .map(_.quineId)
           .named(s"recent-node-sampler-shard-${shard.shardId}")
           .runWith(Sink.collection[QuineId, Set[QuineId]])
@@ -306,10 +335,10 @@ trait BaseGraph extends StrictLogging {
 
   /** Request that a node go to sleep by sending a message to the node's shard.
     */
-  def requestNodeSleep(quineId: QuineId)(implicit timeout: Timeout): Future[Unit] = {
+  def requestNodeSleep(namespace: NamespaceId, quineId: QuineId)(implicit timeout: Timeout): Future[Unit] = {
     requiredGraphIsReady()
     val shard = shardFromNode(quineId)
-    relayAsk(shard.quineRef, RequestNodeSleep(QuineIdAtTime(quineId, None), _))
+    relayAsk(shard.quineRef, RequestNodeSleep(SpaceTimeQuineId(quineId, namespace, None), _))
       .map(_ => ())(shardDispatcherEC)
   }
 
@@ -321,13 +350,35 @@ trait BaseGraph extends StrictLogging {
     * at the optionally specified time. Caller should ensure the graph is
     * sufficiently stable and consistent before calling this function.
     */
-  def getGraphHashCode(atTime: Option[Milliseconds]): Future[Long] =
-    enumerateAllNodeIds()
+  def getGraphHashCode(namespace: NamespaceId, atTime: Option[Milliseconds]): Future[Long] =
+    enumerateAllNodeIds(namespace)
       .mapAsyncUnordered(parallelism = 16) { qid =>
         val timeout = 1 second
         val resultHandler = implicitly[ResultHandler[GraphNodeHashCode]]
         val ec = ExecutionContexts.parasitic
-        relayAsk(QuineIdAtTime(qid, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)
+        relayAsk(SpaceTimeQuineId(qid, namespace, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)
       }
       .runFold(zero = 0L)((e, f) => e + f)
+
+  def tellAllShards(message: QuineMessage): Unit =
+    shards.foreach(shard => relayTell(shard.quineRef, message))
+
+  def askAllShards[Resp](
+    message: QuineRef => QuineMessage with AskableQuineMessage[Resp]
+  )(implicit
+    timeout: Timeout,
+    resultHandler: ResultHandler[Resp]
+  ): Future[Vector[Resp]] = Future.traverse(shards.toVector) { shard =>
+    relayAsk(shard.quineRef, message)
+  }(implicitly, shardDispatcherEC)
+
+  def askLocalShards[Resp](
+    message: QuineRef => QuineMessage with AskableQuineMessage[Resp]
+  )(implicit
+    timeout: Timeout,
+    resultHandler: ResultHandler[Resp]
+  ): Future[Vector[Resp]] = Future
+    .sequence(shards.collect { case shard: LocalShardRef =>
+      relayAsk(shard.quineRef, message)
+    }.toVector)(implicitly, shardDispatcherEC)
 }

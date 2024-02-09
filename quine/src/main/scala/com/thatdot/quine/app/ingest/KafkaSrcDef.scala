@@ -26,8 +26,8 @@ import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserialize
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
 import com.thatdot.quine.util.SwitchMode
 
@@ -79,6 +79,7 @@ object KafkaSrcDef {
 
   def apply(
     name: String,
+    intoNamespace: NamespaceId,
     topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
     bootstrapServers: String,
     groupId: String,
@@ -130,6 +131,7 @@ object KafkaSrcDef {
           val consumer: Source[NoOffset, Consumer.Control] = Consumer.plainSource(consumerSettings, subscription)
           NonCommitting(
             name,
+            intoNamespace,
             format,
             initialSwitchMode,
             parallelism,
@@ -144,6 +146,7 @@ object KafkaSrcDef {
 
           Committing(
             name,
+            intoNamespace,
             format,
             initialSwitchMode,
             parallelism,
@@ -160,6 +163,7 @@ object KafkaSrcDef {
   /** Kafka type that does not ack offset information. */
   case class NonCommitting(
     override val name: String,
+    override val intoNamespace: NamespaceId,
     format: ImportFormat,
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
@@ -184,6 +188,7 @@ object KafkaSrcDef {
   /** Kafka type with ack. */
   case class Committing(
     override val name: String,
+    override val intoNamespace: NamespaceId,
     format: ImportFormat,
     initialSwitchMode: SwitchMode,
     parallelism: Int = 2,
@@ -204,8 +209,8 @@ object KafkaSrcDef {
 
     /** For ack-ing source override the default mapAsyncUnordered behavior.
       */
-    override val writeToGraph: Flow[TryDeserialized, TryDeserialized, NotUsed] =
-      Flow[TryDeserialized].mapAsync(parallelism)(writeSuccessValues)
+    override def writeToGraph(intoNamespace: NamespaceId): Flow[TryDeserialized, TryDeserialized, NotUsed] =
+      Flow[TryDeserialized].mapAsync(parallelism)(writeSuccessValues(intoNamespace))
 
     override val ack: Flow[TryDeserialized, Done, NotUsed] = {
       val committer: Flow[ConsumerMessage.Committable, ConsumerMessage.CommittableOffsetBatch, NotUsed] =
@@ -231,6 +236,5 @@ object KafkaSrcDef {
         .via(committer)
         .map(_ => Done)
     }
-
   }
 }

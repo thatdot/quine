@@ -148,6 +148,7 @@ final class RunningStandingQuery(
   def this(
     resultsQueue: BoundedSourceQueue[StandingQueryResult],
     query: StandingQuery,
+    inNamespace: NamespaceId,
     resultsHub: Source[StandingQueryResult, NotUsed],
     outputTermination: Future[Done],
     metrics: HostQuineMetrics
@@ -157,12 +158,12 @@ final class RunningStandingQuery(
       query,
       resultsHub,
       outputTermination,
-      resultMeter = metrics.standingQueryResultMeter(query.name),
-      droppedCounter = metrics.standingQueryDroppedCounter(query.name),
+      resultMeter = metrics.standingQueryResultMeter(inNamespace, query.name),
+      droppedCounter = metrics.standingQueryDroppedCounter(inNamespace, query.name),
       startTime = Instant.now()
     )
 
-  def cancel(): Future[Unit] = {
+  def terminateOutputQueue(): Future[Unit] = {
     resultsQueue.complete()
     /* Using outputTermination instead of resultsQueue.watchCompletion, because a watchCompletion future may not
      * complete if the termination is caused by a sink cancellation rather than a source completion. Note that since

@@ -14,6 +14,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -27,10 +28,12 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   *   - for every node: every event occurs at a unique time
   *   - for every node: every snapshot occurs at a unique time
   */
-class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgent(wrapped) {
+class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgent(wrapped) with PersistenceAgent {
 
   private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeEvent]]
   private val snapshots = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, Array[Byte]]]
+
+  val namespace: NamespaceId = wrapped.namespace
 
   override def emptyOfQuineData(): Future[Boolean] =
     if (events.isEmpty && snapshots.isEmpty) wrapped.emptyOfQuineData()
@@ -138,7 +141,7 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     state: Option[Array[Byte]]
   ): Future[Unit] = wrapped.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
-  override def ready(graph: BaseGraph): Unit = wrapped.ready(graph)
+  override def declareReady(graph: BaseGraph): Unit = wrapped.declareReady(graph)
 
   def shutdown(): Future[Unit] = wrapped.shutdown()
 
@@ -151,4 +154,6 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
     */
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
     wrapped.deleteDomainIndexEventsByDgnId(dgnId)
+
+  def delete(): Future[Unit] = wrapped.delete()
 }

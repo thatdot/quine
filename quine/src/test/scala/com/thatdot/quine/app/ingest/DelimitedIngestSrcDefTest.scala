@@ -18,7 +18,7 @@ import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, idFrom}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, NamespaceId, idFrom}
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
@@ -30,6 +30,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   implicit val system: ActorSystem = graph.system
   implicit val timeout: Timeout = Timeout(2.seconds)
   implicit val ec: ExecutionContextExecutor = system.dispatcher
+  val namespace: NamespaceId = None // Use default namespace
 
   override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 
@@ -53,11 +54,12 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         0,
         None,
         None,
-        "local test"
+        "local test",
+        None
       )
 
     val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
-      ingestSrcDef.stream().toMat(TestSink.probe)(Keep.right).run()
+      ingestSrcDef.stream(namespace, _ => ()).toMat(TestSink.probe)(Keep.right).run()
 
     val fc: Future[QuineAppIngestControl] = ingestSrcDef.getControl.unsafeToFuture()
 
@@ -91,22 +93,19 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       Await.result(ctl.termSignal, 10.seconds)
 
       (1 to 10).map { i =>
-        val prop: Map[Symbol, PropertyValue] = Await.result(g.literalOps.getProps(quineId(i)), 1.second)
+        val prop: Map[Symbol, PropertyValue] = Await.result(g.literalOps(namespace).getProps(quineId(i)), 1.second)
         i -> prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized
       }.toMap
-
     }
   }
 
   test("json to graph") {
-
     val ctx = new LocalIngestTestContext[QuineValue.Map](
       "json",
       FileIngestFormat.CypherJson(
         s"""MATCH (p) WHERE id(p) = idFrom('test','json', $$that.json) SET p.value = $$that RETURN (p)"""
       )
     ) {
-
       override def writeValue(i: Int): Unit = writeBytes(s"${ujson.Obj("json" -> i.toString)}\n".getBytes())
 
       override def quineId(i: Int): QuineId =
@@ -114,9 +113,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
       override def matchingValue(i: Int): QuineValue.Map = QuineValue.Map(Map("json" -> QuineValue.Str(i.toString)))
     }
-
     ctx.retrieveResults().foreach(e => assert(e._2 == Success(ctx.matchingValue(e._1))))
-
   }
 
   test("bytes to graph") {
@@ -126,17 +123,14 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         s"""MATCH (p) WHERE id(p) = idFrom('test','line', $$that) SET p.value = $$that RETURN (p)"""
       )
     ) {
-
       override def writeValue(i: Int): Unit = writeBytes(s"===$i\n".getBytes())
 
       override def quineId(i: Int): QuineId =
         idFrom(Expr.Str("test"), Expr.Str("line"), Expr.Str(s"===$i"))(graph.idProvider)
 
       override def matchingValue(i: Int): QuineValue.Str = QuineValue.Str(s"===$i")
-
     }
     ctx.retrieveResults().foreach(e => assert(e._2 == Success(ctx.matchingValue(e._1))))
-
   }
 
   test("csv to graph") {
@@ -150,7 +144,6 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         Right(List("h1", "h2"))
       )
     ) {
-
       override def writeValue(i: Int): Unit = writeBytes(s"""A,$i\n""".getBytes)
 
       override def quineId(i: Int): QuineId =
@@ -161,13 +154,13 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
     }
     ctx.retrieveResults().foreach(e => assert(e._2 == Success(ctx.matchingValue(e._1))))
-
   }
 
   test("number format") {
     val d: IngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "number input",
+        None,
         NumberIteratorIngest(
           FileIngestFormat.CypherLine(
             s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)"""
@@ -183,13 +176,13 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val g = graph.asInstanceOf[LiteralOpsGraph]
 
     Await.ready(
-      d.stream()
+      d.stream(namespace, _ => ())
         .runWith(Sink.ignore)
         .map { _ =>
 
           (1 to 10).foreach { i =>
             val prop: Map[Symbol, PropertyValue] =
-              Await.result(g.literalOps.getProps(idFrom(Expr.Integer(i.toLong))(graph.idProvider)), 1.second)
+              Await.result(g.literalOps(namespace).getProps(idFrom(Expr.Integer(i.toLong))(graph.idProvider)), 1.second)
             assert(
               prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
                 QuineValue.Integer(i.toLong)
@@ -200,7 +193,6 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         },
       10.seconds
     )
-
   }
 
   test("stdin") {
@@ -210,6 +202,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val d: IngestSrcDef = IngestSrcDef
       .createIngestSrcDef(
         "stdin",
+        None,
         StandardInputIngest(
           FileIngestFormat.CypherLine(s"""MATCH (x) WHERE id(x) = idFrom("stdin", $$that) SET x.value = $$that"""),
           "UTF-8",
@@ -220,7 +213,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         SwitchMode.Open
       )
       .valueOr(_ => ???)
-    val done = d.stream().toMat(Sink.ignore)(Keep.right).run()
+    val done = d.stream(namespace, _ => ()).toMat(Sink.ignore)(Keep.right).run()
     val fc = d.getControl.unsafeToFuture()
     val c: QuineAppIngestControl = Await.result(fc, 3.seconds)
     val g = graph.asInstanceOf[LiteralOpsGraph]
@@ -233,17 +226,17 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       (1 to 10).foreach { i =>
 
         val prop: Map[Symbol, PropertyValue] = Await
-          .result(g.literalOps.getProps(idFrom(Expr.Str("stdin"), Expr.Str(i.toString))(graph.idProvider)), 1.second)
+          .result(
+            g.literalOps(namespace).getProps(idFrom(Expr.Str("stdin"), Expr.Str(i.toString))(graph.idProvider)),
+            1.second
+          )
         assert(
           prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
             QuineValue.Str(i.toString)
           )
         )
       }
-
     }
     istream.close()
-
   }
-
 }

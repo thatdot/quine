@@ -13,6 +13,12 @@ import org.apache.pekko
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.model._
 
+final case class SkipOptimizerKey(
+  location: Query[Location.External],
+  namespace: NamespaceId,
+  atTime: Option[Milliseconds]
+)
+
 /** Functionality for querying the graph using Cypher. */
 trait CypherOpsGraph extends BaseGraph {
   private[this] def requireCompatibleNodeType(): Unit =
@@ -41,35 +47,39 @@ trait CypherOpsGraph extends BaseGraph {
 
   object cypherOps {
 
+    private val loader: CacheLoader[SkipOptimizerKey, ActorRef] =
+      new CacheLoader[SkipOptimizerKey, ActorRef] {
+        def load(key: SkipOptimizerKey): ActorRef =
+          system.actorOf(
+            pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key.location, key.namespace, key.atTime))
+          )
+      }
+
     // INV queries used as keys must have no Parameters
-    val skipOptimizerCache: LoadingCache[(Query[Location.External], Option[Milliseconds]), ActorRef] =
-      CacheBuilder
-        .newBuilder()
+    val skipOptimizerCache: LoadingCache[SkipOptimizerKey, ActorRef] =
+      CacheBuilder.newBuilder
         .maximumSize(100) // TODO arbitrary
         .removalListener { // NB invoked semi-manually via [[SkipOptimizingActor.decommission]]
-          (notification: RemovalNotification[(Query[Location.External], Option[Milliseconds]), ActorRef]) =>
+          (notification: RemovalNotification[SkipOptimizerKey, ActorRef]) =>
             /** allow REPLACED actors to live on (eg, as happens when calling [[skipOptimizerCache.refresh]].
               * Otherwise, remove the actor from the actor system as soon as it has burnt down its mailbox
               */
-            if (notification.getCause != RemovalCause.REPLACED) {
+            if (notification.getCause != RemovalCause.REPLACED)
               notification.getValue ! PoisonPill
-            } else {
+            else
               logger.info(
                 s"""SkipOptimizingActor at ${notification.getValue} is being replaced in the Cypher skipOptimizerCache
                    |without removing. This is expected in tests, but not in production. Shutdown protocol will
                    |not be initiated on the actor.""".stripMargin.replace('\n', ' ')
               )
-            }
         }
-        .build(new CacheLoader[(Query[Location.External], Option[Milliseconds]), ActorRef] {
-          def load(key: (Query[Location.External], Option[Milliseconds])): ActorRef =
-            system.actorOf(pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key._1, key._2)))
-        })
+        .build(loader)
 
     /* We do a lot of queries on the thoroughgoing present, so cache an instance
      * of an anchored interpreter.
      */
-    private val currentMomentInterpreter = new ThoroughgoingInterpreter(CypherOpsGraph.this)
+    private def currentMomentInterpreter(namespace: NamespaceId) =
+      new ThoroughgoingInterpreter(CypherOpsGraph.this, namespace)
 
     /** To start a query, use [[cypherOps.query]] or [[CypherBehavior.runQuery()]] instead
       *
@@ -89,6 +99,7 @@ trait CypherOpsGraph extends BaseGraph {
     private[graph] def continueQuery(
       query: Query[Location.External],
       parameters: Parameters = Parameters.empty,
+      namespace: NamespaceId,
       atTime: Option[Milliseconds] = None,
       context: QueryContext = QueryContext.empty,
       bypassSkipOptimization: Boolean = false
@@ -97,9 +108,14 @@ trait CypherOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       val interpreter =
         atTime match {
-          case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
-          case None => currentMomentInterpreter
+          case Some(_) => new AtTimeInterpreter(CypherOpsGraph.this, namespace, atTime, bypassSkipOptimization)
+          case None => currentMomentInterpreter(namespace)
         }
+
+      require(
+        interpreter.namespace == namespace,
+        "Refusing to execute a query in a different namespace than requested by the caller"
+      )
 
       require(
         interpreter.atTime == atTime,
@@ -126,6 +142,7 @@ trait CypherOpsGraph extends BaseGraph {
       */
     def query(
       query: CompiledQuery[Location.External],
+      namespace: NamespaceId,
       atTime: Option[Milliseconds],
       parameters: Map[String, cypher.Value],
       bypassSkipOptimization: Boolean = false
@@ -133,8 +150,8 @@ trait CypherOpsGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       val interpreter: CypherInterpreter[Location.External] = atTime match {
-        case Some(millisTime) => new AtTimeInterpreter(CypherOpsGraph.this, millisTime, bypassSkipOptimization)
-        case None => currentMomentInterpreter
+        case Some(_) => new AtTimeInterpreter(CypherOpsGraph.this, namespace, atTime, bypassSkipOptimization)
+        case None => currentMomentInterpreter(namespace)
       }
 
       query.run(parameters, Map.empty, interpreter)

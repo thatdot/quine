@@ -14,8 +14,8 @@ import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
-import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit, namespaceFromParam}
+import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes._
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo}
@@ -41,7 +41,7 @@ trait AdministrationRoutesImpl
   def currentConfig: Json
 
   /** State in the application */
-  val serviceState: AdministrationRoutesState
+  val quineApp: AdministrationRoutesState
 
   /** A sample configuration that will be used for documenting the admin/config route. */
   def sampleConfig: BaseConfig = QuineConfig()
@@ -136,7 +136,7 @@ trait AdministrationRoutesImpl
   }
 
   private val metaDataRoute = metaData.implementedByAsync { _ =>
-    graph.persistor
+    graph.namespacePersistor
       .getAllMetaData()
       .map(_.fmap(ByteString(_)))(graph.shardDispatcherEC)
   }
@@ -149,14 +149,14 @@ trait AdministrationRoutesImpl
       })(ExecutionContexts.parasitic)
   }
 
-  private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { (quineId: QuineId) =>
-    graph.requestNodeSleep(quineId)
+  private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { case (quineId, namespaceParam) =>
+    graph.requestNodeSleep(namespaceFromParam(namespaceParam), quineId)
   }
 
-  private val graphHashCodeRoute = graphHashCode.implementedByAsync { atTime: Option[Milliseconds] =>
+  private val graphHashCodeRoute = graphHashCode.implementedByAsync { case (atTime, namespaceParam) =>
     val at = atTime.getOrElse(Milliseconds.currentTime())
     val ec = ExecutionContexts.parasitic
-    graph.getGraphHashCode(Some(at)).map(GraphHashCode(_, at.millis))(ec)
+    graph.getGraphHashCode(namespaceFromParam(namespaceParam), Some(at)).map(GraphHashCode(_, at.millis))(ec)
   }
 
   final val administrationRoutes: Route =

@@ -38,7 +38,7 @@ import com.thatdot.quine.model.QuineIdProvider
   */
 final private[quine] class ExactlyOnceAskNodeActor[Resp](
   unattributedMessage: QuineRef => QuineMessage with AskableQuineMessage[Resp],
-  recipient: QuineIdAtTime,
+  recipient: SpaceTimeQuineId,
   remoteShardTarget: Option[ActorRef],
   idProvider: QuineIdProvider,
   originalSender: ActorRef,
@@ -66,11 +66,13 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
         case other => other
       }
 
-      def toSendFunc() = BaseMessage.DeliveryRelay(
-        BaseMessage.LocalMessageDelivery(updateExpiry(msg), recipient, self),
-        dedupId,
-        needsAck = true
-      )
+      // This is a function instead of `val` so that `updateExpiry` is regenerated each time message sending is retried
+      def toSendFunc() =
+        BaseMessage.DeliveryRelay(
+          BaseMessage.LocalMessageDelivery(updateExpiry(msg), recipient, self),
+          dedupId,
+          needsAck = true
+        )
 
       val retryInterval: FiniteDuration = 2.seconds // TODO: exponential backoff?
       context.system.scheduler.scheduleAtFixedRate(

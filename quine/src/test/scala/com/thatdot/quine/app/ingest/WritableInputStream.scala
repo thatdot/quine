@@ -50,7 +50,7 @@ object IngestTestGraph {
     GraphService(
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
-      persistor = _ => InMemoryPersistor.empty,
+      persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = QuineIdLongProvider()
     ),
     5.seconds

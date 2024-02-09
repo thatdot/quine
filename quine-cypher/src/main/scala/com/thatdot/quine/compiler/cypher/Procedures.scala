@@ -42,6 +42,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.{
   AlgorithmGraph,
   LiteralOpsGraph,
+  NamespaceId,
   StandingQueryId,
   StandingQueryOpsGraph,
   StandingQueryResult
@@ -161,10 +162,9 @@ object RecentNodeIds extends UserDefinedProcedure {
 
     Source.lazyFutureSource { () =>
       location.graph
-        .recentNodes(limit, location.atTime)
+        .recentNodes(limit, location.namespace, location.atTime)
         .map { (nodes: Set[QuineId]) =>
-          Source
-            .fromIterator(() => nodes.iterator)
+          Source(nodes)
             .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
         }(location.graph.nodeDispatcherEC)
     }
@@ -201,11 +201,10 @@ object RecentNodes extends UserDefinedProcedure {
 
     Source.lazyFutureSource { () =>
       graph
-        .recentNodes(limit, atTime)
+        .recentNodes(limit, location.namespace, atTime)
         .map { (nodes: Set[QuineId]) =>
-          Source
-            .fromIterator(() => nodes.iterator)
-            .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
+          Source(nodes)
+            .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, location.namespace, atTime, graph))
             .map(Vector(_))
         }(location.graph.nodeDispatcherEC)
     }
@@ -728,7 +727,7 @@ object CypherDebugNode extends UserDefinedProcedure {
       Map(
         "id" -> Expr.Str(q.id),
         "globalId" -> Expr.Str(q.globalId),
-        "subscribers" -> Expr.List(q.subscribers.view.map(Expr.Str(_)).toVector),
+        "subscribers" -> Expr.List(q.subscribers.view.map(Expr.Str).toVector),
         "state" -> Expr.Str(q.state)
       )
     )
@@ -755,7 +754,8 @@ object CypherDebugNode extends UserDefinedProcedure {
     }
 
     Source.lazyFuture { () =>
-      graph.literalOps
+      graph
+        .literalOps(location.namespace)
         .logState(node, location.atTime)
         .map {
           case NodeInternalState(
@@ -828,13 +828,14 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
     }
 
     Source.lazyFutureSource { () =>
-      graph.literalOps
+      graph
+        .literalOps(location.namespace)
         .getSqResults(node)
         .map(sqr =>
           Source.fromIterator { () =>
             sqr.subscribers.map { s =>
               Vector(
-                Expr.Integer(s.dgnId.toLong),
+                Expr.Integer(s.dgnId),
                 Expr.Str(s.qid.pretty),
                 s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
               )
@@ -879,7 +880,8 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
     }
 
     Source.lazyFutureSource { () =>
-      graph.literalOps
+      graph
+        .literalOps(location.namespace)
         .getSqResults(node)
         .map(sqr =>
           Source.fromIterator { () =>
@@ -929,7 +931,7 @@ object PurgeNode extends UserDefinedProcedure {
     }
 
     Source.lazyFuture { () =>
-      graph.literalOps.purgeNode(node).map(_ => Vector.empty)(ExecutionContexts.parasitic)
+      graph.literalOps(location.namespace).purgeNode(node).map(_ => Vector.empty)(ExecutionContexts.parasitic)
     }
   }
 }
@@ -966,7 +968,7 @@ object CypherDebugSleep extends UserDefinedProcedure {
     }
 
     Source.lazyFuture { () =>
-      graph.requestNodeSleep(node).map(_ => Vector.empty)(location.graph.nodeDispatcherEC)
+      graph.requestNodeSleep(location.namespace, node).map(_ => Vector.empty)(location.graph.nodeDispatcherEC)
     }
   }
 }
@@ -1132,6 +1134,7 @@ object CypherDoWhen extends UserDefinedProcedure {
     } else {
       val subQueryResults = queryCypherValues(
         queryToExecute,
+        location.namespace,
         parameters = params,
         initialColumns = params,
         atTime = location.atTime
@@ -1176,6 +1179,7 @@ object CypherDoIt extends UserDefinedProcedure {
 
     val subQueryResults = queryCypherValues(
       query,
+      location.namespace,
       parameters = parameters,
       initialColumns = parameters,
       atTime = location.atTime
@@ -1242,6 +1246,7 @@ object CypherDoCase extends UserDefinedProcedure {
       case Some(query) =>
         val subQueryResults = queryCypherValues(
           query,
+          location.namespace,
           parameters = parameters,
           initialColumns = parameters,
           atTime = location.atTime
@@ -1283,6 +1288,7 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
 
     val subQueryResults = queryCypherValues(
       query,
+      location.namespace,
       parameters = parameters,
       initialColumns = parameters,
       atTime = location.atTime
@@ -1445,7 +1451,8 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
   * Registered by registerUserDefinedProcedure at runtime by product entrypoint and in docs' GenerateCypherTables
   * NB despite the name including `wiretap`, this is implemented as an pekko-streams map
   */
-class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) extends UserDefinedProcedure {
+class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[StandingQueryId])
+    extends UserDefinedProcedure {
   val name = "standing.wiretap"
   val canContainUpdates = false
   val isIdempotent = true
@@ -1500,7 +1507,7 @@ class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) ext
 
         (standingQueryName, standingQueryIdStr) match {
           case (Some(name), None) =>
-            lookupByName(name).getOrElse {
+            lookupByName(name, location.namespace).getOrElse {
               throw CypherException.Runtime(s"Cannot find standing query with name `$name`")
             }
           case (None, Some(strId)) =>
@@ -1526,7 +1533,10 @@ class CypherStandingWiretap(lookupByName: String => Option[StandingQueryId]) ext
     }
 
     graph
-      .wireTapStandingQuery(standingQueryId)
+      .standingQueries(location.namespace)
+      .flatMap(
+        _.wireTapStandingQuery(standingQueryId)
+      )
       .getOrElse(throw CypherException.Runtime(s"Cannot find standing query with id `$standingQueryId`"))
       .map { case StandingQueryResult(meta, data) =>
         val dataMap = Expr.fromQuineValue(QuineValue.Map(data))
@@ -1563,7 +1573,6 @@ object RandomWalk extends UserDefinedProcedure {
     timeout: Timeout
   ): Source[Vector[Value], NotUsed] = {
 
-    val atTime = location.atTime
     val graph = AlgorithmGraph.getOrThrow(s"`$name` procedure", location.graph)
 
     def toQid(nodeLike: Value): QuineId = UserDefinedProcedure
@@ -1594,7 +1603,8 @@ object RandomWalk extends UserDefinedProcedure {
           inOutParam,
           None,
           randSeedOpt,
-          atTime
+          location.namespace,
+          location.atTime
         )
         .map { l =>
           Vector(Expr.List(l.acc.toVector.map(q => Expr.Str(q))))

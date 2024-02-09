@@ -28,7 +28,7 @@ class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
   // if this setup test fails, nothing else in this suite is expected to pass
   it("should load some test nodes") {
     Future.traverse(List(e12, e13, e23, e35, e43, e51, e54)) { case Expr.Relationship(from, name, _, to) =>
-      graph.literalOps.addEdge(from, to, name.name)
+      graph.literalOps(cypherHarnessNamespace).addEdge(from, to, name.name)
     } as assert(true)
   }
 

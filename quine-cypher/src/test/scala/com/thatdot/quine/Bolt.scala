@@ -26,7 +26,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
     GraphService(
       "bolt-protocol-test-system",
       effectOrder = EventEffectOrder.MemoryFirst,
-      persistor = _ => InMemoryPersistor.empty,
+      persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = QuineIdLongProvider()
     ),
     timeout.duration

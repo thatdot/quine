@@ -2,6 +2,8 @@ package com.thatdot.quine.graph.cypher
 
 import org.apache.pekko.NotUsed
 
+import com.thatdot.quine.graph.namespaceToString
+
 /** Packages together all the information about a query that can be run
   *
   * @param queryText the original query
@@ -75,7 +77,11 @@ final case class CompiledQuery[+Start <: Location](
     val results = initialInterpreter
       .interpret(query, initialContext)(params)
       .mapMaterializedValue(_ => NotUsed)
-      .named("cypher-query-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString))
+      .named(
+        "cypher-query-namespace-" + namespaceToString(
+          initialInterpreter.namespace
+        ) + "-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString)
+      )
 
     QueryResults(this, resultContexts = results)
   }

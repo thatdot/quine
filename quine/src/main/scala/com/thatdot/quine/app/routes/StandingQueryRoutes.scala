@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.routes
 
+import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
@@ -13,31 +14,40 @@ import org.apache.pekko.util.Timeout
 import endpoints4s.{Invalid, Valid}
 
 import com.thatdot.quine.graph.cypher.CypherException
-import com.thatdot.quine.graph.{InvalidQueryPattern, StandingQueryId, StandingQueryOpsGraph, StandingQueryResult}
+import com.thatdot.quine.graph.{
+  InvalidQueryPattern,
+  NamespaceId,
+  StandingQueryId,
+  StandingQueryOpsGraph,
+  StandingQueryResult,
+  namespaceFromParam
+}
 import com.thatdot.quine.routes._
 
 trait StandingQueryStore {
 
-  def addStandingQuery(queryName: String, query: StandingQueryDefinition): Future[Boolean]
+  def addStandingQuery(queryName: String, inNamespace: NamespaceId, query: StandingQueryDefinition): Future[Boolean]
 
-  def cancelStandingQuery(queryName: String): Future[Option[RegisteredStandingQuery]]
+  def cancelStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[RegisteredStandingQuery]]
 
   def addStandingQueryOutput(
     queryName: String,
     outputName: String,
+    inNamespace: NamespaceId,
     sqResultOutput: StandingQueryResultOutputUserDef
   ): Future[Option[Boolean]]
 
   def removeStandingQueryOutput(
     queryName: String,
-    outputName: String
+    outputName: String,
+    inNamespace: NamespaceId
   ): Future[Option[StandingQueryResultOutputUserDef]]
 
-  def getStandingQueries(): Future[List[RegisteredStandingQuery]]
+  def getStandingQueries(inNamespace: NamespaceId): Future[List[RegisteredStandingQuery]]
 
-  def getStandingQuery(queryName: String): Future[Option[RegisteredStandingQuery]]
+  def getStandingQuery(queryName: String, inNamespace: NamespaceId): Future[Option[RegisteredStandingQuery]]
 
-  def getStandingQueryId(queryName: String): Option[StandingQueryId]
+  def getStandingQueryId(queryName: String, inNamespace: NamespaceId): Option[StandingQueryId]
 }
 
 /** The Pekko HTTP implementation of [[StandingQueryRoutes]] */
@@ -49,14 +59,16 @@ trait StandingQueryRoutesImpl
     with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
 
   implicit def graph: StandingQueryOpsGraph
+
   implicit def timeout: Timeout
+
   implicit def materializer: Materializer
 
-  def serviceState: StandingQueryStore
+  def quineApp: StandingQueryStore
 
-  private val standingIssueRoute = standingIssue.implementedByAsync { case (name, query) =>
-    try serviceState
-      .addStandingQuery(name, query)
+  private val standingIssueRoute = standingIssue.implementedByAsync { case (name, namespaceParam, query) =>
+    try quineApp
+      .addStandingQuery(name, namespaceFromParam(namespaceParam), query)
       .map {
         case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
         case true => Right(())
@@ -67,31 +79,41 @@ trait StandingQueryRoutesImpl
     }
   }
 
-  private val standingAddOutRoute = standingAddOut.implementedByAsync { case (name, outputName, sqResultOutput) =>
-    serviceState
-      .addStandingQueryOutput(name, outputName, sqResultOutput)
-      .map {
-        _.map {
-          case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
-          case true => Right(())
-        }
-      }(graph.shardDispatcherEC)
+  private val standingRemoveOutRoute = standingRemoveOut.implementedByAsync { case (name, outputName, namespaceParam) =>
+    quineApp.removeStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam))
   }
 
-  private val standingRemoveOutRoute = standingRemoveOut.implementedByAsync { case (name, outputName) =>
-    serviceState.removeStandingQueryOutput(name, outputName)
+  private val standingCancelRoute = standingCancel.implementedByAsync { case (name: String, namespaceParam) =>
+    quineApp.cancelStandingQuery(name, namespaceFromParam(namespaceParam))
   }
 
-  private val standingCancelRoute = standingCancel.implementedByAsync { (name: String) =>
-    serviceState.cancelStandingQuery(name)
+  private val standingGetRoute = standingGet.implementedByAsync { case (queryName, namespaceParam) =>
+    quineApp.getStandingQuery(queryName, namespaceFromParam(namespaceParam))
   }
 
-  private val standingGetRoute = standingGet.implementedByAsync(serviceState.getStandingQuery(_))
+  private val standingAddOutRoute = standingAddOut.implementedByAsync {
+    case (name, outputName, namespaceParam, sqResultOutput) =>
+      quineApp
+        .addStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam), sqResultOutput)
+        .map {
+          _.map {
+            case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
+            case true => Right(())
+          }
+        }(graph.shardDispatcherEC)
+  }
 
   private val standingGetWebsocketRoute =
-    (standing / standingName).directive {
-      case Valid(name) =>
-        serviceState.getStandingQueryId(name).flatMap(graph.wireTapStandingQuery(_)) match {
+    (standing / standingName /? namespace).directive {
+      case Valid((name, namespaceParam)) =>
+        quineApp
+          .getStandingQueryId(name, namespaceFromParam(namespaceParam))
+          .flatMap(sqid =>
+            graph
+              .standingQueries(namespaceFromParam(namespaceParam))
+              // Silently ignores SQs in any absent namespace, returning `None`
+              .flatMap(_.wireTapStandingQuery(sqid))
+          ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
             handleWebSocketMessages(
@@ -112,9 +134,13 @@ trait StandingQueryRoutesImpl
     }
 
   private val standingGetResultsRoute: Route =
-    (standing / standingName / "results").directive {
-      case Valid(name) =>
-        serviceState.getStandingQueryId(name).flatMap(graph.wireTapStandingQuery(_)) match {
+    (standing / standingName / "results" /? namespace).directive {
+      case Valid((name, namespaceParam)) =>
+        quineApp
+          .getStandingQueryId(name, namespaceFromParam(namespaceParam))
+          .flatMap(sqid => // Silently ignores any SQs in an absent namespace, returning `None`
+            graph.standingQueries(namespaceFromParam(namespaceParam)).flatMap(_.wireTapStandingQuery(sqid))
+          ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
             Util.sseRoute(
@@ -133,12 +159,16 @@ trait StandingQueryRoutesImpl
         reject(nameValidationErrors.map(ValidationRejection(_)): _*)
     }
 
-  private val standingListRoute = standingList.implementedByAsync { _ =>
-    serviceState.getStandingQueries()
+  private val standingListRoute = standingList.implementedByAsync { namespaceParam =>
+    quineApp.getStandingQueries(namespaceFromParam(namespaceParam))
   }
 
-  private val standingPropagateRoute = standingPropagate.implementedByAsync { case (wakeUpNodes, par) =>
-    graph.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes))
+  private val standingPropagateRoute = standingPropagate.implementedByAsync { case (wakeUpNodes, par, namespaceParam) =>
+    graph
+      .standingQueries(namespaceFromParam(namespaceParam))
+      .fold(Future.successful[Option[Unit]](None)) {
+        _.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes)).map(_ => Some(()))(ExecutionContexts.parasitic)
+      }
   }
 
   final val standingQueryRoutes: Route = {

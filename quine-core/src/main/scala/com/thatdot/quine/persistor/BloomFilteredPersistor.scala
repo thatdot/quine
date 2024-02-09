@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.{
   EventTime,
   MemberIdx,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -36,15 +37,15 @@ case object QuineIdFunnel extends Funnel[QuineId] {
 object BloomFilteredPersistor {
   def maybeBloomFilter(
     maybeSize: Option[Long],
-    persistor: PersistenceAgent,
+    persistor: NamespacedPersistenceAgent,
     persistenceConfig: PersistenceConfig
   )(implicit
     materializer: Materializer
-  ): PersistenceAgent =
+  ): NamespacedPersistenceAgent =
     maybeSize.fold(persistor)(new BloomFilteredPersistor(persistor, _, persistenceConfig))
 }
 
-/** [[PersistenceAgent]] wrapper that short-circuits read calls to[[getNodeChangeEventsWithTime]],
+/** [[NamespacedPersistenceAgent]] wrapper that short-circuits read calls to[[getNodeChangeEventsWithTime]],
   * [[getLatestSnapshot]], and [[getMultipleValuesStandingQueryStates]] regarding
   * QuineIds assigned to this position that the persistor knows not to exist with empty results.
   *
@@ -53,12 +54,14 @@ object BloomFilteredPersistor {
   * @param falsePositiveRate The false positive probability
   */
 private class BloomFilteredPersistor(
-  wrappedPersistor: PersistenceAgent,
+  wrappedPersistor: NamespacedPersistenceAgent,
   bloomFilterSize: Long,
   val persistenceConfig: PersistenceConfig,
   falsePositiveRate: Double = 0.1
 )(implicit materializer: Materializer)
     extends WrappedPersistenceAgent(wrappedPersistor) {
+
+  val namespace: NamespaceId = wrappedPersistor.namespace
 
   private val bloomFilter: BloomFilter[QuineId] =
     BloomFilter.create[QuineId](QuineIdFunnel, bloomFilterSize, falsePositiveRate)
@@ -154,23 +157,9 @@ private class BloomFilteredPersistor(
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     wrappedPersistor.deleteMultipleValuesStandingQueryStates(id)
 
-  override def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrappedPersistor.getAllMetaData()
-
-  override def getMetaData(key: String): Future[Option[Array[Byte]]] = wrappedPersistor.getMetaData(key)
-
-  override def getLocalMetaData(key: String, localMemberId: MemberIdx): Future[Option[Array[Byte]]] =
-    wrappedPersistor.getLocalMetaData(key, localMemberId)
-
-  override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
-    wrappedPersistor.setMetaData(key, newValue)
-
-  override def setLocalMetaData(key: String, localMemberId: MemberIdx, newValue: Option[Array[Byte]]): Future[Unit] =
-    wrappedPersistor.setLocalMetaData(key, localMemberId, newValue)
-
   /** Begins asynchronously loading all node ID into the bloom filter set.
     */
-  override def ready(graph: BaseGraph): Unit = {
-    super.ready(graph)
+  override def declareReady(graph: BaseGraph): Unit = {
     val t0 = System.currentTimeMillis
     val source =
       if (persistenceConfig.journalEnabled) enumerateJournalNodeIds()
@@ -193,18 +182,12 @@ private class BloomFilteredPersistor(
     ()
   }
 
-  override def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
-    wrappedPersistor.persistDomainGraphNodes(domainGraphNodes)
-
-  override def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] =
-    wrappedPersistor.removeDomainGraphNodes(domainGraphNodes)
-
-  override def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
-    wrappedPersistor.getDomainGraphNodes()
-
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
     wrappedPersistor.deleteDomainIndexEventsByDgnId(dgnId)
 
   override def shutdown(): Future[Unit] =
     wrappedPersistor.shutdown()
+
+  override def delete(): Future[Unit] =
+    wrappedPersistor.delete()
 }

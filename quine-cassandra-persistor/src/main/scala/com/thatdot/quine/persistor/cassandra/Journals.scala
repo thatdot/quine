@@ -11,13 +11,13 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.apply._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
-import com.thatdot.quine.graph.{EventTime, NodeChangeEvent, NodeEvent}
+import com.thatdot.quine.graph.{EventTime, NamespaceId, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.{
   CassandraCodecs,
@@ -35,13 +35,14 @@ trait JournalColumnNames {
   final protected val timestampColumn: CassandraColumn[EventTime] = CassandraColumn[EventTime]("timestamp")
   final protected val dataColumn: CassandraColumn[NodeChangeEvent] = CassandraColumn[NodeChangeEvent]("data")
 }
-abstract class JournalsTableDefinition extends TableDefinition with JournalColumnNames {
-  protected val tableName = "journals"
+abstract class JournalsTableDefinition(namespace: NamespaceId)
+    extends TableDefinition[Journals]("journals", namespace)
+    with JournalColumnNames {
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
   protected val dataColumns: List[CassandraColumn[NodeChangeEvent]] = List(dataColumn)
 
-  private val createTableStatement: SimpleStatement =
+  protected val createTableStatement: SimpleStatement =
     makeCreateTableStatement
       .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
@@ -97,43 +98,48 @@ abstract class JournalsTableDefinition extends TableDefinition with JournalColum
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    writeSettings: CassandraStatementSettings
   )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[Journals] = {
     import shapeless.syntax.std.tuple._ // to concatenate tuples
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(
-      session
-        .executeAsync(createTableStatement)
-        .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+    (
+      T9(
+        selectAllQuineIds,
+        selectByQuineIdQuery.build,
+        selectByQuineIdSinceTimestampQuery,
+        selectByQuineIdUntilTimestampQuery,
+        selectByQuineIdSinceUntilTimestampQuery,
+        selectWithTimeByQuineIdQuery.build,
+        selectWithTimeByQuineIdSinceTimestampQuery,
+        selectWithTimeByQuineIdUntilTimestampQuery,
+        selectWithTimeByQuineIdSinceUntilTimestampQuery
+      ).map(prepare(session, readSettings)).toTuple ++
+      T2(insertStatement, deleteAllByPartitionKeyStatement)
+        .map(prepare(session, writeSettings))
+        .toTuple
+    ).mapN(
+      new Journals(
+        session,
+        chunker,
+        writeSettings,
+        firstRowStatement,
+        dropTableStatement,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _
+      )
     )
-
-    // *> or .productR cannot be used in place of the .flatMap here, as that would run the Futures in parallel,
-    // and we need the prepare statements to be executed after the table as been created.
-    // Even though there is no "explicit" dependency being passed between the two parts.
-    createdSchema.flatMap(_ =>
-      (
-        T9(
-          selectAllQuineIds,
-          selectByQuineIdQuery.build,
-          selectByQuineIdSinceTimestampQuery,
-          selectByQuineIdUntilTimestampQuery,
-          selectByQuineIdSinceUntilTimestampQuery,
-          selectWithTimeByQuineIdQuery.build,
-          selectWithTimeByQuineIdSinceTimestampQuery,
-          selectWithTimeByQuineIdUntilTimestampQuery,
-          selectWithTimeByQuineIdSinceUntilTimestampQuery
-        ).map(prepare(session, readSettings)).toTuple ++
-        T2(insertStatement, deleteAllByPartitionKeyStatement)
-          .map(prepare(session, writeSettings))
-          .toTuple
-      ).mapN(new Journals(session, chunker, writeSettings, firstRowStatement, _, _, _, _, _, _, _, _, _, _, _))
-    )(ExecutionContexts.parasitic)
 
   }
 }
@@ -143,6 +149,7 @@ class Journals(
   chunker: Chunker,
   writeSettings: CassandraStatementSettings,
   firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   selectAllQuineIds: PreparedStatement,
   selectByQuineId: PreparedStatement,
   selectByQuineIdSinceTimestamp: PreparedStatement,
@@ -155,11 +162,9 @@ class Journals(
   insert: PreparedStatement,
   deleteByQuineId: PreparedStatement
 )(implicit materializer: Materializer)
-    extends CassandraTable(session)
+    extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with JournalColumnNames {
   import syntax._
-
-  def nonEmpty(): Future[Boolean] = yieldsResults(firstRowStatement)
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =
     executeSource(selectAllQuineIds.bind()).map(quineIdColumn.get).named("cassandra-all-node-scan")

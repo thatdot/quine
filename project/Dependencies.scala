@@ -34,6 +34,7 @@ object Dependencies {
   val ioniconsV = "2.0.1"
   val jnrPosixV = "3.1.18"
   val jqueryV = "3.6.3"
+  val jwtScalaV = "10.0.0"
   // pekko-connectors-kinesis 1.0.1 indirectly depends on kaml 0.20.0 which is vulnerable to CVE-2023-28118
   // Must be at least 0.53.0
   val kamlV = "0.53.0"

@@ -41,23 +41,23 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
         )
         _ = (t0 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop1", QuineValue.Integer(1L))
+        _ <- graph.literalOps(cypherHarnessNamespace).setProp(qid, "prop1", QuineValue.Integer(1L))
         _ <- pause()
         _ = (t1 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop2", QuineValue.Integer(2L))
+        _ <- graph.literalOps(cypherHarnessNamespace).setProp(qid, "prop2", QuineValue.Integer(2L))
         _ <- pause()
         _ = (t2 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.requestNodeSleep(qid)
+        _ <- graph.requestNodeSleep(cypherHarnessNamespace, qid)
         _ <- pause()
         _ = (t3 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.literalOps.setProp(qid, "prop3", QuineValue.Integer(3L))
+        _ <- graph.literalOps(cypherHarnessNamespace).setProp(qid, "prop3", QuineValue.Integer(3L))
         _ <- pause()
         _ = (t4 = Milliseconds.currentTime())
         _ <- pause()
-        _ <- graph.requestNodeSleep(qid)
+        _ <- graph.requestNodeSleep(cypherHarnessNamespace, qid)
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
@@ -68,6 +68,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
   def assertPropertiesAtTime(time: Milliseconds, expected: Map[Symbol, Value]): Future[Assertion] = {
     val queryResults = queryCypherValues(
       getNodeCypherQuery,
+      namespace = cypherHarnessNamespace,
       atTime = Some(time)
     )(graph)
     queryResults.results

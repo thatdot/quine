@@ -3,18 +3,34 @@ package com.thatdot.quine.persistor.cassandra.support
 import java.time.Duration
 
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
-import com.datastax.oss.driver.api.core.cql.{AsyncCqlSession, PreparedStatement, SimpleStatement}
+import org.apache.pekko.stream.Materializer
+
+import cats.Applicative
+import com.datastax.oss.driver.api.core.cql.{AsyncCqlSession, AsyncResultSet, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{bindMarker, deleteFrom, insertInto, selectFrom}
-import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createTable
+import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.{createTable, dropTable}
 import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection
 import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
 import com.typesafe.scalalogging.LazyLogging
 
-abstract class TableDefinition extends LazyLogging {
-  protected def tableName: String
+import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.persistor.cassandra.Chunker
+
+abstract class TableDefinition[A](unqualifiedTableName: String, namespace: NamespaceId) extends LazyLogging {
+
+  def create(
+    session: CqlSession,
+    chunker: Chunker,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[A]
+
+  protected val tableName: CqlIdentifier =
+    CqlIdentifier.fromCql(namespace.fold("")(_.name + "_") + unqualifiedTableName)
 
   protected def partitionKey: CassandraColumn[_]
   protected def clusterKeys: List[CassandraColumn[_]]
@@ -40,6 +56,12 @@ abstract class TableDefinition extends LazyLogging {
   }
 
   protected val createTableTimeout: Duration = Duration.ofSeconds(5)
+
+  protected val createTableStatement: SimpleStatement
+  def executeCreateTable(session: AsyncCqlSession, verifyCreated: CqlIdentifier => Future[Unit])(implicit
+    ec: ExecutionContext
+  ): Future[Unit] =
+    session.executeAsync(createTableStatement).toScala.flatMap(_ => verifyCreated(tableName))(ec)
 
   protected def select: SelectFrom = selectFrom(tableName)
   protected def delete: DeleteSelection = deleteFrom(tableName)
@@ -68,4 +90,6 @@ abstract class TableDefinition extends LazyLogging {
     * @return an ordinary CQL statement to get a single row from this table, if any exists.
     */
   def firstRowStatement: SimpleStatement = select.column(partitionKey.name).limit(1).build
+
+  def dropTableStatement: SimpleStatement = dropTable(tableName).ifExists.build
 }

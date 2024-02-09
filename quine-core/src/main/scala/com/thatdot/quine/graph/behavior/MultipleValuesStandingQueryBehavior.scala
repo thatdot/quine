@@ -31,6 +31,7 @@ import com.thatdot.quine.graph.{
   BaseNodeActor,
   MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
+  RunningStandingQuery,
   StandingQueryId,
   StandingQueryLocalEvents,
   StandingQueryPattern,
@@ -39,7 +40,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
-import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig, PersistenceSchedule}
+import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig, PersistenceSchedule}
 
 trait MultipleValuesStandingQueryBehavior
     extends Actor
@@ -50,7 +51,7 @@ trait MultipleValuesStandingQueryBehavior
 
   protected def syncStandingQueries(): Unit
 
-  protected def persistor: PersistenceAgent
+  protected def persistor: NamespacedPersistenceAgent
 
   protected def persistenceConfig: PersistenceConfig
 
@@ -60,7 +61,8 @@ trait MultipleValuesStandingQueryBehavior
     */
   def updateMultipleValuesStandingQueriesOnNode(): Unit = {
 
-    val runningStandingQueries = graph.runningStandingQueries
+    val runningStandingQueries = // Silently empty if namespace is absent.
+      graph.standingQueries(namespace).fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
 
     // Remove old SQs no longer in graph state
     for {
@@ -88,8 +90,10 @@ trait MultipleValuesStandingQueryBehavior
       extends MultipleValuesStandingQueryEffects
       with LazyLogging {
 
+    @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
     def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
-      graph.getStandingQueryPart(queryPartId)
+      graph.standingQueries(namespace).get.getStandingQueryPart(queryPartId)
+    // TODO: Would be better to replace `.get` here ^^ but it actually works since both throw the same exception.
 
     def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
       val subscriber = MultipleValuesStandingQuerySubscriber.NodeSubscriber(node, subs.globalId, subs.forQuery)
@@ -99,7 +103,7 @@ trait MultipleValuesStandingQueryBehavior
     def cancelSubscription(onNode: QuineId, queryId: MultipleValuesStandingQueryPartId): Unit = {
       val subscriber = MultipleValuesStandingQuerySubscriber.NodeSubscriber(node, subs.globalId, subs.forQuery)
       // optimization: only perform cancellations for running top-level queries (or to clear out local state)
-      if (qid == onNode || graph.runningStandingQuery(subs.globalId).nonEmpty) {
+      if (qid == onNode || graph.standingQueries(namespace).flatMap(_.runningStandingQuery(subs.globalId)).nonEmpty) {
         onNode ! CancelMultipleValuesSubscription(subscriber, queryId)
       } else {
         logger.info(
@@ -114,7 +118,7 @@ trait MultipleValuesStandingQueryBehavior
         case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
           quineId ! newResult(Some(subscriber))
         case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
-          graph.reportStandingResult(sqId, newResult(None))
+          graph.standingQueries(namespace).fold(false)(_.reportStandingResult(sqId, newResult(None)))
       }
     }
 
@@ -124,7 +128,7 @@ trait MultipleValuesStandingQueryBehavior
         case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
           quineId ! oldResult(Some(subscriber))
         case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
-          graph.reportStandingResult(sqId, oldResult(None))
+          graph.standingQueries(namespace).fold(false)(_.reportStandingResult(sqId, oldResult(None)))
       }
     }
 
@@ -210,7 +214,7 @@ trait MultipleValuesStandingQueryBehavior
                 case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, _, subscriber) =>
                   quineId ! newResult(Some(subscriber))
                 case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
-                  graph.reportStandingResult(sqId, newResult(None))
+                  graph.standingQueries(namespace).fold(false)(_.reportStandingResult(sqId, newResult(None)))
               }
             }
             val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, query.id, Some(tup))
@@ -283,8 +287,8 @@ trait MultipleValuesStandingQueryBehavior
     persistenceConfig.standingQuerySchedule match {
       case PersistenceSchedule.OnNodeUpdate =>
         val serialized = state.map(MultipleValuesStandingQueryStateCodec.format.write)
-        serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
-        new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
+        serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
+        new TimeFuture(metrics.persistorSetStandingQueryStateTimer(namespace)).time[Unit](
           persistor.setMultipleValuesStandingQueryState(
             globalId,
             qid,

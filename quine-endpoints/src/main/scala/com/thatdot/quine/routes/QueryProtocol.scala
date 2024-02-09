@@ -2,6 +2,8 @@ package com.thatdot.quine.routes
 
 import io.circe.Json
 
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+
 /** Type of messages sent as part of the WebSocket query protocol
   *
   *   - Every [[ClientRequest]] from the client gets a [[ServerResponse]] reply from the
@@ -60,12 +62,13 @@ object QueryProtocolMessage {
     *
     * @param queryId id that will be used to refer to the query in the future
     * @param query raw source of the query
+    * @param namespace which namespace in which to run the query
     * @param sort what type of results should the query produce?
     * @param parameters constants in the query
     * @param language what language is the query written in?
     * @param atTime what moment in time should be queried?
     * @param maxResultBatch max number of rows in a single result batches ([[None]] means no limit)
-    * @param resultsWithin wait this ms delay between result batches ([[None]] means no delay)
+    * @param resultsWithinMillis wait this ms delay between result batches ([[None]] means no delay)
     */
   final case class RunQuery(
     queryId: Int,
@@ -73,6 +76,7 @@ object QueryProtocolMessage {
     sort: QuerySort,
     parameters: Map[String, Json],
     language: QueryLanguage,
+    namespace: NamespaceParameter,
     atTime: Option[Long],
     maxResultBatch: Option[Int],
     resultsWithinMillis: Option[Int]

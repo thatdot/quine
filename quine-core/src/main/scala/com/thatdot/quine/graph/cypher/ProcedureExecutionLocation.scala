@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.cypher
 import org.apache.pekko.actor.ActorRef
 
 import com.thatdot.quine.graph.messaging.QuineIdOps
-import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph}
+import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 /** Information available to a procedure when it is executing.
@@ -18,6 +18,9 @@ trait ProcedureExecutionLocation extends QuineIdOps {
     * This can be casted to a more specific graph type
     */
   def graph: CypherOpsGraph
+
+  /** Namespace of node being queried. */
+  def namespace: NamespaceId
 
   /** Historical state being queried, or None for the moving present */
   def atTime: Option[Milliseconds]

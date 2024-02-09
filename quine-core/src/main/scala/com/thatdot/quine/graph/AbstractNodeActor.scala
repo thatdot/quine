@@ -42,10 +42,10 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   SqStateResult,
   SqStateResults
 }
-import com.thatdot.quine.graph.messaging.{QuineIdAtTime, QuineIdOps, QuineRefOps}
+import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.persistor.{EventEffectOrder, PersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.ByteConversions
 
 /** The fundamental graph unit for both data storage (eg [[properties]]) and
@@ -67,7 +67,7 @@ import com.thatdot.quine.util.ByteConversions
   *                     sent to it)
   */
 abstract private[graph] class AbstractNodeActor(
-  val qidAtTime: QuineIdAtTime,
+  val qidAtTime: SpaceTimeQuineId,
   val graph: StandingQueryOpsGraph with CypherOpsGraph,
   costToSleep: CostToSleep,
   protected val wakefulState: AtomicReference[WakefulState],
@@ -94,9 +94,10 @@ abstract private[graph] class AbstractNodeActor(
     with MultipleValuesStandingQueryBehavior
     with ActorClock {
   val qid: QuineId = qidAtTime.id
+  val namespace: NamespaceId = qidAtTime.namespace
   val atTime: Option[Milliseconds] = qidAtTime.atTime
   implicit val idProvider: QuineIdProvider = graph.idProvider
-  protected val persistor: PersistenceAgent = graph.persistor
+  protected val persistor: NamespacedPersistenceAgent = graph.namespacePersistor(namespace).get // or throw!
   protected val persistenceConfig: PersistenceConfig = persistor.persistenceConfig
   protected val metrics: HostQuineMetrics = graph.metrics
 
@@ -108,7 +109,7 @@ abstract private[graph] class AbstractNodeActor(
     initialEdges.foreach(edgeCollection.addEdge)
     val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
       if (persistor.persistenceConfig.journalEnabled)
-        events => metrics.persistorPersistEventTimer.time(persistor.persistNodeChangeEvents(qid, events))
+        events => metrics.persistorPersistEventTimer(namespace).time(persistor.persistNodeChangeEvents(qid, events))
       else
         _ => Future.unit
 
@@ -122,7 +123,7 @@ abstract private[graph] class AbstractNodeActor(
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
-          nodeEdgesCounter = metrics.nodeEdgesCounter
+          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace)
         )
       case EventEffectOrder.MemoryFirst =>
         new MemoryFirstEdgeProcessor(
@@ -132,7 +133,7 @@ abstract private[graph] class AbstractNodeActor(
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
-          nodeEdgesCounter = metrics.nodeEdgesCounter
+          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace)
         )(graph.system, idProvider)
     }
   }
@@ -284,7 +285,8 @@ abstract private[graph] class AbstractNodeActor(
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Unit] =
       if (persistenceConfig.journalEnabled) {
-        metrics.persistorPersistEventTimer
+        metrics
+          .persistorPersistEventTimer(namespace)
           .time(persistEvents(effectingEvents))
           .transform(
             _ =>
@@ -338,16 +340,18 @@ abstract private[graph] class AbstractNodeActor(
   private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
     val occurredAt: EventTime = tickEventSequence()
     val snapshot = toSnapshotBytes(occurredAt)
-    metrics.snapshotSize.update(snapshot.length)
+    metrics.snapshotSize(namespace).update(snapshot.length)
 
     def persistSnapshot(): Future[Unit] =
-      metrics.persistorPersistSnapshotTimer.time(
-        persistor.persistSnapshot(
-          qid,
-          if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else occurredAt,
-          snapshot
+      metrics
+        .persistorPersistSnapshotTimer(namespace)
+        .time(
+          persistor.persistSnapshot(
+            qid,
+            if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else occurredAt,
+            snapshot
+          )
         )
-      )
 
     def infinitePersisting(logFunc: String => Unit, f: => Future[Unit]): Future[Unit] =
       f.recoverWith { case NonFatal(e) =>
@@ -376,10 +380,10 @@ abstract private[graph] class AbstractNodeActor(
 
   protected[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
     case PropertySet(key, value) =>
-      metrics.nodePropertyCounter.increment(previousCount = properties.size)
+      metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
     case PropertyRemoved(key, _) =>
-      metrics.nodePropertyCounter.decrement(previousCount = properties.size)
+      metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)
       properties = properties - key
   }
 

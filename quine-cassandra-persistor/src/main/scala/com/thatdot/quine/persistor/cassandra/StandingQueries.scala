@@ -8,11 +8,11 @@ import org.apache.pekko.stream.Materializer
 
 import cats.Applicative
 import cats.syntax.apply._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
-import com.thatdot.quine.graph.{StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{NamespaceId, StandingQuery, StandingQueryId}
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.persistor.codecs.StandingQueryCodec
 import com.thatdot.quine.util.T2
@@ -24,13 +24,14 @@ trait StandingQueriesColumnNames {
   final protected val queriesColumn: CassandraColumn[StandingQuery] = CassandraColumn("queries")(standingQueryCodec)
 }
 
-object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
-  protected val tableName = "standing_queries"
+class StandingQueriesDefinition(namespace: NamespaceId)
+    extends TableDefinition[StandingQueries]("standing_queries", namespace)
+    with StandingQueriesColumnNames {
   protected val partitionKey: CassandraColumn[StandingQueryId] = queryIdColumn
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[StandingQuery]] = List(queriesColumn)
 
-  private val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
+  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
 
   private val selectAllStatement: SimpleStatement = select
     .column(queriesColumn.name)
@@ -44,10 +45,9 @@ object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
+    chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    writeSettings: CassandraStatementSettings
   )(implicit
     mat: Materializer,
     futureInstance: Applicative[Future]
@@ -55,36 +55,25 @@ object StandingQueries extends TableDefinition with StandingQueriesColumnNames {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(
-      shouldCreateTables
-    )(
-      session
-        .executeAsync(createTableStatement)
-        .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
-    )
-
-    createdSchema.flatMap(_ =>
-      (
-        T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
-        prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new StandingQueries(session, _, _, _))
-    )(ExecutionContexts.parasitic)
+    (
+      T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
+      prepare(session, readSettings)(selectAllStatement)
+    ).mapN(new StandingQueries(session, firstRowStatement, dropTableStatement, _, _, _))
   }
 }
 
 class StandingQueries(
   session: CqlSession,
+  firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement
 )(implicit mat: Materializer)
-    extends CassandraTable(session)
+    extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with StandingQueriesColumnNames {
 
   import syntax._
-
-  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.firstRowStatement)
 
   def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
     executeFuture(insertStatement.bindColumns(queryIdColumn.set(standingQuery.id), queriesColumn.set(standingQuery)))

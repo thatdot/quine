@@ -1,8 +1,9 @@
 package com.thatdot.quine.app.routes
 
-import com.codahale.metrics.{Meter, Metered}
+import com.codahale.metrics.{Meter, Metered, MetricRegistry}
 
 import com.thatdot.quine.app.Metrics
+import com.thatdot.quine.graph.NamespaceId
 
 /** Like [[Metered]], but maintains multiple counters relevant to ingest
   */
@@ -27,23 +28,29 @@ object IngestMetered {
   /** Returns an ingest meter with meters retrieved or created based on the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#meter
     */
-  def ingestMeter(name: String): IngestMeter =
+  def ingestMeter(namespaceId: NamespaceId, name: String): IngestMeter =
     IngestMeter(
       name,
-      Metrics.meter(mkCountMeterName(name)),
-      Metrics.meter(mkBytesMeterName(name))
+      Metrics.meter(mkCountMeterName(namespaceId, name)),
+      Metrics.meter(mkBytesMeterName(namespaceId, name))
     )
 
   /** Removes any meters used in ingest meters for the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#remove
     */
-  def removeIngestMeter(name: String): Boolean = {
-    Metrics.remove(mkCountMeterName(name))
-    Metrics.remove(mkBytesMeterName(name))
-  }
+  def removeIngestMeter(namespaceId: NamespaceId, name: String): Boolean =
+    Metrics.remove(mkCountMeterName(namespaceId, name)) &&
+    Metrics.remove(mkBytesMeterName(namespaceId, name))
 
-  private def mkCountMeterName(name: String): String = "ingest." + name + ".count"
-  private def mkBytesMeterName(name: String): String = "ingest." + name + ".bytes"
+  private def ingestMeterName(namespaceId: NamespaceId, name: String, attribute: String): String =
+    namespaceId.fold(MetricRegistry.name("ingest", name, attribute))(ns =>
+      MetricRegistry.name("ns", ns.name, "ingest", name, attribute)
+    )
+
+  private def mkCountMeterName(namespaceId: NamespaceId, name: String): String =
+    ingestMeterName(namespaceId, name, attribute = "count")
+  private def mkBytesMeterName(namespaceId: NamespaceId, name: String): String =
+    ingestMeterName(namespaceId, name, attribute = "bytes")
 }
 
 final case class IngestMeter private[routes] (

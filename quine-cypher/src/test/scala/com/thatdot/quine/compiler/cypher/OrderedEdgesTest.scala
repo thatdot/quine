@@ -15,7 +15,7 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
   val david: Person = Person(4L, "David", Seq(alice, bob, carol))
 
   def addPerson(p: Person): Future[Unit] =
-    graph.literalOps.setProp(idProv.customIdToQid(p.id), "name", QuineValue.Str(p.name))
+    graph.literalOps(cypherHarnessNamespace).setProp(idProv.customIdToQid(p.id), "name", QuineValue.Str(p.name))
 
   describe("The edge collection") {
     it("should load some edges with literal ops") {
@@ -23,7 +23,9 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
         _ <- Future.traverse(david.knows)(addPerson)
         _ <- addPerson(david)
         _ <- Future.traverse(david.knows)(p =>
-          graph.literalOps.addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows")
+          graph
+            .literalOps(cypherHarnessNamespace)
+            .addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows")
         )
       } yield assert(true)
     }

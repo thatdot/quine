@@ -4,10 +4,6 @@ import scala.concurrent.{ExecutionException, Future}
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
-import org.apache.pekko.Done
-import org.apache.pekko.stream.scaladsl.{Framing, Keep, Sink, Source}
-import org.apache.pekko.util.ByteString
-
 import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.google.common.util.concurrent.UncheckedExecutionException
@@ -54,47 +50,10 @@ import org.opencypher.v9_0.util.{
 import org.opencypher.v9_0.{ast, expressions, rewriting}
 
 import com.thatdot.quine.graph.cypher._
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 package object cypher {
-
-  /** Run a Cypher script asynchronously
-    * @param script the script to run (as from FileIO.fromPath())
-    * @param maxLengthPerLine The maximum number of bytes to allow in a single line. Defaults to 100MB,
-    *                         Most Ethan has seen is 10.5MB
-    */
-  def runScript(script: Source[ByteString, _], maxLengthPerLine: Int = 1000 * 1000 * 100)(implicit
-    graph: CypherOpsGraph
-  ): Future[Done] =
-    script
-      .watchTermination()(Keep.right)
-      .via(
-        Framing.delimiter(
-          delimiter = ByteString("\n"),
-          maximumFrameLength = maxLengthPerLine,
-          allowTruncation = true
-        )
-      )
-      .map(_.utf8String)
-      .statefulMapConcat { () =>
-        // ASSUMPTION: Cypher statements end in a semicolon (and possibly whitespace) and may have newlines in the middle
-        var statement: String = "";
-
-        { (line: String) =>
-          statement += (line + " ")
-          var retValue = List.empty[String] // Either 0 or 1 query strings
-          if (statement.trim.endsWith(";")) {
-            retValue ::= statement
-            statement = ""
-          }
-          retValue
-        }
-      }
-      .flatMapConcat(queryCypherValues(_).results)
-      .to(Sink.ignore)
-      .named("cypher-script")
-      .run()(graph.materializer)
 
   /** Compile a Cypher statement
     *
@@ -329,6 +288,7 @@ package object cypher {
     * @param parameters constants in the query
     * @param initialColumns columns already in scope
     * @param atTime moment in time to query ([[None]] represents the present)
+    * @param namespace Which namespace to query. Default namespece unless specified.
     * @param graph the graph on which to run the query
     * @param timeout how long before timing out the query
     * @param cacheCompilation Whether to cache query compilation
@@ -338,6 +298,7 @@ package object cypher {
   @throws[CypherException]
   def queryCypherValues(
     queryText: String,
+    namespace: NamespaceId,
     parameters: Map[String, Value] = Map.empty,
     initialColumns: Map[String, Value] = Map.empty,
     atTime: Option[Milliseconds] = None,
@@ -351,7 +312,7 @@ package object cypher {
     }
 
     val compiledQuery = compile(queryText, parameters.keys.toSeq, initialCompiledColumns, cache = cacheCompilation)
-    graph.cypherOps.query(compiledQuery, atTime, parameters)
+    graph.cypherOps.query(compiledQuery, namespace, atTime, parameters)
   }
 
   /** The openCypher `front-end` pipeline that will parse, validate, and
@@ -644,10 +605,12 @@ package object cypher {
   */
 //case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazyLogging {
 //
-//  override def getRewriter(innerVariableNamer: InnerVariableNamer,
-//                           semanticState: SemanticState,
-//                           parameterTypeMapping: Map[String, CypherType],
-//                           cypherExceptionFactory: CypherExceptionFactory): Rewriter = namingRewriter
+//  override def getRewriter(
+//    innerVariableNamer: InnerVariableNamer,
+//    semanticState: SemanticState,
+//    parameterTypeMapping: Map[String, CypherType],
+//    cypherExceptionFactory: CypherExceptionFactory
+//  ): Rewriter = namingRewriter
 //
 //  override def preConditions: Set[StepSequencer.Condition] = Set.empty
 //
@@ -683,4 +646,3 @@ package object cypher {
 //    case _ => false
 //  })
 //}
-

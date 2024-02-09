@@ -129,7 +129,8 @@ object Proc {
       ): Future[Map[QuineId, List[(QuineId, Expr.Relationship)]]] =
         Future
           .traverse(toExpand: Iterable[(QuineId, List[(QuineId, Expr.Relationship)])]) { case (qid, path) =>
-            literalGraph.literalOps
+            literalGraph
+              .literalOps(location.namespace)
               .getHalfEdges(
                 qid,
                 // optimization: if we're only looking for the shortest path along a single edge
@@ -224,10 +225,10 @@ object Proc {
             }
 
             // Fetch out all of the properties/labels of the nodes on the path
-            val headPathNode = UserDefinedProcedure.getAsCypherNode(headPath, atTime, literalGraph)
+            val headPathNode = UserDefinedProcedure.getAsCypherNode(headPath, location.namespace, atTime, literalGraph)
             val tailPathNodes = Future.traverse(restPath) { case (rel, qid) =>
               UserDefinedProcedure
-                .getAsCypherNode(qid, atTime, literalGraph)
+                .getAsCypherNode(qid, location.namespace, atTime, literalGraph)
                 .map(rel -> _)(literalGraph.nodeDispatcherEC)
             }(implicitly, literalGraph.nodeDispatcherEC)
 

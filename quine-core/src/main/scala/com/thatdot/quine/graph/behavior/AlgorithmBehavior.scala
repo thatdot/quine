@@ -9,7 +9,7 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, QueryResults}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage._
-import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdAtTime, QuineIdOps, QuineRefOps}
+import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.model.QuineId
 
@@ -127,7 +127,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
               Set.empty,
               reportTo
             )
-            QuineIdAtTime(chosenEdge.other, atTime) ! msg
+            qidAtTime.copy(id = chosenEdge.other) ! msg
           case Failure(e) =>
             // If collecting values fails, conclude/truncate the walk and return the results accumulated so far.
             logger.error(s"Getting walk values on node: ${qid.pretty} failed: $e")

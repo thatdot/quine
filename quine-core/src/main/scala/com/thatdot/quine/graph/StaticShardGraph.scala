@@ -3,25 +3,26 @@ package com.thatdot.quine.graph
 import java.util.concurrent.ConcurrentHashMap
 
 import scala.collection.compat.immutable._
-import scala.collection.concurrent
+import scala.collection.{concurrent, mutable}
 import scala.concurrent.duration._
-import scala.concurrent.{Future, Promise}
-import scala.jdk.CollectionConverters._
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.jdk.CollectionConverters.ConcurrentMapHasAsScala
 
 import org.apache.pekko.actor.{ActorRef, Props}
 import org.apache.pekko.dispatch.Envelope
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.quine.graph.GraphShardActor.NodeState
 import com.thatdot.quine.graph.messaging.ShardMessage._
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
   LocalShardRef,
   NodeActorMailboxExtension,
-  QuineIdAtTime,
   QuineMessage,
   QuineRef,
   ResultHandler,
   ShardRef,
+  SpaceTimeQuineId,
   WrappedActorRef
 }
 import com.thatdot.quine.model.QuineId
@@ -55,8 +56,8 @@ trait StaticShardGraph extends BaseGraph {
     ArraySeq.unsafeWrapArray(Array.tabulate(shardCount) { (shardId: Int) =>
       logger.info(s"Adding a new local shard at idx: $shardId")
 
-      val nodeMap: concurrent.Map[QuineIdAtTime, GraphShardActor.NodeState] =
-        new ConcurrentHashMap[QuineIdAtTime, GraphShardActor.NodeState]().asScala
+      val nodeMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]] =
+        mutable.Map(defaultNamespaceId -> new ConcurrentHashMap[SpaceTimeQuineId, NodeState]().asScala)
 
       val localRef: ActorRef = system.actorOf(
         Props(new GraphShardActor(this, shardId, nodeMap, initialShardInMemoryLimit))
@@ -75,7 +76,7 @@ trait StaticShardGraph extends BaseGraph {
   ): Unit = {
     metrics.relayTellMetrics.markLocal()
     quineRef match {
-      case qidAtTime: QuineIdAtTime =>
+      case qidAtTime: SpaceTimeQuineId =>
         val shardIdx = idProvider.nodeLocation(qidAtTime.id).shardIdx
         val shard: LocalShardRef = shards(Math.floorMod(shardIdx, shards.length))
 
@@ -104,7 +105,7 @@ trait StaticShardGraph extends BaseGraph {
     require(timeout.duration.length >= 0)
     val promise = Promise[Resp]()
     quineRef match {
-      case qidAtTime: QuineIdAtTime =>
+      case qidAtTime: SpaceTimeQuineId =>
         val shardIdx = idProvider.nodeLocation(qidAtTime.id).shardIdx
         val shard: LocalShardRef = shards(Math.floorMod(shardIdx, shards.length))
 
@@ -165,12 +166,15 @@ trait StaticShardGraph extends BaseGraph {
     val maxPollAttempts = 100
     val delayBetweenPollAttempts = 250.millis
 
+    implicit val ec: ExecutionContext = nodeDispatcherEC
+
     // Send all shards a signal to shutdown nodes and get back a progress update
     def pollShutdownProgress(): Future[Int] = Future
       .traverse(shards) { (shard: LocalShardRef) =>
         relayAsk(shard.quineRef, InitiateShardShutdown(_))(5.seconds, implicitly)
-      }(implicitly, nodeDispatcherEC)
-      .map(_.view.map(_.remainingNodeActorCount).sum)(nodeDispatcherEC)
+      }
+      .map(_.view.map(_.remainingNodeActorCount).sum)
+
     Retry
       .until[Int](
         pollShutdownProgress(),
@@ -178,9 +182,9 @@ trait StaticShardGraph extends BaseGraph {
         maxPollAttempts,
         delayBetweenPollAttempts,
         system.scheduler
-      )(nodeDispatcherEC)
-      .flatMap(_ => persistor.syncVersion())(nodeDispatcherEC)
-      .flatMap(_ => persistor.shutdown())(nodeDispatcherEC)
+      )(ec)
+      .flatMap(_ => namespacePersistor.syncVersion())
+      .flatMap(_ => namespacePersistor.shutdown())
   }
 
   def isOnThisHost(quineRef: QuineRef): Boolean = true

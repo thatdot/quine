@@ -39,7 +39,9 @@ trait QuineRefOps {
   }
 
   /** Support replying to a message */
-  implicit final class RichAttributableQuineMessage[A](message: QuineMessage with AskableQuineMessage[A]) {
+  implicit final class RichAttributableQuineMessage[A: ResultHandler](
+    message: QuineMessage with AskableQuineMessage[A]
+  ) {
     def ?!(response: A)(implicit resultHandler: ResultHandler[A], mat: Materializer): Unit = {
       val messageStaysInJvm = graph.isOnThisHost(message.replyTo)
       resultHandler.respond(

@@ -14,35 +14,62 @@ import com.thatdot.quine.graph.HostQuineMetrics.{
   DefaultRelayTellMetrics,
   NoOpMessageMetric,
   RelayAskMetric,
-  RelayTellMetric
+  RelayTellMetric,
+  nsPrefix
 }
 import com.thatdot.quine.util.SharedValve
 
 /** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
   * @param enableDebugMetrics whether debugging-focused metrics should be included that have
   *                           a noticeable impact on runtime performance.
+  * @param isEnterprise       Is this an enterprise instance? Used to determine naming conventions.
   * @param metricRegistry     the registry to wrap
   */
-final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: MetricRegistry) {
+final case class HostQuineMetrics(
+  enableDebugMetrics: Boolean,
+  metricRegistry: MetricRegistry,
+  isEnterprise: Boolean = false
+) {
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
-  val nodePropertyCounter: BinaryHistogramCounter =
-    BinaryHistogramCounter(metricRegistry, MetricRegistry.name("node", "property-counts"))
-  val nodeEdgesCounter: BinaryHistogramCounter =
-    BinaryHistogramCounter(metricRegistry, MetricRegistry.name("node", "edge-counts"))
+  // Elide the default namespace, and add the namespace as a prefix for all other namespaces (currently not used).
+  private def standardName(namespaceId: NamespaceId, components: List[String]): String =
+    namespaceId.fold(components)(ns => ns.name :: components).mkString(".")
 
-  val persistorPersistEventTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "persist-event"))
-  val persistorPersistSnapshotTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "persist-snapshot"))
-  val persistorGetJournalTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "get-journal"))
-  val persistorGetLatestSnapshotTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "get-latest-snapshot"))
-  val persistorSetStandingQueryStateTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "set-standing-query-state"))
-  val persistorGetMultipleValuesStandingQueryStatesTimer: Timer =
-    metricRegistry.timer(MetricRegistry.name("persistor", "get-standing-query-states"))
+  // Universally prefix namespaced metrics with the namespace name.
+  private def enterpriseName(namespaceId: NamespaceId, components: List[String]): String =
+    (namespaceToString(namespaceId) :: components).mkString(".")
+
+  // Which convention should be used for metrics that are split by namespace?
+  val metricName: (NamespaceId, List[String]) => String = if (isEnterprise) enterpriseName else standardName
+
+  def nodePropertyCounter(namespaceId: NamespaceId): BinaryHistogramCounter = {
+    val subject = "node"
+    val attribute = "property-counts"
+    BinaryHistogramCounter(metricRegistry, metricName(namespaceId, List(subject, attribute)))
+  }
+
+  def nodeEdgesCounter(namespaceId: NamespaceId): BinaryHistogramCounter = {
+    val subject = "node"
+    val attribute = "edge-counts"
+    BinaryHistogramCounter(metricRegistry, metricName(namespaceId, List(subject, attribute)))
+  }
+
+  private def persistorTimer(namespaceId: NamespaceId, action: String): Timer =
+    metricRegistry.timer(metricName(namespaceId, List("persistor", action)))
+
+  def persistorPersistEventTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "persist-event")
+  def persistorPersistSnapshotTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "persist-snapshot")
+  def persistorGetJournalTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "get-journal")
+  def persistorGetLatestSnapshotTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "get-latest-snapshot")
+  def persistorSetStandingQueryStateTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "set-standing-query-state")
+  def persistorGetMultipleValuesStandingQueryStatesTimer(namespaceId: NamespaceId): Timer =
+    persistorTimer(namespaceId, "get-standing-query-states")
 
   /** @param context the context for which this timer is being used -- for
     *                example, "ingest-XYZ-deduplication" or "http-webpage-serve"
@@ -50,9 +77,12 @@ final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: M
   def cacheTimer(context: String): Timer =
     metricRegistry.timer(MetricRegistry.name("cache", context, "insert"))
 
-  def shardNodeEvictionsMeter(shardName: String): Meter =
+  private def shardMetricName(namespace: NamespaceId, shardName: String, action: String): String =
+    metricName(namespace, List("shard", shardName, action))
+
+  def shardNodeEvictionsMeter(namespaceId: NamespaceId, shardName: String): Meter =
     (if (enableDebugMetrics) metricRegistry else noOpRegistry)
-      .meter(MetricRegistry.name("shard", shardName, "nodes-evicted"))
+      .meter(shardMetricName(namespaceId, shardName, "nodes-evicted"))
   def shardMessagesDeduplicatedCounter(shardName: String): Counter =
     metricRegistry.counter(MetricRegistry.name("shard", shardName, "delivery-relay-deduplicated"))
 
@@ -62,42 +92,60 @@ final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: M
   val relayAskMetrics: RelayAskMetric =
     if (enableDebugMetrics) new DefaultRelayAskMetrics(metricRegistry) else NoOpMessageMetric
 
+  private def shardSleepCounterMetricName(namespaceId: NamespaceId, shardName: String, action: String): String =
+    metricName(namespaceId, List("shard", shardName, "sleep-counters", action))
+
+  private def shardSleepCounter(namespaceId: NamespaceId, shardName: String, action: String): Counter =
+    metricRegistry.counter(shardSleepCounterMetricName(namespaceId, shardName, action))
+
   // Counters that track the sleep cycle (in aggregate) of nodes on the shard
-  def shardNodesWokenUpCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "woken"))
-  def shardNodesSleptSuccessCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "slept-success"))
-  def shardNodesSleptFailureCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "slept-failure"))
-  def shardNodesRemovedCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "sleep-counters", "removed"))
+  def shardNodesWokenUpCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    shardSleepCounter(namespaceId, shardName, "woken")
+  def shardNodesSleptSuccessCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    shardSleepCounter(namespaceId, shardName, "slept-success")
+  def shardNodesSleptFailureCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    shardSleepCounter(namespaceId, shardName, "slept-failure")
+  def shardNodesRemovedCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    shardSleepCounter(namespaceId, shardName, "removed")
+
+  private def unlikelyShardMetricName(namespaceId: NamespaceId, shardName: String, action: String): String =
+    metricName(namespaceId, List("shard", shardName, "unlikely", action))
+
+  private def unlikelyShardCounter(namespaceId: NamespaceId, shardName: String, action: String): Counter =
+    metricRegistry.counter(unlikelyShardMetricName(namespaceId, shardName, action))
 
   // Counters that track occurrences of supposedly unlikely (and generally bad) code paths
-  def shardUnlikelyWakeupFailed(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "wake-up-failed"))
-  def shardUnlikelyIncompleteShdnCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "incomplete-shutdown"))
-  def shardUnlikelyActorNameRsvdCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "actor-name-reserved"))
-  def shardUnlikelyHardLimitReachedCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "hard-limit-reached"))
-  def shardUnlikelyUnexpectedWakeUpErrCounter(shardName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("shard", shardName, "unlikely", "wake-up-error"))
+  def shardUnlikelyWakeupFailed(namespaceId: NamespaceId, shardName: String): Counter =
+    unlikelyShardCounter(namespaceId, shardName, "wake-up-failed")
+  def shardUnlikelyIncompleteShdnCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    unlikelyShardCounter(namespaceId, shardName, "incomplete-shutdown")
+  def shardUnlikelyActorNameRsvdCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    unlikelyShardCounter(namespaceId, shardName, "actor-name-reserved")
+  def shardUnlikelyHardLimitReachedCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    unlikelyShardCounter(namespaceId, shardName, "hard-limit-reached")
+  def shardUnlikelyUnexpectedWakeUpErrCounter(namespaceId: NamespaceId, shardName: String): Counter =
+    unlikelyShardCounter(namespaceId, shardName, "wake-up-error")
 
-  def removeShardMetrics(shardName: String): Unit =
-    metricRegistry.removeMatching(MetricFilter.startsWith(MetricRegistry.name("shard", shardName)))
+  private def standingQueryMetricName(namespaceId: NamespaceId, sqName: String, attribute: String): String = {
+    val subject = "standing-queries"
+    metricName(namespaceId, List(subject, attribute, sqName))
+  }
 
   /** Meter of results that were produced for a named standing query on this host */
-  def standingQueryResultMeter(sqName: String): Meter =
-    metricRegistry.meter(MetricRegistry.name("standing-queries", "results", sqName))
+  def standingQueryResultMeter(namespaceId: NamespaceId, sqName: String): Meter =
+    metricRegistry.meter(standingQueryMetricName(namespaceId, sqName, attribute = "results"))
 
   /** Counter of results that were dropped for a named standing query on this host */
-  def standingQueryDroppedCounter(sqName: String): Counter =
-    metricRegistry.counter(MetricRegistry.name("standing-queries", "dropped", sqName))
+  def standingQueryDroppedCounter(namespaceId: NamespaceId, sqName: String): Counter =
+    metricRegistry.counter(standingQueryMetricName(namespaceId, sqName, attribute = "dropped"))
 
   /** Histogram of size (in bytes) of persisted standing query states */
-  def standingQueryStateSize(sqId: StandingQueryId): Histogram =
-    metricRegistry.histogram(MetricRegistry.name("standing-queries", "states", sqId.uuid.toString))
+  def standingQueryStateSize(namespaceId: NamespaceId, sqId: StandingQueryId): Histogram = {
+    val subject = "standing-queries"
+    val attribute = "states"
+    val sqIdString = sqId.uuid.toString
+    metricRegistry.histogram(metricName(namespaceId, List(subject, attribute, sqIdString)))
+  }
 
   private val standingQueryResultHashCodeRegistry: concurrent.Map[StandingQueryId, LongAdder] =
     new ConcurrentHashMap[StandingQueryId, LongAdder]().asScala
@@ -106,8 +154,8 @@ final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: M
     standingQueryResultHashCodeRegistry.getOrElseUpdate(standingQueryId, new LongAdder)
 
   /** Histogram of size (in bytes) of persisted node snapshots */
-  val snapshotSize: Histogram =
-    metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
+  def snapshotSize(namespaceId: NamespaceId): Histogram =
+    metricRegistry.histogram(metricName(namespaceId, List("persistor", "snapshot-sizes")))
 
   def registerGaugeDomainGraphNodeCount(size: () => Int): Unit = {
     metricRegistry.registerGauge(MetricRegistry.name("dgn-reg", "count"), () => size())
@@ -125,8 +173,10 @@ final case class HostQuineMetrics(enableDebugMetrics: Boolean, metricRegistry: M
     ()
   }
 }
+
 object HostQuineMetrics {
   val MetricsRegistryName = "quine-metrics"
+  val nsPrefix = "ns"
 
   sealed trait MessagingMetric {
     def markLocal(): Unit

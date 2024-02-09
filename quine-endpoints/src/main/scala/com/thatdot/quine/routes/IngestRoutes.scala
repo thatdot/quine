@@ -9,6 +9,7 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 sealed abstract class ValvePosition(position: String)
 
@@ -43,6 +44,11 @@ object IngestStreamStatus {
   case object Failed extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
 
   val states: Seq[IngestStreamStatus] = Seq(Running, Paused, Completed, Terminated, Restored, Failed)
+}
+
+/** Formats that have an embedded query member */
+trait IngestQuery {
+  val query: String
 }
 
 /** Information kept at runtime about an active ingest stream
@@ -271,7 +277,7 @@ final case class KafkaIngest(
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
   @docs(
     """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
-      |whose values are partition indices.""".stripMargin
+                                  |whose values are partition indices.""".stripMargin
       .replace('\n', ' ')
   )
   topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
@@ -298,7 +304,9 @@ final case class KafkaIngest(
   @docs("List of decodings to be applied to each input. The specified decodings are applied in declared array order.")
   @unnamed
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  def getQuery: Option[String] = StreamedRecordFormat.getQuery(format)
+}
 
 object KinesisIngest {
 
@@ -436,8 +444,8 @@ final case class WebsocketSimpleStartupIngest(
   @docs("Maximum number of records to ingest simultaneously.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   @docs(s"""Text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
-           |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
-           |""".stripMargin)
+                                                        |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
+                                                        |""".stripMargin)
   encoding: String = "UTF-8"
 ) extends IngestStreamConfiguration
 
@@ -450,13 +458,14 @@ object StreamedRecordFormat {
   @title("JSON via Cypher")
   @unnamed
   @docs("""Records are JSON values. For every record received, the
-  |given Cypher query will be re-executed with the parameter in the query set
-  |equal to the new JSON value.
+          |given Cypher query will be re-executed with the parameter in the query set
+          |equal to the new JSON value.
   """.stripMargin)
   final case class CypherJson(
     @docs("Cypher query to execute on each record.") query: String,
     @docs("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that"
   ) extends StreamedRecordFormat
+      with IngestQuery
 
   @title("Raw Bytes via Cypher")
   @unnamed
@@ -468,6 +477,7 @@ object StreamedRecordFormat {
     @docs("Cypher query to execute on each record.") query: String,
     @docs("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that"
   ) extends StreamedRecordFormat
+      with IngestQuery
 
   @title("Protobuf via Cypher")
   @unnamed
@@ -486,11 +496,15 @@ object StreamedRecordFormat {
       "Message type name to use from the given `.desc` file as the incoming message type."
     ) typeName: String
   ) extends StreamedRecordFormat
-
+      with IngestQuery
   @title("Drop")
   @unnamed
   @docs("Ignore the data without further processing.")
   case object Drop extends StreamedRecordFormat
+  def getQuery(f: StreamedRecordFormat): Option[String] = f match {
+    case Drop => None
+    case c: IngestQuery => Some(c.query)
+  }
 }
 
 /** Local file ingest stream configuration
@@ -519,7 +533,7 @@ final case class FileIngest(
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(
     s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-           |resuming ingest from a partially consumed file.""".stripMargin
+                                  |resuming ingest from a partially consumed file.""".stripMargin
   )
   startAtOffset: Long = 0L,
   @docs(s"Optionally limit how many records are ingested from this file.")
@@ -557,7 +571,7 @@ final case class S3Ingest(
   @docs("maximum size (in bytes) of any line in the file")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(s"""start at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-       |resuming ingest from a partially consumed file""".stripMargin)
+                                    |resuming ingest from a partially consumed file""".stripMargin)
   startAtOffset: Long = 0L,
   @docs(s"optionally limit how many records are ingested from this file.")
   ingestLimit: Option[Long],
@@ -609,15 +623,15 @@ case class NumberIteratorIngest(
 @unnamed
 @title("File Ingest Format")
 @docs("Format by which a file will be interpreted as a stream of elements for ingest.")
-sealed abstract class FileIngestFormat
+sealed abstract class FileIngestFormat extends IngestQuery
 object FileIngestFormat {
 
   /** Create using a cypher query, passing each line in as a string */
   @title("CypherLine")
   @unnamed()
   @docs("""For every line (LF/CRLF delimited) in the source, the given Cypher query will be
-  |re-executed with the parameter in the query set equal to a string matching
-  |the new line value. The newline is not included in this string.
+          |re-executed with the parameter in the query set equal to a string matching
+          |the new line value. The newline is not included in this string.
   """.stripMargin.replace('\n', ' '))
   final case class CypherLine(
     @docs("Cypher query to execute on each line") query: String,
@@ -628,8 +642,8 @@ object FileIngestFormat {
   @title("CypherJson")
   @unnamed()
   @docs("""Lines in the file should be JSON values. For every value received, the
-  |given Cypher query will be re-executed with the parameter in the query set
-  |equal to the new JSON value.
+          |given Cypher query will be re-executed with the parameter in the query set
+          |equal to the new JSON value.
   """.stripMargin.replace('\n', ' '))
   final case class CypherJson(
     @docs("Cypher query to execute on each record") query: String,
@@ -647,18 +661,18 @@ object FileIngestFormat {
     @docs("Name of the Cypher parameter holding the parsed CSV row.")
     parameter: String = "that",
     @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
-            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-            |type available to the Cypher query will be a List of strings with values accessible by index. When
-            |headers are available (supplied or read from the file), the resulting type available to the Cypher
-            |query will be a Map[String, String], with values accessible using the corresponding header string.
-            |CSV rows containing more records than the `headers` will have items that don't match a header column
-            |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-            |Default: `false`.""".stripMargin)
+                                      |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+                                      |type available to the Cypher query will be a List of strings with values accessible by index. When
+                                      |headers are available (supplied or read from the file), the resulting type available to the Cypher
+                                      |query will be a Map[String, String], with values accessible using the corresponding header string.
+                                      |CSV rows containing more records than the `headers` will have items that don't match a header column
+                                      |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+                                      |Default: `false`.""".stripMargin)
     headers: Either[Boolean, List[String]] = Left(false),
     @docs("CSV row delimiter character.")
     delimiter: CsvCharacter = CsvCharacter.Comma,
     @docs("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
-            |section will be a part of the CSV value.""".stripMargin)
+                                      |section will be a part of the CSV value.""".stripMargin)
     quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
     @docs("Character used to escape special characters.")
     escapeChar: CsvCharacter = CsvCharacter.Backslash
@@ -806,10 +820,10 @@ trait IngestRoutes
   val ingestStreamName: Path[String] =
     segment[String]("name", docs = Some("Ingest stream name"))
 
-  val ingestStreamStart: Endpoint[(String, IngestStreamConfiguration), Either[ClientErrors, Unit]] =
+  val ingestStreamStart: Endpoint[(String, NamespaceParameter, IngestStreamConfiguration), Either[ClientErrors, Unit]] =
     endpoint(
       request = post(
-        url = ingest / segment[String]("name", Some("Unique name for the ingest stream")),
+        url = ingest / segment[String]("name", Some("Unique name for the ingest stream")) /? namespace,
         entity = jsonOrYamlRequest[IngestStreamConfiguration]
       ),
       response = customBadRequest("Ingest stream exists already")
@@ -829,10 +843,10 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamStop: Endpoint[String, Option[IngestStreamInfoWithName]] =
+  val ingestStreamStop: Endpoint[(String, NamespaceParameter), Option[IngestStreamInfoWithName]] =
     endpoint(
       request = delete(
-        url = ingest / ingestStreamName
+        url = ingest / ingestStreamName /? namespace
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
@@ -848,10 +862,10 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamLookup: Endpoint[String, Option[IngestStreamInfoWithName]] =
+  val ingestStreamLookup: Endpoint[(String, NamespaceParameter), Option[IngestStreamInfoWithName]] =
     endpoint(
       request = get(
-        url = ingest / ingestStreamName
+        url = ingest / ingestStreamName /? namespace
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
@@ -862,10 +876,11 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamPause: Endpoint[String, Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
+  val ingestStreamPause
+    : Endpoint[(String, NamespaceParameter), Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(
       request = put(
-        url = ingest / ingestStreamName / "pause",
+        url = ingest / ingestStreamName / "pause" /? namespace,
         entity = emptyRequest
       ),
       response = customBadRequest("Cannot pause failed ingest").orElse(
@@ -877,10 +892,11 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamUnpause: Endpoint[String, Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
+  val ingestStreamUnpause
+    : Endpoint[(String, NamespaceParameter), Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(
       request = put(
-        url = ingest / ingestStreamName / "start",
+        url = ingest / ingestStreamName / "start" /? namespace,
         entity = emptyRequest
       ),
       response = customBadRequest("Cannot resume failed ingest").orElse(
@@ -892,10 +908,10 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
-  val ingestStreamList: Endpoint[Unit, Map[String, IngestStreamInfo]] =
+  val ingestStreamList: Endpoint[NamespaceParameter, Map[String, IngestStreamInfo]] =
     endpoint(
       request = get(
-        url = ingest
+        url = ingest /? namespace
       ),
       response = ok(
         jsonResponseWithExample[Map[String, IngestStreamInfo]](

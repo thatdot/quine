@@ -8,9 +8,10 @@ import org.apache.pekko.stream.Materializer
 
 import cats.Applicative
 import cats.implicits._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.T2
 
@@ -20,13 +21,12 @@ trait MetaDataColumnName {
   final protected val valueColumn: CassandraColumn[Array[Byte]] = CassandraColumn("value")
 }
 
-object MetaData extends TableDefinition with MetaDataColumnName {
-  protected val tableName = "meta_data"
+object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) with MetaDataColumnName {
   protected val partitionKey: CassandraColumn[String] = keyColumn
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(valueColumn)
 
-  private val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
+  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
 
   private val selectAllStatement: SimpleStatement =
     select
@@ -47,7 +47,7 @@ object MetaData extends TableDefinition with MetaDataColumnName {
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
+    verifyTable: CqlIdentifier => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
@@ -69,19 +69,28 @@ object MetaData extends TableDefinition with MetaDataColumnName {
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple ++
         T2(selectAllStatement, selectSingleStatement).map(prepare(session, readSettings)).toTuple
-      ).mapN(new MetaData(session, _, _, _, _))
+      ).mapN(new MetaData(session, firstRowStatement, dropTableStatement, _, _, _, _))
     )(ExecutionContexts.parasitic)
   }
+
+  def create(
+    session: CqlSession,
+    chunker: Chunker,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[MetaData] = ???
 }
 
 class MetaData(
   session: CqlSession,
+  firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement,
   selectSingleStatement: PreparedStatement
 )(implicit mat: Materializer)
-    extends CassandraTable(session)
+    extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with MetaDataColumnName {
 
   import syntax._
@@ -103,5 +112,4 @@ class MetaData(
       }
     )
 
-  def nonEmpty(): Future[Boolean] = yieldsResults(MetaData.firstRowStatement)
 }

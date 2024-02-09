@@ -12,13 +12,13 @@ trait QueryUiConfigurationRoutesImpl
     with JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
 
-  protected val serviceState: QueryUiConfigurationState
+  protected val quineApp: QueryUiConfigurationState
 
   def queryUiConfigurationRoutes: Route =
-    queryUiSampleQueries.implementedByAsync(_ => serviceState.getSampleQueries) ~
-    updateQueryUiSampleQueries.implementedByAsync(serviceState.setSampleQueries) ~
-    queryUiQuickQueries.implementedByAsync(_ => serviceState.getQuickQueries) ~
-    updateQueryUiQuickQueries.implementedByAsync(serviceState.setQuickQueries) ~
-    queryUiAppearance.implementedByAsync(_ => serviceState.getNodeAppearances) ~
-    updateQueryUiAppearance.implementedByAsync(serviceState.setNodeAppearances)
+    queryUiSampleQueries.implementedByAsync(_ => quineApp.getSampleQueries) ~
+    updateQueryUiSampleQueries.implementedByAsync(quineApp.setSampleQueries) ~
+    queryUiQuickQueries.implementedByAsync(_ => quineApp.getQuickQueries) ~
+    updateQueryUiQuickQueries.implementedByAsync(quineApp.setQuickQueries) ~
+    queryUiAppearance.implementedByAsync(_ => quineApp.getNodeAppearances) ~
+    updateQueryUiAppearance.implementedByAsync(quineApp.setNodeAppearances)
 }

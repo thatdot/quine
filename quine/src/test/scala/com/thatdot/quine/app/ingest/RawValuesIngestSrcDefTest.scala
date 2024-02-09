@@ -23,7 +23,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.graph.{CypherOpsGraph, GraphService}
+import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, NamespaceId}
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
@@ -49,6 +49,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       ) {
 
     type InputType = ByteString
+    val intoNamespace: NamespaceId = None
 
     /** Define a way to extract raw bytes from a single input event */
     def rawBytes(value: ByteString): Array[Byte] = value.toArray[Byte]

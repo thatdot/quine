@@ -11,6 +11,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -26,7 +27,8 @@ import com.thatdot.quine.model.{DomainGraphNode, QuineId}
   * no-ops).
   */
 class EmptyPersistor(
-  val persistenceConfig: PersistenceConfig = PersistenceConfig()
+  val persistenceConfig: PersistenceConfig = PersistenceConfig(),
+  val namespace: NamespaceId = None
 ) extends PersistenceAgent {
 
   override def emptyOfQuineData(): Future[Boolean] =
@@ -103,6 +105,7 @@ class EmptyPersistor(
   def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] = Future.unit
 
   def shutdown(): Future[Unit] = Future.unit
+  def delete(): Future[Unit] = Future.unit
 }
 
-object EmptyPersistor extends EmptyPersistor(PersistenceConfig())
+object EmptyPersistor extends EmptyPersistor(PersistenceConfig(), None)

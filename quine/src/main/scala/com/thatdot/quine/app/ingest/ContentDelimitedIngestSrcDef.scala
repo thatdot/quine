@@ -14,7 +14,7 @@ import com.thatdot.quine.app.ingest.serialization.{
   CypherStringInputFormat
 }
 import com.thatdot.quine.graph.cypher.Value
-import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
 import com.thatdot.quine.util.SwitchMode
@@ -87,7 +87,8 @@ case class CsvIngestSrcDef(
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
-  override val name: String
+  override val name: String,
+  override val intoNamespace: NamespaceId
 )(implicit graph: CypherOpsGraph)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -163,7 +164,8 @@ case class StringIngestSrcDef(
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
-  override val name: String
+  override val name: String,
+  override val intoNamespace: NamespaceId
 )(implicit graph: CypherOpsGraph)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -195,7 +197,8 @@ case class JsonLinesIngestSrcDef(
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
-  override val name: String
+  override val name: String,
+  override val intoNamespace: NamespaceId
 )(implicit graph: CypherOpsGraph)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -231,7 +234,8 @@ object ContentDelimitedIngestSrcDef {
     startAtOffset: Long,
     ingestLimit: Option[Long],
     maxPerSecond: Option[Int],
-    name: String
+    name: String,
+    intoNamespace: NamespaceId
   )(implicit graph: CypherOpsGraph): ContentDelimitedIngestSrcDef =
     format match {
       case CypherLine(query, parameter) =>
@@ -245,7 +249,8 @@ object ContentDelimitedIngestSrcDef {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          name
+          name,
+          intoNamespace
         )
       case CypherJson(query, parameter) =>
         JsonLinesIngestSrcDef(
@@ -258,7 +263,8 @@ object ContentDelimitedIngestSrcDef {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          name
+          name,
+          intoNamespace
         )
 
       case cv @ CypherCsv(_, _, _, _, _, _) =>
@@ -272,7 +278,8 @@ object ContentDelimitedIngestSrcDef {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          name
+          name,
+          intoNamespace
         )
     }
 

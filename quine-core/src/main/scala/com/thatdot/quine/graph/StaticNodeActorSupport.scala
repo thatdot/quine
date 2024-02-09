@@ -17,7 +17,7 @@ object StaticNodeActorSupport extends StaticNodeSupport[NodeActor, NodeSnapshot,
       edges = snapshot.map(_.edges).getOrElse(Iterable.empty),
       distinctIdSubscribers = snapshot.map(_.subscribersToThisNode).getOrElse(mutable.Map.empty),
       domainNodeIndex =
-        DomainNodeIndexBehavior.DomainNodeIndex(snapshot.map(_.domainNodeIndex).getOrElse(mutable.Map.empty)),
+        new DomainNodeIndexBehavior.DomainNodeIndex(snapshot.map(_.domainNodeIndex).getOrElse(mutable.Map.empty)),
       multipleValuesStandingQueryStates = multipleValuesStandingQueryStates,
       initialJournal = initialJournal
     )

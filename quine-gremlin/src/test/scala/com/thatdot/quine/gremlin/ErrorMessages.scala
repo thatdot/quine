@@ -29,29 +29,28 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
     Await.result(
       for {
         // Set some properties
-        _ <- graph.literalOps.setProp(qid1, "foo", QuineValue.Integer(733L))
-        _ <- graph.literalOps.setProp(qid5, "foo", QuineValue.Integer(733L))
+        _ <- literalOps.setProp(qid1, "foo", QuineValue.Integer(733L))
+        _ <- literalOps.setProp(qid5, "foo", QuineValue.Integer(733L))
 
-        _ <- graph.literalOps.setProp(qid2, "baz", QuineValue.True)
-        _ <- graph.literalOps
-          .setPropBytes(qid2, "box", Array(0xDE.toByte, 0xAD.toByte, 0xBE.toByte, 0xEF.toByte))
-        _ <- graph.literalOps.setProp(qid3, "baz", QuineValue.Str("hello world"))
+        _ <- literalOps.setProp(qid2, "baz", QuineValue.True)
+        _ <- literalOps.setPropBytes(qid2, "box", Array(0xDE.toByte, 0xAD.toByte, 0xBE.toByte, 0xEF.toByte))
+        _ <- literalOps.setProp(qid3, "baz", QuineValue.Str("hello world"))
 
         listNums = QuineValue.List(Vector(1L, 2L, 3L).map(QuineValue.Integer(_)))
-        _ <- graph.literalOps.setProp(qid4, "qux", listNums)
+        _ <- literalOps.setProp(qid4, "qux", listNums)
 
-        _ <- graph.literalOps.setProp(qid4, "quux", QuineValue.Str("boa constrictor"))
+        _ <- literalOps.setProp(qid4, "quux", QuineValue.Str("boa constrictor"))
 
         // Set some edges
-        _ <- graph.literalOps.addEdge(qid1, qid2, "edge1")
-        _ <- graph.literalOps.addEdge(qid2, qid4, "edge1")
-        _ <- graph.literalOps.addEdge(qid4, qid1, "edge1")
+        _ <- literalOps.addEdge(qid1, qid2, "edge1")
+        _ <- literalOps.addEdge(qid2, qid4, "edge1")
+        _ <- literalOps.addEdge(qid4, qid1, "edge1")
 
-        _ <- graph.literalOps.addEdge(qid4, qid5, "edge2")
-        _ <- graph.literalOps.addEdge(qid4, qid2, "edge2")
+        _ <- literalOps.addEdge(qid4, qid5, "edge2")
+        _ <- literalOps.addEdge(qid4, qid2, "edge2")
 
-        _ <- graph.literalOps.addEdge(qid1, qid3, "edge3")
-        _ <- graph.literalOps.addEdge(qid4, qid3, "edge3")
+        _ <- literalOps.addEdge(qid1, qid3, "edge3")
+        _ <- literalOps.addEdge(qid4, qid3, "edge3")
       } yield (),
       timeout.duration
     )

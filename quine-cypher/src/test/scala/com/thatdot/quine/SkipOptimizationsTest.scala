@@ -11,6 +11,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.{EitherValues, OptionValues}
 
 import com.thatdot.quine.compiler.cypher.CypherHarness
+import com.thatdot.quine.graph.SkipOptimizerKey
 import com.thatdot.quine.graph.cypher.Query.Return
 import com.thatdot.quine.graph.cypher.SkipOptimizingActor.{ResumeQuery, SkipOptimizationError}
 import com.thatdot.quine.graph.cypher.{Columns, Expr, Func, Location, Parameters, Query, QueryContext, Value}
@@ -38,11 +39,13 @@ class SkipOptimizationsTest
   val atTime: Some[Milliseconds] = Some(Milliseconds(1586631600L))
 
   def freshSkipActor(): ActorRef = {
-    graph.cypherOps.skipOptimizerCache.refresh(queryFamily -> atTime)
-    graph.cypherOps.skipOptimizerCache.get(queryFamily -> atTime)
+    graph.cypherOps.skipOptimizerCache.refresh(SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime))
+    graph.cypherOps.skipOptimizerCache.get(SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime))
   }
   def actorIsPresentInCache: Boolean =
-    graph.cypherOps.skipOptimizerCache.getIfPresent(queryFamily -> atTime) != null
+    graph.cypherOps.skipOptimizerCache.getIfPresent(
+      SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime)
+    ) != null
 
   /** Executes a query in [[queryFamily]] according to the provided projection rules
     */

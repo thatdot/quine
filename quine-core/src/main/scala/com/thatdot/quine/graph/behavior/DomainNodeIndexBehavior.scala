@@ -26,7 +26,9 @@ import com.thatdot.quine.graph.{
   DomainGraphNodeRegistry,
   DomainIndexEvent,
   LastNotification,
+  NamespaceId,
   Notifiable,
+  RunningStandingQuery,
   StandingQueryId,
   StandingQueryLocalEvents,
   StandingQueryOpsGraph,
@@ -57,8 +59,8 @@ object DomainNodeIndexBehavior {
     *         ))
     *         "The node at QID 0x02 last reported matching dgn1, and has not yet reported whether it matches dgn2"
     */
-  final case class DomainNodeIndex(
-    index: mutable.Map[
+  class DomainNodeIndex(
+    val index: mutable.Map[
       QuineId,
       mutable.Map[DomainGraphNodeId, LastNotification]
     ] = mutable.Map.empty
@@ -144,12 +146,16 @@ object DomainNodeIndexBehavior {
       fromOther: QuineId,
       dgnId: DomainGraphNodeId,
       result: Boolean,
-      relatedQueries: Set[StandingQueryId]
+      relatedQueries: Set[StandingQueryId],
+      inNamespace: NamespaceId
     )(implicit graph: StandingQueryOpsGraph, log: LoggingAdapter): Unit =
       if (index contains fromOther) index(fromOther)(dgnId) = Some(result)
       else {
         // if at least one related query is still active in the graph
-        if (relatedQueries.exists(graph.runningStandingQuery(_).nonEmpty)) {
+        if (
+          relatedQueries
+            .exists(sqid => graph.standingQueries(inNamespace).flatMap(_.runningStandingQuery(sqid)).nonEmpty)
+        ) {
           index += (fromOther -> mutable.Map(dgnId -> Some(result)))
         } else {
           // intentionally ignore because this update is about [a] SQ[s] we know to be deleted
@@ -327,6 +333,7 @@ trait DomainNodeIndexBehavior
     with QuineIdOps
     with QuineRefOps
     with StandingQueryBehavior {
+
   import DomainNodeIndexBehavior._
 
   protected val dgnRegistry: DomainGraphNodeRegistry
@@ -347,6 +354,8 @@ trait DomainNodeIndexBehavior
     event: DomainIndexEvent
   ): Future[Done.type]
 
+  def namespace: NamespaceId
+
   /** Called once on node wakeup, this updates DistinctID SQs.
     *  - adds new DistinctID SQs not already in the subscribers
     *  - removes SQs no longer in the graph state
@@ -355,7 +364,9 @@ trait DomainNodeIndexBehavior
     // Register new SQs in graph state but not in the subscribers
     // NOTE: we cannot use `+=` because if already registered we want to avoid duplicating the result
     for {
-      (sqId, runningSq) <- graph.runningStandingQueries
+      (sqId, runningSq) <- graph
+        .standingQueries(namespace) // Silently ignore absent namespace.
+        .fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
       query <- runningSq.query.query match {
         case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
         case _ => None
@@ -371,7 +382,7 @@ trait DomainNodeIndexBehavior
     // Remove old SQs in subscribers but no longer present in graph state
     for {
       (query, DistinctIdSubscription(subscribers, _, sqIds)) <- domainGraphSubscribers.subscribersToThisNode
-      if sqIds.forall(graph.runningStandingQuery(_).isEmpty)
+      if sqIds.forall(id => graph.standingQueries(namespace).flatMap(_.runningStandingQuery(id)).isEmpty)
       subscriber <- subscribers
     } cancelSubscription(query, Some(subscriber), shouldSendReplies = true)
   }
@@ -546,7 +557,7 @@ trait DomainNodeIndexBehavior
       domainGraphNodeParentIndex.parentNodesOf(otherDgnId) flatMap { dgnId =>
         domainGraphSubscribers.getRelatedQueries(dgnId)
       }
-    domainNodeIndex.updateResult(fromOther, otherDgnId, result, relatedQueries)(graph, log)
+    domainNodeIndex.updateResult(fromOther, otherDgnId, result, relatedQueries, namespace)(graph, log)
     domainGraphSubscribers.updateAnswerAndPropagateToRelevantSubscribers(otherDgnId, shouldSendReplies)
     updateRelevantToSnapshotOccurred()
   }
@@ -640,17 +651,20 @@ trait DomainNodeIndexBehavior
     notifiables: immutable.Iterable[Notifiable],
     msg: SqResultLike,
     shouldSendReplies: Boolean
-  ): Future[Unit] =
+  ): Future[Unit] = // TODO: this doesn't need to return a `Future`
     if (!shouldSendReplies) Future.unit
-    else
-      Source(notifiables)
-        .runForeach {
+    else {
+      graph.standingQueries(namespace).fold(Future.unit) { sqns =>
+        // Missing namespace should return `false because of `reportStandingResult` below
+        notifiables.foreach {
           case Left(quineId) => quineId ! msg
           case Right(sqId) =>
-            graph.reportStandingResult(sqId, msg) // TODO should this really be suppressed by shouldSendReplies?
+            sqns.reportStandingResult(sqId, msg) // TODO should this really be suppressed by shouldSendReplies?
             ()
         }
-        .map(_ => ())(ExecutionContexts.parasitic)
+        Future.unit
+      }
+    }
 
   /** An index of upstream subscribers to this node for a given DGB. Keys are DGBs registered on this node, values are
     * the [[Notifiable]]s (eg, nodes or global SQ result queues) subscribed to this node, paired with the last result

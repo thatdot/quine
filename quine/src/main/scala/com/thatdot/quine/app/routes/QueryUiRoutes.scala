@@ -25,7 +25,7 @@ import com.thatdot.quine.graph.cypher.{
   Type => CypherType,
   Value => CypherValue
 }
-import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph}
+import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId, namespaceFromParam}
 import com.thatdot.quine.gremlin._
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes.{CypherQuery, CypherQueryResult, GremlinQuery, QueryUiRoutes, UiEdge, UiNode}
@@ -99,23 +99,26 @@ trait QueryUiRoutesImpl
   }
 
   private def guessGremlinParameters(params: Map[String, Json]): Map[Symbol, QuineValue] =
-    params.map { case (k, v) => (Symbol(k) -> QuineValue.fromJson(v)) }
+    params.map { case (k, v) => Symbol(k) -> QuineValue.fromJson(v) }
 
   private def guessCypherParameters(params: Map[String, Json]): Map[String, CypherValue] =
-    params.map { case (k, v) => (k -> CypherExpr.fromQuineValue(QuineValue.fromJson(v))) }
+    params.map { case (k, v) => k -> CypherExpr.fromQuineValue(QuineValue.fromJson(v)) }
 
   /** Given a [[QuineId]], query out a [[UiNode]]
     *
     * @note this is not used by Cypher because those nodes already have the needed information!
     * @param id ID of the node
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @return representation of the node for the UI
     */
   private def queryUiNode(
     id: QuineId,
+    namespace: NamespaceId,
     atTime: AtTime
   ): Future[UiNode[QuineId]] =
-    graph.literalOps
+    graph
+      .literalOps(namespace)
       .getPropsAndLabels(id, atTime)
       .map { case (props, labels) =>
         val parsedProperties = props.map { case (propKey, pickledValue) =>
@@ -152,36 +155,57 @@ trait QueryUiRoutesImpl
     *
     * @note this filters out nodes whose IDs are not supported by the provider
     * @param query Gremlin query expected to return nodes
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @return nodes produced by the query
     */
-  final def queryGremlinNodes(query: GremlinQuery, atTime: AtTime): Source[UiNode[QuineId], NotUsed] =
+  final def queryGremlinNodes(
+    query: GremlinQuery,
+    namespace: NamespaceId,
+    atTime: AtTime
+  ): Source[UiNode[QuineId], NotUsed] =
     gremlin
-      .queryExpecting[Vertex](query.text, guessGremlinParameters(query.parameters), atTime)
-      .mapAsync(parallelism = 4)((vertex: Vertex) => queryUiNode(vertex.id, atTime))
+      .queryExpecting[Vertex](
+        query.text,
+        guessGremlinParameters(query.parameters),
+        namespace,
+        atTime
+      )
+      .mapAsync(parallelism = 4)((vertex: Vertex) => queryUiNode(vertex.id, namespace, atTime))
       .map(transformUiNode)
 
   /** Query edges with a given gremlin query
     *
     * @note this filters out nodes whose IDs are not supported by the provider
     * @param query Gremlin query expected to return edges
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @return edges produced by the query
     */
-  final def queryGremlinEdges(query: GremlinQuery, atTime: AtTime): Source[UiEdge[QuineId], NotUsed] =
+  final def queryGremlinEdges(
+    query: GremlinQuery,
+    namespace: NamespaceId,
+    atTime: AtTime
+  ): Source[UiEdge[QuineId], NotUsed] =
     gremlin
-      .queryExpecting[Edge](query.text, guessGremlinParameters(query.parameters), atTime)
+      .queryExpecting[Edge](
+        query.text,
+        guessGremlinParameters(query.parameters),
+        namespace,
+        atTime
+      )
       .map { case Edge(src, lbl, tgt) => UiEdge(from = src, to = tgt, edgeType = lbl.name) }
 
   /** Query anything with a given Gremlin query
     *
     * @param query Gremlin query
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @return data produced by the query formatted as JSON
     */
-  final def queryGremlinGeneric(query: GremlinQuery, atTime: AtTime): Source[Json, NotUsed] =
+  final def queryGremlinGeneric(query: GremlinQuery, namespace: NamespaceId, atTime: AtTime): Source[Json, NotUsed] =
     gremlin
-      .query(query.text, guessGremlinParameters(query.parameters), atTime)
+      .query(query.text, guessGremlinParameters(query.parameters), namespace, atTime)
       .map[Json](writeGremlinValue)
 
   /** Query nodes with a given Cypher query
@@ -189,16 +213,19 @@ trait QueryUiRoutesImpl
     * @note this filters out nodes whose IDs are not supported by the provider
     *
     * @param query Cypher query expected to return nodes
+    * @param namespace Which namespace to query in.
     * @param atTime possibly historical time to query
     * @return tuple of nodes produced by the query, whether the query is read-only, and whether the query may cause full node scan
     */
   final def queryCypherNodes(
     query: CypherQuery,
+    namespace: NamespaceId,
     atTime: AtTime
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
     val res: QueryResults = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
+      namespace = namespace,
       atTime = atTime
     )
 
@@ -236,25 +263,28 @@ trait QueryUiRoutesImpl
     * @note this filters out nodes whose IDs are not supported by the provider
     *
     * @param query Cypher query expected to return edges
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @param requestTimeout timeout signalling output results no longer matter
     * @return tuple of edges produced by the query, readonly, and canContainAllNodeScan
     */
   final def queryCypherEdges(
     query: CypherQuery,
+    namespace: NamespaceId,
     atTime: AtTime,
     requestTimeout: Duration = Duration.Inf
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
     val res: QueryResults = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
+      namespace = namespace,
       atTime = atTime
     )
 
     val results = res.results
       .mapConcat(identity)
       .map[UiEdge[QuineId]] {
-        case CypherExpr.Relationship(src, lbl, props @ _, tgt) =>
+        case CypherExpr.Relationship(src, lbl, _, tgt) =>
           UiEdge(from = src, to = tgt, edgeType = lbl.name)
 
         case other =>
@@ -275,11 +305,13 @@ trait QueryUiRoutesImpl
     * execution plan of the query without running the query.
     *
     * @param query Cypher query
+    * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
     * @return data produced by the query formatted as JSON
     */
   final def queryCypherGeneric(
     query: CypherQuery,
+    namespace: NamespaceId,
     atTime: AtTime
   ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
 
@@ -293,6 +325,7 @@ trait QueryUiRoutesImpl
     val res: QueryResults = cypher.queryCypherValues(
       queryText,
       parameters = guessCypherParameters(query.parameters),
+      namespace = namespace,
       atTime = atTime
     )
 
@@ -319,25 +352,25 @@ trait QueryUiRoutesImpl
           case Failure(err) => Failure(err)
         }(graph.shardDispatcherEC)
 
-    gremlinPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    gremlinPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchGremlinException {
-        queryGremlinGeneric(query, atTime)
+        queryGremlinGeneric(query, namespaceFromParam(namespaceParam), atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
-    gremlinNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    gremlinNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchGremlinException {
-        queryGremlinNodes(query, atTime)
+        queryGremlinNodes(query, namespaceFromParam(namespaceParam), atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-node-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
-    gremlinEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    gremlinEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchGremlinException {
-        queryGremlinEdges(query, atTime)
+        queryGremlinEdges(query, namespaceFromParam(namespaceParam), atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-edge-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
@@ -357,9 +390,10 @@ trait QueryUiRoutesImpl
           case Failure(err) => Failure(err)
         }(ExecutionContexts.parasitic)
 
-    cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchCypherException {
-        val (columns, results, isReadOnly, _) = queryCypherGeneric(query, atTime) // TODO read canContainAllNodeScan
+        val (columns, results, isReadOnly, _) =
+          queryCypherGeneric(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
@@ -367,18 +401,20 @@ trait QueryUiRoutesImpl
           .map(CypherQueryResult(columns, _))(ExecutionContexts.parasitic)
       }
     } ~
-    cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchCypherException {
-        val (results, isReadOnly, _) = queryCypherNodes(query, atTime) // TODO read canContainAllNodeScan
+        val (results, isReadOnly, _) =
+          queryCypherNodes(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
       }
     } ~
-    cypherEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, query), t) =>
+    cypherEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       catchCypherException {
-        val (results, isReadOnly, _) = queryCypherEdges(query, atTime) // TODO read canContainAllNodeScan
+        val (results, isReadOnly, _) =
+          queryCypherEdges(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")

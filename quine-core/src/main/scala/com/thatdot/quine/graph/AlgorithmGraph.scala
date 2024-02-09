@@ -7,7 +7,7 @@ import org.apache.pekko.util.{ByteString, Timeout}
 
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage.{GetRandomWalk, RandomWalkResult}
-import com.thatdot.quine.graph.messaging.QuineIdAtTime
+import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 trait AlgorithmGraph extends BaseGraph {
@@ -66,6 +66,7 @@ trait AlgorithmGraph extends BaseGraph {
       inOutParam: Double,
       walkSeqNum: Option[Int], // If none, you can manually prepend an integer to `seedOpt` to generate the same seed
       seedOpt: Option[String],
+      namespace: NamespaceId,
       atTime: Option[Milliseconds]
     )(implicit
       timeout: Timeout
@@ -73,7 +74,7 @@ trait AlgorithmGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(
-        QuineIdAtTime(startingNode, atTime),
+        SpaceTimeQuineId(startingNode, namespace, atTime),
         GetRandomWalk(
           collectQuery,
           length,
@@ -108,6 +109,7 @@ trait AlgorithmGraph extends BaseGraph {
       returnParam: Double,
       inOutParam: Double,
       randomSeedOpt: Option[String] = None,
+      namespace: NamespaceId,
       atTime: Option[Milliseconds] = None,
       parallelism: Int = 16
     )(implicit
@@ -115,10 +117,10 @@ trait AlgorithmGraph extends BaseGraph {
     ): Future[SinkMat] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      enumerateAllNodeIds()
+      enumerateAllNodeIds(namespace)
         .flatMapConcat(qid => Source(0 until walksPerNode).map(qid -> _))
         .mapAsync(parallelism) { case (qid, i) =>
-          randomWalk(qid, collectQuery, length, returnParam, inOutParam, Some(i), randomSeedOpt, atTime)
+          randomWalk(qid, collectQuery, length, returnParam, inOutParam, Some(i), randomSeedOpt, namespace, atTime)
             .map(walk =>
               // Prepending the QuineId as the first row value in the final output to indicate where each walk began.
               // Note that if a user provides a query, it could be that the node ID never shows up; this mitigates that.

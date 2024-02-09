@@ -14,12 +14,14 @@ import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app._
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.CypherQuery
 import com.thatdot.quine.routes.{StandingQueryPattern => SqPattern, _}
 
 class StandingQueryTest extends AnyFunSuite with Matchers {
+  val namespace: NamespaceId = defaultNamespaceId
 
   test("Distinct ID Standing Query results correctly read MaxLong and produce the right number of results") {
     val graph: GraphService = IngestTestGraph.makeGraph()
@@ -65,9 +67,11 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       StandingQueryDefinition(sqPattern, Map("results" -> CypherQuery(sqOutputPattern, andThen = Some(sqOutput))))
 
     val setupFuture = quineApp
-      .addStandingQuery("next-node", sqDef)
+      .addStandingQuery("next-node", namespace, sqDef)
       .flatMap(_ =>
-        Future.fromTry(quineApp.addIngestStream("numbers", ingestConfig, None, shouldRestoreIngest = false, timeout))
+        Future.fromTry(
+          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+        )
       )
     Await.ready(setupFuture, 3 seconds)
 
@@ -131,9 +135,11 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     )
 
     val setupFuture = quineApp
-      .addStandingQuery("next-node", sqDef)
+      .addStandingQuery("next-node", namespace, sqDef)
       .flatMap(_ =>
-        Future.fromTry(quineApp.addIngestStream("numbers", ingestConfig, None, shouldRestoreIngest = false, timeout))
+        Future.fromTry(
+          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+        )
       )
     Await.result(setupFuture, 3 seconds)
 
@@ -261,9 +267,11 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
     )
 
     val setupFuture = quineApp
-      .addStandingQuery("foo", sqDef)
+      .addStandingQuery("foo", namespace, sqDef)
       .flatMap(_ =>
-        Future.fromTry(quineApp.addIngestStream("numbers", ingestConfig, None, shouldRestoreIngest = false, timeout))
+        Future.fromTry(
+          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+        )
       )
     Await.result(setupFuture, 3.seconds)
 

@@ -43,7 +43,7 @@ object BaseMessage {
     */
   final case class LocalMessageDelivery(
     msg: QuineMessage,
-    targetQid: QuineIdAtTime,
+    targetQid: SpaceTimeQuineId,
     originalSender: ActorRef
   ) extends BaseMessage
 

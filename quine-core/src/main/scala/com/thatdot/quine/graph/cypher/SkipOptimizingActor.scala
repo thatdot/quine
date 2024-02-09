@@ -6,8 +6,8 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef}
 import org.apache.pekko.stream.scaladsl.{BroadcastHub, Source}
 
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.cypher.Query.Return
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, SkipOptimizerKey}
 import com.thatdot.quine.model.Milliseconds
 
 /** Manages SKIP optimizations for a [family of] queries, eg (SKIP n LIMIT m, SKIP n+m LIMIT o, ...)
@@ -29,8 +29,12 @@ import com.thatdot.quine.model.Milliseconds
   *                    convenience.
   * @param atTime      the timestamp at which [[QueryFamily]] will be run against the graph
   */
-class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.External], atTime: Option[Milliseconds])
-    extends Actor
+class SkipOptimizingActor(
+  graph: CypherOpsGraph,
+  QueryFamily: Query[Location.External],
+  namespace: NamespaceId,
+  atTime: Option[Milliseconds]
+) extends Actor
     with ActorLogging {
   import SkipOptimizingActor._
 
@@ -41,12 +45,12 @@ class SkipOptimizingActor(graph: CypherOpsGraph, QueryFamily: Query[Location.Ext
     * this must not close over the actor's `context`)
     */
   private def decommission(): Unit =
-    graph.cypherOps.skipOptimizerCache.invalidate(QueryFamily -> atTime)
+    graph.cypherOps.skipOptimizerCache.invalidate(SkipOptimizerKey(QueryFamily, namespace, atTime))
 
   private def startQuery() = {
     log.debug(s"SkipOptimizingActor is beginning execution of query. AtTime: ${atTime}; query: $QueryFamily")
     graph.cypherOps
-      .continueQuery(QueryFamily, parameters = Parameters.empty, atTime = atTime)
+      .continueQuery(QueryFamily, parameters = Parameters.empty, namespace = namespace, atTime = atTime)
       .watchTermination() { case (mat, completesWithStream) =>
         /** Register a termination hook. This can be read roughly as "when the last element of the queryFamily query is
           * produced, shut down this SkipOptimizingActor". What we really want is "when the last element of the

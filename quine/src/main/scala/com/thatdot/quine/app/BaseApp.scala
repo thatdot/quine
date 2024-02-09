@@ -3,12 +3,15 @@ package com.thatdot.quine.app
 import java.nio.charset.StandardCharsets.UTF_8
 
 import scala.concurrent.Future
+import scala.util.{Failure, Try}
+
+import org.apache.pekko.util.Timeout
 
 import cats.implicits._
 import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.jawn
 
-import com.thatdot.quine.graph.{BaseGraph, MemberIdx}
+import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
 
 /** Applications running over top of Quine should define an application state that extends this.
   * Then, individual settings can be stored here (for easy persistence, reset, etc). Under the hood,
@@ -25,7 +28,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param value setting value
     */
   final protected def storeLocalMetaData[A: JsonSchema](key: String, localMemberId: MemberIdx, value: A): Future[Unit] =
-    graph.persistor.setLocalMetaData(key, localMemberId, Some(encodeMetaData(value)))
+    graph.namespacePersistor.setLocalMetaData(key, localMemberId, Some(encodeMetaData(value)))
 
   /** Store a key-value pair that is relevant for the entire graph
     *
@@ -34,10 +37,10 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param value setting value
     */
   final protected def storeGlobalMetaData[A: JsonSchema](key: String, value: A): Future[Unit] =
-    graph.persistor.setMetaData(key, Some(encodeMetaData(value)))
+    graph.namespacePersistor.setMetaData(key, Some(encodeMetaData(value)))
 
   final protected def deleteGlobalMetaData(key: String): Future[Unit] =
-    graph.persistor.setMetaData(key, None)
+    graph.namespacePersistor.setMetaData(key, None)
 
   /** Serialize a value intended to be stored as metadata
     *
@@ -58,7 +61,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
   final protected def getLocalMetaData[A](key: String, localMemberId: MemberIdx)(implicit
     schema: JsonSchema[A]
   ): Future[Option[A]] =
-    graph.persistor
+    graph.namespacePersistor
       .getLocalMetaData(key, localMemberId)
       .map {
         _.flatMap { jsonBytes =>
@@ -73,26 +76,13 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @return the value, if found
     */
   final protected def getGlobalMetaData[A](key: String)(implicit schema: JsonSchema[A]): Future[Option[A]] =
-    graph.persistor
+    graph.namespacePersistor
       .getMetaData(key)
       .map {
         _.flatMap { jsonBytes =>
           Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
         }
       }(graph.system.dispatcher)
-
-  /** Retrieves all metadata starting with a prefix. This is not efficient (relies on filtering the entire
-    * metadata set).
-    */
-  protected def getAllGlobalMetaDataByPrefix[A](
-    prefix: String
-  )(implicit schema: JsonSchema[A]): Future[Map[String, A]] =
-    graph.persistor
-      .getAllMetaData()
-      .map(_.filter(p => p._1.startsWith(prefix)))(graph.system.dispatcher)
-      .map(mv => mv.fmap(jsonBytes => validateMetaData(decodeMetaData(jsonBytes)(schema))))(
-        graph.system.dispatcher
-      )
 
   /** Deserialize a value intended to be stored as metadata
     *
@@ -190,6 +180,39 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
         val defaulted = defaultValue
         storeGlobalMetaData(key, defaulted).map(_ => defaulted)(graph.system.dispatcher)
     }(graph.system.dispatcher)
+
+  /** Instantiate a new namespace to store nodes separately.
+    * @param namespace the name of the new namespace to be created
+    * @param shouldWriteToPersistor True for all individual runtime operations. False during startup while rehydrating.
+    * @return Future status according to persistence. Boolean indicates whether a chance was made.
+    */
+  def createNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true)(implicit
+    timeout: Timeout
+  ): Future[Boolean] = Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+
+  /** Delete an existing namespace and all the data in it.
+    * @param namespace the name of the new namespace to be deleted
+    * @param shouldWriteToPersistor True for all individual runtime operations. False during startup while rehydrating.
+    * @return Future status according to persistence. Boolean indicates whether a chance was made.
+    */
+  def deleteNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true)(implicit
+    timeout: Timeout
+  ): Future[Boolean] = Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+
+  /** Reads the local cache of available namespaces. */
+  def getNamespaces: collection.Set[NamespaceId] = graph.getNamespaces
+
+  def onlyIfNamespaceExists[A](namespace: NamespaceId)(f: => Future[A]): Future[A] =
+    if (getNamespaces.contains(namespace)) f
+    else Future.failed(new NoSuchElementException(s"The namespace does not exist."))
+
+  def noneIfNoNamespace[A](namespace: NamespaceId)(f: => Option[A]): Option[A] =
+    if (getNamespaces.contains(namespace)) f
+    else None
+
+  def failIfNoNamespace[A](namespace: NamespaceId)(f: => Try[A]): Try[A] =
+    if (getNamespaces.contains(namespace)) f
+    else Failure(new NoSuchElementException(s"The namespace does not exist."))
 }
 
 class MetaDataDeserializationException(msg: String) extends RuntimeException(msg)

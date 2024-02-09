@@ -36,11 +36,12 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     GraphService(
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
-      persistor = _ => InMemoryPersistor.empty,
+      persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = idProv
     ),
     timeout.duration
   )
+  val cypherHarnessNamespace: NamespaceId = None // Use default namespace
   implicit def materializer: Materializer = graph.materializer
 
   override def afterAll(): Unit =
@@ -75,7 +76,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     pos: Position
   ): Unit = {
     def theTest(): Future[Assertion] = {
-      val queryResults = queryCypherValues(queryText, parameters = parameters)(graph)
+      val queryResults = queryCypherValues(queryText, cypherHarnessNamespace, parameters = parameters)(graph)
       assert(expectedColumns.map(Symbol(_)) === queryResults.columns, "columns must match")
       val (killSwitch, rowsFut) = queryResults.results
         .viaMat(KillSwitches.single)(Keep.right)
@@ -156,7 +157,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     pos: Position
   ): Unit = {
     def theTest(): Assertion = {
-      val actual = intercept[E](queryCypherValues(queryText)(graph))
+      val actual = intercept[E](queryCypherValues(queryText, cypherHarnessNamespace)(graph))
 
       assert(actual == expectedError, "Query construction did not fail with expected error")
     }
@@ -176,7 +177,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     pos: Position
   ): Unit = {
     def theTest(): Future[Assertion] = recoverToExceptionIf[E](
-      queryCypherValues(queryText)(graph).results.runWith(Sink.ignore)
+      queryCypherValues(queryText, cypherHarnessNamespace)(graph).results.runWith(Sink.ignore)
     ) map (actual => assert(actual == expected, "Query execution did not fail with expected error"))
 
     it(queryText)(theTest())(pos)

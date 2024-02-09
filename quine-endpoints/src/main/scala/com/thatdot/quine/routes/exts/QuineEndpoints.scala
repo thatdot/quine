@@ -2,10 +2,56 @@ package com.thatdot.quine.routes.exts
 
 import scala.concurrent.duration.{DurationLong, FiniteDuration}
 
+import endpoints4s._
 import endpoints4s.algebra.Documentation
-import endpoints4s.{Codec, Tupler}
 
 import com.thatdot.quine.routes.IngestRoutes
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+
+object NamespaceParameterWrapper {
+  type NamespaceParameter = Option[String]
+
+  val defaultNamespaceParameter: NamespaceParameter = Some("default")
+
+  /** No more than 16 characters total, must start with a letter
+    *
+    * Note: we do not want to allow unicode characters in namespaces,
+    * since they are illegal in cassandra table names.
+    */
+  def isValidNamespaceParameter(s: String): Boolean = {
+    val validNamespacePattern = raw"""[a-zA-Z][a-zA-Z0-9]{0,15}+""".r
+    validNamespacePattern.matches(s)
+  }
+}
+
+class NamespaceNotFoundException(namespace: String) extends NoSuchElementException(s"Namespace $namespace not found")
+
+trait NamespaceQueryString extends endpoints4s.algebra.Urls {
+
+  import NamespaceParameterWrapper._
+
+  /** This is overridden in active routes where the graph is availale (i.e [[QuineAppRoutes]]). The
+    * no-op concrete implementation is only expressed here to avoid having to put the no-op
+    * in other endpoints expressions (OpenApiDocs, QuineClient)
+    */
+  def namespaceExists(namespace: String): Boolean = true
+
+  lazy val namespaceCodec: Codec[Option[String], NamespaceParameter] = new Codec[Option[String], NamespaceParameter] {
+    override def decode(s: Option[String]): Validated[NamespaceParameter] = s.map(_.toLowerCase) match {
+      case None => Valid(defaultNamespaceParameter)
+      case a @ Some(value) if isValidNamespaceParameter(value) =>
+        if (!namespaceExists(value)) throw new NamespaceNotFoundException(value)
+        Valid(a)
+      case Some(value) => Invalid(s"'$value' is not a valid namespace")
+    }
+
+    override def encode(from: Option[String]): Option[String] = from
+  }
+
+  implicit lazy val namespaceQueryStringParam: QueryStringParam[NamespaceParameter] =
+    optionalQueryStringParam(stringQueryString)
+      .xmapWithCodec(namespaceCodec)
+}
 
 trait AtTimeQueryString extends endpoints4s.algebra.Urls {
 
@@ -21,7 +67,6 @@ trait AtTimeQueryString extends endpoints4s.algebra.Urls {
   implicit lazy val atTimeQueryStringParam: QueryStringParam[AtTime] =
     optionalQueryStringParam(longQueryString)
       .xmapWithCodec(atTimeCodec)
-
 }
 
 trait NoopAtTimeQueryString extends AtTimeQueryString {
@@ -50,7 +95,6 @@ trait IdSchema extends endpoints4s.algebra.JsonSchemas {
     stringJsonSchema(format = Some("node-id"))
       .xmapWithCodec(idCodec)
       .withExample(sampleId())
-
 }
 
 trait NoopIdSchema extends IdSchema {
@@ -70,7 +114,7 @@ trait NoopIdSchema extends IdSchema {
   * responses into a simple trait that we can mix in to our various endpoint
   * classes.
   */
-trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQueryString {
+trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQueryString with NamespaceQueryString {
 
   /** Typeclass instance for using an ID as a query string parameter */
   implicit lazy val idParam: QueryStringParam[Id] =
@@ -106,6 +150,14 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
   }
 
   final val nodeIdSegment: Path[Id] = segment[Id]("id", docs = Some("Node id"))
+
+  final val namespace: QueryString[NamespaceParameter] = qs[NamespaceParameter](
+    "namespace",
+    docs = Some("""Namespace. If no namespace is provided, the default namespace will be used.
+        |
+        |Namespaces must be between 1-16 characters, consist of only letters or digits,
+        |and must start with a letter.""".stripMargin)
+  )
 
   final val atTime: QueryString[AtTime] = qs[AtTime](
     "at-time",
@@ -159,4 +211,5 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
     response(ServiceUnavailable, entity, docs, headers)
 
   def ServiceUnavailable: StatusCode
+
 }

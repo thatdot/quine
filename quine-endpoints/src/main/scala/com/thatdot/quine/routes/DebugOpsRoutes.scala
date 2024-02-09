@@ -4,6 +4,8 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+
 sealed abstract class EdgeDirection
 object EdgeDirection {
   case object Outgoing extends EdgeDirection
@@ -19,9 +21,9 @@ object EdgeDirection {
 final case class LiteralNode[Id](
   @docs(
     """Properties on the node; note that values are represented as closely as possible
-      |to how they would be emitted by
-      |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
-      |""".stripMargin.replace('\n', ' ').trim
+                                      |to how they would be emitted by
+                                      |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
+                                      |""".stripMargin.replace('\n', ' ').trim
   )
   properties: Map[String, Json],
   edges: Seq[RestHalfEdge[Id]]
@@ -52,7 +54,8 @@ trait DebugOpsRoutes
     with endpoints4s.generic.JsonSchemas
     with exts.QuineEndpoints
     with exts.AnySchema {
-  val DebugOpsDisclaimer: String =
+
+  private val DebugOpsDisclaimer: String =
     """
       |
       |This endpoint's usage, including the structure of the values returned,
@@ -68,7 +71,7 @@ trait DebugOpsRoutes
   /** Schema to be used for QuineValues -- this is specifically left explicit, as `Json` is too generic a type to have
     * a useful implicit schema around for.
     */
-  val anySchemaQVMapExample: JsonSchema[Json] = anySchema(Some("quine-value")).withExample(
+  private val anySchemaQVMapExample: JsonSchema[Json] = anySchema(Some("quine-value")).withExample(
     Json.obj(
       "name" -> Json.fromString("fruits-collection"),
       "fruits" -> Json.arr(Json.fromString("apple"), Json.fromString("orange"), Json.fromString("grape"))
@@ -143,44 +146,44 @@ trait DebugOpsRoutes
       )
     )
 
-  final val debugOpsGet: Endpoint[(Id, AtTime), LiteralNode[Id]] =
+  final val debugOpsGet: Endpoint[(Id, AtTime, NamespaceParameter), LiteralNode[Id]] =
     endpoint(
-      request = get(debugNode /? atTime),
+      request = get(debugNode /? (atTime & namespace)),
       response = ok(jsonResponse[LiteralNode[Id]]),
       docs = EndpointDocs()
         .withSummary(Some("List Properties/Edges"))
         .withDescription(
           Some(
-            "Retrieve a nodes list of properties and list of edges." + DebugOpsDisclaimer
+            "Retrieve a node's list of properties and list of edges." + DebugOpsDisclaimer
           )
         )
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsPut: Endpoint[(Id, LiteralNode[Id]), Unit] =
+  final val debugOpsPut: Endpoint[(Id, NamespaceParameter, LiteralNode[Id]), Unit] =
     endpoint(
       request = put(
-        url = debugNode,
+        url = debugNode /? namespace,
         entity = jsonOrYamlRequest[LiteralNode[Id]]
       ),
       ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Update Properties/Edges"))
         .withDescription(Some("""
-            |Add or update properties and edges.
-            |
-            |Any properties or edges that do not already exist on the node will replace existing values.
-            |Any new properties or edges will be appended to existing values.
-            |Properties must be specified as JSON values, the format of which should match
-            |how the same values would be emitted by
-            |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
-            |""".stripMargin.trim + DebugOpsDisclaimer))
+                                |Add or update properties and edges.
+                                |
+                                |Any properties or edges that do not already exist on the node will replace existing values.
+                                |Any new properties or edges will be appended to existing values.
+                                |Properties must be specified as JSON values, the format of which should match
+                                |how the same values would be emitted by
+                                |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
+                                |""".stripMargin.trim + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsDelete: Endpoint[Id, Unit] =
+  final val debugOpsDelete: Endpoint[(Id, NamespaceParameter), Unit] =
     endpoint(
-      request = delete(debugNode),
+      request = delete(debugNode /? namespace),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Properties/Edges"))
@@ -188,9 +191,9 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsVerbose: Endpoint[(Id, AtTime), Json] =
+  final val debugOpsVerbose: Endpoint[(Id, AtTime, NamespaceParameter), Json] =
     endpoint(
-      request = get(debugNode / "verbose" /? atTime),
+      request = get(debugNode / "verbose" /? (atTime & namespace)),
       response = ok(jsonResponse(anySchemaQVMapExample)),
       docs = EndpointDocs()
         .withSummary(Some("List Node State (Verbose)"))
@@ -203,11 +206,11 @@ trait DebugOpsRoutes
     )
 
   final val debugOpsEdgesGet: Endpoint[
-    (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String])),
+    (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String], NamespaceParameter)),
     Seq[RestHalfEdge[Id]]
   ] =
     endpoint(
-      request = get(debugNode / "edges" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
+      request = get(debugNode / "edges" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt & namespace)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Edges"))
@@ -215,10 +218,10 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsEdgesPut: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
+  final val debugOpsEdgesPut: Endpoint[(Id, NamespaceParameter, Seq[RestHalfEdge[Id]]), Unit] =
     endpoint(
       request = put(
-        url = debugNode / "edges",
+        url = debugNode / "edges" /? namespace,
         entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
@@ -227,11 +230,11 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsEdgeDelete: Endpoint[(Id, Seq[RestHalfEdge[Id]]), Unit] =
+  final val debugOpsEdgeDelete: Endpoint[(Id, NamespaceParameter, Seq[RestHalfEdge[Id]]), Unit] =
     endpoint(
       request = request(
         Delete,
-        url = debugNode / "edges",
+        url = debugNode / "edges" /? namespace,
         entity = jsonOrYamlRequest[Seq[RestHalfEdge[Id]]]
       ),
       response = ok(emptyResponse),
@@ -242,11 +245,11 @@ trait DebugOpsRoutes
     )
 
   final val debugOpsHalfEdgesGet: Endpoint[
-    (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String])),
+    (Id, (AtTime, Option[Int], Option[EdgeDirection], Option[Id], Option[String], NamespaceParameter)),
     Seq[RestHalfEdge[Id]]
   ] =
     endpoint(
-      request = get(debugNode / "edges" / "half" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt)),
+      request = get(debugNode / "edges" / "half" /? (atTime & limit & edgeDirOpt & otherOpt & edgeTypeOpt & namespace)),
       response = ok(jsonResponse[Seq[RestHalfEdge[Id]]]),
       docs = EndpointDocs()
         .withSummary(Some("List Half Edges"))
@@ -254,9 +257,9 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsPropertyGet: Endpoint[(Id, String, AtTime), Option[Json]] =
+  final val debugOpsPropertyGet: Endpoint[(Id, String, AtTime, NamespaceParameter), Option[Json]] =
     endpoint(
-      request = get(debugNode / "props" /? (propKey & atTime)),
+      request = get(debugNode / "props" /? (propKey & atTime & namespace)),
       response = wheneverFound(ok(jsonResponse[Json](anySchemaQVMapExample))),
       docs = EndpointDocs()
         .withSummary(Some("Get Property"))
@@ -271,10 +274,10 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsPropertyPut: Endpoint[(Id, String, Json), Unit] =
+  final val debugOpsPropertyPut: Endpoint[(Id, String, NamespaceParameter, Json), Unit] =
     endpoint(
       request = put(
-        url = debugNode / "props" /? propKey,
+        url = debugNode / "props" /? (propKey & namespace),
         entity = jsonOrYamlRequest[Json](anySchemaQVMapExample)
       ),
       response = ok(emptyResponse),
@@ -284,9 +287,9 @@ trait DebugOpsRoutes
         .withTags(List(debugOpsTag))
     )
 
-  final val debugOpsPropertyDelete: Endpoint[(Id, String), Unit] =
+  final val debugOpsPropertyDelete: Endpoint[(Id, String, NamespaceParameter), Unit] =
     endpoint(
-      request = delete(debugNode / "props" /? propKey),
+      request = delete(debugNode / "props" /? (propKey & namespace)),
       response = ok(emptyResponse),
       docs = EndpointDocs()
         .withSummary(Some("Delete Property"))

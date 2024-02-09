@@ -7,12 +7,12 @@ import scala.collection.compat.immutable._
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
-import com.thatdot.quine.graph.{cypher, _}
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
-import com.thatdot.quine.persistor.{BinaryFormat, PersistenceAgent}
+import com.thatdot.quine.persistor.{BinaryFormat, NamespacedPersistenceAgent, PersistenceAgent}
 
 /** The deserialization failed because a union (eg, a coproduct or enum) was tagged with an unknown type.
   *

@@ -45,8 +45,8 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
     it("should insert some people and their parents") {
       import QuineIdImplicitConversions._
       Future.traverse(people) { (person: Person) =>
-        graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first)) zip
-        person.parent.traverse(parent => graph.literalOps.addEdge(person.id, parent, "parent"))
+        graph.literalOps(cypherHarnessNamespace).setProp(person.id, "first", QuineValue.Str(person.first)) zip
+        person.parent.traverse(parent => graph.literalOps(cypherHarnessNamespace).addEdge(person.id, parent, "parent"))
       } as assert(true)
     }
   }
@@ -244,7 +244,8 @@ class VariableLengthRelationshipPatternHarryPotter
           " (harry)<-[:has_father]-(:Person {name: \"Lily Luna\", born: 2007})-[:has_mother]->(ginny),",
           " (ron)<-[:has_father]-(:Person {name: \"Rose Weasley\", born: 2005})-[:has_mother]->(hermione:Person {name: \"Hermione Granger\", born: 1979}),",
           " (ron)<-[:has_father]-(:Person {name: \"Hugo Weasley\", born: 2008})-[:has_mother]->(hermione);"
-        ).mkString
+        ).mkString,
+        cypherHarnessNamespace
       )(graph).results.runWith(Sink.ignore),
       timeout.duration
     )
@@ -391,7 +392,8 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
         (Morpheus)-[:KNOWS]->(Trinity),
         (Morpheus)-[:KNOWS]->(Cypher),
         (Cypher)-[:KNOWS]->(Smith),
-        (Smith)-[:CODED_BY]->(Architect)"""
+        (Smith)-[:CODED_BY]->(Architect)""",
+        cypherHarnessNamespace
       )(graph).results.runWith(Sink.ignore),
       timeout.duration
     )

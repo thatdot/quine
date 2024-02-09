@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
-import com.thatdot.quine.graph.InMemoryNodeLimit
+import com.thatdot.quine.graph.{InMemoryNodeLimit, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 /** Top-level type of all shard-related messages relayed through the graph
@@ -33,7 +33,7 @@ object ShardMessage {
   /** Instruct the shard to forcibly stop all of its nodes */
   case object RemoveNodes extends ShardMessage
 
-  case class PurgeNode(qid: QuineId, replyTo: QuineRef)
+  case class PurgeNode(namespace: NamespaceId, qid: QuineId, replyTo: QuineRef)
       extends ShardMessage
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
@@ -42,14 +42,14 @@ object ShardMessage {
     * @param predicate how to pick the nodes to remove
     * @param replyTo where to send a signal that the operation is done
     */
-  final case class RemoveNodesIf(predicate: LocalPredicate, replyTo: QuineRef)
+  final case class RemoveNodesIf(namespace: NamespaceId, predicate: LocalPredicate, replyTo: QuineRef)
       extends QuineMessage
       with AskableQuineMessage[BaseMessage.Done.type]
 
-  final case class LocalPredicate(predicate: QuineIdAtTime => Boolean)
+  final case class LocalPredicate(predicate: SpaceTimeQuineId => Boolean)
 
   /** Request the shard sleep a node. No guarantees. For testing. */
-  final case class RequestNodeSleep(idToSleep: QuineIdAtTime, replyTo: QuineRef)
+  final case class RequestNodeSleep(idToSleep: SpaceTimeQuineId, replyTo: QuineRef)
       extends ShardMessage
       with AskableQuineMessage[BaseMessage.Done.type]
 
@@ -59,8 +59,12 @@ object ShardMessage {
     * @param atTime historical moment to sample
     * @param replyTo where to send the result nodes
     */
-  final case class SampleAwakeNodes(limit: Option[Int], atTime: Option[Milliseconds], replyTo: QuineRef)
-      extends ShardMessage
+  final case class SampleAwakeNodes(
+    namespace: NamespaceId,
+    limit: Option[Int],
+    atTime: Option[Milliseconds],
+    replyTo: QuineRef
+  ) extends ShardMessage
       with AskableQuineMessage[Source[AwakeNode, NotUsed]]
 
   final case class AwakeNode(quineId: QuineId) extends ShardMessage
@@ -108,4 +112,14 @@ object ShardMessage {
     * @param limits in-memory soft/hard limits
     */
   final case class CurrentInMemoryLimits(limits: Option[InMemoryNodeLimit]) extends ShardMessage
+
+  final case class CreateNamespace(namespaceId: NamespaceId, replyTo: QuineRef)
+      extends ShardMessage
+      with AskableQuineMessage[NamespaceChangeResult]
+
+  final case class DeleteNamespace(namespaceId: NamespaceId, replyTo: QuineRef, remainingRetries: Int = 1000)
+      extends ShardMessage
+      with AskableQuineMessage[NamespaceChangeResult]
+
+  final case class NamespaceChangeResult(didHaveEffect: Boolean) extends ShardMessage
 }

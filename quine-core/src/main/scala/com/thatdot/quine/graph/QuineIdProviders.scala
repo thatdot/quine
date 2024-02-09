@@ -387,7 +387,6 @@ final case class NameSpacedUuidProvider(
 //    hashToLength(qid.array.drop(16), 1).head.toInt  // IDs in the same namespace go to the same shard
       )
     ).getOrElse { // In case that fails:
-//      println(s"localNamespace is not of the expected type!  $localNamespace")
       Math.abs(ByteBuffer.wrap(QuineIdProvider.hashToLength(custom._1.getBytes(UTF_8), 4)).getInt())
     }
 

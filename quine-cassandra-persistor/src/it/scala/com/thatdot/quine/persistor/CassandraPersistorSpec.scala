@@ -21,6 +21,7 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
     new CassandraInstanceWrapper[CassandraPersistor](inetSocketAddress =>
       new CassandraPersistor(
         PersistenceConfig(),
+        namespace = None,
         keyspace = "quine",
         replicationFactor = 1,
         readSettings = statementSettings,
@@ -39,7 +40,7 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
     cassandraWrapper.stop()
   }
 
-  lazy val persistor: PersistenceAgent = cassandraWrapper.instance
+  lazy val persistor: NamespacedPersistenceAgent = cassandraWrapper.instance
 
   override def runnable: Boolean = true
 }
@@ -51,7 +52,7 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
   * address and port
   * - If that fails will default to InMemoryPersistor
   */
-class CassandraInstanceWrapper[T <: PersistenceAgent](buildFromAddress: InetSocketAddress => T)(implicit
+class CassandraInstanceWrapper[T <: NamespacedPersistenceAgent](buildFromAddress: InetSocketAddress => T)(implicit
   val system: ActorSystem
 ) extends LazyLogging {
 

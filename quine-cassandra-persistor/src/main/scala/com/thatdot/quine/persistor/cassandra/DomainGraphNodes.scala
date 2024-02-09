@@ -8,9 +8,10 @@ import org.apache.pekko.stream.Materializer
 
 import cats.Applicative
 import cats.syntax.apply._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support._
@@ -22,13 +23,14 @@ trait DomainGraphNodeColumnNames {
   final protected val dataColumn: CassandraColumn[DomainGraphNode] = CassandraColumn[DomainGraphNode]("data")
 }
 
-object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames {
-  protected val tableName = "domain_graph_nodes"
+object DomainGraphNodesDefinition
+    extends TableDefinition[DomainGraphNodes]("domain_graph_nodes", None)
+    with DomainGraphNodeColumnNames {
   protected val partitionKey: CassandraColumn[DomainGraphNodeId] = domainGraphNodeIdColumn
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[DomainGraphNode]] = List(dataColumn)
 
-  private val createTableStatement: SimpleStatement =
+  protected val createTableStatement: SimpleStatement =
     makeCreateTableStatement.build
       .setTimeout(createTableTimeout)
 
@@ -43,7 +45,7 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
+    verifyTable: CqlIdentifier => Future[Unit],
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
@@ -68,25 +70,32 @@ object DomainGraphNodes extends TableDefinition with DomainGraphNodeColumnNames 
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
         prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, _, _, _))
+      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, firstRowStatement, dropTableStatement, _, _, _))
     )(ExecutionContexts.parasitic)
   }
+
+  def create(
+    session: CqlSession,
+    chunker: Chunker,
+    readSettings: CassandraStatementSettings,
+    writeSettings: CassandraStatementSettings
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[DomainGraphNodes] = ???
 }
 
 class DomainGraphNodes(
   session: CqlSession,
   chunker: Chunker,
   writeSettings: CassandraStatementSettings,
+  firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement
 )(implicit mat: Materializer)
-    extends CassandraTable(session)
+    extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with DomainGraphNodeColumnNames {
 
   import syntax._
-
-  def nonEmpty(): Future[Boolean] = yieldsResults(StandingQueries.firstRowStatement)
 
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     chunker(domainGraphNodes.toList) { dgns =>

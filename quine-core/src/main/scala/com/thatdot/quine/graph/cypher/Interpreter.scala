@@ -22,7 +22,7 @@ import com.thatdot.quine.graph.cypher.SkipOptimizingActor._
 import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, QueryContextResult, QueryPackage}
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
-import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, PropertyEvent}
+import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NamespaceId, PropertyEvent, SkipOptimizerKey}
 import com.thatdot.quine.model.{
   EdgeDirection,
   HalfEdge,
@@ -99,7 +99,8 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
         }.toMap
         val queryNormalized = query.substitute(parameterSubstitutions)
         val toReturnNormalized = queryNormalized.toReturn
-        val skipOptimizerActor = graph.cypherOps.skipOptimizerCache.get(toReturnNormalized -> atTime)
+        val skipOptimizerActor =
+          graph.cypherOps.skipOptimizerCache.get(SkipOptimizerKey(toReturnNormalized, namespace, atTime))
         val requestedSource =
           (skipOptimizerActor ? (ResumeQuery(
             queryNormalized,
@@ -131,10 +132,10 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
 
     val qids: Source[QuineId, Any] = query.entry match {
       case EntryPoint.AllNodesScan =>
-        graph.enumerateAllNodeIds()
+        graph.enumerateAllNodeIds(namespace)
 
       case EntryPoint.NodeById(ids) =>
-        Source.fromIterator(() => ids.iterator)
+        Source(ids)
     }
     qids.flatMapConcat { (qid: QuineId) =>
       Source
@@ -164,11 +165,10 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
   */
 class AtTimeInterpreter(
   val graph: CypherOpsGraph,
+  val namespace: NamespaceId,
   val atTime: Option[Milliseconds],
   val bypassSkipOptimization: Boolean
 ) extends GraphExternalInterpreter {
-  def this(graph: CypherOpsGraph, atTime: Milliseconds, bypassSkipOptimization: Boolean) =
-    this(graph, Some(atTime), bypassSkipOptimization)
 
   protected val cypherEc: ExecutionContext = graph.nodeDispatcherEC
 
@@ -182,8 +182,8 @@ class AtTimeInterpreter(
   * @see [[graph.cypherOps.currentMomentInterpreter]]
   * @param graph
   */
-class ThoroughgoingInterpreter(graph: CypherOpsGraph)
-    extends AtTimeInterpreter(graph, None, bypassSkipOptimization = true)
+class ThoroughgoingInterpreter(graph: CypherOpsGraph, namespace: NamespaceId)
+    extends AtTimeInterpreter(graph, namespace, None, bypassSkipOptimization = true)
 
 // Knows what to do with in-node queries
 trait OnNodeInterpreter
@@ -282,7 +282,7 @@ trait OnNodeInterpreter
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] =
-    graph.cypherOps.continueQuery(query, parameters, atTime, context)
+    graph.cypherOps.continueQuery(query, parameters, namespace, atTime, context)
 
   final private[cypher] def interpretArgumentEntry(
     query: ArgumentEntry,
@@ -661,6 +661,8 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
   import Query._
 
   protected def cypherEc: ExecutionContext
+
+  def namespace: NamespaceId
 
   implicit protected def cypherProcessTimeout: Timeout
 

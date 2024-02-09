@@ -10,12 +10,12 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.Applicative
 import cats.syntax.apply._
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
+import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
-import com.thatdot.quine.graph.EventTime
+import com.thatdot.quine.graph.{EventTime, NamespaceId}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
 import com.thatdot.quine.persistor.cassandra.support._
@@ -30,13 +30,14 @@ trait SnapshotsColumnNames {
   final protected val multipartCountColumn: CassandraColumn[Int] = CassandraColumn[Int]("multipart_count")
 }
 
-abstract class SnapshotsTableDefinition extends TableDefinition with SnapshotsColumnNames {
-  protected val tableName = "snapshots"
+abstract class SnapshotsTableDefinition(namespace: NamespaceId)
+    extends TableDefinition[Snapshots]("snapshots", namespace)
+    with SnapshotsColumnNames {
   protected val partitionKey = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[_]] = List(timestampColumn, multipartIndexColumn)
   protected val dataColumns: List[CassandraColumn[_]] = List(dataColumn, multipartCountColumn)
 
-  private val createTableStatement: SimpleStatement =
+  protected val createTableStatement: SimpleStatement =
     makeCreateTableStatement.withClusteringOrder(timestampColumn.name, DESC).build.setTimeout(createTableTimeout)
 
   private val getLatestTime: Select =
@@ -60,35 +61,24 @@ abstract class SnapshotsTableDefinition extends TableDefinition with SnapshotsCo
 
   def create(
     session: CqlSession,
-    verifyTable: String => Future[Unit],
+    chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    writeSettings: CassandraStatementSettings
   )(implicit
+    materializer: Materializer,
     futureInstance: Applicative[Future]
   ): Future[Snapshots] = {
     import shapeless.syntax.std.tuple._
     logger.debug("Preparing statements for {}", tableName)
 
-    val createdSchema = futureInstance.whenA(
-      shouldCreateTables
-    )(
-      session
-        .executeAsync(createTableStatement)
-        .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
-    )
-
-    createdSchema.flatMap(_ =>
-      (
-        T2(insertStatement, deleteAllByPartitionKeyStatement)
-          .map(prepare(session, writeSettings))
-          .toTuple ++
-        T4(getLatestTime.build, getLatestTimeBefore, getParts, selectAllQuineIds)
-          .map(prepare(session, readSettings))
-          .toTuple
-      ).mapN(new Snapshots(session, firstRowStatement, _, _, _, _, _, _))
-    )(ExecutionContexts.parasitic)
+    (
+      T2(insertStatement, deleteAllByPartitionKeyStatement)
+        .map(prepare(session, writeSettings))
+        .toTuple ++
+      T4(getLatestTime.build, getLatestTimeBefore, getParts, selectAllQuineIds)
+        .map(prepare(session, readSettings))
+        .toTuple
+    ).mapN(new Snapshots(session, firstRowStatement, dropTableStatement, _, _, _, _, _, _))
   }
 
 }
@@ -96,17 +86,16 @@ abstract class SnapshotsTableDefinition extends TableDefinition with SnapshotsCo
 class Snapshots(
   session: CqlSession,
   firstRowStatement: SimpleStatement,
+  dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteByQidStatement: PreparedStatement,
   getLatestTimeStatement: PreparedStatement,
   getLatestTimeBeforeStatement: PreparedStatement,
   getPartsStatement: PreparedStatement,
   selectAllQuineIds: PreparedStatement
-) extends CassandraTable(session)
+) extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with SnapshotsColumnNames {
   import syntax._
-
-  def nonEmpty(): Future[Boolean] = yieldsResults(firstRowStatement)
 
   def persistSnapshotPart(
     id: QuineId,

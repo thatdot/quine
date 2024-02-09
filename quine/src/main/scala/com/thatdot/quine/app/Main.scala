@@ -14,6 +14,7 @@ import scala.util.{Failure, Success}
 import org.apache.pekko.Done
 import org.apache.pekko.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
 import org.apache.pekko.http.scaladsl.model.Uri
+import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
@@ -27,7 +28,7 @@ import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, Q
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
-import com.thatdot.quine.persistor.ExceptionWrappingPersistenceAgent
+import com.thatdot.quine.persistor.{ExceptionWrappingPersistenceAgent, PrimePersistor}
 
 object Main extends App with LazyLogging {
 
@@ -37,6 +38,13 @@ object Main extends App with LazyLogging {
       Logger("thatdot.Interactive"),
       System.err
     )
+
+  // Warn if character encoding is unexpected
+  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
+    statusLines.warn(
+      s"System character encoding is ${Charset.defaultCharset} - did you mean to specify -Dfile.encoding=UTF-8?"
+    )
+  }
 
   // Parse command line arguments.
   // On any failure, print messages and terminate process.
@@ -118,11 +126,12 @@ object Main extends App with LazyLogging {
     try Await
       .result(
         GraphService(
-          persistor = system =>
-            new ExceptionWrappingPersistenceAgent(
-              PersistenceBuilder.build(config.store, config.persistence)(system),
-              system.dispatcher
-            ),
+          persistorMaker = system => {
+            val persistor =
+              PersistenceBuilder.build(config.store, config.persistence)(Materializer.matFromSystem(system))
+            persistor.initializeOnce // Initialize the default namespace
+            persistor
+          },
           idProvider = config.id.idProvider,
           shardCount = config.shardCount,
           inMemorySoftNodeLimit = config.inMemorySoftNodeLimit,
@@ -136,12 +145,12 @@ object Main extends App with LazyLogging {
           metricRegistry = Metrics,
           enableDebugMetrics = config.metrics.enableDebugMetrics
         ).flatMap(graph =>
-          graph.persistor
+          graph.namespacePersistor
             .syncVersion(
               "Quine app state",
               QuineApp.VersionKey,
               QuineApp.CurrentPersistenceVersion,
-              () => QuineApp.quineAppIsEmpty(graph.persistor)
+              () => QuineApp.quineAppIsEmpty(graph.namespacePersistor)
             )
             .map(_ => graph)(ExecutionContexts.parasitic)
         )(ExecutionContexts.parasitic),
@@ -155,16 +164,22 @@ object Main extends App with LazyLogging {
 
   implicit val system: ActorSystem = graph.system
   val ec: ExecutionContext = graph.shardDispatcherEC
-  val appState = new QuineApp(graph)
+  val quineApp = new QuineApp(graph)
 
-  registerUserDefinedProcedure(new CypherStandingWiretap(appState.getStandingQueryId))
+  quineApp.restoreNonDefaultNamespacesFromMetaData(ec, timeout)
 
-  // Warn if character encoding is unexpected
-  if (Charset.defaultCharset != StandardCharsets.UTF_8) {
-    statusLines.warn(
-      s"System character encoding is ${Charset.defaultCharset} - did you mean to specify -Dfile.encoding=UTF-8?"
+  val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
+  Await.result(loadDataFut, timeout.duration * 2)
+
+  var recipeInterpreterTask: Option[Cancellable] = recipe.map(r =>
+    RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
+      graph.idProvider
     )
-  }
+  )
+
+  registerUserDefinedProcedure(
+    new CypherStandingWiretap((queryName, namespace) => quineApp.getStandingQueryId(queryName, namespace))
+  )
 
   statusLines.info("Graph is ready")
 
@@ -178,30 +193,6 @@ object Main extends App with LazyLogging {
     )
   }
 
-  @volatile
-  var recipeInterpreterTask: Option[Cancellable] = None
-
-  def attemptAppLoad(): Unit =
-    appState
-      .load(timeout, config.shouldResumeIngest)
-      .onComplete {
-        case Success(()) =>
-          recipeInterpreterTask = recipe.map(r =>
-            RecipeInterpreter(statusLines, r, appState, graph, bindAndResolvableAddresses.map(_._2))(
-              graph.idProvider
-            )
-          )
-        case Failure(cause) =>
-          statusLines.warn(
-            "Failed to load application state. This is most likely due to a failure " +
-            "in the persistence backend",
-            cause
-          )
-          system.scheduler.scheduleOnce(500.millis)(attemptAppLoad())(ec)
-      }(ec)
-
-  attemptAppLoad()
-
   private val improveQuine = ImproveQuine(
     config.helpMakeQuineBetter,
     BuildInfo.version,
@@ -211,7 +202,7 @@ object Main extends App with LazyLogging {
   improveQuine.started()
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, appState, config.loadedConfigJson, resolvableUrl, timeout)
+    new QuineAppRoutes(graph, quineApp, config.loadedConfigJson, resolvableUrl, timeout)
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
       .onComplete {
         case Success(binding) =>
@@ -230,7 +221,7 @@ object Main extends App with LazyLogging {
     }
     implicit val ec = ExecutionContexts.parasitic
     for {
-      _ <- appState.shutdown()
+      _ <- quineApp.shutdown()
       _ <- graph.shutdown()
     } yield {
       statusLines.info("Shutdown complete.")

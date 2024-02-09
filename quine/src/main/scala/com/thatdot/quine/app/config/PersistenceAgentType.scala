@@ -29,7 +29,7 @@ object PersistenceAgentType extends PureconfigInstances {
 
     def bloomFilterSize = None
 
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): PersistenceAgent =
+    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): NamespacedPersistenceAgent =
       new EmptyPersistor(persistenceConfig)
   }
 
@@ -53,7 +53,9 @@ object PersistenceAgentType extends PureconfigInstances {
     commitInterval: FiniteDuration = 10.seconds,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(true)
+  ) extends PersistenceAgentType(true) {
+    assert(numberPartitions > 0, "Must have a positive number of partitions")
+  }
 
   val defaultCassandraPort = 9042
   def defaultCassandraAddress: List[InetSocketAddress] =
@@ -76,7 +78,9 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType(false)
+  ) extends PersistenceAgentType(false) {
+    assert(endpoints.nonEmpty, "Must specify at least one Cassandra endpoint")
+  }
 
   final case class Keyspaces(
     keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),

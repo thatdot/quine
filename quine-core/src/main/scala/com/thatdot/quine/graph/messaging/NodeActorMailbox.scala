@@ -30,10 +30,10 @@ final class NodeActorMailbox(settings: ActorSystem.Settings, config: Config)
   override def create(owner: Option[ActorRef], system: Option[ActorSystem]): MessageQueue = {
     // Turn the actor name back into a node ID (we always create nodes with their ID in the name)
     val path: ActorPath = owner.get.path
-    val qidAtTime = QuineIdAtTime.fromInternalString(path.name)
+    val qid = SpaceTimeQuineId.fromInternalString(path.name)
 
     // Fetch back out an existing message queue or else create a new one
-    NodeActorMailboxExtension(system.get).getOrCreateMessageQueue(qidAtTime)
+    NodeActorMailboxExtension(system.get).getOrCreateMessageQueue(qid)
   }
 }
 object NodeActorMailbox {
@@ -123,7 +123,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * behind the CHM's `compute` write lock.
     */
   val messageQueues =
-    new ConcurrentHashMap[QuineIdAtTime, NodeActorMailbox.NodeMessageQueue]()
+    new ConcurrentHashMap[SpaceTimeQuineId, NodeActorMailbox.NodeMessageQueue]()
 
   /** Histogram of the mailbox sizes */
   val mailboxSizes: BinaryHistogramCounter = BinaryHistogramCounter(
@@ -134,13 +134,13 @@ final class NodeActorMailboxExtensionImpl extends Extension {
   /** Find the message queue for a node. If that queue doesn't exist, create a
     * fresh queue
     *
-    * @param qidAtTime node for which we want the queue
+    * @param qid node for which we want the queue
     * @return message queue for the node
     */
-  def getOrCreateMessageQueue(qidAtTime: QuineIdAtTime): NodeActorMailbox.NodeMessageQueue =
+  def getOrCreateMessageQueue(qid: SpaceTimeQuineId): NodeActorMailbox.NodeMessageQueue =
     messageQueues.computeIfAbsent(
-      qidAtTime,
-      (_: QuineIdAtTime) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes)
+      qid,
+      (_: SpaceTimeQuineId) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes)
     )
 
   /** Removes the message queue for a node if that queue is empty
@@ -149,15 +149,29 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * @param qid node for which we should remove the queue
     * @return if the removal succeeded (failure indicates a non-empty queue)
     */
-  def removeMessageQueueIfEmpty(qidAtTime: QuineIdAtTime): Boolean = {
+  def removeMessageQueueIfEmpty(qid: SpaceTimeQuineId): Boolean = {
     // `compute` prevents concurrent lookups of the queue while we check if it is empty
     val updatedQueue = messageQueues.compute(
-      qidAtTime,
-      (_: QuineIdAtTime, queue: NodeActorMailbox.NodeMessageQueue) =>
+      qid,
+      (_: SpaceTimeQuineId, queue: NodeActorMailbox.NodeMessageQueue) =>
         if ((queue eq null) || queue.hasMessages) queue else null
     )
     updatedQueue eq null
   }
+
+  /** Removes the message queue for a node and drops any messages enqueued in it
+    *
+    * @note does nothing if the message queue is already absent and returns success
+    * @param qid node for which we should remove the queue
+    * @return if the removal succeeded
+    */
+  def removeMessageQueueAndDropMessages(qid: SpaceTimeQuineId): Boolean =
+    try {
+      val _ = messageQueues.remove(qid)
+      true
+    } catch {
+      case _: NullPointerException => false // `qid` is not present in `messageQueues`
+    }
 
   /** Gets or creates a message queue for a node and inserts the given message
     * into it.
@@ -168,15 +182,14 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * @return whether the message was enqueued (else it was ignored)
     */
   @inline
-  def enqueueIntoMessageQueue(qidAtTime: QuineIdAtTime, envelope: Envelope): Boolean =
+  def enqueueIntoMessageQueue(qid: SpaceTimeQuineId, envelope: Envelope): Boolean =
     if (NodeActorMailbox.shouldIgnoreWhenSleeping(envelope.message)) {
       false
     } else {
-
       // `compute` prevents concurrent removal of the queue while we insert into it
       messageQueues.compute(
-        qidAtTime,
-        (_: QuineIdAtTime, queue: NodeActorMailbox.NodeMessageQueue) => {
+        qid,
+        (_: SpaceTimeQuineId, queue: NodeActorMailbox.NodeMessageQueue) => {
           val newQueue = if (queue eq null) {
             new NodeActorMailbox.NodeMessageQueue(mailboxSizes)
           } else {
@@ -197,9 +210,9 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     * @param shardRef address of the shard to which the node belongs
     * @param envelope message (and sender) to enqueue
     */
-  def enqueueIntoMessageQueueAndWakeup(qidAtTime: QuineIdAtTime, shardRef: ActorRef, envelope: Envelope): Unit =
-    if (enqueueIntoMessageQueue(qidAtTime, envelope)) {
+  def enqueueIntoMessageQueueAndWakeup(qid: SpaceTimeQuineId, shardRef: ActorRef, envelope: Envelope): Unit =
+    if (enqueueIntoMessageQueue(qid, envelope)) {
       // Only wake up the node if a message was enqueued
-      shardRef.tell(WakeUp(qidAtTime), ActorRef.noSender)
+      shardRef.tell(WakeUp(qid), ActorRef.noSender)
     }
 }

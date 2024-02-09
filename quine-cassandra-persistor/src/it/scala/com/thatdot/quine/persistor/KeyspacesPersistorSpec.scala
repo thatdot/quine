@@ -13,8 +13,9 @@ class KeyspacesPersistorSpec extends PersistenceAgentSpec {
     val _ = persistor.shutdown()
   }
 
-  lazy val persistor: PersistenceAgent = new KeyspacesPersistor(
+  lazy val persistor: NamespacedPersistenceAgent = new KeyspacesPersistor(
     PersistenceConfig(),
+    namespace = None,
     keyspace = sys.env.getOrElse("CI_AKS_KEYSPACE", "blah"),
     awsRegion = None,
     awsRoleArn = None,

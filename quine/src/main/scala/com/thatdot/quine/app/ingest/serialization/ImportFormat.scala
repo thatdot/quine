@@ -15,7 +15,7 @@ import io.circe.jawn.CirceSupportParser
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
-import com.thatdot.quine.graph.{CypherOpsGraph, cypher}
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 
 /** Describes formats that Quine can import
   * Deserialized type refers to the the (nullable) type to be produced by invocations of this [[ImportFormat]]
@@ -57,6 +57,7 @@ trait ImportFormat {
 
   def writeValueToGraph(
     graph: CypherOpsGraph,
+    intoNamespace: NamespaceId,
     deserialized: cypher.Value
   ): Future[Done]
 }
@@ -67,9 +68,9 @@ class TestOnlyDrop extends ImportFormat {
   override def importBytes(data: Array[Byte]): Try[cypher.Value] = Success(cypher.Expr.Null)
   override def writeValueToGraph(
     graph: CypherOpsGraph,
+    intoNamespace: NamespaceId,
     deserialized: cypher.Value
   ): Future[Done] = Future.successful(Done)
-
 }
 
 abstract class CypherImportFormat(query: String, parameter: String) extends ImportFormat with LazyLogging {
@@ -96,10 +97,11 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   }
   def writeValueToGraph(
     graph: CypherOpsGraph,
+    intoNamespace: NamespaceId,
     deserialized: cypher.Value
   ): Future[Done] =
     atLeastOnceQuery
-      .stream(deserialized)(graph)
+      .stream(deserialized, intoNamespace)(graph)
       .runWith(Sink.ignore)(graph.materializer)
 }
 //"Drop Format" should not run a query but should still read from ...

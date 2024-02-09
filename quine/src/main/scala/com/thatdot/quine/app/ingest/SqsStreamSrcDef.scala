@@ -15,9 +15,9 @@ import software.amazon.awssdk.services.sqs.model.Message
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
 import com.thatdot.quine.util.SwitchMode
 
@@ -35,6 +35,7 @@ import com.thatdot.quine.util.SwitchMode
   */
 final case class SqsStreamSrcDef(
   override val name: String,
+  override val intoNamespace: NamespaceId,
   queueURL: String,
   format: ImportFormat,
   initialSwitchMode: SwitchMode,

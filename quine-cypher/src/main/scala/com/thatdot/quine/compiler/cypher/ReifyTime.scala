@@ -85,7 +85,6 @@ object ReifyTime extends UserDefinedProcedure {
 
     implicit val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
     implicit val idProvider: QuineIdProvider = location.idProvider
-    import location._
 
     // Generate a QuineId from a values that define a time node key (time and period)
     def timeNodeId(
@@ -120,26 +119,32 @@ object ReifyTime extends UserDefinedProcedure {
         .sequence(
           List(
             // set a label on each of prev, this, next
-            graph.literalOps.setLabel(nodeId, period.name),
-            graph.literalOps
+            graph.literalOps(location.namespace).setLabel(nodeId, period.name),
+            graph
+              .literalOps(location.namespace)
               .setLabel(previousNodeId, period.name),
-            graph.literalOps.setLabel(nextNodeId, period.name),
+            graph.literalOps(location.namespace).setLabel(nextNodeId, period.name),
             // set each of prev.period, this.period, next.period
-            graph.literalOps.setProp(nodeId, "period", QuineValue.Str(period.name)),
-            graph.literalOps.setProp(previousNodeId, "period", QuineValue.Str(period.name)),
-            graph.literalOps.setProp(nextNodeId, "period", QuineValue.Str(period.name)),
+            graph.literalOps(location.namespace).setProp(nodeId, "period", QuineValue.Str(period.name)),
+            graph.literalOps(location.namespace).setProp(previousNodeId, "period", QuineValue.Str(period.name)),
+            graph.literalOps(location.namespace).setProp(nextNodeId, "period", QuineValue.Str(period.name)),
             // set each of prev.start, this.start, next.period
-            graph.literalOps.setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toOffsetDateTime)),
-            graph.literalOps
+            graph
+              .literalOps(location.namespace)
+              .setProp(nodeId, "start", QuineValue.DateTime(periodTruncatedDate.toOffsetDateTime)),
+            graph
+              .literalOps(location.namespace)
               .setProp(previousNodeId, "start", QuineValue.DateTime(previousPeriodSourceTime.toOffsetDateTime)),
-            graph.literalOps.setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toOffsetDateTime)),
+            graph
+              .literalOps(location.namespace)
+              .setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toOffsetDateTime)),
             // edges (prev)->(this)->(next)
-            graph.literalOps.addEdge(nodeId, nextNodeId, "NEXT"),
-            graph.literalOps.addEdge(previousNodeId, nodeId, "NEXT")
+            graph.literalOps(location.namespace).addEdge(nodeId, nextNodeId, "NEXT"),
+            graph.literalOps(location.namespace).addEdge(previousNodeId, nodeId, "NEXT")
           ) ::: (parentNodeId match {
             case Some(pid) =>
               val periodEdgeName = period.name.toUpperCase
-              List(graph.literalOps.addEdge(pid, nodeId, periodEdgeName))
+              List(graph.literalOps(location.namespace).addEdge(pid, nodeId, periodEdgeName))
             case None => List.empty
           })
         ) //(implicitly, location.graph.nodeDispatcherEC)
@@ -157,7 +162,7 @@ object ReifyTime extends UserDefinedProcedure {
     // This only includes nodes that follow the parent hierarchy, not nodes connected by next
     val timeNodeSource = Source
       .single(generateTimeNodeResult.last._1)
-      .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, atTime, graph))
+      .mapAsync(parallelism = 1)(UserDefinedProcedure.getAsCypherNode(_, location.namespace, location.atTime, graph))
       .map(Vector(_))
 
     //TODO GROSS!!!!! 🤮
@@ -193,43 +198,44 @@ object ReifyTime extends UserDefinedProcedure {
         z.withNano(0).withSecond(0).withMinute(0).withHour(0).withDayOfMonth(1).withMonth(1)
       def previous(z: ZonedDateTime): ZonedDateTime = z.minusYears(1)
       def next(z: ZonedDateTime): ZonedDateTime = z.plusYears(1)
-      val labelFormat = DateTimeFormatter.ofPattern("yyyy")
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy")
     },
     "month" -> new Period {
       val name = "month"
-      def truncate(z: ZonedDateTime) =
+      def truncate(z: ZonedDateTime): ZonedDateTime =
         z.withNano(0).withSecond(0).withMinute(0).withHour(0).withDayOfMonth(1)
-      def previous(z: ZonedDateTime) = z.minusMonths(1)
-      def next(z: ZonedDateTime) = z.plusMonths(1)
-      val labelFormat = DateTimeFormatter.ofPattern("MM")
+      def previous(z: ZonedDateTime): ZonedDateTime = z.minusMonths(1)
+      def next(z: ZonedDateTime): ZonedDateTime = z.plusMonths(1)
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MM")
     },
     "day" -> new Period {
       val name = "day"
       def truncate(z: ZonedDateTime): ZonedDateTime = z.withNano(0).withSecond(0).withMinute(0).withHour(0)
       def previous(z: ZonedDateTime): ZonedDateTime = z.minusDays(1)
       def next(z: ZonedDateTime): ZonedDateTime = z.plusDays(1)
-      val labelFormat = DateTimeFormatter.ofPattern("dd")
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("dd")
     },
     "hour" -> new Period {
       val name = "hour"
-      def truncate(z: ZonedDateTime) = z.withNano(0).withSecond(0).withMinute(0)
-      def previous(z: ZonedDateTime) = z.minusHours(1)
-      def next(z: ZonedDateTime) = z.plusHours(1)
-      val labelFormat = DateTimeFormatter.ofPattern("HH")
+
+      def truncate(z: ZonedDateTime): ZonedDateTime = z.withNano(0).withSecond(0).withMinute(0)
+      def previous(z: ZonedDateTime): ZonedDateTime = z.minusHours(1)
+      def next(z: ZonedDateTime): ZonedDateTime = z.plusHours(1)
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH")
     },
     "minute" -> new Period {
       val name = "minute"
-      def truncate(z: ZonedDateTime) = z.withNano(0).withSecond(0)
-      def previous(z: ZonedDateTime) = z.minusMinutes(1)
-      def next(z: ZonedDateTime) = z.plusMinutes(1)
-      val labelFormat = DateTimeFormatter.ofPattern("mm")
+      def truncate(z: ZonedDateTime): ZonedDateTime = z.withNano(0).withSecond(0)
+      def previous(z: ZonedDateTime): ZonedDateTime = z.minusMinutes(1)
+      def next(z: ZonedDateTime): ZonedDateTime = z.plusMinutes(1)
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("mm")
     },
     "second" -> new Period {
       val name = "second"
-      def truncate(z: ZonedDateTime) = z.withNano(0)
-      def previous(z: ZonedDateTime) = z.minusSeconds(1)
-      def next(z: ZonedDateTime) = z.plusSeconds(1)
-      val labelFormat = DateTimeFormatter.ofPattern("ss")
+      def truncate(z: ZonedDateTime): ZonedDateTime = z.withNano(0)
+      def previous(z: ZonedDateTime): ZonedDateTime = z.minusSeconds(1)
+      def next(z: ZonedDateTime): ZonedDateTime = z.plusSeconds(1)
+      val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("ss")
     }
   )
 }

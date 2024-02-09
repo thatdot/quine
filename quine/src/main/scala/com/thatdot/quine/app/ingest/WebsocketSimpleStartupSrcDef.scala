@@ -14,8 +14,8 @@ import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.ingest.serialization.ImportFormat
-import com.thatdot.quine.graph.CypherOpsGraph
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
 import com.thatdot.quine.util.SwitchMode
@@ -30,6 +30,7 @@ object WebsocketSimpleStartupSrcDef {
 
 final case class WebsocketSimpleStartupSrcDef(
   override val name: String,
+  override val intoNamespace: NamespaceId,
   format: ImportFormat,
   wsUrl: String,
   initMessages: Seq[String],

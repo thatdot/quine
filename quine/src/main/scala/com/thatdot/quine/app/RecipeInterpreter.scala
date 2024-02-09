@@ -16,7 +16,7 @@ import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
 import com.thatdot.quine.graph.cypher.{QueryResults, Value}
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Runs a Recipe by making a series of blocking graph method calls as determined
@@ -26,6 +26,9 @@ import com.thatdot.quine.model.QuineIdProvider
   * should be cancelled using the returned Cancellable.
   */
 object RecipeInterpreter {
+
+  // Recipes always use the default namespace.
+  val namespace: NamespaceId = None
 
   type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStore
 
@@ -60,6 +63,7 @@ object RecipeInterpreter {
       val standingQueryName = s"STANDING-${i + 1}"
       val addStandingQueryResult: Future[Boolean] = appState.addStandingQuery(
         standingQueryName,
+        namespace,
         standingQueryDefinition
       )
       try if (!Await.result(addStandingQueryResult, 5 seconds)) {
@@ -82,6 +86,7 @@ object RecipeInterpreter {
       appState.addIngestStream(
         ingestStreamName,
         ingestStream,
+        namespace,
         restoredStatus = None,
         shouldRestoreIngest = true,
         timeout = 5 seconds
@@ -122,7 +127,7 @@ object RecipeInterpreter {
       initialDelay = interval,
       interval = interval
     ) { () =>
-      appState.getIngestStream(ingestStreamName) match {
+      appState.getIngestStream(ingestStreamName, namespace) match {
         case None =>
           statusLines.error(s"Failed getting Ingest Stream $ingestStreamName (it does not exist)")
           task.cancel()
@@ -165,7 +170,7 @@ object RecipeInterpreter {
       interval = interval
     ) { () =>
       appState
-        .getStandingQuery(standingQueryName)
+        .getStandingQuery(standingQueryName, namespace)
         .onComplete {
           case Failure(ex) =>
             statusLines.error(s"Failed getting Standing Query $standingQueryName", ex)
@@ -200,7 +205,8 @@ object RecipeInterpreter {
       delay = interval
     ) { () =>
       val queryResults: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
-        queryText = statusQuery.cypherQuery
+        queryText = statusQuery.cypherQuery,
+        namespace = namespace
       )(graphService)
       try {
         val resultContent: Seq[Seq[Value]] =

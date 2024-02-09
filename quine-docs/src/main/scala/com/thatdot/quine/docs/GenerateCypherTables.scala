@@ -7,6 +7,7 @@ import org.pegdown.PegDownProcessor
 
 import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
+import com.thatdot.quine.graph.defaultNamespaceId
 
 object GenerateCypherTables extends App {
 
@@ -133,7 +134,8 @@ object GenerateCypherTables extends App {
     builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions.sortBy(_.name)),
     userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values.toList.sortBy(_.name)),
     userDefinedProcsPath -> userDefinedProcedureTable(
-      (new CypherStandingWiretap(_ => None) :: Proc.userDefinedProcedures.values.toList).sortBy(_.name)
+      (new CypherStandingWiretap((_, _) => None) ::
+      Proc.userDefinedProcedures.values.toList).sortBy(_.name)
     )
   )
 

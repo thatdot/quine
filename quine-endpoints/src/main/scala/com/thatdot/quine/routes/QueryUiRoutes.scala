@@ -7,6 +7,7 @@ import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 /** Nodes in the UI
   *
@@ -140,14 +141,14 @@ trait QueryUiRoutes
   protected val cypherTag: Tag = Tag("Cypher Query Language")
   protected val gremlinTag: Tag = Tag("Gremlin Query Language")
 
-  final type QueryInputs[A] = (AtTime, Option[FiniteDuration], A)
+  final type QueryInputs[A] = (AtTime, Option[FiniteDuration], NamespaceParameter, A)
 
   val gremlinLanguageUrl = "https://tinkerpop.apache.org/gremlin.html"
   val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
   val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, CypherQueryResult]] =
     endpoint(
       request = post(
-        url = query / "cypher" /? (atTime & reqTimeout),
+        url = query / "cypher" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery("RETURN $x+$y AS three", Map(("x" -> Json.fromInt(1)), ("y" -> Json.fromInt(2))))
         ).orElse(textRequestWithExample("RETURN 1 + 2 AS three"))
@@ -170,7 +171,7 @@ trait QueryUiRoutes
   val cypherNodesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Seq[UiNode[Id]]]] =
     endpoint(
       request = post(
-        url = query / "cypher" / "nodes" /? (atTime & reqTimeout),
+        url = query / "cypher" / "nodes" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH (n) RETURN n LIMIT $lim",
@@ -191,7 +192,7 @@ trait QueryUiRoutes
   val cypherEdgesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Seq[UiEdge[Id]]]] =
     endpoint(
       request = post(
-        url = query / "cypher" / "edges" /? (atTime & reqTimeout),
+        url = query / "cypher" / "edges" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH ()-[e]->() RETURN e LIMIT $lim",
@@ -213,7 +214,7 @@ trait QueryUiRoutes
     implicit val queryResult = anySchema(Some("gremlin JSON"))
     endpoint(
       request = post(
-        url = query / "gremlin" /? (atTime & reqTimeout),
+        url = query / "gremlin" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().valueMap().limit(1)"))
@@ -247,7 +248,7 @@ trait QueryUiRoutes
   val gremlinNodesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[UiNode[Id]]]] =
     endpoint(
       request = post(
-        url = query / "gremlin" / "nodes" /? (atTime & reqTimeout),
+        url = query / "gremlin" / "nodes" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().limit(1)"))
@@ -267,7 +268,7 @@ trait QueryUiRoutes
   val gremlinEdgesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[UiEdge[Id]]]] =
     endpoint(
       request = post(
-        url = query / "gremlin" / "edges" /? (atTime & reqTimeout),
+        url = query / "gremlin" / "edges" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
           GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> Json.fromInt(1)))
         ).orElse(textRequestWithExample("g.V().outE().limit(1)"))

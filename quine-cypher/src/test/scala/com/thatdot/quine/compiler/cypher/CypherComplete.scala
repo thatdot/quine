@@ -51,13 +51,13 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         val mother = person.hasMother.getOrElse(person.id)
         val father = person.hasFather.getOrElse(person.id)
         for {
-          _ <- graph.literalOps.setProp(person.id, "first", QuineValue.Str(person.first))
-          _ <- graph.literalOps.setProp(person.id, "last", QuineValue.Str(person.last))
+          _ <- graph.literalOps(cypherHarnessNamespace).setProp(person.id, "first", QuineValue.Str(person.first))
+          _ <- graph.literalOps(cypherHarnessNamespace).setProp(person.id, "last", QuineValue.Str(person.last))
           _ <- person.birthYear.traverse { year =>
-            graph.literalOps.setProp(person.id, "birthYear", QuineValue.Integer(year))
+            graph.literalOps(cypherHarnessNamespace).setProp(person.id, "birthYear", QuineValue.Integer(year))
           }
-          _ <- graph.literalOps.addEdge(person.id, mother, "has_mother")
-          _ <- graph.literalOps.addEdge(person.id, father, "has_father")
+          _ <- graph.literalOps(cypherHarnessNamespace).addEdge(person.id, mother, "has_mother")
+          _ <- graph.literalOps(cypherHarnessNamespace).addEdge(person.id, father, "has_father")
         } yield ()
       } as assert(true)
     }

@@ -6,6 +6,7 @@ import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
@@ -14,6 +15,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -50,7 +52,8 @@ class InMemoryPersistor(
   ] = new ConcurrentHashMap(),
   metaData: ConcurrentMap[String, Array[Byte]] = new ConcurrentHashMap(),
   domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
-  val persistenceConfig: PersistenceConfig = PersistenceConfig()
+  val persistenceConfig: PersistenceConfig = PersistenceConfig(),
+  val namespace: NamespaceId = None
 ) extends PersistenceAgent {
 
   private val allTables =
@@ -232,26 +235,35 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = {
-    this.domainGraphNodes.putAll(domainGraphNodes.asJava)
-    Future.unit
-  }
+  def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
+    Future.successful(
+      this.domainGraphNodes.putAll(domainGraphNodes.asJava)
+    )
 
-  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = {
-
+  def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = Future.successful(
     for { domainGraphNodesId <- domainGraphNodes } this.domainGraphNodes.remove(domainGraphNodesId)
-
-    Future.unit
-  }
+  )
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
     Future.successful(domainGraphNodes.asScala.toMap)
 
   def shutdown(): Future[Unit] = Future.unit
+
+  def delete(): Future[Unit] = Future.successful(
+    allTables.foreach(_.clear())
+  )
 }
 
 object InMemoryPersistor {
 
   /** Create a new empty in-memory persistor */
-  def empty = new InMemoryPersistor()
+  def empty() = new InMemoryPersistor()
+
+  def namespacePersistor: PrimePersistor = new StatelessPrimePersistor(
+    PersistenceConfig(),
+    None,
+    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
+  )(null) // Materializer is never used if bloomFilterSize is set to none
+  def persistorMaker: ActorSystem => PrimePersistor =
+    _ => namespacePersistor
 }

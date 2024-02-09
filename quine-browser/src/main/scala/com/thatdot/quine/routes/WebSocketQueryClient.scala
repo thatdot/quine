@@ -1,7 +1,5 @@
 package com.thatdot.quine.routes
 
-//import endpoints4s.ujson.JsonSchemas
-
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 
@@ -13,6 +11,7 @@ import org.scalajs.dom
 import org.scalajs.dom.console
 
 import com.thatdot.quine.routes.exts.CirceJsonAnySchema
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 /** Client to run queries (streaming results, cancellation, concurrently) over a WebSocket
   *
@@ -214,6 +213,7 @@ final case class StreamingQuery(
   query: String,
   parameters: Map[String, Json],
   language: QueryLanguage,
+  namespace: NamespaceParameter,
   atTime: Option[Long],
   maxResultBatch: Option[Int],
   resultsWithinMillis: Option[Int]
@@ -225,6 +225,7 @@ final case class StreamingQuery(
       sort,
       parameters,
       language,
+      namespace,
       atTime,
       maxResultBatch,
       resultsWithinMillis

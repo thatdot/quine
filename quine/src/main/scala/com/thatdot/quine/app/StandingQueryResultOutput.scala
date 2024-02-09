@@ -40,7 +40,7 @@ import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, StandingQueryResult, cypher}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.util.StringInput.filenameOrUrl
@@ -55,16 +55,18 @@ object StandingQueryResultOutput extends LazyLogging {
 
   /** Construct a destination to which results are output
     *
-    * @param name   name of the Standing Query Output
-    * @param output configuration for handling the results
-    * @param graph  reference to the graph
+    * @param name        name of the Standing Query Output
+    * @param inNamespace the namespace running this standing query
+    * @param output      configuration for handling the results
+    * @param graph       reference to the graph
     */
   def resultHandlingFlow(
     name: String,
+    inNamespace: NamespaceId,
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph
   ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
-    val execToken = SqResultsExecToken(s"SQ: $name")
+    val execToken = SqResultsExecToken(s"SQ: $name in: $inNamespace")
     output match {
       case Drop => Flow[StandingQueryResult].map(_ => execToken)
       case iq: InternalQueue =>
@@ -356,7 +358,7 @@ object StandingQueryResultOutput extends LazyLogging {
                   }
                   StandingQueryResult(meta, newData)
                 }
-                .via(resultHandlingFlow(name, thenOutput, graph))
+                .via(resultHandlingFlow(name, inNamespace, thenOutput, graph))
           }).named(s"sq-output-andthen-for-$name")
 
         lazy val atLeastOnceCypherQuery =
@@ -369,8 +371,16 @@ object StandingQueryResultOutput extends LazyLogging {
               val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap)
 
               val cypherResultRows =
-                if (shouldRetry) atLeastOnceCypherQuery.stream(value)(graph)
-                else graph.cypherOps.query(compiledQuery, atTime = None, parameters = Map(parameter -> value)).results
+                if (shouldRetry) atLeastOnceCypherQuery.stream(value, inNamespace)(graph)
+                else
+                  graph.cypherOps
+                    .query(
+                      compiledQuery,
+                      namespace = inNamespace,
+                      atTime = None,
+                      parameters = Map(parameter -> value)
+                    )
+                    .results
 
               cypherResultRows
                 .map { resultRow =>

@@ -14,15 +14,15 @@ import org.apache.pekko
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
-import com.thatdot.quine.graph.messaging.QuineIdAtTime
+import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
-import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig}
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def persistenceConfig: PersistenceConfig
 
-  protected def persistor: PersistenceAgent
+  protected def persistor: NamespacedPersistenceAgent
 
   protected def graph: BaseGraph
 
@@ -71,7 +71,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       // promise tracking updates to shard in-memory map of nodes (completed by the shard)
       val shardPromise = Promise[Unit]()
 
-      def reportSleepSuccess(qidAtTime: QuineIdAtTime): Unit =
+      def reportSleepSuccess(qidAtTime: SpaceTimeQuineId): Unit =
         shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
 
       // Transition out of a `ConsideringSleep` state (if it is still state)
@@ -106,13 +106,13 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           latestUpdateAfterSnapshot match {
             case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
               val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
-              metrics.snapshotSize.update(snapshot.length)
+              metrics.snapshotSize(namespace).update(snapshot.length)
 
               implicit val scheduler: Scheduler = context.system.scheduler
 
               // Save all persistor data
               val snapshotSaved = retryPersistence(
-                metrics.persistorPersistSnapshotTimer,
+                metrics.persistorPersistSnapshotTimer(namespace),
                 persistor.persistSnapshot(
                   qid,
                   if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
@@ -125,9 +125,9 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                 case key @ (globalId, localId) =>
                   val serialized =
                     multipleValuesStandingQueries.get(key).map(MultipleValuesStandingQueryStateCodec.format.write)
-                  serialized.foreach(arr => metrics.standingQueryStateSize(globalId).update(arr.length))
+                  serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
                   retryPersistence(
-                    metrics.persistorSetStandingQueryStateTimer,
+                    metrics.persistorSetStandingQueryStateTimer(namespace),
                     persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
                     context.dispatcher
                   )

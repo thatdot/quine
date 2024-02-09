@@ -8,6 +8,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Using
 
+import org.apache.pekko.http.scaladsl.model.StatusCodes.ClientError
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
@@ -17,10 +18,12 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
+import endpoints4s.Invalid
 
 import com.thatdot.quine.app.config.SslConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.routes.exts.NamespaceNotFoundException
 
 object MediaTypes {
   val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
@@ -53,10 +56,15 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoi
   implicit def idProvider: QuineIdProvider = graph.idProvider
   implicit lazy val materializer: Materializer = graph.materializer
 
-  override def handleServerError(throwable: Throwable): StandardRoute = {
-    logger.error("Uncaught exception when handling HTTP request", throwable)
-    super.handleServerError(throwable)
-  }
+  override def handleServerError(throwable: Throwable): StandardRoute =
+    throwable match {
+      case e: NamespaceNotFoundException =>
+        super.handleClientErrors(Invalid(e.getMessage))
+
+      case _ =>
+        logger.error("Uncaught exception when handling HTTP request", throwable)
+        super.handleServerError(throwable)
+    }
 
   def isReady = graph.isReady
 

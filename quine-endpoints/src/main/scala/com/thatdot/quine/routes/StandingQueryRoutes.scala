@@ -8,6 +8,7 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
 import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
 
 @title("Standing Query")
 @docs("Standing Query")
@@ -52,8 +53,8 @@ object StandingQueryPattern {
   @unnamed()
   final case class Cypher(
     @docs("""Cypher query describing the standing query pattern. This must take the form of
-        |MATCH <pattern> WHERE <condition> RETURN <columns>. When the `mode` is `DistinctId`,
-        |the `RETURN` must also be `DISTINCT`.""".stripMargin)
+                                   |MATCH <pattern> WHERE <condition> RETURN <columns>. When the `mode` is `DistinctId`,
+                                   |the `RETURN` must also be `DISTINCT`.""".stripMargin)
     query: String,
     mode: StandingQueryMode = StandingQueryMode.DistinctId
   ) extends StandingQueryPattern
@@ -264,14 +265,13 @@ object StandingQueryResultOutputUserDef {
   final case class CypherQuery(
     @docs("Cypher query to execute on standing query result") query: String,
     @docs("Name of the Cypher parameter holding the standing query result") parameter: String = "that",
-    @docs(
-      "maximum number of standing query results being processed at once"
-    )
+    @docs("maximum number of standing query results being processed at once")
     parallelism: Int = IngestRoutes.defaultWriteParallelism,
     @docs(
       """Send the result of the Cypher query to another standing query output (in order to provide chained
-        |transformation and actions). The data returned by this query will be passed as the `data` object
-        |of the new StandingQueryResult (see \"Standing Query Result Output\")""".stripMargin.replace('\n', ' ')
+                                    |transformation and actions). The data returned by this query will be passed as the `data` object
+                                    |of the new StandingQueryResult (see \"Standing Query Result Output\")""".stripMargin
+        .replace('\n', ' ')
     )
     andThen: Option[StandingQueryResultOutputUserDef],
     @docs(
@@ -280,10 +280,11 @@ object StandingQueryResultOutputUserDef {
     allowAllNodeScan: Boolean = false,
     @docs(
       """Whether queries that raise a potentially-recoverable error should be retried. If set to true (the default),
-      |such errors will be retried until they succeed. Additionally, if the query is not idempotent, the query's
-      |effects may occur multiple times in the case of external system failure. Query idempotency
-      |can be checked with the EXPLAIN keyword. If set to false, results and effects will not be duplicated,
-      |but may be dropped in the case of external system failure""".stripMargin.replace('\n', ' ')
+                                    |such errors will be retried until they succeed. Additionally, if the query is not idempotent, the query's
+                                    |effects may occur multiple times in the case of external system failure. Query idempotency
+                                    |can be checked with the EXPLAIN keyword. If set to false, results and effects will not be duplicated,
+                                    |but may be dropped in the case of external system failure""".stripMargin
+        .replace('\n', ' ')
     )
     shouldRetry: Boolean = true
   ) extends StandingQueryResultOutputUserDef
@@ -474,7 +475,7 @@ trait StandingQueryRoutes
     docs = Some("Unique name for a standing query output")
   )
 
-  val standingIssue: Endpoint[(String, StandingQueryDefinition), Either[ClientErrors, Unit]] = {
+  val standingIssue: Endpoint[(String, NamespaceParameter, StandingQueryDefinition), Either[ClientErrors, Unit]] = {
     val sq: StandingQueryDefinition = StandingQueryDefinition(
       StandingQueryPattern.Cypher(
         "MATCH (n)-[:has_father]->(m) WHERE exists(n.name) AND exists(m.name) RETURN DISTINCT strId(n) AS kidWithDad"
@@ -489,7 +490,7 @@ trait StandingQueryRoutes
     )
     endpoint(
       request = post(
-        url = standing / standingName,
+        url = standing / standingName /? namespace,
         entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq)
       ),
       response = customBadRequest("Standing query exists already")
@@ -498,15 +499,15 @@ trait StandingQueryRoutes
         .withSummary(Some("Create Standing Query"))
         .withDescription(
           Some(
-            """|Individual standing queries are issued into the graph one time; 
-               |result outputs are produced as new data is written into Quine and matches are found. 
+            """|Individual standing queries are issued into the graph one time;
+               |result outputs are produced as new data is written into Quine and matches are found.
                |
-               |Compared to traditional queries, standing queries are less imperative 
-               |and more declarative - it doesn't matter what order parts of the pattern match, 
+               |Compared to traditional queries, standing queries are less imperative
+               |and more declarative - it doesn't matter what order parts of the pattern match,
                |only that the composite structure exists.
                |
-               |Learn more about writing 
-               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html) 
+               |Learn more about writing
+               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
                |in the docs.""".stripMargin
           )
         )
@@ -514,10 +515,12 @@ trait StandingQueryRoutes
     )
   }
 
-  val standingAddOut: Endpoint[(String, String, StandingQueryResultOutputUserDef), Option[Either[ClientErrors, Unit]]] =
+  val standingAddOut: Endpoint[(String, String, NamespaceParameter, StandingQueryResultOutputUserDef), Option[
+    Either[ClientErrors, Unit]
+  ]] =
     endpoint(
       request = post(
-        url = standing / standingName / "output" / standingOutputName,
+        url = standing / standingName / "output" / standingOutputName /? namespace,
         entity = jsonOrYamlRequestWithExample[StandingQueryResultOutputUserDef](additionalSqOutput)
       ),
       response = wheneverFound(badRequest() orElse created()),
@@ -531,9 +534,9 @@ trait StandingQueryRoutes
         .withTags(List(standingTag))
     )
 
-  val standingRemoveOut: Endpoint[(String, String), Option[StandingQueryResultOutputUserDef]] =
+  val standingRemoveOut: Endpoint[(String, String, NamespaceParameter), Option[StandingQueryResultOutputUserDef]] =
     endpoint(
-      request = delete(standing / standingName / "output" / standingOutputName),
+      request = delete(standing / standingName / "output" / standingOutputName /? namespace),
       response = wheneverFound(ok(jsonResponse[StandingQueryResultOutputUserDef])),
       docs = EndpointDocs()
         .withSummary(Some("Delete Standing Query Output"))
@@ -545,10 +548,10 @@ trait StandingQueryRoutes
         .withTags(List(standingTag))
     )
 
-  val standingCancel: Endpoint[String, Option[RegisteredStandingQuery]] =
+  val standingCancel: Endpoint[(String, NamespaceParameter), Option[RegisteredStandingQuery]] =
     endpoint(
       request = delete(
-        url = standing / standingName
+        url = standing / standingName /? namespace
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
@@ -561,10 +564,10 @@ trait StandingQueryRoutes
         .withTags(List(standingTag))
     )
 
-  val standingGet: Endpoint[String, Option[RegisteredStandingQuery]] =
+  val standingGet: Endpoint[(String, NamespaceParameter), Option[RegisteredStandingQuery]] =
     endpoint(
       request = get(
-        url = standing / standingName
+        url = standing / standingName /? namespace
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
@@ -575,25 +578,25 @@ trait StandingQueryRoutes
         .withTags(List(standingTag))
     )
 
-  val standingList: Endpoint[Unit, List[RegisteredStandingQuery]] =
+  val standingList: Endpoint[NamespaceParameter, List[RegisteredStandingQuery]] =
     endpoint(
       request = get(
-        url = standing
+        url = standing /? namespace
       ),
       response = ok(jsonResponse[List[RegisteredStandingQuery]]),
       docs = EndpointDocs()
         .withSummary(Some("List Standing Queries"))
         .withDescription(
           Some(
-            """|Return a JSON array containing the configured 
-               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html) 
+            """|Return a JSON array containing the configured
+               |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
                |and their associated metrics keyed by standing query name. """.stripMargin
           )
         )
         .withTags(List(standingTag))
     )
 
-  val standingPropagate: Endpoint[(Boolean, Int), Unit] = {
+  val standingPropagate: Endpoint[(Boolean, Int, NamespaceParameter), Option[Unit]] = {
     val sleepingToo = qs[Option[Boolean]](
       "include-sleeping",
       docs = Some(
@@ -612,10 +615,10 @@ trait StandingQueryRoutes
     ).xmap(_.getOrElse(4))(Some(_))
     endpoint(
       request = post(
-        url = standing / "control" / "propagate" /? (sleepingToo & wakeUpParallelism),
+        url = standing / "control" / "propagate" /? (sleepingToo & wakeUpParallelism & namespace),
         entity = emptyRequest
       ),
-      response = accepted(emptyResponse),
+      response = accepted(emptyResponse).orNotFound(notFoundDocs = Some("Namespace not found")),
       docs = EndpointDocs()
         .withSummary(Some("Propagate Standing Queries"))
         .withTags(List(standingTag))
@@ -635,5 +638,13 @@ trait StandingQueryRoutes
           )
         )
     )
+  }
+}
+
+object StandingQueryRoutes {
+  sealed trait StandingPropagateResult
+  object StandingPropagateResult {
+    object Success extends StandingPropagateResult
+    object NotFound extends StandingPropagateResult
   }
 }

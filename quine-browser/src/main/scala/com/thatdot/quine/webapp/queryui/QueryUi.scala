@@ -21,6 +21,8 @@ import slinky.web.html.{`type` => _, _}
 
 import com.thatdot.quine.Util.{escapeHtml, renderJsonResultValue}
 import com.thatdot.quine.routes._
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper
+import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.defaultNamespaceParameter
 import com.thatdot.quine.webapp.History
 import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components._
@@ -53,7 +55,8 @@ import com.thatdot.{visnetwork => vis}
     initialAtTime: Option[Long] = None,
     initialLayout: NetworkLayout = NetworkLayout.Graph,
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
-    queryMethod: QueryMethod = QueryMethod.WebSocket
+    queryMethod: QueryMethod = QueryMethod.WebSocket,
+    initialNamespace: Option[String] = None
   )
 
   /** @param query input in the query bar
@@ -86,6 +89,7 @@ import com.thatdot.{visnetwork => vis}
     uiNodeQuickQueries: Vector[UiNodeQuickQuery],
     uiNodeAppearances: Vector[UiNodeAppearance],
     atTime: Option[Long],
+    namespace: Option[String],
     areSampleQueriesVisible: Boolean
   )
 
@@ -104,6 +108,7 @@ import com.thatdot.{visnetwork => vis}
     uiNodeQuickQueries = UiNodeQuickQuery.defaults,
     uiNodeAppearances = Vector.empty,
     atTime = props.initialAtTime,
+    namespace = props.initialNamespace,
     areSampleQueriesVisible = false
   )
 
@@ -521,6 +526,7 @@ import com.thatdot.{visnetwork => vis}
     */
   private def nodeQuery(
     query: String,
+    namespace: Option[String],
     atTime: Option[Long],
     language: QueryLanguage,
     parameters: Map[String, Json]
@@ -529,14 +535,14 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.Restful =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinNodesPost((atTime, None, GremlinQuery(query))).future
+            props.routes.gremlinNodesPost((atTime, None, namespace, GremlinQuery(query))).future
           case QueryLanguage.Cypher =>
-            props.routes.cypherNodesPost((atTime, None, CypherQuery(query))).future
+            props.routes.cypherNodesPost((atTime, None, namespace, CypherQuery(query))).future
         }).map(Some(_))
 
       case QueryMethod.WebSocket =>
         val nodeCallback = new QueryCallbacks.CollectNodesToFuture()
-        val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
+        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, None, Some(100))
         for {
           client <- getWebSocketClient()
           queryId <- Future.fromTry(client.query(streamingQuery, nodeCallback).toTry)
@@ -551,6 +557,7 @@ import com.thatdot.{visnetwork => vis}
   private def edgeQuery(
     query: String,
     atTime: Option[Long],
+    namespace: Option[String],
     language: QueryLanguage,
     parameters: Map[String, Json]
   ): Future[Option[Seq[UiEdge[String]]]] =
@@ -558,14 +565,14 @@ import com.thatdot.{visnetwork => vis}
       case QueryMethod.Restful =>
         mergeEndpointErrorsIntoFuture(language match {
           case QueryLanguage.Gremlin =>
-            props.routes.gremlinEdgesPost((atTime, None, GremlinQuery(query, parameters))).future
+            props.routes.gremlinEdgesPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
           case QueryLanguage.Cypher =>
-            props.routes.cypherEdgesPost((atTime, None, CypherQuery(query, parameters))).future
+            props.routes.cypherEdgesPost((atTime, None, namespace, CypherQuery(query, parameters))).future
         }).map(Some(_))
 
       case QueryMethod.WebSocket =>
         val edgeCallback = new QueryCallbacks.CollectEdgesToFuture()
-        val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
+        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, None, Some(100))
         for {
           client <- getWebSocketClient()
           _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
@@ -581,20 +588,21 @@ import com.thatdot.{visnetwork => vis}
   private def textQuery(
     query: String,
     atTime: Option[Long],
+    namespace: Option[String],
     language: QueryLanguage,
     parameters: Map[String, Json],
     updateResults: Either[Seq[Json], CypherQueryResult] => Unit
   ): Future[Option[Unit]] =
     (props.queryMethod, language) match {
       case (QueryMethod.Restful, QueryLanguage.Gremlin) =>
-        val gremlinResults = props.routes.gremlinPost((atTime, None, GremlinQuery(query, parameters))).future
+        val gremlinResults = props.routes.gremlinPost((atTime, None, namespace, GremlinQuery(query, parameters))).future
         mergeEndpointErrorsIntoFuture(gremlinResults).map { results =>
           updateResults(Left(results))
           Some(())
         }
 
       case (QueryMethod.Restful, QueryLanguage.Cypher) =>
-        val cypherResults = props.routes.cypherPost((atTime, None, CypherQuery(query, parameters))).future
+        val cypherResults = props.routes.cypherPost((atTime, None, namespace, CypherQuery(query, parameters))).future
         mergeEndpointErrorsIntoFuture(cypherResults).map { results =>
           updateResults(Right(results))
           Some(())
@@ -662,7 +670,7 @@ import com.thatdot.{visnetwork => vis}
               def onQueryCancelError(message: String): Unit = ()
             }
         }
-        val streamingQuery = StreamingQuery(query, parameters, language, atTime, Some(1000), Some(100))
+        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, Some(1000), Some(100))
         for {
           client <- getWebSocketClient()
           queryId <- Future.fromTry(client.query(streamingQuery, textCallback).toTry)
@@ -721,7 +729,7 @@ import com.thatdot.{visnetwork => vis}
         setState(_.copy(bottomBar = Some(MessageBarContent(rendered, "lightgreen"))))
       }
 
-      textQuery(query, state.atTime, language, Map.empty, updateResults).onComplete {
+      textQuery(query, state.atTime, state.namespace, language, Map.empty, updateResults).onComplete {
         case Success(outcome) =>
           val outcomeColor = if (outcome == None) "lightgrey" else "lightgreen"
           setState(s =>
@@ -755,7 +763,7 @@ import com.thatdot.{visnetwork => vis}
 
       val nodesEdgesFut = for {
         // Query for nodes
-        rawNodesOpt <- nodeQuery(query, state.atTime, language, Map.empty)
+        rawNodesOpt <- nodeQuery(query, state.namespace, state.atTime, language, Map.empty)
         dedupedNodesOpt = rawNodesOpt.map { rawNodes =>
           val dedupedIds = mutable.Set.empty[String]
           rawNodes.filter(n => dedupedIds.add(n.id))
@@ -790,21 +798,21 @@ import com.thatdot.{visnetwork => vis}
             val query = props.edgeQueryLanguage match {
               case QueryLanguage.Gremlin =>
                 """g.V(new).bothE().dedup().where(_.and(
-                | _.outV().strId().is(within(all)),
-                | _.inV().strId().is(within(all))))""".stripMargin
+                  | _.outV().strId().is(within(all)),
+                  | _.inV().strId().is(within(all))))""".stripMargin
 
               case QueryLanguage.Cypher =>
                 """UNWIND $new AS newId
-                |MATCH (n)-[e]-(m)
-                |WHERE strId(n) = newId AND strId(m) IN $all
-                |RETURN DISTINCT e""".stripMargin
+                  |MATCH (n)-[e]-(m)
+                  |WHERE strId(n) = newId AND strId(m) IN $all
+                  |RETURN DISTINCT e""".stripMargin
             }
             val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
             val queryParameters = Map(
               "new" -> Json.fromValues(newNodes.map(Json.fromString)),
               "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString))
             )
-            edgeQuery(query, state.atTime, props.edgeQueryLanguage, queryParameters)
+            edgeQuery(query, state.atTime, state.namespace, props.edgeQueryLanguage, queryParameters)
           }
         edges = edgesOpt match {
           case Some(edges) =>
@@ -1065,7 +1073,7 @@ import com.thatdot.{visnetwork => vis}
       val visNode: vis.Node = props.graphData.nodeSet.get(heldNodeId).merge
       val uiNode = visNode.asInstanceOf[QueryUiVisNodeExt].uiNode
       println(uiNode)
-      props.routes.debugOpsVerbose(uiNode.id -> None).future.onComplete(println(_))
+      props.routes.debugOpsVerbose((uiNode.id, None, defaultNamespaceParameter)).future.onComplete(println(_))
     }
   }
 

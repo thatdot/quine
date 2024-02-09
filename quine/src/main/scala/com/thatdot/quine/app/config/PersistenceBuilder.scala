@@ -1,120 +1,120 @@
 package com.thatdot.quine.app.config
 
 import java.io.File
+import java.util.Properties
 
-import org.apache.pekko.actor.ActorSystem
+import scala.concurrent.Await
+import scala.concurrent.duration._
+
+import org.apache.pekko.stream.Materializer
 
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, Keyspaces, MapDb}
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.persistor.cassandra.aws.KeyspacesPersistor
+import com.thatdot.quine.persistor.cassandra.aws.{KeyspacesPersistor, PrimeKeyspacesPersistor}
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
+import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, PrimeCassandraPersistor}
+import com.thatdot.quine.util.QuineDispatchers
 
 /** Options for persistence */
 object PersistenceBuilder extends LazyLogging {
   def build(pt: PersistenceAgentType, persistenceConfig: PersistenceConfig)(implicit
-    system: ActorSystem
-  ): PersistenceAgent =
+    materializer: Materializer
+  ): PrimePersistor = {
+    val quineDispatchers = new QuineDispatchers(materializer.system)
     pt match {
-      case PersistenceAgentType.Empty => new EmptyPersistor(persistenceConfig)
-      case PersistenceAgentType.InMemory => new InMemoryPersistor(persistenceConfig = persistenceConfig)
+      case PersistenceAgentType.Empty => new StatelessPrimePersistor(persistenceConfig, None, new EmptyPersistor(_, _))
+      case PersistenceAgentType.InMemory =>
+        new StatelessPrimePersistor(
+          persistenceConfig,
+          None,
+          (pc, ns) => new InMemoryPersistor(persistenceConfig = persistenceConfig, namespace = ns)
+        )
       case r: PersistenceAgentType.RocksDb =>
-        if (r.createParentDir) {
-          val parentDir = r.filepath.getAbsoluteFile.getParentFile
-          if (parentDir.mkdirs())
-            logger.warn(s"Configured persistence directory: $parentDir did not exist; created.")
-        }
-        val db =
-          try new RocksDbPersistor(
-            r.filepath.getAbsolutePath,
-            r.writeAheadLog,
-            r.syncAllWrites,
-            new java.util.Properties(),
-            persistenceConfig
-          )
-          catch {
-            case err: UnsatisfiedLinkError =>
-              logger.error(
-                "RocksDB native library could not be loaded. " +
-                "Consider using MapDB instead by specifying `quine.store.type=map-db`",
-                err
-              )
-              sys.exit(1)
-          }
-
-        BloomFilteredPersistor.maybeBloomFilter(r.bloomFilterSize, db, persistenceConfig)
+        new RocksDbPrimePersistor(
+          r.createParentDir,
+          r.filepath,
+          r.writeAheadLog,
+          r.syncAllWrites,
+          new Properties(),
+          persistenceConfig,
+          r.bloomFilterSize,
+          quineDispatchers.blockingDispatcherEC
+        )
 
       case m: MapDb =>
-        val interval = if (m.writeAheadLog) Some(m.commitInterval) else None
-
-        def dbForPath(dbPath: MapDbPersistor.DbPath) =
-          new MapDbPersistor(dbPath, m.writeAheadLog, interval, persistenceConfig, Metrics)
-
-        def possiblyShardedDb(basePath: Option[File]) =
-          if (m.numberPartitions == 1) {
-            dbForPath(basePath match {
-              case None => MapDbPersistor.TemporaryDb
-              case Some(p) => MapDbPersistor.PersistedDb.makeDirIfNotExists(m.createParentDir, p)
-            })
-          } else {
-            val dbPaths: Vector[MapDbPersistor.DbPath] = basePath match {
-              case None => Vector.fill(m.numberPartitions)(MapDbPersistor.TemporaryDb)
-              case Some(p) =>
-                val name = p.getName
-                val parent = p.getParent
-
-                Vector.tabulate(m.numberPartitions) { (idx: Int) =>
-                  MapDbPersistor.PersistedDb.makeDirIfNotExists(m.createParentDir, new File(parent, s"part$idx.$name"))
-                }
-            }
-
-            new ShardedPersistor(dbPaths.map(dbForPath), persistenceConfig)
-          }
-
-        BloomFilteredPersistor.maybeBloomFilter(m.bloomFilterSize, possiblyShardedDb(m.filepath), persistenceConfig)
+        m.filepath match {
+          case Some(path) =>
+            new PersistedMapDbPrimePersistor(
+              m.createParentDir,
+              path,
+              m.writeAheadLog,
+              m.numberPartitions,
+              m.commitInterval,
+              Metrics,
+              persistenceConfig,
+              m.bloomFilterSize
+            )
+          case None =>
+            new TempMapDbPrimePersistor(
+              m.writeAheadLog,
+              m.numberPartitions,
+              m.commitInterval,
+              Metrics,
+              persistenceConfig,
+              m.bloomFilterSize
+            )
+        }
 
       case c: Cassandra =>
-        val db = new CassandraPersistor(
-          persistenceConfig,
-          c.keyspace,
-          c.replicationFactor,
-          CassandraStatementSettings(
-            c.readConsistency,
-            c.readTimeout
+        Await.result(
+          PrimeCassandraPersistor.create(
+            persistenceConfig,
+            c.bloomFilterSize,
+            c.endpoints,
+            c.localDatacenter,
+            c.replicationFactor,
+            c.keyspace,
+            c.shouldCreateKeyspace,
+            c.shouldCreateTables,
+            CassandraStatementSettings(
+              c.readConsistency,
+              c.readTimeout
+            ),
+            CassandraStatementSettings(
+              c.writeConsistency,
+              c.writeTimeout
+            ),
+            c.snapshotPartMaxSizeBytes,
+            Some(Metrics)
           ),
-          CassandraStatementSettings(
-            c.writeConsistency,
-            c.writeTimeout
-          ),
-          c.endpoints,
-          c.localDatacenter,
-          c.shouldCreateTables,
-          c.shouldCreateKeyspace,
-          Some(Metrics),
-          c.snapshotPartMaxSizeBytes
+          90.seconds
         )
-        BloomFilteredPersistor.maybeBloomFilter(c.bloomFilterSize, db, persistenceConfig)
 
       case c: Keyspaces =>
-        val db = new KeyspacesPersistor(
-          persistenceConfig,
-          c.keyspace,
-          c.awsRegion,
-          c.awsRoleArn,
-          CassandraStatementSettings(
-            c.readConsistency,
-            c.readTimeout
+        Await.result(
+          PrimeKeyspacesPersistor.create(
+            persistenceConfig,
+            c.bloomFilterSize,
+            c.keyspace,
+            c.awsRegion,
+            c.awsRoleArn,
+            CassandraStatementSettings(
+              c.readConsistency,
+              c.readTimeout
+            ),
+            c.writeTimeout,
+            c.shouldCreateKeyspace,
+            c.shouldCreateTables,
+            Some(Metrics),
+            c.snapshotPartMaxSizeBytes
           ),
-          c.writeTimeout,
-          c.shouldCreateTables,
-          c.shouldCreateKeyspace,
-          Some(Metrics),
-          c.snapshotPartMaxSizeBytes
+          91.seconds
         )
-        BloomFilteredPersistor.maybeBloomFilter(c.bloomFilterSize, db, persistenceConfig)
     }
+  }
 
 }

@@ -3,7 +3,7 @@ package com.thatdot.quine.persistor.cassandra
 import scala.collection.immutable
 import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.duration.DurationInt
+import scala.compat.java8.OptionConverters._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
@@ -11,17 +11,19 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.Source
 
-import cats.Applicative
 import cats.data.NonEmptyList
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
+import cats.{Applicative, Monad}
 import com.datastax.oss.driver.api.core._
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
+import shapeless.poly._
 
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   StandingQuery,
@@ -29,10 +31,11 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable}
-import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, PersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable, TableDefinition}
+import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, NamespacedPersistenceAgent, PersistenceConfig}
 
-/** This class exists because Scala 2 doesn't (natively) support polymorphic function values (lambdas),
+/** Used to break up large batch queries on AWS Keyspaces - which doesn't support batches of over 30 elements
+  * This class exists because Scala 2 doesn't (natively) support polymorphic function values (lambdas),
   * like Scala 3 does.
   * Consider it an alias for the function signature it wraps.
   */
@@ -40,29 +43,65 @@ abstract class Chunker {
   def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit]
 }
 
+abstract class CassandraPersistorDefinition {
+  protected def journalsTableDef(namespace: NamespaceId): JournalsTableDefinition
+  protected def snapshotsTableDef(namespace: NamespaceId): SnapshotsTableDefinition
+  def tablesForNamespace(namespace: NamespaceId): (
+    TableDefinition[Journals],
+    TableDefinition[Snapshots],
+    TableDefinition[StandingQueries],
+    TableDefinition[StandingQueryStates],
+    TableDefinition[DomainIndexEvents]
+  ) = (
+    journalsTableDef(namespace),
+    snapshotsTableDef(namespace),
+    new StandingQueriesDefinition(namespace),
+    new StandingQueryStatesDefinition(namespace),
+    new DomainIndexEventsDefinition(namespace)
+  )
+
+  def createTables(
+    namespace: NamespaceId,
+    session: CqlSession,
+    verifyTable: CqlSession => CqlIdentifier => Future[Unit]
+  )(implicit ec: ExecutionContext): Future[Unit] =
+    Future
+      .traverse(tablesForNamespace(namespace).productIterator)(
+        // TODO: This cast is perfectly safe, but to get rid of it:
+        // 1) Replace `.productIterator` above with `.toList` provided by shapeless on tuples
+        // which correctly returns List[TableDefinition], however, incorrectly only returns
+        // the last element of the tuple, DominIndexEvents. It works fine if you call .toList
+        // on the output of .tablesForNamespace().
+        // 2) Extract a stand-alone reproduction
+        // 3) Open a bug against shapeless with that reproduction
+        _.asInstanceOf[TableDefinition[_]].executeCreateTable(session, verifyTable(session))
+      )
+      .map(_ => ())(ExecutionContext.parasitic)
+}
+
+class PrepareStatements(
+  session: CqlSession,
+  chunker: Chunker,
+  readSettings: CassandraStatementSettings,
+  writeSettings: CassandraStatementSettings
+)(implicit materializer: Materializer, futureInstance: Applicative[Future])
+    extends (TableDefinition ~> Future) {
+  def apply[A](f: TableDefinition[A]): Future[A] = f.create(session, chunker, readSettings, writeSettings)
+}
+
 /** Persistence implementation backed by Cassandra.
   *
-  * @param replicationFactor
-  * @param readConsistency
-  * @param writeConsistency
   * @param writeTimeout How long to wait for a response when running an INSERT statement.
   * @param readTimeout How long to wait for a response when running a SELECT statement.
-  * @param endpoints address(s) (host and port) of the Cassandra cluster to connect to.
-  * @param localDatacenter If endpoints are specified, this argument is required. Default value on a new Cassandra install is 'datacenter1'.
-  * @param shouldCreateTables Whether or not to create the required tables if they don't already exist.
-  * @param shouldCreateKeyspace Whether or not to create the specified keyspace if it doesn't already exist. If it doesn't exist, it'll run {{{CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}}}}
   */
 abstract class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
-  keyspace: String,
-  readSettings: CassandraStatementSettings,
-  writeSettings: CassandraStatementSettings,
-  shouldCreateTables: Boolean,
-  shouldCreateKeyspace: Boolean,
+  session: CqlSession,
+  namespace: NamespaceId,
   val snapshotPartMaxSizeBytes: Int
 )(implicit
   materializer: Materializer
-) extends PersistenceAgent
+) extends NamespacedPersistenceAgent
     with MultipartSnapshotPersistenceAgent {
 
   import MultipartSnapshotPersistenceAgent._
@@ -70,51 +109,21 @@ abstract class CassandraPersistor(
   val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
-  implicit protected val futureInstance: Applicative[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+  implicit protected val futureInstance: Monad[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
 
-  protected def session: CqlSession
-  protected def journalsTableDef: JournalsTableDefinition
-  protected def snapshotsTableDef: SnapshotsTableDefinition
   protected def chunker: Chunker
 
-  /** An action verify the table before use. Use will be delayed until this Future completes
-    * @param session
-    * @param tableName
-    * @return
-    */
-  protected def verifyTable(session: CqlSession)(tableName: String): Future[Unit]
-
-  // TODO: this is getting a bit cursed. Come up with a way to create this class without blocking on Future
-  // to get the table definitions (prepared statements).
-  private lazy val (
-    journals,
-    snapshots,
-    standingQueries,
-    standingQueryStates,
-    metaData,
-    domainGraphNodes,
-    domainIndexEvents
-  ) = Await.result(
-    (
-      journalsTableDef.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
-      snapshotsTableDef.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      StandingQueries.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      StandingQueryStates.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      MetaData.create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
-      DomainGraphNodes.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
-      DomainIndexEvents.create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables)
-    ).tupled,
-    35.seconds
-  )
+  protected def journals: Journals
+  protected def snapshots: Snapshots
+  protected val standingQueries: StandingQueries
+  protected val standingQueryStates: StandingQueryStates
+  protected val domainIndexEvents: DomainIndexEvents
 
   protected def dataTables: List[CassandraTable] =
-    List(journals, domainIndexEvents, snapshots, standingQueries, standingQueryStates, domainGraphNodes)
-  // then combine them -- if any have results, then the system is not empty of quine data
-  override def emptyOfQuineData(): Future[Boolean] =
-    Future
-      .traverse(dataTables)(_.nonEmpty())(implicitly, ExecutionContexts.parasitic)
-      .map(_.exists(identity))(ExecutionContexts.parasitic)
+    List(journals, domainIndexEvents, snapshots, standingQueries, standingQueryStates)
 
+  // then combine them -- if any have results, then the system is not empty of quine data
+  override def emptyOfQuineData(): Future[Boolean] = dataTables.forallM(_.isEmpty())
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = journals.enumerateAllNodeIds()
 
   override def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = snapshots.enumerateAllNodeIds()
@@ -154,7 +163,10 @@ abstract class CassandraPersistor(
       .onComplete {
         case Success(_) => ()
         case Failure(e) =>
-          logger.error("Error when removing rows from table " + StandingQueryStates.tableName, e)
+          logger.error(
+            s"Error deleting rows in namespace ${namespace getOrElse "default"} from standing query states table for $standingQuery",
+            e
+          )
       }(materializer.executionContext)
     standingQueries.removeStandingQuery(standingQuery)
   }
@@ -180,21 +192,6 @@ abstract class CassandraPersistor(
   )
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     standingQueryStates.deleteStandingQueryStates(id)
-  override def getMetaData(key: String): Future[Option[Array[Byte]]] = metaData.getMetaData(key)
-
-  override def getAllMetaData(): Future[Map[String, Array[Byte]]] = metaData.getAllMetaData()
-
-  override def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
-    metaData.setMetaData(key, newValue)
-
-  override def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
-    this.domainGraphNodes.persistDomainGraphNodes(domainGraphNodes)
-
-  override def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
-    this.domainGraphNodes.removeDomainGraphNodes(domainGraphNodeIds)
-
-  override def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
-    this.domainGraphNodes.getDomainGraphNodes()
 
   override def shutdown(): Future[Unit] = session.closeAsync().toScala.void
 
@@ -226,5 +223,14 @@ abstract class CassandraPersistor(
 
   override def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
     domainIndexEvents.deleteByDgnId(dgnId)
-  def delete(): Future[Unit] = session.executeAsync(dropKeyspace(keyspace).build).thenApply[Unit](_ => ()).toScala
+  def delete(): Future[Unit] =
+    Future.traverse(dataTables)(_.delete())(implicitly, materializer.executionContext).void
+
+  def deleteKeyspace(): Future[Unit] = session.getKeyspace.asScala match {
+    case Some(keyspace) =>
+      session.executeAsync(dropKeyspace(keyspace).build).thenApply[Unit](_ => ()).toScala
+    case None =>
+      Future.failed(new RuntimeException("Can't drop keyspace when no keyspace set for " + session.getName))
+  }
+
 }

@@ -7,6 +7,8 @@ import org.apache.pekko.actor.CoordinatedShutdown
 
 import org.apache.commons.io.FileUtils
 
+import com.thatdot.quine.util.QuineDispatchers
+
 class RocksDbPersistorSpec extends PersistenceAgentSpec {
 
   /** Tests should run if RocksDB could be started or if in CI (in CI, we want
@@ -20,10 +22,12 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
       CoordinatedShutdown(system).addJvmShutdownHook(() => FileUtils.forceDelete(f.toFile))
       new RocksDbPersistor(
         filePath = f.toString,
+        None,
         writeAheadLog = true,
         syncWrites = false,
         dbOptionProperties = new Properties(),
-        PersistenceConfig()
+        PersistenceConfig(),
+        new QuineDispatchers(system).blockingDispatcherEC
       )
     } else {
       EmptyPersistor
