@@ -196,7 +196,7 @@ object StandingQueryPatterns extends LazyLogging {
 
     // These are the properties and IDs the standing query will need to be tracking
     val propertiesWatched =
-      mutable.Map.empty[(expressions.LogicalVariable, expressions.PropertyKeyName), expressions.LogicalVariable]
+      mutable.Map.empty[(expressions.LogicalVariable, Option[expressions.PropertyKeyName]), expressions.LogicalVariable]
     val idsWatched = mutable.Map.empty[(Boolean, expressions.LogicalVariable), expressions.LogicalVariable]
 
     // These are all of the columns we will be returning
@@ -243,8 +243,11 @@ object StandingQueryPatterns extends LazyLogging {
     // Build up the list of all columns to watch
     val toExtract: List[ReturnColumn] = {
       val builder = List.newBuilder[ReturnColumn]
-      for (((node, key), aliasedAs) <- propertiesWatched)
-        builder += ReturnColumn.Property(nodeIds(node), Symbol(key.name), Symbol(aliasedAs.name))
+      for (((node, whichProp), aliasedAs) <- propertiesWatched) // NB this may enumerate keys in an arbitrary order
+        whichProp match {
+          case Some(key) => builder += ReturnColumn.Property(nodeIds(node), Symbol(key.name), Symbol(aliasedAs.name))
+          case None => builder += ReturnColumn.AllProperties(nodeIds(node), Symbol(aliasedAs.name))
+        }
       for (((formatAsString, node), aliasedAs) <- idsWatched)
         builder += ReturnColumn.Id(nodeIds(node), formatAsString, Symbol(aliasedAs.name))
       builder.result()
@@ -315,7 +318,7 @@ object StandingQueryPatterns extends LazyLogging {
     variableNamer: expressions.Expression => String,
     nodesInScope: collection.Set[expressions.LogicalVariable],
     propertiesWatched: mutable.Map[
-      (expressions.LogicalVariable, expressions.PropertyKeyName),
+      (expressions.LogicalVariable, Option[expressions.PropertyKeyName]),
       expressions.LogicalVariable
     ],
     idsWatched: mutable.Map[(Boolean, expressions.LogicalVariable), expressions.LogicalVariable],
@@ -354,15 +357,26 @@ object StandingQueryPatterns extends LazyLogging {
     import org.opencypher.v9_0.util.Rewriter
     import org.opencypher.v9_0.util.{bottomUp, topDown}
 
-    // Rewrite the AST
+    // Rewrite the AST and validate uses of node variables
     val rewritten = expr
       .endoRewrite(topDown(Rewriter.lift {
 
         // Rewrite `nodeVariable.someProperty` to a fresh variable
-        case propAccess @ expressions.Property(variable: expressions.LogicalVariable, propKeyName) =>
+        case propAccess @ expressions.Property(nodeVariable: expressions.LogicalVariable, propKeyName) =>
           propertiesWatched.getOrElseUpdate(
-            variable -> propKeyName,
+            nodeVariable -> Some(propKeyName),
             expressions.Variable(variableNamer(propAccess))(propAccess.position)
+          )
+
+        case propertiesFunc @ expressions.FunctionInvocation(
+              _,
+              _,
+              _,
+              Vector(nodeVariable: expressions.LogicalVariable)
+            ) if propertiesFunc.function == functions.Properties =>
+          propertiesWatched.getOrElseUpdate(
+            nodeVariable -> None,
+            expressions.Variable(variableNamer(propertiesFunc))(propertiesFunc.position)
           )
 
         // Rewrite `id(nodeVariable)` to a fresh variable
@@ -370,10 +384,10 @@ object StandingQueryPatterns extends LazyLogging {
               _,
               _,
               _,
-              Vector(variable: expressions.LogicalVariable)
+              Vector(nodeVariable: expressions.LogicalVariable)
             ) if idFunc.function == functions.Id =>
           idsWatched.getOrElseUpdate(
-            false -> variable,
+            false -> nodeVariable,
             expressions.Variable(variableNamer(idFunc))(idFunc.position)
           )
 
@@ -382,10 +396,10 @@ object StandingQueryPatterns extends LazyLogging {
               _,
               expressions.FunctionName(functionName),
               false,
-              Vector(variable: expressions.LogicalVariable)
+              Vector(nodeVariable: expressions.LogicalVariable)
             ) if functionName.toLowerCase == CypherStrId.name.toLowerCase =>
           idsWatched.getOrElseUpdate(
-            true -> variable,
+            true -> nodeVariable,
             expressions.Variable(variableNamer(idFunc))(idFunc.position)
           )
 

@@ -364,9 +364,12 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         ),
         NodePatternId(0),
         Seq(
+          // NB these values should be the same, but their order may vary with things like scala version changes,
+          // because they are based on the order of map keys in a for comprehension
+          // (see comment in StandingQueryPatterns.scala by `val toExtract = `)
+          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_1")),
           ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_0")),
-          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_2")),
-          ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_1"))
+          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_2"))
         ),
         Some(
           Expr.Equal(

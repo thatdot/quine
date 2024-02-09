@@ -177,11 +177,16 @@ final case class GraphQueryPattern(
         props.map { case ReturnColumn.Property(_, key, pat) => key -> pat }.toMap
       }
 
-    val watchedIds: Map[NodePatternId, Map[Boolean, Symbol]] = toExtract.view
+    val watchingAllProperties: Map[NodePatternId, Set[Symbol]] = toExtract.view
+      .collect { case allPropsAlias: ReturnColumn.AllProperties => allPropsAlias }
+      .groupBy(_.node)
+      .fmap(_.map(alLProps => alLProps.aliasedAs).toSet)
+
+    val watchedIds: Map[NodePatternId, Map[Symbol, Boolean]] = toExtract.view
       .collect { case r: ReturnColumn.Id => r }
       .groupBy(_.node)
       .fmap { ids =>
-        ids.map { case ReturnColumn.Id(_, asStr, pat) => asStr -> pat }.toMap
+        ids.map { case ReturnColumn.Id(_, asStr, pat) => pat -> asStr }.toMap
       }
 
     // Keep track of which bits of the pattern are still unexplored
@@ -243,6 +248,10 @@ final case class GraphQueryPattern(
           Some(alias)
         )
 
+      for (alias <- watchingAllProperties.getOrElse(id, Set.empty)) subQueries += {
+        MultipleValuesStandingQuery.AllProperties(alias)
+      }
+
       // Sub-queries for labels
       // TODO: add a special case for this in `MultipleValuesStandingQuery.LocalProperty`
       labelOpt.foreach { label =>
@@ -285,7 +294,7 @@ final case class GraphQueryPattern(
       }
 
       // Sub-queries for a local ID
-      for ((formatAsString, aliasId) <- watchedIds.getOrElse(id, Map.empty))
+      for ((aliasId, formatAsString) <- watchedIds.getOrElse(id, Map.empty))
         subQueries += MultipleValuesStandingQuery.LocalId(aliasId, formatAsString)
 
       // sub-queries for edges
@@ -403,6 +412,11 @@ object GraphQueryPattern {
     final case class Property(
       node: NodePatternId,
       propertyKey: Symbol,
+      aliasedAs: Symbol
+    ) extends ReturnColumn
+
+    final case class AllProperties(
+      node: NodePatternId,
       aliasedAs: Symbol
     ) extends ReturnColumn
   }

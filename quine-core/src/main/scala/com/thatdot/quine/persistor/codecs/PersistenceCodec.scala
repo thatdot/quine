@@ -1690,6 +1690,22 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
   }
 
+  private[this] def readMultipleValuesAllPropertiesStandingQuery(
+    query: persistence.MultipleValuesAllPropertiesStandingQuery
+  ): MultipleValuesStandingQuery.AllProperties =
+    MultipleValuesStandingQuery.AllProperties(Symbol(query.aliasedAs))
+
+  private[this] def writeMultipleValuesAllPropertiesStandingQuery(
+    builder: FlatBufferBuilder,
+    query: MultipleValuesStandingQuery.AllProperties
+  ): Offset = {
+    val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
+    persistence.MultipleValuesAllPropertiesStandingQuery.createMultipleValuesAllPropertiesStandingQuery(
+      builder,
+      aliasedAsOff
+    )
+  }
+
   private[this] def readMultipleValuesFilterMapStandingQuery(
     query: persistence.MultipleValuesFilterMapStandingQuery
   ): MultipleValuesStandingQuery.FilterMap = {
@@ -1741,6 +1757,10 @@ trait PersistenceCodec[T] extends LazyLogging {
         val offset: Offset = writeMultipleValuesFilterMapStandingQuery(builder, filterMap)
         TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesFilterMapStandingQuery, offset)
 
+      case allProperties: MultipleValuesStandingQuery.AllProperties =>
+        val offset: Offset = writeMultipleValuesAllPropertiesStandingQuery(builder, allProperties)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesAllPropertiesStandingQuery, offset)
+
     }
 
   protected[this] def readMultipleValuesStandingQuery(
@@ -1783,6 +1803,11 @@ trait PersistenceCodec[T] extends LazyLogging {
           makeSq(new persistence.MultipleValuesFilterMapStandingQuery())
             .asInstanceOf[persistence.MultipleValuesFilterMapStandingQuery]
         readMultipleValuesFilterMapStandingQuery(filterMap)
+
+      case persistence.MultipleValuesStandingQuery.MultipleValuesAllPropertiesStandingQuery =>
+        val allProperties = makeSq(new persistence.MultipleValuesAllPropertiesStandingQuery())
+          .asInstanceOf[persistence.MultipleValuesAllPropertiesStandingQuery]
+        readMultipleValuesAllPropertiesStandingQuery(allProperties)
 
       case other =>
         throw new InvalidUnionType(other, persistence.MultipleValuesStandingQuery.names)

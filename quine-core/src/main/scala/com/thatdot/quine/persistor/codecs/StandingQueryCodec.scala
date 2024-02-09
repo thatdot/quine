@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistence
+import com.thatdot.quine.persistence.ReturnColumnAllProperties
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 
@@ -47,6 +48,15 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
         persistence.ReturnColumnProperty.addAliasedAs(builder, aliasedAsOff)
         val off: Offset = persistence.ReturnColumnProperty.endReturnColumnProperty(builder)
         TypeAndOffset(persistence.ReturnColumn.ReturnColumnProperty, off)
+
+      case GraphQueryPattern.ReturnColumn.AllProperties(node, aliasedAs) =>
+        val aliasedAsOff: Offset = builder.createString(aliasedAs.name)
+        persistence.ReturnColumnAllProperties.startReturnColumnAllProperties(builder)
+        val nodeOff: Offset = persistence.NodePatternId.createNodePatternId(builder, node.id)
+        persistence.ReturnColumnAllProperties.addNode(builder, nodeOff)
+        persistence.ReturnColumnAllProperties.addAliasedAs(builder, aliasedAsOff)
+        val off: Offset = persistence.ReturnColumnAllProperties.endReturnColumnAllProperties(builder)
+        TypeAndOffset(persistence.ReturnColumn.ReturnColumnAllProperties, off)
     }
 
   private[this] def readReturnColumn(
@@ -67,6 +77,13 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
         GraphQueryPattern.ReturnColumn.Property(
           GraphQueryPattern.NodePatternId(col.node.id),
           Symbol(col.propertyKey),
+          Symbol(col.aliasedAs)
+        )
+
+      case persistence.ReturnColumn.ReturnColumnAllProperties =>
+        val col = makeReturnCol(new ReturnColumnAllProperties()).asInstanceOf[persistence.ReturnColumnAllProperties]
+        GraphQueryPattern.ReturnColumn.AllProperties(
+          GraphQueryPattern.NodePatternId(col.node.id),
           Symbol(col.aliasedAs)
         )
 

@@ -4,14 +4,22 @@ import scala.collection.mutable
 
 import org.scalactic.source.Position
 
+import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryEffects, QueryContext}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelMultipleValuesResult,
   NewMultipleValuesResult,
   ResultId
 }
-import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, QuineIdLongProvider}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.graph.{
+  AbstractNodeActor,
+  EdgeEvent,
+  MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
+  PropertyEvent,
+  QuineIdLongProvider
+}
+import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 
 /** Mocked up handler of standing query effects - instead of actually doing anything with the
   * effects, they just get queued up for easy testing
@@ -32,6 +40,13 @@ final case class MultipleValuesStandingQueryEffectsTester(
   idProvider: QuineIdProvider,
   knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]
 ) extends MultipleValuesStandingQueryEffects {
+
+  var currentProperties: Map[Symbol, PropertyValue] = Map.empty
+  def trackPropertyEffects(events: Seq[NodeChangeEvent]): Unit = events.foreach {
+    case PropertySet(key, value) => currentProperties += key -> value
+    case PropertyRemoved(key, _) => currentProperties -= key
+    case _: EdgeEvent => ()
+  }
 
   def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
     knownQueries += query.id -> query
@@ -94,7 +109,10 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
 
   def testInvariants()(implicit pos: Position): Unit = ()
 
-  def initialize[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
+  def initialize[A](
+    initialProperties: Map[Symbol, PropertyValue] = Map.empty
+  )(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
+    effects.trackPropertyEffects(initialProperties.map { case (k, v) => PropertySet(k, v) }.toSeq)
     sqState.preStart(effects)
     sqState.onInitialize(effects)
     testInvariants()
@@ -116,7 +134,16 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   def reportNodeEvents[A](events: Seq[NodeChangeEvent], shouldHaveEffects: Boolean)(
     thenCheck: MultipleValuesStandingQueryEffectsTester => A
   )(implicit pos: Position): A = {
-    val hadEffects = sqState.onNodeEvents(events, effects)
+    // emulate deduplication behavior of nodes w.r.t propertyevents
+    val finalEvents =
+      if (events.forall(_.isInstanceOf[PropertyEvent]))
+        AbstractNodeActor.internallyDeduplicatePropertyEvents(
+          events.collect { case pe: PropertyEvent => pe }.toList
+        )
+      else events
+    // emulate property processing
+    effects.trackPropertyEffects(finalEvents)
+    val hadEffects = sqState.onNodeEvents(finalEvents, effects)
     assert(
       shouldHaveEffects == hadEffects,
       "New node events did not have the expected effects (or lack thereof)"

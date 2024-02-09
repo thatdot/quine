@@ -427,6 +427,30 @@ object MultipleValuesStandingQueryStateCodec
     cypher.FilterMapState(sqId, reverseDeps)
   }
 
+  private[this] def writeMultipleValuesAllPropertiesStandingQueryState(
+    builder: FlatBufferBuilder,
+    localPropState: cypher.AllPropertiesState
+  ): Offset = {
+    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, localPropState.queryPartId)
+    val resIdOff: Offset = localPropState.currentResult match {
+      case None => NoOffset
+      case Some(resId) => writeStandingQueryResultId(builder, resId)
+    }
+    persistence.MultipleValuesAllPropertiesStandingQueryState.createMultipleValuesAllPropertiesStandingQueryState(
+      builder,
+      sqIdOff,
+      resIdOff
+    )
+  }
+
+  private[this] def readMultipleValuesAllPropertiesStandingQueryState(
+    localPropState: persistence.MultipleValuesAllPropertiesStandingQueryState
+  ): cypher.AllPropertiesState = {
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(localPropState.queryPartId)
+    val resId: Option[ResultId] = Option(localPropState.resultId).map(readStandingQueryResultId)
+    cypher.AllPropertiesState(sqId, resId)
+  }
+
   private[this] def writeMultipleValuesStandingQuerySubscriber(
     builder: FlatBufferBuilder,
     subscriber: MultipleValuesStandingQuerySubscriber
@@ -563,6 +587,13 @@ object MultipleValuesStandingQueryStateCodec
       case filterState: cypher.FilterMapState =>
         val offset: Offset = writeMultipleValuesFilterMapStandingQueryState(builder, filterState)
         TypeAndOffset(persistence.MultipleValuesStandingQueryState.MultipleValuesFilterMapStandingQueryState, offset)
+
+      case allPropertiesState: cypher.AllPropertiesState =>
+        val offset: Offset = writeMultipleValuesAllPropertiesStandingQueryState(builder, allPropertiesState)
+        TypeAndOffset(
+          persistence.MultipleValuesStandingQueryState.MultipleValuesAllPropertiesStandingQueryState,
+          offset
+        )
     }
 
   private[this] def readMultipleValuesStandingQueryState(
@@ -604,6 +635,11 @@ object MultipleValuesStandingQueryStateCodec
         val filterState = makeState(new persistence.MultipleValuesFilterMapStandingQueryState())
           .asInstanceOf[persistence.MultipleValuesFilterMapStandingQueryState]
         readMultipleValuesFilterMapStandingQueryState(filterState)
+
+      case persistence.MultipleValuesStandingQueryState.MultipleValuesAllPropertiesStandingQueryState =>
+        val propState = makeState(new persistence.MultipleValuesAllPropertiesStandingQueryState())
+          .asInstanceOf[persistence.MultipleValuesAllPropertiesStandingQueryState]
+        readMultipleValuesAllPropertiesStandingQueryState(propState)
 
       case other =>
         throw new InvalidUnionType(other, persistence.MultipleValuesStandingQueryState.names)

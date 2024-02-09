@@ -177,6 +177,22 @@ object MultipleValuesStandingQuery {
     }
   }
 
+  /** Watches for changes to the projection of node properties as a map
+    *
+    * INV: a result emitted by this state on a node `n` has the same value as the result of executing `properties(n)`
+    *      on `n`'s CypherBehavior at the same time
+    * @param aliasedAs
+    * @param columns
+    */
+  final case class AllProperties(
+    aliasedAs: Symbol,
+    columns: Columns = Columns.Omitted
+  ) extends MultipleValuesStandingQuery {
+    type State = AllPropertiesState
+    def createState(): AllPropertiesState = AllPropertiesState(queryPartId = id, currentResult = None)
+    def children: Seq[MultipleValuesStandingQuery] = Seq.empty
+  }
+
   /** Watches for a certain local property to be set and returns a result if/when that happens
     *
     * @param propKey key of the local property to watch

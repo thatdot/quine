@@ -12,11 +12,13 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.actor.{Actor, ActorLogging}
+import org.apache.pekko.stream.scaladsl.Keep
 
 import cats.data.NonEmptyList
 import cats.implicits._
 import org.apache.pekko
 
+import com.thatdot.quine.graph.AbstractNodeActor.internallyDeduplicatePropertyEvents
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{NodeParentIndex, SubscribersToThisNodeUtil}
@@ -235,7 +237,7 @@ abstract private[graph] class AbstractNodeActor(
   ): Future[Done.type] = propertyEvents(event :: Nil, atTimeOverride)
 
   protected def processPropertyEvents(events: List[PropertyEvent]): Future[Done.type] =
-    propertyEvents(events, None)
+    propertyEvents(internallyDeduplicatePropertyEvents(events), None)
 
   protected[this] def edgeEvents(events: List[EdgeEvent], atTime: Option[EventTime]): Future[Done.type] =
     refuseHistoricalUpdates(events)(
@@ -426,30 +428,38 @@ abstract private[graph] class AbstractNodeActor(
     *
     * @param events ordered sequence of node events produced from a single message.
     */
-  protected[this] def runPostActions(events: List[NodeChangeEvent]): Unit = events.foreach { event =>
-    localEventIndex.standingQueriesWatchingNodeEvent(
-      event,
-      {
-        case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
-          updateMultipleValuesSqs(event, cypherSubscriber)
-          false
-        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
-          dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
-            case Some(dgn) =>
-              // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
-              ensureSubscriptionToDomainEdges(
-                dgn,
-                domainGraphSubscribers.getRelatedQueries(dgnId),
-                shouldSendReplies = true
-              )
-              // inform all subscribers to this node about any relevant changes caused by the recent event
-              domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
-              false
-            case None =>
-              true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
-          }
-      }
-    )
+  protected[this] def runPostActions(events: List[NodeChangeEvent]): Unit = {
+
+    var eventsForMvsqs: Map[StandingQueryLocalEventIndex.StandingQueryWithId, Seq[NodeChangeEvent]] = Map.empty
+
+    events.foreach { event =>
+      localEventIndex.standingQueriesWatchingNodeEvent(
+        event,
+        {
+          case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
+            eventsForMvsqs += cypherSubscriber -> (event +: eventsForMvsqs.getOrElse(cypherSubscriber, Seq.empty))
+            false
+          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+            dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
+              case Some(dgn) =>
+                // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
+                ensureSubscriptionToDomainEdges(
+                  dgn,
+                  domainGraphSubscribers.getRelatedQueries(dgnId),
+                  shouldSendReplies = true
+                )
+                // inform all subscribers to this node about any relevant changes caused by the recent event
+                domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
+                false
+              case None =>
+                true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
+            }
+        }
+      )
+    }
+    eventsForMvsqs.foreach { case (sq, events) =>
+      updateMultipleValuesSqs(events, sq)
+    }
   }
 
   /** Serialize node state into a binary node snapshot
@@ -571,4 +581,15 @@ abstract private[graph] class AbstractNodeActor(
         }
       }
     )
+}
+
+object AbstractNodeActor {
+  private[graph] def internallyDeduplicatePropertyEvents(events: List[PropertyEvent]): List[PropertyEvent] =
+    // Use only the last event for each property key. This form of "internal deduplication" is only applied to
+    // a) batches of b) property events.
+    events
+      .groupMapReduce(_.key)(identity)(Keep.right)
+      .values
+      .toList
+
 }

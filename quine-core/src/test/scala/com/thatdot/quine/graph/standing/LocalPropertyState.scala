@@ -220,6 +220,18 @@ class LocalPropertyStateTest extends AnyFunSuite {
         assert(effects.isEmpty)
       }
     }
+
+    withClue("Multiple events emits only 1 result (assuming events are deduplicated prior to onNodeEvents)") {
+      val wrongProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(8675309L)))
+      val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
+
+      state.reportNodeEvents(Seq(wrongProp, rightProp), shouldHaveEffects = true) { effects =>
+        assert(effects.resultsReported.size == 1)
+        val (_, result) = effects.resultsReported.dequeue()
+        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L))))
+        assert(effects.isEmpty)
+      }
+    }
   }
 
   test("value constraint and no alias") {

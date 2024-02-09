@@ -21,6 +21,7 @@ sealed abstract class StandingQueryLocalEvents
 object StandingQueryLocalEvents {
   final case class Edge(labelConstraint: Option[Symbol]) extends StandingQueryLocalEvents
   final case class Property(propertyKey: Symbol) extends StandingQueryLocalEvents
+  final case object AnyProperty extends StandingQueryLocalEvents
 
   /** traverse a DomainGraphBranch (standing query) and extract the set of StandingQueryLocalEvents relevant to that
     * branch at its root node.
@@ -97,7 +98,8 @@ object StandingQueryLocalEvents {
 final case class StandingQueryLocalEventIndex(
   watchingForProperty: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForEdge: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
-  watchingForAnyEdge: mutable.Set[EventSubscriber]
+  watchingForAnyEdge: mutable.Set[EventSubscriber],
+  watchingForAnyProperty: mutable.Set[EventSubscriber]
 ) {
 
   /** Register a new SQ as being interested in a given event and return some
@@ -123,6 +125,12 @@ final case class StandingQueryLocalEventIndex(
           PropertySet(key, propVal)
         }
 
+      case StandingQueryLocalEvents.AnyProperty =>
+        watchingForAnyProperty.add(handler)
+        properties.map { case (k, v) =>
+          PropertySet(k, v)
+        }.toSeq
+
       case StandingQueryLocalEvents.Edge(Some(key)) =>
         watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler
         edges.matching(key).toSeq.map { halfEdge =>
@@ -134,6 +142,7 @@ final case class StandingQueryLocalEventIndex(
         edges.all.toSeq.map { halfEdge =>
           EdgeAdded(halfEdge)
         }
+
     }
 
   /** Unregister a SQ as being interested in a given event */
@@ -144,6 +153,9 @@ final case class StandingQueryLocalEventIndex(
           set -= handler
           if (set.isEmpty) watchingForProperty -= key
         }
+
+      case StandingQueryLocalEvents.AnyProperty =>
+        watchingForAnyProperty -= handler
 
       case StandingQueryLocalEvents.Edge(Some(key)) =>
         for (set <- watchingForEdge.get(key)) {
@@ -174,8 +186,10 @@ final case class StandingQueryLocalEventIndex(
       watchingForAnyEdge.filter(removeSubscriberPredicate).foreach(watchingForAnyEdge.remove)
     case PropertySet(propKey, _) =>
       watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
+      watchingForAnyProperty.filter(removeSubscriberPredicate).foreach(watchingForAnyProperty.remove)
     case PropertyRemoved(propKey, _) =>
       watchingForProperty.get(propKey).foreach(index => index.filter(removeSubscriberPredicate).foreach(index.remove))
+      watchingForAnyProperty.filter(removeSubscriberPredicate).foreach(watchingForAnyProperty.remove)
     case _ => ()
   }
 }
@@ -214,6 +228,7 @@ object StandingQueryLocalEventIndex {
   def empty: StandingQueryLocalEventIndex = StandingQueryLocalEventIndex(
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
+    mutable.Set.empty[EventSubscriber],
     mutable.Set.empty[EventSubscriber]
   )
 
@@ -251,6 +266,9 @@ object StandingQueryLocalEventIndex {
       event match {
         case StandingQueryLocalEvents.Property(key) =>
           toReturn.watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
+
+        case StandingQueryLocalEvents.AnyProperty =>
+          toReturn.watchingForAnyProperty += handler
 
         case StandingQueryLocalEvents.Edge(Some(key)) =>
           toReturn.watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler

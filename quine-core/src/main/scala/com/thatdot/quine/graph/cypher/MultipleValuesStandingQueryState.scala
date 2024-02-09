@@ -12,7 +12,13 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   NewMultipleValuesResult,
   ResultId
 }
-import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, StandingQueryLocalEvents}
+import com.thatdot.quine.graph.{
+  MultipleValuesStandingQueryPartId,
+  NodeChangeEvent,
+  PropertyEvent,
+  StandingQueryLocalEvents
+}
+import com.thatdot.quine.model
 import com.thatdot.quine.model.{HalfEdge, Properties, QuineId, QuineIdProvider}
 
 /** The stateful component of a standing query, holding on to the information
@@ -66,9 +72,15 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
     effectHandler: MultipleValuesStandingQueryEffects
   ): Unit = ()
 
-  /** Relevant node events that have happened
+  /** Process node events
     *
-    * @param events which node-events happened
+    * Always called on the node's thread
+    *
+    * @param events which node-events happened (after node-side deduplication against current node state)
+    *               NB: multiple edge events within the same batch are no longer [1] deduplicated against one another,
+    *               but property events still are [2]
+    * @see https://github.com/thatdot/quine-plus/pull/2280#discussion_r1115372792
+    * @see https://github.com/thatdot/quine-plus/pull/2522
     * @param effectHandler handler for external effects
     * @return whether the standing query state was updated (eg. is there anything new to save?)
     */
@@ -161,6 +173,11 @@ object MultipleValuesStandingQueryLookupInfo {
 
 /** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make */
 trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLookupInfo {
+
+  /** @return a readonly view on the current [[node]] properties, including updates made as a result of the
+    *         event that triggered MVSQ-related work
+    */
+  def currentProperties: Map[Symbol, model.PropertyValue]
 
   /** Issue a subscription to a node
     *
@@ -391,6 +408,90 @@ final case class CrossState(
     }
 }
 
+final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPartId, var currentResult: Option[ResultId])
+    extends MultipleValuesStandingQueryState
+    with CacheableQueryMultipleValues {
+  override type StateOf = MultipleValuesStandingQuery.AllProperties
+
+  private def currentPropertiesAsMap(effectHandler: MultipleValuesStandingQueryEffects): Expr.Map = {
+    val cypherProperties: Map[String, Value] = effectHandler.currentProperties.map { case (k, v) =>
+      k.name -> v.deserialized.fold[Value](_ => Expr.Null, qv => Expr.fromQuineValue(qv))
+    }
+
+    Expr.Map(cypherProperties)
+  }
+
+  override def relevantEvents: Seq[StandingQueryLocalEvents] = Seq(StandingQueryLocalEvents.AnyProperty)
+
+  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
+    if (currentResult.nonEmpty) {
+      logger.error(s"$this cannot be re-initialized")
+    } else {
+      currentResult = {
+        // Report the value as initially-empty (consistent with LocalPropertyState)
+        val result = QueryContext(Map(query.aliasedAs -> Expr.Map.empty))
+        val freshResultId = ResultId.fresh()
+        effectHandler.reportNewResult(freshResultId, result)
+        Some(freshResultId)
+      }
+    }
+
+  /** NB this rolls up all property-related changes in [[events]] into one downstream event. Alternatively, we _could_
+    * emit one downstream event per incoming event, but since Cross et al is already the default mode of event
+    * combination, this could quickly spiral out of control.
+    *
+    * Ex:
+    * `MATCH (n) SET n = {hello: "world", fizz: "buzz"}` will cause a single SQ match with the map
+    * `{hello: "world", fizz: "buzz"}`, rather than 2 matches, one with `{hello: "world"}` and one with `{fizz: "buzz"}`
+    */
+  override def onNodeEvents(
+    events: Seq[NodeChangeEvent],
+    effectHandler: MultipleValuesStandingQueryEffects
+  ): Boolean = {
+    val oldResult = currentResult
+    val propertyEvents: Seq[PropertyEvent] = events.collect { case propEvent: PropertyEvent =>
+      propEvent
+    }
+
+    if (propertyEvents.nonEmpty) {
+      for (resultId <- currentResult)
+        effectHandler.cancelOldResult(resultId)
+
+      val resId = ResultId.fresh()
+      effectHandler.reportNewResult(
+        resId,
+        QueryContext(
+          Map(
+            query.aliasedAs -> currentPropertiesAsMap(effectHandler)
+          )
+        )
+      )
+      currentResult = Some(resId)
+    }
+
+    oldResult != currentResult
+
+  }
+
+  override def onNewSubscriptionResult(
+    result: NewMultipleValuesResult,
+    effectHandler: MultipleValuesStandingQueryEffects
+  ): Boolean = {
+    logger.error(s"$this received subscription result it didn't subscribe to: $result")
+    false
+  }
+
+  override def onCancelledSubscriptionResult(
+    result: CancelMultipleValuesResult,
+    effectHandler: MultipleValuesStandingQueryEffects
+  ): Boolean = {
+    logger.error(s"$this received subscription result it didn't subscribe to: $result")
+    false
+  }
+
+  override def replayResults(localProperties: Properties): Map[ResultId, QueryContext] = ???
+}
+
 /** State needed to process a [[MultipleValuesStandingQuery.LocalProperty]]
   *
   * @param queryPartId the ID of the local property query with this State
@@ -412,10 +513,12 @@ final case class LocalPropertyState(
       logger.error(s"$this cannot be re-initialized")
     } else if (query.propConstraint.satisfiedByNone) {
       currentResult = {
+        // If the result is aliased, report the value as initially-null.
         val result = query.aliasedAs match {
           case None => QueryContext.empty
           case Some(aliased) => QueryContext.empty + (aliased -> Expr.Null)
         }
+
         val freshResultId = ResultId.fresh()
         effectHandler.reportNewResult(freshResultId, result)
         Some(freshResultId)
@@ -426,8 +529,19 @@ final case class LocalPropertyState(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
+    // this check can be uncommented for debugging purposes
+//    require(
+//      events.collect { case pe: PropertyEvent if pe.key == query.propKey => pe }.size <= 1,
+//      "Invariant violated: MVSQ received multiple events for the same property key in the same batch"
+//    )
+
+    // NB by the scaladoc on [[super]], there is only one (or zero) property event that will affect [[query.propKey]]
+    val relevantChange: Option[PropertyEvent] = events.collectFirst {
+      case pe: PropertyEvent if pe.key == query.propKey => pe
+    }
+
     val oldResult = currentResult
-    events.foreach {
+    relevantChange.foreach {
       case PropertySet(propKey, propVal) if query.propKey == propKey =>
         // Does it pass the property value test?
         val satisfiesValueConstraint =

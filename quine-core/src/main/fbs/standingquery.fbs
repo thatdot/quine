@@ -39,6 +39,7 @@ table GraphPatternOrigin {
 union ReturnColumn {
   ReturnColumnId,
   ReturnColumnProperty,
+  ReturnColumnAllProperties,
 }
 
 // See [[com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery]]
@@ -50,6 +51,7 @@ union MultipleValuesStandingQuery {
   MultipleValuesSubscribeAcrossEdgeStandingQuery,
   MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
   MultipleValuesFilterMapStandingQuery,
+  MultipleValuesAllPropertiesStandingQuery,
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.ValueConstraint]]
@@ -140,6 +142,11 @@ table MultipleValuesFilterMapStandingQuery {
   to_filter: MultipleValuesStandingQuery (required);
   drop_existing: bool;
   to_add: [CypherMapExprEntry];
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.AllProperties]]
+table MultipleValuesAllPropertiesStandingQuery {
+  aliased_as: string (required);
 }
 
 // See [[com.thatdot.quine.graph.StandingQuery]]
@@ -254,6 +261,12 @@ table ReturnColumnId {
 table ReturnColumnProperty {
   node: NodePatternId;
   property_key: string (required);
+  aliased_as: string (required);
+}
+
+// See [[com.thatdot.quine.graph.GraphQueryPattern.ReturnColumn.AllProperties]]
+table ReturnColumnAllProperties {
+  node: NodePatternId;
   aliased_as: string (required);
 }
 

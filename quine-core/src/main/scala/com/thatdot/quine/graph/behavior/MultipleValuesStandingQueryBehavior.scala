@@ -37,7 +37,7 @@ import com.thatdot.quine.graph.{
   TimeFuture,
   cypher
 }
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{PersistenceAgent, PersistenceConfig, PersistenceSchedule}
 
@@ -131,6 +131,8 @@ trait MultipleValuesStandingQueryBehavior
     val node: QuineId = qid
 
     val idProvider: QuineIdProvider = MultipleValuesStandingQueryBehavior.this.idProvider
+
+    def currentProperties: Map[Symbol, PropertyValue] = properties // TODO 2.13 use .view
   }
 
   /** Locally registered & running standing queries */
@@ -150,12 +152,15 @@ trait MultipleValuesStandingQueryBehavior
     * @param event new node event
     * @return future that completes once the SQ updates are saved to disk
     */
-  final protected def updateMultipleValuesSqs(event: NodeChangeEvent, subscriber: StandingQueryWithId): Future[Unit] = {
+  final protected def updateMultipleValuesSqs(
+    events: Seq[NodeChangeEvent],
+    subscriber: StandingQueryWithId
+  ): Future[Unit] = {
 
     val persisted: Option[Future[Unit]] = for {
       tup <- multipleValuesStandingQueries.get((subscriber.queryId, subscriber.partId))
       (subscribers, sqState) = tup
-      somethingChanged = sqState.onNodeEvents(Seq(event), subscribers)
+      somethingChanged = sqState.onNodeEvents(events, subscribers)
       if somethingChanged
     } yield persistMultipleValuesStandingQueryState(subscriber.queryId, subscriber.partId, Some(tup))
 

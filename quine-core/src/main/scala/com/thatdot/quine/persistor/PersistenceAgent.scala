@@ -28,7 +28,7 @@ import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
 object PersistenceAgent {
 
   /** persistence version implemented by the running persistor */
-  val CurrentVersion: Version = Version(13, 1, 0)
+  val CurrentVersion: Version = Version(13, 2, 0)
 
   /** key used to store [[Version]] in persistence metadata */
   val VersionMetadataKey = "serialization_version"

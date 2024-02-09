@@ -24,6 +24,10 @@ object Pretty {
            |${sp1}propConstraint = $propConstraint,
            |${sp1}aliasedAs = $aliasedAs
            |${sp})""".stripMargin
+      case MultipleValuesStandingQuery.AllProperties(aliasedAs, _) =>
+        s"""${sp}AllProperties (
+           |${sp1}aliasedAs = $aliasedAs
+           |${sp})""".stripMargin
       case MultipleValuesStandingQuery.LocalId(aliasedAs, formatAsString, _) =>
         s"""${sp}LocalId (
            |${sp1}aliasedAs = $aliasedAs,

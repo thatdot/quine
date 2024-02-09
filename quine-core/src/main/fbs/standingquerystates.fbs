@@ -18,6 +18,7 @@ union MultipleValuesStandingQueryState {
   MultipleValuesSubscribeAcrossEdgeStandingQueryState,
   MultipleValuesEdgeSubscriptionReciprocalStandingQueryState,
   MultipleValuesFilterMapStandingQueryState,
+  MultipleValuesAllPropertiesStandingQueryState,
 }
 
 // See [[com.thatdot.quine.graph.cypher.UnitState]]
@@ -92,6 +93,12 @@ table MultipleValuesEdgeSubscriptionReciprocalStandingQueryState {
 table MultipleValuesFilterMapStandingQueryState {
   query_part_id: MultipleValuesStandingQueryPartId (required);
   reverse_result_dependency: [ReverseResultDependency];
+}
+
+// See [[com.thatdot.quine.graph.cypher.AllPropertiesState]]
+table MultipleValuesAllPropertiesStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
+  result_id: StandingQueryResultId;
 }
 
 // See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.CypherSubscriber]]
