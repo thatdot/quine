@@ -8,6 +8,7 @@ import scala.jdk.CollectionConverters._
 import com.google.protobuf.Descriptors.EnumValueDescriptor
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
+import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
 import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
 
 import com.thatdot.quine.app.serialization.ProtobufSchema
@@ -25,7 +26,7 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
     val descriptor = message.getDescriptorForType
     val oneOfs = descriptor.getOneofs.asScala.view
     // optionals are modeled as (synthetic) oneOfs of a single field.
-    val (optionals, realOneOfs) = oneOfs.partition(_.isSynthetic)
+    val (optionals, realOneOfs) = oneOfs.partition(LegacyOneofDescriptor.isSynthetic)
     // synthetic oneOfs (optionals) just have the one field
     val setOptionals = optionals.map(_.getField(0)).filter(message.hasField)
     // Find which field in each oneOf is set

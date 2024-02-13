@@ -11,12 +11,16 @@ import org.apache.pekko.actor.ActorSystem
 
 import cats.data.NonEmptyList
 import cats.syntax.functor._
+import com.softwaremill.diffx.generic.auto._
+import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalacheck.Arbitrary.arbitrary
 import org.scalacheck.Gen
 import org.scalatest.funspec.AsyncFunSpec
+import org.scalatest.matchers.dsl.ResultOfTheSameElementsInOrderAsApplication
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{Assertion, BeforeAndAfterAll, Inspectors, OptionValues}
 
+import com.thatdot.quine.graph.DiffxInstances._
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
 import com.thatdot.quine.graph.Generators.{generate1, generateN}
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
@@ -36,6 +40,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.persistor.PersistenceAgentSpec.assertArraysEqual
 
 /** Abstract test suite that can be implemented just by specifying `persistor`.
   * The intent is that every new persistor should be able to extend this
@@ -51,12 +56,16 @@ abstract class PersistenceAgentSpec
     with Inspectors
     with OptionValues
     with ArbitraryInstances
-    with ScalaTestInstances {
+    with ScalaTestInstances
+    with DiffShouldMatcher {
 
   implicit val system: ActorSystem = ActorSystem("test-system")
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
+
+  // Override this to opt-out of tests that delete records (eg to perform manual inspection)
+  def runDeletionTests: Boolean = true
 
   def persistor: PersistenceAgent
 
@@ -184,23 +193,23 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         persistor.getJournal(qid0, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3))
         },
         persistor.getJournal(qid1, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3, event4))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
         },
         persistor.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3))
         },
         persistor.getJournal(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq.empty)
+            (journal shouldMatchTo Seq.empty)
         },
-        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = false).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3))
         }
       )
     }
@@ -210,35 +219,35 @@ abstract class PersistenceAgentSpec
         // before anything
         persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq.empty)
+            (journal shouldMatchTo Seq.empty)
         },
         // right up to one event
         persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         },
         // right after one event
         persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1))
+            (journal shouldMatchTo Seq(event0, event1))
         },
         // after all events
         persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3, event4))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
         },
         // first event is the min value
         persistor.getJournal(qid0, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         },
         persistor.getJournal(qid2, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         },
         persistor.getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         }
       )
     }
@@ -248,40 +257,40 @@ abstract class PersistenceAgentSpec
         // before anything
         persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3, event4))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
         },
         // before one event
         persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event4))
+            (journal shouldMatchTo Seq(event4))
         },
         // starting exactly at one event
         persistor.getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event4))
+            (journal shouldMatchTo Seq(event4))
         },
         // starting exactly at the first event
         persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0, event1, event2, event3, event4))
+            (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
         },
         // after all events
         persistor.getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq.empty)
+            (journal shouldMatchTo Seq.empty)
         },
         // first event is the min value
         persistor.getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event3))
+            (journal shouldMatchTo Seq(event3))
         },
         persistor.getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event3))
+            (journal shouldMatchTo Seq(event3))
         },
         persistor.getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event3))
+            (journal shouldMatchTo Seq(event3))
         }
       )
     }
@@ -291,47 +300,45 @@ abstract class PersistenceAgentSpec
         // start and end before any events
         persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq.empty)
+            (journal shouldMatchTo Seq.empty)
         },
         // start and end between events
         persistor
           .getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq.empty)
+            (journal shouldMatchTo Seq.empty)
           },
         // right up to one event
         persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         },
         // right after one event
         persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
         },
         // starting exactly at one event
         persistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq(event0))
+            (journal shouldMatchTo Seq(event0))
           },
         // start and end on events
         persistor
           .getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq(event1, event2, event3))
+            (journal shouldMatchTo Seq(event1, event2, event3))
           },
         persistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(
-              journal === Seq(
-                event0,
-                event1,
-                event2,
-                event3,
-                event4
-              )
+            journal shouldMatchTo Seq(
+              event0,
+              event1,
+              event2,
+              event3,
+              event4
             )
           }
       )
@@ -343,30 +350,30 @@ abstract class PersistenceAgentSpec
         persistor
           .getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq(event2))
+            (journal shouldMatchTo Seq(event2))
           },
         persistor
           .getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq(event2))
+            (journal shouldMatchTo Seq(event2))
           },
         persistor
           .getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
-            assert(journal === Seq(event2))
+            (journal shouldMatchTo Seq(event2))
           },
         // event time needs to be treated as unsigned
         persistor.getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event1, event2))
+            (journal shouldMatchTo Seq(event1, event2))
         },
         persistor.getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event1, event2))
+            (journal shouldMatchTo Seq(event1, event2))
         },
         persistor.getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
           journal =>
-            assert(journal === Seq(event1, event2))
+            (journal shouldMatchTo Seq(event1, event2))
         }
       )
     }
@@ -410,22 +417,22 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot3)
+          assertArraysEqual(snapshot, snapshot3)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot4)
+          assertArraysEqual(snapshot, snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot3)
+          assertArraysEqual(snapshot, snapshot3)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot3)
+          assertArraysEqual(snapshot, snapshot3)
         }
       )
     }
@@ -434,21 +441,21 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot0)
+          assertArraysEqual(snapshot, snapshot0)
         },
         persistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot0)
+          assertArraysEqual(snapshot, snapshot0)
         },
         persistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot0)
+          assertArraysEqual(snapshot, snapshot0)
         }
       )
     }
@@ -462,25 +469,25 @@ abstract class PersistenceAgentSpec
         // right up to one snapshot
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot0)
+          assertArraysEqual(snapshot, snapshot0)
         },
         // right after one snapshot
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot0)
+          assertArraysEqual(snapshot, snapshot0)
         },
         // after some snapshots, before others
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot1)
+          assertArraysEqual(snapshot, snapshot1)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot2)
+          assertArraysEqual(snapshot, snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot4)
+          assertArraysEqual(snapshot, snapshot4)
         }
       )
     }
@@ -489,58 +496,64 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         persistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot2)
+          assertArraysEqual(snapshot, snapshot2)
         },
         persistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot4)
+          assertArraysEqual(snapshot, snapshot4)
         },
         persistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot2)
+          assertArraysEqual(snapshot, snapshot2)
         },
         persistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         persistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
-          assert(snapshot === snapshot2)
+          assertArraysEqual(snapshot, snapshot2)
         }
       )
     }
   }
 
-  describe("deleteSnapshot") {
-    it("deletes all snapshots for the given QuineId") {
-      forAll(allQids) { qid =>
-        for {
-          _ <- persistor.deleteSnapshots(qid)
-          after <- persistor.getLatestSnapshot(qid, EventTime.MinValue)
-        } yield after shouldBe empty
-      }.map(_ => succeed)(ExecutionContexts.parasitic)
+  if (runDeletionTests) {
+
+    describe("deleteSnapshot") {
+      it("deletes all snapshots for the given QuineId") {
+        forAll(allQids) { qid =>
+          for {
+            _ <- persistor.deleteSnapshots(qid)
+            after <- persistor.getLatestSnapshot(qid, EventTime.MinValue)
+          } yield after shouldBe empty
+        }.map(_ => succeed)(ExecutionContexts.parasitic)
+      }
     }
   }
 
-  describe("removeStandingQuery") {
-    it("successfully does nothing when given a degenerate standing query id to remove while empty") {
-      val standingQuery = StandingQuery(
-        name = "",
-        id = StandingQueryId(new UUID(-1, -1)),
-        query = StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
-          dgnId = 1L,
-          formatReturnAsStr = true,
-          aliasReturnAs = Symbol("foo"),
-          includeCancellation = true,
-          origin = PatternOrigin.DirectDgb
-        ),
-        queueBackpressureThreshold = 1,
-        queueMaxSize = 1,
-        shouldCalculateResultHashCode = true
-      )
-      for {
-        _ <- persistor.removeStandingQuery(standingQuery)
-        after <- persistor.getStandingQueries
-      } yield after shouldBe empty
+  if (runDeletionTests) {
+
+    describe("removeStandingQuery") {
+      it("successfully does nothing when given a degenerate standing query id to remove while empty") {
+        val standingQuery = StandingQuery(
+          name = "",
+          id = StandingQueryId(new UUID(-1, -1)),
+          query = StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
+            dgnId = 1L,
+            formatReturnAsStr = true,
+            aliasReturnAs = Symbol("foo"),
+            includeCancellation = true,
+            origin = PatternOrigin.DirectDgb
+          ),
+          queueBackpressureThreshold = 1,
+          queueMaxSize = 1,
+          shouldCalculateResultHashCode = true
+        )
+        for {
+          _ <- persistor.removeStandingQuery(standingQuery)
+          after <- persistor.getStandingQueries
+        } yield after shouldBe empty
+      }
     }
   }
 
@@ -572,11 +585,13 @@ abstract class PersistenceAgentSpec
       )
     }
 
-    it("can remove states") {
-      allOfConcurrent(
-        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
-        persistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
-      )
+    if (runDeletionTests) {
+      it("can remove states") {
+        allOfConcurrent(
+          persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
+          persistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
+        )
+      }
     }
   }
 
@@ -584,7 +599,7 @@ abstract class PersistenceAgentSpec
     it("can return an empty set of states") {
       allOfConcurrent(
         persistor.getMultipleValuesStandingQueryStates(qid0).map { sqStates =>
-          assert(sqStates === Map.empty)
+          (sqStates shouldMatchTo Map.empty)
         }
       )
     }
@@ -592,8 +607,8 @@ abstract class PersistenceAgentSpec
     it("can find a single state associated with a node") {
       allOfConcurrent(
         persistor.getMultipleValuesStandingQueryStates(qid2).map { sqStates =>
-          assert(sqStates.size === 1)
-          assert(sqStates(sqId1 -> sqPartId1) === sqState1)
+          sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState1)
         }
       )
     }
@@ -601,38 +616,47 @@ abstract class PersistenceAgentSpec
     it("can find states associated with multiple queries") {
       allOfConcurrent(
         persistor.getMultipleValuesStandingQueryStates(qid1).map { sqStates =>
-          assert(sqStates.size === 5)
-          assert(sqStates(sqId1 -> sqPartId1) === sqState1)
-          assert(sqStates(sqId1 -> sqPartId2) === sqState2)
-          assert(sqStates(sqId1 -> sqPartId3) === sqState3)
-          assert(sqStates(sqId2 -> sqPartId4) === sqState3)
-          assert(sqStates(sqId1 -> sqPartId4) === sqState4)
+          sqStates.keySet shouldMatchTo Set(
+            sqId1 -> sqPartId1,
+            sqId1 -> sqPartId2,
+            sqId1 -> sqPartId3,
+            sqId2 -> sqPartId4,
+            sqId1 -> sqPartId4
+          )
+
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState1)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId2), sqState2)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId3), sqState3)
+          assertArraysEqual(sqStates(sqId2 -> sqPartId4), sqState3)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId4), sqState4)
         },
         persistor.getMultipleValuesStandingQueryStates(qid3).map { sqStates =>
-          assert(sqStates.size === 2)
-          assert(sqStates(sqId1 -> sqPartId1) === sqState2)
-          assert(sqStates(sqId4 -> sqPartId1) === sqState3)
+          sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1, sqId4 -> sqPartId1)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState2)
+          assertArraysEqual(sqStates(sqId4 -> sqPartId1), sqState3)
         },
         persistor.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
-          assert(sqStates.size === 3)
-          assert(sqStates(sqId1 -> sqPartId1) === sqState3)
-          assert(sqStates(sqId2 -> sqPartId4) === sqState1)
-          assert(sqStates(sqId3 -> sqPartId3) === sqState1)
+          sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1, sqId2 -> sqPartId4, sqId3 -> sqPartId3)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState3)
+          assertArraysEqual(sqStates(sqId2 -> sqPartId4), sqState1)
+          assertArraysEqual(sqStates(sqId3 -> sqPartId3), sqState1)
         }
       )
     }
   }
 
-  describe("deleteMultipleValuesStandingQueryStates") {
-    it("deletes all multiple value query states for the given QuineId") {
-      for {
-        before <- persistor.getMultipleValuesStandingQueryStates(qid1)
-        _ <- persistor.deleteMultipleValuesStandingQueryStates(qid1)
-        after <- persistor.getMultipleValuesStandingQueryStates(qid1)
-      } yield {
-        // be sure that this test does something since it depends on previous tests adding states
-        before should not be empty
-        after shouldBe empty
+  if (runDeletionTests) {
+    describe("deleteMultipleValuesStandingQueryStates") {
+      it("deletes all multiple value query states for the given QuineId") {
+        for {
+          before <- persistor.getMultipleValuesStandingQueryStates(qid1)
+          _ <- persistor.deleteMultipleValuesStandingQueryStates(qid1)
+          after <- persistor.getMultipleValuesStandingQueryStates(qid1)
+        } yield {
+          // be sure that this test does something since it depends on previous tests adding states
+          before should not be empty
+          after shouldBe empty
+        }
       }
     }
   }
@@ -658,24 +682,42 @@ abstract class PersistenceAgentSpec
     }
     it("can get all metadata") {
       persistor.getAllMetaData().map { metadata =>
-        assert(metadata.keySet === Set(metadata0, metadata1, metadata2, metadata3, metadata4))
-        assert(metadata(metadata0) === snapshot0)
-        assert(metadata(metadata1) === snapshot1)
-        assert(metadata(metadata2) === snapshot2)
-        assert(metadata(metadata3) === snapshot3)
-        assert(metadata(metadata4) === snapshot4)
+        (metadata.keySet shouldMatchTo Set(metadata0, metadata1, metadata2, metadata3, metadata4))
+        assertArraysEqual(metadata(metadata0), snapshot0)
+        assertArraysEqual(metadata(metadata1), snapshot1)
+        assertArraysEqual(metadata(metadata2), snapshot2)
+        assertArraysEqual(metadata(metadata3), snapshot3)
+        assertArraysEqual(metadata(metadata4), snapshot4)
       }
     }
     it("can get metadata by key") {
       allOfConcurrent(
-        persistor.getMetaData(metadata0).map(datum => assert(datum.value === snapshot0)),
-        persistor.getMetaData(metadata1).map(datum => assert(datum.value === snapshot1)),
-        persistor.getMetaData(metadata2).map(datum => assert(datum.value === snapshot2)),
-        persistor.getMetaData(metadata3).map(datum => assert(datum.value === snapshot3)),
-        persistor.getMetaData(metadata4).map(datum => assert(datum.value === snapshot4))
+        persistor.getMetaData(metadata0).map(datum => assertArraysEqual(datum.value, snapshot0)),
+        persistor.getMetaData(metadata1).map(datum => assertArraysEqual(datum.value, snapshot1)),
+        persistor.getMetaData(metadata2).map(datum => assertArraysEqual(datum.value, snapshot2)),
+        persistor.getMetaData(metadata3).map(datum => assertArraysEqual(datum.value, snapshot3)),
+        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4))
       )
     }
     it("can set local metadata") {
+      allOfConcurrent(
+        persistor.setLocalMetaData(metadata0, 0, Some(snapshot4)),
+        persistor.setLocalMetaData(metadata1, 1, Some(snapshot3)),
+        persistor.setLocalMetaData(metadata2, 2, Some(snapshot0)),
+        persistor.setLocalMetaData(metadata3, 3, Some(snapshot1)),
+        persistor.setLocalMetaData(metadata4, 4, Some(snapshot2))
+      )
+    }
+    it("can get local metadata") {
+      allOfConcurrent(
+        persistor.getLocalMetaData(metadata0, 0).map(datum => assertArraysEqual(datum.value, snapshot4)),
+        persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot3)),
+        persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot0)),
+        persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot1)),
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot2))
+      )
+    }
+    it("can overwrite local metadata") {
       allOfConcurrent(
         persistor.setLocalMetaData(metadata0, 0, Some(snapshot0)),
         persistor.setLocalMetaData(metadata1, 1, Some(snapshot1)),
@@ -684,49 +726,51 @@ abstract class PersistenceAgentSpec
         persistor.setLocalMetaData(metadata4, 4, Some(snapshot4))
       )
     }
-    it("can get local metadata") {
+    it("can get overwritten local metadata") {
       allOfConcurrent(
-        persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.value === snapshot0)),
-        persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.value === snapshot1)),
-        persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.value === snapshot2)),
-        persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.value === snapshot3)),
-        persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.value === snapshot4))
+        persistor.getLocalMetaData(metadata0, 0).map(datum => assertArraysEqual(datum.value, snapshot0)),
+        persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot1)),
+        persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot2)),
+        persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot3)),
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4))
       )
     }
     it("can set local metadata without polluting global metadata") {
       // same assertion as "can get metadata by key"
       allOfConcurrent(
-        persistor.getMetaData(metadata0).map(datum => assert(datum.value === snapshot0)),
-        persistor.getMetaData(metadata1).map(datum => assert(datum.value === snapshot1)),
-        persistor.getMetaData(metadata2).map(datum => assert(datum.value === snapshot2)),
-        persistor.getMetaData(metadata3).map(datum => assert(datum.value === snapshot3)),
-        persistor.getMetaData(metadata4).map(datum => assert(datum.value === snapshot4))
+        persistor.getMetaData(metadata0).map(datum => assertArraysEqual(datum.value, snapshot0)),
+        persistor.getMetaData(metadata1).map(datum => assertArraysEqual(datum.value, snapshot1)),
+        persistor.getMetaData(metadata2).map(datum => assertArraysEqual(datum.value, snapshot2)),
+        persistor.getMetaData(metadata3).map(datum => assertArraysEqual(datum.value, snapshot3)),
+        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4))
       )
     }
-    it("can remove metadata by key") {
-      allOfConcurrent(
-        persistor.setMetaData(metadata0, None),
-        persistor.setMetaData(metadata1, None),
-        persistor.setMetaData(metadata2, None),
-        persistor.setMetaData(metadata3, None),
-        persistor.setMetaData(metadata4, None)
-      )
-    }
-    it("can remove metadata without removing local metadata") {
-      allOfConcurrent(
-        // metadata is really removed
-        persistor.getMetaData(metadata0).map(datum => assert(datum.isEmpty)),
-        persistor.getMetaData(metadata1).map(datum => assert(datum.isEmpty)),
-        persistor.getMetaData(metadata2).map(datum => assert(datum.isEmpty)),
-        persistor.getMetaData(metadata3).map(datum => assert(datum.isEmpty)),
-        persistor.getMetaData(metadata4).map(datum => assert(datum.isEmpty)),
-        // local metadata is still present
-        persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.value === snapshot0)),
-        persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.value === snapshot1)),
-        persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.value === snapshot2)),
-        persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.value === snapshot3)),
-        persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.value === snapshot4))
-      )
+    if (runDeletionTests) {
+      it("can remove metadata by key") {
+        allOfConcurrent(
+          persistor.setMetaData(metadata0, None),
+          persistor.setMetaData(metadata1, None),
+          persistor.setMetaData(metadata2, None),
+          persistor.setMetaData(metadata3, None),
+          persistor.setMetaData(metadata4, None)
+        )
+      }
+      it("can remove metadata without removing local metadata") {
+        allOfConcurrent(
+          // metadata is really removed
+          persistor.getMetaData(metadata0).map(datum => assert(datum.isEmpty)),
+          persistor.getMetaData(metadata1).map(datum => assert(datum.isEmpty)),
+          persistor.getMetaData(metadata2).map(datum => assert(datum.isEmpty)),
+          persistor.getMetaData(metadata3).map(datum => assert(datum.isEmpty)),
+          persistor.getMetaData(metadata4).map(datum => assert(datum.isEmpty)),
+          // local metadata is still present
+          persistor.getLocalMetaData(metadata0, 0).map(datum => assertArraysEqual(datum.value, snapshot0)),
+          persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot1)),
+          persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot2)),
+          persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot3)),
+          persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4))
+        )
+      }
     }
     it("can get local metadata with getAllMetadata") {
       persistor.getAllMetaData().map[Assertion] { metadata =>
@@ -737,27 +781,30 @@ abstract class PersistenceAgentSpec
         // all local metadata values are represented
         for {
           expectedValue <- Set(snapshot0, snapshot1, snapshot2, snapshot3, snapshot4)
-        } assert(metadata.values.exists(_ === expectedValue))
+        } assert(metadata.values.exists(_ sameElements expectedValue)) // TODO probably a better diffx-y way to do this
 
         succeed
       }
     }
-    it("can remove local metadata") {
-      allOfConcurrent(
-        persistor.setLocalMetaData(metadata0, 0, None),
-        persistor.setLocalMetaData(metadata1, 1, None),
-        persistor.setLocalMetaData(metadata2, 2, None),
-        persistor.setLocalMetaData(metadata3, 3, None),
-        persistor.setLocalMetaData(metadata4, 4, None)
-      ).flatMap(_ =>
+
+    if (runDeletionTests) {
+      it("can remove local metadata") {
         allOfConcurrent(
-          persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.isEmpty)),
-          persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.isEmpty)),
-          persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.isEmpty)),
-          persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.isEmpty)),
-          persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty))
+          persistor.setLocalMetaData(metadata0, 0, None),
+          persistor.setLocalMetaData(metadata1, 1, None),
+          persistor.setLocalMetaData(metadata2, 2, None),
+          persistor.setLocalMetaData(metadata3, 3, None),
+          persistor.setLocalMetaData(metadata4, 4, None)
+        ).flatMap(_ =>
+          allOfConcurrent(
+            persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.isEmpty)),
+            persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.isEmpty)),
+            persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.isEmpty)),
+            persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.isEmpty)),
+            persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty))
+          )
         )
-      )
+      }
     }
   }
 
@@ -768,19 +815,23 @@ abstract class PersistenceAgentSpec
     }
     it("read") {
       persistor.getDomainGraphNodes() map { n =>
-        assert(n === generated)
+        assert(
+          n === generated
+        ) // TODO `shouldMatchTo` doesn't quite respect `PropertyValue.Serialized`/`PropertyValue.Deserialized` equivalence.
       }
     }
-    it("delete") {
-      for {
-        _ <- persistor.removeDomainGraphNodes(generated.keySet)
-        n <- persistor.getDomainGraphNodes()
-      } yield assert(n.isEmpty)
+    if (runDeletionTests) {
+      it("delete") {
+        for {
+          _ <- persistor.removeDomainGraphNodes(generated.keySet)
+          n <- persistor.getDomainGraphNodes()
+        } yield assert(n.isEmpty)
+      }
     }
   }
 
   describe("persistNodeChangeEvents") {
-//Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
+    //Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
     val qid = idProvider.newQid()
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
     val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, Random.nextInt(10) + 1)
@@ -797,18 +848,20 @@ abstract class PersistenceAgentSpec
       val maxTime = sorted.last.atTime
       persistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
-        .map(_ should contain theSameElementsInOrderAs sorted.toList)
+        .map(_ shouldMatchTo sorted.toList)
     }
   }
 
-  describe("deleteNodeChangeEvents") {
-    it("can delete all record events for a given Quine Id") {
-      forAll(allQids)(qid =>
-        for {
-          _ <- persistor.deleteNodeChangeEvents(qid)
-          journalEntries <- persistor.getNodeChangeEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
-        } yield journalEntries shouldBe empty
-      ).map(_ => succeed)(ExecutionContexts.parasitic)
+  if (runDeletionTests) {
+    describe("deleteNodeChangeEvents") {
+      it("can delete all record events for a given Quine Id") {
+        forAll(allQids)(qid =>
+          for {
+            _ <- persistor.deleteNodeChangeEvents(qid)
+            journalEntries <- persistor.getNodeChangeEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+          } yield journalEntries shouldBe empty
+        ).map(_ => succeed)(ExecutionContexts.parasitic)
+      }
     }
   }
 
@@ -829,62 +882,73 @@ abstract class PersistenceAgentSpec
       val maxTime = sorted.last.atTime
       persistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
-        .map(e => assert(e === sorted.toList))
+        .map(e => e shouldMatchTo sorted.toList)
     }
-    it("delete") {
-      for {
-        _ <- persistor.deleteDomainIndexEvents(qid)
-        after <- persistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
-      } yield after shouldBe empty
+    if (runDeletionTests) {
+      it("delete") {
+        for {
+          _ <- persistor.deleteDomainIndexEvents(qid)
+          after <- persistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+        } yield after shouldBe empty
+      }
     }
   }
 
-  describe("deleteDomainIndexEventsByDgnId") {
-    // Note that this test has occasionally failed in CI for MapDB or RocksDB datastores.
-    // The larger list seems to mitigate these failures. The delete works correctly but
-    // this should be investigated if intermittent failures are seen in testing.
-    val dgnIds = Gen.listOfN(20, arbitrary[DomainGraphNodeId]).sample.get
-    // a map of (randomQuineId -> (DomainIndexEvent(randomDgnId(0), DomainIndexEvent(randomDgnId(1))
-    val events = 1
-      .to(5)
-      .map(_ =>
-        idProvider.newQid() -> withRandomTime(
-          NonEmptyList.of(
-            CancelDomainNodeSubscription(dgnIds(0), generate1[QuineId](1)),
-            CancelDomainNodeSubscription(dgnIds(1), generate1[QuineId](1))
+  if (runDeletionTests) {
+
+    describe("deleteDomainIndexEventsByDgnId") {
+      // Note that this test has occasionally failed in CI for MapDB or RocksDB datastores.
+      // The larger list seems to mitigate these failures. The delete works correctly but
+      // this should be investigated if intermittent failures are seen in testing.
+      val dgnIds = Gen.listOfN(20, arbitrary[DomainGraphNodeId]).sample.get
+      // a map of (randomQuineId -> (DomainIndexEvent(randomDgnId(0), DomainIndexEvent(randomDgnId(1))
+      val events = 1
+        .to(5)
+        .map(_ =>
+          idProvider.newQid() -> withRandomTime(
+            NonEmptyList.of(
+              CancelDomainNodeSubscription(dgnIds(0), generate1[QuineId](1)),
+              CancelDomainNodeSubscription(dgnIds(1), generate1[QuineId](1))
+            )
           )
         )
-      )
 
-    /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
-    def eventCount(): Future[Int] = Future
-      .traverse(events) { case (qid, _) =>
-        persistor
-          .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
-          .map(_.size)
-      }
-      .map(_.sum)
+      /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
+      def eventCount(): Future[Int] = Future
+        .traverse(events) { case (qid, _) =>
+          persistor
+            .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+            .map(_.size)
+        }
+        .map(_.sum)
 
-    def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
-      persistor.deleteDomainIndexEventsByDgnId(dgnId)
+      def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
+        persistor.deleteDomainIndexEventsByDgnId(dgnId)
 
-    // TODO: this randomly fails on CI for InMemoryPersistorSpec
-    // Maybe move it out of here and into something else which everything but InMemoryPeristenceAgentSpec uses?
-    ignore("should read back domain index events, and support deletes") {
-      for {
-        _ <- Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2))
-        firstCount <- eventCount()
-        _ <- deleteForDgnId(dgnIds(0))
-        postDeleteCount <- eventCount()
-        _ <- deleteForDgnId(dgnIds(1))
-        postSecondDeleteCount <- eventCount()
-      } yield {
-        assert(firstCount == 10)
-        assert(postDeleteCount == 5)
-        assert(postSecondDeleteCount == 0)
+      // TODO: this randomly fails on CI for InMemoryPersistorSpec
+      // Maybe move it out of here and into something else which everything but InMemoryPeristenceAgentSpec uses?
+      it("should read back domain index events, and support deletes") {
+        if (WrappedPersistenceAgent.unwrap(this.persistor).isInstanceOf[InMemoryPersistor]) pending
+        else
+          for {
+            _ <- Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2))
+            firstCount <- eventCount()
+            _ <- deleteForDgnId(dgnIds(0))
+            postDeleteCount <- eventCount()
+            _ <- deleteForDgnId(dgnIds(1))
+            postSecondDeleteCount <- eventCount()
+          } yield {
+            assert(firstCount == 10)
+            assert(postDeleteCount == 5)
+            assert(postSecondDeleteCount == 0)
+          }
       }
     }
-
   }
 
+}
+object PersistenceAgentSpec extends Matchers with DiffShouldMatcher {
+  def assertArraysEqual(l: Array[Byte], r: Array[Byte]): Assertion =
+    l should contain theSameElementsInOrderAs r
+//    l shouldMatchTo r
 }

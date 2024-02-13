@@ -102,6 +102,13 @@ object PersistenceAgentType extends PureconfigInstances {
     )
   }
 
+  final case class ClickHouse(
+    uri: String = "http://localhost:8123",
+    username: String = "quine",
+    password: String = "quine",
+    bloomFilterSize: Option[Long] = None
+  ) extends PersistenceAgentType(isLocal = false)
+
   implicit val cassandraConfigConvert: ConfigConvert[ConsistencyLevel] = {
     import ConfigReader.javaEnumReader
     import ConfigWriter.javaEnumWriter

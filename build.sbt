@@ -33,7 +33,7 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % "0.9.0" % Test,
+      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
@@ -70,6 +70,7 @@ lazy val `quine-mapdb-persistor`: Project = project
      * bad JAR and explicitly pull in the good one.
      */
     libraryDependencies ++= Seq(
+      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       ("org.mapdb" % "mapdb" % mapDbV).exclude("net.jpountz.lz4", "lz4"),
       "org.lz4" % "lz4-java" % lz4JavaV
     )
@@ -81,6 +82,7 @@ lazy val `quine-rocksdb-persistor`: Project = project
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
+      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "org.rocksdb" % "rocksdbjni" % rocksdbV
     )
   )
@@ -94,6 +96,7 @@ lazy val `quine-cassandra-persistor`: Project = project
   .enablePlugins(spray.boilerplate.BoilerplatePlugin)
   .settings(
     libraryDependencies ++= Seq(
+      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "org.typelevel" %% "cats-core" % catsV,
       "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.github.stephenc.jcip", "jcip-annotations"),
@@ -262,6 +265,10 @@ lazy val `quine`: Project = project
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoCsvV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
       "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoKinesisV exclude ("org.rocksdb", "rocksdbjni"),
+      // 3 Next deps: override outdated pekko-connectors-kinesis dependencies
+      "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
+      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV,
+      "com.amazonaws" % "aws-java-sdk-sts" % awsSdkv1V,
       "org.apache.pekko" %% "pekko-connectors-s3" % pekkoS3V,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoSnsV,
       "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoSQSV,

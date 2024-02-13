@@ -25,6 +25,10 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "LICENSES.txt") | "AUTHORS" => MergeStrategy.concat
     case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
     case PathList("META-INF", "kotlinx-serialization-core.kotlin_module") => MergeStrategy.first
+    case PathList("META-INF", "okio-fakefilesystem.kotlin_module") => MergeStrategy.first
+    case PathList("META-INF", "okio.kotlin_module") => MergeStrategy.first
+    case PathList("META-INF", "wire-runtime.kotlin_module") => MergeStrategy.first
+    case PathList("META-INF", "wire-schema.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "native-image", "org.mongodb", "bson", "native-image.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard

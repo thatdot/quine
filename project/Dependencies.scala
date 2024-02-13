@@ -12,7 +12,11 @@ object Dependencies {
   val pekkoTextV = "1.0.1"
   // Must be at least 1.11.3 to fix CVE-2023-39410
   val avroV = "1.11.3"
+  val amazonKinesisClientV = "2.5.4"
+  val amazonGlueV = "1.1.18"
   val awsSdkV = "2.20.159"
+  // Required for amazon-kinesis-client
+  val awsSdkv1V = "1.12.647"
   val betterMonadicForV = "0.3.1"
   val bootstrapV = "5.3.0"
   val cassandraClientV = "4.15.0"
@@ -23,6 +27,7 @@ object Dependencies {
   val commonsCompressV = "1.25.0"
   val commonsTextV = "1.11.0"
   val commonsIoV = "2.15.1"
+  val diffxV = "0.9.0"
   val dropwizardMetricsV = "4.2.20"
   val embeddedCassandraV = "4.1.0"
   val endpoints4sDefaultV = "1.11.1"
@@ -39,12 +44,12 @@ object Dependencies {
   // Must be at least 0.53.0
   val kamlV = "0.53.0"
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
-  val kafkaClientsV = "3.0.2"
+  val kafkaClientsV = "3.6.1"
   // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb
   // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
   val kotlinStdlibV = "1.9.22"
   val logbackConfigV = "0.4.0"
-  val logbackV = "1.4.13"
+  val logbackV = "1.4.14"
   val logstashLogbackV = "7.4"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
   val mapDbV = "3.0.10"
@@ -55,7 +60,7 @@ object Dependencies {
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
   val plotlyV = "1.57.1"
-  val protobufV = "3.21.10"
+  val protobufV = "3.25.2"
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.5"
   val reactPlotlyV = "2.5.1"

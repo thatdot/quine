@@ -8,6 +8,7 @@ import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.quine.graph.DiffxInstances._
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
@@ -18,13 +19,6 @@ class SerializationTests
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryInstances
     with DiffShouldMatcher {
-  // java.util.regex.Pattern or Array don't have a good equality method
-  // So we define the Diff here in terms of things which do have good equality methods / existing Diffs:
-  // the string pattern from which the Pattern was compiled, and the Seq version of the Array
-  // Without these, we'd get false diffs / test failures from things with the same value not
-  // getting reported as equal due to being different instances (not reference equals)
-  implicit val regexPatternDiff: Diff[regex.Pattern] = Diff[String].contramap(_.pattern)
-  implicit val byteArrayDiff: Diff[Array[Byte]] = Diff[Seq[Byte]].contramap(_.toSeq)
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =

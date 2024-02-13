@@ -11,7 +11,7 @@ import org.apache.pekko.stream.Materializer
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.Metrics
-import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, Keyspaces, MapDb}
+import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, ClickHouse, Keyspaces, MapDb}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor._
 import com.thatdot.quine.persistor.cassandra.aws.{KeyspacesPersistor, PrimeKeyspacesPersistor}
@@ -113,6 +113,11 @@ object PersistenceBuilder extends LazyLogging {
             c.snapshotPartMaxSizeBytes
           ),
           91.seconds
+        )
+
+      case _: ClickHouse =>
+        throw new IllegalArgumentException(
+          "ClickHouse is not available in Quine. If you are interested in using ClickHouse, please contact us to discuss upgrading to thatDot Streaming Graph."
         )
     }
   }
