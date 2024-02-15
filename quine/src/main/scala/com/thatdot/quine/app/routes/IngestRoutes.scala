@@ -24,7 +24,7 @@ import endpoints4s.Invalid
 import io.circe.Json
 
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.graph.{BaseGraph, NamespaceId, namespaceFromParam}
+import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, namespaceFromParam}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
@@ -37,7 +37,8 @@ trait IngestStreamState {
     restoredStatus: Option[IngestStreamStatus],
     shouldRestoreIngest: Boolean,
     timeout: Timeout,
-    shouldSaveMetadata: Boolean = true
+    shouldSaveMetadata: Boolean = true,
+    memberIdx: Option[MemberIdx] = None
   ): Try[Boolean]
 
   def getIngestStream(
@@ -202,7 +203,8 @@ trait IngestRoutesImpl
         intoNamespace,
         None,
         shouldRestoreIngest = false,
-        timeout
+        timeout,
+        memberIdx = None
       ) match {
         case Success(false) =>
           Left(

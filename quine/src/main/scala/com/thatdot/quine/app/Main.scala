@@ -171,12 +171,6 @@ object Main extends App with LazyLogging {
   val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
   Await.result(loadDataFut, timeout.duration * 2)
 
-  var recipeInterpreterTask: Option[Cancellable] = recipe.map(r =>
-    RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
-      graph.idProvider
-    )
-  )
-
   registerUserDefinedProcedure(
     new CypherStandingWiretap((queryName, namespace) => quineApp.getStandingQueryId(queryName, namespace))
   )
@@ -193,6 +187,14 @@ object Main extends App with LazyLogging {
     )
   }
 
+  var recipeInterpreterTask: Option[Cancellable] = recipe.map { r =>
+
+    val interpreter = RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
+      graph.idProvider
+    )
+    interpreter.run(quineApp.thisMemberIdx)
+    interpreter
+  }
   private val improveQuine = ImproveQuine(
     config.helpMakeQuineBetter,
     BuildInfo.version,

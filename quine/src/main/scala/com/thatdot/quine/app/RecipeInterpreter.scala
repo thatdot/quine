@@ -14,10 +14,16 @@ import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
+import com.thatdot.quine.app.RecipeInterpreter.RecipeState
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
 import com.thatdot.quine.graph.cypher.{QueryResults, Value}
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
+
+object RecipeInterpreter {
+
+  type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStore
+}
 
 /** Runs a Recipe by making a series of blocking graph method calls as determined
   * by the recipe content.
@@ -25,21 +31,27 @@ import com.thatdot.quine.model.QuineIdProvider
   * Also starts fixed rate scheduled tasks to poll for and report status updates. These
   * should be cancelled using the returned Cancellable.
   */
-object RecipeInterpreter {
+case class RecipeInterpreter(
+  statusLines: StatusLines,
+  recipe: Recipe,
+  appState: RecipeState,
+  graphService: CypherOpsGraph,
+  quineWebserverUri: Option[Uri]
+)(implicit idProvider: QuineIdProvider)
+    extends Cancellable {
+
+  private var tasks: List[Cancellable] = List.empty
 
   // Recipes always use the default namespace.
   val namespace: NamespaceId = None
 
-  type RecipeState = QueryUiConfigurationState with IngestStreamState with StandingQueryStore
+  /** Cancel all the tasks, returning true if any task cancel returns true. */
+  override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)
 
-  def apply(
-    statusLines: StatusLines,
-    recipe: Recipe,
-    appState: RecipeState,
-    graphService: CypherOpsGraph,
-    quineWebserverUri: Option[Uri]
-  )(implicit idProvider: QuineIdProvider): Cancellable = {
-    statusLines.info(s"Running Recipe: ${recipe.title}")
+  /** Returns true if all the tasks report isCancelled true. */
+  override def isCancelled: Boolean = tasks.forall(_.isCancelled)
+
+  def run(memberIdx: MemberIdx): Unit = {
 
     if (recipe.nodeAppearances.nonEmpty) {
       statusLines.info(s"Using ${recipe.nodeAppearances.length} node appearances")
@@ -53,8 +65,6 @@ object RecipeInterpreter {
       statusLines.info(s"Using ${recipe.sampleQueries.length} sample queries ")
       appState.setSampleQueries(recipe.sampleQueries.toVector)
     }
-
-    var tasks: List[Cancellable] = List.empty
 
     // Create Standing Queries
     for {
@@ -89,7 +99,8 @@ object RecipeInterpreter {
         namespace,
         restoredStatus = None,
         shouldRestoreIngest = true,
-        timeout = 5 seconds
+        timeout = 5 seconds,
+        memberIdx = Some(memberIdx)
       ) match {
         case Failure(ex) =>
           statusLines.error(s"Failed creating Ingest Stream $ingestStreamName\n$ingestStream", ex)
@@ -111,7 +122,6 @@ object RecipeInterpreter {
       }
     }
 
-    new MultiCancellable(tasks)
   }
 
   private def ingestStreamProgressReporter(
@@ -185,13 +195,14 @@ object RecipeInterpreter {
           case Success(Some(standingQuery)) =>
             val standingQueryStatsCount =
               standingQuery.stats.values.view.map(_.rates.count).sum
-            statusLines.update(statusLine, s"$standingQueryName count ${standingQueryStatsCount}")
+            statusLines.update(statusLine, s"$standingQueryName count $standingQueryStatsCount")
         }(graph.system.dispatcher)
     }(graph.system.dispatcher)
     task
   }
 
   private val printQueryMaxResults = 10L
+
   private def statusQueryProgressReporter(
     statusLines: StatusLines,
     graphService: CypherOpsGraph,
@@ -218,7 +229,7 @@ object RecipeInterpreter {
               .run()(graphService.materializer),
             5 seconds
           )
-        changed(queryResultToString(queryResults, resultContent))(statusLines.info(_))
+        changed(queryResultToString(queryResults, resultContent))(statusLines.info)
       } catch {
         case _: TimeoutException => statusLines.warn("Status query timed out")
       }
@@ -284,10 +295,12 @@ object RecipeInterpreter {
   * E.g. for periodically printing logged status updates only when the log message contains a changed string.
   * Intended for use from multiple concurrent threads.
   * Callback IS called on first invocation.
+  *
   * @tparam T The input value that is compared for change using `equals` equality.
   */
 class OnChanged[T] {
   private val lastValue: AtomicReference[Option[T]] = new AtomicReference(None)
+
   def apply(value: T)(callback: T => Unit): Unit = {
     val newValue = Some(value)
     val prevValue = lastValue.getAndSet(newValue)
@@ -296,13 +309,4 @@ class OnChanged[T] {
     }
     ()
   }
-}
-
-class MultiCancellable(tasks: List[Cancellable]) extends Cancellable {
-
-  /** Cancel all the tasks, returning true if any task cancel returns true. */
-  override def cancel(): Boolean = tasks.foldLeft(false)((a, b) => b.cancel() || a)
-
-  /** Returns true if all the tasks report isCancelled true. */
-  override def isCancelled: Boolean = tasks.forall(_.isCancelled)
 }

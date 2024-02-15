@@ -130,7 +130,7 @@ final class QuineApp(graph: GraphService)
   final private[this] val ingestStreamsLock = new AnyRef
 
   // Constant member index 0 for Quine
-  private val thisMemberIdx: MemberIdx = 0
+  val thisMemberIdx: MemberIdx = 0
 
   /** == Accessors == */
 
@@ -229,7 +229,7 @@ final class QuineApp(graph: GraphService)
   /** Cancels an existing standing query.
     *
     * @return Future succeeds/fails when the storing of the updated collection of SQs succeeds/fails. The Option is
-    * `None` when the SQ or namespace doesn't exist. The inner RegisteredStandingQuery` is the definition of the
+    * `None` when the SQ or namespace doesn't exist. The inner `RegisteredStandingQuery` is the definition of the
     * successfully removed standing query.
     */
   def cancelStandingQuery(
@@ -392,7 +392,8 @@ final class QuineApp(graph: GraphService)
     restoredStatus: Option[IngestStreamStatus], // restoredStatus is None if stream was not restored at all
     shouldRestoreIngest: Boolean,
     timeout: Timeout,
-    shouldSaveMetadata: Boolean = true
+    shouldSaveMetadata: Boolean = true,
+    memberIdx: Option[MemberIdx] = Some(thisMemberIdx)
   ): Try[Boolean] = failIfNoNamespace(intoNamespace) {
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(intoNamespace) match {
@@ -629,7 +630,8 @@ final class QuineApp(graph: GraphService)
             restoredStatus = ingest.status,
             shouldResumeIngest,
             timeout,
-            shouldSaveMetadata = false // We're restoring what was saved.
+            shouldSaveMetadata = false, // We're restoring what was saved.
+            Some(thisMemberIdx)
           ) match {
             case Success(true) => ()
             case Success(false) =>
