@@ -16,20 +16,20 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
     */
   override val runnable: Boolean = sys.env.contains("CI") || RocksDbPersistor.loadRocksDbLibrary()
 
-  lazy val persistor: PersistenceAgent =
+  lazy val persistor: PrimePersistor =
     if (RocksDbPersistor.loadRocksDbLibrary()) {
       val f = Files.createTempDirectory("rocks.db")
       CoordinatedShutdown(system).addJvmShutdownHook(() => FileUtils.forceDelete(f.toFile))
-      new RocksDbPersistor(
-        filePath = f.toString,
-        None,
+      new RocksDbPrimePersistor(
+        createParentDir = false,
+        topLevelPath = f.toFile,
         writeAheadLog = true,
         syncWrites = false,
         dbOptionProperties = new Properties(),
         PersistenceConfig(),
-        new QuineDispatchers(system).blockingDispatcherEC
+        ioDispatcher = new QuineDispatchers(system).blockingDispatcherEC
       )
     } else {
-      EmptyPersistor
+      new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))
     }
 }

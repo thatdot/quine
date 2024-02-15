@@ -29,6 +29,7 @@ import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
+  NamespaceId,
   NodeChangeEvent,
   NodeEvent,
   PatternOrigin,
@@ -36,7 +37,8 @@ import com.thatdot.quine.graph.{
   ScalaTestInstances,
   StandingQuery,
   StandingQueryId,
-  StandingQueryPattern
+  StandingQueryPattern,
+  namespaceFromString
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
@@ -67,13 +69,32 @@ abstract class PersistenceAgentSpec
   // Override this to opt-out of tests that delete records (eg to perform manual inspection)
   def runDeletionTests: Boolean = true
 
-  def persistor: PersistenceAgent
+  def persistor: PrimePersistor
+
+  val testNamespace: NamespaceId = namespaceFromString("persistenceSpec")
+  // initialized in beforeAll
+  final var namespacedPersistor: NamespacedPersistenceAgent = _
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    namespacedPersistor = Await
+      .result(
+        persistor
+          .prepareNamespace(testNamespace)
+          .map { _ =>
+            persistor.createNamespace(testNamespace)
+            persistor(testNamespace).get // this should be defined -- we just created it, after all!
+          }(ExecutionContexts.parasitic),
+        41.seconds // potentially creates database tables, which is potentially slow depending on the database
+      )
+    ()
+  }
 
   def withRandomTime[T <: NodeEvent](events: NonEmptyList[T]): NonEmptyList[NodeEvent.WithTime[T]] =
     events.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(Random.nextLong())))
 
   def sortedByTime[T <: NodeEvent](events: NonEmptyList[NodeEvent.WithTime[T]]): NonEmptyList[NodeEvent.WithTime[T]] =
     events.sortBy(_.atTime)
+
   override def afterAll(): Unit = {
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)
@@ -138,7 +159,7 @@ abstract class PersistenceAgentSpec
   describe("persistEvent") {
     it("can record events at various time") {
       allOfConcurrent(
-        persistor.persistNodeChangeEvents(
+        namespacedPersistor.persistNodeChangeEvents(
           qid1,
           NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.fromRaw(34L)),
@@ -154,7 +175,7 @@ abstract class PersistenceAgentSpec
     it("supports EventTime.MaxValue and EventTime.MinValue") {
       allOfConcurrent(
         // "minimum qid" (all 0 bits)
-        persistor.persistNodeChangeEvents(
+        namespacedPersistor.persistNodeChangeEvents(
           qid0,
           NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
@@ -164,7 +185,7 @@ abstract class PersistenceAgentSpec
           )
         ),
         // in between qid
-        persistor.persistNodeChangeEvents(
+        namespacedPersistor.persistNodeChangeEvents(
           qid2,
           NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
@@ -174,7 +195,7 @@ abstract class PersistenceAgentSpec
           )
         ),
         // "maximum qid" (all 1 bits)
-        persistor.persistNodeChangeEvents(
+        namespacedPersistor.persistNodeChangeEvents(
           qid4,
           NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.MinValue),
@@ -191,146 +212,169 @@ abstract class PersistenceAgentSpec
 
     it("can query a full journal of a node") {
       allOfConcurrent(
-        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid0, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3))
-        },
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid1, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
-        },
-        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3))
-        },
-        persistor.getJournal(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq.empty)
-        },
-        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = false).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = false)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3))
-        }
+          }
       )
     }
 
     it("can query with EventTime.MinValue lower bound") {
       allOfConcurrent(
         // before anything
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(2L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq.empty)
-        },
+          },
         // right up to one event
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(34L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        },
+          },
         // right after one event
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(37L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1))
-        },
+          },
         // after all events
-        persistor.getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.MinValue, EventTime.fromRaw(48L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
-        },
+          },
         // first event is the min value
-        persistor.getJournal(qid0, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid0, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        },
-        persistor.getJournal(qid2, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid2, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        },
-        persistor.getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        }
+          }
       )
     }
 
     it("can query with EventTime.MaxValue upper bound") {
       allOfConcurrent(
         // before anything
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(2L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
-        },
+          },
         // before one event
-        persistor.getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(42L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event4))
-        },
+          },
         // starting exactly at one event
-        persistor.getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(44L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event4))
-        },
+          },
         // starting exactly at the first event
-        persistor.getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(34L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0, event1, event2, event3, event4))
-        },
+          },
         // after all events
-        persistor.getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(48L), EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq.empty)
-        },
+          },
         // first event is the min value
-        persistor.getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid0, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event3))
-        },
-        persistor.getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid2, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event3))
-        },
-        persistor.getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event3))
-        }
+          }
       )
     }
 
     it("can query with bounds that are not maximums") {
       allOfConcurrent(
         // start and end before any events
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(33L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq.empty)
-        },
+          },
         // start and end between events
-        persistor
+        namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(42L), EventTime.fromRaw(43L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq.empty)
           },
         // right up to one event
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(34L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        },
+          },
         // right after one event
-        persistor.getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid1, EventTime.fromRaw(2L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event0))
-        },
+          },
         // starting exactly at one event
-        persistor
+        namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(35L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq(event0))
           },
         // start and end on events
-        persistor
+        namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(36L), EventTime.fromRaw(40L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq(event1, event2, event3))
           },
-        persistor
+        namespacedPersistor
           .getJournal(qid1, EventTime.fromRaw(34L), EventTime.fromRaw(48L), includeDomainIndexEvents = true)
           .map { journal =>
             journal shouldMatchTo Seq(
@@ -347,34 +391,37 @@ abstract class PersistenceAgentSpec
     it("can handle unsigned EventTime") {
       allOfConcurrent(
         // event time needs to be treated as unsigned
-        persistor
+        namespacedPersistor
           .getJournal(qid0, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq(event2))
           },
-        persistor
+        namespacedPersistor
           .getJournal(qid2, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq(event2))
           },
-        persistor
+        namespacedPersistor
           .getJournal(qid4, EventTime.fromRaw(-200000000L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldMatchTo Seq(event2))
           },
         // event time needs to be treated as unsigned
-        persistor.getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
-          journal =>
+        namespacedPersistor
+          .getJournal(qid0, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event1, event2))
-        },
-        persistor.getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid2, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event1, event2))
-        },
-        persistor.getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true).map {
-          journal =>
+          },
+        namespacedPersistor
+          .getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
+          .map { journal =>
             (journal shouldMatchTo Seq(event1, event2))
-        }
+          }
       )
     }
   }
@@ -382,31 +429,31 @@ abstract class PersistenceAgentSpec
   describe("persistSnapshot") {
     it("can record snapshots at various time") {
       allOfConcurrent(
-        persistor.persistSnapshot(qid1, EventTime.fromRaw(34L), snapshot0),
-        persistor.persistSnapshot(qid1, EventTime.fromRaw(36L), snapshot1),
-        persistor.persistSnapshot(qid1, EventTime.fromRaw(38L), snapshot2),
-        persistor.persistSnapshot(qid1, EventTime.fromRaw(40L), snapshot3),
-        persistor.persistSnapshot(qid1, EventTime.fromRaw(44L), snapshot4)
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(34L), snapshot0),
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(36L), snapshot1),
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(38L), snapshot2),
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(40L), snapshot3),
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(44L), snapshot4)
       )
     }
 
     it("supports EventTime.MaxValue and EventTime.MinValue") {
       allOfConcurrent(
         // "minimum qid" (all 0 bits)
-        persistor.persistSnapshot(qid0, EventTime.MinValue, snapshot0),
-        persistor.persistSnapshot(qid0, EventTime.fromRaw(2394872938L), snapshot1),
-        persistor.persistSnapshot(qid0, EventTime.fromRaw(-129387432L), snapshot2),
-        persistor.persistSnapshot(qid0, EventTime.MaxValue, snapshot3),
+        namespacedPersistor.persistSnapshot(qid0, EventTime.MinValue, snapshot0),
+        namespacedPersistor.persistSnapshot(qid0, EventTime.fromRaw(2394872938L), snapshot1),
+        namespacedPersistor.persistSnapshot(qid0, EventTime.fromRaw(-129387432L), snapshot2),
+        namespacedPersistor.persistSnapshot(qid0, EventTime.MaxValue, snapshot3),
         // in between qid
-        persistor.persistSnapshot(qid2, EventTime.MinValue, snapshot0),
-        persistor.persistSnapshot(qid2, EventTime.fromRaw(2394872938L), snapshot1),
-        persistor.persistSnapshot(qid2, EventTime.fromRaw(-129387432L), snapshot2),
-        persistor.persistSnapshot(qid2, EventTime.MaxValue, snapshot3),
+        namespacedPersistor.persistSnapshot(qid2, EventTime.MinValue, snapshot0),
+        namespacedPersistor.persistSnapshot(qid2, EventTime.fromRaw(2394872938L), snapshot1),
+        namespacedPersistor.persistSnapshot(qid2, EventTime.fromRaw(-129387432L), snapshot2),
+        namespacedPersistor.persistSnapshot(qid2, EventTime.MaxValue, snapshot3),
         // "maximum qid" (all 1 bits)
-        persistor.persistSnapshot(qid4, EventTime.MinValue, snapshot0),
-        persistor.persistSnapshot(qid4, EventTime.fromRaw(2394872938L), snapshot1),
-        persistor.persistSnapshot(qid4, EventTime.fromRaw(-129387432L), snapshot2),
-        persistor.persistSnapshot(qid4, EventTime.MaxValue, snapshot3)
+        namespacedPersistor.persistSnapshot(qid4, EventTime.MinValue, snapshot0),
+        namespacedPersistor.persistSnapshot(qid4, EventTime.fromRaw(2394872938L), snapshot1),
+        namespacedPersistor.persistSnapshot(qid4, EventTime.fromRaw(-129387432L), snapshot2),
+        namespacedPersistor.persistSnapshot(qid4, EventTime.MaxValue, snapshot3)
       )
     }
   }
@@ -415,22 +462,22 @@ abstract class PersistenceAgentSpec
 
     it("can query the latest snapshot of a node") {
       allOfConcurrent(
-        persistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid0, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot3)
         },
-        persistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot4)
         },
-        persistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid2, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot3)
         },
-        persistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid3, EventTime.MaxValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
-        persistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot3)
         }
@@ -439,21 +486,21 @@ abstract class PersistenceAgentSpec
 
     it("can query with EventTime.MinValue as the target time") {
       allOfConcurrent(
-        persistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid0, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
         },
-        persistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
-        persistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid2, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
         },
-        persistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid3, EventTime.MinValue).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
-        persistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
         }
@@ -463,29 +510,29 @@ abstract class PersistenceAgentSpec
     it("can query with bounds that are not maximums") {
       allOfConcurrent(
         // before any snapshots
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(33L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(33L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
         // right up to one snapshot
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(34L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
         },
         // right after one snapshot
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(35L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
         },
         // after some snapshots, before others
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(37L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot1)
         },
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(38L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot2)
         },
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot4)
         }
@@ -494,22 +541,22 @@ abstract class PersistenceAgentSpec
 
     it("can handle unsigned EventTime") {
       allOfConcurrent(
-        persistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid0, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot2)
         },
-        persistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot4)
         },
-        persistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid2, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot2)
         },
-        persistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid3, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           assert(snapshotOpt.isEmpty)
         },
-        persistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
+        namespacedPersistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot2)
         }
@@ -523,8 +570,8 @@ abstract class PersistenceAgentSpec
       it("deletes all snapshots for the given QuineId") {
         forAll(allQids) { qid =>
           for {
-            _ <- persistor.deleteSnapshots(qid)
-            after <- persistor.getLatestSnapshot(qid, EventTime.MinValue)
+            _ <- namespacedPersistor.deleteSnapshots(qid)
+            after <- namespacedPersistor.getLatestSnapshot(qid, EventTime.MinValue)
           } yield after shouldBe empty
         }.map(_ => succeed)(ExecutionContexts.parasitic)
       }
@@ -550,8 +597,8 @@ abstract class PersistenceAgentSpec
           shouldCalculateResultHashCode = true
         )
         for {
-          _ <- persistor.removeStandingQuery(standingQuery)
-          after <- persistor.getStandingQueries
+          _ <- namespacedPersistor.removeStandingQuery(standingQuery)
+          after <- namespacedPersistor.getStandingQueries
         } yield after shouldBe empty
       }
     }
@@ -560,36 +607,36 @@ abstract class PersistenceAgentSpec
   describe("setStandingQueryState") {
     it("can set multiple states for one node") {
       allOfConcurrent(
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId1, Some(sqState1)),
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId2, Some(sqState2)),
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId3, Some(sqState3)),
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId1, Some(sqState1)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId2, Some(sqState2)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId3, Some(sqState3)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4))
       )
     }
 
     it("can set the same state on multiple nodes") {
       allOfConcurrent(
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid2, sqPartId1, Some(sqState1)),
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid3, sqPartId1, Some(sqState2)),
-        persistor.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid2, sqPartId1, Some(sqState1)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid3, sqPartId1, Some(sqState2)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3))
       )
     }
 
     it("can set states on various nodes") {
       allOfConcurrent(
-        persistor.setMultipleValuesStandingQueryState(sqId2, qid4, sqPartId4, Some(sqState1)),
-        persistor.setMultipleValuesStandingQueryState(sqId4, qid3, sqPartId1, Some(sqState3)),
-        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, Some(sqState4)),
-        persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId4, Some(sqState3)),
-        persistor.setMultipleValuesStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid4, sqPartId4, Some(sqState1)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId4, qid3, sqPartId1, Some(sqState3)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, Some(sqState4)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId4, Some(sqState3)),
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1))
       )
     }
 
     if (runDeletionTests) {
       it("can remove states") {
         allOfConcurrent(
-          persistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
-          persistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
+          namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
+          namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
         )
       }
     }
@@ -598,7 +645,7 @@ abstract class PersistenceAgentSpec
   describe("getStandingQueryState") {
     it("can return an empty set of states") {
       allOfConcurrent(
-        persistor.getMultipleValuesStandingQueryStates(qid0).map { sqStates =>
+        namespacedPersistor.getMultipleValuesStandingQueryStates(qid0).map { sqStates =>
           (sqStates shouldMatchTo Map.empty)
         }
       )
@@ -606,7 +653,7 @@ abstract class PersistenceAgentSpec
 
     it("can find a single state associated with a node") {
       allOfConcurrent(
-        persistor.getMultipleValuesStandingQueryStates(qid2).map { sqStates =>
+        namespacedPersistor.getMultipleValuesStandingQueryStates(qid2).map { sqStates =>
           sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1)
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState1)
         }
@@ -615,7 +662,7 @@ abstract class PersistenceAgentSpec
 
     it("can find states associated with multiple queries") {
       allOfConcurrent(
-        persistor.getMultipleValuesStandingQueryStates(qid1).map { sqStates =>
+        namespacedPersistor.getMultipleValuesStandingQueryStates(qid1).map { sqStates =>
           sqStates.keySet shouldMatchTo Set(
             sqId1 -> sqPartId1,
             sqId1 -> sqPartId2,
@@ -630,12 +677,12 @@ abstract class PersistenceAgentSpec
           assertArraysEqual(sqStates(sqId2 -> sqPartId4), sqState3)
           assertArraysEqual(sqStates(sqId1 -> sqPartId4), sqState4)
         },
-        persistor.getMultipleValuesStandingQueryStates(qid3).map { sqStates =>
+        namespacedPersistor.getMultipleValuesStandingQueryStates(qid3).map { sqStates =>
           sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1, sqId4 -> sqPartId1)
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState2)
           assertArraysEqual(sqStates(sqId4 -> sqPartId1), sqState3)
         },
-        persistor.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
+        namespacedPersistor.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
           sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1, sqId2 -> sqPartId4, sqId3 -> sqPartId3)
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState3)
           assertArraysEqual(sqStates(sqId2 -> sqPartId4), sqState1)
@@ -649,9 +696,9 @@ abstract class PersistenceAgentSpec
     describe("deleteMultipleValuesStandingQueryStates") {
       it("deletes all multiple value query states for the given QuineId") {
         for {
-          before <- persistor.getMultipleValuesStandingQueryStates(qid1)
-          _ <- persistor.deleteMultipleValuesStandingQueryStates(qid1)
-          after <- persistor.getMultipleValuesStandingQueryStates(qid1)
+          before <- namespacedPersistor.getMultipleValuesStandingQueryStates(qid1)
+          _ <- namespacedPersistor.deleteMultipleValuesStandingQueryStates(qid1)
+          after <- namespacedPersistor.getMultipleValuesStandingQueryStates(qid1)
         } yield {
           // be sure that this test does something since it depends on previous tests adding states
           before should not be empty
@@ -840,13 +887,13 @@ abstract class PersistenceAgentSpec
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistNodeChangeEvents(qid, withTimeUnsorted) as succeed
+      namespacedPersistor.persistNodeChangeEvents(qid, withTimeUnsorted) as succeed
     }
 
     it("read") {
       val minTime = sorted.head.atTime
       val maxTime = sorted.last.atTime
-      persistor
+      namespacedPersistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
         .map(_ shouldMatchTo sorted.toList)
     }
@@ -857,8 +904,12 @@ abstract class PersistenceAgentSpec
       it("can delete all record events for a given Quine Id") {
         forAll(allQids)(qid =>
           for {
-            _ <- persistor.deleteNodeChangeEvents(qid)
-            journalEntries <- persistor.getNodeChangeEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+            _ <- namespacedPersistor.deleteNodeChangeEvents(qid)
+            journalEntries <- namespacedPersistor.getNodeChangeEventsWithTime(
+              qid,
+              EventTime.MinValue,
+              EventTime.MaxValue
+            )
           } yield journalEntries shouldBe empty
         ).map(_ => succeed)(ExecutionContexts.parasitic)
       }
@@ -875,20 +926,20 @@ abstract class PersistenceAgentSpec
 
     it("write") {
       //we should be able to write events without worrying about sort order
-      persistor.persistDomainIndexEvents(qid, withTimeUnsorted) as succeed
+      namespacedPersistor.persistDomainIndexEvents(qid, withTimeUnsorted) as succeed
     }
     it("read") {
       val minTime = sorted.head.atTime
       val maxTime = sorted.last.atTime
-      persistor
+      namespacedPersistor
         .getJournalWithTime(qid, minTime, maxTime, includeDomainIndexEvents = true)
         .map(e => e shouldMatchTo sorted.toList)
     }
     if (runDeletionTests) {
       it("delete") {
         for {
-          _ <- persistor.deleteDomainIndexEvents(qid)
-          after <- persistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
+          _ <- namespacedPersistor.deleteDomainIndexEvents(qid)
+          after <- namespacedPersistor.getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
         } yield after shouldBe empty
       }
     }
@@ -916,22 +967,22 @@ abstract class PersistenceAgentSpec
       /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
       def eventCount(): Future[Int] = Future
         .traverse(events) { case (qid, _) =>
-          persistor
+          namespacedPersistor
             .getDomainIndexEventsWithTime(qid, EventTime.MinValue, EventTime.MaxValue)
             .map(_.size)
         }
         .map(_.sum)
 
       def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
-        persistor.deleteDomainIndexEventsByDgnId(dgnId)
+        namespacedPersistor.deleteDomainIndexEventsByDgnId(dgnId)
 
       // TODO: this randomly fails on CI for InMemoryPersistorSpec
       // Maybe move it out of here and into something else which everything but InMemoryPeristenceAgentSpec uses?
       it("should read back domain index events, and support deletes") {
-        if (WrappedPersistenceAgent.unwrap(this.persistor).isInstanceOf[InMemoryPersistor]) pending
+        if (WrappedPersistenceAgent.unwrap(this.namespacedPersistor).isInstanceOf[InMemoryPersistor]) pending
         else
           for {
-            _ <- Future.traverse(events)(t => persistor.persistDomainIndexEvents(t._1, t._2))
+            _ <- Future.traverse(events)(t => namespacedPersistor.persistDomainIndexEvents(t._1, t._2))
             firstCount <- eventCount()
             _ <- deleteForDgnId(dgnIds(0))
             postDeleteCount <- eventCount()
