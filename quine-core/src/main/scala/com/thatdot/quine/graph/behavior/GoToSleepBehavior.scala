@@ -106,13 +106,13 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           latestUpdateAfterSnapshot match {
             case Some(latestUpdateTime) if persistenceConfig.snapshotOnSleep && atTime.isEmpty =>
               val snapshot: Array[Byte] = toSnapshotBytes(latestUpdateTime)
-              metrics.snapshotSize(namespace).update(snapshot.length)
+              metrics.snapshotSize.update(snapshot.length)
 
               implicit val scheduler: Scheduler = context.system.scheduler
 
               // Save all persistor data
               val snapshotSaved = retryPersistence(
-                metrics.persistorPersistSnapshotTimer(namespace),
+                metrics.persistorPersistSnapshotTimer,
                 persistor.persistSnapshot(
                   qid,
                   if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
@@ -127,7 +127,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                     multipleValuesStandingQueries.get(key).map(MultipleValuesStandingQueryStateCodec.format.write)
                   serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
                   retryPersistence(
-                    metrics.persistorSetStandingQueryStateTimer(namespace),
+                    metrics.persistorSetStandingQueryStateTimer,
                     persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
                     context.dispatcher
                   )

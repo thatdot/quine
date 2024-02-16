@@ -288,7 +288,7 @@ trait MultipleValuesStandingQueryBehavior
       case PersistenceSchedule.OnNodeUpdate =>
         val serialized = state.map(MultipleValuesStandingQueryStateCodec.format.write)
         serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
-        new TimeFuture(metrics.persistorSetStandingQueryStateTimer(namespace)).time[Unit](
+        new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
           persistor.setMultipleValuesStandingQueryState(
             globalId,
             qid,

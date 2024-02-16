@@ -109,7 +109,7 @@ abstract private[graph] class AbstractNodeActor(
     initialEdges.foreach(edgeCollection.addEdge)
     val persistEventsToJournal: NonEmptyList[WithTime[EdgeEvent]] => Future[Unit] =
       if (persistor.persistenceConfig.journalEnabled)
-        events => metrics.persistorPersistEventTimer(namespace).time(persistor.persistNodeChangeEvents(qid, events))
+        events => metrics.persistorPersistEventTimer.time(persistor.persistNodeChangeEvents(qid, events))
       else
         _ => Future.unit
 
@@ -285,8 +285,7 @@ abstract private[graph] class AbstractNodeActor(
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Unit] =
       if (persistenceConfig.journalEnabled) {
-        metrics
-          .persistorPersistEventTimer(namespace)
+        metrics.persistorPersistEventTimer
           .time(persistEvents(effectingEvents))
           .transform(
             _ =>
@@ -340,11 +339,10 @@ abstract private[graph] class AbstractNodeActor(
   private[this] def persistSnapshot(): Unit = if (atTime.isEmpty) {
     val occurredAt: EventTime = tickEventSequence()
     val snapshot = toSnapshotBytes(occurredAt)
-    metrics.snapshotSize(namespace).update(snapshot.length)
+    metrics.snapshotSize.update(snapshot.length)
 
     def persistSnapshot(): Future[Unit] =
-      metrics
-        .persistorPersistSnapshotTimer(namespace)
+      metrics.persistorPersistSnapshotTimer
         .time(
           persistor.persistSnapshot(
             qid,

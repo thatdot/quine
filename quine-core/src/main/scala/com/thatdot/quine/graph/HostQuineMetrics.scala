@@ -55,21 +55,15 @@ final case class HostQuineMetrics(
     BinaryHistogramCounter(metricRegistry, metricName(namespaceId, List(subject, attribute)))
   }
 
-  private def persistorTimer(namespaceId: NamespaceId, action: String): Timer =
-    metricRegistry.timer(metricName(namespaceId, List("persistor", action)))
+  private def persistorTimer(action: String): Timer =
+    metricRegistry.timer(MetricRegistry.name("persistor", action))
 
-  def persistorPersistEventTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "persist-event")
-  def persistorPersistSnapshotTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "persist-snapshot")
-  def persistorGetJournalTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "get-journal")
-  def persistorGetLatestSnapshotTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "get-latest-snapshot")
-  def persistorSetStandingQueryStateTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "set-standing-query-state")
-  def persistorGetMultipleValuesStandingQueryStatesTimer(namespaceId: NamespaceId): Timer =
-    persistorTimer(namespaceId, "get-standing-query-states")
+  val persistorPersistEventTimer: Timer = persistorTimer("persist-event")
+  val persistorPersistSnapshotTimer: Timer = persistorTimer("persist-snapshot")
+  val persistorGetJournalTimer: Timer = persistorTimer("get-journal")
+  val persistorGetLatestSnapshotTimer: Timer = persistorTimer("get-latest-snapshot")
+  val persistorSetStandingQueryStateTimer: Timer = persistorTimer("set-standing-query-state")
+  val persistorGetMultipleValuesStandingQueryStatesTimer: Timer = persistorTimer("get-standing-query-states")
 
   /** @param context the context for which this timer is being used -- for
     *                example, "ingest-XYZ-deduplication" or "http-webpage-serve"
@@ -154,8 +148,8 @@ final case class HostQuineMetrics(
     standingQueryResultHashCodeRegistry.getOrElseUpdate(standingQueryId, new LongAdder)
 
   /** Histogram of size (in bytes) of persisted node snapshots */
-  def snapshotSize(namespaceId: NamespaceId): Histogram =
-    metricRegistry.histogram(metricName(namespaceId, List("persistor", "snapshot-sizes")))
+  val snapshotSize: Histogram =
+    metricRegistry.histogram(MetricRegistry.name("persistor", "snapshot-sizes"))
 
   def registerGaugeDomainGraphNodeCount(size: () => Int): Unit = {
     metricRegistry.registerGauge(MetricRegistry.name("dgn-reg", "count"), () => size())

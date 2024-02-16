@@ -85,8 +85,7 @@ abstract class StaticNodeSupport[
             case _ =>
               EventTime.MaxValue
           }
-          graph.metrics
-            .persistorGetLatestSnapshotTimer(quineIdAtTime.namespace)
+          graph.metrics.persistorGetLatestSnapshotTimer
             .time {
               persistor.getLatestSnapshot(qid, upToTime)
             }
@@ -103,7 +102,7 @@ abstract class StaticNodeSupport[
           case Some(until) => EventTime.fromMillis(until).largestEventTimeInThisMillisecond
           case None => EventTime.MaxValue
         }
-        graph.metrics.persistorGetJournalTimer(quineIdAtTime.namespace).time {
+        graph.metrics.persistorGetJournalTimer.time {
           persistor.getJournal(qid, startingAt, endingAt, includeDomainIndexEvents)
         }
       }
@@ -177,8 +176,7 @@ object StaticNodeSupport {
                 val node: QuineId = qid
                 val idProvider: QuineIdProvider = idProv
               }
-              sqGraph.metrics
-                .persistorGetMultipleValuesStandingQueryStatesTimer(qidAtTime.namespace)
+              sqGraph.metrics.persistorGetMultipleValuesStandingQueryStatesTimer
                 .time {
                   persistor.getMultipleValuesStandingQueryStates(qid)
                 }
