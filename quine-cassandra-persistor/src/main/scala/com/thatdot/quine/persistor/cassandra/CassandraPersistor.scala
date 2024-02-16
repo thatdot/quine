@@ -1,15 +1,13 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.collection.immutable
-import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
 import scala.compat.java8.OptionConverters._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
-import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import cats.data.NonEmptyList
 import cats.instances.future.catsStdInstancesForFuture
@@ -40,7 +38,22 @@ import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, Namespace
   * Consider it an alias for the function signature it wraps.
   */
 abstract class Chunker {
-  def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit]
+  def apply[A](things: Seq[A])(f: Seq[A] => Future[Unit]): Future[Unit]
+}
+
+object NoOpChunker extends Chunker {
+  def apply[A](things: Seq[A])(f: Seq[A] => Future[Unit]): Future[Unit] = f(things)
+}
+
+class SizeBoundedChunker(maxBatchSize: Int, parallelism: Int, materializer: Materializer) extends Chunker {
+  def apply[A](things: Seq[A])(f: Seq[A] => Future[Unit]): Future[Unit] =
+    if (things.lengthIs <= maxBatchSize) // If it can be done as a single batch, just run it w/out Pekko Streams
+      f(things)
+    else
+      Source(things)
+        .grouped(maxBatchSize)
+        .runWith(Sink.foreachAsync(parallelism)(f))(materializer)
+        .map(_ => ())(ExecutionContext.parasitic)
 }
 
 abstract class CassandraPersistorDefinition {
@@ -109,7 +122,7 @@ abstract class CassandraPersistor(
   val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
-  implicit protected val futureInstance: Monad[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+  implicit protected val futureInstance: Monad[Future] = catsStdInstancesForFuture(ExecutionContext.parasitic)
 
   protected def chunker: Chunker
 
@@ -148,7 +161,7 @@ abstract class CassandraPersistor(
         _.traverse(time =>
           snapshots
             .getSnapshotParts(id, time)
-            .map(MultipartSnapshot(time, _))(ExecutionContexts.parasitic)
+            .map(MultipartSnapshot(time, _))(ExecutionContext.parasitic)
         )
       )(multipartSnapshotExecutionContext)
 

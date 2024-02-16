@@ -6,32 +6,37 @@ import scala.util.Using
 import org.apache.pekko.actor.ActorSystem
 import com.datastax.oss.driver.api.core.ConsistencyLevel
 import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
-import com.thatdot.quine.persistor.cassandra.vanilla.CassandraPersistor
+import com.thatdot.quine.persistor.cassandra
+import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
+import scala.concurrent.Await
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
 class CassandraPersistorSpec extends PersistenceAgentSpec {
 
   val statementSettings = CassandraStatementSettings(ConsistencyLevel.ONE, 1.second)
-  val cassandraWrapper: CassandraInstanceWrapper[CassandraPersistor] =
-    new CassandraInstanceWrapper[CassandraPersistor](inetSocketAddress =>
-      new CassandraPersistor(
-        PersistenceConfig(),
-        namespace = None,
-        keyspace = "quine",
-        replicationFactor = 1,
-        readSettings = statementSettings,
-        writeSettings = statementSettings,
-        endpoints = List(inetSocketAddress),
-        localDatacenter = "datacenter1",
-        shouldCreateTables = true,
-        shouldCreateKeyspace = true,
-        metricRegistry = None,
-        snapshotPartMaxSizeBytes = 1000
+  val cassandraWrapper: CassandraInstanceWrapper[PrimeCassandraPersistor] =
+    new CassandraInstanceWrapper[PrimeCassandraPersistor](inetSocketAddress =>
+      Await.result(
+        PrimeCassandraPersistor.create(
+          PersistenceConfig(),
+          bloomFilterSize = None,
+          endpoints = List(inetSocketAddress),
+          localDatacenter = "datacenter1",
+          replicationFactor = 1,
+          keyspace = "quine",
+          shouldCreateKeyspace = true,
+          shouldCreateTables = true,
+          readSettings = statementSettings,
+          writeSettings = statementSettings,
+          snapshotPartMaxSizeBytes = 1000,
+          metricRegistry = None
+        ),
+        12.seconds
       )
     )
 
@@ -40,7 +45,7 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
     cassandraWrapper.stop()
   }
 
-  lazy val persistor: NamespacedPersistenceAgent = cassandraWrapper.instance
+  lazy val persistor: PrimePersistor = cassandraWrapper.instance
 
   override def runnable: Boolean = true
 }
@@ -52,8 +57,8 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
   * address and port
   * - If that fails will default to InMemoryPersistor
   */
-class CassandraInstanceWrapper[T <: NamespacedPersistenceAgent](buildFromAddress: InetSocketAddress => T)(implicit
-  val system: ActorSystem
+class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFromAddress: InetSocketAddress => T)(
+  implicit val system: ActorSystem
 ) extends LazyLogging {
 
   private var embeddedCassandra: Cassandra = _
@@ -66,7 +71,7 @@ class CassandraInstanceWrapper[T <: NamespacedPersistenceAgent](buildFromAddress
 
   // Extra module flags to enable embedded Cassandra to run on more recent JVM versions
   // Still doesn't work in Java 19 or later due to the removal of SecurityManager
-  val extraJavaModules = List(
+  private val extraJavaModules = List(
     "java.io",
     "java.util",
     "java.util.concurrent",
@@ -76,9 +81,9 @@ class CassandraInstanceWrapper[T <: NamespacedPersistenceAgent](buildFromAddress
     "sun.nio.ch"
   )
 
-  def addOpensArg(pkg: String): String = s"--add-opens=java.base/$pkg=ALL-UNNAMED"
+  private def addOpensArg(pkg: String): String = s"--add-opens=java.base/$pkg=ALL-UNNAMED"
 
-  def launchEmbeddedCassanrda(): Cassandra = {
+  private def launchEmbeddedCassanrda(): Cassandra = {
     val cassandra = new CassandraBuilder()
       .startupTimeout(Duration.ofMinutes(5))
       .addJvmOptions("-XX:+IgnoreUnrecognizedVMOptions")
@@ -96,7 +101,7 @@ class CassandraInstanceWrapper[T <: NamespacedPersistenceAgent](buildFromAddress
     localAddr
   }.toOption
 
-  def addressFromEmbeddedCassandra(settings: Settings): InetSocketAddress =
+  private def addressFromEmbeddedCassandra(settings: Settings): InetSocketAddress =
     new InetSocketAddress(settings.getAddress, settings.getPort)
 
   /** Tests should run if Cassandra is available on localhost, or if embedded Cassandra could be started.

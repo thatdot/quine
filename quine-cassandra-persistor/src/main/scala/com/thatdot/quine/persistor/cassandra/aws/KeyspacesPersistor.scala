@@ -4,11 +4,9 @@ import java.net.InetSocketAddress
 import java.util.Collections.singletonMap
 import javax.net.ssl.SSLContext
 
-import scala.collection.immutable
-import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
@@ -42,15 +40,10 @@ import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{
-  CassandraPersistor,
   Chunker,
-  DomainIndexEvents,
-  Journals,
   JournalsTableDefinition,
-  Snapshots,
-  SnapshotsTableDefinition,
-  StandingQueries,
-  StandingQueryStates
+  SizeBoundedChunker,
+  SnapshotsTableDefinition
 }
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.PekkoStreams.distinct
@@ -194,7 +187,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         session
           .executeAsync(tableStatusQuery(tableName))
           .toScala
-          .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContexts.parasitic),
+          .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContext.parasitic),
         (status: Option[String]) =>
           (status contains "ACTIVE") || {
             logger.info(s"$tableName status is $status; polling status again")
@@ -204,7 +197,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         4.seconds,
         materializer.system.scheduler
       )(materializer.executionContext)
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
 
     Future.successful(
       constructor(
@@ -250,21 +243,9 @@ class PrimeKeyspacesPersistor(
       verifyTable
     )(materializer) {
 
-  override def shutdown(): Future[Unit] = super.shutdown().map(_ => credsProvider.close())(ExecutionContexts.parasitic)
+  override def shutdown(): Future[Unit] = super.shutdown() as credsProvider.close()
 
-  protected val chunker: Chunker = new Chunker {
-
-    import scala.collection.compat.{immutable => _, _} // for the .lengthIs
-
-    def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] =
-      if (things.lengthIs <= 30) // If it can be done as a single batch, just run it w/out Pekko Streams
-        f(things)
-      else
-        Source(things)
-          .grouped(30)
-          .runWith(Sink.foreachAsync(6)(f))(materializer)
-          .map(_ => ())(ExecutionContexts.parasitic)
-  }
+  protected val chunker: Chunker = new SizeBoundedChunker(maxBatchSize = 30, parallelism = 6, materializer)
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
     KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(materializer.executionContext)

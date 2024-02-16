@@ -14,24 +14,15 @@ import cats.syntax.all._
 import com.codahale.metrics.MetricRegistry
 import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata
-import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession, CqlSessionBuilder, InvalidKeyspaceException}
+import com.datastax.oss.driver.api.core.{CqlSession, CqlSessionBuilder, InvalidKeyspaceException}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 import com.typesafe.scalalogging.LazyLogging
 import shapeless.syntax.std.tuple._
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.cassandra.{
-  Chunker,
-  DomainIndexEvents,
-  Journals,
-  JournalsTableDefinition,
-  Snapshots,
-  SnapshotsTableDefinition,
-  StandingQueries,
-  StandingQueryStates
-}
-import com.thatdot.quine.persistor.{PersistenceConfig, PrimePersistor, cassandra}
+import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, NoOpChunker, SnapshotsTableDefinition}
+import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.CompletionException
 
 abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
@@ -155,9 +146,7 @@ class PrimeCassandraPersistor(
       _ => _ => Future.unit
     )(materializer) {
 
-  protected val chunker: Chunker = new Chunker {
-    def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] = f(things)
-  }
+  protected val chunker: Chunker = NoOpChunker
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
     CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(materializer.executionContext)
@@ -204,9 +193,7 @@ class CassandraPersistor(
       snapshotPartMaxSizeBytes
     ) {
 
-  protected val chunker: Chunker = new Chunker {
-    def apply[A](things: immutable.Seq[A])(f: immutable.Seq[A] => Future[Unit]): Future[Unit] = f(things)
-  }
+  protected val chunker: Chunker = NoOpChunker
 
   private object prepareStatements extends cassandra.PrepareStatements(session, chunker, readSettings, writeSettings)
 
