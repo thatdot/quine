@@ -4,7 +4,7 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 sealed abstract class EdgeDirection
 object EdgeDirection {

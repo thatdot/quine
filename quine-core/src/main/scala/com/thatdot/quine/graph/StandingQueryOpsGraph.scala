@@ -421,6 +421,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
 object StandingQueryOpsGraph {
 
   /** Check if a graph supports standing query operations and refine it if possible */
-  def apply(graph: BaseGraph): Option[StandingQueryOpsGraph] =
-    if (graph.isInstanceOf[StandingQueryOpsGraph]) Some(graph.asInstanceOf[StandingQueryOpsGraph]) else None
+  def apply(graph: BaseGraph): Option[StandingQueryOpsGraph] = PartialFunction.condOpt(graph) {
+    case sqog: StandingQueryOpsGraph => sqog
+  }
 }

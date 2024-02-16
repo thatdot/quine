@@ -2,7 +2,7 @@ package com.thatdot.quine.routes
 
 import io.circe.Json
 
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** Type of messages sent as part of the WebSocket query protocol
   *

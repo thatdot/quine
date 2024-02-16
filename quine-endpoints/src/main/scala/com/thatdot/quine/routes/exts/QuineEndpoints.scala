@@ -6,12 +6,17 @@ import endpoints4s._
 import endpoints4s.algebra.Documentation
 
 import com.thatdot.quine.routes.IngestRoutes
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter.defaultNamespaceParameter
 
-object NamespaceParameterWrapper {
-  type NamespaceParameter = Option[String]
+class NamespaceParameter private (val namespaceId: String) extends AnyVal
+object NamespaceParameter {
 
-  val defaultNamespaceParameter: NamespaceParameter = Some("default")
+  def apply(s: String): Option[NamespaceParameter] = {
+    val normalized = s.toLowerCase
+    Option.when(isValidNamespaceParameter(normalized))(new NamespaceParameter(normalized))
+  }
+
+  val defaultNamespaceParameter: NamespaceParameter = new NamespaceParameter("default")
 
   /** No more than 16 characters total, must start with a letter
     *
@@ -22,13 +27,19 @@ object NamespaceParameterWrapper {
     val validNamespacePattern = raw"""[a-zA-Z][a-zA-Z0-9]{0,15}+""".r
     validNamespacePattern.matches(s)
   }
+
+  val namespaceCodec: Codec[String, NamespaceParameter] = new Codec[String, NamespaceParameter] {
+    override def decode(s: String): Validated[NamespaceParameter] =
+      Validated.fromOption(NamespaceParameter(s))(s"'$s' is not a valid namespace name")
+
+    override def encode(from: NamespaceParameter): String = from.namespaceId
+  }
+
 }
 
 class NamespaceNotFoundException(namespace: String) extends NoSuchElementException(s"Namespace $namespace not found")
 
 trait NamespaceQueryString extends endpoints4s.algebra.Urls {
-
-  import NamespaceParameterWrapper._
 
   /** This is overridden in active routes where the graph is availale (i.e [[QuineAppRoutes]]). The
     * no-op concrete implementation is only expressed here to avoid having to put the no-op
@@ -36,21 +47,20 @@ trait NamespaceQueryString extends endpoints4s.algebra.Urls {
     */
   def namespaceExists(namespace: String): Boolean = true
 
-  lazy val namespaceCodec: Codec[Option[String], NamespaceParameter] = new Codec[Option[String], NamespaceParameter] {
-    override def decode(s: Option[String]): Validated[NamespaceParameter] = s.map(_.toLowerCase) match {
-      case None => Valid(defaultNamespaceParameter)
-      case a @ Some(value) if isValidNamespaceParameter(value) =>
-        if (!namespaceExists(value)) throw new NamespaceNotFoundException(value)
-        Valid(a)
-      case Some(value) => Invalid(s"'$value' is not a valid namespace")
-    }
+  import NamespaceParameter.namespaceCodec
+  private val optionalNamespaceCodec: Codec[Option[String], NamespaceParameter] =
+    new Codec[Option[String], NamespaceParameter] {
 
-    override def encode(from: Option[String]): Option[String] = from
-  }
+      override def decode(from: Option[String]): Validated[NamespaceParameter] =
+        from.fold[Validated[NamespaceParameter]](Valid(defaultNamespaceParameter))(namespaceCodec.decode)
+
+      override def encode(from: NamespaceParameter): Option[String] =
+        Option.when(from != defaultNamespaceParameter)(namespaceCodec.encode(from))
+    }
 
   implicit lazy val namespaceQueryStringParam: QueryStringParam[NamespaceParameter] =
     optionalQueryStringParam(stringQueryString)
-      .xmapWithCodec(namespaceCodec)
+      .xmapWithCodec(optionalNamespaceCodec)
 }
 
 trait AtTimeQueryString extends endpoints4s.algebra.Urls {
@@ -95,6 +105,10 @@ trait IdSchema extends endpoints4s.algebra.JsonSchemas {
     stringJsonSchema(format = Some("node-id"))
       .xmapWithCodec(idCodec)
       .withExample(sampleId())
+
+  // TODO: find some other place for this to live?
+  implicit lazy val namespaceSchema: JsonSchema[NamespaceParameter] =
+    stringJsonSchema(format = Some("namespace-id")).xmapWithCodec(NamespaceParameter.namespaceCodec)
 }
 
 trait NoopIdSchema extends IdSchema {

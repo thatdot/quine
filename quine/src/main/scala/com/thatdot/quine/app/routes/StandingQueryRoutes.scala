@@ -19,8 +19,7 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   StandingQueryId,
   StandingQueryOpsGraph,
-  StandingQueryResult,
-  namespaceFromParam
+  StandingQueryResult
 }
 import com.thatdot.quine.routes._
 

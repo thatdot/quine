@@ -17,8 +17,8 @@ import endpoints4s.Invalid
 
 import com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.graph.AlgorithmGraph
 import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Location}
-import com.thatdot.quine.graph.{AlgorithmGraph, namespaceFromParam}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.AlgorithmRoutes
 

@@ -3,8 +3,7 @@ package com.thatdot.quine.routes
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
-import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
 trait AlgorithmRoutes
     extends EndpointsWithCustomErrorText

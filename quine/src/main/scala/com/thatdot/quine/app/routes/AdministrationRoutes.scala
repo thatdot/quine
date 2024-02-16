@@ -14,7 +14,7 @@ import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
-import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit, namespaceFromParam}
+import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes._
@@ -156,7 +156,9 @@ trait AdministrationRoutesImpl
   private val graphHashCodeRoute = graphHashCode.implementedByAsync { case (atTime, namespaceParam) =>
     val at = atTime.getOrElse(Milliseconds.currentTime())
     val ec = ExecutionContexts.parasitic
-    graph.getGraphHashCode(namespaceFromParam(namespaceParam), Some(at)).map(GraphHashCode(_, at.millis))(ec)
+    graph
+      .getGraphHashCode(namespaceFromParam(namespaceParam), Some(at))
+      .map(GraphHashCode(_, at.millis))(ec)
   }
 
   final val administrationRoutes: Route =

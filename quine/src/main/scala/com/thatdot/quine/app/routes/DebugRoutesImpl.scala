@@ -21,7 +21,7 @@ import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
 import com.thatdot.quine.routes._
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter
 
 /** The Pekko HTTP implementation of [[DebugOpsRoutes]] */
 trait DebugRoutesImpl

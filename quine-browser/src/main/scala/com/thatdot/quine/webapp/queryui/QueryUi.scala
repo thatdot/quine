@@ -21,8 +21,8 @@ import slinky.web.html.{`type` => _, _}
 
 import com.thatdot.quine.Util.{escapeHtml, renderJsonResultValue}
 import com.thatdot.quine.routes._
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.defaultNamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.routes.exts.NamespaceParameter.defaultNamespaceParameter
 import com.thatdot.quine.webapp.History
 import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components._
@@ -56,7 +56,7 @@ import com.thatdot.{visnetwork => vis}
     initialLayout: NetworkLayout = NetworkLayout.Graph,
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
     queryMethod: QueryMethod = QueryMethod.WebSocket,
-    initialNamespace: Option[String] = None
+    initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter
   )
 
   /** @param query input in the query bar
@@ -89,7 +89,7 @@ import com.thatdot.{visnetwork => vis}
     uiNodeQuickQueries: Vector[UiNodeQuickQuery],
     uiNodeAppearances: Vector[UiNodeAppearance],
     atTime: Option[Long],
-    namespace: Option[String],
+    namespace: NamespaceParameter,
     areSampleQueriesVisible: Boolean
   )
 
@@ -526,7 +526,7 @@ import com.thatdot.{visnetwork => vis}
     */
   private def nodeQuery(
     query: String,
-    namespace: Option[String],
+    namespace: NamespaceParameter,
     atTime: Option[Long],
     language: QueryLanguage,
     parameters: Map[String, Json]
@@ -557,7 +557,7 @@ import com.thatdot.{visnetwork => vis}
   private def edgeQuery(
     query: String,
     atTime: Option[Long],
-    namespace: Option[String],
+    namespace: NamespaceParameter,
     language: QueryLanguage,
     parameters: Map[String, Json]
   ): Future[Option[Seq[UiEdge[String]]]] =
@@ -588,7 +588,7 @@ import com.thatdot.{visnetwork => vis}
   private def textQuery(
     query: String,
     atTime: Option[Long],
-    namespace: Option[String],
+    namespace: NamespaceParameter,
     language: QueryLanguage,
     parameters: Map[String, Json],
     updateResults: Either[Seq[Json], CypherQueryResult] => Unit

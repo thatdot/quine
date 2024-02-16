@@ -25,18 +25,12 @@ package object graph {
 
   val defaultNamespaceId: NamespaceId = None
 
-  def namespaceFromString(namespaceString: String): NamespaceId = namespaceString.toLowerCase() match {
+  def namespaceFromString(namespaceString: String): NamespaceId = namespaceString.toLowerCase match {
     case "default" => None
     case name => Some(Symbol(name))
   }
 
-  def namespaceToString(namespace: NamespaceId): String = namespace.map(_.name).getOrElse("default")
-
-  def namespaceFromParam(stringOpt: Option[String]): NamespaceId = stringOpt.map(_.toLowerCase) match {
-    case Some("default") => None // default namespace
-    case None => None // default namespace
-    case Some(s) => Some(Symbol(s))
-  }
+  def namespaceToString(namespace: NamespaceId): String = namespace.fold("default")(_.name)
 
   /** Produce a `QuineId` from a series of arbitrary values. This is meant as the single canonical (user-facing) way to
     * turn values into a `QuineId` by means of consistent hashing. It can be used many places, but the intent is that

@@ -25,7 +25,7 @@ import com.thatdot.quine.graph.cypher.{
   Type => CypherType,
   Value => CypherValue
 }
-import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId, namespaceFromParam}
+import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.gremlin._
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes.{CypherQuery, CypherQueryResult, GremlinQuery, QueryUiRoutes, UiEdge, UiNode}

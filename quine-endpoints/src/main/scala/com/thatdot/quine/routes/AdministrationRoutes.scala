@@ -7,8 +7,7 @@ import endpoints4s.generic.{docs, title, unnamed}
 import endpoints4s.{Valid, Validated}
 import io.circe.Json
 
-import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
 /** Build information exposed to the user */
 @title("System Build Information")

@@ -6,8 +6,7 @@ import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 import io.circe.Json
 
-import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
 /** Nodes in the UI
   *

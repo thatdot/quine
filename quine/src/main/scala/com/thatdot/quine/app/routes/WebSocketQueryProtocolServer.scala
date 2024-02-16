@@ -18,7 +18,6 @@ import io.circe
 import io.circe.{Decoder, Encoder}
 
 import com.thatdot.quine.graph.cypher.CypherException
-import com.thatdot.quine.graph.namespaceFromParam
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.{

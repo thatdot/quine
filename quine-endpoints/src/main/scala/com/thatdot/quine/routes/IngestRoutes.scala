@@ -8,8 +8,7 @@ import cats.data.NonEmptyList
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
 
-import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
-import com.thatdot.quine.routes.exts.NamespaceParameterWrapper.NamespaceParameter
+import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
 sealed abstract class ValvePosition(position: String)
 

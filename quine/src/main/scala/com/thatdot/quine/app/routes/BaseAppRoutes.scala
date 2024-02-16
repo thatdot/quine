@@ -56,16 +56,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoi
   implicit def idProvider: QuineIdProvider = graph.idProvider
   implicit lazy val materializer: Materializer = graph.materializer
 
-  override def handleServerError(throwable: Throwable): StandardRoute =
-    throwable match {
-      case e: NamespaceNotFoundException =>
-        super.handleClientErrors(Invalid(e.getMessage))
-
-      case _ =>
-        logger.error("Uncaught exception when handling HTTP request", throwable)
-        super.handleServerError(throwable)
-    }
-
   def isReady = graph.isReady
 
   /** Serves up the static assets from resources and for JS/CSS dependencies */

@@ -6,8 +6,9 @@ import org.apache.pekko.util.ByteString
 
 import endpoints4s.{Codec, Invalid, Valid, Validated}
 
+import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdProvider}
-import com.thatdot.quine.routes.exts.QuineEndpoints
+import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
 
 /** Implementation of [[QuineEndpoints]] for servers, along with some schemas
   * for types that are defined in the `model` model (and therefore can't
@@ -74,4 +75,7 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
 
   implicit lazy val byteArraySchema: JsonSchema[Array[Byte]] =
     byteStringSchema.xmap[Array[Byte]](_.toArray)(ByteString.apply)
+
+  def namespaceFromParam(namespaceParameter: NamespaceParameter): NamespaceId =
+    Option.when(namespaceParameter.namespaceId != "default")(Symbol(namespaceParameter.namespaceId))
 }
