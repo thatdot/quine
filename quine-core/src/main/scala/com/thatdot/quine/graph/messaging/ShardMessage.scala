@@ -117,7 +117,7 @@ object ShardMessage {
       extends ShardMessage
       with AskableQuineMessage[NamespaceChangeResult]
 
-  final case class DeleteNamespace(namespaceId: NamespaceId, replyTo: QuineRef, remainingRetries: Int = 1000)
+  final case class DeleteNamespace(namespaceId: NamespaceId, replyTo: QuineRef)
       extends ShardMessage
       with AskableQuineMessage[NamespaceChangeResult]
 

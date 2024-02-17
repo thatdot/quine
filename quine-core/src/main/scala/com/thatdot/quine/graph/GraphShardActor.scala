@@ -140,10 +140,10 @@ final private[quine] class GraphShardActor(
     var noWakingNodesExist = true
     for {
       nodes <- namespacedNodes.get(namespace)
-      (nodeId, nodeState) <- nodes; if predicate(nodeId)
+      (nodeId, nodeState) <- nodes if predicate(nodeId)
     } nodeState match {
       case NodeState.WakingNode =>
-        if (log.isInfoEnabled) log.info(s"Got message to remove node $nodeId that's not yet awake, will recurse")
+        if (log.isInfoEnabled) log.info(s"Got message to remove node $nodeId that's not yet awake")
         noWakingNodesExist = false
       case NodeState.LiveNode(_, actorRef, _, _) =>
         nodes.remove(nodeId)
@@ -619,29 +619,17 @@ final private[quine] class GraphShardActor(
       }
       msg ?! NamespaceChangeResult(hasEffect)
 
-    case msg @ DeleteNamespace(namespace, _, remainingRetries) =>
+    case msg @ DeleteNamespace(namespace, _) =>
       val hasEffect = namespacedNodes.contains(namespace)
-      if (hasEffect) {
-        val nsName = namespaceToString(namespace)
-        val didRemoveAll = removeNodesIf(namespace, _ => true) // `true` means "match every node (in the namespace)"
-        if (didRemoveAll) {
-          namespacedNodes -= namespace
-          msg ?! NamespaceChangeResult(hasEffect)
-        } else {
-          log.info(
-            s"Some nodes: ${namespacedNodes.get(namespace).fold(0)(_.size)} could not be removed from the namespace: " +
-            s"$nsName. Will retry: $remainingRetries more times."
-          )
-          // resend message to self to try `removeNodesIf` again to get any nodes that were waking previously
-          if (remainingRetries > 0) self.!(msg.copy(remainingRetries = remainingRetries - 1))(sender())
-          else {
-            val count = namespacedNodes.get(namespace).fold(0)(_.size)
-            log.warning(s"Could not clear remaining nodes: $count from namespace: $nsName before deleting.")
-            namespacedNodes -= namespace
-            msg ?! NamespaceChangeResult(hasEffect)
-          }
-        }
-      } else msg ?! NamespaceChangeResult(hasEffect)
+      if (hasEffect) removeNodesIf(namespace, _ => true) // Remove all nodes in the namespace
+      // removeNodesIf returns false if there were any waiting the return of calls to the
+      // persistor to wake (and thus the Actors for them don't exist yet).
+      // Ideally we could just cancel those Futures, but we can go ahead and remove
+      // the namespace now, and then attempting to wake nodes into a non-existent namespace
+      // is a no-op (besides logging an INFO message) - see the impl of the NodeStateRehydrated
+      // message handler.
+      namespacedNodes -= namespace
+      msg ?! NamespaceChangeResult(hasEffect)
 
     case m => log.error(s"Message unhandled by GraphShardActor: $m")
   }
