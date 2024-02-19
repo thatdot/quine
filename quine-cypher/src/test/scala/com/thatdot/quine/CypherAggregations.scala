@@ -677,6 +677,21 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       ),
       expectedCannotFail = false
     )
+
+    // WITH DISTINCT
+    testQuery(
+      "UNWIND [1, 1, 2, 2, 3, 3, 4, 4, 5, 5] AS x WITH DISTINCT x AS dX RETURN dX",
+      expectedColumns = Vector("dX"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1)),
+        Vector(Expr.Integer(2)),
+        Vector(Expr.Integer(3)),
+        Vector(Expr.Integer(4)),
+        Vector(Expr.Integer(5))
+      ),
+      expectedCannotFail = true,
+      skip = true // QU-1748
+    )
   }
 
 }
