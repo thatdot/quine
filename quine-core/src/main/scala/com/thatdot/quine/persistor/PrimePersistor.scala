@@ -20,7 +20,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
   type PersistenceAgentType <: NamespacedPersistenceAgent
 
-  protected var persistors: Map[NamespaceId, NamespacedPersistenceAgent] = Map.empty
+  private var persistors: Map[NamespaceId, NamespacedPersistenceAgent] = Map.empty
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType
 
@@ -62,27 +62,21 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def prepareNamespace(namespace: NamespaceId): Future[Unit] = Future.unit
 
-  def createNamespace(namespace: NamespaceId): Boolean = {
+  def createNamespace(namespace: NamespaceId): Unit = {
     val didChange = !persistors.contains(namespace)
     if (didChange) persistors += (namespace -> bloomFilter(wrapExceptions(agentCreator(persistenceConfig, namespace))))
-    didChange
   }
 
-  def deleteNamespace(namespace: NamespaceId): Boolean =
-    if (namespace == defaultNamespaceId) {
-      default.delete()
-      initializeDefault()
-      true
-    } else {
-      val didChange = persistors.contains(namespace)
-      if (didChange) {
-        val toDelete = persistors(namespace)
-        toDelete.delete()
-        persistors -= namespace
-      }
-      if (namespace == defaultNamespaceId) createNamespace(defaultNamespaceId) // Default namespace should always exist
-      didChange
+  def deleteNamespace(namespace: NamespaceId): Boolean = {
+    val didChange = persistors.contains(namespace)
+    if (didChange) {
+      val toDelete = persistors(namespace)
+      persistors -= namespace
+      toDelete.delete()
+      if (namespace == defaultNamespaceId) initializeDefault() // Default namespace should always exist
     }
+    didChange
+  }
 
   /** Get all standing queries across all namespaces
     */
