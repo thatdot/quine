@@ -2,16 +2,8 @@ object Dependencies {
   val pekkoV = "1.0.1"
   val pekkoHttpV = "1.0.0"
   val pekkoStreamV = "1.0.1"
-  val pekkoCsvV = "1.0.1"
   val pekkoKafkaV = "1.0.0"
-  val pekkoKinesisV = "1.0.1"
-  val pekkoS3V = "1.0.1"
-  val pekkoSQSV = "1.0.1"
-  val pekkoSnsV = "1.0.1"
-  val pekkoSseV = "1.0.1"
-  val pekkoTextV = "1.0.1"
-  // Must be at least 1.11.3 to fix CVE-2023-39410
-  val avroV = "1.11.3"
+  val pekkoConnectorsV = "1.0.1"
   val amazonKinesisClientV = "2.5.4"
   val amazonGlueV = "1.1.18"
   val awsSdkV = "2.20.159"
@@ -23,8 +15,6 @@ object Dependencies {
   val catsV = "2.10.0"
   val catsEffectV = "3.5.3"
   val commonsCodecV = "1.15"
-  // Must be at least 1.21 to address CVE-2021-36090
-  val commonsCompressV = "1.25.0"
   val commonsTextV = "1.11.0"
   val commonsIoV = "2.15.1"
   val diffxV = "0.9.0"
@@ -40,9 +30,6 @@ object Dependencies {
   val jnrPosixV = "3.1.18"
   val jqueryV = "3.6.3"
   val jwtScalaV = "10.0.0"
-  // pekko-connectors-kinesis 1.0.1 indirectly depends on kaml 0.20.0 which is vulnerable to CVE-2023-28118
-  // Must be at least 0.53.0
-  val kamlV = "0.53.0"
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
   val kafkaClientsV = "3.6.1"
   // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb

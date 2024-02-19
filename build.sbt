@@ -242,7 +242,6 @@ lazy val `quine`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % logbackV,
-      "com.charleskorn.kaml" % "kaml" % kamlV,
       "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
       "com.github.pjfanning" %% "aws-spi-pekko-http" % "0.1.0",
@@ -259,21 +258,19 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
-      "org.apache.avro" % "avro" % avroV,
-      "org.apache.commons" % "commons-compress" % commonsCompressV,
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
-      "org.apache.pekko" %% "pekko-connectors-csv" % pekkoCsvV,
+      "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
-      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoKinesisV exclude ("org.rocksdb", "rocksdbjni"),
+      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni"),
       // 3 Next deps: override outdated pekko-connectors-kinesis dependencies
       "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV,
       "com.amazonaws" % "aws-java-sdk-sts" % awsSdkv1V,
-      "org.apache.pekko" %% "pekko-connectors-s3" % pekkoS3V,
-      "org.apache.pekko" %% "pekko-connectors-sns" % pekkoSnsV,
-      "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoSQSV,
-      "org.apache.pekko" %% "pekko-connectors-sse" % pekkoSseV,
-      "org.apache.pekko" %% "pekko-connectors-text" % pekkoTextV,
+      "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnectorsV,
+      "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
+      "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoConnectorsV,
+      "org.apache.pekko" %% "pekko-connectors-sse" % pekkoConnectorsV,
+      "org.apache.pekko" %% "pekko-connectors-text" % pekkoConnectorsV,
       // pekko-http-xml is not a direct dep, but pulled in transitively by connector modules above.
       // All pekko-http module version numbers need to match exactly, or else it
       // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
