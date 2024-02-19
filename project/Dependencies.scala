@@ -75,7 +75,7 @@ object Dependencies {
   val stoplightElementsV = "7.12.0"
   val ujsonV = "1.6.0"
   val circeV = "0.14.6"
-  val circeOpticsV = "0.14.1"
+  val circeOpticsV = "0.15.0"
   val visNetworkV = "8.2.0"
   val webjarsLocatorV = "0.47"
 }
