@@ -108,7 +108,7 @@ lazy val `quine-cassandra-persistor`: Project = project
 // Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
-  .dependsOn(`quine-core`, `quine-mapdb-persistor` % "test->test")
+  .dependsOn(`quine-core`)
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang.modules" %% "scala-parser-combinators" % scalaParserCombinatorsV,
