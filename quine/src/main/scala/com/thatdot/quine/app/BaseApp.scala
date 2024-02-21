@@ -204,7 +204,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
 
   def onlyIfNamespaceExists[A](namespace: NamespaceId)(f: => Future[A]): Future[A] =
     if (getNamespaces.contains(namespace)) f
-    else Future.failed(new NoSuchElementException(s"The namespace does not exist."))
+    else Future.failed(NamespaceNotFoundException(namespace))
 
   def noneIfNoNamespace[A](namespace: NamespaceId)(f: => Option[A]): Option[A] =
     if (getNamespaces.contains(namespace)) f
@@ -212,7 +212,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
 
   def failIfNoNamespace[A](namespace: NamespaceId)(f: => Try[A]): Try[A] =
     if (getNamespaces.contains(namespace)) f
-    else Failure(new NoSuchElementException(s"The namespace does not exist."))
+    else Failure(NamespaceNotFoundException(namespace))
 }
 
 class MetaDataDeserializationException(msg: String) extends RuntimeException(msg)

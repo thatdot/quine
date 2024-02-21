@@ -340,6 +340,14 @@ trait QueryUiRoutesImpl
     }
   }
 
+  // This could be made more general, but the dependency on ClientErrors makes it get "stuck in the cake" here and some
+  // other route implementation traits that share similar private methods.
+  final private def ifNamespaceFound[A](namespaceId: NamespaceId)(
+    ifFound: => Future[Either[ClientErrors, A]]
+  ): Future[Either[ClientErrors, Option[A]]] =
+    if (!graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
+    else ifFound.map(_.map(Some(_)))(ExecutionContexts.parasitic)
+
   // The Query UI relies heavily on a couple Gremlin endpoints for making queries.
   final val gremlinApiRoute: Route = {
     def catchGremlinException[A](futA: => Future[A]): Future[Either[ClientErrors, A]] =
@@ -353,28 +361,31 @@ trait QueryUiRoutesImpl
         }(graph.shardDispatcherEC)
 
     gremlinPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchGremlinException {
-        queryGremlinGeneric(query, namespaceFromParam(namespaceParam), atTime)
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchGremlinException {
+        queryGremlinGeneric(query, ns, atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-      }
+      })
     } ~
     gremlinNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchGremlinException {
-        queryGremlinNodes(query, namespaceFromParam(namespaceParam), atTime)
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchGremlinException {
+        queryGremlinNodes(query, ns, atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-node-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-      }
+      })
     } ~
     gremlinEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchGremlinException {
-        queryGremlinEdges(query, namespaceFromParam(namespaceParam), atTime)
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchGremlinException {
+        queryGremlinEdges(query, ns, atTime)
           .via(Util.completionTimeoutOpt(t))
           .named(s"gremlin-edge-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-      }
+      })
     }
   }
 
@@ -391,35 +402,38 @@ trait QueryUiRoutesImpl
         }(ExecutionContexts.parasitic)
 
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchCypherException {
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchCypherException {
         val (columns, results, isReadOnly, _) =
-          queryCypherGeneric(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
+          queryCypherGeneric(query, ns, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
           .map(CypherQueryResult(columns, _))(ExecutionContexts.parasitic)
-      }
+      })
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchCypherException {
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchCypherException {
         val (results, isReadOnly, _) =
-          queryCypherNodes(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
+          queryCypherNodes(query, ns, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-nodes-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-      }
+      })
     } ~
     cypherEdgesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
-      catchCypherException {
+      val ns = namespaceFromParam(namespaceParam)
+      ifNamespaceFound(ns)(catchCypherException {
         val (results, isReadOnly, _) =
-          queryCypherEdges(query, namespaceFromParam(namespaceParam), atTime) // TODO read canContainAllNodeScan
+          queryCypherEdges(query, ns, atTime) // TODO read canContainAllNodeScan
         results
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-edges-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-      }
+      })
     }
   }
 

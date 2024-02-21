@@ -474,7 +474,8 @@ trait StandingQueryRoutes
     docs = Some("Unique name for a standing query output")
   )
 
-  val standingIssue: Endpoint[(String, NamespaceParameter, StandingQueryDefinition), Either[ClientErrors, Unit]] = {
+  val standingIssue
+    : Endpoint[(String, NamespaceParameter, StandingQueryDefinition), Either[ClientErrors, Option[Unit]]] = {
     val sq: StandingQueryDefinition = StandingQueryDefinition(
       StandingQueryPattern.Cypher(
         "MATCH (n)-[:has_father]->(m) WHERE exists(n.name) AND exists(m.name) RETURN DISTINCT strId(n) AS kidWithDad"
@@ -493,7 +494,7 @@ trait StandingQueryRoutes
         entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq)
       ),
       response = customBadRequest("Standing query exists already")
-        .orElse(created()),
+        .orElse(wheneverFound(created())),
       docs = EndpointDocs()
         .withSummary(Some("Create Standing Query"))
         .withDescription(

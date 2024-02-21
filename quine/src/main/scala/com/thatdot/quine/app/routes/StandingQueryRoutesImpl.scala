@@ -13,6 +13,7 @@ import org.apache.pekko.util.Timeout
 
 import endpoints4s.{Invalid, Valid}
 
+import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   InvalidQueryPattern,
@@ -70,8 +71,11 @@ trait StandingQueryRoutesImpl
       .addStandingQuery(name, namespaceFromParam(namespaceParam), query)
       .map {
         case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
-        case true => Right(())
-      }(graph.shardDispatcherEC)
+        case true => Right(Some(()))
+      }(graph.nodeDispatcherEC)
+      .recoverWith { case _: NamespaceNotFoundException =>
+        Future.successful(Right(None))
+      }(graph.nodeDispatcherEC)
     catch {
       case iqp: InvalidQueryPattern => Future.successful(Left(endpoints4s.Invalid(iqp.message)))
       case cypherException: CypherException => Future.successful(Left(endpoints4s.Invalid(cypherException.pretty)))

@@ -23,6 +23,7 @@ import com.typesafe.scalalogging.LazyLogging
 import endpoints4s.Invalid
 import io.circe.Json
 
+import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.routes._
@@ -194,9 +195,19 @@ trait IngestRoutesImpl
 
   val quineApp: IngestStreamState
 
-  /** Try to register a new ingest stream */
+  /** Try to register a new ingest stream.
+    * The Either represents a bad request on the Left, and the inner Option represents Some(success) or that the
+    * namespace was not found (404).
+    */
   private val ingestStreamStartRoute: Route = {
-    def addSettings(name: String, intoNamespace: NamespaceId, settings: IngestStreamConfiguration) =
+    val http404: Either[ClientErrors, Option[Nothing]] = Right(None)
+    def http400(errors: ClientErrors): Either[ClientErrors, Option[Nothing]] = Left(errors)
+    def httpSuccess[A](a: A): Either[ClientErrors, Option[A]] = Right(Some(a))
+    def addSettings(
+      name: String,
+      intoNamespace: NamespaceId,
+      settings: IngestStreamConfiguration
+    ): Either[ClientErrors, Option[Unit]] =
       quineApp.addIngestStream(
         name,
         settings,
@@ -207,13 +218,14 @@ trait IngestRoutesImpl
         memberIdx = None
       ) match {
         case Success(false) =>
-          Left(
+          http400(
             endpoints4s.Invalid(
               s"Cannot create ingest stream `$name` (a stream with this name already exists)"
             )
           )
-        case Success(true) => Right(())
-        case Failure(err) => Left(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: ${err.getMessage}"))
+        case Success(true) => httpSuccess(())
+        case Failure(_: NamespaceNotFoundException) => http404
+        case Failure(err) => http400(endpoints4s.Invalid(s"Failed to create ingest stream `$name`: ${err.getMessage}"))
       }
 
     ingestStreamStart.implementedBy {
@@ -221,7 +233,7 @@ trait IngestRoutesImpl
         val namespace = namespaceFromParam(namespaceParam)
         KafkaSettingsValidator(settings.kafkaProperties, settings.groupId, settings.offsetCommitting).validate() match {
           case Some(errors) =>
-            Left(
+            http400(
               endpoints4s.Invalid(
                 s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}"
               )
@@ -231,7 +243,6 @@ trait IngestRoutesImpl
       case (ingestName, namespaceParam, settings) =>
         val namespace = namespaceFromParam(namespaceParam)
         addSettings(ingestName, namespace, settings)
-
     }
   }
 

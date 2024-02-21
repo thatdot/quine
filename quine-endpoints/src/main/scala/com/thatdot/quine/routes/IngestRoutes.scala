@@ -805,6 +805,7 @@ object IngestRoutes {
     "MATCH (x) WHERE id(x) = idFrom($that) SET x.content = $that"
   )
 }
+
 trait IngestRoutes
     extends EndpointsWithCustomErrorText
     with endpoints4s.algebra.JsonEntitiesFromSchemas
@@ -819,14 +820,32 @@ trait IngestRoutes
   val ingestStreamName: Path[String] =
     segment[String]("name", docs = Some("Ingest stream name"))
 
-  val ingestStreamStart: Endpoint[(String, NamespaceParameter, IngestStreamConfiguration), Either[ClientErrors, Unit]] =
+  /** The use of Either[ClientErrors, Option[Unit]] was chosen to correspond to different HTTP codes. The outer Either
+    * uses the Left for 400 errors, and the Right for everything else. Within the Right, the Option is used to represent
+    * 404 with None and Some[Unit] to represent a success (200).
+    * When adding the Option to allow returning 404, these implementations were considered:
+    * - (Chosen) Adding the Option to the endpoint definition, adding a response case of wheneverFound, and making the
+    *   implementations of the route plumb through Either to represent that scenario.
+    * - Skipping the Option, using a NamespaceNotFoundException to avoid threading the wrappers around and adding a
+    *   top level handler to translate into different response codes. This could be less code, but makes it less
+    *   obvious what's happening, would make us need to change all of the intermediate layer exception handling to not
+    *   swallow ones we want to reach the top, and prevents it from showing up in anything using the endpoint (e.g.
+    *   the UI). It is also awkward project-wise since the endpoint definitions and quine-core graph implementation
+    *   would both need to reference the exception type, and they don't currently share a common ancestor project.
+    * - Making an abstraction-violating codec that examines app state to look for the existence of a namespace, then
+    *   using an exception handler like the previous strategy. This would make it automagically available anywhere we
+    *   used the namespace type as a parameter, but would be confusing code to maintain, depend on app state loading
+    *   order and also not show up in the endpoint definition.
+    */
+  val ingestStreamStart
+    : Endpoint[(String, NamespaceParameter, IngestStreamConfiguration), Either[ClientErrors, Option[Unit]]] =
     endpoint(
       request = post(
         url = ingest / segment[String]("name", Some("Unique name for the ingest stream")) /? namespace,
         entity = jsonOrYamlRequest[IngestStreamConfiguration]
       ),
       response = customBadRequest("Ingest stream exists already")
-        .orElse(ok(emptyResponse)),
+        .orElse(wheneverFound(ok(emptyResponse))),
       docs = EndpointDocs()
         .withSummary(Some("Create Ingest Stream"))
         .withDescription(
@@ -861,6 +880,7 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
+  // Inner Option is for representing namespace not found
   val ingestStreamLookup: Endpoint[(String, NamespaceParameter), Option[IngestStreamInfoWithName]] =
     endpoint(
       request = get(
@@ -875,6 +895,7 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
+  // Inner Option is for representing namespace not found
   val ingestStreamPause
     : Endpoint[(String, NamespaceParameter), Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(
@@ -891,6 +912,7 @@ trait IngestRoutes
         .withTags(List(ingestStreamTag))
     )
 
+  // Inner Option is for representing namespace not found
   val ingestStreamUnpause
     : Endpoint[(String, NamespaceParameter), Either[ClientErrors, Option[IngestStreamInfoWithName]]] =
     endpoint(

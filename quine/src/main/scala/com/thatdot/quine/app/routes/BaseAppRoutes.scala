@@ -8,7 +8,6 @@ import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
 import scala.util.Using
 
-import org.apache.pekko.http.scaladsl.model.StatusCodes.ClientError
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
@@ -18,16 +17,15 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
-import endpoints4s.Invalid
 
 import com.thatdot.quine.app.config.SslConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.routes.exts.NamespaceNotFoundException
 
 object MediaTypes {
   val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
 }
+
 object SslHelper {
 
   /** Create an SSL context given the path to a Java keystore and its password

@@ -144,7 +144,8 @@ trait QueryUiRoutes
 
   val gremlinLanguageUrl = "https://tinkerpop.apache.org/gremlin.html"
   val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
-  val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, CypherQueryResult]] =
+  // Inner Option is to represent namespace not found
+  val cypherPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[CypherQueryResult]]] =
     endpoint(
       request = post(
         url = query / "cypher" /? (atTime & reqTimeout & namespace),
@@ -155,9 +156,11 @@ trait QueryUiRoutes
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(
-          ok(
-            jsonResponseWithExample[CypherQueryResult](
-              example = CypherQueryResult(Seq("three"), Seq(Seq(Json.fromInt(3))))
+          wheneverFound(
+            ok(
+              jsonResponseWithExample[CypherQueryResult](
+                example = CypherQueryResult(Seq("three"), Seq(Seq(Json.fromInt(3))))
+              )
             )
           )
         ),
@@ -167,7 +170,8 @@ trait QueryUiRoutes
         .withTags(List(cypherTag))
     )
 
-  val cypherNodesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Seq[UiNode[Id]]]] =
+  // Inner Option is to represent namespace not found
+  val cypherNodesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiNode[Id]]]]] =
     endpoint(
       request = post(
         url = query / "cypher" / "nodes" /? (atTime & reqTimeout & namespace),
@@ -180,7 +184,7 @@ trait QueryUiRoutes
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]]))),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
@@ -188,7 +192,8 @@ trait QueryUiRoutes
         .withTags(List(cypherTag))
     )
 
-  val cypherEdgesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Seq[UiEdge[Id]]]] =
+  // Inner Option is to represent namespace not found
+  val cypherEdgesPost: Endpoint[QueryInputs[CypherQuery], Either[ClientErrors, Option[Seq[UiEdge[Id]]]]] =
     endpoint(
       request = post(
         url = query / "cypher" / "edges" /? (atTime & reqTimeout & namespace),
@@ -201,7 +206,7 @@ trait QueryUiRoutes
           .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]]))),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query Return Edges"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
@@ -209,7 +214,8 @@ trait QueryUiRoutes
         .withTags(List(cypherTag))
     )
 
-  val gremlinPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[Json]]] = {
+  // Inner Option is to represent namespace not found
+  val gremlinPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Option[Seq[Json]]]] = {
     implicit val queryResult = anySchema(Some("gremlin JSON"))
     endpoint(
       request = post(
@@ -223,13 +229,15 @@ trait QueryUiRoutes
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(
-          ok(
-            jsonResponseWithExample[Seq[Json]](
-              example = Seq(
-                Json.obj(
-                  "first_name" -> Json.fromString("Harry"),
-                  "last_name" -> Json.fromString("Potter"),
-                  "birth_year" -> Json.fromInt(1980)
+          wheneverFound(
+            ok(
+              jsonResponseWithExample[Seq[Json]](
+                example = Seq(
+                  Json.obj(
+                    "first_name" -> Json.fromString("Harry"),
+                    "last_name" -> Json.fromString("Potter"),
+                    "birth_year" -> Json.fromInt(1980)
+                  )
                 )
               )
             )
@@ -244,7 +252,8 @@ trait QueryUiRoutes
     )
   }
 
-  val gremlinNodesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[UiNode[Id]]]] =
+  // Inner Option is to represent namespace not found
+  val gremlinNodesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Option[Seq[UiNode[Id]]]]] =
     endpoint(
       request = post(
         url = query / "gremlin" / "nodes" /? (atTime & reqTimeout & namespace),
@@ -256,7 +265,7 @@ trait QueryUiRoutes
           )
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(ok(jsonResponse[Seq[UiNode[Id]]])),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]]))),
       docs = EndpointDocs()
         .withSummary(Some("Gremlin Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns nodes.
@@ -264,7 +273,8 @@ trait QueryUiRoutes
         .withTags(List(gremlinTag))
     )
 
-  val gremlinEdgesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Seq[UiEdge[Id]]]] =
+  // Inner Option is to represent namespace not found
+  val gremlinEdgesPost: Endpoint[QueryInputs[GremlinQuery], Either[ClientErrors, Option[Seq[UiEdge[Id]]]]] =
     endpoint(
       request = post(
         url = query / "gremlin" / "edges" /? (atTime & reqTimeout & namespace),
@@ -276,7 +286,7 @@ trait QueryUiRoutes
           )
       ),
       response = customBadRequest("runtime error in the query")
-        .orElse(ok(jsonResponse[Seq[UiEdge[Id]]])),
+        .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]]))),
       docs = EndpointDocs()
         .withSummary(Some("Gremlin Query Return Edges"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns edges.

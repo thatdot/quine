@@ -111,7 +111,7 @@ trait AlgorithmRoutes
       Int,
       SaveLocation
     ),
-    Either[ClientErrors, String]
+    Either[ClientErrors, Option[String]]
   ] =
     endpoint(
       request = put(
@@ -121,7 +121,7 @@ trait AlgorithmRoutes
         entity = jsonRequestWithExample[SaveLocation](example = S3Bucket("your-s3-bucket-name", None))
       ),
       response = customBadRequest("Invalid file")
-        .orElse(accepted(textResponse)),
+        .orElse(wheneverFound(accepted(textResponse))),
       docs = EndpointDocs()
         .withSummary(Some("Save Random Walks"))
         .withDescription(
@@ -165,14 +165,14 @@ trait AlgorithmRoutes
 
   final val algorithmRandomWalk: Endpoint[
     (Id, (Option[Int], Option[String], Option[Double], Option[Double], Option[String], AtTime, NamespaceParameter)),
-    Either[ClientErrors, List[String]]
+    Either[ClientErrors, Option[List[String]]]
   ] =
     endpoint(
       request = get(
         algorithmsPrefix / "walk" / nodeIdSegment /?
         (walkLength & onNodeQuery & returnParameter & inOutParameter & randomSeedOpt & atTime & namespace)
       ),
-      response = badRequest().orElse(ok(jsonResponse[List[String]])),
+      response = badRequest().orElse(wheneverFound(ok(jsonResponse[List[String]]))),
       docs = EndpointDocs()
         .withSummary(Some("Generate Random Walk"))
         .withDescription(

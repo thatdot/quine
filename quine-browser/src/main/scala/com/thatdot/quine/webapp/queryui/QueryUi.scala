@@ -5,7 +5,7 @@ import scala.concurrent._
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.scalajs.js.|
-import scala.util.{Failure, Random, Success}
+import scala.util.{Failure, Random, Success, Try}
 
 import cats.data.Validated
 import endpoints4s.Invalid
@@ -517,8 +517,21 @@ import com.thatdot.{visnetwork => vis}
   }
 
   private def invalidToException(invalid: Invalid): Exception = new Exception(invalid.errors mkString "\n")
-  private def mergeEndpointErrorsIntoFuture[A](fut: Future[Either[endpoints4s.Invalid, A]]): Future[A] =
-    fut.flatMap(x => Future.fromTry(x.left.map(invalidToException).toTry))
+
+  /** Push value level error representations into the exception mechanism of the Future.
+    * None in inner Option is equivalent to HTTP 404 (e.g. namespace not found).
+    * @param fut Future with a value to unwrap by turning wrapping types into exceptions
+    * @return A future with an unwrapped value
+    */
+  private def mergeEndpointErrorsIntoFuture[A](fut: Future[Either[endpoints4s.Invalid, Option[A]]]): Future[A] =
+    fut.flatMap { either =>
+      Future.fromTry {
+        either.left
+          .map(invalidToException)
+          .flatMap(_.toRight(new NoSuchElementException())) // Flatten Option into the Either
+          .toTry // Either -> Try
+      } // Try -> Future
+    }
 
   /** Issue a query that returns nodes and get back results in one final batch
     *
