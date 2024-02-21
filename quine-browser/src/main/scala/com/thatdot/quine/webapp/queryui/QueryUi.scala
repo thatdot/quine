@@ -1413,8 +1413,8 @@ import com.thatdot.{visnetwork => vis}
         state.sampleQueries,
         state.foundNodesCount,
         state.foundEdgesCount,
-        updateQuery,
-        (ctrlHeld: Boolean) => submitQuery(if (ctrlHeld) UiQueryType.Text else UiQueryType.Node),
+        (newQuery: String) => setState(s => s.copy(queryBarColor = None, query = newQuery)),
+        (shiftHeld: Boolean) => submitQuery(if (shiftHeld) UiQueryType.Text else UiQueryType.Node),
         () => cancelQueries(Some(pendingTextQueries)),
         HistoryNavigationButtons.Props(
           undoMany = when(state.history.canStepBackward, stepBackMany),
@@ -1446,10 +1446,7 @@ import com.thatdot.{visnetwork => vis}
           toggleLayout = toggleNetworkLayout,
           recenterViewport = recenterNetworkViewport
         ),
-        downloadSvg = () => downloadSvgSnapshot(),
-        state.areSampleQueriesVisible,
-        (isVisible: Boolean) => setState(_.copy(areSampleQueriesVisible = isVisible)),
-        this.textareaRef
+        downloadSvg = () => downloadSvgSnapshot()
       )
     }
 
