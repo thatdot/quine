@@ -607,14 +607,14 @@ final case class StandardInputIngest(
 case class NumberIteratorIngest(
   format: FileIngestFormat = IngestRoutes.defaultNumberFormat,
   @docs("Begin the stream with this number.")
-  startAt: Long = 0L,
+  startAtOffset: Long = 0L,
   @docs("Optionally end the stream after consuming this many items.")
   ingestLimit: Option[Long],
   @docs(
     "Limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
     "backpressure elsewhere in the system."
   )
-  throttlePerSecond: Option[Int],
+  maximumPerSecond: Option[Int],
   @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism
 ) extends IngestStreamConfiguration

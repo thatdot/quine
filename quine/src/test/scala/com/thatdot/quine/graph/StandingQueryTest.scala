@@ -42,9 +42,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |CREATE (thisNode)-[:next]->(nextNode)
           |""".stripMargin
       ),
-      startAt = 9223372036854775707L,
+      startAtOffset = 9223372036854775707L,
       ingestLimit = Some(100L),
-      throttlePerSecond = None
+      maximumPerSecond = None
     )
 
     val sqPattern = SqPattern.Cypher(
@@ -116,7 +116,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |""".stripMargin
       ),
       ingestLimit = Some(size.toLong),
-      throttlePerSecond = None
+      maximumPerSecond = None
     )
 
     val sqResultsRef = new AtomicReference[Vector[StandingQueryResult]](Vector.empty)
@@ -243,7 +243,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |SET a.foo = n""".stripMargin
       ),
       ingestLimit = Some(size.toLong),
-      throttlePerSecond = None //Some(2)
+      maximumPerSecond = None //Some(2)
     )
 
     val sqResultsRef = new AtomicReference[Vector[StandingQueryResult]](Vector.empty)
