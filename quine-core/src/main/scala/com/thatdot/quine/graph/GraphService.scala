@@ -102,10 +102,11 @@ class GraphService(
   /* By initializing this last, it will be `false` during the construction and only true
    * once object construction finishes
    */
-  @volatile var isReady = true
+  @volatile private var _isReady = true
+  def isReady: Boolean = _isReady
 
   override def shutdown(): Future[Unit] = {
-    isReady = false
+    _isReady = false
     implicit val ec = nodeDispatcherEC
     Future
       .sequence(
