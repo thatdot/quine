@@ -18,6 +18,7 @@ import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
 import shapeless.poly._
 
 import com.thatdot.quine.graph.{
+  DefaultNamespaceName,
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
@@ -177,7 +178,7 @@ abstract class CassandraPersistor(
         case Success(_) => ()
         case Failure(e) =>
           logger.error(
-            s"Error deleting rows in namespace ${namespace getOrElse "default"} from standing query states table for $standingQuery",
+            s"Error deleting rows in namespace ${namespace getOrElse DefaultNamespaceName} from standing query states table for $standingQuery",
             e
           )
       }(materializer.executionContext)

@@ -487,7 +487,7 @@ final class MapDbPersistor(
     *
     * This doesn't work on Windows
     */
-  def delete(): Future[Unit] = {
+  def delete(): Future[Unit] = Future {
     val files: List[String] = db.getStore.getAllFiles.asScala.toList
     transactionCommitCancellable.cancel()
     db.close()
@@ -497,8 +497,7 @@ final class MapDbPersistor(
         case NonFatal(err) =>
           logger.error("Failed to delete DB file {} ({})", file, err)
       }
-    Future.unit // FIXME: Don't block the calling thread
-  }
+  }(blockingDispatcherEC)
 
   /** Delete all [[DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
     * this may be an extremely slow operation.

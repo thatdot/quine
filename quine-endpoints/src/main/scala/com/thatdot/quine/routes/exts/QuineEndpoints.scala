@@ -16,6 +16,7 @@ object NamespaceParameter {
     Option.when(isValidNamespaceParameter(normalized))(new NamespaceParameter(normalized))
   }
 
+  // INV: this must match Some(com.thatdot.quine.graph.DefaultNamespaceName) -- not accessible from this package
   val defaultNamespaceParameter: NamespaceParameter = new NamespaceParameter("default")
 
   /** No more than 16 characters total, must start with a letter

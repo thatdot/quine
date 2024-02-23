@@ -1,5 +1,6 @@
 package com.thatdot.quine.persistor
 
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 import scala.compat.ExecutionContexts
@@ -14,7 +15,7 @@ import cats.syntax.functor._
 import com.softwaremill.diffx.generic.auto._
 import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalacheck.Arbitrary.arbitrary
-import org.scalacheck.Gen
+import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.dsl.ResultOfTheSameElementsInOrderAsApplication
 import org.scalatest.matchers.should.Matchers
@@ -26,6 +27,7 @@ import com.thatdot.quine.graph.Generators.{generate1, generateN}
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
+  DefaultNamespaceName,
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
@@ -38,7 +40,9 @@ import com.thatdot.quine.graph.{
   StandingQuery,
   StandingQueryId,
   StandingQueryPattern,
-  namespaceFromString
+  defaultNamespaceId,
+  namespaceFromString,
+  namespaceToString
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
@@ -67,26 +71,43 @@ abstract class PersistenceAgentSpec
   def runnable: Boolean = true
 
   // Override this to opt-out of tests that delete records (eg to perform manual inspection)
+  // When this is false, tests will likely require manual intervention to clean up the database between runs
   def runDeletionTests: Boolean = true
 
   def persistor: PrimePersistor
 
+  // main namespace used for tests
   val testNamespace: NamespaceId = namespaceFromString("persistenceSpec")
+  // alternate namespaces used for tests specifically about namespace isolation / interop
+  val altNamespace1: NamespaceId = namespaceFromString("persistenceSpec1")
+  val altNamespace2: NamespaceId = namespaceFromString("persistenceSpec2")
+
+  // default NamespaceIds -- `defaultNamespacedNamed` relies on breaking the `NamespaceId` abstraction
+  // and should be rejected by the persistence layer
+  val defaultNamespaceNamed: NamespaceId = Some(Symbol(namespaceToString(defaultNamespaceId)))
+  val defaultNamespaceUnnamed: NamespaceId = defaultNamespaceId
+
   // initialized in beforeAll
   final var namespacedPersistor: NamespacedPersistenceAgent = _
+  final var altPersistor1: NamespacedPersistenceAgent = _
+  final var altPersistor2: NamespacedPersistenceAgent = _
+
+  private def getOrInitTestNamespace(name: NamespaceId): NamespacedPersistenceAgent = persistor(name).getOrElse(
+    Await.result(
+      persistor
+        .prepareNamespace(name)
+        .map { _ =>
+          persistor.createNamespace(name)
+          persistor(name).get // this should be defined -- we just created it, after all!
+        }(ExecutionContexts.parasitic),
+      41.seconds // potentially creates database tables, which is potentially slow depending on the database
+    )
+  )
   override def beforeAll(): Unit = {
     super.beforeAll()
-    namespacedPersistor = Await
-      .result(
-        persistor
-          .prepareNamespace(testNamespace)
-          .map { _ =>
-            persistor.createNamespace(testNamespace)
-            persistor(testNamespace).get // this should be defined -- we just created it, after all!
-          }(ExecutionContexts.parasitic),
-        41.seconds // potentially creates database tables, which is potentially slow depending on the database
-      )
-    ()
+    namespacedPersistor = getOrInitTestNamespace(testNamespace)
+    altPersistor1 = getOrInitTestNamespace(altNamespace1)
+    altPersistor2 = getOrInitTestNamespace(altNamespace2)
   }
 
   def withRandomTime[T <: NodeEvent](events: NonEmptyList[T]): NonEmptyList[NodeEvent.WithTime[T]] =
@@ -96,6 +117,8 @@ abstract class PersistenceAgentSpec
     events.sortBy(_.atTime)
 
   override def afterAll(): Unit = {
+    super.afterAll()
+    Seq(testNamespace, altNamespace1, altNamespace2) foreach persistor.deleteNamespace
     Await.result(persistor.shutdown(), 10.seconds)
     Await.result(system.terminate(), 10.seconds)
     ()
@@ -997,6 +1020,160 @@ abstract class PersistenceAgentSpec
     }
   }
 
+  describe("Namespaced persistors") {
+    val testTimestamp1 = EventTime.fromRaw(127L)
+    it("should write snapshots to any namespace at the same QuineId and AtTime") {
+      allOfConcurrent(
+        altPersistor1.persistSnapshot(qid1, testTimestamp1, snapshot0),
+        altPersistor2.persistSnapshot(qid1, testTimestamp1, snapshot1)
+      )
+    }
+    it("should retrieve snapshots from different namespaces with the same QuineId and AtTime") {
+      allOfConcurrent(
+        altPersistor1.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
+          val snapshot = snapshotOpt.get
+          assertArraysEqual(snapshot, snapshot0)
+        },
+        altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
+          val snapshot = snapshotOpt.get
+          assertArraysEqual(snapshot, snapshot1)
+        }
+      )
+    }
+    it("should write journals for the same QuineId to different namespaces") {
+      allOfConcurrent(
+        altPersistor1.persistNodeChangeEvents(
+          qid2,
+          NonEmptyList.of(
+            NodeEvent.WithTime(event0, EventTime.fromRaw(34L)),
+            NodeEvent.WithTime(event2, EventTime.fromRaw(38L)),
+            NodeEvent.WithTime(event4, EventTime.fromRaw(44L))
+          )
+        ),
+        altPersistor2.persistNodeChangeEvents(
+          qid2,
+          NonEmptyList.of(
+            NodeEvent.WithTime(event1, EventTime.fromRaw(36L)),
+            NodeEvent.WithTime(event3, EventTime.fromRaw(40L))
+          )
+        )
+      )
+    }
+    it("should retrieve journals for the same QuineId from different namespaces") {
+      allOfConcurrent(
+        altPersistor1.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            (journal shouldMatchTo Seq(event0, event2, event4))
+        },
+        altPersistor2.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
+          journal =>
+            (journal shouldMatchTo Seq(event1, event3))
+        }
+      )
+    }
+    // Arbitrary DomainIndexEvents
+    def freshDomainIndexEventsPlease(): NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]] = {
+      val generated = NonEmptyList.fromListUnsafe(generateN[DomainIndexEvent](10, Random.nextInt(10) + 1).toList)
+      sortedByTime(withRandomTime(generated))
+    }
+    val domainIndexEvents1 = freshDomainIndexEventsPlease()
+    val domainIndexEvents2 = freshDomainIndexEventsPlease()
+    it("should write (generated) DomainIndexEvents for the same QuineId to different namespaces") {
+      allOfConcurrent(
+        altPersistor1.persistDomainIndexEvents(
+          qid3,
+          domainIndexEvents1
+        ),
+        altPersistor2.persistDomainIndexEvents(
+          qid3,
+          domainIndexEvents2
+        )
+      )
+    }
+    it("should read (generated) DomainIndexEvents for the same QuineId from different namespaces") {
+      allOfConcurrent(
+        altPersistor1
+          .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
+            (journal shouldMatchTo domainIndexEvents1.toList)
+          },
+        altPersistor2
+          .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+          .map { journal =>
+            (journal shouldMatchTo domainIndexEvents2.toList)
+          }
+      )
+    }
+    it(
+      "should register MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId in different namespaces"
+    ) {
+      allOfConcurrent(
+        altPersistor1.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState2)),
+        altPersistor2.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState4))
+      )
+    }
+    it(
+      "should read MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId from different namespaces"
+    ) {
+      allOfConcurrent(
+        altPersistor1.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
+          sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState2)
+        },
+        altPersistor2.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
+          sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1)
+          assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState4)
+        }
+      )
+    }
+    if (runDeletionTests) {
+      it("should purge one namespace without affecting the other") {
+        val alt1Deleted = persistor.deleteNamespace(altNamespace1) match {
+          case PrimePersistor.NamespaceDidNotExist => fail("Namespace 1 did not exist")
+          case PrimePersistor.NamespaceDeleting(completion) => completion
+        }
+        alt1Deleted.flatMap { _ =>
+          allOfConcurrent(
+            altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
+              val snapshot = snapshotOpt.get
+              assertArraysEqual(snapshot, snapshot1)
+            },
+            altPersistor2
+              .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .map { journal =>
+                (journal shouldMatchTo Seq(event1, event3))
+              },
+            altPersistor2
+              .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .map { journal =>
+                (journal shouldMatchTo domainIndexEvents2.toList)
+              },
+            altPersistor2.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
+              sqStates.keySet shouldMatchTo Set(sqId1 -> sqPartId1)
+              assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState4)
+            },
+            getOrInitTestNamespace(altNamespace1)
+              .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
+              .map { journal =>
+                (journal shouldMatchTo Seq.empty)
+              }
+          )
+        }
+      }
+    }
+
+  }
+  describe("Default namespace") {
+    // resolution of Some("default") to None is handled by routes/apps, and should not reach the persistence agent.
+    it(
+      s"should only be able to resolve the default namespace as $defaultNamespaceUnnamed and not $defaultNamespaceNamed"
+    ) {
+      allOfConcurrent(
+        persistor(defaultNamespaceNamed) should not be defined,
+        persistor(defaultNamespaceUnnamed) shouldBe defined
+      )
+    }
+  }
 }
 object PersistenceAgentSpec extends Matchers with DiffShouldMatcher {
   def assertArraysEqual(l: Array[Byte], r: Array[Byte]): Assertion =

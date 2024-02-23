@@ -140,7 +140,9 @@ class GraphService(
       namespaceCache -= namespace
       askAllShards(DeleteNamespace(namespace, _))
         .map { response =>
-          namespacePersistor.deleteNamespace(namespace) || // the order of this `or` matters!
+          namespacePersistor
+            .deleteNamespace(namespace)
+            .didChange || // the order of this `or` matters, as [[deleteNamespace]] is side-effecting
           response.exists(_.didHaveEffect)
         }(shardDispatcherEC)
     } else Future.successful(false)

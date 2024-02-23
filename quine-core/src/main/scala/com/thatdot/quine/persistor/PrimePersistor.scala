@@ -13,6 +13,7 @@ import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQuery
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
+import com.thatdot.quine.persistor.PrimePersistor.{NamespaceDeleting, NamespaceDeletionResult, NamespaceDidNotExist}
 
 abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFilterSize: Option[Long])(implicit
   materializer: Materializer
@@ -20,7 +21,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
   type PersistenceAgentType <: NamespacedPersistenceAgent
 
-  private var persistors: Map[NamespaceId, NamespacedPersistenceAgent] = Map.empty
+  protected var persistors: Map[NamespaceId, NamespacedPersistenceAgent] = Map.empty
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType
 
@@ -67,16 +68,20 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     if (didChange) persistors += (namespace -> bloomFilter(wrapExceptions(agentCreator(persistenceConfig, namespace))))
   }
 
-  def deleteNamespace(namespace: NamespaceId): Boolean = {
-    val didChange = persistors.contains(namespace)
-    if (didChange) {
-      val toDelete = persistors(namespace)
-      persistors -= namespace
-      toDelete.delete()
-      if (namespace == defaultNamespaceId) initializeDefault() // Default namespace should always exist
+  def deleteNamespace(namespace: NamespaceId): NamespaceDeletionResult =
+    persistors.get(namespace) match {
+      case None => NamespaceDidNotExist
+      case Some(toDelete) =>
+        persistors -= namespace
+        NamespaceDeleting(
+          toDelete
+            .delete()
+            .map { _ =>
+              // default namespace should be always available
+              if (namespace == defaultNamespaceId) initializeDefault()
+            }(ExecutionContexts.parasitic)
+        )
     }
-    didChange
-  }
 
   /** Get all standing queries across all namespaces
     */
@@ -267,44 +272,14 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
 }
 
-/** A GlobalPersistor where the global data is stored in the default instance of the NamespacedPersistenceAgents
-  * @param persistenceConfig
-  */
-abstract class UnifiedPrimePersistor(
-  persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long]
-)(implicit materializer: Materializer)
-    extends PrimePersistor(persistenceConfig, bloomFilterSize) {
+object PrimePersistor {
 
-  type PersistenceAgentType = PersistenceAgent
-
-  def shutdown(): Future[Unit] = Future.unit
-
-  protected def internalGetMetaData(key: String): Future[Option[Array[Byte]]] = getDefault.getMetaData(key)
-
-  protected def internalGetAllMetaData(): Future[Map[String, Array[Byte]]] = getDefault.getAllMetaData()
-
-  protected def internalSetMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] =
-    getDefault.setMetaData(key, newValue)
-
-  protected def internalPersistDomainGraphNodes(
-    domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]
-  ): Future[Unit] =
-    getDefault.persistDomainGraphNodes(domainGraphNodes)
-
-  protected def internalRemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] =
-    getDefault.removeDomainGraphNodes(domainGraphNodeIds)
-
-  protected def internalGetDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
-    getDefault.getDomainGraphNodes()
-}
-class StatelessPrimePersistor(
-  persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long],
-  create: (PersistenceConfig, NamespaceId) => PersistenceAgent
-)(implicit materializer: Materializer)
-    extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
-
-  protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
-    create(persistenceConfig, namespace)
+  /** Result of a namespace deletion operation.
+    * @param didChange whether the set of known namespaces changes as a result of the deletion request
+    * @param completion a Future that completes when the deletion has fully processed
+    */
+  sealed abstract class NamespaceDeletionResult(val didChange: Boolean, val completion: Future[Unit])
+  case object NamespaceDidNotExist extends NamespaceDeletionResult(didChange = false, Future.unit)
+  case class NamespaceDeleting(override val completion: Future[Unit])
+      extends NamespaceDeletionResult(didChange = true, completion)
 }
