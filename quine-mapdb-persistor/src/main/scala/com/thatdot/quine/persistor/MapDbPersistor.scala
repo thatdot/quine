@@ -39,6 +39,7 @@ import com.thatdot.quine.persistor.codecs.{
   NodeChangeEventCodec,
   StandingQueryCodec
 }
+import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Embedded persistence implementation based on MapDB
@@ -284,33 +285,17 @@ final class MapDbPersistor(
     deleteQuineIdEntries(domainIndexEvents, qid, "deleteDomainIndexEvents")
 
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
-    StreamConverters
-      .fromJavaStream(() => nodeChangeEvents.navigableKeySet().parallelStream())
+    Source
+      .fromIterator(() => nodeChangeEvents.keySet().iterator().asScala)
       .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
-      .statefulMapConcat { () =>
-        var previous: Option[QuineId] = None
-        (qid: QuineId) =>
-          if (previous.contains(qid)) Nil
-          else {
-            previous = Some(qid)
-            List(qid)
-          }
-      }
+      .via(distinctConsecutive)
       .named("mapdb-all-node-scan-via-journals")
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
-    StreamConverters
-      .fromJavaStream(() => snapshots.navigableKeySet().parallelStream())
+    Source
+      .fromIterator(() => snapshots.keySet().iterator().asScala)
       .map(x => QuineId(x.head.asInstanceOf[Array[Byte]]))
-      .statefulMapConcat { () =>
-        var previous: Option[QuineId] = None
-        (qid: QuineId) =>
-          if (previous.contains(qid)) Nil
-          else {
-            previous = Some(qid)
-            List(qid)
-          }
-      }
+      .via(distinctConsecutive)
       .named("mapdb-all-node-scan-via-snapshots")
 
   def persistSnapshot(id: QuineId, atTime: EventTime, snapshotBytes: Array[Byte]): Future[Unit] =

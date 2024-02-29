@@ -43,6 +43,7 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
+import com.thatdot.quine.util.PekkoStreams.wireTapFirst
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 object StandingQueryResultOutput extends LazyLogging {
@@ -321,24 +322,13 @@ object StandingQueryResultOutput extends LazyLogging {
         val andThenFlow: Flow[(StandingQueryResult.Meta, cypher.QueryContext), SqResultsExecToken, NotUsed] =
           (andThen match {
             case None =>
-              Flow[(StandingQueryResult.Meta, cypher.QueryContext)]
-                .statefulMapConcat { () =>
-                  var warned = false
-
-                  tup => {
-                    logger.whenWarnEnabled {
-                      if (!warned) {
-                        warned = true
-                        logger.warn(
-                          s"""Unused Cypher Standing Query output for Standing Query output: $name with:
+              wireTapFirst[(StandingQueryResult.Meta, cypher.QueryContext)](tup =>
+                logger.warn(
+                  s"""Unused Cypher Standing Query output for Standing Query output: $name with:
                              |${tup._2.environment.size} columns. Did you mean to specify `andThen`?""".stripMargin
-                            .replace('\n', ' ')
-                        )
-                      }
-                    }
-                    List(execToken)
-                  }
-                }
+                    .replace('\n', ' ')
+                )
+              ).map(_ => execToken)
 
             case Some(thenOutput) =>
               Flow[(StandingQueryResult.Meta, cypher.QueryContext)]

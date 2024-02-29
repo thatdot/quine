@@ -1,5 +1,6 @@
 package com.thatdot.quine.bolt
 
+import scala.annotation.nowarn
 import scala.util.Try
 
 import org.apache.pekko.NotUsed
@@ -220,6 +221,8 @@ object Protocol extends LazyLogging {
     *     through directly
     *   - Outputs the chosen version (00 00 00 00 if none and close)
     */
+  @nowarn("cat=deprecation") // statefulMapConcat is deprecated, but I don't care enough about bolt to fix it.
+  // There's even a ??? below.
   val handshake: BidiFlow[ByteString, ByteString, ByteString, ByteString, NotUsed] = {
     var handshakeSucceeded = false
     BidiFlow.fromFlows(
@@ -343,6 +346,7 @@ object Protocol extends LazyLogging {
   ): Flow[ProtocolMessage, ProtocolMessage, NotUsed] =
     handleMessagesToSources(graph, timeout).flatMapConcat(identity)
 
+  @nowarn("cat=deprecation") // statefulMapConcat is deprecated, but I don't care enough about bolt to fix it.
   def handleMessagesToSources(implicit
     graph: CypherOpsGraph,
     timeout: Timeout

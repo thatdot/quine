@@ -1,9 +1,9 @@
 object Dependencies {
-  val pekkoV = "1.0.1"
+  val pekkoV = "1.0.2"
   val pekkoHttpV = "1.0.0"
-  val pekkoStreamV = "1.0.1"
+  val pekkoStreamV = "1.0.2"
   val pekkoKafkaV = "1.0.0"
-  val pekkoConnectorsV = "1.0.1"
+  val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.26.0"
   val amazonKinesisClientV = "2.5.4"
   val amazonGlueV = "1.1.18"

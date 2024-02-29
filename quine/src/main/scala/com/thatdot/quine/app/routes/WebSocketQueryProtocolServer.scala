@@ -3,6 +3,7 @@ package com.thatdot.quine.app.routes
 import scala.collection.concurrent
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.util.Try
 import scala.util.control.NonFatal
 
 import org.apache.pekko.http.scaladsl.model.ws
@@ -20,6 +21,7 @@ import io.circe.{Decoder, Encoder}
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
+import com.thatdot.quine.routes.QueryProtocolMessage.ServerMessage
 import com.thatdot.quine.routes.{
   CypherQuery,
   GremlinQuery,
@@ -60,6 +62,11 @@ trait WebSocketQueryProtocolServer
 
   implicit private[this] val clientMessageDecoder: Decoder[ClientMessage] = clientMessageSchema.decoder
   private[this] val serverMessageEncoder: Encoder[ServerMessage[Id]] = serverMessageSchema.encoder
+
+  private case class RunningQueriesAndSink(
+    runningQueries: concurrent.Map[Int, RunningQuery],
+    sink: Sink[ServerMessage[Id], NotUsed]
+  )
 
   /** Protocol flow
     *
@@ -114,32 +121,31 @@ trait WebSocketQueryProtocolServer
 
           mergedSource ~> responseAndResultMerge.in(0)
           processClientRequests.out
-            .statefulMapConcat[ServerMessage[Id]] { () =>
-              var runningQueries: concurrent.Map[Int, RunningQuery] = null
-              var sink: Sink[ServerMessage[Id], NotUsed] = null
-
-              {
-                case Right(clientMessage: ClientMessage) =>
-                  List(
-                    try processClientMessage(clientMessage, runningQueries, sink)
-                    catch {
-                      case NonFatal(err) => MessageError(serverExceptionMessage(err))
-                      case other: Throwable =>
-                        MessageError(serverExceptionMessage(other)) // This might expose more than we want
-                    }
-                  )
-                case Left(err: MessageError) =>
-                  List(err)
-                case (
-                      sinkMat: Sink[ServerMessage[Id] @unchecked, NotUsed @unchecked],
-                      runningQueriesMat: concurrent.Map[Int @unchecked, RunningQuery @unchecked]
-                    ) =>
-                  runningQueries = runningQueriesMat
-                  sink = sinkMat
-                  Nil
-                case other => throw new RuntimeException(s"Unexpected value: $other")
-              }
-            } ~> responseAndResultMerge.preferred
+            .statefulMap[RunningQueriesAndSink, Option[ServerMessage[Id]]](() => RunningQueriesAndSink(null, null))(
+              { case (state @ RunningQueriesAndSink(runningQueries, sink), request) =>
+                request match {
+                  case msg: Either[MessageError @unchecked, ClientMessage @unchecked] =>
+                    state -> Some(
+                      msg
+                        .map(clientMessage =>
+                          try processClientMessage(clientMessage, runningQueries, sink)
+                          catch {
+                            case NonFatal(err) => MessageError(serverExceptionMessage(err))
+                          }
+                        )
+                        .merge
+                    )
+                  case (
+                        sinkMat: Sink[ServerMessage[Id] @unchecked, NotUsed @unchecked],
+                        runningQueriesMat: concurrent.Map[Int @unchecked, RunningQuery @unchecked]
+                      ) =>
+                    RunningQueriesAndSink(runningQueriesMat, sinkMat) -> None
+                  case other => throw new RuntimeException(s"Unexpected value: $other")
+                }
+              },
+              _ => None
+            )
+            .collect { case Some(s) => s } ~> responseAndResultMerge.preferred
 
           FlowShape(
             clientMessages.in,

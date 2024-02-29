@@ -1,6 +1,5 @@
 package com.thatdot.quine.gremlin
 
-import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util._
 import scala.util.parsing.input.{Position, Positional}
@@ -13,6 +12,7 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.PekkoStreams.{statefulFilter, wireTapFirst}
 
 // Functionality for describing and running queries
 private[gremlin] trait GremlinTypes extends LazyLogging {
@@ -69,21 +69,13 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
   }
 
   // Warn if there are inputs, since these are going to be completely ignored
-  private def dropAndWarn(stepName: String): Flow[Result, Result, NotUsed] = Flow[Result]
-    .statefulMapConcat { () =>
-      var warned: Boolean = false
-
-      {
-        case Result(u, _, _) if !warned =>
-          warned = true
-          logger.warn(
-            s"Gremlin query step: `$stepName` discarded a result (logged at INFO level) additional discards will not be logged."
-          )
-          logger.info(s"Gremlin query step: `$stepName` step discarded a result: $u")
-          List.empty
-        case _ => List.empty
-      }
-    }
+  private def dropAndWarn(stepName: String): Flow[Result, Result, NotUsed] = wireTapFirst[Result] { result =>
+    logger.warn(
+      s"Gremlin query step: `$stepName` discarded a result (logged at INFO level) additional discards will not be logged."
+    )
+    logger.info(s"Gremlin query step: `$stepName` step discarded a result: ${result.unwrap}")
+  // Can't replace this with e.g. `take(0)` otherwise the above warning won't get executed.
+  }.filter(_ => false)
 
   case class Traversal(steps: Seq[TraversalStep]) {
     def flow(implicit ctx: VariableStore, namespace: NamespaceId, atTime: AtTime): Try[Flow[Result, Result, NotUsed]] =
@@ -693,15 +685,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       namespace: NamespaceId,
       atTime: AtTime
     ): Success[Flow[Result, Result, NotUsed]] = Success {
-      Flow[Result]
-        .statefulMapConcat { () =>
-          val seen = mutable.Set.empty[Any]
-
-          {
-            case r @ Result(u, _, _) if seen.add(u) => List(r)
-            case _ => List.empty
-          }
-        }
+      statefulFilter(Set.empty[Any])((seen, result) => (seen + result.unwrap, !seen.contains(result.unwrap)))
     }
 
     override val pprint = ".dedup()"
