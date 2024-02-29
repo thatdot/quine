@@ -555,7 +555,8 @@ import com.thatdot.{visnetwork => vis}
 
       case QueryMethod.WebSocket =>
         val nodeCallback = new QueryCallbacks.CollectNodesToFuture()
-        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, None, Some(100))
+        // Note: Streaming query currently does not support namespaces
+        val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
         for {
           client <- getWebSocketClient()
           queryId <- Future.fromTry(client.query(streamingQuery, nodeCallback).toTry)
@@ -585,7 +586,8 @@ import com.thatdot.{visnetwork => vis}
 
       case QueryMethod.WebSocket =>
         val edgeCallback = new QueryCallbacks.CollectEdgesToFuture()
-        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, None, Some(100))
+        // Note: Streaming query currently does not support namespaces
+        val streamingQuery = StreamingQuery(query, parameters, language, atTime, None, Some(100))
         for {
           client <- getWebSocketClient()
           _ <- Future.fromTry(client.query(streamingQuery, edgeCallback).toTry)
@@ -683,7 +685,8 @@ import com.thatdot.{visnetwork => vis}
               def onQueryCancelError(message: String): Unit = ()
             }
         }
-        val streamingQuery = StreamingQuery(query, parameters, language, namespace, atTime, Some(1000), Some(100))
+        // Note: Streaming query currently does not support namespaces
+        val streamingQuery = StreamingQuery(query, parameters, language, atTime, Some(1000), Some(100))
         for {
           client <- getWebSocketClient()
           queryId <- Future.fromTry(client.query(streamingQuery, textCallback).toTry)

@@ -10,7 +10,7 @@ import io.circe.{Decoder, Encoder, Json}
 import org.scalajs.dom
 import org.scalajs.dom.console
 
-import com.thatdot.quine.routes.exts.{CirceJsonAnySchema, NamespaceParameter}
+import com.thatdot.quine.routes.exts.CirceJsonAnySchema
 
 /** Client to run queries (streaming results, cancellation, concurrently) over a WebSocket
   *
@@ -212,7 +212,6 @@ final case class StreamingQuery(
   query: String,
   parameters: Map[String, Json],
   language: QueryLanguage,
-  namespace: NamespaceParameter,
   atTime: Option[Long],
   maxResultBatch: Option[Int],
   resultsWithinMillis: Option[Int]
@@ -224,7 +223,6 @@ final case class StreamingQuery(
       sort,
       parameters,
       language,
-      namespace,
       atTime,
       maxResultBatch,
       resultsWithinMillis

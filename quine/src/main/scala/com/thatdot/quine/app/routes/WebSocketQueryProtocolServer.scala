@@ -19,6 +19,7 @@ import io.circe
 import io.circe.{Decoder, Encoder}
 
 import com.thatdot.quine.graph.cypher.CypherException
+import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.QueryProtocolMessage.ServerMessage
@@ -206,8 +207,7 @@ trait WebSocketQueryProtocolServer
               input.groupedWithin(batchOpt.getOrElse(Int.MaxValue), maxMillis.millis)
           }
         val atTime = run.atTime.map(Milliseconds.apply)
-        val namespace = namespaceFromParam(run.namespace)
-
+        val namespace = defaultNamespaceId
         // Depending on the sort of query and query language, build up different server messages
         val (results, isReadOnly, canContainAllNodeScan, columns): (
           Source[ServerMessage[Id], UniqueKillSwitch],

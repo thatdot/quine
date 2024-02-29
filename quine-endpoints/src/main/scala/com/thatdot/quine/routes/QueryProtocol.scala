@@ -76,7 +76,6 @@ object QueryProtocolMessage {
     sort: QuerySort,
     parameters: Map[String, Json],
     language: QueryLanguage,
-    namespace: NamespaceParameter,
     atTime: Option[Long],
     maxResultBatch: Option[Int],
     resultsWithinMillis: Option[Int]
