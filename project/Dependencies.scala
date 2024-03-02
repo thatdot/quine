@@ -48,7 +48,7 @@ object Dependencies {
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
   val plotlyV = "1.57.1"
-  val protobufV = "3.25.2"
+  val protobufV = "3.25.3"
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.5"
   val reactPlotlyV = "2.5.1"
