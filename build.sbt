@@ -135,7 +135,7 @@ lazy val `quine-cypher`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
     ),
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.3" cross CrossVersion.full),
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % betterMonadicForV)
   )
 
