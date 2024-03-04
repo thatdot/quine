@@ -122,11 +122,11 @@ object Recipe {
           (
             url.subs
           ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData))
-        case WriteToKafka(topic, bootstrapServers, format) =>
+        case WriteToKafka(topic, bootstrapServers, format, properties) =>
           (
             topic.subs,
             bootstrapServers.subs
-          ).mapN(WriteToKafka(_, _, format))
+          ).mapN(WriteToKafka(_, _, format, properties))
         case WriteToSNS(credentialsOpt, regionOpt, topic) =>
           (
             credentialsOpt.traverse(_.subs),

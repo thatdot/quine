@@ -134,13 +134,14 @@ object StandingQueryResultOutput extends LazyLogging {
             }(system.dispatcher)
           }
 
-      case WriteToKafka(topic, bootstrapServers, format) =>
+      case WriteToKafka(topic, bootstrapServers, format, properties) =>
         val settings = ProducerSettings(
           graph.system,
           new ByteArraySerializer,
           new ByteArraySerializer
         ).withBootstrapServers(bootstrapServers)
-
+          .withProperties(properties)
+        logger.info(s"Writing to kafka with properties $properties")
         serialized(name, format, graph)
           .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
           .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))

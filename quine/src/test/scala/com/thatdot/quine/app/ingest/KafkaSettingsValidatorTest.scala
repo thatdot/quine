@@ -11,81 +11,96 @@ import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
   */
 class KafkaSettingsValidatorTest extends AnyFunSuite {
 
-  test("Underlying Kafka ConfigDef is accessible") {
-    KafkaSettingsValidator.underlyingValidator.isSuccess
+  test("empty input settings map accepted") {
+    assert(KafkaSettingsValidator.validateInput(Map()).isEmpty)
   }
-  test("empty settings map accepted") {
-    assert(KafkaSettingsValidator(Map()).validate().isEmpty)
-  }
-  test("final empty settings map accepted") {
-    assert(KafkaSettingsValidator(Map()).validate(assumeConfigIsFinal = true).isEmpty)
+  test("final empty input settings map accepted") {
+    assert(KafkaSettingsValidator.validateInput(Map(), assumeConfigIsFinal = true).isEmpty)
   }
 
-  test("Unrecognized setting disallowed") {
+  test("Unrecognized input setting disallowed") {
     assert(
-      KafkaSettingsValidator(Map("Unrecognized.property.name" -> "anything")).validate().get.size == 1
+      KafkaSettingsValidator.validateInput(Map("Unrecognized.property.name" -> "anything")).get.size == 1
     )
   }
 
-  test("Conflicting settings disallowed") {
+  test("Conflicting input settings disallowed") {
 
     //group.id
     assert(
-      KafkaSettingsValidator(Map("group.id" -> "a"), explicitGroupId = Some("group"))
-        .validate()
-        .get
-        .size == 1
+      KafkaSettingsValidator.validateInput(Map("group.id" -> "a"), explicitGroupId = Some("group")).get.size == 1
     )
 
     //enable.auto.commit
     assert(
-      KafkaSettingsValidator(
-        Map("enable.auto.commit" -> "a"),
-        explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
-      ).validate(false).get.size == 1
+      KafkaSettingsValidator
+        .validateInput(
+          Map("enable.auto.commit" -> "a"),
+          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
+        )
+        .get
+        .size == 1
     )
 
     //auto.commit.interval.ms
     assert(
-      KafkaSettingsValidator(
-        Map("auto.commit.interval.ms" -> "true"),
-        explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
-      ).validate(false).get.size == 1
+      KafkaSettingsValidator
+        .validateInput(
+          Map("auto.commit.interval.ms" -> "true"),
+          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
+        )
+        .get
+        .size == 1
     )
 
   }
-  test("Unsupported settings disallowed") {
+  test("Unsupported input settings disallowed") {
     //value.deserializer
-    assert(KafkaSettingsValidator(Map("value.deserializer" -> "a")).validate(false).get.size == 1)
+    assert(KafkaSettingsValidator.validateInput(Map("value.deserializer" -> "a")).get.size == 1)
 
     //bootstrap.servers
-    assert(KafkaSettingsValidator(Map("bootstrap.servers" -> "a")).validate(false).get.size == 1)
+    assert(KafkaSettingsValidator.validateInput(Map("bootstrap.servers" -> "a")).get.size == 1)
 
     //security.protocol
-    assert(KafkaSettingsValidator(Map("security.protocol" -> "a")).validate(false).get.size == 1)
+    assert(KafkaSettingsValidator.validateInput(Map("security.protocol" -> "a")).get.size == 1)
 
     //completely made up
-    assert(KafkaSettingsValidator(Map("my.super.cool.property" -> "false")).validate(false).get.size == 1)
+    assert(KafkaSettingsValidator.validateInput(Map("my.super.cool.property" -> "false")).get.size == 1)
+
+  }
+  test("Unsupported output settings disallowed") {
+    //value.deserializer
+    assert(KafkaSettingsValidator.validateOutput(Map("value.deserializer" -> "a")).get.size == 1)
+
+    //bootstrap.servers
+    assert(KafkaSettingsValidator.validateOutput(Map("bootstrap.servers" -> "a")).get.size == 1)
+
+    //completely made up
+    assert(KafkaSettingsValidator.validateOutput(Map("my.super.cool.property" -> "false")).get.size == 1)
 
   }
   test("non-member settings disallowed") {
-    assert(KafkaSettingsValidator(Map("auto.offset.reset" -> "a")).validate(false).get.size == 1)
+    assert(KafkaSettingsValidator.validateOutput(Map("auto.offset.reset" -> "a")).get.size == 1)
   }
   test("SSL selections allowed") {
     // truststore
     assert(
-      KafkaSettingsValidator(
-        Map("ssl.truststore.location" -> "alpha", "ssl.truststore.password" -> "beta")
-      ).validate(false).isEmpty
+      KafkaSettingsValidator
+        .validateInput(
+          Map("ssl.truststore.location" -> "alpha", "ssl.truststore.password" -> "beta")
+        )
+        .isEmpty
     )
     // keystore
     assert(
-      KafkaSettingsValidator(
-        Map("ssl.keystore.location" -> "gamma", "ssl.keystore.password" -> "delta")
-      ).validate(false).isEmpty
+      KafkaSettingsValidator
+        .validateInput(
+          Map("ssl.keystore.location" -> "gamma", "ssl.keystore.password" -> "delta")
+        )
+        .isEmpty
     )
     // key
-    assert(KafkaSettingsValidator(Map("ssl.key.password" -> "epsilon")).validate(false).isEmpty)
+    assert(KafkaSettingsValidator.validateInput(Map("ssl.key.password" -> "epsilon")).isEmpty)
   }
   test("Spooky SASL selections disallowed") {
     // CVE-2023-25194
@@ -99,8 +114,9 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
     // Each of these settings should be rejected for at least 1 reason
     forAll(bannedSettings) { setting =>
       assert(
-        KafkaSettingsValidator(Map(setting)).validate(false).nonEmpty
+        KafkaSettingsValidator.validateInput(Map(setting)).nonEmpty
       )
+      assert(KafkaSettingsValidator.validateOutput(Map(setting)).nonEmpty)
     }
   }
 

@@ -11,9 +11,12 @@ import org.apache.pekko.stream.scaladsl.{Flow, Sink}
 import org.apache.pekko.stream.{Materializer, OverflowStrategy}
 import org.apache.pekko.util.Timeout
 
+import cats.data.NonEmptyList
 import endpoints4s.{Invalid, Valid}
 
 import com.thatdot.quine.app.NamespaceNotFoundException
+import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
+import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   InvalidQueryPattern,
@@ -22,6 +25,7 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   StandingQueryResult
 }
+import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
 
 trait StandingQueryStore {
@@ -66,6 +70,12 @@ trait StandingQueryRoutesImpl
 
   def quineApp: StandingQueryStore
 
+  private def validateOutputDef(outputDef: StandingQueryResultOutputUserDef): Option[NonEmptyList[ErrorString]] =
+    outputDef match {
+      case k: WriteToKafka => KafkaSettingsValidator.validateOutput(k.kafkaProperties)
+      case _ => None
+    }
+
   private val standingIssueRoute = standingIssue.implementedByAsync { case (name, namespaceParam, query) =>
     try quineApp
       .addStandingQuery(name, namespaceFromParam(namespaceParam), query)
@@ -95,15 +105,22 @@ trait StandingQueryRoutesImpl
   }
 
   private val standingAddOutRoute = standingAddOut.implementedByAsync {
+
     case (name, outputName, namespaceParam, sqResultOutput) =>
-      quineApp
-        .addStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam), sqResultOutput)
-        .map {
-          _.map {
-            case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
-            case true => Right(())
-          }
-        }(graph.shardDispatcherEC)
+      validateOutputDef(sqResultOutput) match {
+        case Some(errors) =>
+          Future.successful(Some(Left(Invalid(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}"))))
+
+        case None =>
+          quineApp
+            .addStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam), sqResultOutput)
+            .map {
+              _.map {
+                case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
+                case true => Right(())
+              }
+            }(graph.shardDispatcherEC)
+      }
   }
 
   private val standingGetWebsocketRoute =

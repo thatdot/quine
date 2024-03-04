@@ -156,7 +156,11 @@ object StandingQueryResultOutputUserDef {
   final case class WriteToKafka(
     topic: String,
     bootstrapServers: String,
-    format: OutputFormat = OutputFormat.JSON
+    format: OutputFormat = OutputFormat.JSON,
+    @docs(
+      "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>"
+    )
+    kafkaProperties: Map[String, String] = Map.empty[String, String]
   ) extends StandingQueryResultOutputUserDef
 
   @unnamed

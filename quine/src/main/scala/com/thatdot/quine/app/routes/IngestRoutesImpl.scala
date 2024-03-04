@@ -82,7 +82,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
         case Some(Success(Done)) => IngestStreamStatus.Completed
         case Some(Failure(e)) =>
           // If exception occurs, it means that the ingest stream has failed
-          logger.warn(s"Ingest stream: ${settings} failed.", e)
+          logger.warn(s"Ingest stream: $settings failed.", e)
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       }
@@ -231,7 +231,11 @@ trait IngestRoutesImpl
     ingestStreamStart.implementedBy {
       case (ingestName, namespaceParam, settings: KafkaIngest) =>
         val namespace = namespaceFromParam(namespaceParam)
-        KafkaSettingsValidator(settings.kafkaProperties, settings.groupId, settings.offsetCommitting).validate() match {
+        KafkaSettingsValidator.validateInput(
+          settings.kafkaProperties,
+          settings.groupId,
+          settings.offsetCommitting
+        ) match {
           case Some(errors) =>
             http400(
               endpoints4s.Invalid(
@@ -250,7 +254,7 @@ trait IngestRoutesImpl
   private val ingestStreamStopRoute = ingestStreamStop.implementedByAsync { case (ingestName, namespaceParam) =>
     quineApp.removeIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
       case None => Future.successful(None)
-      case Some(control @ IngestStreamWithControl(settings, metrics, valve @ _, terminated, close, _, _)) =>
+      case Some(control @ IngestStreamWithControl(settings, metrics, _, terminated, close, _, _)) =>
         val finalStatus = control.status.map { previousStatus =>
           import IngestStreamStatus._
           previousStatus match {
@@ -343,9 +347,9 @@ trait IngestRoutesImpl
   private def mkPauseOperationError(operation: String): PartialFunction[Throwable, Either[Invalid, Nothing]] = {
     case _: StreamDetachedException =>
       // A StreamDetachedException always occurs when the ingest has failed
-      Left(endpoints4s.Invalid(s"Cannot ${operation} a failed ingest."))
+      Left(endpoints4s.Invalid(s"Cannot $operation a failed ingest."))
     case e: PauseOperationException =>
-      Left(endpoints4s.Invalid(s"Cannot ${operation} a ${e.statusMsg} ingest."))
+      Left(endpoints4s.Invalid(s"Cannot $operation a ${e.statusMsg} ingest."))
   }
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { case (ingestName, namespaceParam) =>

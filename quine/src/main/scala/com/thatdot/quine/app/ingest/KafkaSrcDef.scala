@@ -121,8 +121,8 @@ object KafkaSrcDef {
       )
 
     val complaintsFromValidator: ValidatedNel[String, Unit] =
-      KafkaSettingsValidator(consumerSettings.properties)
-        .validate(assumeConfigIsFinal = true)
+      KafkaSettingsValidator
+        .validateInput(consumerSettings.properties, assumeConfigIsFinal = true)
         .toInvalid(())
 
     complaintsFromValidator.map { _ =>
