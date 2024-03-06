@@ -26,7 +26,7 @@ object Ecr extends AutoPlugin {
       val Array(user, pass) = authTokenString.split(':')
       val domain = authData.proxyEndpoint
       Seq("docker", "login", "--username", user, "--password-stdin", domain).run(stringToStdIn(pass))
-      Some(new URL(domain))
+      Some(url(domain))
     } catch {
       case e: SdkClientException => // E.g. no AWS creds in environment
         streams.value.log.warn("Unable to get ECR token: " + e.getMessage)

@@ -27,7 +27,6 @@ lazy val `quine-core`: Project = project
       "io.circe" %% "circe-parser" % circeV,
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
-      "commons-codec" % "commons-codec" % commonsCodecV,
       "com.47deg" %% "memeid4s" % memeIdV,
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
@@ -131,6 +130,7 @@ lazy val `quine-cypher`: Project = project
       "com.thatdot.opencypher" %% "front-end" % openCypherV,
       "com.thatdot.opencypher" %% "opencypher-cypher-ast-factory" % openCypherV,
       "com.thatdot.opencypher" %% "util" % openCypherV,
+      "commons-codec" % "commons-codec" % commonsCodecV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test

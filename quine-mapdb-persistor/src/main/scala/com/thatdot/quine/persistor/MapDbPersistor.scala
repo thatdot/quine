@@ -461,11 +461,11 @@ final class MapDbPersistor(
     }(nodeDispatcherEC)
 
   /** Shutdown the DB cleanly, so that it can be opened back up later */
-  def shutdown(): Future[Unit] = {
+  def shutdown(): Future[Unit] = Future {
     if (writeAheadLog) db.commit()
     transactionCommitCancellable.cancel()
-    Future.successful(db.close())
-  }
+    db.close()
+  }(blockingDispatcherEC)
 
   /** Delete everything that has been persisted (clear all the in-memory stuff
     * as well as durable storage)
