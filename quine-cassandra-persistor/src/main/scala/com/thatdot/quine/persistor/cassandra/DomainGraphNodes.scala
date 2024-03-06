@@ -32,7 +32,7 @@ object DomainGraphNodesDefinition
 
   protected val createTableStatement: SimpleStatement =
     makeCreateTableStatement.build
-      .setTimeout(createTableTimeout)
+      .setTimeout(ddlTimeout)
 
   private val selectAllStatement: SimpleStatement = select
     .columns(domainGraphNodeIdColumn.name, dataColumn.name)

@@ -31,7 +31,7 @@ class StandingQueriesDefinition(namespace: NamespaceId)
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[StandingQuery]] = List(queriesColumn)
 
-  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
+  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(ddlTimeout)
 
   private val selectAllStatement: SimpleStatement = select
     .column(queriesColumn.name)

@@ -7,13 +7,10 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQuery, defaultNamespaceId}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
-import com.thatdot.quine.persistor.PrimePersistor.{NamespaceDeleting, NamespaceDeletionResult, NamespaceDidNotExist}
 
 abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFilterSize: Option[Long])(implicit
   materializer: Materializer
@@ -68,19 +65,17 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     if (didChange) persistors += (namespace -> bloomFilter(wrapExceptions(agentCreator(persistenceConfig, namespace))))
   }
 
-  def deleteNamespace(namespace: NamespaceId): NamespaceDeletionResult =
+  def deleteNamespace(namespace: NamespaceId): Future[Unit] =
     persistors.get(namespace) match {
-      case None => NamespaceDidNotExist
+      case None => Future.unit
       case Some(toDelete) =>
         persistors -= namespace
-        NamespaceDeleting(
-          toDelete
-            .delete()
-            .map { _ =>
-              // default namespace should be always available
-              if (namespace == defaultNamespaceId) initializeDefault()
-            }(ExecutionContexts.parasitic)
-        )
+        toDelete
+          .delete()
+          .map { _ =>
+            // default namespace should be always available
+            if (namespace == defaultNamespaceId) initializeDefault()
+          }(ExecutionContexts.parasitic)
     }
 
   /** Get all standing queries across all namespaces
@@ -270,16 +265,4 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def declareReady(graph: BaseGraph): Unit = ()
 
-}
-
-object PrimePersistor {
-
-  /** Result of a namespace deletion operation.
-    * @param didChange whether the set of known namespaces changes as a result of the deletion request
-    * @param completion a Future that completes when the deletion has fully processed
-    */
-  sealed abstract class NamespaceDeletionResult(val didChange: Boolean, val completion: Future[Unit])
-  case object NamespaceDidNotExist extends NamespaceDeletionResult(didChange = false, Future.unit)
-  case class NamespaceDeleting(override val completion: Future[Unit])
-      extends NamespaceDeletionResult(didChange = true, completion)
 }

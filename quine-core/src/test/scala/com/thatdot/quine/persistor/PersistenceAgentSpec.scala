@@ -4,7 +4,7 @@ import java.util.UUID
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 import org.apache.pekko.actor.ActorSystem
 
@@ -119,9 +119,18 @@ abstract class PersistenceAgentSpec
 
   override def afterAll(): Unit = {
     super.afterAll()
-    Seq(testNamespace, altNamespace1, altNamespace2) foreach persistor.deleteNamespace
-    Await.result(persistor.shutdown(), 10.seconds)
-    Await.result(system.terminate(), 10.seconds)
+    Await.ready(
+      {
+        // Can't use the implicit SerialExecutionContext outside of a test scope
+        implicit val ec = ExecutionContext.parasitic
+        for {
+          _ <- Future.traverse(Seq(testNamespace, altNamespace1, altNamespace2))(persistor.deleteNamespace)
+          _ <- persistor.shutdown()
+          _ <- system.terminate()
+        } yield ()
+      },
+      25.seconds
+    )
     ()
   }
 
@@ -1125,10 +1134,7 @@ abstract class PersistenceAgentSpec
     }
     if (runDeletionTests) {
       it("should purge one namespace without affecting the other") {
-        val alt1Deleted = persistor.deleteNamespace(altNamespace1) match {
-          case PrimePersistor.NamespaceDidNotExist => fail("Namespace 1 did not exist")
-          case PrimePersistor.NamespaceDeleting(completion) => completion
-        }
+        val alt1Deleted = persistor.deleteNamespace(altNamespace1)
         alt1Deleted.flatMap { _ =>
           allOfConcurrent(
             altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
@@ -1165,10 +1171,10 @@ abstract class PersistenceAgentSpec
     it(
       s"should only be able to resolve the default namespace as $defaultNamespaceUnnamed and not $defaultNamespaceNamed"
     ) {
-      allOfConcurrent(
-        persistor(defaultNamespaceNamed) should not be defined,
-        persistor(defaultNamespaceUnnamed) shouldBe defined
-      )
+      // Have to create the default namespace before using it:
+      persistor.initializeOnce
+      persistor(defaultNamespaceNamed) should not be defined
+      persistor(defaultNamespaceUnnamed) shouldBe defined
     }
   }
 }

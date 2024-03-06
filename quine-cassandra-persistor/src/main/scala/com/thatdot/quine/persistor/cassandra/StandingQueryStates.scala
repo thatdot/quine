@@ -38,7 +38,7 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(dataColumn)
 
   protected val createTableStatement: SimpleStatement =
-    makeCreateTableStatement.build.setTimeout(createTableTimeout)
+    makeCreateTableStatement.build.setTimeout(ddlTimeout)
 
   /*
   private val createIndexStatement: SimpleStatement =

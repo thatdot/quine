@@ -47,7 +47,7 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
       .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
       .build
-      .setTimeout(createTableTimeout)
+      .setTimeout(ddlTimeout)
 
   protected val selectAllQuineIds: SimpleStatement
 

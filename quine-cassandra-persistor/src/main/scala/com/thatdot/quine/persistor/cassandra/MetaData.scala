@@ -26,7 +26,7 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(valueColumn)
 
-  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(createTableTimeout)
+  protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(ddlTimeout)
 
   private val selectAllStatement: SimpleStatement =
     select

@@ -55,7 +55,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     dataColumns.foldLeft(createKeys)((t, c) => t.withColumn(c.name, c.cqlType))
   }
 
-  protected val createTableTimeout: Duration = Duration.ofSeconds(5)
+  protected val ddlTimeout: Duration = Duration.ofSeconds(12)
 
   protected val createTableStatement: SimpleStatement
   def executeCreateTable(session: AsyncCqlSession, verifyCreated: CqlIdentifier => Future[Unit])(implicit
@@ -91,5 +91,5 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     */
   def firstRowStatement: SimpleStatement = select.column(partitionKey.name).limit(1).build
 
-  def dropTableStatement: SimpleStatement = dropTable(tableName).ifExists.build
+  def dropTableStatement: SimpleStatement = dropTable(tableName).ifExists.build.setTimeout(ddlTimeout)
 }

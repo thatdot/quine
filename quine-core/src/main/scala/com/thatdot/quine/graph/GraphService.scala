@@ -3,7 +3,7 @@ package com.thatdot.quine.graph
 import scala.collection.compat.immutable.ArraySeq
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
 
@@ -139,12 +139,11 @@ class GraphService(
       removeStandingQueryNamespace(namespace)
       namespaceCache -= namespace
       askAllShards(DeleteNamespace(namespace, _))
-        .map { response =>
+        .map { _ =>
           namespacePersistor
             .deleteNamespace(namespace)
-            .didChange || // the order of this `or` matters, as [[deleteNamespace]] is side-effecting
-          response.exists(_.didHaveEffect)
-        }(shardDispatcherEC)
+        }(nodeDispatcherEC)
+        .map(_ => true)(ExecutionContext.parasitic)
     } else Future.successful(false)
   }
 

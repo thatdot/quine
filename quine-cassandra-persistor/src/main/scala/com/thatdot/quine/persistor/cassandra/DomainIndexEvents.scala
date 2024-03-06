@@ -167,7 +167,7 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)
       .withClusteringOrder(timestampColumn.name, ASC)
       .withCompaction(timeWindowCompactionStrategy)
       .build
-      .setTimeout(createTableTimeout)
+      .setTimeout(ddlTimeout)
 
   private val selectByQuineIdQuery: Select =
     select

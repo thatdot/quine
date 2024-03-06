@@ -38,7 +38,7 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
   protected val dataColumns: List[CassandraColumn[_]] = List(dataColumn, multipartCountColumn)
 
   protected val createTableStatement: SimpleStatement =
-    makeCreateTableStatement.withClusteringOrder(timestampColumn.name, DESC).build.setTimeout(createTableTimeout)
+    makeCreateTableStatement.withClusteringOrder(timestampColumn.name, DESC).build.setTimeout(ddlTimeout)
 
   private val getLatestTime: Select =
     select
