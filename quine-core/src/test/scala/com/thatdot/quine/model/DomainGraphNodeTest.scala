@@ -18,9 +18,10 @@ import com.thatdot.quine.model.PropertyComparisonFunctions.{
 }
 
 class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstances {
+  val seed: Seed = Seed(0)
   it must "generate stable identifiers for arbitrary values" in {
     val hasher = murmur3_128.newHasher
-    val input = Generators.generateN[DomainGraphNode](100000, 200, Seed(0))
+    val input = Generators.generateN[DomainGraphNode](100000, 200, seed)
     for { dgn <- input } hasher.putLong(DomainGraphNode.id(dgn))
     hasher.hash.asLong shouldBe -3231038059776559063L
   }
@@ -28,7 +29,7 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
     val nodes = mutable.Set.empty[DomainGraphNode]
     val ids = mutable.Set.empty[DomainGraphNodeId]
     val len = 10000
-    val input = Generators.generateN[DomainGraphNode](len, 200)
+    val input = Generators.generateN[DomainGraphNode](len, 200, seed)
     for {
       dgn <- input
       if !nodes.contains(dgn)

@@ -1,12 +1,10 @@
 package com.thatdot.quine.persistor
 
-import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
-import scala.util.Random
 
 import org.apache.pekko.actor.ActorSystem
 
@@ -14,16 +12,14 @@ import cats.data.NonEmptyList
 import cats.syntax.functor._
 import com.softwaremill.diffx.generic.auto._
 import com.softwaremill.diffx.scalatest.DiffShouldMatcher
-import org.scalacheck.Arbitrary.arbitrary
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.rng.Seed
 import org.scalatest.funspec.AsyncFunSpec
-import org.scalatest.matchers.dsl.ResultOfTheSameElementsInOrderAsApplication
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.{Assertion, BeforeAndAfterAll, Inspectors, OptionValues}
 
 import com.thatdot.quine.graph.DiffxInstances._
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
-import com.thatdot.quine.graph.Generators.{generate1, generateN}
+import com.thatdot.quine.graph.Generators.generateN
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
@@ -110,8 +106,13 @@ abstract class PersistenceAgentSpec
     altPersistor2 = getOrInitTestNamespace(altNamespace2)
   }
 
-  def withRandomTime[T <: NodeEvent](events: NonEmptyList[T]): NonEmptyList[NodeEvent.WithTime[T]] =
-    events.map(n => NodeEvent.WithTime(n, EventTime.fromRaw(Random.nextLong())))
+  private var incrementingTimestamp: Long = 0L
+  def nextTimestamp(): EventTime = {
+    incrementingTimestamp += 1L
+    EventTime(incrementingTimestamp)
+  }
+  def withIncrementedTime[T <: NodeEvent](events: NonEmptyList[T]): NonEmptyList[NodeEvent.WithTime[T]] =
+    events.map(n => NodeEvent.WithTime(n, nextTimestamp()))
 
   def sortedByTime[T <: NodeEvent](events: NonEmptyList[NodeEvent.WithTime[T]]): NonEmptyList[NodeEvent.WithTime[T]] =
     events.sortBy(_.atTime)
@@ -125,6 +126,8 @@ abstract class PersistenceAgentSpec
   }
 
   val idProvider: QuineUUIDProvider.type = QuineUUIDProvider
+
+  def qidFromInt(i: Int): QuineId = idProvider.customIdToQid(new UUID(0, i.toLong))
 
   val qid0: QuineId = idProvider.customIdStringToQid("00000000-0000-0000-0000-000000000000").get
   val qid1: QuineId = idProvider.customIdStringToQid("00000000-0000-0000-0000-000000000001").get
@@ -901,11 +904,10 @@ abstract class PersistenceAgentSpec
   }
 
   describe("persistNodeChangeEvents") {
-    //Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
-    val qid = idProvider.newQid()
-    // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
-    val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, Random.nextInt(10) + 1)
-    val withTimeUnsorted = withRandomTime(NonEmptyList.fromListUnsafe(generated.toList))
+    val qid = qidFromInt(5)
+    // A collection of some generated NodeEvent.WithTime, sorted by time. */
+    val generated: Array[NodeChangeEvent] = generateN[NodeChangeEvent](10, 10)
+    val withTimeUnsorted = withIncrementedTime(NonEmptyList.fromListUnsafe(generated.toList))
     val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
@@ -940,11 +942,10 @@ abstract class PersistenceAgentSpec
   }
 
   describe("persistDomainIndexEvents") {
-    //Using this instead of arbitraries to avoid repeated boundary values that can cause spurious test failures.
-    val qid = idProvider.newQid()
+    val qid = qidFromInt(1)
     // A collection of some randomly generated NodeEvent.WithTime, sorted by time. */
-    val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, Random.nextInt(10) + 1)
-    val withTimeUnsorted = withRandomTime(NonEmptyList.fromListUnsafe(generated.toList))
+    val generated: Array[DomainIndexEvent] = generateN[DomainIndexEvent](10, 10)
+    val withTimeUnsorted = withIncrementedTime(NonEmptyList.fromListUnsafe(generated.toList))
     val sorted = sortedByTime(withTimeUnsorted)
 
     it("write") {
@@ -971,18 +972,18 @@ abstract class PersistenceAgentSpec
   if (runDeletionTests) {
 
     describe("deleteDomainIndexEventsByDgnId") {
-      // Note that this test has occasionally failed in CI for MapDB or RocksDB datastores.
-      // The larger list seems to mitigate these failures. The delete works correctly but
-      // this should be investigated if intermittent failures are seen in testing.
-      val dgnIds = Gen.listOfN(20, arbitrary[DomainGraphNodeId]).sample.get
+
+      val dgnId1 = 11L
+      val dgnId2 = 12L
+
       // a map of (randomQuineId -> (DomainIndexEvent(randomDgnId(0), DomainIndexEvent(randomDgnId(1))
       val events = 1
         .to(5)
-        .map(_ =>
-          idProvider.newQid() -> withRandomTime(
+        .map(i =>
+          idProvider.newQid() -> withIncrementedTime(
             NonEmptyList.of(
-              CancelDomainNodeSubscription(dgnIds(0), generate1[QuineId](1)),
-              CancelDomainNodeSubscription(dgnIds(1), generate1[QuineId](1))
+              CancelDomainNodeSubscription(dgnId1, qidFromInt(i)),
+              CancelDomainNodeSubscription(dgnId2, qidFromInt(i * 10))
             )
           )
         )
@@ -999,23 +1000,19 @@ abstract class PersistenceAgentSpec
       def deleteForDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
         namespacedPersistor.deleteDomainIndexEventsByDgnId(dgnId)
 
-      // TODO: this randomly fails on CI for InMemoryPersistorSpec
-      // Maybe move it out of here and into something else which everything but InMemoryPeristenceAgentSpec uses?
       it("should read back domain index events, and support deletes") {
-        if (WrappedPersistenceAgent.unwrap(this.namespacedPersistor).isInstanceOf[InMemoryPersistor]) pending
-        else
-          for {
-            _ <- Future.traverse(events)(t => namespacedPersistor.persistDomainIndexEvents(t._1, t._2))
-            firstCount <- eventCount()
-            _ <- deleteForDgnId(dgnIds(0))
-            postDeleteCount <- eventCount()
-            _ <- deleteForDgnId(dgnIds(1))
-            postSecondDeleteCount <- eventCount()
-          } yield {
-            assert(firstCount == 10)
-            assert(postDeleteCount == 5)
-            assert(postSecondDeleteCount == 0)
-          }
+        for {
+          _ <- Future.traverse(events)(t => namespacedPersistor.persistDomainIndexEvents(t._1, t._2))
+          firstCount <- eventCount()
+          _ <- deleteForDgnId(dgnId1)
+          postDeleteCount <- eventCount()
+          _ <- deleteForDgnId(dgnId2)
+          postSecondDeleteCount <- eventCount()
+        } yield {
+          assert(firstCount == 10)
+          assert(postDeleteCount == 5)
+          assert(postSecondDeleteCount == 0)
+        }
       }
     }
   }
@@ -1072,12 +1069,12 @@ abstract class PersistenceAgentSpec
       )
     }
     // Arbitrary DomainIndexEvents
-    def freshDomainIndexEventsPlease(): NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]] = {
-      val generated = NonEmptyList.fromListUnsafe(generateN[DomainIndexEvent](10, Random.nextInt(10) + 1).toList)
-      sortedByTime(withRandomTime(generated))
+    def generateDomainIndexEventsFromSeed(i: Long): NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]] = {
+      val generated = NonEmptyList.fromListUnsafe(generateN[DomainIndexEvent](10, 10, Seed(i)).toList)
+      withIncrementedTime(generated)
     }
-    val domainIndexEvents1 = freshDomainIndexEventsPlease()
-    val domainIndexEvents2 = freshDomainIndexEventsPlease()
+    val domainIndexEvents1 = generateDomainIndexEventsFromSeed(1L)
+    val domainIndexEvents2 = generateDomainIndexEventsFromSeed(2L)
     it("should write (generated) DomainIndexEvents for the same QuineId to different namespaces") {
       allOfConcurrent(
         altPersistor1.persistDomainIndexEvents(

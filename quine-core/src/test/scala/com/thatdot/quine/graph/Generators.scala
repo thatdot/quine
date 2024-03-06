@@ -12,10 +12,10 @@ object Generators {
     *
     * @param n    length of output array
     * @param size size passed to the generator
-    * @param seed used by the generator
+    * @param seed used by the generator. DO NOT generate random test input outside of ScalaCheck
     * @param arb  generator
     */
-  def generateN[A: ClassTag](n: Int, size: Int, seed: Seed = Seed.random())(implicit arb: Arbitrary[A]): Array[A] = {
+  def generateN[A: ClassTag](n: Int, size: Int, seed: Seed = Seed(1L))(implicit arb: Arbitrary[A]): Array[A] = {
     val output = new Array[A](n)
     val gen: Gen[A] = arb.arbitrary
     val params: Gen.Parameters = Gen.Parameters.default.withSize(size)
@@ -32,6 +32,6 @@ object Generators {
     output
   }
 
-  def generate1[A: ClassTag](size: Int, seed: Seed = Seed.random())(implicit arb: Arbitrary[A]): A =
+  def generate1[A: ClassTag](size: Int, seed: Seed)(implicit arb: Arbitrary[A]): A =
     generateN(n = 1, size = size, seed = seed).head
 }
