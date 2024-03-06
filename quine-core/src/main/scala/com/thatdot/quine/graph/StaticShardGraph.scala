@@ -143,7 +143,7 @@ trait StaticShardGraph extends BaseGraph {
             new messaging.ExactlyOnceAskActor[Resp](
               unattributedMessage,
               wrappedRef.ref,
-              false,
+              refIsRemote = false,
               originalSender,
               promise,
               timeout.duration,

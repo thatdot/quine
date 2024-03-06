@@ -156,9 +156,9 @@ object StandingQueryPatterns extends LazyLogging {
 
         rel.direction match {
           case expressions.SemanticDirection.OUTGOING =>
-            edgePatterns += EdgePattern(leftNodeId, rightNodeId, true, edgeLabel)
+            edgePatterns += EdgePattern(leftNodeId, rightNodeId, isDirected = true, edgeLabel)
           case expressions.SemanticDirection.INCOMING =>
-            edgePatterns += EdgePattern(rightNodeId, leftNodeId, true, edgeLabel)
+            edgePatterns += EdgePattern(rightNodeId, leftNodeId, isDirected = true, edgeLabel)
           case _ =>
             throw CypherException.Compile(
               wrapping = "Edge in standing queries must specify a direction",

@@ -40,7 +40,7 @@ object SvgSnapshot {
     val promise = Promise[ReactElement]()
 
     val request = new dom.XMLHttpRequest()
-    request.open("GET", svgFont, true)
+    request.open("GET", svgFont, async = true)
     request.onload = _ =>
       promise.success {
         val icons: Map[String, Glyph] = Try(extractGlyphs(request.responseXML)) match {

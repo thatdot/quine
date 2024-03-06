@@ -861,7 +861,7 @@ trait DomainNodeIndexBehavior
                     DomainNodeSubscriptionResult(qid, dgnId, result = false),
                     shouldSendReplies
                   )
-                  subscribersToThisNode(dgnId) = subscription.notified(false)
+                  subscribersToThisNode(dgnId) = subscription.notified(notification = false)
                   updateRelevantToSnapshotOccurred()
 
                 // If the query locally matches and we've already got edge results, reply with those

@@ -54,15 +54,15 @@ object QueryPart {
             .flatMap(_.traverse((col: Symbol) => CompM.getVariable(col, union).map(col -> _)))
           compiledPart <- CompM.withIsolatedContext {
             for {
-              p <- compile(union.part, avng, false, isSubQuery)
+              p <- compile(union.part, avng, isEntireQuery = false, isSubQuery)
               mapping <- compileUnionMapping(isPart = true, union.unionMappings, union.part)
             } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, p)
           }
           compiledSingle <- CompM.withIsolatedContext {
             for {
-              q <- compile(union.query, avng, false, isSubQuery)
+              q <- compile(union.query, avng, isEntireQuery = false, isSubQuery)
               mapping <- compileUnionMapping(isPart = false, union.unionMappings, union.query)
-            } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, q)
+            } yield cypher.Query.adjustContext(dropExisting = true, mapping ++ identityMapping, q)
           }
           () <- union.unionMappings.traverse_(u => CompM.addColumn(u.unionVariable))
           unioned = cypher.Query.Union(compiledPart, compiledSingle)
@@ -416,7 +416,7 @@ object QueryPart {
       (asVarExpr, foreachBody) <- CompM.withIsolatedContext {
         for {
           asVarExpr <- CompM.addColumn(asVar)
-          foreachBody <- compileClauses(updates.toVector, avng, false)
+          foreachBody <- compileClauses(updates.toVector, avng, isEntireQuery = false)
         } yield (asVarExpr, foreachBody)
       }
     } yield listExpr.toQuery { (list: cypher.Expr) =>

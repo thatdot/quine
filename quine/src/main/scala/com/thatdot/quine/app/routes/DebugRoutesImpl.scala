@@ -97,11 +97,11 @@ trait DebugRoutesImpl
       }(implicitly, graph.nodeDispatcherEC)
       val edgesF = Future.traverse(node.edges) {
         case RestHalfEdge(typ, Outgoing, to) =>
-          graph.literalOps(namespaceId).addEdge(qid, to, typ, true)
+          graph.literalOps(namespaceId).addEdge(qid, to, typ, isDirected = true)
         case RestHalfEdge(typ, Incoming, to) =>
-          graph.literalOps(namespaceId).addEdge(to, qid, typ, true)
+          graph.literalOps(namespaceId).addEdge(to, qid, typ, isDirected = true)
         case RestHalfEdge(typ, Undirected, to) =>
-          graph.literalOps(namespaceId).addEdge(qid, to, typ, false)
+          graph.literalOps(namespaceId).addEdge(qid, to, typ, isDirected = false)
       }(implicitly, graph.nodeDispatcherEC)
       propsF.flatMap(_ => edgesF)(ExecutionContexts.parasitic).map(_ => ())(ExecutionContexts.parasitic)
   }

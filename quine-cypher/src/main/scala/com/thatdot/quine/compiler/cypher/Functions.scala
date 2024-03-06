@@ -97,7 +97,7 @@ final class QuineFunctionInvocation(
   override val functionName: FunctionName,
   override val args: IndexedSeq[Expression],
   override val position: InputPosition
-) extends FunctionInvocation(namespace, functionName, false, args)(position)
+) extends FunctionInvocation(namespace, functionName, distinct = false, args)(position)
     with Rewritable {
   override val distinct = false
   override val function = new OpenCypherUdf(udf)
@@ -894,9 +894,9 @@ object CypherDateTime extends UserDefinedFunction {
         val baseDate = remainingOptions.remove("date").map(getBaseDate)
 
         val initialZonedDateTime: JavaZonedDateTime = (baseDate, timeZone) match {
-          case (Some(Left(localDateTime)), _) => JavaZonedDateTime.of(localDateTime, defaultedZone)
-          case (Some(Right(zonedDateTime)), None) => zonedDateTime
-          case (Some(Right(zonedDateTime)), Some(zone)) => zonedDateTime.withZoneSameInstant(zone)
+          case (Some(Left(localDT)), _) => JavaZonedDateTime.of(localDT, defaultedZone)
+          case (Some(Right(zonedDT)), None) => zonedDT
+          case (Some(Right(zonedDT)), Some(zone)) => zonedDT.withZoneSameInstant(zone)
 
           // When passing no arguments or just a timezone argument, use the current time
           case (None, _) if remainingOptions.isEmpty => JavaZonedDateTime.now(defaultedZone)

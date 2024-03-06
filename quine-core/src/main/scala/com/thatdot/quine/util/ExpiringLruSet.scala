@@ -115,7 +115,7 @@ private[quine] object ExpiringLruSet {
     def clear(): Unit = ()
     def remove(elem: A): Unit = ()
     def update(elem: A): Unit = ()
-    def shouldExpire(elem: A): ExpiryDecision.RejectRemoval = ExpiryDecision.RejectRemoval(false)
+    def shouldExpire(elem: A): ExpiryDecision.RejectRemoval = ExpiryDecision.RejectRemoval(progressWasMade = false)
     def expiryListener(cause: RemovalCause, elem: A): Unit = ()
     def doExpiration(): Unit = ()
   }

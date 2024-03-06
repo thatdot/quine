@@ -63,7 +63,7 @@ final case class Tab(
       .find(t => t._1.path == window.location.pathname)
       .fold(0)(_._2)
     val visited = Vector.tabulate(props.children.length)(_ == initialTab)
-    State(false, initialTab, visited)
+    State(isOpen = false, initialTab, visited)
   }
 
   override def componentDidMount(): Unit = {

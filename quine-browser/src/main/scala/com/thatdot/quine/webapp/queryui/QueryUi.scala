@@ -17,7 +17,7 @@ import slinky.core._
 import slinky.core.annotations.react
 import slinky.core.facade.{React, ReactElement, ReactRef}
 import slinky.web.SyntheticKeyboardEvent
-import slinky.web.html.{`type` => _, _}
+import slinky.web.html.{`type` => _, value => _, _}
 
 import com.thatdot.quine.Util.{escapeHtml, renderJsonResultValue}
 import com.thatdot.quine.routes._
@@ -161,7 +161,7 @@ import com.thatdot.{visnetwork => vis}
     * @return list of all the quick queries that apply to the node
     */
   def quickQueriesFor(node: UiNode[String]): Seq[QuickQuery] =
-    state.uiNodeQuickQueries.collect { case UiNodeQuickQuery(p, qq) if p.matches(node) => qq }
+    state.uiNodeQuickQueries.collect { case UiNodeQuickQuery(predicate, qq) if predicate.matches(node) => qq }
 
   /** For a node, compute its `vis` UI label and appearance
     *
@@ -250,11 +250,11 @@ import com.thatdot.{visnetwork => vis}
       override val uiNode = node
 
       override val x = startingPosition match {
-        case Some((x, _)) => x
+        case Some((xPos, _)) => xPos
         case None => js.undefined
       }
       override val y = startingPosition match {
-        case Some((_, y)) => y
+        case Some((_, yPos)) => yPos
         case None => js.undefined
       }
 
@@ -287,7 +287,7 @@ import com.thatdot.{visnetwork => vis}
     */
   def edgeUi2Vis(
     edge: UiEdge[String],
-    isSynEdge: Boolean = false
+    isSynEdge: Boolean
   ): vis.Edge = new QueryUiVisEdgeExt {
     override val id = edgeId(edge)
     override val from = edge.from
@@ -319,8 +319,8 @@ import com.thatdot.{visnetwork => vis}
         }
 
         props.graphData.nodeSet.add(nodes.map(nodeUi2Vis(_, posOpt)).toJSArray)
-        props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, false)).toJSArray)
-        props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, true)).toJSArray)
+        props.graphData.edgeSet.add(edges.map(edgeUi2Vis(_, isSynEdge = false)).toJSArray)
+        props.graphData.edgeSet.add(syntheticEdges.map(edgeUi2Vis(_, isSynEdge = true)).toJSArray)
         props.graphData.nodeSet.update(updateNodes.map(nodeUi2Vis(_, None)).toJSArray)
 
         /* Yes, this looks completely redundant since we never change these
@@ -1023,7 +1023,7 @@ import com.thatdot.{visnetwork => vis}
     // Only if there was a node that was held do we proceed
     val heldNodeId = network.get.getNodeAt(event.pointer.DOM).toOption match {
       case None => return
-      case Some(id) => id
+      case Some(nodeId) => nodeId
     }
 
     /* If the shift key is held, we toggle whether the selected node is "fixed".
@@ -1102,7 +1102,7 @@ import com.thatdot.{visnetwork => vis}
     // Pull out the node that was clicked
     val clickedId = network.get.getNodeAt(event.pointer.DOM).toOption match {
       case None => return
-      case Some(id) => id
+      case Some(nodeId) => nodeId
     }
 
     val selection = event.previousSelection.nodes
@@ -1214,7 +1214,7 @@ import com.thatdot.{visnetwork => vis}
     // Pull out the node that was right clicked
     val rightClickedId = network.get.getNodeAt(event.pointer.DOM).toOption match {
       case None => return
-      case Some(id) => id.asInstanceOf[String]
+      case Some(nodeId) => nodeId.asInstanceOf[String]
     }
 
     val contextMenuItems = getContextMenuItems(

@@ -180,7 +180,7 @@ final private[quine] class GraphShardActor(
           namespacedNodes.get(qid.namespace).flatMap(_.get(qid)) match {
             case Some(NodeState.LiveNode(costToSleep, _, _, _)) =>
               if (costToSleep.decrementAndGet() > 0)
-                ExpiringLruSet.ExpiryDecision.RejectRemoval(true) // too costly to sleep
+                ExpiringLruSet.ExpiryDecision.RejectRemoval(progressWasMade = true) // too costly to sleep
               else
                 ExpiringLruSet.ExpiryDecision.ShouldRemove
 

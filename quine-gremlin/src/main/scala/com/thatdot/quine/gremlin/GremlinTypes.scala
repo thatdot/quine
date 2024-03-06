@@ -21,7 +21,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
   implicit val idProvider: QuineIdProvider = graph.idProvider
 
   val gremlinEc: ExecutionContext = graph.shardDispatcherEC
-  implicit val t: Timeout
+  implicit protected val timeout: Timeout
 
   private type AtTime = Option[Milliseconds]
 

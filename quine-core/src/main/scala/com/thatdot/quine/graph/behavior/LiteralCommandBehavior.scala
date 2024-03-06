@@ -88,8 +88,8 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
           .map(_ => DeleteNodeCommand.Success)(ExecutionContexts.parasitic)
       }
 
-    case i @ IncrementProperty(propKey, incAmount, _) =>
-      i ?! (properties.get(propKey).map(_.deserialized) match {
+    case ip @ IncrementProperty(propKey, incAmount, _) =>
+      ip ?! (properties.get(propKey).map(_.deserialized) match {
         case None =>
           val newValue = PropertyValue(QuineValue.Integer(incAmount))
           processPropertyEvents(PropertySet(propKey, newValue) :: Nil)

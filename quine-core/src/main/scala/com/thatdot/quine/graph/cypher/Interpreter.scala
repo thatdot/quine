@@ -1160,7 +1160,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
       case Expr.Null => Source.empty
 
       case Expr.Node(qid, _, _) =>
-        val completed = (qid ? (DeleteNodeCommand(query.detach, _))).flatten
+        val completed = (qid ? (DeleteNodeCommand(deleteEdges = query.detach, _))).flatten
           .flatMap {
             case DeleteNodeCommand.Success => Future.successful(())
             case DeleteNodeCommand.Failed(n) =>

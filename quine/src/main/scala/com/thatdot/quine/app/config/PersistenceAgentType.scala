@@ -25,7 +25,7 @@ sealed abstract class PersistenceAgentType(val isLocal: Boolean) {
 }
 object PersistenceAgentType extends PureconfigInstances {
 
-  case object Empty extends PersistenceAgentType(false) {
+  case object Empty extends PersistenceAgentType(isLocal = false) {
 
     def bloomFilterSize = None
 
@@ -33,7 +33,7 @@ object PersistenceAgentType extends PureconfigInstances {
       new EmptyPersistor(persistenceConfig)
   }
 
-  case object InMemory extends PersistenceAgentType(true) {
+  case object InMemory extends PersistenceAgentType(isLocal = true) {
     def bloomFilterSize = None
 
   }
@@ -44,7 +44,7 @@ object PersistenceAgentType extends PureconfigInstances {
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(true) {}
+  ) extends PersistenceAgentType(isLocal = true) {}
 
   final case class MapDb(
     filepath: Option[File],
@@ -53,7 +53,7 @@ object PersistenceAgentType extends PureconfigInstances {
     commitInterval: FiniteDuration = 10.seconds,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(true) {
+  ) extends PersistenceAgentType(isLocal = true) {
     assert(numberPartitions > 0, "Must have a positive number of partitions")
   }
 
@@ -78,7 +78,7 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType(false) {
+  ) extends PersistenceAgentType(isLocal = false) {
     assert(endpoints.nonEmpty, "Must specify at least one Cassandra endpoint")
   }
 
@@ -93,7 +93,7 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType(false) {
+  ) extends PersistenceAgentType(isLocal = false) {
     private val supportedReadConsistencies: Set[ConsistencyLevel] =
       Set(ConsistencyLevel.ONE, ConsistencyLevel.LOCAL_ONE, ConsistencyLevel.LOCAL_QUORUM)
     assert(

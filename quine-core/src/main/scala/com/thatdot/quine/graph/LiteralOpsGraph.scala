@@ -48,7 +48,7 @@ trait LiteralOpsGraph extends BaseGraph {
     def deleteNode(node: QuineId)(implicit timeout: Timeout): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
-      relayAsk(SpaceTimeQuineId(node, namespace, None), DeleteNodeCommand(true, _)).flatten
+      relayAsk(SpaceTimeQuineId(node, namespace, None), DeleteNodeCommand(deleteEdges = true, _)).flatten
         .map(_ => ())(ExecutionContexts.parasitic)
     }
 

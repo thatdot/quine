@@ -41,11 +41,10 @@ final case class GremlinQueryRunner(
   customIdRegex: Regex = """#?[-a-zA-Z0-9]+""".r,
   customLiteralsParser: Option[(Regex, String => Option[QuineValue])] = None
 )(implicit
-  timeout: Timeout
+  protected val timeout: Timeout
 ) extends GremlinTypes
     with GremlinParser {
 
-  implicit val t: Timeout = timeout
   implicit val system: ActorSystem = graph.system
 
   private val lexer = new GremlinLexer(

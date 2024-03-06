@@ -1506,8 +1506,8 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
         }
 
         (standingQueryName, standingQueryIdStr) match {
-          case (Some(name), None) =>
-            lookupByName(name, location.namespace).getOrElse {
+          case (Some(nme), None) =>
+            lookupByName(nme, location.namespace).getOrElse {
               throw CypherException.Runtime(s"Cannot find standing query with name `$name`")
             }
           case (None, Some(strId)) =>

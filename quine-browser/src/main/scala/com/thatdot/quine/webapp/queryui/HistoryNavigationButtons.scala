@@ -57,7 +57,8 @@ class HistoryNavigationButtons extends Component {
     downloadConfirmation: Boolean
   )
 
-  def initialState: com.thatdot.quine.webapp.queryui.HistoryNavigationButtons.State = State(false, false)
+  def initialState: com.thatdot.quine.webapp.queryui.HistoryNavigationButtons.State =
+    State(madeCheckpointConfirmation = false, downloadConfirmation = false)
 
   // Human readable time
   def currentTime: String = props.atTime match {

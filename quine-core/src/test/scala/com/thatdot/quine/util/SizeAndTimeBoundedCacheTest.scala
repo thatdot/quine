@@ -112,7 +112,7 @@ class SizeAndTimeBoundedCacheTest extends AnyFlatSpec {
     val lru = new ExpiringLruSet.SizeAndTimeBounded[Int](3, 3, 150.milliseconds.toNanos, time) {
       def shouldExpire(elem: Int): ExpiringLruSet.ExpiryDecision =
         if (elem != 0) ExpiringLruSet.ExpiryDecision.ShouldRemove // never evict 0!
-        else ExpiringLruSet.ExpiryDecision.RejectRemoval(false)
+        else ExpiringLruSet.ExpiryDecision.RejectRemoval(progressWasMade = false)
       def expiryListener(cause: ExpiringLruSet.RemovalCause, elem: Int) = ()
     }
     assert(lru.size == 0)
