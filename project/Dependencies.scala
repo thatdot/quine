@@ -40,7 +40,7 @@ object Dependencies {
   val logbackV = "1.5.1"
   val logstashLogbackV = "7.4"
   val lz4JavaV = "1.8.0" // Try to keep this in sync w/ the version kafka-client depends on.
-  val mapDbV = "3.0.10"
+  val mapDbV = "3.1.0"
   val memeIdV = "0.8.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.8"
