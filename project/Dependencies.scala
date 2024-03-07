@@ -66,7 +66,7 @@ object Dependencies {
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
   val shapelessV = "2.3.10"
-  val slinkyV = "0.7.3"
+  val slinkyV = "0.7.4"
   val snakeYamlV = "2.7"
   // pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
   // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
