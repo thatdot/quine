@@ -1,7 +1,6 @@
 package com.thatdot.quine.persistor
 
 import scala.compat.CompatBuildFrom.implicitlyBF
-import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
@@ -84,7 +83,7 @@ trait NamespacedPersistenceAgent extends StrictLogging {
     includeDomainIndexEvents: Boolean
   ): Future[Iterable[NodeEvent]] =
     getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents).map(_.map(_.event))(
-      ExecutionContexts.parasitic
+      ExecutionContext.parasitic
     )
 
   /** Fetch a time-ordered list of events with timestamps affecting a node's state,
@@ -110,15 +109,12 @@ trait NamespacedPersistenceAgent extends StrictLogging {
 
     val nceEvents = getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
-    if (!includeDomainIndexEvents) {
+    if (!includeDomainIndexEvents)
       nceEvents
-    } else {
-      implicit val ctx: ExecutionContext = ExecutionContexts.parasitic
-      for {
-        h: Iterable[NodeEvent.WithTime[NodeChangeEvent]] <- nceEvents
-        i: Iterable[NodeEvent.WithTime[DomainIndexEvent]] <- getDomainIndexEventsWithTime(id, startingAt, endingAt)
-      } yield mergeEvents(h, i)
-    }
+    else
+      nceEvents.zipWith(
+        getDomainIndexEventsWithTime(id, startingAt, endingAt)
+      )(mergeEvents)(ExecutionContext.parasitic)
   }
 
   def getNodeChangeEventsWithTime(
@@ -239,8 +235,8 @@ trait MultipartSnapshotPersistenceAgent {
 
   import MultipartSnapshotPersistenceAgent._
 
-  val multipartSnapshotExecutionContext: ExecutionContext
-  val snapshotPartMaxSizeBytes: Int
+  protected val multipartSnapshotExecutionContext: ExecutionContext
+  protected val snapshotPartMaxSizeBytes: Int
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = {
     val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
@@ -253,7 +249,7 @@ trait MultipartSnapshotPersistenceAgent {
           multipartSnapshotPart = MultipartSnapshotPart(partBytes, partIndex, partCount)
         } yield persistSnapshotPart(id, atTime, multipartSnapshotPart)
       }(implicitlyBF, multipartSnapshotExecutionContext)
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
   }
 
   def getLatestSnapshot(

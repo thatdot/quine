@@ -112,7 +112,7 @@ abstract class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
   session: CqlSession,
   namespace: NamespaceId,
-  val snapshotPartMaxSizeBytes: Int
+  protected val snapshotPartMaxSizeBytes: Int
 )(implicit
   materializer: Materializer
 ) extends NamespacedPersistenceAgent
@@ -120,7 +120,7 @@ abstract class CassandraPersistor(
 
   import MultipartSnapshotPersistenceAgent._
 
-  val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
+  protected val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
   implicit protected val futureInstance: Monad[Future] = catsStdInstancesForFuture(ExecutionContext.parasitic)

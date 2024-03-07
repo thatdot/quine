@@ -1,7 +1,6 @@
 package scala.compat
 
 import scala.collection.BuildFrom
-import scala.language.higherKinds
 
 object CompatBuildFrom {
 
