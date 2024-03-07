@@ -19,6 +19,8 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
+import com.quine.cypher.builders.ParserBuilder
+import com.quine.cypher.phases.{BooleanExpressionRewriter, PredicateLogicRewriter}
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ingest.IngestSrcDef
@@ -26,7 +28,11 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
-import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
+import com.thatdot.quine.graph.StandingQueryPattern.{
+  DomainGraphNodeStandingQueryPattern,
+  MultipleValuesQueryPattern,
+  QuinePatternQueryPattern
+}
 import com.thatdot.quine.graph.{
   GraphService,
   HostQuineMetrics,
@@ -196,6 +202,18 @@ final class QuineApp(graph: GraphService)
                   val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                   val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
                   (sqv4Pattern, None)
+                case StandingQueryMode.QuinePattern =>
+                  val isEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
+                  if (isEnabled) {
+                    val p = ParserBuilder.mkParser(List(PredicateLogicRewriter, BooleanExpressionRewriter))
+                    val tquery = p.parseCypher(cypherQuery)
+                    val qp = com.thatdot.quine.graph.cypher.Compiler.compileFromAST(tquery)
+                    val qpPattern =
+                      QuinePatternQueryPattern(qp, query.includeCancellations, PatternOrigin.QuinePatternOrigin)
+                    (qpPattern, None)
+                  } else {
+                    sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
+                  }
               }
           }
           (dgnPackage match {
@@ -746,6 +764,7 @@ object QuineApp {
     val mode = internal.query match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
       case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
+      case _: graph.StandingQueryPattern.QuinePatternQueryPattern => StandingQueryMode.QuinePattern
     }
     val pattern = internal.query.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>

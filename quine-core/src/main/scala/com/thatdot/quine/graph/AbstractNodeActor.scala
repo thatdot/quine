@@ -6,8 +6,8 @@ import java.util.concurrent.locks.StampedLock
 import scala.collection.compat._
 import scala.collection.mutable
 import scala.compat.ExecutionContexts
-import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
@@ -31,7 +31,8 @@ import com.thatdot.quine.graph.behavior.{
   LiteralCommandBehavior,
   MultipleValuesStandingQueryBehavior,
   MultipleValuesStandingQuerySubscribers,
-  PriorityStashingBehavior
+  PriorityStashingBehavior,
+  QuinePatternQueryBehavior
 }
 import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
@@ -42,7 +43,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   SqStateResult,
   SqStateResults
 }
-import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuineId}
+import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
@@ -92,6 +93,7 @@ abstract private[graph] class AbstractNodeActor(
     with PriorityStashingBehavior
     with CypherBehavior
     with MultipleValuesStandingQueryBehavior
+    with QuinePatternQueryBehavior
     with ActorClock {
   val qid: QuineId = qidAtTime.id
   val namespace: NamespaceId = qidAtTime.namespace
@@ -247,7 +249,15 @@ abstract private[graph] class AbstractNodeActor(
 
   protected def processEdgeEvents(
     events: List[EdgeEvent]
-  ): Future[Done.type] = edgeEvents(events, None)
+  ): Future[Done.type] =
+    edgeEvents(events, None)
+      .flatMap(_ =>
+        Future.traverse[HalfEdge => Unit, Unit, Iterable](edgePatterns.values)(f =>
+          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContexts.parasitic)
+        )(implicitly, ExecutionContexts.parasitic)
+      )(ExecutionContexts.parasitic)
+      .map(_ => BaseMessage.Done)(ExecutionContexts.parasitic)
+
   protected def processEdgeEvent(
     event: EdgeEvent,
     atTimeOverride: Option[EventTime]
@@ -380,6 +390,7 @@ abstract private[graph] class AbstractNodeActor(
     case PropertySet(key, value) =>
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
+      selfPatterns.foreach(p => p._2())
     case PropertyRemoved(key, _) =>
       metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)
       properties = properties - key

@@ -77,7 +77,16 @@ private[graph] class NodeActor(
     case command: DomainNodeSubscriptionCommand => domainNodeIndexBehavior(command)
     case command: MultipleValuesStandingQueryCommand => multipleValuesStandingQueryBehavior(command)
     case command: UpdateStandingQueriesCommand => updateStandingQueriesBehavior(command)
-    case msg => log.error("Node received an unknown message (from {}): {}", sender(), msg)
+    case msg =>
+      if (msg.isInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]) {
+        val rp = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]
+        updateQuinePatternOnNode(rp.quinePattern, rp.pid, Some(rp.reportTo))
+      } else if (msg.isInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]) {
+        val pr = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]
+        publishResults(pr.pid, pr.results)
+      } else {
+        log.error("Node received an unknown message (from {}): {}", sender(), msg)
+      }
   }
 
   val edges = defaultSynchronousEdgeProcessor
@@ -180,6 +189,7 @@ private[graph] class NodeActor(
 
       // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
       updateMultipleValuesStandingQueriesOnNode()
+      updateQuinePatternsOnNode()
     }
   }
 }

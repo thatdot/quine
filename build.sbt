@@ -1,6 +1,10 @@
 import QuineSettings._
 import Dependencies._
 
+ThisBuild / resolvers += Resolver.url(
+  "thatDot ivy",
+  url("https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/")
+)(Resolver.ivyStylePatterns)
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
 
 ThisBuild / scalaVersion := scalaV
@@ -36,12 +40,16 @@ lazy val `quine-core`: Project = project
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
-      "org.typelevel" %% "cats-effect" % catsEffectV
+      "org.typelevel" %% "cats-effect" % catsEffectV,
+      "org.antlr" % "antlr4" % antlrV,
+      "org.typelevel" %% "cats-parse" % catsParseV,
+      "com.thatdot" %% "query-language" % quineQueryV
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {
       (Compile / sourceDirectory).value / "scala-2.13"
-    }
+    },
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % kindProjectorV cross CrossVersion.full)
   )
   .enablePlugins(BuildInfoPlugin, FlatcPlugin)
   .settings(
@@ -135,7 +143,7 @@ lazy val `quine-cypher`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
     ),
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.3" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" % "kind-projector" % kindProjectorV cross CrossVersion.full),
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % betterMonadicForV)
   )
 

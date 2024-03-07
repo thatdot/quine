@@ -9,6 +9,7 @@ namespace com.thatdot.quine.persistence;
 union StandingQueryPattern {
   BranchQuery,
   SqV4Query,
+  QuinePatternQueryPattern
 }
 
 // See [[com.thatdot.quine.graph.PatternOrigin.DgbOrigin]]
@@ -166,6 +167,8 @@ table BranchQuery {
   include_cancellation: bool;
   origin: BranchOrigin (required);
 }
+
+table QuinePatternQueryPattern {}
 
 // See [[com.thatdot.quine.graph.StandingQueryPattern.GraphPattern]]
 table GraphPatternStandingQuery {

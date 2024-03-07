@@ -135,6 +135,8 @@ object StandingQueryMessage {
           pat.formatReturnAsStr -> pat.aliasReturnAs.name
         case _: StandingQueryPattern.MultipleValuesQueryPattern =>
           throw new RuntimeException(s"Received branch result $this for SQv4 query $sq")
+        case _: StandingQueryPattern.QuinePatternQueryPattern =>
+          throw new RuntimeException(s"Received branch result $this for QuinePattern query $sq")
       }
       StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider)
     }

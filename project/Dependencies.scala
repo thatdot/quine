@@ -5,6 +5,7 @@ object Dependencies {
   val pekkoKafkaV = "1.0.0"
   val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.26.0"
+  val antlrV = "4.9.2"
   val amazonKinesisClientV = "2.5.4"
   val amazonGlueV = "1.1.18"
   val awsSdkV = "2.20.162"
@@ -15,6 +16,7 @@ object Dependencies {
   val cassandraClientV = "4.15.0"
   val catsV = "2.10.0"
   val catsEffectV = "3.5.3"
+  val catsParseV = "0.3.7"
   val commonsCodecV = "1.16.1"
   val commonsTextV = "1.11.0"
   val commonsIoV = "2.15.1"
@@ -33,6 +35,7 @@ object Dependencies {
   val jwtScalaV = "10.0.0"
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
   val kafkaClientsV = "3.6.1"
+  val kindProjectorV = "0.13.2"
   // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb
   // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
   val kotlinStdlibV = "1.9.22"
@@ -51,6 +54,7 @@ object Dependencies {
   val protobufV = "3.25.3"
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.6"
+  val quineQueryV = "0.1.0-SNAPSHOT"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
   val rocksdbV = "8.11.3"
