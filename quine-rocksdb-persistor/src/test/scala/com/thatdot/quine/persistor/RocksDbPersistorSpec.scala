@@ -3,6 +3,8 @@ package com.thatdot.quine.persistor
 import java.nio.file.Files
 import java.util.Properties
 
+import scala.concurrent.ExecutionContext
+
 import org.apache.pekko.actor.CoordinatedShutdown
 
 import org.apache.commons.io.FileUtils
@@ -27,7 +29,7 @@ class RocksDbPersistorSpec extends PersistenceAgentSpec {
         syncWrites = false,
         dbOptionProperties = new Properties(),
         PersistenceConfig(),
-        ioDispatcher = new QuineDispatchers(system).blockingDispatcherEC
+        ioDispatcher = ExecutionContext.parasitic
       )
     } else {
       new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))

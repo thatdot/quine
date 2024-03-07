@@ -1,10 +1,11 @@
 package com.thatdot.quine.persistor
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.DurationInt
 
-import com.codahale.metrics.{MetricRegistry, NoopMetricRegistry}
+import com.codahale.metrics.NoopMetricRegistry
 
-import com.thatdot.quine.util.QuineDispatchers
+import com.thatdot.quine.util.FromSingleExecutionContext
 
 class MapDbPersistorSpec extends PersistenceAgentSpec {
 
@@ -14,6 +15,8 @@ class MapDbPersistorSpec extends PersistenceAgentSpec {
       numberPartitions = 1,
       commitInterval = 1.second, // NB this is unused while `writeAheadLog = false
       metricRegistry = new NoopMetricRegistry(),
-      persistenceConfig = PersistenceConfig()
+      persistenceConfig = PersistenceConfig(),
+      bloomFilterSize = None,
+      executionContexts = new FromSingleExecutionContext(ExecutionContext.parasitic)
     )
 }

@@ -40,7 +40,7 @@ import com.thatdot.quine.persistor.codecs.{
   StandingQueryCodec
 }
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
-import com.thatdot.quine.util.QuineDispatchers
+import com.thatdot.quine.util.{ComputeAndBlockingExecutionContexts, QuineDispatchers}
 
 /** Embedded persistence implementation based on MapDB
   *
@@ -76,7 +76,7 @@ final class MapDbPersistor(
   transactionCommitInterval: Option[FiniteDuration] = None,
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
   metricRegistry: MetricRegistry = new NoopMetricRegistry(),
-  quineDispatchers: QuineDispatchers,
+  executionContexts: ComputeAndBlockingExecutionContexts,
   scheduler: Scheduler
 ) extends PersistenceAgent {
 
@@ -85,7 +85,7 @@ final class MapDbPersistor(
   val nodeEventTotalSize: Counter =
     metricRegistry.counter(MetricRegistry.name("map-db-persistor", "journal-event-total-size"))
 
-  import quineDispatchers.{blockingDispatcherEC, nodeDispatcherEC}
+  import executionContexts.{blockingDispatcherEC, nodeDispatcherEC}
 
   // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `pekko.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
   // TODO: don't hardcode magical values - config them

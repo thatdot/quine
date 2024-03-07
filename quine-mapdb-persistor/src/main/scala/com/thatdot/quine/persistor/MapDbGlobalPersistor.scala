@@ -9,18 +9,19 @@ import org.apache.pekko.stream.Materializer
 import com.codahale.metrics.MetricRegistry
 
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.util.QuineDispatchers
+import com.thatdot.quine.util.{ComputeAndBlockingExecutionContexts, QuineDispatchers}
 
 abstract class AbstractMapDbPrimePersistor(
   writeAheadLog: Boolean,
   commitInterval: FiniteDuration,
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long] = None
+  bloomFilterSize: Option[Long] = None,
+  executionContexts: ComputeAndBlockingExecutionContexts
 )(implicit materializer: Materializer)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
-  private val quineDispatchers = new QuineDispatchers(materializer.system)
+  //private val quineDispatchers = new QuineDispatchers(materializer.system)
   private val interval = Option.when(writeAheadLog)(commitInterval)
   def dbForPath(dbPath: MapDbPersistor.DbPath) =
     new MapDbPersistor(
@@ -30,7 +31,7 @@ abstract class AbstractMapDbPrimePersistor(
       interval,
       persistenceConfig,
       metricRegistry,
-      quineDispatchers,
+      executionContexts,
       materializer.system.scheduler
     )
 
@@ -41,14 +42,16 @@ class TempMapDbPrimePersistor(
   commitInterval: FiniteDuration,
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long] = None
+  bloomFilterSize: Option[Long],
+  executionContexts: ComputeAndBlockingExecutionContexts
 )(implicit materializer: Materializer)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
       commitInterval,
       metricRegistry,
       persistenceConfig,
-      bloomFilterSize
+      bloomFilterSize,
+      executionContexts
     ) {
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
@@ -66,14 +69,16 @@ class PersistedMapDbPrimePersistor(
   commitInterval: FiniteDuration,
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long] = None
+  bloomFilterSize: Option[Long],
+  executionContexts: ComputeAndBlockingExecutionContexts
 )(implicit materializer: Materializer)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
       commitInterval,
       metricRegistry,
       persistenceConfig,
-      bloomFilterSize
+      bloomFilterSize,
+      executionContexts
     ) {
 
   private val parentDir = basePath.getAbsoluteFile.getParentFile

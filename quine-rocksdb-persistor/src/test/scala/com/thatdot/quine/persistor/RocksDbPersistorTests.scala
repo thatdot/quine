@@ -3,6 +3,8 @@ package com.thatdot.quine.persistor
 import java.nio.file.Files
 import java.util.Properties
 
+import scala.concurrent.ExecutionContext
+
 import org.apache.pekko.actor.{ActorSystem, CoordinatedShutdown}
 import org.apache.pekko.stream.Materializer
 
@@ -27,7 +29,7 @@ class RocksDbPersistorTests extends HistoricalQueryTests {
         dbOptionProperties = new Properties(),
         persistenceConfig = PersistenceConfig(),
         bloomFilterSize = None,
-        ioDispatcher = new QuineDispatchers(system).blockingDispatcherEC
+        ioDispatcher = ExecutionContext.parasitic
       )(Materializer.matFromSystem(system))
     } else {
       new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))(

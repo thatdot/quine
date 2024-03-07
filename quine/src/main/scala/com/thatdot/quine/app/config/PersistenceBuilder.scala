@@ -56,7 +56,8 @@ object PersistenceBuilder extends LazyLogging {
               m.commitInterval,
               Metrics,
               persistenceConfig,
-              m.bloomFilterSize
+              m.bloomFilterSize,
+              quineDispatchers
             )
           case None =>
             new TempMapDbPrimePersistor(
@@ -65,7 +66,8 @@ object PersistenceBuilder extends LazyLogging {
               m.commitInterval,
               Metrics,
               persistenceConfig,
-              m.bloomFilterSize
+              m.bloomFilterSize,
+              quineDispatchers
             )
         }
 
