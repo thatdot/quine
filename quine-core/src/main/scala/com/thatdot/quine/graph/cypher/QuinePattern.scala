@@ -153,12 +153,12 @@ object Compiler {
 
   def compileFromPredicate(predicate: QueryAST.Predicate): QuinePattern = {
     def findNodes(p: Predicate): List[Symbol] = p match {
-      case Predicate.And(lhs, rhs) => findNodes(lhs) ++ findNodes(rhs)
-      case Predicate.Or(_, _) => Nil
-      case Predicate.ExistsNode(binding, _) => binding :: Nil
-      case Predicate.ExistsPath(_, _, _) => Nil
-      case Predicate.ExistsEdge(_, _, _, _) => Nil
-      case Predicate.Satisfies(_) => Nil
+      case Predicate.And(_, lhs, rhs) => findNodes(lhs) ++ findNodes(rhs)
+      case Predicate.Or(_, _, _) => Nil
+      case Predicate.ExistsNode(_, binding, _) => binding :: Nil
+      case Predicate.ExistsPath(_, _, _, _) => Nil
+      case Predicate.ExistsEdge(_, _, _, _, _) => Nil
+      case Predicate.Satisfies(_, _) => Nil
       case Predicate.True => Nil
       case Predicate.False => Nil
     }
@@ -166,15 +166,15 @@ object Compiler {
     val nodes = findNodes(predicate)
 
     def findEdges(p: Predicate): (Map[Symbol, Symbol], Map[Symbol, Symbol]) = p match {
-      case Predicate.And(lhs, rhs) =>
+      case Predicate.And(_, lhs, rhs) =>
         val (ls, ld) = findEdges(lhs)
         val (rs, rd) = findEdges(rhs)
         (ls ++ rs, ld ++ rd)
-      case Predicate.Or(_, _) => (Map(), Map())
-      case Predicate.ExistsNode(_, _) => (Map(), Map())
-      case Predicate.ExistsPath(_, _, _) => (Map(), Map())
-      case Predicate.ExistsEdge(edge, _, src, dest) => (Map(edge -> src), Map(edge -> dest))
-      case Predicate.Satisfies(_) => (Map(), Map())
+      case Predicate.Or(_, _, _) => (Map(), Map())
+      case Predicate.ExistsNode(_, _, _) => (Map(), Map())
+      case Predicate.ExistsPath(_, _, _, _) => (Map(), Map())
+      case Predicate.ExistsEdge(_, edge, _, src, dest) => (Map(edge -> src), Map(edge -> dest))
+      case Predicate.Satisfies(_, _) => (Map(), Map())
       case Predicate.True => (Map(), Map())
       case Predicate.False => (Map(), Map())
     }
@@ -201,19 +201,17 @@ object Compiler {
   }
 
   def expressionFromDesc(exp: QueryAST.Expression): Expr = exp match {
-    case Expression.Ident(name) => Expr.Variable(name)
-    case Expression.Apply(_, _) => ???
-    case Expression.Literal(_) => ???
-    case Expression.Parameter(_) => ???
-    case Expression.UnaryOp(_, _) => ???
-    case Expression.BinOp(op, lhs, rhs) =>
+    case Expression.Ident(_, name) => Expr.Variable(name)
+    case Expression.Apply(_, _, _) => ???
+    case Expression.Literal(_, _) => ???
+    case Expression.Parameter(_, _) => ???
+    case Expression.UnaryOp(_, _, _) => ???
+    case Expression.BinOp(_, op, lhs, rhs) =>
       op match {
         case Operator.Plus => Expr.Add(expressionFromDesc(lhs), expressionFromDesc(rhs))
         case Operator.Dot => Expr.Property(expressionFromDesc(lhs), rhs.asInstanceOf[Expression.Ident].name)
         case Operator.And => ???
-        case Operator.Or =>
-          println(exp)
-          ???
+        case Operator.Or => ???
         case Operator.LessThan => ???
         case Operator.Equals => ???
         case Operator.GreaterThan => ???
@@ -231,14 +229,14 @@ object Compiler {
   }
 
   def compileFromAST(ast: QueryAST.Query): QuinePattern = ast match {
-    case QueryAST.Query.Union(lhs, rhs) =>
+    case QueryAST.Query.Union(_, lhs, rhs) =>
       QuinePattern.Fold(
         init = QuinePattern.QuineUnit,
         over = List(compileFromAST(lhs), compileFromAST(rhs)),
         f = BinOp.Append,
         projection = None
       )
-    case QueryAST.Query.Single(predicate, _, projection) =>
+    case QueryAST.Query.Single(_, predicate, _, projection) =>
       QuinePattern.Fold(
         init = QuinePattern.QuineUnit,
         over = List(compileFromPredicate(predicate)),

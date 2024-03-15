@@ -33,6 +33,7 @@ import com.thatdot.quine.graph.StandingQueryPattern.{
   MultipleValuesQueryPattern,
   QuinePatternQueryPattern
 }
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   GraphService,
   HostQuineMetrics,
@@ -206,7 +207,10 @@ final class QuineApp(graph: GraphService)
                   val isEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
                   if (isEnabled) {
                     val p = ParserBuilder.mkParser(List(PredicateLogicRewriter, BooleanExpressionRewriter))
-                    val tquery = p.parseCypher(cypherQuery)
+                    val tquery = p.parseCypher(cypherQuery) match {
+                      case Left(err) => sys.error(err.mkString("\n"))
+                      case Right(q) => q
+                    }
                     val qp = com.thatdot.quine.graph.cypher.Compiler.compileFromAST(tquery)
                     val qpPattern =
                       QuinePatternQueryPattern(qp, query.includeCancellations, PatternOrigin.QuinePatternOrigin)

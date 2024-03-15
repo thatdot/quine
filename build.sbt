@@ -1,10 +1,6 @@
 import QuineSettings._
 import Dependencies._
 
-ThisBuild / resolvers += Resolver.url(
-  "thatDot ivy",
-  url("https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/")
-)(Resolver.ivyStylePatterns)
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
 
 ThisBuild / scalaVersion := scalaV
@@ -41,8 +37,6 @@ lazy val `quine-core`: Project = project
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
-      "org.antlr" % "antlr4" % antlrV,
-      "org.typelevel" %% "cats-parse" % catsParseV,
       "com.thatdot" %% "query-language" % quineQueryV
     ),
     // Compile different files depending on scala version
