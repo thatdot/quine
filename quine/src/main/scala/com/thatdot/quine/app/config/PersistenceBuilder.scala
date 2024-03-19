@@ -31,7 +31,7 @@ object PersistenceBuilder extends LazyLogging {
         new StatelessPrimePersistor(
           persistenceConfig,
           None,
-          (pc, ns) => new InMemoryPersistor(persistenceConfig = persistenceConfig, namespace = ns)
+          (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
         )
       case r: PersistenceAgentType.RocksDb =>
         new RocksDbPrimePersistor(

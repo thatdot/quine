@@ -103,9 +103,9 @@ object PersistenceAgentType extends PureconfigInstances {
   }
 
   final case class ClickHouse(
-    uri: String = "http://localhost:8123",
-    username: String = "quine",
-    password: String = "quine",
+    url: String = sys.env.getOrElse("CLICKHOUSE_URL", "http://localhost:8123"),
+    username: String = sys.env.getOrElse("CLICKHOUSE_USER", "quine"),
+    password: String = sys.env.getOrElse("CLICKHOUSE_PASSWORD", "quine"),
     bloomFilterSize: Option[Long] = None
   ) extends PersistenceAgentType(isLocal = false)
 
