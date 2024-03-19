@@ -70,6 +70,10 @@ abstract class PersistenceAgentSpec
   // When this is false, tests will likely require manual intervention to clean up the database between runs
   def runDeletionTests: Boolean = true
 
+  // Override this to opt-out of running the "purge namespace" test which does not work on all persistors
+  // ex: AWS Keyspaces
+  def runPurgeNamespaceTest: Boolean = true
+
   def persistor: PrimePersistor
 
   // main namespace used for tests
@@ -1132,7 +1136,7 @@ abstract class PersistenceAgentSpec
         }
       )
     }
-    if (runDeletionTests) {
+    if (runDeletionTests && runPurgeNamespaceTest) {
       it("should purge one namespace without affecting the other") {
         val alt1Deleted = persistor.deleteNamespace(altNamespace1)
         alt1Deleted.flatMap { _ =>

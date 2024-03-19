@@ -16,6 +16,9 @@ class KeyspacesPersistorSpec extends PersistenceAgentSpec {
     val _ = persistor.shutdown()
   }
 
+  // Skip Purge Namespace Test, it is currently non-functional on AWS Keyspaces
+  override def runPurgeNamespaceTest: Boolean = false
+
   lazy val persistor: PrimePersistor = Await.result(
     PrimeKeyspacesPersistor.create(
       PersistenceConfig(),
