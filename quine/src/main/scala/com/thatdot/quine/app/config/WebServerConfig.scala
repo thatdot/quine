@@ -15,8 +15,8 @@ trait WebServerConfig {
   def ssl: Option[SslConfig]
 }
 final case class WebServerBindConfig(
-  address: Host,
-  port: Port,
+  address: Host = Host("0.0.0.0"),
+  port: Port = Port(8080),
   enabled: Boolean = true,
   ssl: Option[SslConfig] = (sys.env.get("SSL_KEYSTORE_PATH"), sys.env.get("SSL_KEYSTORE_PASSWORD")) match {
     case (None, None) => None
