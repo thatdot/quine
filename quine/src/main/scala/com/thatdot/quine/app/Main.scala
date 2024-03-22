@@ -195,13 +195,13 @@ object Main extends App with LazyLogging {
     interpreter.run(quineApp.thisMemberIdx)
     interpreter
   }
-  private val improveQuine = ImproveQuine(
-    config.helpMakeQuineBetter,
-    BuildInfo.version,
-    Uri("https://improve.quine.io/event"),
-    system
-  )
-  improveQuine.started()
+
+  // report telemetry only if the user has opted in.
+  if (config.helpMakeQuineBetter)
+    ImproveQuine.reportTelemetry(
+      "Quine",
+      BuildInfo.version
+    )
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, quineApp, config.loadedConfigJson, resolvableUrl, timeout)
