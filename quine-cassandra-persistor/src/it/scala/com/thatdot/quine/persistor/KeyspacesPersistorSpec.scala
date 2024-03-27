@@ -2,8 +2,7 @@ package com.thatdot.quine.persistor
 
 import scala.concurrent.duration._
 import com.datastax.oss.driver.api.core.ConsistencyLevel
-import com.thatdot.quine.graph.WakefulState.Awake
-import com.thatdot.quine.persistor.cassandra.aws.{KeyspacesPersistor, PrimeKeyspacesPersistor}
+import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 
 import scala.concurrent.Await
