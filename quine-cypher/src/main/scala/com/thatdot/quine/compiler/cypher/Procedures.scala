@@ -6,7 +6,7 @@ import java.util.concurrent.TimeoutException
 
 import scala.annotation.nowarn
 import scala.collection.concurrent
-import scala.compat.ExecutionContexts
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.DurationLong
 
 import org.apache.pekko.NotUsed
@@ -931,7 +931,7 @@ object PurgeNode extends UserDefinedProcedure {
     }
 
     Source.lazyFuture { () =>
-      graph.literalOps(location.namespace).purgeNode(node).map(_ => Vector.empty)(ExecutionContexts.parasitic)
+      graph.literalOps(location.namespace).purgeNode(node).map(_ => Vector.empty)(ExecutionContext.parasitic)
     }
   }
 }

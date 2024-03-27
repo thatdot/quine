@@ -1,7 +1,5 @@
 package com.thatdot.quine.graph.cypher
 
-import scala.collection.compat._
-
 import com.thatdot.quine.model.QuineIdProvider
 
 /** Container for query results

@@ -6,7 +6,6 @@ import scala.util.Try
 
 import slinky.core.FunctionalComponent
 import slinky.core.annotations.react
-import slinky.web.html._
 
 /** Plotly-backed [sunburst plot](https://plotly.com/javascript/sunburst-charts/) */
 @react object SunburstPlot {

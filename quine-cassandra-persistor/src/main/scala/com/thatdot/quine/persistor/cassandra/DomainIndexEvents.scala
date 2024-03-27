@@ -1,8 +1,6 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.ExecutionContexts
-import scala.compat.java8.FutureConverters._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.Sink
@@ -10,9 +8,9 @@ import org.apache.pekko.stream.scaladsl.Sink
 import cats.Applicative
 import cats.data.NonEmptyList
 import cats.syntax.apply._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
-import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 import com.typesafe.scalalogging.LazyLogging
@@ -146,7 +144,7 @@ class DomainIndexEvents(
       .runWith(Sink.foreachAsync(deleteParallelism) { case (id, timestamp) =>
         executeFuture(deleteByQuineIdTimestamp.bindColumns(quineIdColumn.set(id), timestampColumn.set(timestamp)))
       })
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
   }
 
   def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(

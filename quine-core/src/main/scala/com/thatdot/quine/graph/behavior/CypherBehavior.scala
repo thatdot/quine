@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.behavior
 
-import scala.compat.ExecutionContexts
+import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
@@ -44,7 +44,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
           val edgeAdded = processEdgeEvents(EdgeAdded(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
-            .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContexts.parasitic))
+            .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContext.parasitic))
             .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
 
@@ -53,7 +53,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
           val edgeRemoved = processEdgeEvents(EdgeRemoved(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters)
           ce ?! Source
-            .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContexts.parasitic))
+            .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContext.parasitic))
             .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
       }

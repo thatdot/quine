@@ -1,7 +1,6 @@
 package com.thatdot.quine.graph
 
-import scala.collection.compat.immutable.ArraySeq
-import scala.compat.ExecutionContexts
+import scala.collection.immutable.ArraySeq
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -114,7 +113,7 @@ class GraphService(
       )
       .flatMap { _ =>
         super.shutdown()
-      }(ExecutionContexts.parasitic)
+      }(ExecutionContext.parasitic)
   }
 
   /** Make a new namespace. The outer future indicates success or failure. The inner Boolean indicates whether a

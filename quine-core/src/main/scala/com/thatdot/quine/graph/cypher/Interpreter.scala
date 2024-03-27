@@ -1,7 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
 import scala.collection.mutable
-import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -576,7 +575,7 @@ trait OnNodeInterpreter
     for ((key, value) <- map)
       eventsToProcess += PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
 
-    Source.future(processPropertyEvents(eventsToProcess.result()).map(_ => context)(ExecutionContexts.parasitic))
+    Source.future(processPropertyEvents(eventsToProcess.result()).map(_ => context)(ExecutionContext.parasitic))
   }
 
   final private[quine] def interpretSetEdge(

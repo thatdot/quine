@@ -1,7 +1,5 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.ExecutionContexts
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.Future
 
 import org.apache.pekko.NotUsed
@@ -10,9 +8,9 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.Applicative
 import cats.syntax.apply._
+import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
-import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
 import com.thatdot.quine.graph.{EventTime, NamespaceId}

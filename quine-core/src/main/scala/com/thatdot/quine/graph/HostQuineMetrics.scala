@@ -7,15 +7,14 @@ import scala.collection.concurrent
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 
-import com.codahale.metrics.{Counter, Histogram, Meter, MetricFilter, MetricRegistry, NoopMetricRegistry, Timer}
+import com.codahale.metrics.{Counter, Histogram, Meter, MetricRegistry, NoopMetricRegistry, Timer}
 
 import com.thatdot.quine.graph.HostQuineMetrics.{
   DefaultRelayAskMetrics,
   DefaultRelayTellMetrics,
   NoOpMessageMetric,
   RelayAskMetric,
-  RelayTellMetric,
-  nsPrefix
+  RelayTellMetric
 }
 import com.thatdot.quine.util.SharedValve
 

@@ -3,9 +3,8 @@ package com.thatdot.quine.app.ingest
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
@@ -101,7 +100,7 @@ abstract class IngestSrcDef(
     t: TryDeserialized =>
       t._1 match {
         case Success(deserialized) =>
-          format.writeValueToGraph(graph, intoNamespace, deserialized).map(_ => t)(ExecutionContexts.parasitic)
+          format.writeValueToGraph(graph, intoNamespace, deserialized).map(_ => t)(ExecutionContext.parasitic)
         case Failure(err) =>
           logger.info(s"Deserialization failure {} {}", name, err)
           Future.failed(err)
@@ -135,7 +134,7 @@ abstract class IngestSrcDef(
         .via(ack)
         .map(_ => ingestToken)
         .watchTermination() { case ((a: ShutdownSwitch, b: Future[ValveSwitch]), c: Future[Done]) =>
-          b.map(v => ControlSwitches(a, v, c))(ExecutionContexts.parasitic)
+          b.map(v => ControlSwitches(a, v, c))(ExecutionContext.parasitic)
         }
         .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
         .named(name)

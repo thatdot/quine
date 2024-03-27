@@ -2,9 +2,9 @@ package com.thatdot.quine.app.routes
 
 import scala.util.{Failure, Success, Try}
 
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpResponse, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.{Directives, ExceptionHandler, Route}
+import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging

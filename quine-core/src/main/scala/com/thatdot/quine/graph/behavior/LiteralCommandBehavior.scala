@@ -2,9 +2,8 @@ package com.thatdot.quine.graph.behavior
 
 import scala.annotation.nowarn
 import scala.compat.CompatBuildFrom.implicitlyBF
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
 
 import org.apache.pekko.stream.scaladsl.Source
@@ -85,7 +84,7 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         d ?! processEdgeEvents(edgeRemovalEvents)
           .zip(processPropertyEvents(propertyRemovalEvents.toList))
           .zip(otherSidesRemoved)
-          .map(_ => DeleteNodeCommand.Success)(ExecutionContexts.parasitic)
+          .map(_ => DeleteNodeCommand.Success)(ExecutionContext.parasitic)
       }
 
     case ip @ IncrementProperty(propKey, incAmount, _) =>

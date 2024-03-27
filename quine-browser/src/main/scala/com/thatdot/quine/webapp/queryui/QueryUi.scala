@@ -5,7 +5,7 @@ import scala.concurrent._
 import scala.scalajs.js
 import scala.scalajs.js.Dynamic.{literal => jsObj}
 import scala.scalajs.js.|
-import scala.util.{Failure, Random, Success, Try}
+import scala.util.{Failure, Random, Success}
 
 import cats.data.Validated
 import endpoints4s.Invalid
@@ -15,7 +15,7 @@ import org.scalajs.dom.{document, window}
 import org.scalajs.macrotaskexecutor.MacrotaskExecutor.Implicits._
 import slinky.core._
 import slinky.core.annotations.react
-import slinky.core.facade.{React, ReactElement, ReactRef}
+import slinky.core.facade.{React, ReactElement}
 import slinky.web.SyntheticKeyboardEvent
 import slinky.web.html.{`type` => _, value => _, _}
 

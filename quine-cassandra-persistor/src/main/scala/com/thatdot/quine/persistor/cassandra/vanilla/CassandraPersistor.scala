@@ -2,7 +2,6 @@ package com.thatdot.quine.persistor.cassandra.vanilla
 
 import java.net.InetSocketAddress
 
-import scala.collection.immutable
 import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}

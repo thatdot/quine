@@ -7,7 +7,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
-import com.typesafe.scalalogging.{AnyLogging, StrictLogging}
+import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
   BaseGraph,

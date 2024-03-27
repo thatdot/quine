@@ -3,7 +3,7 @@ package com.thatdot.quine.persistor.codecs
 import java.nio.ByteBuffer
 import java.util.UUID
 
-import scala.collection.compat.immutable.ArraySeq
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}

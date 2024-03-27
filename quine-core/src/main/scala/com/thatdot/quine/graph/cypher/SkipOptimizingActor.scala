@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import scala.compat.ExecutionContexts
+import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef}
@@ -69,7 +69,7 @@ class SkipOptimizingActor(
             s"SkipOptimizingActor finished execution of query (cleanly: ${status.isSuccess}) and will terminate: ${QueryFamily}"
           )
           decommission()
-        }(ExecutionContexts.parasitic)
+        }(ExecutionContext.parasitic)
         mat
       }
       .runWith(BroadcastHub.sink(bufferSize = 1))(
@@ -167,7 +167,7 @@ class SkipOptimizingActor(
                 case Some(limitNum) =>
                   lastProducedIdx = skip + limitNum - 1
                   skippedStream.take(limitNum).watchTermination() { (mat, completesWithStream) =>
-                    completesWithStream.onComplete(_ => self ! UnlockStreaming)(ExecutionContexts.parasitic)
+                    completesWithStream.onComplete(_ => self ! UnlockStreaming)(ExecutionContext.parasitic)
                     mat
                   }
                 case None =>

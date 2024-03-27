@@ -2,7 +2,7 @@ package com.thatdot.quine.graph
 
 import java.util.concurrent.ConcurrentHashMap
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 import scala.collection.{concurrent, mutable}
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}

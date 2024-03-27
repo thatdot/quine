@@ -8,7 +8,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.stream.Materializer
 
 import cats.Applicative
-import com.datastax.oss.driver.api.core.cql.{AsyncCqlSession, AsyncResultSet, PreparedStatement, SimpleStatement}
+import com.datastax.oss.driver.api.core.cql.{AsyncCqlSession, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{bindMarker, deleteFrom, insertInto, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.{createTable, dropTable}

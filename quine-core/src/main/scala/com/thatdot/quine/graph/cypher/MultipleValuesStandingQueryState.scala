@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
 import com.typesafe.scalalogging.LazyLogging

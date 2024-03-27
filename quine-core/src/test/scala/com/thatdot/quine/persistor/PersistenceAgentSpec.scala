@@ -2,7 +2,6 @@ package com.thatdot.quine.persistor
 
 import java.util.UUID
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 
@@ -23,7 +22,6 @@ import com.thatdot.quine.graph.Generators.generateN
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
 import com.thatdot.quine.graph.{
   ArbitraryInstances,
-  DefaultNamespaceName,
   DomainIndexEvent,
   EventTime,
   MultipleValuesStandingQueryPartId,
@@ -99,7 +97,7 @@ abstract class PersistenceAgentSpec
         .map { _ =>
           persistor.createNamespace(name)
           persistor(name).get // this should be defined -- we just created it, after all!
-        }(ExecutionContexts.parasitic),
+        }(ExecutionContext.parasitic),
       41.seconds // potentially creates database tables, which is potentially slow depending on the database
     )
   )
@@ -612,7 +610,7 @@ abstract class PersistenceAgentSpec
             _ <- namespacedPersistor.deleteSnapshots(qid)
             after <- namespacedPersistor.getLatestSnapshot(qid, EventTime.MinValue)
           } yield after shouldBe empty
-        }.map(_ => succeed)(ExecutionContexts.parasitic)
+        }.map(_ => succeed)(ExecutionContext.parasitic)
       }
     }
   }
@@ -949,7 +947,7 @@ abstract class PersistenceAgentSpec
               EventTime.MaxValue
             )
           } yield journalEntries shouldBe empty
-        ).map(_ => succeed)(ExecutionContexts.parasitic)
+        ).map(_ => succeed)(ExecutionContext.parasitic)
       }
     }
   }

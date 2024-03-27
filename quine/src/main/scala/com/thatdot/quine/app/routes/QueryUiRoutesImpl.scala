@@ -1,8 +1,7 @@
 package com.thatdot.quine.app.routes
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
 import scala.concurrent.duration.Duration
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
@@ -346,7 +345,7 @@ trait QueryUiRoutesImpl
     ifFound: => Future[Either[ClientErrors, A]]
   ): Future[Either[ClientErrors, Option[A]]] =
     if (!graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
-    else ifFound.map(_.map(Some(_)))(ExecutionContexts.parasitic)
+    else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
 
   // The Query UI relies heavily on a couple Gremlin endpoints for making queries.
   final val gremlinApiRoute: Route = {
@@ -399,7 +398,7 @@ trait QueryUiRoutesImpl
           case Success(a) => Success(Right(a))
           case Failure(qce: CypherException) => Success(Left(endpoints4s.Invalid(qce.pretty)))
           case Failure(err) => Failure(err)
-        }(ExecutionContexts.parasitic)
+        }(ExecutionContext.parasitic)
 
     cypherPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>
       val ns = namespaceFromParam(namespaceParam)
@@ -410,7 +409,7 @@ trait QueryUiRoutesImpl
           .via(Util.completionTimeoutOpt(t, allowTimeout = isReadOnly))
           .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
           .runWith(Sink.seq)
-          .map(CypherQueryResult(columns, _))(ExecutionContexts.parasitic)
+          .map(CypherQueryResult(columns, _))(ExecutionContext.parasitic)
       })
     } ~
     cypherNodesPost.implementedByAsyncWithRequestTimeout(_._2) { case ((atTime, _, namespaceParam, query), t) =>

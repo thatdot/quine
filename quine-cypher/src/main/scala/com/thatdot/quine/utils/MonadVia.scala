@@ -1,7 +1,5 @@
 package com.thatdot.quine.utils
 
-import scala.language.higherKinds
-
 import cats.arrow.FunctionK
 import cats.{Monad, MonadError}
 

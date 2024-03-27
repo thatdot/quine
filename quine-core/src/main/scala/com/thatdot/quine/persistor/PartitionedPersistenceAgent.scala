@@ -1,6 +1,5 @@
 package com.thatdot.quine.persistor
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
@@ -38,8 +37,8 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     if (getAgents.isEmpty) Future.successful(true)
     else
       Future
-        .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContexts.parasitic)
-        .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContexts.parasitic)
+        .traverse(getAgents)(_.emptyOfQuineData())(implicitly, ExecutionContext.parasitic)
+        .map(_.reduce((leftIsClear, rightIsClear) => leftIsClear && rightIsClear))(ExecutionContext.parasitic)
 
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     getAgent(id).persistNodeChangeEvents(id, events)
@@ -125,12 +124,12 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     rootAgent.getDomainGraphNodes()
 
   def deleteDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId): Future[Unit] =
-    Future(getAgents.foreach(_.deleteDomainIndexEventsByDgnId(dgnId)))(ExecutionContexts.parasitic)
+    Future(getAgents.foreach(_.deleteDomainIndexEventsByDgnId(dgnId)))(ExecutionContext.parasitic)
 
   override def shutdown(): Future[Unit] =
     Future
-      .traverse(getAgents)(_.shutdown())(implicitly, ExecutionContexts.parasitic)
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .traverse(getAgents)(_.shutdown())(implicitly, ExecutionContext.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
 
   override def delete(): Future[Unit] = Future
     .traverse(getAgents)(_.delete())(implicitly, ExecutionContext.parasitic)

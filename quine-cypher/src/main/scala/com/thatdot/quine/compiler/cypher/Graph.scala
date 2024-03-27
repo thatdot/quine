@@ -10,7 +10,6 @@ import org.opencypher.v9_0.expressions.{LogicalVariable, Range, RelationshipPatt
 import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 
 import com.thatdot.quine.graph.cypher
-import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.EdgeDirection
 
 /** Represents a pattern graph like what you would find in a `MATCH` or `CREATE`

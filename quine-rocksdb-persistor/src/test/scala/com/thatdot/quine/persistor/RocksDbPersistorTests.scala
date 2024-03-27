@@ -11,7 +11,6 @@ import org.apache.pekko.stream.Materializer
 import org.apache.commons.io.FileUtils
 
 import com.thatdot.quine.graph.HistoricalQueryTests
-import com.thatdot.quine.util.QuineDispatchers
 
 class RocksDbPersistorTests extends HistoricalQueryTests {
 

@@ -1,7 +1,6 @@
 package com.thatdot.quine.app
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.Done
 import org.apache.pekko.stream.UniqueKillSwitch
@@ -42,5 +41,5 @@ case class PekkoKillSwitch(killSwitch: UniqueKillSwitch) extends ShutdownSwitch 
 
 case class KafkaKillSwitch(killSwitch: pekko.kafka.scaladsl.Consumer.Control) extends ShutdownSwitch {
   def terminate(termSignal: Future[Done]): Future[Done] =
-    killSwitch.drainAndShutdown(termSignal)(ExecutionContexts.parasitic)
+    killSwitch.drainAndShutdown(termSignal)(ExecutionContext.parasitic)
 }

@@ -4,8 +4,6 @@ import java.io.File
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
-import scala.collection.compat._
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.control.NonFatal
@@ -28,7 +26,6 @@ import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, Q
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
-import com.thatdot.quine.persistor.{ExceptionWrappingPersistenceAgent, PrimePersistor}
 
 object Main extends App with LazyLogging {
 
@@ -152,8 +149,8 @@ object Main extends App with LazyLogging {
               QuineApp.CurrentPersistenceVersion,
               () => QuineApp.quineAppIsEmpty(graph.namespacePersistor)
             )
-            .map(_ => graph)(ExecutionContexts.parasitic)
-        )(ExecutionContexts.parasitic),
+            .map(_ => graph)(ExecutionContext.parasitic)
+        )(ExecutionContext.parasitic),
         atMost = timeout.duration
       )
     catch {
@@ -221,7 +218,7 @@ object Main extends App with LazyLogging {
       case NonFatal(e) =>
         statusLines.error("Graceful shutdown of Recipe interpreter encountered an error:", e)
     }
-    implicit val ec = ExecutionContexts.parasitic
+    implicit val ec = ExecutionContext.parasitic
     for {
       _ <- quineApp.shutdown()
       _ <- graph.shutdown()

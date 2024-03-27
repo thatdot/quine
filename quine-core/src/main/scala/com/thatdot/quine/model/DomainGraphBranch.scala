@@ -2,8 +2,6 @@ package com.thatdot.quine.model
 
 import java.util.regex.Pattern
 
-import scala.collection.compat._
-
 import com.google.common.cache.{Cache, CacheBuilder}
 
 import com.thatdot.quine.model

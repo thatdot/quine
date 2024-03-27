@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.cypher
 
 import java.util.regex.Pattern
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
 import com.google.common.hash.Hashing.murmur3_128

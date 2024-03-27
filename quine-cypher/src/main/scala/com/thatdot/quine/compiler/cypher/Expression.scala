@@ -6,22 +6,10 @@ import org.opencypher.v9_0.ast.factory.neo4j.JavaCCParser
 import org.opencypher.v9_0.expressions
 import org.opencypher.v9_0.expressions.functions
 import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase
-import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.{AST_REWRITE, PARSING}
-import org.opencypher.v9_0.frontend.phases.{
-  BaseContains,
-  BaseContext,
-  BaseState,
-  CompilationPhaseTracer,
-  Phase,
-  StatementRewriter
-}
-import org.opencypher.v9_0.parser.javacc.Cypher
-import org.opencypher.v9_0.rewriting.conditions.PatternExpressionsHaveSemanticInfo
-import org.opencypher.v9_0.rewriting.rewriters.ProjectionClausesHaveSemanticInfo
-import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
-import org.opencypher.v9_0.rewriting.{ListStepAccumulator, RewriterStep}
-import org.opencypher.v9_0.util.StepSequencer.{AccumulatedSteps, Condition}
-import org.opencypher.v9_0.util.{AnonymousVariableNameGenerator, OpenCypherExceptionFactory, StepSequencer, inSequence}
+import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.PARSING
+import org.opencypher.v9_0.frontend.phases.{BaseContains, BaseContext, BaseState, Phase}
+import org.opencypher.v9_0.util.StepSequencer.Condition
+import org.opencypher.v9_0.util.{AnonymousVariableNameGenerator, OpenCypherExceptionFactory, StepSequencer}
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.SourceText

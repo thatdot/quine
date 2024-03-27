@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.standing
 
 import java.util.UUID
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 
 import org.scalactic.source.Position
 import org.scalatest.funsuite.AnyFunSuite

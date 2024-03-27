@@ -2,7 +2,6 @@ package com.thatdot.quine.app.routes
 
 import java.time.Instant
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.http.scaladsl.server.Directives._
@@ -146,7 +145,7 @@ trait AdministrationRoutesImpl
       .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
       .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
         shardIdx -> ShardInMemoryLimit(soft, hard)
-      })(ExecutionContexts.parasitic)
+      })(ExecutionContext.parasitic)
   }
 
   private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { case (quineId, namespaceParam) =>
@@ -155,7 +154,7 @@ trait AdministrationRoutesImpl
 
   private val graphHashCodeRoute = graphHashCode.implementedByAsync { case (atTime, namespaceParam) =>
     val at = atTime.getOrElse(Milliseconds.currentTime())
-    val ec = ExecutionContexts.parasitic
+    val ec = ExecutionContext.parasitic
     graph
       .getGraphHashCode(namespaceFromParam(namespaceParam), Some(at))
       .map(GraphHashCode(_, at.millis))(ec)

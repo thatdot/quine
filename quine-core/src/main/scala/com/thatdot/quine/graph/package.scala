@@ -4,7 +4,6 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
 import java.{util => ju}
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.{ExecutionContext, Future, blocking}
 import scala.util.control.NonFatal
 
@@ -115,7 +114,7 @@ package object graph {
             ctx.stop()
             throw err
         }
-      theFuture.onComplete(_ => ctx.stop())(ExecutionContexts.parasitic)
+      theFuture.onComplete(_ => ctx.stop())(ExecutionContext.parasitic)
       theFuture
     }
   }

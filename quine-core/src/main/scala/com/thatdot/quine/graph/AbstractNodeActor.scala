@@ -3,9 +3,7 @@ package com.thatdot.quine.graph
 import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
-import scala.collection.compat._
 import scala.collection.mutable
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
@@ -245,7 +243,7 @@ abstract private[graph] class AbstractNodeActor(
   protected[this] def edgeEvents(events: List[EdgeEvent], atTime: Option[EventTime]): Future[Done.type] =
     refuseHistoricalUpdates(events)(
       edges.processEdgeEvents(events, atTime.fold(() => tickEventSequence())(() => _))
-    ).map(_ => Done)(ExecutionContexts.parasitic)
+    ).map(_ => Done)(ExecutionContext.parasitic)
 
   protected def processEdgeEvents(
     events: List[EdgeEvent]
@@ -253,10 +251,10 @@ abstract private[graph] class AbstractNodeActor(
     edgeEvents(events, None)
       .flatMap(_ =>
         Future.traverse[HalfEdge => Unit, Unit, Iterable](edgePatterns.values)(f =>
-          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContexts.parasitic)
-        )(implicitly, ExecutionContexts.parasitic)
-      )(ExecutionContexts.parasitic)
-      .map(_ => BaseMessage.Done)(ExecutionContexts.parasitic)
+          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContext.parasitic)
+        )(implicitly, ExecutionContext.parasitic)
+      )(ExecutionContext.parasitic)
+      .map(_ => BaseMessage.Done)(ExecutionContext.parasitic)
 
   protected def processEdgeEvent(
     event: EdgeEvent,
@@ -325,7 +323,7 @@ abstract private[graph] class AbstractNodeActor(
             10.seconds,
             randomFactor = 0.1d
           )(cypherEc, context.system.scheduler)
-          .map(_ => Done)(ExecutionContexts.parasitic)
+          .map(_ => Done)(ExecutionContext.parasitic)
       case EventEffectOrder.PersistorFirst =>
         pauseMessageProcessingUntil[Unit](
           persistEventsToJournal(),
@@ -341,7 +339,7 @@ abstract private[graph] class AbstractNodeActor(
                 s"events: $effectingEvents to in-memory state. Returning failed result. Error: $e"
               )
           }
-        ).map(_ => Done)(ExecutionContexts.parasitic)
+        ).map(_ => Done)(ExecutionContext.parasitic)
     }
 
   }

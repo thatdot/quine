@@ -1,6 +1,5 @@
 package com.thatdot.quine.app.config
 
-import java.io.File
 import java.util.Properties
 
 import scala.concurrent.Await
@@ -12,11 +11,10 @@ import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, ClickHouse, Keyspaces, MapDb}
-import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.persistor.cassandra.aws.{KeyspacesPersistor, PrimeKeyspacesPersistor}
+import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.thatdot.quine.persistor.cassandra.vanilla.{CassandraPersistor, PrimeCassandraPersistor}
+import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Options for persistence */

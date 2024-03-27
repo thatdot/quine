@@ -1,6 +1,5 @@
 package com.thatdot.quine.graph.cypher
 
-import scala.collection.compat._
 import scala.concurrent.Future
 import scala.util.Try
 

@@ -3,6 +3,7 @@ import sbt.Keys._
 import org.portablescala.sbtplatformdeps.PlatformDepsPlugin.autoImport._
 import scalajsbundler.sbtplugin.ScalaJSBundlerPlugin.autoImport._
 
+import scala.collection.compat.toOptionCompanionExtension
 import scala.sys.process._
 import scala.util.Try
 
@@ -21,6 +22,7 @@ object QuineSettings {
     organization := "com.thatdot",
     organizationName := "thatDot Inc.",
     organizationHomepage := Some(url("https://www.thatdot.com")),
+    autoAPIMappings := true,
     scalacOptions ++= Seq(
       "-language:postfixOps",
       "-encoding",
@@ -29,18 +31,14 @@ object QuineSettings {
       "-unchecked",
       "-deprecation",
       "-release",
-      "11"
-    ),
-    autoAPIMappings := true,
-    scalacOptions ++=
-      Seq(
-        "-Xlint:-byname-implicit,-unused,-missing-interpolator,_",
-        "-Wdead-code",
-        "-Wnumeric-widen",
-        "-Wvalue-discard",
-        // "-Wunused:imports", // See https://github.com/scala/scala-collection-compat/issues/240
-        "-Wunused:privates,locals,patvars"
-      ) ++ (if (insideCI.value) Seq("-Werror") else Seq.empty),
+      "11",
+      "-Xlint:-byname-implicit,-unused,-missing-interpolator,_",
+      "-Wdead-code",
+      "-Wnumeric-widen",
+      "-Wvalue-discard",
+      "-Wunused:imports",
+      "-Wunused:privates,locals,patvars"
+    ) ++ Option.when(insideCI.value)("-Werror"),
     javacOptions ++= Seq("--release", "11"),
     // Circe is binary compatible between 0.13 and 0.14
     // Circe projects from other orgs sometimes pull in older versions of circe (0.13):

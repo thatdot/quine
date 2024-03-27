@@ -6,9 +6,8 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
 import scala.collection.{concurrent, mutable}
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteDuration}
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters.ConcurrentMapHasAsScala
 import scala.util.{Failure, Success}
 
@@ -583,7 +582,7 @@ final private[quine] class GraphShardActor(
               persistor.deleteMultipleValuesStandingQueryStates
             )
             val persistorDeletions = Future.traverse(deleteFunctions)(f => f(qid))(implicitly, context.dispatcher)
-            msg ?! persistorDeletions.map(_ => Done)(ExecutionContexts.parasitic)
+            msg ?! persistorDeletions.map(_ => Done)(ExecutionContext.parasitic)
           } else {
             // If there are still waking nodes, retry this in 8 ms
             val _ = context.system.scheduler.scheduleOnce(8.millis, self, msg)(context.dispatcher, sender())

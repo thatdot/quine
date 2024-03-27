@@ -7,7 +7,6 @@ import org.pegdown.PegDownProcessor
 
 import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
-import com.thatdot.quine.graph.defaultNamespaceId
 
 object GenerateCypherTables extends App {
 

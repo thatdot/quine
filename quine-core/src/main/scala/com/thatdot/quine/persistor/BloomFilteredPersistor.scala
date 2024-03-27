@@ -1,7 +1,6 @@
 package com.thatdot.quine.persistor
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.NotUsed
@@ -15,7 +14,6 @@ import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
   EventTime,
-  MemberIdx,
   MultipleValuesStandingQueryPartId,
   NamespaceId,
   NodeChangeEvent,
@@ -24,7 +22,7 @@ import com.thatdot.quine.graph.{
   StandingQueryId
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.model.QuineId
 
 // This needs to be serializable for the bloom filter to be serializable
 case object QuineIdFunnel extends Funnel[QuineId] {
@@ -178,7 +176,7 @@ private class BloomFilteredPersistor(
           mightContain = bloomFilter.mightContain
         case Failure(ex) =>
           logger.warn("Error loading; continuing to run in degraded state", ex)
-      }(ExecutionContexts.parasitic)
+      }(ExecutionContext.parasitic)
     ()
   }
 

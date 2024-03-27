@@ -9,7 +9,7 @@ import org.apache.pekko.stream.Materializer
 import com.codahale.metrics.MetricRegistry
 
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.util.{ComputeAndBlockingExecutionContexts, QuineDispatchers}
+import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 
 abstract class AbstractMapDbPrimePersistor(
   writeAheadLog: Boolean,
@@ -17,7 +17,7 @@ abstract class AbstractMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long] = None,
-  executionContexts: ComputeAndBlockingExecutionContexts
+  ExecutionContext: ComputeAndBlockingExecutionContext
 )(implicit materializer: Materializer)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
@@ -31,7 +31,7 @@ abstract class AbstractMapDbPrimePersistor(
       interval,
       persistenceConfig,
       metricRegistry,
-      executionContexts,
+      ExecutionContext,
       materializer.system.scheduler
     )
 
@@ -43,7 +43,7 @@ class TempMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
-  executionContexts: ComputeAndBlockingExecutionContexts
+  ExecutionContext: ComputeAndBlockingExecutionContext
 )(implicit materializer: Materializer)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
@@ -51,7 +51,7 @@ class TempMapDbPrimePersistor(
       metricRegistry,
       persistenceConfig,
       bloomFilterSize,
-      executionContexts
+      ExecutionContext
     ) {
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
@@ -70,7 +70,7 @@ class PersistedMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
-  executionContexts: ComputeAndBlockingExecutionContexts
+  ExecutionContext: ComputeAndBlockingExecutionContext
 )(implicit materializer: Materializer)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
@@ -78,7 +78,7 @@ class PersistedMapDbPrimePersistor(
       metricRegistry,
       persistenceConfig,
       bloomFilterSize,
-      executionContexts
+      ExecutionContext
     ) {
 
   private val parentDir = basePath.getAbsoluteFile.getParentFile

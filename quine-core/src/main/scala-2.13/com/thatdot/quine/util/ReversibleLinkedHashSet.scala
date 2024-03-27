@@ -1,6 +1,5 @@
 package com.thatdot.quine.util
 
-import scala.collection.generic.DefaultSerializable
 import scala.collection.mutable.{Growable, GrowableBuilder, LinkedHashSet, SetOps}
 import scala.collection.{IterableFactory, IterableFactoryDefaults, Iterator, StrictOptimizedIterableOps}
 

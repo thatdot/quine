@@ -6,7 +6,6 @@ import java.time.temporal._
 import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, ZonedDateTime => JavaZonedDateTime}
 import java.util.Base64
 
-import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 

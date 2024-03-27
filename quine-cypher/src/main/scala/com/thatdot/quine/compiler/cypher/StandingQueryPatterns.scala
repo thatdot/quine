@@ -8,7 +8,7 @@ import cats.data.NonEmptyList
 import cats.implicits.toTraverseOps
 import com.typesafe.scalalogging.LazyLogging
 import org.opencypher.v9_0.ast.ReturnItem
-import org.opencypher.v9_0.expressions.{LabelExpression, PropertyKeyName, functions}
+import org.opencypher.v9_0.expressions.{LabelExpression, functions}
 import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 import org.opencypher.v9_0.util.helpers.NameDeduplicator
 import org.opencypher.v9_0.{ast, expressions}

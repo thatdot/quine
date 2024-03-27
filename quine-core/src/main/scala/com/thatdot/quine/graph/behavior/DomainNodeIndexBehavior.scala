@@ -1,14 +1,11 @@
 package com.thatdot.quine.graph.behavior
 
 import scala.annotation.nowarn
-import scala.collection.compat._
 import scala.collection.{immutable, mutable}
-import scala.compat.ExecutionContexts
 import scala.concurrent.Future
 
 import org.apache.pekko.actor.{Actor, ActorLogging}
 import org.apache.pekko.event.LoggingAdapter
-import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription

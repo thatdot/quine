@@ -13,7 +13,6 @@ import pureconfig.generic.semiauto.deriveConvert
 import shapeless.{Lens, lens}
 
 import com.thatdot.quine.persistor.PersistenceConfig
-import com.thatdot.quine.util.{Host, Port}
 
 /** Top-level config for Quine
   *

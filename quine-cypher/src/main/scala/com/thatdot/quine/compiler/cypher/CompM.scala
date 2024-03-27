@@ -5,7 +5,6 @@ import cats.arrow.FunctionK
 import cats.data.{EitherT, IndexedReaderWriterStateT, ReaderWriterState}
 import org.opencypher.v9_0.expressions.LogicalVariable
 import org.opencypher.v9_0.util
-import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, SourceText}
 import com.thatdot.quine.utils.MonadErrorVia

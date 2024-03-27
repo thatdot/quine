@@ -2,8 +2,7 @@ package com.thatdot.quine.graph
 
 import java.time.Instant
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.BoundedSourceQueue
 import org.apache.pekko.stream.scaladsl.Source
@@ -177,7 +176,7 @@ final class RunningStandingQuery(
      * complete if the termination is caused by a sink cancellation rather than a source completion. Note that since
      * [[resultsHub]] is (so far) always a BroadcastHub, it shouldn't ever cancel, so this is probably unnecessary
      */
-    outputTermination.map(_ => ())(ExecutionContexts.parasitic)
+    outputTermination.map(_ => ())(ExecutionContext.parasitic)
   }
 
   /** How many results are currently accumulated in the buffer */

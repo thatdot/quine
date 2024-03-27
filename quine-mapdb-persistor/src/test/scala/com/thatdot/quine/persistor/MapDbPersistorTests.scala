@@ -6,7 +6,7 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.HistoricalQueryTests
-import com.thatdot.quine.util.{FromSingleExecutionContext, QuineDispatchers}
+import com.thatdot.quine.util.FromSingleExecutionContext
 
 class MapDbPersistorTests extends HistoricalQueryTests {
 
@@ -18,7 +18,7 @@ class MapDbPersistorTests extends HistoricalQueryTests {
         filePath = MapDbPersistor.InMemoryDb,
         ns,
         persistenceConfig = pc,
-        executionContexts = new FromSingleExecutionContext(ExecutionContext.parasitic),
+        ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic),
         scheduler = system.scheduler
       )
   )(Materializer.matFromSystem(system))

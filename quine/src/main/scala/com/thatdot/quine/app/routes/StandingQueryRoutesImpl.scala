@@ -1,7 +1,6 @@
 package com.thatdot.quine.app.routes
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.model.ws
@@ -187,7 +186,7 @@ trait StandingQueryRoutesImpl
     graph
       .standingQueries(namespaceFromParam(namespaceParam))
       .fold(Future.successful[Option[Unit]](None)) {
-        _.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes)).map(_ => Some(()))(ExecutionContexts.parasitic)
+        _.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes)).map(_ => Some(()))(ExecutionContext.parasitic)
       }
   }
 

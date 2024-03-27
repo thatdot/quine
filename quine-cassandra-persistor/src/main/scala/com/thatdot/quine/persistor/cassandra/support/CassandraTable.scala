@@ -1,10 +1,8 @@
 package com.thatdot.quine.persistor.cassandra.support
 
-import scala.collection.compat.Factory
-import scala.collection.immutable
-import scala.compat.ExecutionContexts
+import scala.collection.{Factory, immutable}
 import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
@@ -23,7 +21,7 @@ abstract class CassandraTable(
 
   /** Does the table have any rows?
     */
-  def isEmpty(): Future[Boolean] = yieldsResults(firstRowStatement).map(!_)(ExecutionContexts.parasitic)
+  def isEmpty(): Future[Boolean] = yieldsResults(firstRowStatement).map(!_)(ExecutionContext.parasitic)
 
   def delete(): Future[Unit] = executeFuture(dropTableStatement)
 
@@ -77,7 +75,7 @@ abstract class CassandraTable(
     executeSelect(statement)(pair(colA, colB))
 
   final private def queryFuture[A](statement: Statement[_], f: AsyncResultSet => A): Future[A] =
-    session.executeAsync(statement).toScala.map(f)(ExecutionContexts.parasitic)
+    session.executeAsync(statement).toScala.map(f)(ExecutionContext.parasitic)
 
   final private def singleRow[A](col: CassandraColumn[A])(resultSet: AsyncResultSet): Option[A] =
     Option(resultSet.one()).map(col.get)

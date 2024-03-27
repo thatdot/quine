@@ -1,7 +1,5 @@
 package com.thatdot.quine.graph.edges
 
-import scala.collection.compat._
-
 import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
 import com.thatdot.quine.util.ReversibleLinkedHashSet
 

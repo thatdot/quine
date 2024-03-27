@@ -1,7 +1,6 @@
 package com.thatdot.quine.graph
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.Timeout
@@ -49,7 +48,7 @@ trait LiteralOpsGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(SpaceTimeQuineId(node, namespace, None), DeleteNodeCommand(deleteEdges = true, _)).flatten
-        .map(_ => ())(ExecutionContexts.parasitic)
+        .map(_ => ())(ExecutionContext.parasitic)
     }
 
     def getProps(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
@@ -59,7 +58,7 @@ trait LiteralOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       (getPropsAndLabels(node, atTime) map { case (x, _) =>
         x // keeping only properties
-      })(ExecutionContexts.parasitic)
+      })(ExecutionContext.parasitic)
     }
 
     /** Get all properties and labels of a node
@@ -100,7 +99,7 @@ trait LiteralOpsGraph extends BaseGraph {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(SpaceTimeQuineId(node, namespace, None), SetLabels(labels.map(Symbol(_)), _)).flatten
-        .map(_ => ())(ExecutionContexts.parasitic)
+        .map(_ => ())(ExecutionContext.parasitic)
     }
 
     /** Set node label to a single value
@@ -127,7 +126,7 @@ trait LiteralOpsGraph extends BaseGraph {
         SpaceTimeQuineId(node, namespace, None),
         SetPropertyCommand(Symbol(key), PropertyValue(value), _)
       ).flatten
-        .map(_ => ())(ExecutionContexts.parasitic)
+        .map(_ => ())(ExecutionContext.parasitic)
     }
 
     // Warning: make _sure_ the bytes you pass in here are correct. When in doubt, use [[setProp]]
@@ -138,14 +137,14 @@ trait LiteralOpsGraph extends BaseGraph {
       requiredGraphIsReady()
       val propVal = PropertyValue.fromBytes(value)
       relayAsk(SpaceTimeQuineId(node, namespace, None), SetPropertyCommand(Symbol(key), propVal, _)).flatten
-        .map(_ => ())(ExecutionContexts.parasitic)
+        .map(_ => ())(ExecutionContext.parasitic)
     }
 
     def removeProp(node: QuineId, key: String)(implicit timeout: Timeout): Future[Unit] = {
       requireCompatibleNodeType()
       requiredGraphIsReady()
       relayAsk(SpaceTimeQuineId(node, namespace, None), RemovePropertyCommand(Symbol(key), _)).flatten
-        .map(_ => ())(ExecutionContexts.parasitic)
+        .map(_ => ())(ExecutionContext.parasitic)
     }
 
     // NB: doesn't check that the other half of the edge exists

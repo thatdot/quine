@@ -1,9 +1,7 @@
 package com.thatdot.quine.graph
 
-import scala.collection.compat._
 import scala.collection.mutable
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
 import com.thatdot.quine.graph.NodeActor.{Journal, MultipleValuesStandingQueries}
@@ -119,7 +117,7 @@ abstract class StaticNodeSupport[
               Future.successful(Vector.empty)
 
             journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(
-              ExecutionContexts.parasitic
+              ExecutionContext.parasitic
             )
           }(graph.nodeDispatcherEC)
 

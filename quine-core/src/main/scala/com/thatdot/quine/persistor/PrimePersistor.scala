@@ -1,6 +1,5 @@
 package com.thatdot.quine.persistor
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.ExecutionContext.parasitic
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -75,7 +74,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
           .map { _ =>
             // default namespace should be always available
             if (namespace == defaultNamespaceId) initializeDefault()
-          }(ExecutionContexts.parasitic)
+          }(ExecutionContext.parasitic)
     }
 
   /** Get all standing queries across all namespaces
@@ -145,9 +144,9 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
                 setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
               case false =>
                 Future.failed(new IncompatibleVersion(context, incompatibleV, currentVersion))
-            }(ExecutionContexts.parasitic)
+            }(ExecutionContext.parasitic)
         }
-    }(ExecutionContexts.parasitic)
+    }(ExecutionContext.parasitic)
 
   /** Gets the version of data last stored by this persistor, or PersistenceAgent.CurrentVersion
     *

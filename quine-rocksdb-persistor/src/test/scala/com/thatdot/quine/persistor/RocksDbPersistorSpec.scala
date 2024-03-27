@@ -9,8 +9,6 @@ import org.apache.pekko.actor.CoordinatedShutdown
 
 import org.apache.commons.io.FileUtils
 
-import com.thatdot.quine.util.QuineDispatchers
-
 class RocksDbPersistorSpec extends PersistenceAgentSpec {
 
   /** Tests should run if RocksDB could be started or if in CI (in CI, we want

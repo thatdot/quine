@@ -1,8 +1,7 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 
@@ -11,7 +10,6 @@ import cats.implicits._
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
-import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.util.T2
 
@@ -62,7 +60,7 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
       session
         .executeAsync(createTableStatement)
         .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic)
     )
 
     createdSchema.flatMap(_ =>
@@ -70,7 +68,7 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple ++
         T2(selectAllStatement, selectSingleStatement).map(prepare(session, readSettings)).toTuple
       ).mapN(new MetaData(session, firstRowStatement, dropTableStatement, _, _, _, _))
-    )(ExecutionContexts.parasitic)
+    )(ExecutionContext.parasitic)
   }
 
   def create(

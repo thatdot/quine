@@ -1,7 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
 import scala.annotation.tailrec
-import scala.language.higherKinds
 
 import cats.{FlatMap, Functor, Monad}
 

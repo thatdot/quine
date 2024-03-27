@@ -1,53 +1,32 @@
 package com.thatdot.quine.compiler
 
-import scala.concurrent.{ExecutionException, Future}
-import scala.reflect.ClassTag
+import scala.concurrent.ExecutionException
 import scala.util.control.NonFatal
 
 import cats.implicits._
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.google.common.util.concurrent.UncheckedExecutionException
-import com.typesafe.scalalogging.LazyLogging
-import org.opencypher.v9_0.ast.semantics.{SemanticErrorDef, SemanticFeature, SemanticState}
-import org.opencypher.v9_0.ast.{Where, semantics}
-import org.opencypher.v9_0.expressions.{
-  LabelExpression,
-  NodePattern,
-  PatternComprehension,
-  RelationshipPattern,
-  ShortestPathExpression,
-  Variable
-}
+import org.opencypher.v9_0.ast.semantics
+import org.opencypher.v9_0.ast.semantics.SemanticFeature
+import org.opencypher.v9_0.expressions.LabelExpression
 import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.frontend.phases.rewriting.cnf.{CNFNormalizer, rewriteEqualityToInPredicate}
 import org.opencypher.v9_0.frontend.{PlannerName, phases}
 import org.opencypher.v9_0.rewriting.Deprecations.{semanticallyDeprecatedFeatures, syntacticallyDeprecatedFeatures}
-import org.opencypher.v9_0.rewriting.conditions.{
-  PatternExpressionsHaveSemanticInfo,
-  noUnnamedPatternElementsInPatternComprehension
-}
-import org.opencypher.v9_0.rewriting.rewriters.factories.ASTRewriterFactory
-import org.opencypher.v9_0.rewriting.rewriters.{Forced, ProjectionClausesHaveSemanticInfo, literalReplacement}
+import org.opencypher.v9_0.rewriting.rewriters.Forced
 import org.opencypher.v9_0.util.OpenCypherExceptionFactory.SyntaxException
-import org.opencypher.v9_0.util.symbols.CypherType
 import org.opencypher.v9_0.util.{
   AnonymousVariableNameGenerator,
   CancellationChecker,
   CypherExceptionFactory,
   ErrorMessageProvider,
   InputPosition,
-  InternalNotification,
-  InternalNotificationLogger,
   NotImplementedErrorMessageProvider,
   OpenCypherExceptionFactory,
   RecordingNotificationLogger,
-  Rewriter,
-  StepSequencer,
-  bottomUp,
-  devNullLogger,
   symbols
 }
-import org.opencypher.v9_0.{ast, expressions, rewriting}
+import org.opencypher.v9_0.{ast, expressions}
 
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern, NamespaceId}
@@ -384,7 +363,6 @@ package object cypher {
   private val openCypherStandingPipeline: Transformer[BaseContext, BaseState, BaseState] = {
     import org.opencypher.v9_0.frontend.phases.CompilationPhaseTracer.CompilationPhase.AST_REWRITE
     import org.opencypher.v9_0.frontend.phases._
-    import org.opencypher.v9_0.rewriting.Deprecations
     import org.opencypher.v9_0.rewriting.rewriters.normalizeWithAndReturnClauses
     import org.opencypher.v9_0.util.StepSequencer
 

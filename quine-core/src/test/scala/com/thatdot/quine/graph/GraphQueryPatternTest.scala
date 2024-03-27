@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 
 import cats.data.NonEmptyList
 import org.scalatest.funsuite.AnyFunSuite

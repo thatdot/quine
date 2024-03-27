@@ -1,8 +1,7 @@
 package com.thatdot.quine.graph
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters.SetHasAsScala
 import scala.reflect.{ClassTag, classTag}
 
@@ -17,7 +16,7 @@ import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.edges.SyncEdgeCollection
 import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
-import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace, RequestNodeSleep}
+import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
 import com.thatdot.quine.graph.messaging.{
   AskableQuineMessage,
   LocalShardRef,
@@ -355,7 +354,7 @@ trait BaseGraph extends StrictLogging {
       .mapAsyncUnordered(parallelism = 16) { qid =>
         val timeout = 1 second
         val resultHandler = implicitly[ResultHandler[GraphNodeHashCode]]
-        val ec = ExecutionContexts.parasitic
+        val ec = ExecutionContext.parasitic
         relayAsk(SpaceTimeQuineId(qid, namespace, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)
       }
       .runFold(zero = 0L)((e, f) => e + f)

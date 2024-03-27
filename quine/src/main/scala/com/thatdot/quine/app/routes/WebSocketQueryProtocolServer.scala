@@ -3,7 +3,6 @@ package com.thatdot.quine.app.routes
 import scala.collection.concurrent
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.Try
 import scala.util.control.NonFatal
 
 import org.apache.pekko.http.scaladsl.model.ws
@@ -22,7 +21,6 @@ import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
-import com.thatdot.quine.routes.QueryProtocolMessage.ServerMessage
 import com.thatdot.quine.routes.{
   CypherQuery,
   GremlinQuery,

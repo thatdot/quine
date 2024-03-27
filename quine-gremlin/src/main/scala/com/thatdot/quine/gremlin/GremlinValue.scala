@@ -1,6 +1,5 @@
 package com.thatdot.quine.gremlin
 
-import scala.collection.compat._
 import scala.reflect.ClassTag
 import scala.util.Try
 import scala.util.parsing.input.{Position, Positional}

@@ -1,8 +1,5 @@
 package com.thatdot.quine.graph
 
-import java.util.regex
-
-import com.softwaremill.diffx.Diff
 import com.softwaremill.diffx.generic.auto._
 import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalatest.flatspec.AnyFlatSpec

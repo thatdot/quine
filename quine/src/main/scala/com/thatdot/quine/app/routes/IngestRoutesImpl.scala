@@ -3,7 +3,6 @@ package com.thatdot.quine.app.routes
 import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.control.NoStackTrace
@@ -263,7 +262,7 @@ trait IngestRoutesImpl
             // in these cases, the ingest was not running/runnable
             case Completed | Failed | Terminated => previousStatus
           }
-        }(ExecutionContexts.parasitic)
+        }(ExecutionContext.parasitic)
 
         val terminationMessage: Future[Option[String]] = {
           // start terminating the ingest
@@ -340,7 +339,7 @@ trait IngestRoutesImpl
               ingest.restoredStatus = None; // FIXME not threadsafe
               stream2Info(ingest)
             }(graph.nodeDispatcherEC)
-            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContexts.parasitic)
+            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
         }
     }
 
@@ -354,14 +353,14 @@ trait IngestRoutesImpl
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { case (ingestName, namespaceParam) =>
     setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Close)
-      .map(Right(_))(ExecutionContexts.parasitic)
-      .recover(mkPauseOperationError("pause"))(ExecutionContexts.parasitic)
+      .map(Right(_))(ExecutionContext.parasitic)
+      .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
   }
 
   private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { case (ingestName, namespaceParam) =>
     setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Open)
-      .map(Right(_))(ExecutionContexts.parasitic)
-      .recover(mkPauseOperationError("resume"))(ExecutionContexts.parasitic)
+      .map(Right(_))(ExecutionContext.parasitic)
+      .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
   }
 
   final val ingestRoutes: Route = {

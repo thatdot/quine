@@ -1,13 +1,10 @@
 package com.thatdot.quine.app.routes
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.util.Timeout
-
-import io.circe.Json
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
@@ -103,7 +100,7 @@ trait DebugRoutesImpl
         case RestHalfEdge(typ, Undirected, to) =>
           graph.literalOps(namespaceId).addEdge(qid, to, typ, isDirected = false)
       }(implicitly, graph.nodeDispatcherEC)
-      propsF.flatMap(_ => edgesF)(ExecutionContexts.parasitic).map(_ => ())(ExecutionContexts.parasitic)
+      propsF.flatMap(_ => edgesF)(ExecutionContext.parasitic).map(_ => ())(ExecutionContext.parasitic)
   }
 
   private val debugDeleteRoute = debugOpsDelete.implementedByAsync {
@@ -142,7 +139,7 @@ trait DebugRoutesImpl
             graph.literalOps(namespaceFromParam(namespaceParam)).addEdge(other, qid, edgeType, isDirected = true)
         }
       }(implicitly, graph.nodeDispatcherEC)
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
   }
 
   private val debugEdgesDeleteRoute = debugOpsEdgeDelete.implementedByAsync { case (qid, namespaceParam, edges) =>
@@ -157,7 +154,7 @@ trait DebugRoutesImpl
             graph.literalOps(namespaceFromParam(namespaceParam)).removeEdge(other, qid, edgeType, isDirected = true)
         }
       }(implicitly, graph.nodeDispatcherEC)
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
   }
 
   private val debugHalfEdgesGetRoute = debugOpsHalfEdgesGet.implementedByAsync {

@@ -5,10 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{ConcurrentHashMap, ExecutionException}
 import java.{lang, util}
 
-import scala.collection.compat._
 import scala.collection.concurrent
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
@@ -164,7 +162,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         implicitly,
         shardDispatcherEC
       )
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
 
     /** Register a new standing query
       *
@@ -321,13 +319,13 @@ trait StandingQueryOpsGraph extends BaseGraph {
               relayAsk(SpaceTimeQuineId(qid, namespace, None), UpdateStandingQueriesWake(_))
             )
             .run()
-            .map(_ => ())(ExecutionContexts.parasitic)
+            .map(_ => ())(ExecutionContext.parasitic)
 
         case None =>
           enumerateAllNodeIds(namespace)
             .map(qid => relayTell(SpaceTimeQuineId(qid, namespace, None), UpdateStandingQueriesNoWake))
             .run()
-            .map(_ => ())(ExecutionContexts.parasitic)
+            .map(_ => ())(ExecutionContext.parasitic)
       }
     }
 

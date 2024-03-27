@@ -7,7 +7,6 @@ import scala.util.{Failure, Try}
 
 import org.apache.pekko.util.Timeout
 
-import cats.implicits._
 import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.jawn
 

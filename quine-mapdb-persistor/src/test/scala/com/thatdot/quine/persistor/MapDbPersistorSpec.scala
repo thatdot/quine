@@ -17,6 +17,6 @@ class MapDbPersistorSpec extends PersistenceAgentSpec {
       metricRegistry = new NoopMetricRegistry(),
       persistenceConfig = PersistenceConfig(),
       bloomFilterSize = None,
-      executionContexts = new FromSingleExecutionContext(ExecutionContext.parasitic)
+      ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic)
     )
 }

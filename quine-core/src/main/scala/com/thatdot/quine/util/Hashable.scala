@@ -4,9 +4,7 @@ import java.nio.ByteBuffer
 import java.time.{Duration, Instant, LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 import java.util.UUID
 
-import scala.collection.compat.immutable.ArraySeq
-import scala.collection.immutable.SortedMap
-import scala.language.higherKinds
+import scala.collection.immutable.{ArraySeq, SortedMap}
 import scala.reflect.ClassTag
 
 import com.google.common.hash.{HashFunction, Hasher}

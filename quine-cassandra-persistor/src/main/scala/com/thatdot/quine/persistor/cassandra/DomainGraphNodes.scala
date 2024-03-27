@@ -1,8 +1,7 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.ExecutionContexts
 import scala.compat.java8.FutureConverters._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 
@@ -11,7 +10,6 @@ import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
-import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support._
@@ -63,7 +61,7 @@ object DomainGraphNodesDefinition
       session
         .executeAsync(createTableStatement)
         .toScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContexts.parasitic)
+        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic)
     )
 
     createdSchema.flatMap(_ =>
@@ -71,7 +69,7 @@ object DomainGraphNodesDefinition
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
         prepare(session, readSettings)(selectAllStatement)
       ).mapN(new DomainGraphNodes(session, chunker, writeSettings, firstRowStatement, dropTableStatement, _, _, _))
-    )(ExecutionContexts.parasitic)
+    )(ExecutionContext.parasitic)
   }
 
   def create(

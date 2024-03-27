@@ -1,6 +1,5 @@
 package com.thatdot.quine.model
 
-import scala.collection.compat._
 import scala.collection.mutable
 
 /** NodeComponents is a kind of reciprocal structure to DomainGraphBranch. It is means to return results from the

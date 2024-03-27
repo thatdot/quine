@@ -2,7 +2,7 @@ package com.thatdot.quine.persistor.codecs
 
 import java.util.UUID
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 import com.typesafe.scalalogging.LazyLogging
@@ -12,7 +12,7 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
-import com.thatdot.quine.persistor.{BinaryFormat, NamespacedPersistenceAgent, PersistenceAgent}
+import com.thatdot.quine.persistor.{BinaryFormat, PersistenceAgent}
 
 /** The deserialization failed because a union (eg, a coproduct or enum) was tagged with an unknown type.
   *

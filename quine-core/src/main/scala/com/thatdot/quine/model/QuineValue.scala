@@ -9,7 +9,6 @@ import java.time.{
   ZoneOffset
 }
 
-import scala.collection.compat._
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.hashing.MurmurHash3
 

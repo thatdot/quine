@@ -1,6 +1,5 @@
 package com.thatdot.quine.util
 
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -29,6 +28,6 @@ object Retry {
     delay: FiniteDuration,
     scheduler: Scheduler
   )(ec: ExecutionContext): Future[T] =
-    until[Option[T]](attempt, _.isDefined, attempts, delay, scheduler)(ec).map(_.get)(ExecutionContexts.parasitic)
+    until[Option[T]](attempt, _.isDefined, attempts, delay, scheduler)(ec).map(_.get)(ExecutionContext.parasitic)
 
 }

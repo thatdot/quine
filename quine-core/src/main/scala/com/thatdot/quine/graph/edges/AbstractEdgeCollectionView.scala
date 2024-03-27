@@ -3,7 +3,6 @@ package com.thatdot.quine.graph.edges
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
-import scala.language.higherKinds
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer

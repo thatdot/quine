@@ -2,8 +2,7 @@ package com.thatdot.quine.graph
 
 import java.util.regex.Pattern
 
-import scala.collection.compat._
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 import scala.util.control.NoStackTrace
 

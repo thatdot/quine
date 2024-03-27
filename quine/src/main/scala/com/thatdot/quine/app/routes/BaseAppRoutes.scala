@@ -11,7 +11,7 @@ import scala.util.Using
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
-import org.apache.pekko.http.scaladsl.server.{Route, StandardRoute}
+import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout

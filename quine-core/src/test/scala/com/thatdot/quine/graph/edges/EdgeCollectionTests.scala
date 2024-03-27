@@ -1,8 +1,6 @@
 package com.thatdot.quine.graph.edges
 
-import scala.collection.compat._
 import scala.collection.mutable.LinkedHashSet
-import scala.language.higherKinds
 
 import org.scalacheck.Gen
 import org.scalactic.source.Position

@@ -13,9 +13,8 @@ import java.time.{
 import java.util.UUID
 import java.util.regex.Pattern
 
-import scala.collection.compat.immutable._
+import scala.collection.immutable.ArraySeq
 import scala.collection.mutable.{Map => MutableMap, Set => MutableSet}
-import scala.language.higherKinds
 
 import cats.data.NonEmptyList
 import org.scalacheck.Arbitrary.arbitrary

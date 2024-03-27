@@ -13,7 +13,7 @@ import scala.util.control.NonFatal
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.{Cancellable, Scheduler}
-import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
+import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegistry}
@@ -39,8 +39,8 @@ import com.thatdot.quine.persistor.codecs.{
   NodeChangeEventCodec,
   StandingQueryCodec
 }
+import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
-import com.thatdot.quine.util.{ComputeAndBlockingExecutionContexts, QuineDispatchers}
 
 /** Embedded persistence implementation based on MapDB
   *
@@ -76,7 +76,7 @@ final class MapDbPersistor(
   transactionCommitInterval: Option[FiniteDuration] = None,
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
   metricRegistry: MetricRegistry = new NoopMetricRegistry(),
-  executionContexts: ComputeAndBlockingExecutionContexts,
+  ExecutionContext: ComputeAndBlockingExecutionContext,
   scheduler: Scheduler
 ) extends PersistenceAgent {
 
@@ -85,7 +85,7 @@ final class MapDbPersistor(
   val nodeEventTotalSize: Counter =
     metricRegistry.counter(MetricRegistry.name("map-db-persistor", "journal-event-total-size"))
 
-  import executionContexts.{blockingDispatcherEC, nodeDispatcherEC}
+  import ExecutionContext.{blockingDispatcherEC, nodeDispatcherEC}
 
   // TODO: Consider: should the concurrencyScale parameter equal the thread pool size in `pekko.quine.persistor-blocking-dispatcher.thread-pool-executor.fixed-pool-size ?  Or a multiple of...?
   // TODO: don't hardcode magical values - config them

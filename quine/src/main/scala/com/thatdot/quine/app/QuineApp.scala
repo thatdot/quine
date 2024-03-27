@@ -3,8 +3,6 @@ package com.thatdot.quine.app
 import java.time.Instant
 import java.time.temporal.ChronoUnit.MILLIS
 
-import scala.collection.compat._
-import scala.compat.ExecutionContexts
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
@@ -15,7 +13,6 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
-import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
@@ -33,7 +30,6 @@ import com.thatdot.quine.graph.StandingQueryPattern.{
   MultipleValuesQueryPattern,
   QuinePatternQueryPattern
 }
-import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   GraphService,
   HostQuineMetrics,
@@ -47,7 +43,7 @@ import com.thatdot.quine.graph.{
   namespaceToString
 }
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PrimePersistor, Version}
+import com.thatdot.quine.persistor.{PrimePersistor, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.SwitchMode
@@ -240,7 +236,7 @@ final class QuineApp(graph: GraphService)
                 }
                 val updatedInnerMap = namespaceTargets + (queryName -> (sq.query.id -> outputsWithKillSwitches))
                 standingQueryOutputTargets += inNamespace -> updatedInnerMap
-                storeStandingQueries().map(_ => true)(ExecutionContexts.parasitic)
+                storeStandingQueries().map(_ => true)(ExecutionContext.parasitic)
               }
           }(graph.system.dispatcher)
         }
@@ -277,7 +273,7 @@ final class QuineApp(graph: GraphService)
         }(graph.system.dispatcher)
       }
       // must be implicit for cats sequence
-      implicit val applicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+      implicit val applicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContext.parasitic)
       cancelledSqState.sequence productL storeStandingQueries()
     }
   }
@@ -309,10 +305,10 @@ final class QuineApp(graph: GraphService)
           val updatedInnerMap = standingQueryOutputTargets(inNamespace) +
             (queryName -> (sqId -> (outputs + (outputName -> (sqResultOutput -> killSwitch)))))
           standingQueryOutputTargets += inNamespace -> updatedInnerMap
-          storeStandingQueries().map(_ => true)(ExecutionContexts.parasitic)
+          storeStandingQueries().map(_ => true)(ExecutionContext.parasitic)
         }
       // must be implicit for cats sequence
-      implicit val futureApplicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContexts.parasitic)
+      implicit val futureApplicative: Applicative[Future] = catsStdInstancesForFuture(ExecutionContext.parasitic)
       optionFut.sequence
     }
   }
@@ -338,7 +334,7 @@ final class QuineApp(graph: GraphService)
         standingQueryOutputTargets += inNamespace -> updatedInnerMap
         output
       }
-      storeStandingQueries().map(_ => outputOpt)(ExecutionContexts.parasitic)
+      storeStandingQueries().map(_ => outputOpt)(ExecutionContext.parasitic)
     }
   }
 
@@ -497,7 +493,7 @@ final class QuineApp(graph: GraphService)
             status <- stream.status(graph.materializer)
           } yield (name, IngestStreamWithStatus(stream.settings, Some(status)))
         }
-        .map(_.toMap)(ExecutionContexts.parasitic)
+        .map(_.toMap)(ExecutionContext.parasitic)
     }
 
   private def syncIngestStreamsMetaData(thisMemberId: Int): Future[Unit] = {
@@ -687,7 +683,7 @@ final class QuineApp(graph: GraphService)
           }
         )
       })
-      .map(_ => ())(ExecutionContexts.parasitic)
+      .map(_ => ())(ExecutionContext.parasitic)
   }
 }
 
@@ -740,8 +736,8 @@ object QuineApp {
     val metaDataKeys =
       List(SampleQueriesKey, QuickQueriesKey, NodeAppearancesKey, StandingQueryOutputsKey, IngestStreamsKey)
     Future.foldLeft(
-      metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)(ExecutionContexts.parasitic))
-    )(true)(_ && _)(ExecutionContexts.parasitic)
+      metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)(ExecutionContext.parasitic))
+    )(true)(_ && _)(ExecutionContext.parasitic)
   }
 
   import com.thatdot.quine._

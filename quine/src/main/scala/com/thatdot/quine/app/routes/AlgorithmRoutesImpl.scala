@@ -2,8 +2,7 @@ package com.thatdot.quine.app.routes
 
 import java.nio.file.{FileAlreadyExistsException, FileSystemException, Files, InvalidPathException, Paths}
 
-import scala.compat.ExecutionContexts
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -145,7 +144,7 @@ trait AlgorithmRoutesImpl
               ns,
               atTime
             )
-            .map(w => Right(w.acc))(ExecutionContexts.parasitic)
+            .map(w => Right(w.acc))(ExecutionContext.parasitic)
         )
       }
   }
@@ -159,5 +158,5 @@ trait AlgorithmRoutesImpl
     ifFound: => Future[Either[ClientErrors, A]]
   ): Future[Either[ClientErrors, Option[A]]] =
     if (!graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
-    else ifFound.map(_.map(Some(_)))(ExecutionContexts.parasitic)
+    else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
 }
