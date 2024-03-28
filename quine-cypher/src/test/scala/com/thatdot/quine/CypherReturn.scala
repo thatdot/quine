@@ -70,7 +70,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN x", cache = false))
       assert(
         compiled.query === Query.AdjustContext(
-          true,
+          dropExisting = true,
           Vector(XSym -> Expr.Variable(XSym)),
           Query.Return(
             QueryPrefixCompiled,
@@ -98,7 +98,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN x SKIP 2 LIMIT 2", cache = false))
       assert(
         compiled.query === Query.AdjustContext(
-          true,
+          dropExisting = true,
           Vector(XSym -> Expr.Variable(XSym)),
           Query.Return(
             QueryPrefixCompiled,
@@ -224,7 +224,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x", cache = false))
       assert(
         compiled.query === Query.AdjustContext(
-          true,
+          dropExisting = true,
           Vector(XSym -> Expr.Variable(XSym)),
           Query.Return(
             QueryPrefixCompiled,
@@ -252,7 +252,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN x ORDER BY x DESC", cache = false))
       assert(
         compiled.query === Query.AdjustContext(
-          true,
+          dropExisting = true,
           Vector(XSym -> Expr.Variable(XSym)),
           Query.Return(
             QueryPrefixCompiled,
@@ -285,7 +285,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       // a query uses ORDER BY
       assert(
         compiled.query === Query.AdjustContext(
-          true,
+          dropExisting = true,
           Vector(XSym -> Expr.Variable(XSym)),
           Query.Return(
             QueryPrefixCompiled,

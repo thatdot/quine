@@ -703,7 +703,7 @@ trait ArbitraryInstances {
       toExtract <- arbitrary[Seq[GraphQueryPattern.ReturnColumn]]
       filterCond <- arbitrary[Option[cypher.Expr]]
       toReturn <- arbitrary[Seq[(Symbol, cypher.Expr)]]
-    } yield GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, true)
+    } yield GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, distinct = true)
   )
   val arbNonDistinctGraphPattern: Arbitrary[GraphQueryPattern] = Arbitrary {
     arbDistinctGraphPattern.arbitrary.map(_.copy(distinct = false))

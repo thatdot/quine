@@ -103,7 +103,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       nodes = NonEmptyList.of(node1),
       edges = Seq.empty,
       startingPoint = node1.id,
-      toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
+      toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
       filterCond = None,
       toReturn = Nil,
       distinct = true
@@ -127,14 +127,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Linear pattern") {
     val linePattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node2.id, node3.id, true, Symbol("b"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node2.id, node3.id, isDirected = true, Symbol("b"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA, edgeB),
         startingPoint = node1.id,
-        toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -188,14 +188,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Explicitly rooted linear pattern") {
     val rootedPattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node2.id, node3.id, true, Symbol("b"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node2.id, node3.id, isDirected = true, Symbol("b"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA, edgeB),
         startingPoint = node2.id,
-        toExtract = Seq(ReturnColumn.Id(node2.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node2.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -248,18 +248,18 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Tree pattern") {
     val treePattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node1.id, node3.id, true, Symbol("b"))
-      val edgeC = EdgePattern(node2.id, node4.id, true, Symbol("c"))
-      val edgeD = EdgePattern(node2.id, node5.id, true, Symbol("d"))
-      val edgeE = EdgePattern(node2.id, node6.id, true, Symbol("e"))
-      val edgeF = EdgePattern(node3.id, node7.id, true, Symbol("f"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node1.id, node3.id, isDirected = true, Symbol("b"))
+      val edgeC = EdgePattern(node2.id, node4.id, isDirected = true, Symbol("c"))
+      val edgeD = EdgePattern(node2.id, node5.id, isDirected = true, Symbol("d"))
+      val edgeE = EdgePattern(node2.id, node6.id, isDirected = true, Symbol("e"))
+      val edgeF = EdgePattern(node3.id, node7.id, isDirected = true, Symbol("f"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF),
         startingPoint = node4.id,
-        toExtract = Seq(ReturnColumn.Id(node4.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node4.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -382,13 +382,13 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Disconnected pattern") {
     val disconnectedPattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3),
         edges = Seq(edgeA),
         startingPoint = node1.id,
-        toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -408,16 +408,16 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Diamond pattern") {
     val diamondPattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node2.id, node3.id, true, Symbol("b"))
-      val edgeC = EdgePattern(node4.id, node3.id, true, Symbol("c"))
-      val edgeD = EdgePattern(node1.id, node4.id, true, Symbol("d"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node2.id, node3.id, isDirected = true, Symbol("b"))
+      val edgeC = EdgePattern(node4.id, node3.id, isDirected = true, Symbol("c"))
+      val edgeD = EdgePattern(node1.id, node4.id, isDirected = true, Symbol("d"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3, node4),
         edges = Seq(edgeA, edgeB, edgeC, edgeD),
         startingPoint = node1.id,
-        toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -429,23 +429,23 @@ class GraphQueryPatternTest extends AnyFunSuite {
 
   test("Complex graph pattern") {
     val graphPattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node7.id, node1.id, true, Symbol("b"))
-      val edgeC = EdgePattern(node2.id, node7.id, false, Symbol("c"))
-      val edgeD = EdgePattern(node5.id, node8.id, true, Symbol("d"))
-      val edgeE = EdgePattern(node3.id, node5.id, true, Symbol("e"))
-      val edgeF = EdgePattern(node3.id, node9.id, false, Symbol("f"))
-      val edgeG = EdgePattern(node3.id, node4.id, true, Symbol("g"))
-      val edgeH = EdgePattern(node4.id, node2.id, true, Symbol("h"))
-      val edgeI = EdgePattern(node6.id, node8.id, true, Symbol("i"))
-      val edgeJ = EdgePattern(node7.id, node6.id, false, Symbol("j"))
-      val edgeK = EdgePattern(node1.id, node8.id, true, Symbol("k"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node7.id, node1.id, isDirected = true, Symbol("b"))
+      val edgeC = EdgePattern(node2.id, node7.id, isDirected = false, Symbol("c"))
+      val edgeD = EdgePattern(node5.id, node8.id, isDirected = true, Symbol("d"))
+      val edgeE = EdgePattern(node3.id, node5.id, isDirected = true, Symbol("e"))
+      val edgeF = EdgePattern(node3.id, node9.id, isDirected = false, Symbol("f"))
+      val edgeG = EdgePattern(node3.id, node4.id, isDirected = true, Symbol("g"))
+      val edgeH = EdgePattern(node4.id, node2.id, isDirected = true, Symbol("h"))
+      val edgeI = EdgePattern(node6.id, node8.id, isDirected = true, Symbol("i"))
+      val edgeJ = EdgePattern(node7.id, node6.id, isDirected = false, Symbol("j"))
+      val edgeK = EdgePattern(node1.id, node8.id, isDirected = true, Symbol("k"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7, node8, node9),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF, edgeG, edgeH, edgeI, edgeJ, edgeK),
         startingPoint = node1.id,
-        toExtract = Seq(ReturnColumn.Id(node1.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -458,18 +458,18 @@ class GraphQueryPatternTest extends AnyFunSuite {
   test("compiling a cypher GraphQueryPattern with ID constraint") {
 
     val treePattern = {
-      val edgeA = EdgePattern(node1.id, node2.id, true, Symbol("a"))
-      val edgeB = EdgePattern(node1.id, node3.id, true, Symbol("b"))
-      val edgeC = EdgePattern(node2.id, node4.id, true, Symbol("c"))
-      val edgeD = EdgePattern(node2.id, node5.id, true, Symbol("d"))
-      val edgeE = EdgePattern(node2.id, node6.id, true, Symbol("e"))
-      val edgeF = EdgePattern(node3.id, node7.id, true, Symbol("f"))
+      val edgeA = EdgePattern(node1.id, node2.id, isDirected = true, Symbol("a"))
+      val edgeB = EdgePattern(node1.id, node3.id, isDirected = true, Symbol("b"))
+      val edgeC = EdgePattern(node2.id, node4.id, isDirected = true, Symbol("c"))
+      val edgeD = EdgePattern(node2.id, node5.id, isDirected = true, Symbol("d"))
+      val edgeE = EdgePattern(node2.id, node6.id, isDirected = true, Symbol("e"))
+      val edgeF = EdgePattern(node3.id, node7.id, isDirected = true, Symbol("f"))
 
       GraphQueryPattern(
         nodes = NonEmptyList.of(node1, node2, node3, node4, node5, node6, node7),
         edges = Seq(edgeA, edgeB, edgeC, edgeD, edgeE, edgeF),
         startingPoint = node4.id,
-        toExtract = Seq(ReturnColumn.Id(node4.id, false, Symbol("id"))),
+        toExtract = Seq(ReturnColumn.Id(node4.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
         distinct = true
@@ -492,11 +492,11 @@ class GraphQueryPatternTest extends AnyFunSuite {
               cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get)
             )
           ),
-          MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), false),
-          true,
+          MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), formatAsString = false),
+          dropExisting = true,
           List()
         ),
-        MultipleValuesStandingQuery.LocalId(Symbol("id"), false),
+        MultipleValuesStandingQuery.LocalId(Symbol("id"), formatAsString = false),
         MultipleValuesStandingQuery.SubscribeAcrossEdge(
           Some(Symbol("c")),
           Some(EdgeDirection.Incoming),
@@ -570,8 +570,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
                       cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get)
                     )
                   ),
-                  MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), false),
-                  true,
+                  MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), formatAsString = false),
+                  dropExisting = true,
                   List()
                 )
               ),
@@ -674,8 +674,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
       NodePatternId(0),
       Seq(
         ReturnColumn.Property(NodePatternId(0), Symbol("name"), Symbol("n.name")),
-        ReturnColumn.Id(NodePatternId(0), false, Symbol("id(n)")),
-        ReturnColumn.Id(NodePatternId(0), true, Symbol("strId(n)"))
+        ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)")),
+        ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))
       ),
       None,
       Nil,

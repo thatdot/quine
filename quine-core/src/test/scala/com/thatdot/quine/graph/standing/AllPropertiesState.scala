@@ -53,7 +53,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
     }
     val resultId1 = withClue("Adding a single property reports a new result and cancels the old one") {
       val events = Seq(prop1).map(makeSetEvent)
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
@@ -64,7 +64,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
     }
     val resultId2 = withClue("Adding multiple properties reports a new result and cancels the old one") {
       val events = Seq(prop2, prop3, prop4, prop5, prop6).map(makeSetEvent)
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1, prop2, prop3, prop4, prop5, prop6)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
@@ -75,7 +75,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
     }
     val resultId3 = withClue("Changing multiple properties reports a new result and cancels the old one") {
       val events = Seq(prop1ButFunky, prop2ButFunky).map(makeSetEvent)
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1ButFunky, prop2ButFunky, prop3, prop4, prop5, prop6)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
@@ -86,7 +86,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
     }
     val resultId4 = withClue("Removing a single property reports a new result and cancels the old one") {
       val events = Seq(prop6).map(makeDeleteEvent)
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1ButFunky, prop2ButFunky, prop3, prop4, prop5)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
@@ -97,7 +97,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
     }
     val resultId5 = withClue("Removing multiple properties reports a new result and cancels the old one") {
       val events = Seq(prop1ButFunky, prop3).map(makeDeleteEvent)
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop2ButFunky, prop4, prop5)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
@@ -110,7 +110,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
       "Removing a single property and changing an existing property reports a new result and cancels the old one"
     ) {
       val events = Seq(makeDeleteEvent(prop4), makeSetEvent(prop2))
-      state.reportNodeEvents(events, true) { effects =>
+      state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
         val (resId, result) = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop2, prop5)
         assert(result == QueryContext(Map(query.aliasedAs -> expected)))
