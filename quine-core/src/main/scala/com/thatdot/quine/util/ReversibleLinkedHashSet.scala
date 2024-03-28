@@ -1,9 +1,8 @@
 package com.thatdot.quine.util
 
+import scala.annotation.nowarn
 import scala.collection.mutable.{Growable, GrowableBuilder, LinkedHashSet, SetOps}
 import scala.collection.{IterableFactory, IterableFactoryDefaults, Iterator, StrictOptimizedIterableOps}
-
-import annotation.nowarn
 
 /** Subclass LinkedHashSet to be able to iterate in reverse order.
   * Subclassing is necessary, as `lastEntry` is marked protected.
