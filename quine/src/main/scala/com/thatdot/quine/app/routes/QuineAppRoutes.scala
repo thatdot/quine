@@ -2,6 +2,7 @@ package com.thatdot.quine.app.routes
 
 import scala.util.{Failure, Success, Try}
 
+import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes, Uri}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
@@ -12,6 +13,7 @@ import io.circe.Json
 import org.webjars.WebJarAssetLocator
 
 import com.thatdot.quine.app.BuildInfo
+import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
@@ -44,6 +46,10 @@ class QuineAppRoutes(
     with exts.ServerEntitiesWithExamples
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazyLogging {
+
+  implicit val system: ActorSystem = graph.system
+
+  val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
 
   val version = BuildInfo.version
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
@@ -110,6 +116,7 @@ class QuineAppRoutes(
     namespacesUnsupportedRoute ~
     queryUiRoutes ~
     queryProtocolWS ~
+    webSocketQuinePatternServer.languageServerWebsocketRoute ~
     queryUiConfigurationRoutes ~
     debugRoutes ~
     algorithmRoutes ~
