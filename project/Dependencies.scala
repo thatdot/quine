@@ -13,7 +13,7 @@ object Dependencies {
   val awsSdkv1V = "1.12.670"
   val betterMonadicForV = "0.3.1"
   val bootstrapV = "5.3.3"
-  val cassandraClientV = "4.15.0"
+  val cassandraClientV = "4.18.0"
   val catsV = "2.10.0"
   val catsEffectV = "3.5.3"
   val commonsCodecV = "1.16.1"

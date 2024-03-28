@@ -70,7 +70,6 @@ lazy val `quine-mapdb-persistor`: Project = project
      * bad JAR and explicitly pull in the good one.
      */
     libraryDependencies ++= Seq(
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       ("org.mapdb" % "mapdb" % mapDbV).exclude("net.jpountz.lz4", "lz4"),
       "org.lz4" % "lz4-java" % lz4JavaV
     )
@@ -82,7 +81,6 @@ lazy val `quine-rocksdb-persistor`: Project = project
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "org.rocksdb" % "rocksdbjni" % rocksdbV
     )
   )
@@ -96,10 +94,13 @@ lazy val `quine-cassandra-persistor`: Project = project
   .enablePlugins(spray.boilerplate.BoilerplatePlugin)
   .settings(
     libraryDependencies ++= Seq(
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "org.typelevel" %% "cats-core" % catsV,
-      "com.datastax.oss" % "java-driver-query-builder" % cassandraClientV exclude ("com.github.stephenc.jcip", "jcip-annotations"),
-      "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.github.stephenc.jcip", "jcip-annotations"),
+      "org.apache.cassandra" % "java-driver-query-builder" % cassandraClientV,
+      // The org name for the Cassandra java-driver was changed from com.datastax.oss to org.apache.cassandra
+      // The sigv4-auth plugin specifies a dep on com.datastax.oss, SBT doesn't know that our org.apache.cassandra
+      // dep is supposed to be the replacement for that, and includes both on the classpath, which then conflict
+      // at the sbt-assembly step (because they both have the same package names internally).
+      "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
       "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest
     )
