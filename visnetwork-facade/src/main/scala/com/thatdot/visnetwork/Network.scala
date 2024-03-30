@@ -53,7 +53,6 @@ class Network(container: dom.HTMLElement, data: Data, options: Network.Options) 
   def deleteSelected(): Unit = js.native
   @nowarn
   def getPositions(nodeIds: js.Array[IdType] = js.native): js.Dictionary[Position] = js.native
-  @nowarn
   def getPositions(nodeId: IdType): Position = js.native
   def storePositions(): Unit = js.native
   def moveNode(nodeId: IdType, x: Double, y: Double): Unit = js.native
@@ -87,7 +86,6 @@ class Network(container: dom.HTMLElement, data: Data, options: Network.Options) 
   def focus(nodeId: IdType, options: FocusOptions = js.native): Unit = js.native
   def moveTo(options: MoveToOptions): Unit = js.native
   def releaseNode(): Unit = js.native
-  @nowarn
   def getOptionsFromConfigurator(): js.Dynamic = js.native
 }
 object Network {

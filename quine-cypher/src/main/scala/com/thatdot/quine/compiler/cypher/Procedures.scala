@@ -98,7 +98,7 @@ case object resolveCalls extends StatementRewriter {
     RecentNodes,
     RecentNodeIds,
     JsonLoad,
-    IncrementCounter: @nowarn, // TODO remove on breaking change
+    IncrementCounter, // TODO remove on breaking change
     AddToInt,
     AddToFloat,
     InsertToSet,
@@ -1234,7 +1234,7 @@ object CypherDoCase extends UserDefinedProcedure {
         case _ =>
           throw CypherException.Runtime(
             s"`$name` expects each condition to be followed by a query, " +
-            "but the list of conditions and queries has odd length ${conditionals.length}"
+            s"but the list of conditions and queries has odd length ${conditionals.length}"
           )
       }
       .collectFirst { case (true, query) => query }

@@ -463,7 +463,6 @@ object StandingQueryPatterns extends LazyLogging {
   def partitionConstraints(
     whereOpt: Option[ast.Where]
   )(implicit
-    source: SourceText,
     idProvider: QuineIdProvider
   ): (
     mutable.Map[expressions.LogicalVariable, Map[Symbol, PropertyValuePattern]],

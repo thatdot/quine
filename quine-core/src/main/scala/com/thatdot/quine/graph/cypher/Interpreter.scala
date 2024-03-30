@@ -515,8 +515,6 @@ trait OnNodeInterpreter
   final private[cypher] def interpretGetDegree(
     query: GetDegree,
     context: QueryContext
-  )(implicit
-    parameters: Parameters
   ): Source[QueryContext, _] = {
     val degree: Int = query.edgeName match {
       case None => edges.matching(query.direction).size
@@ -627,8 +625,6 @@ trait OnNodeInterpreter
   final private[quine] def interpretSetLabels(
     query: SetLabels,
     context: QueryContext
-  )(implicit
-    parameters: Parameters
   ): Source[QueryContext, _] = {
     // get current label value
     val currentLabelValue = getLabels() match {
@@ -733,15 +729,11 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
   final private[quine] def interpretEmpty(
     query: Empty,
     context: QueryContext
-  )(implicit
-    parameters: Parameters
   ): Source[QueryContext, _] = Source.empty
 
   final private[quine] def interpretUnit(
     query: Unit,
     context: QueryContext
-  )(implicit
-    parameters: Parameters
   ): Source[QueryContext, _] = Source.single(context)
 
   final private[quine] def interpretLoadCSV(

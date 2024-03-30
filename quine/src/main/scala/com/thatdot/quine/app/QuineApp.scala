@@ -554,10 +554,10 @@ final class QuineApp(graph: GraphService)
       _ <- stopAllIngestStreams() // ... but don't update what is saved to disk
     } yield ()
 
-  def restoreNonDefaultNamespacesFromMetaData(implicit ec: ExecutionContext, timeout: Timeout): Future[Unit] =
+  def restoreNonDefaultNamespacesFromMetaData(implicit ec: ExecutionContext): Future[Unit] =
     getOrDefaultGlobalMetaData(NonDefaultNamespacesKey, List.empty[String])
       .flatMap { nss =>
-        Future.traverse(nss)(n => createNamespace(namespaceFromString(n), shouldWriteToPersistor = false)(timeout))
+        Future.traverse(nss)(n => createNamespace(namespaceFromString(n), shouldWriteToPersistor = false))
       }
       .map(rs => require(rs.forall(identity), "Some namespaces could not be restored from persistence."))
 
@@ -758,8 +758,6 @@ object QuineApp {
     startTime: Instant,
     bufferSize: Int,
     metrics: HostQuineMetrics
-  )(implicit
-    idProvider: QuineIdProvider
   ): RegisteredStandingQuery = {
     val mode = internal.query match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId

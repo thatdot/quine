@@ -32,7 +32,7 @@ object QuineSettings {
       "-deprecation",
       "-release",
       "11",
-      "-Xlint:-byname-implicit,-unused,-missing-interpolator,_",
+      "-Xlint:_,-byname-implicit",
       "-Wdead-code",
       "-Wnumeric-widen",
       "-Wvalue-discard",

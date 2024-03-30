@@ -163,7 +163,7 @@ object Main extends App with LazyLogging {
   val ec: ExecutionContext = graph.shardDispatcherEC
   val quineApp = new QuineApp(graph)
 
-  quineApp.restoreNonDefaultNamespacesFromMetaData(ec, timeout)
+  quineApp.restoreNonDefaultNamespacesFromMetaData(ec)
 
   val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
   Await.result(loadDataFut, timeout.duration * 2)

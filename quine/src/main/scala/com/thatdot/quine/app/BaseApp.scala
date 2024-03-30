@@ -5,8 +5,6 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.concurrent.Future
 import scala.util.{Failure, Try}
 
-import org.apache.pekko.util.Timeout
-
 import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.jawn
 
@@ -185,18 +183,15 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param shouldWriteToPersistor True for all individual runtime operations. False during startup while rehydrating.
     * @return Future status according to persistence. Boolean indicates whether a chance was made.
     */
-  def createNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true)(implicit
-    timeout: Timeout
-  ): Future[Boolean] = Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+  def createNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true): Future[Boolean] =
+    Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
 
   /** Delete an existing namespace and all the data in it.
     * @param namespace the name of the new namespace to be deleted
-    * @param shouldWriteToPersistor True for all individual runtime operations. False during startup while rehydrating.
     * @return Future status according to persistence. Boolean indicates whether a chance was made.
     */
-  def deleteNamespace(namespace: NamespaceId, shouldWriteToPersistor: Boolean = true)(implicit
-    timeout: Timeout
-  ): Future[Boolean] = Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
+  def deleteNamespace(namespace: NamespaceId): Future[Boolean] =
+    Future.failed(new UnsupportedOperationException(s"Namespace management is not supported."))
 
   /** Reads the local cache of available namespaces. */
   def getNamespaces: collection.Set[NamespaceId] = graph.getNamespaces

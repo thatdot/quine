@@ -119,7 +119,7 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     thenCheck(effects)
   }
 
-  def shutdown[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
+  def shutdown[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A): A = {
     sqState.onShutdown(effects)
     thenCheck(effects)
   }

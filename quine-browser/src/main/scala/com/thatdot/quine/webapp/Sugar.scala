@@ -29,16 +29,11 @@ trait SugarDate extends js.Object {
 
   /** @see https://github.com/andrewplummer/Sugar/blob/3ca57818332473b601434001ac1445552d7753ff/lib/date.js#L2910
     */
-  @nowarn
   def create(): js.Date = js.native
-  @nowarn
   def create(d: String | Byte | Short | Int | Float | Double | js.Date): js.Date = js.native
-  @nowarn
   def create(options: DateCreateOptions): js.Date = js.native
-  @nowarn
   def create(d: String | Byte | Short | Int | Float | Double | js.Date, options: DateCreateOptions): js.Date = js.native
 
-  @nowarn
   def isValid(d: js.Date): Boolean = js.native
 }
 

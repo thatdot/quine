@@ -6,8 +6,6 @@ import java.net.InetSocketAddress
 import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-import org.apache.pekko.actor.ActorSystem
-
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
@@ -29,7 +27,7 @@ object PersistenceAgentType extends PureconfigInstances {
 
     def bloomFilterSize = None
 
-    def persistor(persistenceConfig: PersistenceConfig)(implicit system: ActorSystem): NamespacedPersistenceAgent =
+    def persistor(persistenceConfig: PersistenceConfig): NamespacedPersistenceAgent =
       new EmptyPersistor(persistenceConfig)
   }
 
