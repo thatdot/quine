@@ -35,9 +35,6 @@ object Dependencies {
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
   val kafkaClientsV = "3.6.1"
   val kindProjectorV = "0.13.3"
-  // kotlin-stdlib version explicitly specified is as close as possible to the version included in mapdb
-  // 3.0.10 [[mapDbV]], but with a fix for CVE-2022-24329
-  val kotlinStdlibV = "1.9.22"
   val logbackConfigV = "0.4.0"
   val logbackV = "1.5.3"
   val logstashLogbackV = "7.4"

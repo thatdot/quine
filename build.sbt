@@ -281,8 +281,6 @@ lazy val `quine`: Project = project
       "org.apache.pekko" %% "pekko-http-xml" % pekkoHttpV,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test,
       "org.endpoints4s" %% "pekko-http-server" % endpoints4sHttpServerV,
-      "org.jetbrains.kotlin" % "kotlin-stdlib" % kotlinStdlibV,
-      "org.jetbrains.kotlin" % "kotlin-stdlib-jdk8" % kotlinStdlibV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,
