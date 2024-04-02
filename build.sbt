@@ -253,7 +253,7 @@ lazy val `quine`: Project = project
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.google.guava" % "guava" % guavaV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
-      "commons-io" % "commons-io" % commonsIoV,
+      //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.3",
       "io.circe" %% "circe-yaml-v12" % "0.15.1",
