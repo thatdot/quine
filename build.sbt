@@ -275,15 +275,14 @@ lazy val `quine`: Project = project
       "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sse" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-text" % pekkoConnectorsV,
-      // pekko-http-xml is not a direct dep, but pulled in transitively by connector modules above.
-      // All pekko-http module version numbers need to match exactly, or else it
-      // throws at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
+      // pekko-http-xml is not a direct dep, but an older version is pulled in transitively by
+      // pekko-connectors-s3 above. All pekko-http module version numbers need to match exactly, or else it throws
+      // at startup: "java.lang.IllegalStateException: Detected possible incompatible versions on the classpath."
       "org.apache.pekko" %% "pekko-http-xml" % pekkoHttpV,
       "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test,
       "org.endpoints4s" %% "pekko-http-server" % endpoints4sHttpServerV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
-      "org.snakeyaml" % "snakeyaml-engine" % snakeYamlV,
       // WebJars (javascript dependencies masquerading as JARs)
       "org.webjars" % "bootstrap" % bootstrapV,
       "org.webjars" % "ionicons" % ioniconsV,
