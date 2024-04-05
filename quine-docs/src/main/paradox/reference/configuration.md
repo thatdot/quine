@@ -10,15 +10,23 @@ properties (passed as command-line options) or via a
 format that is very flexible and human-readable. The reference config below is in HOCON format.
 
 ```bash
+
+# Example of setting configuration via configuration file
+java \
+  -Dconfig.file=quine.conf \
+  -jar quine.jar
+
 # Example of overriding configuration via system properties
 java \
   -Dquine.webserver.port=9000 \
   -Dquine.id.type=uuid-3 \
   -jar quine.jar
 
-# Example of overriding configuration via configuration file
+# Example of overriding configuration via environment variables
+CONFIG_FORCE_quine_webserver_port=9000 \
+CONFIG_FORCE_quine_id_type=uuid-5 \
 java \
-  -Dconfig.file=quine.conf \
+  -Dconfig.override_with_env_vars=true \
   -jar quine.jar
 ```
 
