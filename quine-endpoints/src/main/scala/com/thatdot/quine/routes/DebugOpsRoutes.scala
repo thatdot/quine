@@ -22,7 +22,7 @@ final case class LiteralNode[Id](
   @docs(
     """Properties on the node; note that values are represented as closely as possible
                                       |to how they would be emitted by
-                                      |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)
+                                      |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post)
                                       |""".stripMargin.replace('\n', ' ').trim
   )
   properties: Map[String, Json],
@@ -66,7 +66,7 @@ trait DebugOpsRoutes
       |Quine graph state.
       |
       |For querying from an automated system, use [one of the language-specific interfaces]""".stripMargin
-      .+("(https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post)")
+      .+("(https://quine.io/reference/rest-api#/paths/api-v1-query-cypher/post)")
 
   /** Schema to be used for QuineValues -- this is specifically left explicit, as `Json` is too generic a type to have
     * a useful implicit schema around for.
@@ -176,7 +176,7 @@ trait DebugOpsRoutes
                                 |Any new properties or edges will be appended to existing values.
                                 |Properties must be specified as JSON values, the format of which should match
                                 |how the same values would be emitted by
-                                |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
+                                |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).
                                 |""".stripMargin.trim + DebugOpsDisclaimer))
         .withTags(List(debugOpsTag))
     )
@@ -267,7 +267,7 @@ trait DebugOpsRoutes
           Some(
             """Retrieve a single property from the node; note that values are represented as
               |closely as possible to how they would be emitted by
-              |[the cypher query endpoint](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-query-cypher/post).
+              |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).
               |""".stripMargin.replace('\n', ' ').trim + DebugOpsDisclaimer
           )
         )
