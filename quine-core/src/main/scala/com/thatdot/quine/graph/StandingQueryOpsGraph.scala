@@ -156,7 +156,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         }
       }
 
-    /** Complete all standing query streams (since the graph is shutting down */
+    /** Complete all standing query streams (since the graph is shutting down) */
     def shutdownStandingQueries(): Future[Unit] = Future
       .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.terminateOutputQueue())(
         implicitly,

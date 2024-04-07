@@ -18,6 +18,8 @@ final class LocalShardRef(
   val shardId: Int,
   nodesMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, NodeState]]
 ) extends ShardRef {
+  val isLocal: Boolean = true
+
   val quineRef: WrappedActorRef = WrappedActorRef(localRef)
 
   override def toString: String = s"LocalShardRef($localRef)"

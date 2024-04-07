@@ -12,4 +12,7 @@ abstract class ShardRef {
 
   /** ID of the shard (unique within the logical graph) */
   def shardId: Int
+
+  /** Whether this is a local (true) or remote (false) ShardRef */
+  def isLocal: Boolean
 }

@@ -595,9 +595,10 @@ final private[quine] class GraphShardActor(
 
     case msg @ InitiateShardShutdown(_) =>
       val remaining = requestShutdown() // Reports the count of live actors remaining
-      if (remaining.remainingNodeActorCount < 10 && remaining.remainingNodeActorCount > 0)
+      if (remaining.remainingNodeActorCount > 0)
         log.info(
-          s"Shard #${shardId} has ${remaining.remainingNodeActorCount} node(s) awake: ${namespacedNodes.mkString(", ")}"
+          s"Shard #${shardId} has ${remaining.remainingNodeActorCount} node(s) awake. Sample of awake nodes: " +
+          s"${namespacedNodes.take(5).mkString(", ")}"
         )
       msg ?! remaining
 

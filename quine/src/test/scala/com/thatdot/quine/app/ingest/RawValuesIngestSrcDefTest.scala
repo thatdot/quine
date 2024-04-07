@@ -30,7 +30,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   implicit val graph: GraphService = IngestTestGraph.makeGraph()
   implicit val system: ActorSystem = graph.system
 
-  override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
+  override def afterAll(): Unit = Await.result(graph.shutdown(), 10.seconds)
 
   /** An ingest class that accepts data from a piped input stream
     * so that bytes can be directly written in tests.
