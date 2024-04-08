@@ -18,7 +18,7 @@ import io.circe
 import io.circe.{Decoder, Encoder}
 
 import com.thatdot.quine.graph.cypher.CypherException
-import com.thatdot.quine.graph.defaultNamespaceId
+import com.thatdot.quine.graph.{GraphNotReadyException, defaultNamespaceId}
 import com.thatdot.quine.gremlin.QuineGremlinException
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.{
@@ -69,7 +69,6 @@ trait WebSocketQueryProtocolServer
 
   /** Protocol flow
     *
-    * @param graph Graph on which to run queries
     * @return a flow which materializes into the map of running queries
     */
   val queryProtocol: Flow[ws.Message, ws.Message, concurrent.Map[Int, RunningQuery]] = {
@@ -175,6 +174,7 @@ trait WebSocketQueryProtocolServer
     throwable match {
       case qge: QuineGremlinException => qge.pretty
       case qce: CypherException => qce.pretty
+      case gnr: GraphNotReadyException => gnr.getMessage
       case other =>
         logger.error("Query failed", other)
         other.toString
@@ -191,7 +191,8 @@ trait WebSocketQueryProtocolServer
     message: ClientMessage,
     queries: concurrent.Map[Int, RunningQuery],
     sink: Sink[ServerMessage[Id], NotUsed]
-  ): ServerResponseMessage =
+  ): ServerResponseMessage = {
+    graph.requiredGraphIsReady()
     message match {
       case run: RunQuery =>
         // Batch up results according to the user-specified time and batch size
@@ -205,7 +206,7 @@ trait WebSocketQueryProtocolServer
               input.groupedWithin(batchOpt.getOrElse(Int.MaxValue), maxMillis.millis)
           }
         val atTime = run.atTime.map(Milliseconds.apply)
-        val namespace = defaultNamespaceId
+        val namespace = defaultNamespaceId // TODO: allow access to non-default namespaces
         // Depending on the sort of query and query language, build up different server messages
         val (results, isReadOnly, canContainAllNodeScan, columns): (
           Source[ServerMessage[Id], UniqueKillSwitch],
@@ -313,6 +314,7 @@ trait WebSocketQueryProtocolServer
             MessageOk
         }
     }
+  }
 
   final val queryProtocolWS: Route =
     query.directive(_ => handleWebSocketMessages(queryProtocol.named("ui-query-protocol-websocket")))

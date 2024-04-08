@@ -10,7 +10,7 @@ class GraphNotReadyException extends IllegalStateException() {
   val atTime: Milliseconds = Milliseconds.currentTime()
 
   override def getMessage: String =
-    s"Graph not ready at time $atTime"
+    s"Graph not ready at time: ${atTime.millis}"
 }
 
 class ShardNotAvailableException(msg: String) extends NoSuchElementException(msg)

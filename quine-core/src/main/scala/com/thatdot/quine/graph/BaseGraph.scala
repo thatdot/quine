@@ -153,7 +153,7 @@ trait BaseGraph extends StrictLogging {
     resultHandler: ResultHandler[Resp]
   ): Future[Resp]
 
-  /** @return whether the graph is in an operational state */
+  /** @return whether the graph is in an operational state and ready to receive input like ingest, API calls, queries */
   def isReady: Boolean
 
   /** Require the graph is ready and throw an exception if it isn't */
@@ -162,6 +162,11 @@ trait BaseGraph extends StrictLogging {
     if (!isReady) {
       throw new GraphNotReadyException()
     }
+
+  /** Run code in the provided Future if the graphis ready, or short-circuit and return a failed Future immediately. */
+  def requiredGraphIsReadyFuture[A](f: => Future[A]): Future[A] =
+    if (isReady) f
+    else Future.failed(new GraphNotReadyException())
 
   /** Controlled shutdown of the graph
     *
@@ -213,8 +218,7 @@ trait BaseGraph extends StrictLogging {
   /** Uses the appropriate persistor method (journals or snapshot) to enumerate all node IDs.
     * Augments the list with in-memory nodes that may not yet have reached the persistor yet.
     */
-  def enumerateAllNodeIds(namespace: NamespaceId): Source[QuineId, NotUsed] = {
-    requiredGraphIsReady()
+  def enumerateAllNodeIds(namespace: NamespaceId): Source[QuineId, NotUsed] =
     if (
       !namespacePersistor.persistenceConfig.journalEnabled ||
       WrappedPersistenceAgent.unwrap(namespacePersistor.getDefault).isInstanceOf[EmptyPersistor]
@@ -250,7 +254,6 @@ trait BaseGraph extends StrictLogging {
         .fold(Source.empty[QuineId])(_.enumerateJournalNodeIds())
         .named("all-node-scan-journal-based")
     }
-  }
 
   /** Determines if the node by its [[QuineId]] belongs to this [[BaseGraph]].
     *
@@ -271,7 +274,6 @@ trait BaseGraph extends StrictLogging {
     namespace: NamespaceId,
     atTime: Option[Milliseconds] = None
   )(implicit timeout: Timeout): Future[Set[QuineId]] = {
-    requiredGraphIsReady()
     val shardAskSizes: List[Int] = {
       val n = shards.size
       val quot = limit / n
@@ -335,7 +337,6 @@ trait BaseGraph extends StrictLogging {
   /** Request that a node go to sleep by sending a message to the node's shard.
     */
   def requestNodeSleep(namespace: NamespaceId, quineId: QuineId)(implicit timeout: Timeout): Future[Unit] = {
-    requiredGraphIsReady()
     val shard = shardFromNode(quineId)
     relayAsk(shard.quineRef, RequestNodeSleep(SpaceTimeQuineId(quineId, namespace, None), _))
       .map(_ => ())(shardDispatcherEC)

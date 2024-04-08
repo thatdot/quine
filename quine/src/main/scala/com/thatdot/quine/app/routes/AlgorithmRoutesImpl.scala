@@ -52,6 +52,7 @@ trait AlgorithmRoutesImpl
           parallelism,
           saveLocation
         ) =>
+      graph.requiredGraphIsReady()
       val namespaceId = namespaceFromParam(namespaceParam)
       if (!graph.getNamespaces.contains(namespaceId)) Right(None)
       else {
@@ -131,6 +132,7 @@ trait AlgorithmRoutesImpl
       if (errors.isLeft) Future.successful[Either[Invalid, Option[List[String]]]](errors)
       else {
         val ns = namespaceFromParam(namespaceParam)
+        graph.requiredGraphIsReady()
         ifNamespaceFound(ns)(
           graph.algorithms
             .randomWalk(
@@ -149,10 +151,9 @@ trait AlgorithmRoutesImpl
       }
   }
 
-  final val algorithmRoutes: Route = {
+  final val algorithmRoutes: Route =
     algorithmSaveRandomWalksRoute ~
     algorithmRandomWalkRoute
-  }
 
   final private def ifNamespaceFound[A](namespaceId: NamespaceId)(
     ifFound: => Future[Either[ClientErrors, A]]

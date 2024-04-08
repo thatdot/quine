@@ -76,49 +76,60 @@ trait StandingQueryRoutesImpl
     }
 
   private val standingIssueRoute = standingIssue.implementedByAsync { case (name, namespaceParam, query) =>
-    try quineApp
-      .addStandingQuery(name, namespaceFromParam(namespaceParam), query)
-      .map {
-        case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
-        case true => Right(Some(()))
-      }(graph.nodeDispatcherEC)
-      .recoverWith { case _: NamespaceNotFoundException =>
-        Future.successful(Right(None))
-      }(graph.nodeDispatcherEC)
-    catch {
-      case iqp: InvalidQueryPattern => Future.successful(Left(endpoints4s.Invalid(iqp.message)))
-      case cypherException: CypherException => Future.successful(Left(endpoints4s.Invalid(cypherException.pretty)))
+    graph.requiredGraphIsReadyFuture {
+      try quineApp
+        .addStandingQuery(name, namespaceFromParam(namespaceParam), query)
+        .map {
+          case false => Left(endpoints4s.Invalid(s"There is already a standing query named '$name'"))
+          case true => Right(Some(()))
+        }(graph.nodeDispatcherEC)
+        .recoverWith { case _: NamespaceNotFoundException =>
+          Future.successful(Right(None))
+        }(graph.nodeDispatcherEC)
+      catch {
+        case iqp: InvalidQueryPattern => Future.successful(Left(endpoints4s.Invalid(iqp.message)))
+        case cypherException: CypherException => Future.successful(Left(endpoints4s.Invalid(cypherException.pretty)))
+      }
     }
   }
 
   private val standingRemoveOutRoute = standingRemoveOut.implementedByAsync { case (name, outputName, namespaceParam) =>
-    quineApp.removeStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam))
+    graph.requiredGraphIsReadyFuture {
+      quineApp.removeStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam))
+    }
   }
 
   private val standingCancelRoute = standingCancel.implementedByAsync { case (name: String, namespaceParam) =>
-    quineApp.cancelStandingQuery(name, namespaceFromParam(namespaceParam))
+    graph.requiredGraphIsReadyFuture {
+      quineApp.cancelStandingQuery(name, namespaceFromParam(namespaceParam))
+    }
   }
 
   private val standingGetRoute = standingGet.implementedByAsync { case (queryName, namespaceParam) =>
-    quineApp.getStandingQuery(queryName, namespaceFromParam(namespaceParam))
+    graph.requiredGraphIsReadyFuture {
+      quineApp.getStandingQuery(queryName, namespaceFromParam(namespaceParam))
+    }
   }
 
   private val standingAddOutRoute = standingAddOut.implementedByAsync {
-
     case (name, outputName, namespaceParam, sqResultOutput) =>
-      validateOutputDef(sqResultOutput) match {
-        case Some(errors) =>
-          Future.successful(Some(Left(Invalid(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}"))))
-
-        case None =>
-          quineApp
-            .addStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam), sqResultOutput)
-            .map {
-              _.map {
-                case false => Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
-                case true => Right(())
-              }
-            }(graph.shardDispatcherEC)
+      graph.requiredGraphIsReadyFuture {
+        validateOutputDef(sqResultOutput) match {
+          case Some(errors) =>
+            Future.successful(
+              Some(Left(Invalid(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
+            )
+          case None =>
+            quineApp
+              .addStandingQueryOutput(name, outputName, namespaceFromParam(namespaceParam), sqResultOutput)
+              .map {
+                _.map {
+                  case false =>
+                    Left(endpoints4s.Invalid(s"There is already a standing query output named '$outputName'"))
+                  case true => Right(())
+                }
+              }(graph.shardDispatcherEC)
+        }
       }
   }
 
@@ -179,15 +190,19 @@ trait StandingQueryRoutesImpl
     }
 
   private val standingListRoute = standingList.implementedByAsync { namespaceParam =>
-    quineApp.getStandingQueries(namespaceFromParam(namespaceParam))
+    graph.requiredGraphIsReadyFuture {
+      quineApp.getStandingQueries(namespaceFromParam(namespaceParam))
+    }
   }
 
   private val standingPropagateRoute = standingPropagate.implementedByAsync { case (wakeUpNodes, par, namespaceParam) =>
-    graph
-      .standingQueries(namespaceFromParam(namespaceParam))
-      .fold(Future.successful[Option[Unit]](None)) {
-        _.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes)).map(_ => Some(()))(ExecutionContext.parasitic)
-      }
+    graph.requiredGraphIsReadyFuture {
+      graph
+        .standingQueries(namespaceFromParam(namespaceParam))
+        .fold(Future.successful[Option[Unit]](None)) {
+          _.propagateStandingQueries(Some(par).filter(_ => wakeUpNodes)).map(_ => Some(()))(ExecutionContext.parasitic)
+        }
+    }
   }
 
   final val standingQueryRoutes: Route = {

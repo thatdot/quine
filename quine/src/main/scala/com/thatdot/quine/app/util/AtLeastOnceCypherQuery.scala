@@ -49,18 +49,22 @@ final case class AtLeastOnceCypherQuery(
     // If a recoverable error occurs, instead return a Source that will fail after a small delay
     // so that recoverWithRetries (below) can retry the query
     def bestEffortSource: Source[Vector[cypher.Value], NotUsed] =
-      try graph.cypherOps
-        .query(
-          query,
-          namespace = intoNamespace,
-          atTime = None,
-          parameters = Map(cypherParameterName -> value)
-        )
-        .results
-      catch {
-        case RetriableQueryFailure(e) =>
-          // TODO arbitrary timeout delays repeated failing calls to requiredGraphIsReady in implementation of .run above
-          Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(e))(graph.system))
+      if (!graph.isReady) { // Avoid throwing/catching an exception if graph is unavailable if possible.
+        Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(new GraphNotReadyException()))(graph.system))
+      } else {
+        try graph.cypherOps
+          .query(
+            query,
+            namespace = intoNamespace,
+            atTime = None,
+            parameters = Map(cypherParameterName -> value)
+          )
+          .results
+        catch {
+          case RetriableQueryFailure(e) =>
+            // The `startupRetryDelay` is an arbitrary waiting period to avoid retrying in tight loop.
+            Source.future(pekko.pattern.after(startupRetryDelay)(Future.failed(e))(graph.system))
+        }
       }
 
     bestEffortSource
@@ -77,6 +81,7 @@ final case class AtLeastOnceCypherQuery(
       )
   }.named(s"at-least-once-cypher-query-$debugName")
 }
+
 object AtLeastOnceCypherQuery {
 
   /** Helper to recognize errors that can be caught and retried during query execution (for example, errors that could

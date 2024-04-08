@@ -190,7 +190,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
       sqId: StandingQueryId
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       val rsqAndOutputs =
         startStandingQuery(
           sqId = sqId,
@@ -261,7 +260,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
       skipPersistor: Boolean = false
     ): Option[Future[(StandingQuery, Instant, Int)]] = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       standingQueries.remove(standingQueryId).map { (sq: RunningStandingQuery) =>
         val persistence = (
           if (skipPersistor) Future.unit
@@ -311,7 +309,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
       timeout: Timeout
     ): Future[Unit] = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       parallelism match {
         case Some(par) =>
           enumerateAllNodeIds(namespace)

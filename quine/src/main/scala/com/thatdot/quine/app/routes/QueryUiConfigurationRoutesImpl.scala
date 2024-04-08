@@ -4,6 +4,7 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 
 import com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
+import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.routes.QueryUiConfigurationRoutes
 
 trait QueryUiConfigurationRoutesImpl
@@ -14,11 +15,13 @@ trait QueryUiConfigurationRoutesImpl
 
   protected val quineApp: QueryUiConfigurationState
 
+  val graph: BaseGraph
+
   def queryUiConfigurationRoutes: Route =
-    queryUiSampleQueries.implementedByAsync(_ => quineApp.getSampleQueries) ~
-    updateQueryUiSampleQueries.implementedByAsync(quineApp.setSampleQueries) ~
-    queryUiQuickQueries.implementedByAsync(_ => quineApp.getQuickQueries) ~
-    updateQueryUiQuickQueries.implementedByAsync(quineApp.setQuickQueries) ~
-    queryUiAppearance.implementedByAsync(_ => quineApp.getNodeAppearances) ~
-    updateQueryUiAppearance.implementedByAsync(quineApp.setNodeAppearances)
+    queryUiSampleQueries.implementedByAsync(_ => graph.requiredGraphIsReadyFuture(quineApp.getSampleQueries)) ~
+    updateQueryUiSampleQueries.implementedByAsync(q => graph.requiredGraphIsReadyFuture(quineApp.setSampleQueries(q))) ~
+    queryUiQuickQueries.implementedByAsync(_ => graph.requiredGraphIsReadyFuture(quineApp.getQuickQueries)) ~
+    updateQueryUiQuickQueries.implementedByAsync(q => graph.requiredGraphIsReadyFuture(quineApp.setQuickQueries(q))) ~
+    queryUiAppearance.implementedByAsync(_ => graph.requiredGraphIsReadyFuture(quineApp.getNodeAppearances)) ~
+    updateQueryUiAppearance.implementedByAsync(q => graph.requiredGraphIsReadyFuture(quineApp.setNodeAppearances(q)))
 }

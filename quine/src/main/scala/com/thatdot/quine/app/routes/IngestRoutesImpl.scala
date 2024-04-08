@@ -229,6 +229,7 @@ trait IngestRoutesImpl
 
     ingestStreamStart.implementedBy {
       case (ingestName, namespaceParam, settings: KafkaIngest) =>
+        graph.requiredGraphIsReady()
         val namespace = namespaceFromParam(namespaceParam)
         KafkaSettingsValidator.validateInput(
           settings.kafkaProperties,
@@ -244,6 +245,7 @@ trait IngestRoutesImpl
           case None => addSettings(ingestName, namespace, settings)
         }
       case (ingestName, namespaceParam, settings) =>
+        graph.requiredGraphIsReady()
         val namespace = namespaceFromParam(namespaceParam)
         addSettings(ingestName, namespace, settings)
     }
@@ -251,67 +253,73 @@ trait IngestRoutesImpl
 
   /** Try to stop an ingest stream */
   private val ingestStreamStopRoute = ingestStreamStop.implementedByAsync { case (ingestName, namespaceParam) =>
-    quineApp.removeIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
-      case None => Future.successful(None)
-      case Some(control @ IngestStreamWithControl(settings, metrics, _, terminated, close, _, _)) =>
-        val finalStatus = control.status.map { previousStatus =>
-          import IngestStreamStatus._
-          previousStatus match {
-            // in these cases, the ingest was healthy and runnable/running
-            case Running | Paused | Restored => Terminated
-            // in these cases, the ingest was not running/runnable
-            case Completed | Failed | Terminated => previousStatus
+    graph.requiredGraphIsReadyFuture {
+      quineApp.removeIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
+        case None => Future.successful(None)
+        case Some(control @ IngestStreamWithControl(settings, metrics, _, terminated, close, _, _)) =>
+          val finalStatus = control.status.map { previousStatus =>
+            import IngestStreamStatus._
+            previousStatus match {
+              // in these cases, the ingest was healthy and runnable/running
+              case Running | Paused | Restored => Terminated
+              // in these cases, the ingest was not running/runnable
+              case Completed | Failed | Terminated => previousStatus
+            }
+          }(ExecutionContext.parasitic)
+
+          val terminationMessage: Future[Option[String]] = {
+            // start terminating the ingest
+            close.unsafeRunAndForget()
+            // future will return when termination finishes
+            terminated
+              .unsafeToFuture()
+              .flatMap(t =>
+                t
+                  .map({ case Done => None })(graph.shardDispatcherEC)
+                  .recover({ case e =>
+                    Some(e.toString)
+                  })(graph.shardDispatcherEC)
+              )(graph.shardDispatcherEC)
           }
-        }(ExecutionContext.parasitic)
 
-        val terminationMessage: Future[Option[String]] = {
-          // start terminating the ingest
-          close.unsafeRunAndForget()
-          // future will return when termination finishes
-          terminated
-            .unsafeToFuture()
-            .flatMap(t =>
-              t
-                .map({ case Done => None })(graph.shardDispatcherEC)
-                .recover({ case e =>
-                  Some(e.toString)
-                })(graph.shardDispatcherEC)
-            )(graph.shardDispatcherEC)
-        }
-
-        finalStatus
-          .zip(terminationMessage)
-          .map { case (newStatus, message) =>
-            Some(
-              IngestStreamInfoWithName(
-                ingestName,
-                newStatus,
-                message,
-                settings,
-                metrics.toEndpointResponse
+          finalStatus
+            .zip(terminationMessage)
+            .map { case (newStatus, message) =>
+              Some(
+                IngestStreamInfoWithName(
+                  ingestName,
+                  newStatus,
+                  message,
+                  settings,
+                  metrics.toEndpointResponse
+                )
               )
-            )
-          }(graph.shardDispatcherEC)
+            }(graph.shardDispatcherEC)
+      }
     }
   }
 
   /** Query out a particular ingest stream */
   private val ingestStreamLookupRoute = ingestStreamLookup.implementedByAsync { case (ingestName, namespaceParam) =>
-    quineApp.getIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
-      case None => Future.successful(None)
-      case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(graph.shardDispatcherEC)
+    graph.requiredGraphIsReadyFuture {
+      quineApp.getIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
+        case None => Future.successful(None)
+        case Some(stream) => stream2Info(stream).map(s => Some(s.withName(ingestName)))(graph.shardDispatcherEC)
+      }
     }
   }
 
   /** List out all of the currently active ingest streams */
   private val ingestStreamListRoute = ingestStreamList.implementedByAsync { namespaceParam =>
-    Future
-      .traverse(
-        quineApp.getIngestStreams(namespaceFromParam(namespaceParam)).toList
-      ) { case (name, ingest) =>
-        stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
-      }(implicitly, graph.shardDispatcherEC)
-      .map(_.toMap)(graph.shardDispatcherEC)
+    graph.requiredGraphIsReadyFuture {
+      Future
+        .traverse(
+          quineApp.getIngestStreams(namespaceFromParam(namespaceParam)).toList
+        ) { case (name, ingest) =>
+          stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
+        }(implicitly, graph.shardDispatcherEC)
+        .map(_.toMap)(graph.shardDispatcherEC)
+    }
   }
 
   sealed private case class PauseOperationException(statusMsg: String) extends Exception with NoStackTrace
@@ -352,15 +360,19 @@ trait IngestRoutesImpl
   }
 
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { case (ingestName, namespaceParam) =>
-    setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Close)
-      .map(Right(_))(ExecutionContext.parasitic)
-      .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
+    graph.requiredGraphIsReadyFuture {
+      setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Close)
+        .map(Right(_))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
+    }
   }
 
   private val ingestStreamUnpauseRoute = ingestStreamUnpause.implementedByAsync { case (ingestName, namespaceParam) =>
-    setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Open)
-      .map(Right(_))(ExecutionContext.parasitic)
-      .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
+    graph.requiredGraphIsReadyFuture {
+      setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Open)
+        .map(Right(_))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
+    }
   }
 
   final val ingestRoutes: Route = {

@@ -70,21 +70,17 @@ trait AlgorithmGraph extends BaseGraph {
       atTime: Option[Milliseconds]
     )(implicit
       timeout: Timeout
-    ): Future[RandomWalkResult] = {
-      requireCompatibleNodeType()
-      requiredGraphIsReady()
-      relayAsk(
-        SpaceTimeQuineId(startingNode, namespace, atTime),
-        GetRandomWalk(
-          collectQuery,
-          length,
-          returnParam,
-          inOutParam,
-          walkSeqNum.fold(seedOpt)(num => seedOpt.map(s => s"$num$s")),
-          _
-        )
+    ): Future[RandomWalkResult] = relayAsk(
+      SpaceTimeQuineId(startingNode, namespace, atTime),
+      GetRandomWalk(
+        collectQuery,
+        length,
+        returnParam,
+        inOutParam,
+        walkSeqNum.fold(seedOpt)(num => seedOpt.map(s => s"$num$s")),
+        _
       )
-    }
+    )
 
     /** @param saveSink      An output sink which will handle receiving and writing each of the final walk results.
       * @param collectQuery  A constrained OnNode Cypher query to fetch results to fold into the random walk results
@@ -116,7 +112,6 @@ trait AlgorithmGraph extends BaseGraph {
       timeout: Timeout
     ): Future[SinkMat] = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       enumerateAllNodeIds(namespace)
         .flatMapConcat(qid => Source(0 until walksPerNode).map(qid -> _))
         .mapAsync(parallelism) { case (qid, i) =>

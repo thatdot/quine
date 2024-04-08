@@ -54,8 +54,6 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoi
   implicit def idProvider: QuineIdProvider = graph.idProvider
   implicit lazy val materializer: Materializer = graph.materializer
 
-  def isReady = graph.isReady
-
   /** Serves up the static assets from resources and for JS/CSS dependencies */
   def staticFilesRoute: Route
 

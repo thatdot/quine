@@ -45,9 +45,6 @@ trait AdministrationRoutesImpl
   /** A sample configuration that will be used for documenting the admin/config route. */
   def sampleConfig: BaseConfig = QuineConfig()
 
-  /** Should the readiness probe report ready? */
-  def isReady: Boolean
-
   private val buildInfoRoute = buildInfo.implementedBy { _ =>
     val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
       .map(_ + (if (QuineBuildInfo.gitUncommittedChanges) "-DIRTY" else ""))
@@ -64,7 +61,7 @@ trait AdministrationRoutesImpl
 
   private val livenessProbeRoute = livenessProbe.implementedBy(_ => ())
 
-  private val readinessProbeRoute = readinessProbe.implementedBy(_ => isReady)
+  private val readinessProbeRoute = readinessProbe.implementedBy(_ => graph.isReady)
 
   private val metricsRoute = metrics.implementedBy { _ =>
     // TODO consider explicitly including relevant counters, timers, and gauges
@@ -149,15 +146,19 @@ trait AdministrationRoutesImpl
   }
 
   private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { case (quineId, namespaceParam) =>
-    graph.requestNodeSleep(namespaceFromParam(namespaceParam), quineId)
+    graph.requiredGraphIsReadyFuture(
+      graph.requestNodeSleep(namespaceFromParam(namespaceParam), quineId)
+    )
   }
 
   private val graphHashCodeRoute = graphHashCode.implementedByAsync { case (atTime, namespaceParam) =>
-    val at = atTime.getOrElse(Milliseconds.currentTime())
-    val ec = ExecutionContext.parasitic
-    graph
-      .getGraphHashCode(namespaceFromParam(namespaceParam), Some(at))
-      .map(GraphHashCode(_, at.millis))(ec)
+    graph.requiredGraphIsReadyFuture {
+      val at = atTime.getOrElse(Milliseconds.currentTime())
+      val ec = ExecutionContext.parasitic
+      graph
+        .getGraphHashCode(namespaceFromParam(namespaceParam), Some(at))
+        .map(GraphHashCode(_, at.millis))(ec)
+    }
   }
 
   final val administrationRoutes: Route =

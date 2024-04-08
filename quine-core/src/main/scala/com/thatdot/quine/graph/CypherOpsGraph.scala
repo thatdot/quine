@@ -105,7 +105,6 @@ trait CypherOpsGraph extends BaseGraph {
       bypassSkipOptimization: Boolean = false
     ): Source[QueryContext, NotUsed] = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       val interpreter =
         atTime match {
           case Some(_) => new AtTimeInterpreter(CypherOpsGraph.this, namespace, atTime, bypassSkipOptimization)
@@ -148,7 +147,6 @@ trait CypherOpsGraph extends BaseGraph {
       bypassSkipOptimization: Boolean = false
     ): QueryResults = {
       requireCompatibleNodeType()
-      requiredGraphIsReady()
       val interpreter: CypherInterpreter[Location.External] = atTime match {
         case Some(_) => new AtTimeInterpreter(CypherOpsGraph.this, namespace, atTime, bypassSkipOptimization)
         case None => currentMomentInterpreter(namespace)
