@@ -49,7 +49,10 @@ SCRUB_MESSAGE = [
     metadata.scrubber("ENTERPRISE:\\s(?:.|\n)*?(?:PUBLIC:\\s|\\z)"),
     # Best effort to remove references to internal PRs that will be dead links publicly
     metadata.scrubber(" \\(#\\d+\\)$"),
+    # remove any QU-XXXX numbers on their own lines (case insensitive)
+    metadata.scrubber("^[\\r\\f ]*[qQ][uU]-\\d+[\\r\\f ]*\\n"),
 ]
+
 def cancel_after_frozen(ctx):
     ctx.console.verbose("TODO add a way to freeze private copies of PRs")
     if False:
