@@ -9,7 +9,7 @@ import scala.concurrent.duration.DurationInt
 import scala.util.Using
 
 import org.apache.pekko.http.scaladsl.model.headers._
-import org.apache.pekko.http.scaladsl.model.{HttpCharsets, MediaType, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{HttpCharsets, HttpEntity, MediaType, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
@@ -86,12 +86,17 @@ trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoi
           .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`))
       )
 
+    //capture unknown addresses with a 404
+    val routeWithDefault =
+      mainRoute ~ complete(StatusCodes.NotFound, HttpEntity("The requested resource could not be found."))
     ssl
       .fold(serverBuilder) { ssl =>
         serverBuilder.enableHttps(
           ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password))
         )
       }
-      .bind(Route.toFunction(mainRoute)(system))
+      .bind(
+        Route.toFunction(routeWithDefault)(system)
+      )
   }
 }
