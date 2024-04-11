@@ -125,9 +125,10 @@ trait AdministrationRoutesImpl
     )
   }
 
-  // Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
-  private val shutdownRoute = shutdown.implementedBy { _ =>
-    graph.shutdown()
+  protected def performShutdown(): Future[Unit] = graph.system.terminate().map(_ => ())(ExecutionContext.parasitic)
+// Deliberately not using `implementedByAsync`. The API will confirm receipt of the request, but not wait for completion.
+  private def shutdownRoute = shutdown.implementedBy { _ =>
+    performShutdown()
     ()
   }
 
