@@ -12,7 +12,7 @@
   </div>
 </div>
 
-You interact with Quine by connecting it to a data source (Kafka, Kinesis Data Stream, SQS, files, API calls, etc.) and using regular database queries to stream that data in, build the graph structure, and find important patterns.
+You interact with Quine by connecting it to a data source (Kafka, Kinesis Data Stream, SQS, files, stdin, etc.) and using regular database queries to stream that data in, build the graph structure, and find important patterns.
 
 Three design choices define Quine, setting it apart from all event stream processing systems:
 
