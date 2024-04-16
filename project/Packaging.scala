@@ -19,7 +19,7 @@ object Packaging extends AutoPlugin {
    *   - resolves conflicts between duplicate files in different JARs
    *   - allows for removing entirely unnecessary resources from output JAR
    */
-  private val mergeStrategy: String => MergeStrategy = {
+  val customMergeStrategy: String => MergeStrategy = {
     case x if Assembly.isConfigFile(x) => appendProjectsLast
     case "version.conf" => MergeStrategy.concat
     case PathList("META-INF", "LICENSES.txt") | "AUTHORS" => MergeStrategy.concat
@@ -47,6 +47,6 @@ object Packaging extends AutoPlugin {
 
   override lazy val projectSettings =
     Seq(
-      assembly / assemblyMergeStrategy := mergeStrategy
+      assembly / assemblyMergeStrategy := customMergeStrategy
     )
 }
