@@ -178,7 +178,7 @@ object QueryPart {
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     setClause.items.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] {
-        case ast.SetPropertyItems(expMap, items) =>
+        case ast.SetPropertyItems(expMap, items) => // eg SET n.k1 = v1, n.k2 = v2, ...
           for {
             nodeWc <- Expression.compileM(expMap, avng)
             propsWC <- items.toList.traverse { p =>
@@ -194,7 +194,7 @@ object QueryPart {
                 .toNodeQuery { (props: List[(String, cypher.Expr)]) =>
                   cypher.Query.SetProperties(
                     properties = cypher.Expr.MapLiteral(props.toMap),
-                    includeExisting = false
+                    includeExisting = true
                   )
                 }
             )
@@ -215,7 +215,7 @@ object QueryPart {
             )
           }
 
-        case ast.SetExactPropertiesFromMapItem(variable, expression) =>
+        case ast.SetExactPropertiesFromMapItem(variable, expression) => // eg SET n = {k1: v1, k2: v2, ...}
           for {
             nodeWC <- Expression.compileM(variable, avng)
             propsWC <- Expression.compileM(expression, avng)
@@ -231,7 +231,7 @@ object QueryPart {
             )
           }
 
-        case ast.SetIncludingPropertiesFromMapItem(variable, expression) =>
+        case ast.SetIncludingPropertiesFromMapItem(variable, expression) => // eg SET n += {k1: v1, k2, v2, ...}
           for {
             nodeWC <- Expression.compileM(variable, avng)
             propsWC <- Expression.compileM(expression, avng)

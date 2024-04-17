@@ -39,7 +39,7 @@ sealed abstract class PropertyEvent extends NodeChangeEvent {
 object PropertyEvent {
   final case class PropertySet(key: Symbol, value: PropertyValue) extends PropertyEvent
 
-  final case class PropertyRemoved(key: Symbol, value: PropertyValue) extends PropertyEvent
+  final case class PropertyRemoved(key: Symbol, previousValue: PropertyValue) extends PropertyEvent
 
 }
 sealed abstract class EdgeEvent extends NodeChangeEvent {

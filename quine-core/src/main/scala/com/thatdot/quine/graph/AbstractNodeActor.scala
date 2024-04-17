@@ -43,7 +43,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 }
 import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.ByteConversions
 
@@ -386,6 +386,10 @@ abstract private[graph] class AbstractNodeActor(
 
   protected[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
     case PropertySet(key, value) =>
+      if (value == PropertyValue(QuineValue.Null)) {
+        // Should be impossible. If it's not, we'd like to know and fix it.
+        logger.warn(s"Setting a null property on key: $key. This should have been a property removal.")
+      }
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
       selfPatterns.foreach(p => p._2())

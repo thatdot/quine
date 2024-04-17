@@ -196,11 +196,12 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedIsReadOnly: Boolean,
     expectedCannotFail: Boolean,
     expectedIsIdempotent: Boolean,
-    expectedCanContainAllNodeScan: Boolean
+    expectedCanContainAllNodeScan: Boolean,
+    skip: Boolean = false
   )(implicit
     pos: Position
-  ): Unit =
-    it(queryText) {
+  ): Unit = {
+    def theTest(): Future[Assertion] = {
       val CompiledQuery(_, query, _, _, _) = compile(queryText)
       assert(query.isReadOnly == expectedIsReadOnly, "isReadOnly must match")
       assert(query.cannotFail == expectedCannotFail, "cannotFail must match")
@@ -210,4 +211,10 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
         "canContainAllNodeScan must match"
       )
     }
+
+    if (skip)
+      ignore(queryText)(theTest())(pos)
+    else
+      it(queryText)(theTest())(pos)
+  }
 }

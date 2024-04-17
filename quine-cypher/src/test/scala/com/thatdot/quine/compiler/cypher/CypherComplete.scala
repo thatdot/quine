@@ -768,7 +768,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         "MATCH (n) WHERE id(n) = idFrom(8675309) SET n.name = 'Jenny', n.number = '8675309'",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
+        expectedIsIdempotent = true
       )
       testQuery(
         "MATCH (n) WHERE id(n) = idFrom(8675309) REMOVE n.name",

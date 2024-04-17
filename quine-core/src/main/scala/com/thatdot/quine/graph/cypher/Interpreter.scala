@@ -22,15 +22,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, Quer
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NamespaceId, PropertyEvent, SkipOptimizerKey}
-import com.thatdot.quine.model.{
-  EdgeDirection,
-  HalfEdge,
-  Milliseconds,
-  PropertyValue,
-  QuineId,
-  QuineIdProvider,
-  QuineValue
-}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
 
 // An interpreter that runs against the graph as a whole, rather than "inside" the graph
 // INV: Thread-safe
@@ -531,12 +523,19 @@ trait OnNodeInterpreter
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] = {
-    val event = query.newValue match {
-      case None => PropertyRemoved(query.key, PropertyValue(QuineValue.Null))
-      case Some(expr) => PropertySet(query.key, PropertyValue(Expr.toQuineValue(expr.eval(context))))
+    val event = query.newValue.map(_.eval(context)) match {
+      case None | Some(Expr.Null) =>
+        // remove the property
+        properties.get(query.key) match {
+          case Some(oldValue) => Some(PropertyRemoved(query.key, oldValue))
+          case None =>
+            // there already was no property at query.key -- no-op
+            None
+        }
+      case Some(value) => Some(PropertySet(query.key, PropertyValue(Expr.toQuineValue(value))))
     }
     Source
-      .future(processPropertyEvents(event :: Nil))
+      .future(processPropertyEvents(event.toList))
       .map(_ => context)
   }
 
@@ -547,8 +546,8 @@ trait OnNodeInterpreter
     parameters: Parameters
   ): Source[QueryContext, _] = {
     val map: Map[Symbol, Value] = query.properties.eval(context) match {
-      case Expr.Map(map) => map.map { case (k, v) => Symbol(k) -> v }
-      case Expr.Node(_, _, props) => props
+      case Expr.Map(map) => map.map { case (k, v) => Symbol(k) -> v } // set n = {...} / n += {...}
+      case Expr.Node(_, _, props) => props // set n = m / n += m
       case Expr.Relationship(_, _, props, _) => props
       case otherVal =>
         throw CypherException.TypeMismatch(
@@ -563,15 +562,28 @@ trait OnNodeInterpreter
 
     // Optionally drop existing properties
     if (!query.includeExisting) {
-      for (key <- properties.keys)
+      for ((key, oldValue) <- properties)
         if (!(map.contains(key) || labelsProperty == key)) {
-          eventsToProcess += PropertyRemoved(key, PropertyValue(QuineValue.Null))
+          eventsToProcess += PropertyRemoved(key, oldValue)
         }
     }
 
-    // Add all the new properties
-    for ((key, value) <- map)
-      eventsToProcess += PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
+    // Add all the new properties (or remove, for any NULL values)
+    eventsToProcess ++= map.view.flatMap { case (key, pv) =>
+      pv match {
+        case Expr.Null =>
+          // setting a property to null: remove that property
+          properties.get(key) match {
+            case Some(oldValue) => Some(PropertyRemoved(key, oldValue))
+            case None =>
+              // property already didn't exist -- no-op
+              None
+          }
+        case value =>
+          // setting a property to a value
+          Some(PropertySet(key, PropertyValue(Expr.toQuineValue(value))))
+      }
+    }
 
     Source.future(processPropertyEvents(eventsToProcess.result()).map(_ => context)(ExecutionContext.parasitic))
   }

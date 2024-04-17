@@ -803,6 +803,11 @@ object Query {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Trying to set a non-property value
     def canDirectlyTouchNode: Boolean = true
+
+    /** TODO QU-1843 this is not a sufficient condition: consider
+      * MATCH (n) WHERE id(n) = idFrom(0) SET n.x = n.x + 1
+      * This is not idempotent, despite the RHS expression being technically pure
+      */
     def isIdempotent: Boolean = newValue.forall(_.isPure)
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): SetProperty =
@@ -812,7 +817,7 @@ object Query {
 
   /** Mutate in batch properties of a node
     *
-    * @param properties keys and values to set (expected to be a map)
+    * @param properties keys and values to set (expected to be a map, node variable, or relationship variable)
     * @param includeExisting if false, existing properties will be cleared
     */
   final case class SetProperties(
@@ -823,7 +828,12 @@ object Query {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Trying to set non-property values
     def canDirectlyTouchNode: Boolean = true
-    def isIdempotent: Boolean = !includeExisting && properties.isPure
+
+    /** TODO QU-1843 this is not a sufficient condition: consider
+      * MATCH (n) WHERE id(n) = idFrom(0) SET n = { x: n.x + 1 }
+      * This is not idempotent, despite the map literal being technically pure
+      */
+    def isIdempotent: Boolean = properties.isPure
     def canContainAllNodeScan: Boolean = false
     def substitute(parameters: Map[Expr.Parameter, Value]): SetProperties =
       copy(properties = properties.substitute(parameters))
