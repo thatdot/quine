@@ -17,6 +17,10 @@ import com.thatdot.quine.graph.cypher.{
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 
+/** Catch-all suite for validating the correctness of the Cypher compiler and interpreter. For specific
+  * clause validation, see other [[CypherHarness]] subclasses, eg [[CypherReturn]], [[CypherLists]],
+  * [[CypherMutate]], etc.
+  */
 class CypherComplete extends CypherHarness("cypher-complete-tests") {
 
   case class Person(
@@ -790,56 +794,6 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedIsReadOnly = true
       )
     }
-  }
-  describe("Regression test thatdot/quine#9") {
-    testQuery(
-      """
-        |// Setup query
-        |MATCH (n) WHERE id(n) = idFrom(-2439) SET n = {
-        |  tags: {
-        |    foo: "bar",
-        |    fizz: "buzz"
-        |  }
-        |}
-        |WITH *
-        |// Subquery to ensure updates will be reflected
-        |CALL {
-        |  MATCH (n) WHERE id(n) = idFrom(-2439)
-        |  UNWIND keys(castOrThrow.map(n.tags)) AS key RETURN key
-        |}
-        |RETURN key
-        |""".stripMargin,
-      Vector("key"),
-      Vector(
-        Vector(Expr.Str("foo")),
-        Vector(Expr.Str("fizz"))
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true,
-      ordered = false
-    )
-  }
-  describe("setProperty procedure") {
-    testQuery(
-      """
-        |// Setup query
-        |MATCH (n) WHERE id(n) = idFrom(42424242)
-        |CALL create.setProperty(n, 'test', [1, '2', false])
-        |WITH id(n) as nId
-        |// Subquery to ensure updates will be reflected
-        |CALL {
-        | MATCH (n) WHERE id(n) = idFrom(42424242)
-        | RETURN n
-        |}
-        |RETURN n.test
-        |""".stripMargin,
-      Vector("n.test"),
-      Vector(
-        Vector(Expr.List(Expr.Integer(1), Expr.Str("2"), Expr.False))
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
   }
 }
 

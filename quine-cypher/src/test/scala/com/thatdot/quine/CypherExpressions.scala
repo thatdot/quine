@@ -4,6 +4,11 @@ import org.scalactic.source.Position
 
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, SourceText}
 
+/** Test suite for behaviors written in Cypher, but not necessarily for the Cypher interpreter itself.
+  * Tests in this suite assume that basic statement composition and execution is correct, and focus on the behavior of
+  * specific functions or clauses, particularly in edge cases. For more foundational behavior of the Cypher interpreter
+  * itself, look to other instances of [[CypherHarness]]
+  */
 class CypherExpressions extends CypherHarness("cypher-expression-tests") {
 
   /** Check that a given boolean operator has the expected output for all inputs
@@ -304,411 +309,6 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     )
   }
 
-  describe("SET variants") {
-    // SET single property (no history)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n.p1 = 'p1'
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN n.p1""".stripMargin,
-      expectedColumns = Vector("n.p1"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Str("p1")
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET multiple properties (no history)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n.p2 = 'p2',
-        |    n.p3 = 'p3'
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN n.p1, n.p2, n.p3""".stripMargin,
-      expectedColumns = Vector("n.p1", "n.p2", "n.p3"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Str("p1"),
-          Expr.Str("p2"),
-          Expr.Str("p3")
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET += property map (with history)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n += {
-        | p1: 'p1 updated',
-        | p4: 'p4',
-        | p5: 'p5',
-        | p6: 'p6'
-        |}
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN n.p1, n.p2, n.p3, n.p4, n.p5, n.p6""".stripMargin,
-      expectedColumns = Vector("n.p1", "n.p2", "n.p3", "n.p4", "n.p5", "n.p6"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Str("p1 updated"),
-          Expr.Str("p2"),
-          Expr.Str("p3"),
-          Expr.Str("p4"),
-          Expr.Str("p5"),
-          Expr.Str("p6")
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET to null (delete property)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n.p1 = null
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN properties(n)""".stripMargin,
-      expectedColumns = Vector("properties(n)"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Map(
-            "p2" -> Expr.Str("p2"),
-            "p3" -> Expr.Str("p3"),
-            "p4" -> Expr.Str("p4"),
-            "p5" -> Expr.Str("p5"),
-            "p6" -> Expr.Str("p6")
-          )
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET multiple to null (delete properties)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n.p2 = null,
-        |    n.p3 = null
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN properties(n)""".stripMargin,
-      expectedColumns = Vector("properties(n)"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Map(
-            "p4" -> Expr.Str("p4"),
-            "p5" -> Expr.Str("p5"),
-            "p6" -> Expr.Str("p6")
-          )
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET += to delete multiple properties
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n += {
-        |    p4: null,
-        |    p5: null
-        |}
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN properties(n)""".stripMargin,
-      expectedColumns = Vector("properties(n)"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Map(
-            "p6" -> Expr.Str("p6")
-          )
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    // SET = property map (with history)
-    testQuery(
-      """
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |SET n = {
-        |    a1: 'p1',
-        |    a2: 'p2'
-        |}
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN properties(n)""".stripMargin,
-      expectedColumns = Vector("properties(n)"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Map(
-            "a1" -> Expr.Str("p1"),
-            "a2" -> Expr.Str("p2")
-          )
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = true
-    )
-
-    testQueryStaticAnalysis(
-      "MATCH (n) WHERE id(n) = idFrom(0) SET n = { x: n.x + 1 }",
-      expectedIsReadOnly = false,
-      expectedCannotFail = false,
-      expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
-      expectedCanContainAllNodeScan = false,
-      skip = true
-    )
-
-    testQueryStaticAnalysis(
-      "MATCH (n) WHERE id(n) = idFrom(0) SET n.x = n.x + 1",
-      expectedIsReadOnly = false,
-      expectedCannotFail = false,
-      expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
-      expectedCanContainAllNodeScan = false,
-      skip = true
-    )
-
-    testQueryStaticAnalysis(
-      "MATCH (n), (m) WHERE id(n) = idFrom(0) AND id(m) = idFrom(1) SET n.x = m.x + 1, m.x = n.x + 1",
-      expectedIsReadOnly = false,
-      expectedCannotFail = false,
-      expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
-      expectedCanContainAllNodeScan = false,
-      skip = true
-    )
-  }
-
-  describe("atomic adders") {
-    // incrementCounter (no history)
-    testQuery(
-      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count', 20) YIELD count RETURN count",
-      expectedColumns = Vector("count"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(20L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // incrementCounter (with history)
-    testQuery(
-      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count', 15) YIELD count RETURN count",
-      expectedColumns = Vector("count"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(35L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // 2-ary incrementCounter
-    testQuery(
-      "MATCH (n) WHERE id(n) = idFrom(1230020) CALL incrementCounter(n, 'count') YIELD count RETURN count",
-      expectedColumns = Vector("count"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(36L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-
-    // int.add (no history)
-    testQuery(
-      "CALL int.add(idFrom(1230021), 'count', 15) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(15L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // int.add (with history)
-    testQuery(
-      "CALL int.add(idFrom(1230021), 'count', 30) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(45L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // 2-ary int.add
-    testQuery(
-      "CALL int.add(idFrom(1230021), 'count') YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Integer(46L)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-
-    // float.add (no history)
-    testQuery(
-      "CALL float.add(idFrom(1230021.0), 'count', 1.5) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Floating(1.5)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // float.add (with history)
-    testQuery(
-      "CALL float.add(idFrom(1230021.0), 'count', 3.0) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Floating(4.5)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-    // 2-ary float.add
-    testQuery(
-      "CALL float.add(idFrom(1230021.0), 'count') YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.Floating(5.5)
-        )
-      ),
-      expectedIsReadOnly = false,
-      expectedIsIdempotent = false
-    )
-
-    // set.insert (no history)
-    testQuery(
-      "CALL set.insert(idFrom(12232), 'set-unary', 1.5) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Floating(1.5)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, homogeneous)
-    testQuery(
-      "CALL set.insert(idFrom(12232), 'set-unary', 2.0) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, homogeneous, deduplicated)
-    testQuery(
-      "CALL set.insert(idFrom(12232), 'set-unary', 1.50) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, heterogenous)
-    testQuery(
-      "CALL set.insert(idFrom(12232), 'set-unary', 'foo') YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0), Expr.Str("foo")))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-
-    // set.insert (no history)
-    testQuery(
-      "CALL set.union(idFrom(12232), 'set-union', [3, 2]) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, homogeneous)
-    testQuery(
-      "CALL set.union(idFrom(12232), 'set-union', [1]) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, homogeneous, partially-deduplicated)
-    testQuery(
-      "CALL set.union(idFrom(12232), 'set-union', [7, 1]) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.insert (with history, homogeneous, fully-deduplicated)
-    testQuery(
-      "CALL set.union(idFrom(12232), 'set-union', [7, 3]) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-    // set.union (with history, heterogenous, partially-deduplicated)
-    testQuery(
-      "CALL set.union(idFrom(12232), 'set-union', [7, 3, 'jason']) YIELD result RETURN result",
-      expectedColumns = Vector("result"),
-      expectedRows = Seq(
-        Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7), Expr.Str("jason")))
-        )
-      ),
-      expectedIsReadOnly = false
-    )
-
-  }
-
   describe("runtime type checking") {
     testExpression("meta.type(1)", Expr.Str("INTEGER"))
     testExpression("meta.type(1.0)", Expr.Str("FLOAT"))
@@ -811,6 +411,33 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
         Vector(Expr.Str("arr")),
         Vector(Expr.Str("sub"))
       ),
+      ordered = false
+    )
+  }
+
+  describe("regression test type inference bug from thatdot/quine#9") {
+    testQuery(
+      """
+        |// Setup query
+        |MATCH (n) WHERE id(n) = idFrom(-2439) SET n = {
+        |  tags: {
+        |    foo: "bar",
+        |    fizz: "buzz"
+        |  }
+        |}
+        |WITH id(n) AS nId
+        |// re-match to ensure updates will be reflected
+        |MATCH (n) WHERE id(n) = nId
+        |UNWIND keys(castOrThrow.map(n.tags)) AS key
+        |RETURN key
+        |""".stripMargin,
+      Vector("key"),
+      Vector(
+        Vector(Expr.Str("foo")),
+        Vector(Expr.Str("fizz"))
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true,
       ordered = false
     )
   }
