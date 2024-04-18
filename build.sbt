@@ -46,7 +46,8 @@ lazy val `quine-core`: Project = project
   )
   .enablePlugins(BuildInfoPlugin, FlatcPlugin)
   .settings(
-    buildInfoOptions := Seq(BuildInfoOption.BuildTime),
+    // Allow BuildInfo to be cached on `-DIRTY` versions, to avoid recompilation during development
+    buildInfoOptions := (if (git.gitUncommittedChanges.value) Seq() else Seq(BuildInfoOption.BuildTime)),
     buildInfoKeys := Seq[BuildInfoKey](
       version,
       git.gitHeadCommit,
