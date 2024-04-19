@@ -114,8 +114,156 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     testExpression("toUpper(\"Hello\")", Expr.Str("HELLO"))
   }
 
+  describe("ceil and floor") {
+    testExpression("ceil(1.0)", Expr.Floating(1L))
+    testExpression("ceil(1.1)", Expr.Floating(2L))
+    testExpression("ceil(1.9)", Expr.Floating(2L))
+    testExpression("ceil(200.5)", Expr.Floating(201L))
+    testExpression("ceil(-1.0)", Expr.Floating(-1L))
+    testExpression("ceil(-1.1)", Expr.Floating(-1L))
+    testExpression("ceil(-1.5)", Expr.Floating(-1L))
+
+    testExpression("floor(1.0)", Expr.Floating(1L))
+    testExpression("floor(1.1)", Expr.Floating(1L))
+    testExpression("floor(1.9)", Expr.Floating(1L))
+    testExpression("floor(200.5)", Expr.Floating(200L))
+    testExpression("floor(-1.0)", Expr.Floating(-1L))
+    testExpression("floor(-1.1)", Expr.Floating(-2L))
+    testExpression("floor(-1.5)", Expr.Floating(-2L))
+  }
+
+  describe("rounding functions") {
+    testExpression("round(1.0)", Expr.Floating(1L))
+    testExpression("round(1.1)", Expr.Floating(1L))
+    testExpression("round(1.9)", Expr.Floating(2L))
+    testExpression("round(200.5)", Expr.Floating(201L))
+    testExpression("round(-1.0)", Expr.Floating(-1L))
+    testExpression("round(-1.1)", Expr.Floating(-1L))
+    testExpression("round(-1.5)", Expr.Floating(-2L))
+
+    testExpression("round(9)", Expr.Floating(9L))
+    testExpression("ceil(-9)", Expr.Floating(-9L))
+    testExpression("floor(102)", Expr.Floating(102L))
+
+    // Rounding UP
+    testExpression("round(5.5, 0, 'UP')", Expr.Floating(6d))
+    testExpression("round(2.5, 0, 'UP')", Expr.Floating(3d))
+    testExpression("round(1.6, 0, 'UP')", Expr.Floating(2d))
+    testExpression("round(1.1, 0, 'UP')", Expr.Floating(2d))
+    testExpression("round(1.0, 0, 'UP')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'UP')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'UP')", Expr.Floating(-2d))
+    testExpression("round(-1.6, 0, 'UP')", Expr.Floating(-2d))
+    testExpression("round(-2.5, 0, 'UP')", Expr.Floating(-3d))
+    testExpression("round(-5.5, 0, 'UP')", Expr.Floating(-6d))
+
+    // Rounding DOWN
+    testExpression("round(5.5, 0, 'DOWN')", Expr.Floating(5d))
+    testExpression("round(2.5, 0, 'DOWN')", Expr.Floating(2d))
+    testExpression("round(1.6, 0, 'DOWN')", Expr.Floating(1d))
+    testExpression("round(1.1, 0, 'DOWN')", Expr.Floating(1d))
+    testExpression("round(1.0, 0, 'DOWN')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'DOWN')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'DOWN')", Expr.Floating(-1d))
+    testExpression("round(-1.6, 0, 'DOWN')", Expr.Floating(-1d))
+    testExpression("round(-2.5, 0, 'DOWN')", Expr.Floating(-2d))
+    testExpression("round(-5.5, 0, 'DOWN')", Expr.Floating(-5d))
+
+    // Rounding CEILING
+    testExpression("round(5.5, 0, 'CEILING')", Expr.Floating(6d))
+    testExpression("round(2.5, 0, 'CEILING')", Expr.Floating(3d))
+    testExpression("round(1.6, 0, 'CEILING')", Expr.Floating(2d))
+    testExpression("round(1.1, 0, 'CEILING')", Expr.Floating(2d))
+    testExpression("round(1.0, 0, 'CEILING')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'CEILING')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'CEILING')", Expr.Floating(-1d))
+    testExpression("round(-1.6, 0, 'CEILING')", Expr.Floating(-1d))
+    testExpression("round(-2.5, 0, 'CEILING')", Expr.Floating(-2d))
+    testExpression("round(-5.5, 0, 'CEILING')", Expr.Floating(-5d))
+
+    // Rounding FLOOR
+    testExpression("round(5.5, 0, 'FLOOR')", Expr.Floating(5d))
+    testExpression("round(2.5, 0, 'FLOOR')", Expr.Floating(2d))
+    testExpression("round(1.6, 0, 'FLOOR')", Expr.Floating(1d))
+    testExpression("round(1.1, 0, 'FLOOR')", Expr.Floating(1d))
+    testExpression("round(1.0, 0, 'FLOOR')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'FLOOR')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'FLOOR')", Expr.Floating(-2d))
+    testExpression("round(-1.6, 0, 'FLOOR')", Expr.Floating(-2d))
+    testExpression("round(-2.5, 0, 'FLOOR')", Expr.Floating(-3d))
+    testExpression("round(-5.5, 0, 'FLOOR')", Expr.Floating(-6d))
+
+    // Rounding HALF_UP
+    testExpression("round(5.5, 0, 'HALF_UP')", Expr.Floating(6d))
+    testExpression("round(2.5, 0, 'HALF_UP')", Expr.Floating(3d))
+    testExpression("round(1.6, 0, 'HALF_UP')", Expr.Floating(2d))
+    testExpression("round(1.1, 0, 'HALF_UP')", Expr.Floating(1d))
+    testExpression("round(1.0, 0, 'HALF_UP')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'HALF_UP')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'HALF_UP')", Expr.Floating(-1d))
+    testExpression("round(-1.6, 0, 'HALF_UP')", Expr.Floating(-2d))
+    testExpression("round(-2.5, 0, 'HALF_UP')", Expr.Floating(-3d))
+    testExpression("round(-5.5, 0, 'HALF_UP')", Expr.Floating(-6d))
+
+    // Rounding HALF_DOWN
+    testExpression("round(5.5, 0, 'HALF_DOWN')", Expr.Floating(5d))
+    testExpression("round(2.5, 0, 'HALF_DOWN')", Expr.Floating(2d))
+    testExpression("round(1.6, 0, 'HALF_DOWN')", Expr.Floating(2d))
+    testExpression("round(1.1, 0, 'HALF_DOWN')", Expr.Floating(1d))
+    testExpression("round(1.0, 0, 'HALF_DOWN')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'HALF_DOWN')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'HALF_DOWN')", Expr.Floating(-1d))
+    testExpression("round(-1.6, 0, 'HALF_DOWN')", Expr.Floating(-2d))
+    testExpression("round(-2.5, 0, 'HALF_DOWN')", Expr.Floating(-2d))
+    testExpression("round(-5.5, 0, 'HALF_DOWN')", Expr.Floating(-5d))
+
+    // Rounding HALF_EVEN
+    testExpression("round(5.5, 0, 'HALF_EVEN')", Expr.Floating(6d))
+    testExpression("round(2.5, 0, 'HALF_EVEN')", Expr.Floating(2d))
+    testExpression("round(1.6, 0, 'HALF_EVEN')", Expr.Floating(2d))
+    testExpression("round(1.1, 0, 'HALF_EVEN')", Expr.Floating(1d))
+    testExpression("round(1.0, 0, 'HALF_EVEN')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'HALF_EVEN')", Expr.Floating(-1d))
+    testExpression("round(-1.1, 0, 'HALF_EVEN')", Expr.Floating(-1d))
+    testExpression("round(-1.6, 0, 'HALF_EVEN')", Expr.Floating(-2d))
+    testExpression("round(-2.5, 0, 'HALF_EVEN')", Expr.Floating(-2d))
+    testExpression("round(-5.5, 0, 'HALF_EVEN')", Expr.Floating(-6d))
+
+    // Rounding UNNECESSARY
+    val roundingException = new ArithmeticException("Rounding necessary")
+    assertQueryExecutionFailure("RETURN round(5.5, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(2.5, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(1.6, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(1.1, 0, 'UNNECESSARY')", roundingException)
+    testExpression("round(1.0, 0, 'UNNECESSARY')", Expr.Floating(1d))
+    testExpression("round(-1.0, 0, 'UNNECESSARY')", Expr.Floating(-1d))
+    assertQueryExecutionFailure("RETURN round(-1.1, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(-1.6, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(-2.5, 0, 'UNNECESSARY')", roundingException)
+    assertQueryExecutionFailure("RETURN round(-5.5, 0, 'UNNECESSARY')", roundingException)
+
+    // Test rounding with precision and Scala BigNumber rounding.
+    // cf.: https://stackoverflow.com/questions/42396509/roundingmode-half-up-difference-in-scala-and-java
+    testExpression("round(8409.3555, 3)", Expr.Floating(8409.356d)) // Java BigNumber would round to `8409.355`
+    testExpression("round(8409.3555, -3)", Expr.Floating(8000d))
+    testExpression("round(8409.3555, 0)", Expr.Floating(8409d))
+    testExpression("round(8509.3555, -3)", Expr.Floating(9000d))
+    testExpression("round(8509.3555, -3, 'DOWN')", Expr.Floating(8000d))
+    testExpression("round(8499.3555, -3, 'HALF_UP')", Expr.Floating(8000d))
+    testExpression("round(8499.3555, -3, 'UP')", Expr.Floating(9000d))
+
+    // Test equivalence of default parameters for different signatures.
+    testExpression("round(8409.3555, 0) = round(8409.3555)", Expr.Bool(true))
+    testExpression("round(8409.3555, 0, 'HALF_UP') = round(8409.3555)", Expr.Bool(true))
+  }
+
   describe("`pi` function") {
     testExpression("pi()", Expr.Floating(Math.PI))
+  }
+  describe("`radians` function") {
+    testExpression("radians(180) = pi()", Expr.True)
+    testExpression("radians(360) = 2*pi()", Expr.True)
+    testExpression("radians(-180 + 0.0001) + pi() < 0.001", Expr.True)
   }
 
   describe("`e` function") {

@@ -5,6 +5,17 @@ import java.util.regex.Pattern
 
 import scala.collection.concurrent
 import scala.jdk.CollectionConverters._
+import scala.math.BigDecimal.RoundingMode.{
+  CEILING,
+  DOWN,
+  FLOOR,
+  HALF_DOWN,
+  HALF_EVEN,
+  HALF_UP,
+  RoundingMode,
+  UNNECESSARY,
+  UP
+}
 
 import com.thatdot.quine.model.QuineIdProvider
 
@@ -75,9 +86,9 @@ object Func {
   // format: off
   final val builtinFunctions: Vector[BuiltinFunc] = Vector(
     Abs, Acos, Asin, Atan, Atan2, Ceil, Coalesce, Cos, Cot, Degrees, E, Exp, Floor, Haversin, Head,
-    Id, Keys, Labels, Last, Left, Length, Log, Log10, LTrim, Nodes, Pi, Properties, Rand, Range,
-    Relationships, Replace, Reverse, Right, RTrim, Sign, Sin, Size, Split, Sqrt, Substring, Tail,
-    Tan, Timestamp, ToBoolean, ToFloat, ToInteger, ToLower, ToUpper, ToString, Trim, Type
+    Id, Keys, Labels, Last, Left, Length, Log, Log10, LTrim, Nodes, Pi, Properties, Radians, Rand, Range,
+    Relationships, Replace, Reverse, Right, RTrim, Round, Sign, Sin, Size, Split, Sqrt, Substring, Tail,
+    Tan, Timestamp, ToBoolean, ToFloat, ToInteger, ToLower, ToString, ToUpper, Trim, Type
   )
 
   case object Abs extends BuiltinFunc(
@@ -151,11 +162,11 @@ object Func {
     name = "ceil",
     isPure = true,
     description = "smallest integer greater than or equal to the input",
-    signature = "(NUMBER?) :: NUMBER?"
+    signature = "(NUMBER?) :: FLOAT?"
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
       args match {
-        case Vector(int: Expr.Integer) => int
+        case Vector(int: Expr.Integer) => Expr.Floating(int.long.toDouble)
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.ceil(dbl))
         case other => throw wrongSignature(other)
       }
@@ -240,11 +251,11 @@ object Func {
     name = "floor",
     isPure = true,
     description = "largest integer less than or equal to the input",
-    signature = "(NUMBER?) :: NUMBER?"
+    signature = "(NUMBER?) :: FLOAT?"
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
       args match {
-        case Vector(int: Expr.Integer) => int
+        case Vector(int: Expr.Integer) => Expr.Floating(int.long.toDouble)
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.floor(dbl))
         case other => throw wrongSignature(other)
       }
@@ -451,6 +462,21 @@ object Func {
         case other => throw wrongSignature(other)
       }
   }
+
+  case object Radians extends BuiltinFunc(
+    name = "radians",
+    isPure = true,
+    description = "convert degrees to radians",
+    signature = "(NUMBER?) :: FLOAT?"
+  ) {
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+      args match {
+        case Vector(Expr.Integer(l)) => Expr.Floating(Math.toRadians(l.toDouble))
+        case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.toRadians(dbl))
+        case other => throw wrongSignature(other)
+      }
+  }
+
   case object Rand extends BuiltinFunc(
     name = "rand",
     isPure = false, // the returned value is random
@@ -547,6 +573,50 @@ object Func {
         case Vector(Expr.Str(str)) => Expr.Str(str.replaceAll("\\s+$", ""))
         case other => throw wrongSignature(other)
       }
+  }
+
+  case object Round extends BuiltinFunc(
+    name = "round",
+    isPure = true,
+    description = "nearest number to the input",
+    signature = "(input :: NUMBER?, precision :: INTEGER?, mode :: STRING?) :: FLOAT?"
+  ) {
+    // NB: Deliberately using [[scala.math.BigDecimal]] to more intuitively handle cases like: `round(8409.3555, 3)`
+    // See: https://stackoverflow.com/questions/42396509/roundingmode-half-up-difference-in-scala-and-java
+    private def doRounding(bd: BigDecimal, precision: Int, mode: RoundingMode): Expr.Floating =
+      Expr.Floating(bd.setScale(precision, mode).doubleValue)
+
+    private def stringToMode(s: String): RoundingMode = s.toUpperCase match {
+      case "UP" => UP
+      case "DOWN" => DOWN
+      case "CEILING" => CEILING
+      case "FLOOR" => FLOOR
+      case "HALF_UP" => HALF_UP
+      case "HALF_DOWN" => HALF_DOWN
+      case "HALF_EVEN" => HALF_EVEN
+      case "UNNECESSARY" => UNNECESSARY
+      case _ => throw CypherException.ConstraintViolation(
+        "Rounding mode must be one of: UP, DOWN, CEILING, FLOOR, HALF_UP, HALF_DOWN, HALF_EVEN, or UNNECESSARY"
+      )
+    }
+
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = {
+      args match {
+        case Vector(int: Expr.Integer) =>
+          doRounding(BigDecimal(int.long), 0, HALF_UP)
+        case Vector(float: Expr.Floating) =>
+          doRounding(BigDecimal(float.double), 0, HALF_UP)
+        case Vector(int: Expr.Integer, prec: Expr.Integer) =>
+          doRounding(BigDecimal(int.long), prec.long.toInt, HALF_UP)
+        case Vector(float: Expr.Floating, prec: Expr.Integer) =>
+          doRounding(BigDecimal(float.double), prec.long.toInt, HALF_UP)
+        case Vector(int: Expr.Integer, prec: Expr.Integer, mode: Expr.Str) =>
+          doRounding(BigDecimal(int.long), prec.long.toInt, stringToMode(mode.string))
+        case Vector(float: Expr.Floating, prec: Expr.Integer, mode: Expr.Str) =>
+          doRounding(BigDecimal(float.double), prec.long.toInt, stringToMode(mode.string))
+        case other => throw wrongSignature(other)
+      }
+    }
   }
 
   /* Edge cases for floating points:

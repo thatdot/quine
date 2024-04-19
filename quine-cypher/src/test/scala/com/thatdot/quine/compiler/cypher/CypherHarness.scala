@@ -153,13 +153,12 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param expected exception that we expect to intercept
     * @param pos source position of the call to `interceptQuery`
     */
-  final def assertStaticQueryFailure[E <: AnyRef: ClassTag](queryText: String, expectedError: E)(implicit
+  final def assertStaticQueryFailure[E <: Throwable: ClassTag](queryText: String, expectedError: E)(implicit
     pos: Position
   ): Unit = {
     def theTest(): Assertion = {
       val actual = intercept[E](queryCypherValues(queryText, cypherHarnessNamespace)(graph))
-
-      assert(actual == expectedError, "Query construction did not fail with expected error")
+      assert(actual.getMessage == expectedError.getMessage, "Query construction did not fail with expected error")
     }
     it(queryText)(theTest())
   }
@@ -170,7 +169,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param expected exception that we expect to intercept
     * @param pos source position of the call to `interceptQuery`
     */
-  final def assertQueryExecutionFailure[E <: AnyRef: ClassTag](
+  final def assertQueryExecutionFailure[E <: Throwable: ClassTag](
     queryText: String,
     expected: E
   )(implicit
@@ -178,7 +177,9 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
   ): Unit = {
     def theTest(): Future[Assertion] = recoverToExceptionIf[E](
       queryCypherValues(queryText, cypherHarnessNamespace)(graph).results.runWith(Sink.ignore)
-    ) map (actual => assert(actual == expected, "Query execution did not fail with expected error"))
+    ) map (actual =>
+      assert(actual.getMessage == expected.getMessage, "Query execution did not fail with expected error")
+    )
 
     it(queryText)(theTest())(pos)
   }
