@@ -2,11 +2,13 @@ package com.thatdot.quine.app.config
 
 import java.io.File
 import java.net.InetSocketAddress
+import java.nio.file.Paths
 
 import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
+import com.typesafe.scalalogging.LazyLogging
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
@@ -106,6 +108,25 @@ object PersistenceAgentType extends PureconfigInstances {
     password: String = sys.env.getOrElse("CLICKHOUSE_PASSWORD", "quine"),
     bloomFilterSize: Option[Long] = None
   ) extends PersistenceAgentType(isLocal = false)
+      with LazyLogging {
+
+    /** By default, the ClickHouse client uses the default SSLContext (configured by standard java truststore and
+      * keystore properties). If the CLICKHOUSE_CERTIFICATE_PEM environment variable is set and points to a file,
+      * we will instead construct an SSLContext that uses that file as the only trusted certificate.
+      * Not recommended (see log line below).
+      */
+    val pemCertOverride: Option[String] = sys.env
+      .get("CLICKHOUSE_CERTIFICATE_PEM")
+      .filter(Paths.get(_).toFile.exists())
+      .map { x =>
+        logger.info(
+          s"""Using certificate at: $x to authenticate ClickHouse server. For better security, we recommend using a
+             |password-protected Java truststore instead (this can be configured with the `javax.net.ssl.trustStore`
+             |and `javax.net.ssl.trustStorePassword` properties)""".stripMargin.replace('\n', ' ')
+        )
+        x
+      }
+  }
 
   implicit val cassandraConfigConvert: ConfigConvert[ConsistencyLevel] = {
     import ConfigReader.javaEnumReader
