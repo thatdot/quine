@@ -3,6 +3,7 @@ package com.thatdot.quine.app.routes
 import scala.collection.concurrent
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.util.Random
 import scala.util.control.NonFatal
 
 import org.apache.pekko.http.scaladsl.model.ws
@@ -175,9 +176,12 @@ trait WebSocketQueryProtocolServer
       case qge: QuineGremlinException => qge.pretty
       case qce: CypherException => qce.pretty
       case gnr: GraphNotReadyException => gnr.getMessage
+      case are: ArithmeticException => are.getMessage // known to be thrown by the `round()` built-in function
+      case iae: IllegalArgumentException => iae.getMessage
       case other =>
-        logger.error("Query failed", other)
-        other.toString
+        val message = s"Query failed with log ID: ${Random.alphanumeric.take(10).mkString}"
+        logger.error(message, other)
+        message
     }
 
   /** Process a client message and return the message with which to reply
