@@ -119,7 +119,7 @@ object PersistenceAgentType extends PureconfigInstances {
       .get("CLICKHOUSE_CERTIFICATE_PEM")
       .filter(Paths.get(_).toFile.exists())
       .map { x =>
-        logger.info(
+        logger.warn(
           s"""Using certificate at: $x to authenticate ClickHouse server. For better security, we recommend using a
              |password-protected Java truststore instead (this can be configured with the `javax.net.ssl.trustStore`
              |and `javax.net.ssl.trustStorePassword` properties)""".stripMargin.replace('\n', ' ')
