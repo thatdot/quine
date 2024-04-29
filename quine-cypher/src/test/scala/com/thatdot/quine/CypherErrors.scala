@@ -90,9 +90,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       assertStaticQueryFailure(
         query1,
         CypherException.Compile(
-          wrapping = "Unknown variable `p`",
+          wrapping = "Unsupported path expression",
           position = Some(
-            Position(1, 24, 23, SourceText(query1))
+            Position(1, 7, 6, SourceText(query1))
           )
         )
       )
@@ -101,9 +101,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       assertStaticQueryFailure(
         query2,
         CypherException.Compile(
-          wrapping = "Unknown variable `p`",
+          wrapping = "Unsupported path expression",
           position = Some(
-            Position(1, 66, 65, SourceText(query2))
+            Position(1, 7, 6, SourceText(query2))
           )
         )
       )

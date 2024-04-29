@@ -314,6 +314,7 @@ package object cypher {
       SemanticAnalysis(warn = true, supportedFeatures.toIndexedSeq: _*)         andThen
       SyntaxDeprecationWarningsAndReplacements(semanticallyDeprecatedFeatures)  andThen
       AstRewriting()                                                            andThen
+      ProjectNamedPathsRewriter                                                 andThen
       LiteralExtraction(Forced)
       //Transformer.printAst("parsed ad hoc")
     }
