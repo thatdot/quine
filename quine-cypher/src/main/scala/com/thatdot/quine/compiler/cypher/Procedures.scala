@@ -1448,8 +1448,9 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
 }
 
 /** Lookup a standing query by user-facing name, yielding its [[StandingQueryResults]] as they are produced
-  * Registered by registerUserDefinedProcedure at runtime by product entrypoint and in docs' GenerateCypherTables
-  * NB despite the name including `wiretap`, this is implemented as an pekko-streams map
+  * Registered by registerUserDefinedProcedure at runtime by appstate and in docs' GenerateCypherTables
+  * NB despite the name including `wiretap`, this is implemented as an pekko-streams map, so it will
+  * backpressure
   */
 class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[StandingQueryId])
     extends UserDefinedProcedure {

@@ -235,7 +235,7 @@ lazy val `quine`: Project = project
   .settings(commonSettings)
   .dependsOn(
     `quine-core` % "compile->compile;test->test",
-    `quine-cypher`,
+    `quine-cypher` % "compile->compile;test->test",
     `quine-endpoints`.jvm % "compile->compile;test->test",
     `quine-gremlin`,
     `quine-cassandra-persistor`,
@@ -252,6 +252,8 @@ lazy val `quine`: Project = project
       "com.github.scopt" %% "scopt" % scoptV,
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
       "com.google.guava" % "guava" % guavaV,
+      "com.github.ben-manes.caffeine" % "caffeine" % caffeineV,
+      "com.github.blemale" %% "scaffeine" % scaffeineV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",

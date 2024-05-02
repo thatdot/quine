@@ -214,12 +214,14 @@ abstract class RawValuesIngestSrcDef(
 
 object IngestSrcDef extends LazyLogging {
 
-  private def importFormatFor(label: StreamedRecordFormat): ImportFormat =
+  private def importFormatFor(
+    label: StreamedRecordFormat
+  )(implicit protobufParserCache: ProtobufParser.Cache): ImportFormat =
     label match {
       case StreamedRecordFormat.CypherJson(query, parameter) =>
         new CypherJsonInputFormat(query, parameter)
       case StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName) =>
-        new ProtobufInputFormat(query, parameter, filenameOrUrl(schemaUrl), typeName)
+        new ProtobufInputFormat(query, parameter, protobufParserCache.get(filenameOrUrl(schemaUrl), typeName))
       case StreamedRecordFormat.CypherRaw(query, parameter) =>
         new CypherRawInputFormat(query, parameter)
       case StreamedRecordFormat.Drop => new TestOnlyDrop()
@@ -260,7 +262,8 @@ object IngestSrcDef extends LazyLogging {
     settings: IngestStreamConfiguration,
     initialSwitchMode: SwitchMode
   )(implicit
-    graph: CypherOpsGraph
+    graph: CypherOpsGraph,
+    protobufParserCache: ProtobufParser.Cache
   ): ValidatedNel[String, IngestSrcDef] = settings match {
     case KafkaIngest(
           format,

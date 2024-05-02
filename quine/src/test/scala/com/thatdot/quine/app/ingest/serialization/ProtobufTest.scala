@@ -6,25 +6,28 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.util.Using
 
 import com.google.common.io.ByteStreams
-import com.google.protobuf.{Descriptors, DynamicMessage}
+import com.google.protobuf.Descriptors
 import org.scalatest.EitherValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.serialization.{ConversionFailure, QuineValueToProtobuf}
+import com.thatdot.quine.app.ingest.serialization
+import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
+  bytesFromURL,
+  testParserCache,
+  testReadablePerson,
+  testSchemaFile,
+  testWritablePerson
+}
+import com.thatdot.quine.app.serialization.QuineValueToProtobuf
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.model.QuineValue
 
+// See also [[CypherParseProtobufTest]] for the UDP interface to this functionality
 class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
+  val protobufParser: ProtobufParser = testParserCache.get(testSchemaFile, "Person")
 
-  def bytesFromURL(url: URL): Array[Byte] = Using.resource(url.openStream)(ByteStreams.toByteArray)
-
-  def getClasspathResource(path: String): URL =
-    getClass.getResource("/" + path)
-
-  val schemaFile: URL = getClasspathResource("addressbook.desc")
-
-  val protobufParser = new ProtobufParser(schemaFile, "Person")
+  println(classOf[serialization.ProtobufTest].getResource("/addressbook.desc").toString)
 
   /** The protobuf_test.dat file was made by using scalapb to serialize a case class.
     * import com.google.protobuf.ByteString
@@ -37,43 +40,18 @@ class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
     * outstream.close()
     */
   "The protobuf deserializer" should "map protobuf bytes to Cypher" in {
-    val result = protobufParser.parseBytes(bytesFromURL(getClasspathResource("protobuf_test.dat")))
-    result.getField("")("name") shouldBe Expr.Str("Bob")
-    result.getField("")("id") shouldBe Expr.Integer(10L)
-    result.getField("")("email") shouldBe Expr.Str("bob@example.com")
-    result.getField("")("phones") shouldBe Expr.List(
-      Vector(
-        Expr.Map(Map("number" -> Expr.Str("503-555-1234"), "type" -> Expr.Str("MOBILE"))),
-        Expr.Map(Map("number" -> Expr.Str("360-555-1234"), "type" -> Expr.Str("HOME")))
-      )
-    )
-    result.getField("")("blob") shouldBe Expr.Bytes("foo".getBytes(UTF_8))
-    result.getField("")("numPets") shouldBe Expr.Integer(8L)
-    result.asMap("").get("petname") shouldBe None
-    result.getField("")("mapField") shouldBe Expr.Map(
-      Map(
-        "ANumber" -> Expr.Floating(1.5)
-      )
-    )
-  }
+    val result = protobufParser.parseBytes(bytesFromURL(getClass.getResource("/protobuf_test.dat")))
 
-  val exampleQuineValue: Map[String, QuineValue] = Map(
-    "name" -> QuineValue.Str("Bob"),
-    "id" -> QuineValue.Integer(10L),
-    "email" -> QuineValue.Str("bob@example.com"),
-    "phones" -> QuineValue.List(
-      Vector(
-        QuineValue.Map(Map("number" -> QuineValue.Str("503-555-1234"), "type" -> QuineValue.Str("HOME")))
-      )
-    ),
-    "garbage" -> QuineValue.Null
-  )
-  val protobufSerializer = new QuineValueToProtobuf(schemaFile, "Person")
-  val maybeMessage: Either[ConversionFailure, DynamicMessage] = protobufSerializer.toProtobuf(exampleQuineValue)
+    testReadablePerson.foreach { case (k, v) =>
+      result.getField("")(k) shouldBe Expr.fromQuineValue(v)
+    }
+  }
 
   "The protobuf serializer" should "map QuineValue to a Protobuf DynamicMessage" in {
 
-    val message = maybeMessage.value
+    val protobufSerializer = new QuineValueToProtobuf(testSchemaFile, "Person")
+
+    val message = protobufSerializer.toProtobuf(testWritablePerson).value
 
     def extractList(
       xs: List[Descriptors.FieldDescriptor]
@@ -91,4 +69,45 @@ class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
 
   }
 
+}
+object ProtobufTest {
+  def bytesFromURL(url: URL): Array[Byte] = Using.resource(url.openStream)(ByteStreams.toByteArray)
+
+  // NB anything using this must be a `def` -- otherwise the classloader will not find the resource
+  private def getClasspathResource(path: String): URL =
+    getClass.getResource("/" + path)
+
+  def testSchemaFile: URL = getClasspathResource("addressbook.desc")
+
+  // contains the equivalent of [[testReadablePerson]], serialized according to addressbook.desc, plus
+  // an extra (dynamic) field "mapField" not present in the addressbook schema
+  def testPersonFile: URL = getClasspathResource("protobuf_test.dat")
+
+  private val testPerson: Map[String, QuineValue] = Map(
+    "name" -> QuineValue.Str("Bob"),
+    "id" -> QuineValue.Integer(10L),
+    "email" -> QuineValue.Str("bob@example.com"),
+    "phones" -> QuineValue.List(
+      Vector(
+        QuineValue.Map(Map("number" -> QuineValue.Str("503-555-1234"), "type" -> QuineValue.Str("MOBILE"))),
+        QuineValue.Map(Map("number" -> QuineValue.Str("360-555-1234"), "type" -> QuineValue.Str("HOME")))
+      )
+    ),
+    "blob" -> QuineValue.Bytes("foo".getBytes(UTF_8)),
+    "numPets" -> QuineValue.Integer(8L)
+  )
+  private val readableButNotWritable = Map(
+    "mapField" -> QuineValue.Map(
+      Map(
+        "ANumber" -> QuineValue.Floating(1.5)
+      )
+    )
+  )
+  private val writableButNotReadable = Map(
+    "garbage" -> QuineValue.Null
+  )
+  val testReadablePerson: Map[String, QuineValue] = testPerson ++ readableButNotWritable
+  val testWritablePerson: Map[String, QuineValue] = testPerson ++ writableButNotReadable
+
+  val testParserCache: ProtobufParser.BlockingWithoutCaching.type = ProtobufParser.BlockingWithoutCaching
 }

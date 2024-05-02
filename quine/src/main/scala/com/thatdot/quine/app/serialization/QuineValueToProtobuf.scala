@@ -18,6 +18,9 @@ sealed abstract class ConversionFailure
 final case class TypeMismatch(provided: QuineType, expected: JavaType) extends ConversionFailure {
   def message: String = s"Can't coerce $provided into $expected"
 }
+final case class UnexpectedNull(fieldName: String) extends ConversionFailure {
+  def message: String = s"Unexpected null for field '$fieldName'"
+}
 case object NotAList extends ConversionFailure
 final case class InvalidEnumValue(provided: String, expected: Seq[EnumValueDescriptor]) extends ConversionFailure
 final case class FieldError(fieldName: String, conversionFailure: ConversionFailure) extends ConversionFailure {
@@ -25,6 +28,11 @@ final case class FieldError(fieldName: String, conversionFailure: ConversionFail
 }
 final case class ErrorCollection(errors: NonEmptyChain[ConversionFailure]) extends ConversionFailure
 
+/** Converts QuineValues to Protobuf messages according to a schema.
+  * @throws java.io.IOException If opening the schema file fails
+  * @throws DescriptorValidationException If the schema file is invalid
+  * @throws IllegalArgumentException If the schema file does not contain the specified type
+  */
 class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
 
   /** Mainly for testing
@@ -64,6 +72,7 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
     .setSeconds(datetime.getSecond)
     .setNanos(datetime.getNano)
 
+  @throws[IllegalArgumentException]("If the value provided is Null")
   def quineValueToProtobuf(field: FieldDescriptor, qv: QuineValue): Either[ConversionFailure, AnyRef] = qv match {
     case QuineValue.Str(string) =>
       field.getJavaType match {
@@ -97,8 +106,7 @@ class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSch
         java.lang.Boolean.FALSE,
         TypeMismatch(QuineType.Boolean, field.getJavaType)
       )
-    // Just so the linting doesn't complain about missing cases:
-    case QuineValue.Null => sys.error("This case should not happen because we filter out nulls.")
+    case QuineValue.Null => Left(UnexpectedNull(field.getName))
     case QuineValue.Bytes(bytes) =>
       Either.cond(
         field.getJavaType == JavaType.BYTE_STRING,

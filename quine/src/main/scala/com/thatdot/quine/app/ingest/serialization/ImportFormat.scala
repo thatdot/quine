@@ -1,7 +1,5 @@
 package com.thatdot.quine.app.ingest.serialization
 
-import java.net.URL
-
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
@@ -131,9 +129,8 @@ class CypherRawInputFormat(query: String, parameter: String) extends CypherImpor
 
 }
 
-class ProtobufInputFormat(query: String, parameter: String, schemaUrl: URL, typeName: String)
+class ProtobufInputFormat(query: String, parameter: String, parser: ProtobufParser)
     extends CypherImportFormat(query, parameter) {
-  private val parser = new ProtobufParser(schemaUrl, typeName)
 
   override protected def importBytes(data: Array[Byte]): Try[cypher.Value] = Try(parser.parseBytes(data))
 }

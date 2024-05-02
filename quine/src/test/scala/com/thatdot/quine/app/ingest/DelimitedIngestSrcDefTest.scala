@@ -16,6 +16,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
+import com.thatdot.quine.app.ingest.serialization.ProtobufParser
 import com.thatdot.quine.app.{IngestTestGraph, QuineAppIngestControl, StdInStream, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, MasterStream, NamespaceId, idFrom}
@@ -31,6 +32,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   implicit val timeout: Timeout = Timeout(2.seconds)
   implicit val ec: ExecutionContextExecutor = system.dispatcher
   val namespace: NamespaceId = None // Use default namespace
+  implicit val noOpProtobufCache: ProtobufParser.Cache = ProtobufParser.BlockingWithoutCaching
 
   override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 

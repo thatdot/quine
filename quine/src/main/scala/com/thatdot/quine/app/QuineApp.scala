@@ -21,8 +21,10 @@ import com.quine.cypher.phases.{BooleanExpressionRewriter, PredicateLogicRewrite
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ingest.IngestSrcDef
+import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, ProtobufParser}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{
@@ -403,6 +405,7 @@ final class QuineApp(graph: GraphService)
       }(ec)
   }
 
+  private[this] val protobufParserCache = new ProtobufParser.LoadingCache(graph.dispatchers)
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
@@ -433,7 +436,7 @@ final class QuineApp(graph: GraphService)
               intoNamespace,
               settings,
               valveSwitchMode
-            )(graph)
+            )(graph, protobufParserCache)
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
 
@@ -576,6 +579,15 @@ final class QuineApp(graph: GraphService)
       getOrDefaultGlobalMetaData(SampleQueriesKey, SampleQuery.defaults)
     val quickQueriesFut = getOrDefaultGlobalMetaData(QuickQueriesKey, UiNodeQuickQuery.defaults)
     val nodeAppearancesFut = getOrDefaultGlobalMetaData(NodeAppearancesKey, UiNodeAppearance.defaults)
+
+    // Register all user-defined procedures that require app/graph information (the rest will be loaded
+    // when the first query is compiled by the [[resolveCalls]] step of the Cypher compilation pipeline)
+    registerUserDefinedProcedure(
+      new CypherParseProtobuf(protobufParserCache)
+    )
+    registerUserDefinedProcedure(
+      new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace))
+    )
 
     val standingQueryOutputsFut = Future
       .sequence(

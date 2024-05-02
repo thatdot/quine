@@ -3,26 +3,35 @@ package com.thatdot.quine.app.ingest.serialization
 import java.net.URL
 
 import scala.collection.mutable
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 
-import com.google.protobuf.Descriptors.EnumValueDescriptor
+import com.github.blemale.scaffeine.{AsyncLoadingCache, Scaffeine}
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
+import com.google.protobuf.Descriptors.{DescriptorValidationException, EnumValueDescriptor}
 import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
 import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
 
 import com.thatdot.quine.app.serialization.ProtobufSchema
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.util.QuineDispatchers
 
-class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
+/** Parses Protobuf messages to cypher values according to a schema.
+  * @throws java.io.IOException If opening the schema file fails
+  * @throws DescriptorValidationException If the schema file is invalid
+  * @throws IllegalArgumentException If the schema file does not contain the specified type
+  */
+class ProtobufParser private (schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
 
-  def parseBytes(bytes: Array[Byte]): cypher.Value =
+  def parseBytes(bytes: Array[Byte]): Expr.Map =
     protobufMessageToCypher(
       DynamicMessage.parseFrom(messageType, bytes)
     )
 
-  private def protobufMessageToCypher(message: DynamicMessage): cypher.Value = Expr.Map {
+  private def protobufMessageToCypher(message: DynamicMessage): Expr.Map = Expr.Map {
     val descriptor = message.getDescriptorForType
     val oneOfs = descriptor.getOneofs.asScala.view
     // optionals are modeled as (synthetic) oneOfs of a single field.
@@ -98,5 +107,42 @@ class ProtobufParser(schemaUrl: URL, typeName: String) extends ProtobufSchema(sc
     case BYTE_STRING => Expr.Bytes(value.asInstanceOf[ByteString].toByteArray)
     case ENUM => Expr.Str(value.asInstanceOf[EnumValueDescriptor].getName)
     case MESSAGE => protobufMessageToCypher(value.asInstanceOf[DynamicMessage])
+  }
+}
+object ProtobufParser {
+  trait Cache {
+    def get(schemaUrl: URL, typeName: String): ProtobufParser
+    def getFuture(schemaUrl: URL, typeName: String): Future[ProtobufParser]
+  }
+  object BlockingWithoutCaching extends Cache {
+    def get(schemaUrl: URL, typeName: String): ProtobufParser = new ProtobufParser(schemaUrl, typeName)
+    def getFuture(schemaUrl: URL, typeName: String): Future[ProtobufParser] =
+      Future.successful(new ProtobufParser(schemaUrl, typeName))
+  }
+  class LoadingCache(val dispatchers: QuineDispatchers) extends Cache {
+    import LoadingCache.CacheKey
+    private val parserCache: AsyncLoadingCache[CacheKey, ProtobufParser] =
+      Scaffeine()
+        .maximumSize(10)
+        .buildAsyncFuture { case CacheKey(schemaUrl, typeName) =>
+          Future(new ProtobufParser(schemaUrl, typeName))(dispatchers.blockingDispatcherEC)
+        }
+
+    /** Get a parser for the given schema and type name. This method will block until the parser is available.
+      * see TODO on [[ProtobufSchema]] about blocking at construction time
+      */
+    @throws[java.io.IOException]("If opening the schema file fails")
+    @throws[DescriptorValidationException]("If the schema file is invalid")
+    @throws[IllegalArgumentException]("If the schema file does not contain the specified type")
+    def get(schemaUrl: URL, typeName: String): ProtobufParser =
+      Await.result(parserCache.get(CacheKey(schemaUrl, typeName)), 2.seconds)
+
+    /** Like [[get]], but doesn't block the calling thread, and failures are returned as a Future.failed
+      */
+    def getFuture(schemaUrl: URL, typeName: String): Future[ProtobufParser] =
+      parserCache.get(CacheKey(schemaUrl, typeName))
+  }
+  object LoadingCache {
+    private case class CacheKey(schemaUrl: URL, typeName: String)
   }
 }

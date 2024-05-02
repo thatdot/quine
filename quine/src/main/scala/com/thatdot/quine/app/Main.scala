@@ -24,7 +24,6 @@ import pureconfig.error.ConfigReaderException
 
 import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerConfig}
 import com.thatdot.quine.app.routes.QuineAppRoutes
-import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph._
 
 object Main extends App with LazyLogging {
@@ -167,10 +166,6 @@ object Main extends App with LazyLogging {
 
   val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
   Await.result(loadDataFut, timeout.duration * 2)
-
-  registerUserDefinedProcedure(
-    new CypherStandingWiretap((queryName, namespace) => quineApp.getStandingQueryId(queryName, namespace))
-  )
 
   statusLines.info("Graph is ready")
 
