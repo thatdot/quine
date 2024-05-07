@@ -73,6 +73,7 @@
     </logger>
     <!-- influx reporting can generate huge numbers of log messages -->
     <logger name="metrics_influxdb" level="ERROR"/>
+
     <!--
      An "interactive" logger - a heuristic for when to use this is to imagine a user who can only see the most recent
      log line. For example, "Graph is ready!", "Quine is shutting down..." might be
@@ -82,13 +83,22 @@
      additivity = false means we avoid duplicated log lines in standard out, at the cost of less consistent log
      formatting. In a production deployment, this should be set to "true" (or commented out).
      -->
-
     <logger name="thatdot.Interactive" level="INFO" additivity="false">
         <appender-ref ref="consoleSimple"/>
     </logger>
-    <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
+
+    <!-- baseline logging for everything -->
     <root level="${root.loglevel:-WARN}">
         <appender-ref ref="asyncConsole"/>
     </root>
 
+    <!-- default logging behavior for all classes in our package: log level can be set with `root.loglevel` and `thatdot.loglevel` -->
+    <logger name="com.thatdot" level="${thatdot.loglevel:-WARN}"/>
+
+    <!-- Loggers for specific modules -->
+
+    <!-- the cluster protocol is particularly verbose at INFO level - when debugging, it is often helpful to suppress its INFO messages -->
+    <!--
+    <logger name="com.thatdot.quine.graph.cluster" level="WARN"/>
+    -->
 </configuration>
