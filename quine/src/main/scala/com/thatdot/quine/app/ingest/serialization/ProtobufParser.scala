@@ -121,9 +121,14 @@ object ProtobufParser {
   }
   class LoadingCache(val dispatchers: QuineDispatchers) extends Cache {
     import LoadingCache.CacheKey
+
+    // On cache capacity:
+    // intelliJ's memory parser computes each entry at around 10KB (order-of-magnitude estimate)
+    // TODO QU-1868 we actually want to cache the parsed descriptor file, not the parser generated from a part of
+    //   that descriptor.
     private val parserCache: AsyncLoadingCache[CacheKey, ProtobufParser] =
       Scaffeine()
-        .maximumSize(10)
+        .maximumSize(800) // 800* 10KB = 8MB maximum heap impact (approx.)
         .buildAsyncFuture { case CacheKey(schemaUrl, typeName) =>
           Future(new ProtobufParser(schemaUrl, typeName))(dispatchers.blockingDispatcherEC)
         }

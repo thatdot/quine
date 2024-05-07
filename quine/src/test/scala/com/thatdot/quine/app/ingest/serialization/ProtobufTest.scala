@@ -11,7 +11,6 @@ import org.scalatest.EitherValues
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.app.ingest.serialization
 import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   bytesFromURL,
   testParserCache,
@@ -27,7 +26,12 @@ import com.thatdot.quine.model.QuineValue
 class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
   val protobufParser: ProtobufParser = testParserCache.get(testSchemaFile, "Person")
 
-  println(classOf[serialization.ProtobufTest].getResource("/addressbook.desc").toString)
+  // NB this test will not work in intelliJ without some configuration tweaking as the classloader will not find the
+  // resource. You can patch it by replacing the schema file URLs with fully-qualified file:/// URLs corresponding
+  // to the descriptors' locations on your filesystem.
+  if (testSchemaFile == null) {
+    throw new RuntimeException("Could not find test schema file -- is your test classpath broken?")
+  }
 
   /** The protobuf_test.dat file was made by using scalapb to serialize a case class.
     * import com.google.protobuf.ByteString
@@ -70,6 +74,7 @@ class ProtobufTest extends AnyFlatSpec with Matchers with EitherValues {
   }
 
 }
+
 object ProtobufTest {
   def bytesFromURL(url: URL): Array[Byte] = Using.resource(url.openStream)(ByteStreams.toByteArray)
 
