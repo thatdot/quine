@@ -668,7 +668,7 @@ object CypherLogging extends UserDefinedProcedure with StrictLogging {
     val prettyStr: String = arguments match {
       case Seq(Expr.Str(lvl), any) =>
         val prettied = any.pretty
-        lvl match {
+        lvl.toLowerCase match {
           case "error" => logger.error(prettied)
           case "warn" | "warning" => logger.warn(prettied)
           case "info" => logger.info(prettied)
