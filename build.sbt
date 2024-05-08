@@ -270,7 +270,6 @@ lazy val `quine`: Project = project
       "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV,
       "com.amazonaws" % "aws-java-sdk-sts" % awsSdkv1V,
-      "org.apache.commons" % "commons-compress" % apacheCommonsCompressV,
       "com.github.erosb" % "everit-json-schema" % "1.14.4",
       "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
