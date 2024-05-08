@@ -1,0 +1,14 @@
+# proto-file: schema/zone_rework.proto
+# proto-message: com.thatdot.test.azeroth.expansions.cataclysm.Zone
+
+name: "Northern Barrens"
+changelog: "Split from some of the Barrens, now a separate zone"
+original_zone: {
+  azeroth_zone {
+    continent: KALIMDOR
+    name: "Barrens"
+    owner: HORDE
+  }
+}
+region: KALIMDOR
+owner: HORDE

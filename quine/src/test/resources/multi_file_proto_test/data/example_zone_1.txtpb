@@ -1,0 +1,6 @@
+# proto-file: schema/argus.proto
+# proto-message: com.thatdot.test.azeroth.expansions.crusade.Zone
+
+owner: LEGION # maybe not technically lore-accurate, but this is for a unit test
+name: "Hellfire Peninsula"
+region: OUTLAND

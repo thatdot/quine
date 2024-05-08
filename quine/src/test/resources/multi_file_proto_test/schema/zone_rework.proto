@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package com.thatdot.test.azeroth.expansions.cataclysm;
+
+import "argus.proto";
+import "azeroth.proto";
+
+message Zone {
+  string name = 1;
+  optional crusade.AnyZone original_zone = 2;
+  optional string changelog = 3;
+  crusade.Faction owner = 4;
+  crusade.Region region = 5;
+}
+
+message AnyZone {
+  oneof zone {
+    azeroth.Zone azeroth_zone = 1;
+    crusade.Zone crusade_zone = 2;
+    Zone cataclysm_zone = 3;
+  }
+}

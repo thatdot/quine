@@ -48,6 +48,11 @@ object QuineSettings {
     libraryDependencySchemes ++= Seq(
       "io.circe" %% "circe-core" % VersionScheme.Always,
       "io.circe" %% "circe-parser" % VersionScheme.Always
+    ),
+    Test / testOptions ++= Seq(
+      //Include a report at the end of a test run with details on any failed tests:
+      //  use oG for full stack traces, oT for short ones
+      Tests.Argument(TestFrameworks.ScalaTest, "-oT")
     )
   )
 

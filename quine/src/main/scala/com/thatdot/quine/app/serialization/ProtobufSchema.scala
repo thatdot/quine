@@ -2,44 +2,77 @@ package com.thatdot.quine.app.serialization
 
 import java.net.URL
 
-import scala.collection.mutable
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.Using
 
-import com.google.protobuf.DescriptorProtos.{FileDescriptorProto, FileDescriptorSet}
-import com.google.protobuf.Descriptors.{Descriptor, FileDescriptor}
+import com.amazonaws.services.schemaregistry.utils.apicurio.DynamicSchema
+import com.google.protobuf.Descriptors.{Descriptor, DescriptorValidationException}
+import com.google.protobuf.InvalidProtocolBufferException
+
+import com.thatdot.quine.app.serialization.ProtobufSchemaError._
+import com.thatdot.quine.util.{ComputeAndBlockingExecutionContext, FromSingleExecutionContext}
 
 /** Provides common utilities for its inheritors to parse protobuf descriptors.
+  *
   * @see [[com.thatdot.quine.app.ingest.serialization.ProtobufParser]]
   * @see [[QuineValueToProtobuf]]
-  * @throws java.io.IOException If opening the schema file fails
-  * @throws DescriptorValidationException If the schema file is invalid
-  * @throws IllegalArgumentException If the schema file does not contain the specified type
+  * @throws UnreachableProtobufSchema If opening the schema file fails
+  * @throws InvalidProtobufSchema     If the schema file is invalid
+  * @throws NoSuchMessageType         If the schema file does not contain the specified type
+  * @throws AmbiguousMessageType      If the schema file contains multiple message descriptors that
+  *                                   all match the provided name
   */
 abstract class ProtobufSchema(schemaUrl: URL, typeName: String) {
-  // TODO: All of this IO and validating that the type name exists in the file should probably
-  // be done in a different mechanism, not blocking the thread at class construction time
-  // and throwing exceptions.
-  private val files: Seq[FileDescriptorProto] =
-    Using.resource(schemaUrl.openStream)(FileDescriptorSet.parseFrom).getFileList.asScala.toVector
-  private val fileMap = files.map(f => f.getName -> f).toMap
-  private val fileDescriptorDeps: mutable.Map[FileDescriptorProto, FileDescriptor] =
-    mutable.Map.empty[FileDescriptorProto, FileDescriptor]
-  private def resolveFileDescriptor(file: FileDescriptorProto): FileDescriptor =
-    fileDescriptorDeps.getOrElseUpdate(
-      file,
-      FileDescriptor.buildFrom(file, file.getDependencyList.asScala.map(d => resolveFileDescriptor(fileMap(d))).toArray)
-    )
-
-  private def getMessageTypeNames(file: FileDescriptorProto) = file.getMessageTypeList.asScala.map(_.getName)
-
+  // TODO QU-1868: All of this IO and validating that the type name exists in the file should
+  //   be done in the async-aware cache, not blocking the thread at class construction time
+  //   and throwing exceptions.
   final protected val messageType: Descriptor =
-    files.filter(file => getMessageTypeNames(file) contains typeName) match {
-      // Check that our named type was found in one and only one file:
-      case Seq(file) => resolveFileDescriptor(file).findMessageTypeByName(typeName)
-      case _ =>
-        throw new IllegalArgumentException(
-          s"No message of type '$typeName' found among " + files.flatMap(getMessageTypeNames).mkString("[", ", ", "]")
-        )
+    Await.result(
+      ProtobufSchema.descriptorForType(schemaUrl, typeName)(new FromSingleExecutionContext(ExecutionContext.parasitic)),
+      Duration.Inf
+    )
+}
+
+object ProtobufSchema {
+
+  private[this] def resolveSchema(uri: URL)(blockingEc: ExecutionContext): Future[DynamicSchema] =
+    Future(Using.resource(uri.openStream())(DynamicSchema.parseFrom))(blockingEc).recoverWith {
+      case e: DescriptorValidationException => Future.failed(new InvalidProtobufSchema(uri, e))
+      case e: InvalidProtocolBufferException =>
+        // InvalidProtocolBufferException <: java.io.IOException, so this case needs to come before the IOException one
+        Future.failed(new InvalidProtobufSchema(uri, e))
+      case e: java.io.IOException => Future.failed(new UnreachableProtobufSchema(uri, e))
+    }(ExecutionContext.parasitic)
+
+  private[this] def resolveMessageType(
+    schema: DynamicSchema,
+    messageType: String
+  ): Either[ProtobufSchemaError, Descriptor] =
+    Option(schema.getMessageDescriptor(messageType)).toRight {
+      // failure cases: either the type doesn't exist, or it's ambiguous
+      val resolvedMessageTypes = schema.getMessageTypes.asScala.toSet
+      val messageFoundByFullName = resolvedMessageTypes.contains(messageType)
+      val messagesFoundByShortName = resolvedMessageTypes.filter(_.split(raw"\.").contains(messageType))
+
+      if (!messageFoundByFullName && messagesFoundByShortName.isEmpty)
+        new NoSuchMessageType(messageType, resolvedMessageTypes)
+      else {
+        // We failed to resolve, but the type exists... this must be because the type is ambiguous as-provided
+        new AmbiguousMessageType(messageType, messagesFoundByShortName)
+      }
     }
+
+  private def descriptorForType(schemaUri: URL, typeName: String)(
+    ecs: ComputeAndBlockingExecutionContext
+  ): Future[Descriptor] =
+    resolveSchema(schemaUri)(ecs.blockingDispatcherEC)
+      .flatMap(schema =>
+        resolveMessageType(schema, typeName) match {
+          case Left(err) => Future.failed(err)
+          case Right(value) => Future.successful(value)
+        }
+      )(ecs.nodeDispatcherEC)
+
 }

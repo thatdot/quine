@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package com.thatdot.test.azeroth.expansions.crusade;
+
+import "azeroth.proto";
+
+enum Faction {
+  NONE = 0;
+  ALLIANCE = 1;
+  HORDE = 2;
+  LEGION = 3;
+}
+
+enum Region {
+  EASTERN_KINGDOMS = 0;
+  KALIMDOR = 1;
+  OUTLAND = 2;
+}
+
+message Zone {
+  string name = 1;
+  Faction owner = 2;
+  Region region = 3;
+}
+
+message AnyZone {
+  oneof zone {
+    azeroth.Zone azeroth_zone = 1;
+    Zone crusade_zone = 2;
+  }
+}

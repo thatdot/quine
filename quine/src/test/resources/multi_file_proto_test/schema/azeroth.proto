@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package com.thatdot.test.azeroth;
+
+message Zone {
+  string name = 1;
+  Faction owner = 2;
+  Continent continent = 3;
+}
+
+enum Continent {
+  EASTERN_KINGDOMS = 0;
+  KALIMDOR = 1;
+}
+
+enum Faction {
+  ALLIANCE = 0;
+  HORDE = 1;
+  NEUTRAL = 2;
+}

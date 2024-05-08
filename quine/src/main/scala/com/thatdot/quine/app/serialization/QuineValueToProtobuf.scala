@@ -29,9 +29,11 @@ final case class FieldError(fieldName: String, conversionFailure: ConversionFail
 final case class ErrorCollection(errors: NonEmptyChain[ConversionFailure]) extends ConversionFailure
 
 /** Converts QuineValues to Protobuf messages according to a schema.
-  * @throws java.io.IOException If opening the schema file fails
-  * @throws DescriptorValidationException If the schema file is invalid
-  * @throws IllegalArgumentException If the schema file does not contain the specified type
+  * @throws UnreachableProtobufSchema If opening the schema file fails
+  * @throws InvalidProtobufSchemaFile If the schema file is invalid
+  * @throws NoSuchMessageType         If the schema file does not contain the specified type
+  * @throws AmbiguousMessageType      If the schema file contains multiple message descriptors that
+  *                                   all match the provided name
   */
 class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
 

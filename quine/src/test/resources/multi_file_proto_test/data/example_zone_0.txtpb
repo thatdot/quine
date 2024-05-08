@@ -1,0 +1,6 @@
+# proto-file: schema/azeroth.proto
+# proto-message: com.thatdot.test.azeroth.Zone
+
+name: "Barrens"
+owner: HORDE
+continent: KALIMDOR

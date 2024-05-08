@@ -43,7 +43,7 @@ class CypherParseProtobufTest extends CypherHarness("procedure-parse-protobuf") 
     // from an in-memory value
     testQuery(
       """CALL parseProtobuf($personBytes, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""",
-      parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(testSchemaFile.toString)),
+      parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)),
       expectedColumns = Vector("personDeserialized"),
       expectedRows = Seq(Vector(testPersonCypher)),
       expectedIsReadOnly = true,
@@ -56,7 +56,7 @@ class CypherParseProtobufTest extends CypherHarness("procedure-parse-protobuf") 
       """
         |MATCH (p) WHERE id(p) = idFrom("procedure-parse-protobuf", "bob")
         |CALL parseProtobuf(p.protobuf, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""".stripMargin,
-      parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(testSchemaFile.toString)),
+      parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)),
       expectedColumns = Vector("personDeserialized"),
       expectedRows = Seq(Vector(testPersonCypher)),
       expectedIsReadOnly = true,

@@ -1,0 +1,6 @@
+# proto-file: schema/zone_rework.proto
+# proto-message: com.thatdot.test.azeroth.expansions.cataclysm.Zone
+
+name: "Ahn'Qiraj"
+region: KALIMDOR
+owner: NONE

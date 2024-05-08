@@ -8,21 +8,23 @@ import scala.concurrent.{Await, Future}
 import scala.jdk.CollectionConverters._
 
 import com.github.blemale.scaffeine.{AsyncLoadingCache, Scaffeine}
+import com.google.protobuf.Descriptors.EnumValueDescriptor
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
-import com.google.protobuf.Descriptors.{DescriptorValidationException, EnumValueDescriptor}
 import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
 import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
 
-import com.thatdot.quine.app.serialization.ProtobufSchema
+import com.thatdot.quine.app.serialization.{ProtobufSchema, ProtobufSchemaError}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.util.QuineDispatchers
+import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 
 /** Parses Protobuf messages to cypher values according to a schema.
-  * @throws java.io.IOException If opening the schema file fails
-  * @throws DescriptorValidationException If the schema file is invalid
-  * @throws IllegalArgumentException If the schema file does not contain the specified type
+  * @throws UnreachableProtobufSchema If opening the schema file fails
+  * @throws InvalidProtobufSchemaFile If the schema file is invalid
+  * @throws NoSuchMessageType         If the schema file does not contain the specified type
+  * @throws AmbiguousMessageType      If the schema file contains multiple message descriptors that
+  *                                   all match the provided name
   */
 class ProtobufParser private (schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
 
@@ -119,7 +121,7 @@ object ProtobufParser {
     def getFuture(schemaUrl: URL, typeName: String): Future[ProtobufParser] =
       Future.successful(new ProtobufParser(schemaUrl, typeName))
   }
-  class LoadingCache(val dispatchers: QuineDispatchers) extends Cache {
+  class LoadingCache(val dispatchers: ComputeAndBlockingExecutionContext) extends Cache {
     import LoadingCache.CacheKey
 
     // On cache capacity:
@@ -136,9 +138,9 @@ object ProtobufParser {
     /** Get a parser for the given schema and type name. This method will block until the parser is available.
       * see TODO on [[ProtobufSchema]] about blocking at construction time
       */
-    @throws[java.io.IOException]("If opening the schema file fails")
-    @throws[DescriptorValidationException]("If the schema file is invalid")
-    @throws[IllegalArgumentException]("If the schema file does not contain the specified type")
+    @throws[ProtobufSchemaError](
+      "If the type name is not found in the schema, is ambiguous, or if the schema is unreachable or invalid"
+    )
     def get(schemaUrl: URL, typeName: String): ProtobufParser =
       Await.result(parserCache.get(CacheKey(schemaUrl, typeName)), 2.seconds)
 
