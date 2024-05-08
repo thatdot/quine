@@ -56,6 +56,7 @@ class StatusLines(
 
   // Using LinkedHashMap so that status messages will be printed in insertion order
   private val messages: mutable.LinkedHashMap[StatusLine, String] = mutable.LinkedHashMap.empty[StatusLine, String]
+  val isInteractive: Boolean = System.console() != null
 
   def create(message: String = ""): StatusLine = {
     val statusLine = new StatusLine
@@ -87,14 +88,18 @@ class StatusLines(
     *                       the line that needs to be cleared
     */
   private def refreshStatusLines(clearExtraLine: Boolean = false): Unit = this.synchronized {
-    val up1 = "\u001b[1A"
-    val erase = "\u001b[K"
-    val home = "\r"
-    val homeErase = home + erase
-    realtimeOutput.println(homeErase)
-    val statuses = messages.values.toSeq.filter(_.trim != "")
-    for { status <- statuses } realtimeOutput.println(s"$homeErase | => $status")
-    if (clearExtraLine) realtimeOutput.print(homeErase)
-    for { _ <- 1 to statuses.length + 1 } realtimeOutput.print(up1)
+    // We should not print status lines at al if we are not in an interactive shell
+    // And we do not need to refresh status lines if there are no status message to print or clear
+    if (isInteractive && (clearExtraLine || messages.nonEmpty)) {
+      val up1 = "\u001b[1A"
+      val erase = "\u001b[K"
+      val home = "\r"
+      val homeErase = home + erase
+      realtimeOutput.println(homeErase)
+      val statuses = messages.values.toSeq.filter(_.trim != "")
+      for { status <- statuses } realtimeOutput.println(s"$homeErase | => $status")
+      if (clearExtraLine) realtimeOutput.print(homeErase)
+      for { _ <- 1 to statuses.length + 1 } realtimeOutput.print(up1)
+    }
   }
 }
