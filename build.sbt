@@ -255,6 +255,7 @@ lazy val `quine`: Project = project
       "com.github.ben-manes.caffeine" % "caffeine" % caffeineV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
+      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.3",
@@ -268,7 +269,6 @@ lazy val `quine`: Project = project
       "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni"),
       // 5 Next deps: override outdated pekko-connectors-kinesis dependencies
       "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
-      "software.amazon.glue" % "schema-registry-serde" % amazonGlueV,
       "com.amazonaws" % "aws-java-sdk-sts" % awsSdkv1V,
       "org.apache.commons" % "commons-compress" % apacheCommonsCompressV,
       "com.github.erosb" % "everit-json-schema" % "1.14.4",
