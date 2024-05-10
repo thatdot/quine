@@ -3,6 +3,9 @@ package com.thatdot.quine.app.serialization
 import java.net.URL
 
 sealed trait ProtobufSchemaError extends IllegalArgumentException
+sealed trait ProtobufSchemaMessageTypeException extends ProtobufSchemaError {
+  def typeName: String
+}
 
 object ProtobufSchemaError {
   class UnreachableProtobufSchema(val fileUri: URL, cause: java.io.IOException)
@@ -17,12 +20,12 @@ object ProtobufSchemaError {
       extends IllegalArgumentException(
         s"No protobuf message descriptor found with name $typeName in discovered types: $validTypes"
       )
-      with ProtobufSchemaError
+      with ProtobufSchemaMessageTypeException
 
   class AmbiguousMessageType(val typeName: String, val possibleMatches: Set[String])
       extends IllegalArgumentException(
         s"""Multiple protobuf message descriptors found with name $typeName.
            |Consider using a fully-qualified name from among: $possibleMatches""".stripMargin.replace('\n', ' ')
       )
-      with ProtobufSchemaError
+      with ProtobufSchemaMessageTypeException
 }

@@ -3,6 +3,7 @@ package com.thatdot.quine.app
 import java.nio.file.{Paths, StandardOpenOption}
 import java.util.concurrent.atomic.AtomicReference
 
+import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.implicitConversions
 import scala.util.{Failure, Random, Success, Try}
@@ -18,7 +19,7 @@ import org.apache.pekko.kafka.{ProducerMessage, ProducerSettings}
 import org.apache.pekko.stream.connectors.kinesis.KinesisFlowSettings
 import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisFlow
 import org.apache.pekko.stream.connectors.sns.scaladsl.SnsPublisher
-import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep}
+import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import cats.syntax.either._
@@ -34,7 +35,7 @@ import software.amazon.awssdk.services.sns.SnsAsyncClient
 
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.serialization.QuineValueToProtobuf
+import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
@@ -66,7 +67,7 @@ object StandingQueryResultOutput extends LazyLogging {
     inNamespace: NamespaceId,
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph
-  ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
+  )(implicit protobufSchemaCache: ProtobufSchemaCache): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
     val execToken = SqResultsExecToken(s"SQ: $name in: $inNamespace")
     output match {
       case Drop => Flow[StandingQueryResult].map(_ => execToken)
@@ -388,15 +389,25 @@ object StandingQueryResultOutput extends LazyLogging {
     name: String,
     format: OutputFormat,
     graph: BaseGraph
-  ): Flow[StandingQueryResult, Array[Byte], NotUsed] =
+  )(implicit protobufSchemaCache: ProtobufSchemaCache): Flow[StandingQueryResult, Array[Byte], NotUsed] =
     format match {
       case OutputFormat.JSON =>
         Flow[StandingQueryResult].map(_.toJson(graph.idProvider).noSpaces.getBytes)
       case OutputFormat.Protobuf(schemaUrl, typeName) =>
-        val serializer = new QuineValueToProtobuf(filenameOrUrl(schemaUrl), typeName)
+        val serializer: Future[QuineValueToProtobuf] =
+          protobufSchemaCache
+            .getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true)
+            .map(new QuineValueToProtobuf(_))(
+              graph.materializer.executionContext // this is effectively part of stream materialization
+            )
+        val serializerRepeated: Source[QuineValueToProtobuf, Future[NotUsed]] = Source.futureSource(
+          serializer
+            .map(Source.repeat[QuineValueToProtobuf])(graph.materializer.executionContext)
+        )
         Flow[StandingQueryResult]
           .filter(_.meta.isPositiveMatch)
-          .map(result =>
+          .zip(serializerRepeated)
+          .map { case (result, serializer) =>
             serializer
               .toProtobufBytes(result.data)
               .leftMap { err =>
@@ -409,7 +420,7 @@ object StandingQueryResultOutput extends LazyLogging {
                   err
                 )
               }
-          )
+          }
           .collect { case Right(value) => value }
     }
 

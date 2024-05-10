@@ -115,7 +115,9 @@ object Expr {
     case LocalTime(t) => QuineValue.LocalTime(t)
     case LocalDateTime(ldt) => QuineValue.LocalDateTime(ldt)
 
-    case other => sys.error(s"Not a valid quine value: $other")
+    case other =>
+      // TODO we should own this error type
+      throw new IllegalArgumentException(s"Not a valid quine value: $other")
   }
 
   /** A cypher string value

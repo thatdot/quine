@@ -2,12 +2,14 @@ package com.thatdot.quine.app.ingest.serialization
 
 import java.net.URL
 
+import scala.util.Try
+
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.cypher
+import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher.{
   Expr,
   Parameters,
@@ -24,7 +26,7 @@ import com.thatdot.quine.util.StringInput.filenameOrUrl
 /** Parse a protobuf message into a Cypher map according to a schema provided by a schema cache.
   * Because loading the schema is asynchronous, this must be a procedure rather than a function.
   */
-class CypherParseProtobuf(private val cache: ProtobufParser.Cache) extends UserDefinedProcedure with LazyLogging {
+class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazyLogging {
   def name: String = "parseProtobuf"
 
   def canContainUpdates: Boolean = false
@@ -48,14 +50,19 @@ class CypherParseProtobuf(private val cache: ProtobufParser.Cache) extends UserD
       case _ =>
         throw wrongSignature(arguments)
     }
-    Source.future(cache.getFuture(schemaUrl, typeName)).map { parser =>
-      Vector(parser.parseBytes(bytes))
-    }
+    Source
+      .future(cache.getMessageDescriptor(schemaUrl, typeName, flushOnFail = true))
+      .map(new ProtobufParser(_))
+      .map { parser =>
+        val result = Try[Value](parser.parseBytes(bytes)).recover { case _: ClassCastException => Expr.Null }.get
+        Vector(result)
+      }
   }
 
   def signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Seq("bytes" -> Type.Bytes, "schemaUrl" -> Type.Str, "typeName" -> Type.Str),
-    outputs = Seq("value" -> cypher.Type.Map),
-    description = "Parses a protobuf message into a Cypher map value"
+    outputs = Seq("value" -> Type.Map),
+    description =
+      "Parses a protobuf message into a Cypher map value, or null if the bytes are not parseable as the requested type"
   )
 }

@@ -3,8 +3,8 @@ package com.thatdot.quine.app.ingest
 import java.nio.charset.{Charset, StandardCharsets}
 import java.nio.file.Paths
 
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.duration.{Duration, DurationInt}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
@@ -25,6 +25,7 @@ import org.apache.kafka.common.KafkaException
 import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
+import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
@@ -216,12 +217,22 @@ object IngestSrcDef extends LazyLogging {
 
   private def importFormatFor(
     label: StreamedRecordFormat
-  )(implicit protobufParserCache: ProtobufParser.Cache): ImportFormat =
+  )(implicit protobufSchemaCache: ProtobufSchemaCache): ImportFormat =
     label match {
       case StreamedRecordFormat.CypherJson(query, parameter) =>
         new CypherJsonInputFormat(query, parameter)
       case StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName) =>
-        new ProtobufInputFormat(query, parameter, protobufParserCache.get(filenameOrUrl(schemaUrl), typeName))
+        // this is a blocking call, but it should only actually block until the first time a type is successfully
+        // loaded. This was left as blocking because lifting the effect to a broader context would mean either:
+        // - making ingest startup async, which would require extensive changes to QuineApp, startup, and potentially
+        //   clustering protocols, OR
+        // - making the decode bytes step of ingest async, which violate's the Kafka API's expectation that a
+        //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
+        val descriptor = Await.result(
+          protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
+          Duration.Inf
+        )
+        new ProtobufInputFormat(query, parameter, new ProtobufParser(descriptor))
       case StreamedRecordFormat.CypherRaw(query, parameter) =>
         new CypherRawInputFormat(query, parameter)
       case StreamedRecordFormat.Drop => new TestOnlyDrop()
@@ -263,7 +274,7 @@ object IngestSrcDef extends LazyLogging {
     initialSwitchMode: SwitchMode
   )(implicit
     graph: CypherOpsGraph,
-    protobufParserCache: ProtobufParser.Cache
+    protobufSchemaCache: ProtobufSchemaCache
   ): ValidatedNel[String, IngestSrcDef] = settings match {
     case KafkaIngest(
           format,

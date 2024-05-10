@@ -4,11 +4,15 @@ import java.io.File
 import java.net.URL
 import java.nio.charset.StandardCharsets.UTF_8
 
+import scala.annotation.nowarn
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
 import scala.util.{Try, Using}
 
 import com.google.common.io.ByteStreams
 import com.google.protobuf.Descriptors
 import org.scalatest.EitherValues
+import org.scalatest.concurrent.ScalaFutures.convertScalaFuture
 import org.scalatest.funspec.AnyFunSpecLike
 import org.scalatest.matchers.should.Matchers
 
@@ -16,11 +20,12 @@ import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   addressBookSchemaFile,
   bytesFromURL,
   testAnyZone,
+  testAnyZoneCypher,
   testAzerothZone,
   testCataclysmZone1,
-  testParserCache,
   testPersonFile,
   testReadablePerson,
+  testSchemaCache,
   testWritablePerson,
   warcraftSchemaFile
 }
@@ -30,48 +35,54 @@ import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
   NoSuchMessageType,
   UnreachableProtobufSchema
 }
-import com.thatdot.quine.app.serialization.QuineValueToProtobuf
+import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.model.QuineValue
 
 // See also [[CypherParseProtobufTest]] for the UDP interface to this functionality
 class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
 
+  @throws[ProtobufSchemaError]
+  private def parserFor(schemaUrl: URL, typeName: String): ProtobufParser = {
+    val desc = Await.result(testSchemaCache.getMessageDescriptor(schemaUrl, typeName, flushOnFail = true), Duration.Inf)
+    new ProtobufParser(desc)
+  }
+
   val testEnvironmentCanMakeWebRequests = true
 
   describe("ProtobufParser") {
     it("should fail to construct a parser for an invalid schema file") {
       an[InvalidProtobufSchema] should be thrownBy {
-        testParserCache.get(testAzerothZone, "anything")
+        parserFor(testAzerothZone, "anything")
       }
 
       if (testEnvironmentCanMakeWebRequests) {
         an[InvalidProtobufSchema] should be thrownBy {
-          testParserCache.get(new URL("https://httpstat.us/200"), "NoSuchType")
+          parserFor(new URL("https://httpstat.us/200"), "NoSuchType")
         }
       }
     }
     it("should fail to construct a parser for an unreachable or unreadable schema file") {
       an[UnreachableProtobufSchema] should be thrownBy {
-        testParserCache.get(new URL("file:///thisfile_does_notexist.txt"), "NoSuchType")
+        parserFor(new URL("file:///thisfile_does_notexist.txt"), "NoSuchType")
       }
 
       if (testEnvironmentCanMakeWebRequests) {
         an[UnreachableProtobufSchema] should be thrownBy {
-          testParserCache.get(new URL("https://httpstat.us/401"), "NoSuchType")
+          parserFor(new URL("https://httpstat.us/401"), "NoSuchType")
         }
         an[UnreachableProtobufSchema] should be thrownBy {
-          testParserCache.get(new URL("https://httpstat.us/403"), "NoSuchType")
+          parserFor(new URL("https://httpstat.us/403"), "NoSuchType")
         }
         an[UnreachableProtobufSchema] should be thrownBy {
-          testParserCache.get(new URL("https://httpstat.us/404"), "NoSuchType")
+          parserFor(new URL("https://httpstat.us/404"), "NoSuchType")
         }
       }
     }
     it("should fail to construct a parser for a non-existent type, offering the full list of available types") {
 
       val error = the[NoSuchMessageType] thrownBy {
-        testParserCache.get(addressBookSchemaFile, "NoSuchType")
+        parserFor(addressBookSchemaFile, "NoSuchType")
       }
 
       error.validTypes should contain theSameElementsAs (Seq(
@@ -83,7 +94,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
     }
     it("should fail to construct a parser for an ambiguous type, listing all candidates for ambiguity") {
       val error = the[AmbiguousMessageType] thrownBy {
-        testParserCache.get(warcraftSchemaFile, "Zone")
+        parserFor(warcraftSchemaFile, "Zone")
       }
       error.possibleMatches should contain theSameElementsAs (Seq(
         "com.thatdot.test.azeroth.Zone",
@@ -99,14 +110,14 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
     it(
       "should parse a protobuf value with an ambiguous type name, provided the parser was initialized unambiguously"
     ) {
-      val parser = testParserCache.get(warcraftSchemaFile, "com.thatdot.test.azeroth.Zone")
+      val parser = parserFor(warcraftSchemaFile, "com.thatdot.test.azeroth.Zone")
       val result = parser.parseBytes(bytesFromURL(testAzerothZone))
       result shouldBe barrensZoneAsMap
     }
     it(
       "should parse a protobuf value with an ambiguous type name that references a different user of that name"
     ) {
-      val parser = testParserCache.get(warcraftSchemaFile, "com.thatdot.test.azeroth.expansions.cataclysm.Zone")
+      val parser = parserFor(warcraftSchemaFile, "com.thatdot.test.azeroth.expansions.cataclysm.Zone")
       val result = parser.parseBytes(bytesFromURL(testCataclysmZone1))
       result shouldBe Expr.Map(
         "name" -> Expr.Str("Northern Barrens"),
@@ -119,20 +130,13 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       )
     }
     it("should parse a value that is oneof ambiguously-named types") {
-      val parser = testParserCache.get(warcraftSchemaFile, "com.thatdot.test.azeroth.expansions.cataclysm.AnyZone")
+      val parser = parserFor(warcraftSchemaFile, "com.thatdot.test.azeroth.expansions.cataclysm.AnyZone")
       val result = parser.parseBytes(bytesFromURL(testAnyZone))
-      result shouldBe Expr.Map(
-        "cataclysm_zone" -> Expr.Map(
-          "owner" -> Expr.Str("ALLIANCE"),
-          "region" -> Expr.Str("EASTERN_KINGDOMS"),
-          "changelog" -> Expr.Str("Added as the worgen starting zone"),
-          "name" -> Expr.Str("Gilneas")
-        )
-      )
+      result shouldBe testAnyZoneCypher
     }
 
     it("should map protobuf bytes to Cypher using an unambiguous short type name") {
-      val addressBookPersonParser: ProtobufParser = testParserCache.get(addressBookSchemaFile, "Person")
+      val addressBookPersonParser: ProtobufParser = parserFor(addressBookSchemaFile, "Person")
       val result = addressBookPersonParser.parseBytes(bytesFromURL(testPersonFile))
 
       testReadablePerson.foreach { case (k, v) =>
@@ -145,7 +149,8 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
   describe("QuineValueToProtobuf") {
     it("should map QuineValue to a Protobuf DynamicMessage") {
 
-      val protobufSerializer = new QuineValueToProtobuf(addressBookSchemaFile, "Person")
+      val desc = testSchemaCache.getMessageDescriptor(addressBookSchemaFile, "Person", flushOnFail = true).futureValue
+      val protobufSerializer = new QuineValueToProtobuf(desc)
 
       val message = protobufSerializer.toProtobuf(testWritablePerson).value
 
@@ -239,6 +244,14 @@ object ProtobufTest {
   def testCataclysmZone2: URL = getClasspathResource("multi_file_proto_test/data/example_zone_3.binpb")
   // Finally, anyzone has a message whose only member is a oneof between the 3 "Zone"-named types.
   def testAnyZone: URL = getClasspathResource("multi_file_proto_test/data/example_anyzone.binpb")
+  val testAnyZoneCypher: Expr.Map = Expr.Map(
+    "cataclysm_zone" -> Expr.Map(
+      "owner" -> Expr.Str("ALLIANCE"),
+      "region" -> Expr.Str("EASTERN_KINGDOMS"),
+      "changelog" -> Expr.Str("Added as the worgen starting zone"),
+      "name" -> Expr.Str("Gilneas")
+    )
+  )
 
-  val testParserCache: ProtobufParser.BlockingWithoutCaching.type = ProtobufParser.BlockingWithoutCaching
+  val testSchemaCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking: @nowarn
 }

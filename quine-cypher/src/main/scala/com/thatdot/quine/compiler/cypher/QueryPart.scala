@@ -719,7 +719,8 @@ object QueryPart {
                 CompM.pure(cols.values.toVector)
               } else {
                 CompM.raiseCompileError(
-                  s"Procedure does not have output(s): ${invalidYields.mkString(",")}",
+                  s"""Procedure does not have output(s): ${invalidYields.mkString(",")}.
+                     |Valid outputs are: ${outputs.mkString(",")}""".stripMargin.replace('\n', ' '),
                   unresolvedCall
                 )
               }

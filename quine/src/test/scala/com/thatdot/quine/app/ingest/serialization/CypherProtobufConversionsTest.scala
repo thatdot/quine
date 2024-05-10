@@ -2,19 +2,20 @@ package com.thatdot.quine.app.ingest.serialization
 
 import cats.implicits.toFunctorOps
 
+import com.thatdot.quine.app.ingest.serialization.ProtobufTest._
 import com.thatdot.quine.compiler.cypher.{CypherHarness, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.cypher.Expr
 
-import ProtobufTest._
-
-class CypherParseProtobufTest extends CypherHarness("procedure-parse-protobuf") {
-  registerUserDefinedProcedure(new CypherParseProtobuf(testParserCache))
+class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-protobuf") {
+  registerUserDefinedProcedure(new CypherParseProtobuf(testSchemaCache))
+  registerUserDefinedProcedure(new CypherToProtobuf(testSchemaCache))
 
   val testPersonBytes: Expr.Bytes = Expr.Bytes(bytesFromURL(testPersonFile))
-  val testPersonCypher: Expr.Map = Expr.Map(
+  val testReadablePersonCypher: Expr.Map = Expr.Map(
     testReadablePerson
       .fmap(Expr.fromQuineValue)
   )
+  val testAnyZoneBytes: Expr.Bytes = Expr.Bytes(bytesFromURL(testAnyZone))
 
   describe("saving protobuf bytes as a property") {
     val query =
@@ -45,7 +46,7 @@ class CypherParseProtobufTest extends CypherHarness("procedure-parse-protobuf") 
       """CALL parseProtobuf($personBytes, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""",
       parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)),
       expectedColumns = Vector("personDeserialized"),
-      expectedRows = Seq(Vector(testPersonCypher)),
+      expectedRows = Seq(Vector(testReadablePersonCypher)),
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
@@ -58,7 +59,24 @@ class CypherParseProtobufTest extends CypherHarness("procedure-parse-protobuf") 
         |CALL parseProtobuf(p.protobuf, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""".stripMargin,
       parameters = Map("personBytes" -> testPersonBytes, "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)),
       expectedColumns = Vector("personDeserialized"),
-      expectedRows = Seq(Vector(testPersonCypher)),
+      expectedRows = Seq(Vector(testReadablePersonCypher)),
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false
+    )
+  }
+  describe("toProtobuf procedure") {
+    testQuery(
+      """CALL toProtobuf(
+        |  $anyZoneCypher,
+        |  $schemaUrl,
+        |  "com.thatdot.test.azeroth.expansions.cataclysm.AnyZone"
+        |) YIELD protoBytes
+        |RETURN protoBytes AS personSerialized""".stripMargin,
+      parameters = Map("anyZoneCypher" -> testAnyZoneCypher, "schemaUrl" -> Expr.Str(warcraftSchemaFile.toString)),
+      expectedColumns = Vector("personSerialized"),
+      expectedRows = Seq(Vector(testAnyZoneBytes)),
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,

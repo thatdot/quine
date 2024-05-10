@@ -1,5 +1,4 @@
 package com.thatdot.quine.app.serialization
-import java.net.URL
 import java.time.{LocalDateTime, ZoneOffset}
 
 import scala.jdk.CollectionConverters._
@@ -29,13 +28,8 @@ final case class FieldError(fieldName: String, conversionFailure: ConversionFail
 final case class ErrorCollection(errors: NonEmptyChain[ConversionFailure]) extends ConversionFailure
 
 /** Converts QuineValues to Protobuf messages according to a schema.
-  * @throws UnreachableProtobufSchema If opening the schema file fails
-  * @throws InvalidProtobufSchemaFile If the schema file is invalid
-  * @throws NoSuchMessageType         If the schema file does not contain the specified type
-  * @throws AmbiguousMessageType      If the schema file contains multiple message descriptors that
-  *                                   all match the provided name
   */
-class QuineValueToProtobuf(schemaUrl: URL, typeName: String) extends ProtobufSchema(schemaUrl, typeName) {
+class QuineValueToProtobuf(messageType: Descriptor) {
 
   /** Mainly for testing
     * @param quineValues

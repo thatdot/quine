@@ -21,8 +21,9 @@ import com.quine.cypher.phases.{BooleanExpressionRewriter, PredicateLogicRewrite
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ingest.IngestSrcDef
-import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, ProtobufParser}
+import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.routes._
+import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
@@ -174,7 +175,7 @@ final class QuineApp(graph: GraphService)
         else {
           val sqId = StandingQueryId.fresh()
           val sqResultsConsumers = query.outputs.map { case (k, v) =>
-            k -> StandingQueryResultOutput.resultHandlingFlow(k, inNamespace, v, graph)
+            k -> StandingQueryResultOutput.resultHandlingFlow(k, inNamespace, v, graph)(protobufSchemaCache)
           }
           val (pattern, dgnPackage) = query.pattern match {
             case StandingQueryPattern.Cypher(cypherQuery, mode) =>
@@ -302,7 +303,11 @@ final class QuineApp(graph: GraphService)
         } else {
           val sqResultSrc: SqResultsSrcType = sqResultSource
             .viaMat(KillSwitches.single)(Keep.right)
-            .via(StandingQueryResultOutput.resultHandlingFlow(outputName, inNamespace, sqResultOutput, graph))
+            .via(
+              StandingQueryResultOutput.resultHandlingFlow(outputName, inNamespace, sqResultOutput, graph)(
+                protobufSchemaCache
+              )
+            )
           val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
           val updatedInnerMap = standingQueryOutputTargets(inNamespace) +
             (queryName -> (sqId -> (outputs + (outputName -> (sqResultOutput -> killSwitch)))))
@@ -405,7 +410,7 @@ final class QuineApp(graph: GraphService)
       }(ec)
   }
 
-  private[this] val protobufParserCache = new ProtobufParser.LoadingCache(graph.dispatchers)
+  private[this] val protobufSchemaCache: ProtobufSchemaCache = new ProtobufSchemaCache.AsyncLoading(graph.dispatchers)
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
@@ -436,7 +441,7 @@ final class QuineApp(graph: GraphService)
               intoNamespace,
               settings,
               valveSwitchMode
-            )(graph, protobufParserCache)
+            )(graph, protobufSchemaCache)
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
 
@@ -583,7 +588,10 @@ final class QuineApp(graph: GraphService)
     // Register all user-defined procedures that require app/graph information (the rest will be loaded
     // when the first query is compiled by the [[resolveCalls]] step of the Cypher compilation pipeline)
     registerUserDefinedProcedure(
-      new CypherParseProtobuf(protobufParserCache)
+      new CypherParseProtobuf(protobufSchemaCache)
+    )
+    registerUserDefinedProcedure(
+      new CypherToProtobuf(protobufSchemaCache)
     )
     registerUserDefinedProcedure(
       new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace))
@@ -639,7 +647,11 @@ final class QuineApp(graph: GraphService)
                 val outputs = outputsStored.map { case (outputName, sqResultOutput) =>
                   val sqResultSrc: SqResultsSrcType = sqResultSource
                     .viaMat(KillSwitches.single)(Keep.right)
-                    .via(StandingQueryResultOutput.resultHandlingFlow(outputName, namespace, sqResultOutput, graph))
+                    .via(
+                      StandingQueryResultOutput.resultHandlingFlow(outputName, namespace, sqResultOutput, graph)(
+                        protobufSchemaCache
+                      )
+                    )
                   // ^^ Attach the SQ result source to each consumer and backpressure with the masterStream vv
                   val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
                   outputName -> (sqResultOutput -> killSwitch)

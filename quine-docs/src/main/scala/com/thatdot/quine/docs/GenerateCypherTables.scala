@@ -3,9 +3,12 @@ package com.thatdot.quine.docs
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
+import scala.annotation.nowarn
+
 import org.pegdown.PegDownProcessor
 
-import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, ProtobufParser}
+import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
+import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.compiler.cypher.CypherStandingWiretap
 import com.thatdot.quine.graph.cypher.{BuiltinFunc, Func, Proc, UserDefinedFunction, UserDefinedProcedure}
 
@@ -134,7 +137,8 @@ object GenerateCypherTables extends App {
     builtinFuncsPath -> builtinFunctionTable(Func.builtinFunctions.sortBy(_.name)),
     userDefinedFuncsPath -> userDefinedFunctionTable(Func.userDefinedFunctions.values.toList.sortBy(_.name)),
     userDefinedProcsPath -> userDefinedProcedureTable(
-      new CypherParseProtobuf(ProtobufParser.BlockingWithoutCaching) ::
+      new CypherParseProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
+      new CypherToProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
       (new CypherStandingWiretap((_, _) => None) ::
       Proc.userDefinedProcedures.values.toList).sortBy(_.name)
     )
