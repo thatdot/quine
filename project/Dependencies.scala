@@ -60,7 +60,7 @@ object Dependencies {
   val scalaJava8CompatV = "1.0.2"
   val scalaJavaTimeV = "2.5.0"
   val scalaLoggingV = "3.9.5"
-  val scalaParserCombinatorsV = "2.3.0"
+  val scalaParserCombinatorsV = "2.4.0"
   val scalaTestScalaCheckV = "3.2.18.0"
   val scalajsDomV = "2.8.0"
   val scalaTestV = "3.2.18"
