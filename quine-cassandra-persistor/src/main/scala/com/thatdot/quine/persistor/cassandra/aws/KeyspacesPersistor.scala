@@ -248,7 +248,12 @@ class PrimeKeyspacesPersistor(
   protected val chunker: Chunker = new SizeBoundedChunker(maxBatchSize = 30, parallelism = 6, materializer)
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
-    KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(materializer.executionContext)
+    if (shouldCreateTables || namespace.nonEmpty) {
+      KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(materializer.executionContext)
+    } else {
+      Future.unit
+    }
+
   override def agentCreator(
     persistenceConfig: PersistenceConfig,
     namespace: NamespaceId

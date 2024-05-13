@@ -148,7 +148,13 @@ class PrimeCassandraPersistor(
   protected val chunker: Chunker = NoOpChunker
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
-    CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(materializer.executionContext)
+    if (shouldCreateTables || namespace.nonEmpty) {
+      CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(
+        materializer.executionContext
+      )
+    } else {
+      Future.unit
+    }
 
   /** Persistence implementation backed by Cassandra.
     *
