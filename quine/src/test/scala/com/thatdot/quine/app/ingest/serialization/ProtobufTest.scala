@@ -48,7 +48,10 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
     new ProtobufParser(desc)
   }
 
-  val testEnvironmentCanMakeWebRequests = true
+  // NOTE: Disabling these tests due to flakiness from httpstat.us.
+  // See this issue: https://github.com/aaronpowell/httpstatus/issues/135
+  // Plan to replace these tests with our own service instead.
+  val testEnvironmentCanMakeWebRequests = false
 
   describe("ProtobufParser") {
     it("should fail to construct a parser for an invalid schema file") {
