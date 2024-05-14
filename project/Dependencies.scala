@@ -6,8 +6,8 @@ object Dependencies {
   val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.26.1"
   val antlrV = "4.9.2"
-  val amazonKinesisClientV = "2.5.7"
-  val amazonGlueV = "1.1.18"
+  val amazonKinesisClientV = "2.6.0"
+  val amazonGlueV = "1.1.19"
   val awsSdkV = "2.25.42"
   // Required for amazon-kinesis-client
   val awsSdkv1V = "1.12.670"
