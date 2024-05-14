@@ -9,8 +9,6 @@ object Dependencies {
   val amazonKinesisClientV = "2.6.0"
   val amazonGlueV = "1.1.19"
   val awsSdkV = "2.25.42"
-  // Required for amazon-kinesis-client
-  val awsSdkv1V = "1.12.670"
   val betterMonadicForV = "0.3.1"
   val bootstrapV = "5.3.3"
   val caffeineV = "3.1.8"
