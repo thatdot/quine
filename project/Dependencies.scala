@@ -8,7 +8,7 @@ object Dependencies {
   val antlrV = "4.9.2"
   val amazonKinesisClientV = "2.5.7"
   val amazonGlueV = "1.1.18"
-  val awsSdkV = "2.20.162"
+  val awsSdkV = "2.25.42"
   // Required for amazon-kinesis-client
   val awsSdkv1V = "1.12.670"
   val betterMonadicForV = "0.3.1"
