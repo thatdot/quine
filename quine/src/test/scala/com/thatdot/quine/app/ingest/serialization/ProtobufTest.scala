@@ -48,10 +48,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
     new ProtobufParser(desc)
   }
 
-  // NOTE: Disabling these tests due to flakiness from httpstat.us.
-  // See this issue: https://github.com/aaronpowell/httpstatus/issues/135
-  // Plan to replace these tests with our own service instead.
-  val testEnvironmentCanMakeWebRequests = false
+  val testEnvironmentCanMakeWebRequests = true
 
   describe("ProtobufParser") {
     it("should fail to construct a parser for an invalid schema file") {
@@ -61,7 +58,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
 
       if (testEnvironmentCanMakeWebRequests) {
         an[InvalidProtobufSchema] should be thrownBy {
-          parserFor(new URL("https://httpstat.us/200"), "NoSuchType")
+          parserFor(new URL("https://httpbounce.dev.thatdot.com/200"), "NoSuchType")
         }
       }
     }
@@ -72,13 +69,13 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
 
       if (testEnvironmentCanMakeWebRequests) {
         an[UnreachableProtobufSchema] should be thrownBy {
-          parserFor(new URL("https://httpstat.us/401"), "NoSuchType")
+          parserFor(new URL("https://httpbounce.dev.thatdot.com/401"), "NoSuchType")
         }
         an[UnreachableProtobufSchema] should be thrownBy {
-          parserFor(new URL("https://httpstat.us/403"), "NoSuchType")
+          parserFor(new URL("https://httpbounce.dev.thatdot.com/403"), "NoSuchType")
         }
         an[UnreachableProtobufSchema] should be thrownBy {
-          parserFor(new URL("https://httpstat.us/404"), "NoSuchType")
+          parserFor(new URL("https://httpbounce.dev.thatdot.com/404"), "NoSuchType")
         }
       }
     }
