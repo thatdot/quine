@@ -54,7 +54,7 @@ object Dependencies {
   val reactV = "17.0.2"
   val rocksdbV = "8.11.3"
   val scaffeineV = "5.2.1"
-  val scalaCheckV = "1.17.0"
+  val scalaCheckV = "1.17.1"
   val scalaJava8CompatV = "1.0.2"
   val scalaJavaTimeV = "2.5.0"
   val scalaLoggingV = "3.9.5"
