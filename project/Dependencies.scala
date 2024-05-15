@@ -10,11 +10,13 @@ object Dependencies {
   val amazonGlueV = "1.1.19"
   val awsSdkV = "2.25.42"
   val betterMonadicForV = "0.3.1"
+  val boopickleV = "1.4.0"
   val bootstrapV = "5.3.3"
   val caffeineV = "3.1.8"
   val cassandraClientV = "4.18.0"
   val catsV = "2.10.0"
   val catsEffectV = "3.5.4"
+  val circeYamlV = "0.15.1"
   val commonsCodecV = "1.17.0"
   val commonsTextV = "1.12.0"
   val commonsIoV = "2.16.1"
@@ -42,6 +44,7 @@ object Dependencies {
   val memeIdV = "0.8.0"
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.8"
+  val openApiCirceYamlV = "0.10.0"
   val openCypherV = "9.1.2"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
@@ -66,12 +69,14 @@ object Dependencies {
   val scoptV = "4.1.0"
   val shapelessV = "2.3.10"
   val slinkyV = "0.7.4"
-  // pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
+// pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
   // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
   // vulnerabilities.
   val snappyV = "1.1.10.5"
   val sugarV = "2.0.6"
   val stoplightElementsV = "7.12.0"
+  val tapirRecdocV = "1.10.6"
+  val tapirV = "1.10.6"
   val ujsonV = "1.6.0"
   val circeV = "0.14.7"
   val circeOpticsV = "0.15.0"

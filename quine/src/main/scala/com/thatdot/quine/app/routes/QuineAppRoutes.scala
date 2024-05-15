@@ -1,5 +1,6 @@
 package com.thatdot.quine.app.routes
 
+import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
@@ -12,11 +13,12 @@ import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 import org.webjars.WebJarAssetLocator
 
-import com.thatdot.quine.app.BuildInfo
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
+import com.thatdot.quine.app.{BaseApp, BuildInfo}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.v2api.{OssApiInterface, V2OssRoutes}
 
 /** Main webserver routes for Quine
   *
@@ -33,8 +35,10 @@ class QuineAppRoutes(
   val quineApp: AdministrationRoutesState with QueryUiConfigurationState with StandingQueryStore with IngestStreamState,
   val currentConfig: Json,
   val uri: Uri,
-  val timeout: Timeout
-) extends BaseAppRoutes
+  val timeout: Timeout,
+  val apiV2Enabled: Boolean
+)(implicit val ec: ExecutionContext)
+    extends BaseAppRoutes
     with QueryUiRoutesImpl
     with WebSocketQueryProtocolServer
     with QueryUiConfigurationRoutesImpl
@@ -113,15 +117,27 @@ class QuineAppRoutes(
 
   /** Rest API route */
   lazy val apiRoute: Route = {
-    namespacesUnsupportedRoute ~
-    queryUiRoutes ~
-    queryProtocolWS ~
-    webSocketQuinePatternServer.languageServerWebsocketRoute ~
-    queryUiConfigurationRoutes ~
-    debugRoutes ~
-    algorithmRoutes ~
-    administrationRoutes ~
-    ingestRoutes ~
-    standingQueryRoutes
+
+    val v1Routes = {
+      namespacesUnsupportedRoute ~
+      queryUiRoutes ~
+      queryProtocolWS ~
+      webSocketQuinePatternServer.languageServerWebsocketRoute ~
+      queryUiConfigurationRoutes ~
+      debugRoutes ~
+      algorithmRoutes ~
+      administrationRoutes ~
+      ingestRoutes ~
+      standingQueryRoutes
+    }
+
+    if (apiV2Enabled) {
+      val v2Route = new V2OssRoutes(new OssApiInterface(graph, quineApp.asInstanceOf[BaseApp])).v2Routes
+      logger.warn("Starting with Api V2 endpoints enabled")
+      v1Routes ~ v2Route
+    } else {
+      v1Routes
+    }
+
   }
 }

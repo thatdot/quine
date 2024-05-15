@@ -196,12 +196,17 @@ object Main extends App with LazyLogging {
     )
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, quineApp, config.loadedConfigJson, resolvableUrl, timeout)
+    new QuineAppRoutes(graph, quineApp, config.loadedConfigJson, resolvableUrl, timeout, config.api2Enabled)(
+      ExecutionContext.parasitic
+    )
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
           statusLines.info(s"Quine web server available at $resolvableUrl")
+          if (config.api2Enabled) {
+            statusLines.info("Api v2 enabled")
+          }
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
   }
