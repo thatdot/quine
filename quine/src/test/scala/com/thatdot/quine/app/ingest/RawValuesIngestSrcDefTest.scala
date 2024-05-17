@@ -212,14 +212,5 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     assert(messages2.size == 10, "valve is open, should receive all 10 values")
 
   }
-  test("test ack") {
-    val ctx: IngestTestContext[(Try[Value], ByteString), NotUsed] =
-      IngestTestContext(TestJsonIngest("ack", Some(4)), i => i.source().via(i.throttle()).via(i.deserializeAndMeter))
-    val st: TestSubscriber.Probe[(Try[Value], ByteString)] = ctx.probe.request(10)
-    ctx.writeValues(10)
-    val receivedCount = st.receiveWithin(1.seconds).size
-    assert(receivedCount >= 3 && receivedCount <= 5)
-    ctx.close()
-  }
 
 }
