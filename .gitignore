@@ -52,3 +52,6 @@ public/quine/src/test/resources/ingest_test_script/venv/
 # vim
 *.swp
 *.swo
+
+# Snyk
+.dccache
