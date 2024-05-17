@@ -7,7 +7,7 @@ import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
 import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
 import com.google.protobuf.Descriptors.{Descriptor, EnumValueDescriptor}
 import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
-import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
+import com.google.protobuf.{ByteString, Descriptors, DynamicMessage, InvalidProtocolBufferException}
 
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Expr
@@ -15,12 +15,16 @@ import com.thatdot.quine.graph.cypher.Expr
 /** Parses Protobuf messages to cypher values according to a schema.
   */
 class ProtobufParser(messageDescriptor: Descriptor) {
+
+  @throws[InvalidProtocolBufferException]
+  @throws[ClassCastException]
   def parseBytes(bytes: Array[Byte]): Expr.Map =
     protobufMessageToCypher(
       DynamicMessage.parseFrom(messageDescriptor, bytes)
     )
 
   // TODO these should parse QuineValue, rather than cypher.Value directly
+  @throws[ClassCastException]
   private def protobufMessageToCypher(message: DynamicMessage): Expr.Map = Expr.Map {
     val descriptor = message.getDescriptorForType
     val oneOfs = descriptor.getOneofs.asScala.view
@@ -89,6 +93,7 @@ class ProtobufParser(messageDescriptor: Descriptor) {
       .toMap
   }
 
+  @throws[ClassCastException]
   private def fieldToCypher(javaType: JavaType, value: AnyRef): cypher.Value = javaType match {
     case STRING => Expr.Str(value.asInstanceOf[String])
     case INT | LONG => Expr.Integer(value.asInstanceOf[java.lang.Number].longValue)

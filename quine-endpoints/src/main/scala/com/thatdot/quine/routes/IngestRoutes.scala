@@ -496,6 +496,7 @@ object StreamedRecordFormat {
     ) typeName: String
   ) extends StreamedRecordFormat
       with IngestQuery
+
   @title("Drop")
   @unnamed
   @docs("Ignore the data without further processing.")

@@ -7,6 +7,7 @@ import scala.util.Try
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
+import com.google.protobuf.InvalidProtocolBufferException
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
@@ -54,7 +55,15 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
       .future(cache.getMessageDescriptor(schemaUrl, typeName, flushOnFail = true))
       .map(new ProtobufParser(_))
       .map { parser =>
-        val result = Try[Value](parser.parseBytes(bytes)).recover { case _: ClassCastException => Expr.Null }.get
+        val result = Try[Value](parser.parseBytes(bytes))
+          // Ideally, this [[recover]] would match the configuration of the context in which the query was
+          // run (eg, default to erroring in an ad-hoc query but default to returning null in an ingest, unless the
+          // ingest is set to halt on error). However, we don't have that information here, so we default to
+          // returning null.
+          .recover { case _: ClassCastException | _: InvalidProtocolBufferException =>
+            logger.warn(s"${name} procedure received corrupted protobuf record -- returning null")
+            Expr.Null
+          }.get
         Vector(result)
       }
   }

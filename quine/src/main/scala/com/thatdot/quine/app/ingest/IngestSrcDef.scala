@@ -97,16 +97,28 @@ abstract class IngestSrcDef(
   val ingestToken: IngestSrcExecToken = IngestSrcExecToken(name)
 
   /** Write successful values to the graph. */
-  protected def writeSuccessValues(intoNamespace: NamespaceId): TryDeserialized => Future[TryDeserialized] = {
-    t: TryDeserialized =>
-      t._1 match {
-        case Success(deserialized) =>
-          format.writeValueToGraph(graph, intoNamespace, deserialized).map(_ => t)(ExecutionContext.parasitic)
-        case Failure(err) =>
-          logger.info(s"Deserialization failure {} {}", name, err)
-          Future.failed(err)
-      }
-  }
+  protected def writeSuccessValues(intoNamespace: NamespaceId)(record: TryDeserialized): Future[TryDeserialized] =
+    record match {
+      case (Success(deserializedRecord), sourceRecord @ _) =>
+        format
+          .writeValueToGraph(graph, intoNamespace, deserializedRecord)
+          .map(_ => record)(ExecutionContext.parasitic)
+      case failedAttempt @ (Failure(deserializationError), sourceRecord @ _) =>
+        // TODO QU-1379 make this behavior configurable between "Log and keep consuming" vs
+        //  "halt the stream on corrupted records"
+        // If stream should halt on error:
+        // Future.failed(deserializationError)
+        // If stream should log and keep consuming:
+        logger.warn(
+          s"""Ingest $name in namespace $intoNamespace failed to deserialize record.
+             |Error and record will be logged at INFO level""".stripMargin.replace('\n', ' ')
+        )
+        logger.info(
+          s"""Ingest $name in namespace $intoNamespace failed to deserialize ingested record: $sourceRecord""",
+          deserializationError
+        )
+        Future.successful(failedAttempt)
+    }
 
   /** If the input value is properly deserialized, insert into the graph, otherwise
     * propagate the error.

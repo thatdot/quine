@@ -65,6 +65,20 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
       expectedIsIdempotent = true,
       expectedCanContainAllNodeScan = false
     )
+    // from an invalid value
+    testQuery(
+      """CALL parseProtobuf($invalidBytes, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""",
+      parameters = Map(
+        "invalidBytes" -> testPersonBytes.copy(b = testPersonBytes.b.updated(2, 0xFF.toByte)),
+        "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)
+      ),
+      expectedColumns = Vector("personDeserialized"),
+      expectedRows = Seq(Vector(Expr.Null)),
+      expectedIsReadOnly = true,
+      expectedCannotFail = false,
+      expectedIsIdempotent = true,
+      expectedCanContainAllNodeScan = false
+    )
   }
   describe("toProtobuf procedure") {
     testQuery(

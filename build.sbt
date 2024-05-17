@@ -5,7 +5,8 @@ ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/
 
 ThisBuild / scalaVersion := scalaV
 
-addCommandAlias("fixall", "; scalafixAll; scalafmtAll; scalafmtSbt")
+addCommandAlias("fmtall", "; scalafmtAll; scalafmtSbt")
+addCommandAlias("fixall", "; scalafixAll; fmtall")
 
 //ThisBuild / evictionErrorLevel := Level.Warn
 ThisBuild / evictionErrorLevel := Level.Info
