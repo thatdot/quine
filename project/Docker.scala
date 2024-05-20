@@ -40,7 +40,7 @@ object Docker extends AutoPlugin {
             tag = Some("21_35-jre-jammy")
           )
         )
-        expose(8080)
+        expose(8080, 7626)
         healthCheckShell(
           "curl --silent --fail http://localhost:8080/api/v1/admin/liveness || exit 1".split(' '),
           interval = Some(10.seconds),
