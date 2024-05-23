@@ -400,13 +400,17 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     with CacheableQueryMultipleValues {
   override type StateOf = MultipleValuesStandingQuery.AllProperties
 
-  private def currentPropertiesAsMap(effectHandler: MultipleValuesStandingQueryEffects): Expr.Map = {
-    val cypherProperties: Map[String, Value] = effectHandler.currentProperties.map { case (k, v) =>
+  private def props2Expr(props: Properties): Expr.Map = {
+    val cypherProperties: Map[String, Value] = props.map { case (k, v) =>
       k.name -> v.deserialized.fold[Value](_ => Expr.Null, qv => Expr.fromQuineValue(qv))
     }
 
     Expr.Map(cypherProperties)
   }
+
+  private def currentPropertiesAsMap(effectHandler: MultipleValuesStandingQueryEffects): Expr.Map = props2Expr(
+    effectHandler.currentProperties
+  )
 
   override def relevantEvents: Seq[StandingQueryLocalEvents] = Seq(StandingQueryLocalEvents.AnyProperty)
 
@@ -476,7 +480,9 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     false
   }
 
-  override def replayResults(localProperties: Properties): Map[ResultId, QueryContext] = ???
+  override def replayResults(localProperties: Properties): Map[ResultId, QueryContext] = currentResult.map { resId =>
+    resId -> QueryContext(Map(query.aliasedAs -> props2Expr(localProperties)))
+  }.toMap
 }
 
 /** State needed to process a [[MultipleValuesStandingQuery.LocalProperty]]
