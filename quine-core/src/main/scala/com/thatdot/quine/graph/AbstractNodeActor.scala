@@ -565,7 +565,7 @@ abstract private[graph] class AbstractNodeActor(
           domainNodeIndexStrings,
           getSqState(),
           dgnLocalEventIndexSummary,
-          multipleValuesStandingQueries.view.map {
+          multipleValuesStandingQueries.toVector.map {
             case ((globalId, sqId), (MultipleValuesStandingQuerySubscribers(_, _, subs), st)) =>
               LocallyRegisteredStandingQuery(
                 sqId.toString,
@@ -573,7 +573,7 @@ abstract private[graph] class AbstractNodeActor(
                 subs.map(_.toString).toSet,
                 st.toString
               )
-          }.toVector,
+          },
           journal.toSet,
           getNodeHashCode().value
         )
