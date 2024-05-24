@@ -185,6 +185,12 @@ object QueryPart {
               Expression.compileM(p._2, avng).map(ce => p._1 -> ce)
             }
           } yield nodeWc.toQuery { (nodeExpr: cypher.Expr) =>
+            require(
+              expMap.isInstanceOf[LogicalVariable],
+              s"Expected a property SET clause to use a node variable, but found ${expMap}"
+            )
+            val nodeVar = expMap.asInstanceOf[LogicalVariable]
+
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = propsWC
@@ -193,6 +199,7 @@ object QueryPart {
                 }
                 .toNodeQuery { (props: List[(String, cypher.Expr)]) =>
                   cypher.Query.SetProperties(
+                    nodeVar = Symbol(nodeVar.name),
                     properties = cypher.Expr.MapLiteral(props.toMap),
                     includeExisting = true
                   )
@@ -204,10 +211,17 @@ object QueryPart {
             nodeWC <- Expression.compileM(prop.map, avng)
             valueWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
+            require(
+              prop.map.isInstanceOf[LogicalVariable],
+              s"Expected a property SET clause to use a node variable, but found ${prop.map}"
+            )
+            val nodeVar = prop.map.asInstanceOf[LogicalVariable]
+
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = valueWC.toNodeQuery { (value: cypher.Expr) =>
                 cypher.Query.SetProperty(
+                  nodeVar = Symbol(nodeVar.name),
                   key = Symbol(prop.propertyKey.name),
                   newValue = Some(value)
                 )
@@ -220,10 +234,13 @@ object QueryPart {
             nodeWC <- Expression.compileM(variable, avng)
             propsWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
+            val nodeVar = variable: LogicalVariable
+
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = propsWC.toNodeQuery { (props: cypher.Expr) =>
                 cypher.Query.SetProperties(
+                  nodeVar = Symbol(nodeVar.name),
                   properties = props,
                   includeExisting = false
                 )
@@ -236,10 +253,13 @@ object QueryPart {
             nodeWC <- Expression.compileM(variable, avng)
             propsWC <- Expression.compileM(expression, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
+            val nodeVar = variable: LogicalVariable
+
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = propsWC.toNodeQuery { (props: cypher.Expr) =>
                 cypher.Query.SetProperties(
+                  nodeVar = Symbol(nodeVar.name),
                   properties = props,
                   includeExisting = true
                 )
@@ -251,9 +271,12 @@ object QueryPart {
           for {
             nodeWC <- Expression.compileM(variable, avng)
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
+            val nodeVar = variable: LogicalVariable
+
             cypher.Query.ArgumentEntry(
               node = nodeExpr,
               andThen = cypher.Query.SetLabels(
+                nodeVar = Symbol(nodeVar.name),
                 labels.map(lbl => Symbol(lbl.name)).toVector,
                 add = true
               )
@@ -276,9 +299,15 @@ object QueryPart {
           Expression
             .compileM(prop.map, avng)
             .map(_.toQuery { (nodeExpr: cypher.Expr) =>
+              require(
+                prop.map.isInstanceOf[LogicalVariable],
+                s"Expected a property REMOVE clause to use a node variable, but found ${prop.map}"
+              )
+              val nodeVar = prop.map.asInstanceOf[LogicalVariable]
               cypher.Query.ArgumentEntry(
                 node = nodeExpr,
                 andThen = cypher.Query.SetProperty(
+                  nodeVar = Symbol(nodeVar.name),
                   key = Symbol(prop.propertyKey.name),
                   newValue = None
                 )
@@ -289,9 +318,11 @@ object QueryPart {
           Expression
             .compileM(variable, avng)
             .map(_.toQuery { (nodeExpr: cypher.Expr) =>
+              val nodeVar = variable: LogicalVariable
               cypher.Query.ArgumentEntry(
                 node = nodeExpr,
                 andThen = cypher.Query.SetLabels(
+                  nodeVar = Symbol(nodeVar.name),
                   labels.map(lbl => Symbol(lbl.name)).toVector,
                   add = false
                 )

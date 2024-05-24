@@ -350,11 +350,13 @@ final case class Graph(
           )
           setData = nodeWC.toNodeQuery { (props: Option[cypher.Expr]) =>
             val setProps = cypher.Query.SetProperties(
+              nodeVar = atNodeExpr.id,
               properties = props.getOrElse(cypher.Expr.Map.empty),
               includeExisting = true
             )
             val setLabels = labelsOpt match {
-              case Some(lbls) => cypher.Query.SetLabels(lbls.toVector, add = true)
+              case Some(lbls) =>
+                cypher.Query.SetLabels(nodeVar = atNodeExpr.id, labels = lbls.toVector, add = true)
               case None => cypher.Query.Unit()
             }
             cypher.Query.apply(setProps, setLabels)

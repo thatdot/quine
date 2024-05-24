@@ -573,9 +573,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
         |    fizz: "buzz"
         |  }
         |}
-        |WITH id(n) AS nId
-        |// re-match to ensure updates will be reflected
-        |MATCH (n) WHERE id(n) = nId
+        |WITH n
         |UNWIND keys(castOrThrow.map(n.tags)) AS key
         |RETURN key
         |""".stripMargin,

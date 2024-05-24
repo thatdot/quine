@@ -22,7 +22,15 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, Quer
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NamespaceId, PropertyEvent, SkipOptimizerKey}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{
+  EdgeDirection,
+  HalfEdge,
+  Milliseconds,
+  PropertyValue,
+  QuineId,
+  QuineIdProvider,
+  QuineValue
+}
 
 // An interpreter that runs against the graph as a whole, rather than "inside" the graph
 // INV: Thread-safe
@@ -523,8 +531,9 @@ trait OnNodeInterpreter
   )(implicit
     parameters: Parameters
   ): Source[QueryContext, _] = {
-    val event = query.newValue.map(_.eval(context)) match {
-      case None | Some(Expr.Null) =>
+    val newValue = query.newValue.map(_.eval(context)).filterNot(_ == Expr.Null)
+    val event = newValue match {
+      case None =>
         // remove the property
         properties.get(query.key) match {
           case Some(oldValue) => Some(PropertyRemoved(query.key, oldValue))
@@ -534,9 +543,21 @@ trait OnNodeInterpreter
         }
       case Some(value) => Some(PropertySet(query.key, PropertyValue(Expr.toQuineValue(value))))
     }
+    val newContext = context.get(query.nodeVar) match {
+      case Some(node: Expr.Node) =>
+        val newNodeValue = newValue match {
+          case Some(updatedPropertyValue) =>
+            node.copy(properties = node.properties + (query.key -> updatedPropertyValue))
+          case None => node.copy(properties = node.properties - query.key)
+        }
+        context + (query.nodeVar -> newNodeValue)
+      case _ => // node variable not in context as a node, so return unchanged.
+        context
+    }
+
     Source
       .future(processPropertyEvents(event.toList))
-      .map(_ => context)
+      .map(_ => newContext)
   }
 
   final private[cypher] def interpretSetProperties(
@@ -557,35 +578,57 @@ trait OnNodeInterpreter
         )
     }
 
+    sealed trait Change
+    case class Add(key: Symbol, value: Value) extends Change
+    case class Remove(key: Symbol) extends Change
+
     // Build up the full set to events to process before processing them
-    val eventsToProcess = List.newBuilder[PropertyEvent]
 
     // Optionally drop existing properties
-    if (!query.includeExisting) {
-      for ((key, oldValue) <- properties)
-        if (!(map.contains(key) || labelsProperty == key)) {
-          eventsToProcess += PropertyRemoved(key, oldValue)
+    val changesToResetNode =
+      if (query.includeExisting) List()
+      else
+        properties.collect {
+          case (key, _) if !(map.contains(key) || labelsProperty == key) =>
+            Remove(key)
         }
-    }
 
     // Add all the new properties (or remove, for any NULL values)
-    eventsToProcess ++= map.view.flatMap { case (key, pv) =>
+    val changesToSetProperties = map.flatMap { case (key, pv) =>
       pv match {
         case Expr.Null =>
           // setting a property to null: remove that property
           properties.get(key) match {
-            case Some(oldValue) => Some(PropertyRemoved(key, oldValue))
+            case Some(_) => Some(Remove(key))
             case None =>
               // property already didn't exist -- no-op
               None
           }
         case value =>
           // setting a property to a value
-          Some(PropertySet(key, PropertyValue(Expr.toQuineValue(value))))
+          Some(Add(key, value))
       }
     }
+    val propertyChanges: List[Change] = (changesToResetNode ++ changesToSetProperties).toList
 
-    Source.future(processPropertyEvents(eventsToProcess.result()).map(_ => context)(ExecutionContext.parasitic))
+    val propertyChangeEvents: List[PropertyEvent] = propertyChanges.map {
+      case Add(key, value) => PropertySet(key, PropertyValue(Expr.toQuineValue(value)))
+      case Remove(key) => PropertyRemoved(key, properties.getOrElse(key, PropertyValue(QuineValue.Null)))
+    }
+
+    val newContext: QueryContext = context.get(query.nodeVar) match {
+      case Some(node: Expr.Node) =>
+        val newProperties = propertyChanges.foldLeft(node.properties) {
+          case (props, Add(key, value)) => props + (key -> value)
+          case (props, Remove(key)) => props - key
+        }
+        context + (query.nodeVar -> node.copy(properties = newProperties))
+      case _ =>
+        // node variable was not in context as a node, so return unchanged.
+        context
+    }
+
+    Source.future(processPropertyEvents(propertyChangeEvents).map(_ => newContext)(ExecutionContext.parasitic))
   }
 
   final private[quine] def interpretSetEdge(
@@ -653,7 +696,15 @@ trait OnNodeInterpreter
 
     // Set new label value
     val setLabelsFut = setLabels(newLabelValue)
-    Source.future(setLabelsFut.map(_ => context)(cypherEc))
+
+    val newContext = context.get(query.nodeVar) match {
+      case Some(node: Expr.Node) =>
+        context + (query.nodeVar -> node.copy(labels = newLabelValue))
+      case _ =>
+        // node variable was not in context as a node, so return unchanged.
+        context
+    }
+    Source.future(setLabelsFut.map(_ => newContext)(cypherEc))
   }
 }
 

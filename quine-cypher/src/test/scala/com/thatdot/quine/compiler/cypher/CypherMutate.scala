@@ -16,10 +16,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
     )
 
     testQuery(
-      "CREATE (a:PERSON {name: 'Andrea'}) RETURN a",
+      "CREATE (a:Person {name: 'Andrea'}) RETURN a",
       expectedColumns = Vector("a"),
       expectedRows = Seq(
-        Vector(Expr.Node(0L, Set(Symbol("PERSON")), Map(Symbol("name") -> Expr.Str("Andrea"))))
+        Vector(Expr.Node(0L, Set(Symbol("Person")), Map(Symbol("name") -> Expr.Str("Andrea"))))
       ),
       expectedIsReadOnly = false,
       expectedIsIdempotent = false
@@ -45,7 +45,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       "MATCH (n) RETURN n.name, n.age, labels(n)",
       expectedColumns = Vector("n.name", "n.age", "labels(n)"),
       expectedRows = Seq(
-        Vector(Expr.Str("Andrea"), Expr.Null, Expr.List(Vector(Expr.Str("PERSON")))),
+        Vector(Expr.Str("Andrea"), Expr.Null, Expr.List(Vector(Expr.Str("Person")))),
         Vector(Expr.Str("Bob"), Expr.Str("43"), Expr.List(Vector.empty))
       ),
       expectedCanContainAllNodeScan = true,
@@ -53,7 +53,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
     )
 
     testQuery(
-      "MATCH (n: PERSON) RETURN n.name",
+      "MATCH (n:Person) RETURN n.name",
       expectedColumns = Vector("n.name"),
       expectedRows = Seq(Vector(Expr.Str("Andrea"))),
       ordered = false,
@@ -61,15 +61,17 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
     )
 
     testQuery(
-      "MATCH (a {name: 'Bob'}) SET a: PERSON",
-      expectedColumns = Vector.empty,
-      expectedRows = Seq.empty,
+      "MATCH (a {name: 'Bob'}) SET a:Person RETURN labels(a), a.name",
+      expectedColumns = Vector("labels(a)", "a.name"),
+      expectedRows = Seq(
+        Vector(Expr.List(Vector(Expr.Str("Person"))), Expr.Str("Bob"))
+      ),
       expectedIsReadOnly = false,
       expectedCanContainAllNodeScan = true
     )
 
     testQuery(
-      "MATCH (a: PERSON) RETURN a.name",
+      "MATCH (a:Person) RETURN a.name",
       expectedColumns = Vector("a.name"),
       expectedRows = Seq(Vector(Expr.Str("Andrea")), Vector(Expr.Str("Bob"))),
       ordered = false,
@@ -114,7 +116,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
   describe("Special behavior of label mutations") {
     // Set a label and some properties
     testQuery(
-      "match (n) where id(n) = 78 set n: Person, n = { name: 'Greta' }",
+      "match (n) where id(n) = 78 set n:Person, n = { name: 'Greta' }",
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
       expectedIsReadOnly = false,
@@ -140,19 +142,33 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
     )
   }
 
-  describe("`SET` query clause") {
+  describe("`SET` and `REMOVE` query clauses") {
     // SET single property (no history)
     testQuery(
       """
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |SET n.p1 = 'p1'
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN n.p1""".stripMargin,
       expectedColumns = Vector("n.p1"),
       expectedRows = Seq(
         Vector(
           Expr.Str("p1")
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+
+    // add a label
+    testQuery(
+      """
+        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+        |SET n:Address
+        |RETURN labels(n)""".stripMargin,
+      expectedColumns = Vector("labels(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Expr.Str("Address"))
         )
       ),
       expectedIsReadOnly = false,
@@ -165,8 +181,6 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |SET n.p2 = 'p2',
         |    n.p3 = 'p3'
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN n.p1, n.p2, n.p3""".stripMargin,
       expectedColumns = Vector("n.p1", "n.p2", "n.p3"),
       expectedRows = Seq(
@@ -190,8 +204,6 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         | p5: 'p5',
         | p6: 'p6'
         |}
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN n.p1, n.p2, n.p3, n.p4, n.p5, n.p6""".stripMargin,
       expectedColumns = Vector("n.p1", "n.p2", "n.p3", "n.p4", "n.p5", "n.p6"),
       expectedRows = Seq(
@@ -213,8 +225,6 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       """
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |SET n.p1 = null
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN properties(n)""".stripMargin,
       expectedColumns = Vector("properties(n)"),
       expectedRows = Seq(
@@ -238,8 +248,6 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |SET n.p2 = null,
         |    n.p3 = null
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN properties(n)""".stripMargin,
       expectedColumns = Vector("properties(n)"),
       expectedRows = Seq(
@@ -263,8 +271,6 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         |    p4: null,
         |    p5: null
         |}
-        |WITH 1 AS row
-        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |RETURN properties(n)""".stripMargin,
       expectedColumns = Vector("properties(n)"),
       expectedRows = Seq(
@@ -284,18 +290,128 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
         |SET n = {
         |    a1: 'p1',
-        |    a2: 'p2'
+        |    a2: 'p2',
+        |    a3: 'p3'
         |}
-        |WITH 1 AS row
+        |RETURN properties(n), labels(n)""".stripMargin,
+      expectedColumns = Vector("properties(n)", "labels(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Map(
+            "a1" -> Expr.Str("p1"),
+            "a2" -> Expr.Str("p2"),
+            "a3" -> Expr.Str("p3")
+          ),
+          Expr.List(Expr.Str("Address"))
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+    // REMOVE a property
+    testQuery(
+      """
         |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
-        |RETURN properties(n)""".stripMargin,
-      expectedColumns = Vector("properties(n)"),
+        |REMOVE n.a3
+        |RETURN properties(n), labels(n)""".stripMargin,
+      expectedColumns = Vector("properties(n)", "labels(n)"),
       expectedRows = Seq(
         Vector(
           Expr.Map(
             "a1" -> Expr.Str("p1"),
             "a2" -> Expr.Str("p2")
+          ),
+          Expr.List(Expr.Str("Address"))
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+
+    // remove and update in one SET +=
+    testQuery(
+      """
+        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+        |SET n += {
+        |    a1: 'p1 prime',
+        |    a2: null
+        |}
+        |RETURN properties(n)""".stripMargin,
+      expectedColumns = Vector("properties(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Map(
+            "a1" -> Expr.Str("p1 prime")
           )
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+    // SET += for no-op
+    testQuery(
+      """
+            |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+            |SET n += {}
+            |RETURN properties(n)""".stripMargin,
+      expectedColumns = Vector("properties(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Map(
+            "a1" -> Expr.Str("p1 prime")
+          )
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+    // SET += a map parameter
+    testQuery(
+      """
+        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+        |SET n += $mapParam
+        |RETURN properties(n)""".stripMargin,
+      parameters = Map("mapParam" -> Expr.Map("a3" -> Expr.Str("p3"))),
+      expectedColumns = Vector("properties(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Map(
+            "a1" -> Expr.Str("p1 prime"),
+            "a3" -> Expr.Str("p3")
+          )
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+    // REMOVE a label, add another
+    testQuery(
+      """
+        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+        |REMOVE n:Address
+        |SET n:Address2
+        |RETURN labels(n)""".stripMargin,
+      expectedColumns = Vector("labels(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.List(Expr.Str("Address2"))
+        )
+      ),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = true
+    )
+
+    // remove all properties with SET = {}
+    testQuery(
+      """
+        |MATCH (n) WHERE id(n) = idFrom("P Sherman 42 Wallaby Way, Syndey")
+        |SET n = {}
+        |RETURN properties(n), labels(n)""".stripMargin,
+      expectedColumns = Vector("properties(n)", "labels(n)"),
+      expectedRows = Seq(
+        Vector(
+          Expr.Map.empty,
+          Expr.List(Expr.Str("Address2"))
         )
       ),
       expectedIsReadOnly = false,
@@ -360,6 +476,63 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("n.prop"),
       expectedRows = Seq(Vector(Expr.Str("sherry")), Vector(Expr.Str("sherry"))),
       skip = true
+    )
+
+    // SET n.x = 0, n.x = n.x + 1 interprets as `SET n.x = 0, n.x = null + 1`,
+    // which means `n.x` ends up as `null` rather than 1. This is not desirable.
+    testQuery(
+      "CREATE (n) SET n.x = 0, n.x = n.x + 1 RETURN n.x",
+      expectedColumns = Vector("n.x"),
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false,
+      skip = true // currently null
+    )
+
+    // By using WITH, we can force the RHS `n.x` to be evaluated after the first SET
+    // rather than before
+    testQuery(
+      "CREATE (n) SET n.x = 0 WITH n SET n.x = n.x + 1 RETURN n.x",
+      expectedColumns = Vector("n.x"),
+      expectedRows = Seq(Vector(Expr.Integer(1L))),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
+    )
+
+    // SET b.x should update both a and b, but we don't yet do that level of analysis
+    testQuery(
+      """CREATE (a{x: -1}) WITH a, a AS b
+        |SET b.x = 1
+        |RETURN a.x, b.x""".stripMargin,
+      expectedColumns = Vector("a.x", "b.x"),
+      expectedRows = Seq(Vector(Expr.Integer(1), Expr.Integer(1))), // currently -1, 1
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false,
+      skip = true
+    )
+
+    // a.x should ideally reflect the update to the node from the setProperty call,
+    // but we don't yet do that level of analysis
+    testQuery(
+      """CREATE (a{x: 1}) WITH a
+        |CALL create.setProperty(a, 'x', 2)
+        |RETURN a.x""".stripMargin,
+      expectedColumns = Vector("a.x"),
+      expectedRows = Seq(Vector(Expr.Integer(2))), // currently 1
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false,
+      skip = true
+    )
+
+    testQuery(
+      """CREATE (a{x: 1})
+        |SET a.x = 200
+        |RETURN a[$propertyParam] AS notStaticProp""".stripMargin,
+      parameters = Map("propertyParam" -> Expr.Str("x")),
+      expectedColumns = Vector("notStaticProp"),
+      expectedRows = Seq(Vector(Expr.Integer(200))),
+      expectedIsReadOnly = false,
+      expectedIsIdempotent = false
     )
   }
 

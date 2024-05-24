@@ -792,10 +792,13 @@ object Query {
 
   /** Mutate a property of a node
     *
+    * @param nodeVar the name of the node variable being derefenced (if this is present in
+    *                the QueryContext, its value will be updated to reflect the new property value)
     * @param key the key of the property
     * @param newValue the updated value ([[scala.None]] means remove the value)
     */
   final case class SetProperty(
+    nodeVar: Symbol,
     key: Symbol,
     newValue: Option[Expr],
     columns: Columns = Columns.Omitted
@@ -817,10 +820,13 @@ object Query {
 
   /** Mutate in batch properties of a node
     *
+    * @param nodeVar the name of the node variable being derefenced (if this is present in
+    *                the QueryContext, its value will be updated to reflect the new property values)
     * @param properties keys and values to set (expected to be a map, node variable, or relationship variable)
     * @param includeExisting if false, existing properties will be cleared
     */
   final case class SetProperties(
+    nodeVar: Symbol,
     properties: Expr,
     includeExisting: Boolean,
     columns: Columns = Columns.Omitted
@@ -895,10 +901,13 @@ object Query {
 
   /** Mutate labels of a node
     *
+    * @param nodeVar the name of the node variable being derefenced. If this is present in the QueryContext, its value
+    *                will be updated to reflect the change.
     * @param labels the labels to change
     * @param add are we adding or removing the labels?
     */
   final case class SetLabels(
+    nodeVar: Symbol,
     labels: Seq[Symbol],
     add: Boolean,
     columns: Columns = Columns.Omitted
