@@ -17,7 +17,6 @@ import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.ValidatedNel
-import cats.effect.IO
 import cats.implicits.catsSyntaxValidatedId
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.KafkaException
@@ -175,14 +174,8 @@ abstract class IngestSrcDef(
     ingestControl = Some(control)
   }
 
-  val getControl: IO[QuineAppIngestControl] =
-    for {
-      ctrl <- IO(ingestControl)
-      result <- ctrl match {
-        case Some(c) => IO.fromFuture(IO.pure(c))
-        case None => IO.fromFuture(IO.pure(controlPromise.future))
-      }
-    } yield result
+  def getControl: Future[QuineAppIngestControl] =
+    ingestControl.getOrElse(controlPromise.future)
 
 }
 

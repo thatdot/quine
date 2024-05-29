@@ -141,7 +141,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     localMemberId: MemberIdx,
     defaultValue: => A,
     recovery: B => A
-  ): Future[A] = synchronized {
+  ): Future[A] =
     getLocalMetaData[A](key, localMemberId)
       .flatMap {
         case Some(value) => Future.successful(value)
@@ -157,7 +157,6 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
             storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
         }(graph.system.dispatcher)
       }(graph.nodeDispatcherEC)
-  }
 
   (graph.system.dispatcher)
 

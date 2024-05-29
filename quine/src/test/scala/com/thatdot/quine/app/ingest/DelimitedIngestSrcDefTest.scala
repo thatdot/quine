@@ -12,7 +12,6 @@ import org.apache.pekko.stream.testkit.TestSubscriber
 import org.apache.pekko.stream.testkit.scaladsl.TestSink
 import org.apache.pekko.util.{ByteString, Timeout}
 
-import cats.effect.unsafe.implicits.global
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
@@ -64,7 +63,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
       ingestSrcDef.stream(namespace, _ => ()).toMat(TestSink.probe)(Keep.right).run()
 
-    val fc: Future[QuineAppIngestControl] = ingestSrcDef.getControl.unsafeToFuture()
+    val fc: Future[QuineAppIngestControl] = ingestSrcDef.getControl
 
     protected def writeBytes(bytes: Array[Byte]): Unit = writableInputStream.writeBytes(bytes)
 
@@ -217,7 +216,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       )
       .valueOr(_ => ???)
     val done = d.stream(namespace, _ => ()).toMat(Sink.ignore)(Keep.right).run()
-    val fc = d.getControl.unsafeToFuture()
+    val fc = d.getControl
     val c: QuineAppIngestControl = Await.result(fc, 3.seconds)
     val g = graph.asInstanceOf[LiteralOpsGraph]
     (1 to 10).foreach(i => istream.writeBytes(s"$i\n".getBytes()))

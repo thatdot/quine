@@ -13,7 +13,6 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
-import cats.effect.unsafe.implicits.global
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 import com.quine.cypher.builders.ParserBuilder
@@ -454,9 +453,12 @@ final class QuineApp(graph: GraphService)
               val streamDefWithControl = IngestStreamWithControl(
                 settings,
                 metrics,
-                ingestSrcDef.getControl.map(_.valveHandle),
-                ingestSrcDef.getControl.map(_.termSignal),
-                ingestSrcDef.getControl.map { c => c.terminate(); () },
+                () => ingestSrcDef.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
+                () => ingestSrcDef.getControl.map(_.termSignal)(ExecutionContext.parasitic),
+                close = () => {
+                  ingestSrcDef.getControl.flatMap(c => c.terminate())(ExecutionContext.parasitic)
+                  () // Intentional fire and forget
+                },
                 restoredStatus = restoredStatus
               )
 
@@ -548,8 +550,8 @@ final class QuineApp(graph: GraphService)
       .traverse(ingestStreams.toList) { case (ns, ingestMap) =>
         Future.sequence(ingestMap.map { case (name, ingest) =>
           IngestMetered.removeIngestMeter(ns, name)
-          ingest.close.unsafeRunAndForget()
-          ingest.terminated.recover { case _ => Future.successful(Done) }.unsafeToFuture().flatten
+          ingest.close()
+          ingest.terminated().recover { case _ => Future.successful(Done) }
         })
       }(implicitly, graph.system.dispatcher)
       .map(_ => ())(graph.system.dispatcher)

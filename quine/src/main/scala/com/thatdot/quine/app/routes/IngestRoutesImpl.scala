@@ -13,10 +13,8 @@ import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.stream.scaladsl.Sink
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 import org.apache.pekko.util.Timeout
-import org.apache.pekko.{Done, NotUsed}
+import org.apache.pekko.{Done, NotUsed, pattern}
 
-import cats.effect.IO
-import cats.effect.unsafe.implicits.global
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
 import endpoints4s.Invalid
@@ -65,9 +63,9 @@ trait IngestStreamState {
 final private[thatdot] case class IngestStreamWithControl[+Conf](
   settings: Conf,
   metrics: IngestMetrics,
-  valve: IO[ValveSwitch],
-  terminated: IO[Future[Done]],
-  close: IO[Unit],
+  valve: () => Future[ValveSwitch],
+  terminated: () => Future[Future[Done]],
+  var close: () => Unit = () => (),
   var restoredStatus: Option[IngestStreamStatus] = None,
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None
 ) extends LazyLogging {
@@ -75,9 +73,8 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
   // Returns a simpler version of status. Only possible values are completed, failed, or running
   private def checkTerminated(implicit materializer: Materializer): Future[IngestStreamStatus] = {
     implicit val ec: ExecutionContext = materializer.executionContext
-    for {
-      terminated <- terminated.unsafeToFuture()
-      result = terminated.value match {
+    terminated().map(term =>
+      term.value match {
         case Some(Success(Done)) => IngestStreamStatus.Completed
         case Some(Failure(e)) =>
           // If exception occurs, it means that the ingest stream has failed
@@ -85,7 +82,7 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       }
-    } yield result
+    )
   }
 
   private def pendingStatusFuture(
@@ -115,29 +112,24 @@ final private[thatdot] case class IngestStreamWithControl[+Conf](
 
   def status(implicit materializer: Materializer): Future[IngestStreamStatus] = {
 
-    val getPendingStatus: IO[IngestStreamStatus] =
+    implicit val ec: ExecutionContext = materializer.executionContext
+    val getPendingStatus: Future[IngestStreamStatus] =
       for {
-        vs <- valve
-        status <- IO.fromFuture(IO.pure(pendingStatusFuture(vs)))
+        vs <- valve()
+        status <- pendingStatusFuture(vs)
       } yield status
 
-    val getPendingStatusWithTimeout: IO[IngestStreamStatus] =
-      getPendingStatus.timeoutTo(50.milliseconds, IO.pure(IngestStreamStatus.Running))
+    val timeout = pattern.after(200.millis)(Future.successful(IngestStreamStatus.Running))(materializer.system)
+    val getPendingStatusWithTimeout = Future.firstCompletedOf(Seq(getPendingStatus, timeout))
 
-    val checkTerminatedStatus: IO[IngestStreamStatus] =
-      IO.fromFuture(IO.pure(checkTerminated))
-
-    val resultStatus: IO[IngestStreamStatus] =
-      for {
-        terminated <- checkTerminatedStatus
-        result <- terminated match {
-          case IngestStreamStatus.Completed => IO.pure(IngestStreamStatus.Completed)
-          case IngestStreamStatus.Failed => IO.pure(IngestStreamStatus.Failed)
-          case _ => getPendingStatusWithTimeout
-        }
-      } yield result
-
-    resultStatus.unsafeToFuture()
+    for {
+      terminated <- checkTerminated
+      result <- terminated match {
+        case IngestStreamStatus.Completed => Future.successful(IngestStreamStatus.Completed)
+        case IngestStreamStatus.Failed => Future.successful(IngestStreamStatus.Failed)
+        case _ => getPendingStatusWithTimeout
+      }
+    } yield result
   }
 }
 
@@ -186,7 +178,7 @@ trait IngestRoutesImpl
     conf.status.map { status =>
       IngestStreamInfo(
         status,
-        conf.terminated.unsafeToFuture().value collect { case Failure(exception) => exception.toString },
+        conf.terminated().value collect { case Failure(exception) => exception.toString },
         conf.settings,
         conf.metrics.toEndpointResponse
       )
@@ -269,10 +261,9 @@ trait IngestRoutesImpl
 
           val terminationMessage: Future[Option[String]] = {
             // start terminating the ingest
-            close.unsafeRunAndForget()
+            close()
             // future will return when termination finishes
-            terminated
-              .unsafeToFuture()
+            terminated()
               .flatMap(t =>
                 t
                   .map({ case Done => None })(graph.shardDispatcherEC)
@@ -342,7 +333,7 @@ trait IngestRoutesImpl
           case Some(IngestStreamStatus.Terminated) => Future.failed(PauseOperationException.Terminated)
           case Some(IngestStreamStatus.Failed) => Future.failed(PauseOperationException.Failed)
           case _ =>
-            val flippedValve = ingest.valve.unsafeToFuture().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
+            val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
             val ingestStatus = flippedValve.flatMap { _ =>
               ingest.restoredStatus = None; // FIXME not threadsafe
               stream2Info(ingest)
