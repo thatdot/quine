@@ -135,7 +135,9 @@ final case class StandingQueryCancelled(
     |```
     |""".stripMargin
 )
-sealed abstract class StandingQueryResultOutputUserDef
+sealed abstract class StandingQueryResultOutputUserDef {
+  def slug: String
+}
 
 object StandingQueryResultOutputUserDef {
   val title = "Standing Query Result Output"
@@ -149,7 +151,9 @@ object StandingQueryResultOutputUserDef {
     url: String,
     parallelism: Int = 8,
     onlyPositiveMatchData: Boolean = false
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug = "http"
+  }
 
   @unnamed
   @title("Publish to Kafka Topic")
@@ -164,7 +168,9 @@ object StandingQueryResultOutputUserDef {
       "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>"
     )
     kafkaProperties: Map[String, String] = Map.empty[String, String]
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "kafka"
+  }
 
   @unnamed
   @title("Publish to Kinesis Data Stream")
@@ -180,7 +186,9 @@ object StandingQueryResultOutputUserDef {
     kinesisMaxBatchSize: Option[Int],
     kinesisMaxRecordsPerSecond: Option[Int],
     kinesisMaxBytesPerSecond: Option[Int]
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "kinesis"
+  }
 
   @unnamed
   @title("Publish to SNS Topic")
@@ -197,7 +205,9 @@ object StandingQueryResultOutputUserDef {
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
     @docs("ARN of the topic to publish to") topic: String
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "sns"
+  }
 
   @unnamed
   @title("Log JSON to Console")
@@ -205,7 +215,10 @@ object StandingQueryResultOutputUserDef {
   final case class PrintToStandardOut(
     logLevel: PrintToStandardOut.LogLevel = PrintToStandardOut.LogLevel.Info,
     logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "stdout"
+  }
+
   object PrintToStandardOut {
 
     /** @see [[StandingQuerySchemas.logModeSchema]]
@@ -240,7 +253,9 @@ object StandingQueryResultOutputUserDef {
   )
   final case class WriteToFile(
     path: String
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "file"
+  }
 
   @unnamed
   @title("Publish to Slack Webhook")
@@ -251,7 +266,9 @@ object StandingQueryResultOutputUserDef {
     hookUrl: String,
     onlyPositiveMatchData: Boolean = false,
     @docs("Number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "slack"
+  }
 
   /** Each result is passed into a Cypher query as a parameter
     *
@@ -293,11 +310,15 @@ object StandingQueryResultOutputUserDef {
         .replace('\n', ' ')
     )
     shouldRetry: Boolean = true
-  ) extends StandingQueryResultOutputUserDef
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "cypher"
+  }
 
   @unnamed
   @title("Drop")
-  final case object Drop extends StandingQueryResultOutputUserDef
+  final case object Drop extends StandingQueryResultOutputUserDef {
+    override def slug: String = "drop"
+  }
 
   /** Queue for collecting standing query results to be used programmatically.
     * Meant for internal use in Quine for testing.
@@ -319,6 +340,8 @@ object StandingQueryResultOutputUserDef {
   @title("Internal Queue") // TODO: Keep this unpublished (or ideally, unavailable) in OpenAPI docs/REST API.
   final case class InternalQueue() extends StandingQueryResultOutputUserDef {
     var results: AtomicReference[_] = _
+
+    override def slug: String = "internalQueue"
   }
   case object InternalQueue {
     def apply(resultsRef: AtomicReference[_]): InternalQueue = {

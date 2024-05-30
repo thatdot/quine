@@ -17,7 +17,7 @@ import software.amazon.awssdk.regions.Region
 import com.thatdot.quine.persistor._
 
 /** Options for persistence */
-sealed abstract class PersistenceAgentType(val isLocal: Boolean) {
+sealed abstract class PersistenceAgentType(val isLocal: Boolean, val label: String) {
 
   /** Size of the bloom filter, if enabled (not all persistors even support this) */
   def bloomFilterSize: Option[Long]
@@ -25,7 +25,7 @@ sealed abstract class PersistenceAgentType(val isLocal: Boolean) {
 }
 object PersistenceAgentType extends PureconfigInstances {
 
-  case object Empty extends PersistenceAgentType(isLocal = false) {
+  case object Empty extends PersistenceAgentType(isLocal = false, "empty") {
 
     def bloomFilterSize = None
 
@@ -33,7 +33,7 @@ object PersistenceAgentType extends PureconfigInstances {
       new EmptyPersistor(persistenceConfig)
   }
 
-  case object InMemory extends PersistenceAgentType(isLocal = true) {
+  case object InMemory extends PersistenceAgentType(isLocal = true, "inmemory") {
     def bloomFilterSize = None
 
   }
@@ -44,7 +44,7 @@ object PersistenceAgentType extends PureconfigInstances {
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(isLocal = true) {}
+  ) extends PersistenceAgentType(isLocal = true, "rocksdb") {}
 
   final case class MapDb(
     filepath: Option[File],
@@ -53,7 +53,7 @@ object PersistenceAgentType extends PureconfigInstances {
     commitInterval: FiniteDuration = 10.seconds,
     createParentDir: Boolean = false,
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(isLocal = true) {
+  ) extends PersistenceAgentType(isLocal = true, "mapdb") {
     assert(numberPartitions > 0, "Must have a positive number of partitions")
   }
 
@@ -78,7 +78,7 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType(isLocal = false) {
+  ) extends PersistenceAgentType(isLocal = false, "cassandra") {
     assert(endpoints.nonEmpty, "Must specify at least one Cassandra endpoint")
   }
 
@@ -93,7 +93,7 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000
-  ) extends PersistenceAgentType(isLocal = false) {
+  ) extends PersistenceAgentType(isLocal = false, "keyspaces") {
     private val supportedReadConsistencies: Set[ConsistencyLevel] =
       Set(ConsistencyLevel.ONE, ConsistencyLevel.LOCAL_ONE, ConsistencyLevel.LOCAL_QUORUM)
     assert(
@@ -108,7 +108,7 @@ object PersistenceAgentType extends PureconfigInstances {
     username: String = sys.env.getOrElse("CLICKHOUSE_USER", "quine"),
     password: String = sys.env.getOrElse("CLICKHOUSE_PASSWORD", "quine"),
     bloomFilterSize: Option[Long] = None
-  ) extends PersistenceAgentType(isLocal = false)
+  ) extends PersistenceAgentType(isLocal = false, "clickhouse")
       with LazyLogging {
 
     /** By default, the ClickHouse client uses the default SSLContext (configured by standard java truststore and

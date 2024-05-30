@@ -218,7 +218,9 @@ final case class KinesisCheckpointSettings(
 )
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
-sealed abstract class IngestStreamConfiguration
+sealed abstract class IngestStreamConfiguration {
+  def slug: String
+}
 object IngestStreamConfiguration {
   case class InvalidStreamConfiguration(errors: NonEmptyList[String])
       extends Exception(s"Encountered errors in provided ingest configuration: ${errors.toList.mkString("; ")}")
@@ -305,6 +307,7 @@ final case class KafkaIngest(
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
 ) extends IngestStreamConfiguration {
   def getQuery: Option[String] = StreamedRecordFormat.getQuery(format)
+  override def slug: String = "kafka"
 }
 
 object KinesisIngest {
@@ -373,7 +376,9 @@ final case class KinesisIngest(
     "Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`, ignoring those fields in the API request."
   )
   checkpointSettings: Option[KinesisCheckpointSettings]
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "kinesis"
+}
 
 @title("Server Sent Events Stream")
 @unnamed
@@ -390,7 +395,9 @@ final case class ServerSentEventsIngest(
   @docs(
     "List of encodings that have been applied to each input. Decoding of each type is applied in order."
   ) recordDecoders: Seq[RecordDecodingType] = Seq.empty
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "sse"
+}
 
 @title("Simple Queue Service Queue")
 @unnamed
@@ -409,7 +416,9 @@ final case class SQSIngest(
   @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "sqs"
+}
 
 object WebsocketSimpleStartupIngest {
   @unnamed
@@ -446,7 +455,9 @@ final case class WebsocketSimpleStartupIngest(
                                                         |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
                                                         |""".stripMargin)
   encoding: String = "UTF-8"
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "websocket"
+}
 
 @title("Streamed Record Format")
 @unnamed
@@ -543,7 +554,9 @@ final case class FileIngest(
   @docs(
     "Ingest mode for reading from a non-regular file type; default is to auto-detect if file is named pipe."
   ) fileIngestMode: Option[FileIngestMode]
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "file"
+}
 
 @title("S3 File ingest (Experimental)")
 @unnamed
@@ -577,7 +590,9 @@ final case class S3Ingest(
   ingestLimit: Option[Long],
   @docs("maximum records to process per second")
   maximumPerSecond: Option[Int]
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "s3"
+}
 
 /** Standard input ingest stream configuration */
 @title("Standard Input Ingest Stream")
@@ -596,7 +611,9 @@ final case class StandardInputIngest(
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs("Maximum records to process per second.")
   maximumPerSecond: Option[Int]
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "stdin"
+}
 
 /** Number iterator ingest source for easy testing */
 @unnamed
@@ -618,7 +635,9 @@ case class NumberIteratorIngest(
   maximumPerSecond: Option[Int],
   @docs("Maximum number of records to process at once.")
   parallelism: Int = IngestRoutes.defaultWriteParallelism
-) extends IngestStreamConfiguration
+) extends IngestStreamConfiguration {
+  override def slug: String = "numberIterator"
+}
 
 @unnamed
 @title("File Ingest Format")
