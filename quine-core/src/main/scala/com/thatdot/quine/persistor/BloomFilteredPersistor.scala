@@ -18,8 +18,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
@@ -120,13 +120,13 @@ private class BloomFilteredPersistor(
     else
       Future.successful(None)
 
-  override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  override def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     wrappedPersistor.persistStandingQuery(standingQuery)
 
-  override def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  override def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     wrappedPersistor.removeStandingQuery(standingQuery)
 
-  override def getStandingQueries: Future[List[StandingQuery]] = wrappedPersistor.getStandingQueries
+  override def getStandingQueries: Future[List[StandingQueryInfo]] = wrappedPersistor.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(
     id: QuineId

@@ -75,7 +75,7 @@ object Protocol extends LazyLogging {
               case ExplainedQuery(query) => true -> query
               case other => false -> other
             }
-            val queryResult: QueryResults = cypher.queryCypherValues(
+            val queryResult: RunningCypherQuery = cypher.queryCypherValues(
               cleanedStatement,
               namespace,
               parameters

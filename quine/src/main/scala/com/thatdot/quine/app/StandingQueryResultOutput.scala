@@ -40,7 +40,6 @@ import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.cypher.QueryContext
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
@@ -438,71 +437,55 @@ object StandingQueryResultOutput extends LazyLogging {
       case cancellations if positiveOnly && !cancellations.exists(_.meta.isPositiveMatch) =>
         None // no new results, only cancellations, and we're configured to drop cancellations
       case Seq(result) => // one new result or cancellations
-        if (result.meta.isPositiveMatch) Some(NewResult(result.meta.resultId, result.data))
-        else if (!positiveOnly) Some(CancelledResult(result.meta.resultId))
+        if (result.meta.isPositiveMatch) Some(NewResult(result.data))
+        else if (!positiveOnly) Some(CancelledResult(result.data))
         else None
       case _ => // multiple results (but maybe not all valid given `positiveOnly`)
-        val positiveResults = results.filter(_.meta.isPositiveMatch)
-        val cancellations = results.filter(!_.meta.isPositiveMatch)
+        val (positiveResults, cancellations) = results.partition(_.meta.isPositiveMatch)
 
         if (positiveOnly && positiveResults.length == 1) {
           val singleResult = positiveResults.head
-          Some(NewResult(singleResult.meta.resultId, singleResult.data))
+          Some(NewResult(singleResult.data))
         } else if (!positiveOnly && positiveResults.isEmpty && cancellations.length == 1) {
-          Some(CancelledResult(cancellations.head.meta.resultId))
+          Some(CancelledResult(cancellations.head.data))
         } else if (positiveOnly && positiveResults.nonEmpty) {
           Some(MultipleUpdates(positiveResults, Seq.empty))
         } else if (positiveResults.nonEmpty || cancellations.nonEmpty) {
-          Some(MultipleUpdates(positiveResults, cancellations.map(_.meta.resultId)))
+          Some(MultipleUpdates(positiveResults, cancellations))
         } else None
     }
   }
 
-  final case class NewResult(resultId: ResultId, data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider)
+  final case class NewResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider)
       extends SlackSerializable {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
-    val dataPrettyJson: String =
+    private val dataPrettyJson: String =
       Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq).spaces2
 
-    // slack message blocks
-    def slackBlocks: Vector[Json] = Vector(
-      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```")),
-      Json.obj(
-        "type" -> "context",
-        "elements" -> Json.arr(
-          Json.obj(
-            "type" -> "mrkdwn",
-            "text" -> s"*Result ID:* ${resultId.uuid.toString}"
-          )
-        )
-      )
-    )
+    def slackBlock: Json =
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```"))
 
     override def slackJson: String = Json
       .obj(
         "text" -> "New Standing Query Result",
         "blocks" -> Json.arr(
           Json
-            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result")),
-          slackBlocks(0),
-          slackBlocks(1)
+            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result"))
         )
       )
       .noSpaces
   }
 
-  final case class CancelledResult(resultId: ResultId) extends SlackSerializable {
+  final case class CancelledResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider)
+      extends SlackSerializable {
+    // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
+    // may not be perfectly escaped (for example, if the data contains a triple-backquote)
+    private val dataPrettyJson: String =
+      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq).spaces2
 
-    val slackBlock: Json = Json.obj(
-      "type" -> "context",
-      "elements" -> Json.arr(
-        Json.obj(
-          "type" -> "mrkdwn",
-          "text" -> s"*Result ID:* ${resultId.uuid.toString}"
-        )
-      )
-    )
+    def slackBlock: Json =
+      Json.obj("type" -> "section", "text" -> Json.obj("type" -> "mrkdwn", "text" -> s"```$dataPrettyJson```"))
 
     override def slackJson: String = Json
       .obj(
@@ -523,24 +506,27 @@ object StandingQueryResultOutput extends LazyLogging {
       .noSpaces
   }
 
-  final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[ResultId])(implicit
-    idProvider: QuineIdProvider
+  final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[StandingQueryResult])(
+    implicit idProvider: QuineIdProvider
   ) extends SlackSerializable {
     val newResultsBlocks: Vector[Json] = newResults match {
       case Seq() => Vector.empty
       case Seq(result) =>
-        Json.obj(
-          "type" -> "header",
-          "text" -> Json.obj(
-            "type" -> "plain_text",
-            "text" -> "New Standing Query Result"
-          )
-        ) +: NewResult(result.meta.resultId, result.data).slackBlocks
+        Vector(
+          Json.obj(
+            "type" -> "header",
+            "text" -> Json.obj(
+              "type" -> "plain_text",
+              "text" -> "New Standing Query Result"
+            )
+          ),
+          NewResult(result.data).slackBlock
+        )
       case result +: remainingResults =>
-        val excessResultIds = remainingResults.map(_.meta.resultId.uuid.toString)
+        val excessMetaData = remainingResults.map(_.meta.toString) // TODO: what here since no result ID?
         val excessResultItems: Seq[String] =
-          if (excessResultIds.length <= 10) excessResultIds
-          else excessResultIds.take(9) :+ s"(${excessResultIds.length - 9} more)"
+          if (excessMetaData.length <= 10) excessMetaData
+          else excessMetaData.take(9) :+ s"(${excessMetaData.length - 9} more)"
 
         Vector(
           Json.obj(
@@ -557,12 +543,12 @@ object StandingQueryResultOutput extends LazyLogging {
               "text" -> "Latest result:"
             )
           )
-        ) ++ NewResult(result.meta.resultId, result.data).slackBlocks ++ Vector(
+        ) ++ (NewResult(result.data).slackBlock +: Vector(
           Json.obj(
             "type" -> "section",
             "text" -> Json.obj(
               "type" -> "mrkdwn",
-              "text" -> "*Other New Result IDs:*"
+              "text" -> "*Other New Result Meta Data:*"
             )
           ),
           Json.obj(
@@ -574,7 +560,7 @@ object StandingQueryResultOutput extends LazyLogging {
               )
             })
           )
-        )
+        ))
       case _ => throw new Exception(s"Unexpected value $newResults")
     }
 
@@ -589,13 +575,13 @@ object StandingQueryResultOutput extends LazyLogging {
               "text" -> "Standing Query Result Cancelled"
             )
           ),
-          CancelledResult(cancellation).slackBlock
+          CancelledResult(cancellation.data).slackBlock
         )
       case cancellations =>
-        val cancelledIds = cancellations.map(_.uuid.toString)
+        val cancelledMetaData = cancellations.map(_.meta.toString)
         val itemsCancelled: Seq[String] =
-          if (cancellations.length <= 10) cancelledIds
-          else cancelledIds.take(9) :+ s"(${cancellations.length - 9} more)"
+          if (cancellations.length <= 10) cancelledMetaData
+          else cancelledMetaData.take(9) :+ s"(${cancellations.length - 9} more)"
 
         Vector(
           Json.obj(
@@ -616,7 +602,6 @@ object StandingQueryResultOutput extends LazyLogging {
           )
         )
     }
-
     override def slackJson: String = Json
       .obj(
         "text" -> "New Standing Query Updates",

@@ -284,7 +284,7 @@ package object cypher {
     cacheCompilation: Boolean = true
   )(implicit
     graph: CypherOpsGraph
-  ): QueryResults = {
+  ): RunningCypherQuery = {
 
     val initialCompiledColumns: Seq[(String, symbols.CypherType)] = initialColumns.toSeq.map { case (col, value) =>
       (col, OpenCypherUdf.typeToOpenCypherType(value.typ))

@@ -17,8 +17,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -105,12 +105,12 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     wrapped.getLatestSnapshot(id, upToTime)
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     wrapped.persistStandingQuery(standingQuery)
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = wrapped.removeStandingQuery(standingQuery)
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = wrapped.removeStandingQuery(standingQuery)
 
-  def getStandingQueries: Future[List[StandingQuery]] = wrapped.getStandingQueries
+  def getStandingQueries: Future[List[StandingQueryInfo]] = wrapped.getStandingQueries
 
   def getMultipleValuesStandingQueryStates(
     id: QuineId

@@ -19,6 +19,13 @@ table HalfEdge {
   other: QuineId (required);
 }
 
+// See [[com.thatdot.quine.model.HalfEdge]]
+table HalfEdge2 {
+   edge_type: string (required);
+   direction: EdgeDirection;
+   other_quine_id: [byte] (required); // QuineId
+}
+
 table Property {
   key: string (required);
   value: [byte] (required);
@@ -190,14 +197,22 @@ table StandingQueryId {
   high_bytes: long;
 }
 
+// See [[com.thatdot.quine.graph.StandingQueryId]]
+// Backward incompatible representation that saves 128 bits per value.
+struct StandingQueryId2 {
+  low_bytes: long;
+  high_bytes: long;
+}
+
 // See [[com.thatdot.quine.graph.StandingQueryPartId]]
 table MultipleValuesStandingQueryPartId {
   low_bytes: long;
   high_bytes: long;
 }
 
-// See [[com.thatdot.quine.graph.StandingQueryMessage.ResultId]]
-table StandingQueryResultId {
+// See [[com.thatdot.quine.graph.StandingQueryPartId]]
+// Backward incompatible representation that saves 128 bits per value.
+struct MultipleValuesStandingQueryPartId2 {
   low_bytes: long;
   high_bytes: long;
 }

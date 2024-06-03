@@ -31,7 +31,7 @@ Quine represents every possible node as an existing "empty node" with no history
 
 **Locating any node using `idFrom`**
 
-`idFrom` is a Cypher function specific to Quine and allows you to retrieve node data without an index. `idFrom` takes any number of arguments and deterministically produces a node ID (hash) from that input. You will use `idFrom` in the ingest query portion of every ingest stream that you create.
+`idFrom` is a Cypher function specific to Quine and allows you to retrieve node data without an index. `idFrom` takes any number of arguments and deterministically produces a node ID (hash) from that input. You will use `idFrom` in the ingest query portion of every ingest stream that you create.
 
 For example, the absolute minimum ingest query to load any incoming data into the graph is simply a wrapper around the `idFrom` function.
 

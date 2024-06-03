@@ -145,7 +145,7 @@ trait CypherOpsGraph extends BaseGraph {
       atTime: Option[Milliseconds],
       parameters: Map[String, cypher.Value],
       bypassSkipOptimization: Boolean = false
-    ): QueryResults = {
+    ): RunningCypherQuery = {
       requireCompatibleNodeType()
       val interpreter: CypherInterpreter[Location.External] = atTime match {
         case Some(_) => new AtTimeInterpreter(CypherOpsGraph.this, namespace, atTime, bypassSkipOptimization)

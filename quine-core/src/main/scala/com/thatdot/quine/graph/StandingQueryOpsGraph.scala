@@ -91,14 +91,14 @@ trait StandingQueryOpsGraph extends BaseGraph {
             s"Performing a full update of the standingQueryPartIndex because of query for part IDs ${keys.asScala.toList}"
           )
           val runningSqs = runningStandingQueries.values
-            .map(_.query.query)
+            .map(_.query.queryPattern)
             .collect { case StandingQueryPattern.MultipleValuesQueryPattern(sq, _, _) => sq }
             .toVector
           val runningSqParts = runningSqs.toSet
             .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
               MultipleValuesStandingQuery.indexableSubqueries(sq, acc)
             )
-            .map(sq => sq.id -> sq)
+            .map(sq => sq.queryPartId -> sq)
             .toMap
           val runningPartsKeys = runningSqParts.keySet
           keys.asScala.collectFirst {
@@ -119,38 +119,11 @@ trait StandingQueryOpsGraph extends BaseGraph {
       */
     def reportStandingResult(sqId: StandingQueryId, sqResult: SqResultLike): Boolean =
       runningStandingQuery(sqId) exists { standingQuery =>
-        if (sqResult.isPositive || standingQuery.query.query.includeCancellation) {
+        if (sqResult.isPositive || standingQuery.query.queryPattern.includeCancellation) {
           standingQuery.resultMeter.mark()
-          standingQuery.resultsQueue.offer(sqResult.standingQueryResult(standingQuery.query, idProvider)) match {
-            case QueueOfferResult.Enqueued =>
-              true
-            case QueueOfferResult.Failure(err) =>
-              standingQuery.droppedCounter.inc()
-              logger.warn(
-                s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name} due to error: ${err.getMessage}"
-              )
-              logger.info(
-                s"onResult: failed to enqueue Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}",
-                err
-              )
-              false
-            case QueueOfferResult.QueueClosed =>
-              logger.warn(
-                s"onResult: Standing Query Result arrived but result queue already closed for: ${standingQuery.query.name}"
-              )
-              logger.info(
-                s"onResult: Standing Query result queue already closed for: ${standingQuery.query.name}. Dropped result: ${sqResult}"
-              )
-              false
-            case QueueOfferResult.Dropped =>
-              logger.warn(
-                s"onResult: dropped Standing Query result for: ${standingQuery.query.name}"
-              )
-              logger.info(
-                s"onResult: dropped Standing Query result for: ${standingQuery.query.name}. Result: ${sqResult}"
-              )
-              false
-          }
+          sqResult
+            .standingQueryResults(standingQuery.query, idProvider)
+            .forall(standingQuery.offerResult)
         } else {
           true
         }
@@ -166,10 +139,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
     /** Register a new standing query
       *
-      * TODO: remove `sqId` as an argument once the SQ sync protocol moves into Quine
-      * TODO: remove `skipPersistor` as an argument once the SQ sync protocol moves into Quine
-      * TODO: don't pass in `outputs` and don't return kill switches
-      *
       * @param name the name of the query to register
       * @param pattern the pattern against which the query will match
       * @param outputs the set of outputs, if any, this query should output to
@@ -183,8 +152,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
       name: String,
       pattern: StandingQueryPattern,
       outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
-      queueBackpressureThreshold: Int = StandingQuery.DefaultQueueBackpressureThreshold,
-      queueMaxSize: Int = StandingQuery.DefaultQueueMaxSize,
+      queueBackpressureThreshold: Int = StandingQueryInfo.DefaultQueueBackpressureThreshold,
+      queueMaxSize: Int = StandingQueryInfo.DefaultQueueMaxSize,
       shouldCalculateResultHashCode: Boolean = false,
       skipPersistor: Boolean = false,
       sqId: StandingQueryId
@@ -226,7 +195,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       shouldCalculateResultHashCode: Boolean
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
       val sq =
-        StandingQuery(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
+        StandingQueryInfo(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
       val (runningSq, killSwitches) = runStandingQuery(sq, outputs)
       standingQueries.put(sqId, runningSq)
 
@@ -237,7 +206,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
             MultipleValuesStandingQuery
               .indexableSubqueries(runsAsCypher.compiledQuery)
               .view
-              .map(sq => sq.id -> sq)
+              .map(sq => sq.queryPartId -> sq)
               .toMap
               .asJava
           )
@@ -258,14 +227,15 @@ trait StandingQueryOpsGraph extends BaseGraph {
     def cancelStandingQuery(
       standingQueryId: StandingQueryId,
       skipPersistor: Boolean = false
-    ): Option[Future[(StandingQuery, Instant, Int)]] = {
+    ): Option[Future[(StandingQueryInfo, Instant, Int)]] = {
       requireCompatibleNodeType()
+      // Removing from the `standingQueries` map is the authoritative decision. Absence == cancellation.
       standingQueries.remove(standingQueryId).map { (sq: RunningStandingQuery) =>
         val persistence = (
           if (skipPersistor) Future.unit
           else namespacePersistor(namespace).map(_.removeStandingQuery(sq.query)).getOrElse(Future.unit)
         ).flatMap { _ =>
-          sq.query.query match {
+          sq.query.queryPattern match {
             case dgnPattern: DomainGraphNodeStandingQueryPattern =>
               val dgnPackage = DomainGraphNodePackage(dgnPattern.dgnId, dgnRegistry.getDomainGraphNode(_))
               dgnRegistry.unregisterDomainGraphNodePackage(dgnPackage, standingQueryId, skipPersistor)
@@ -284,7 +254,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       *
       * @return standing query, when it was started (or re-started), and the number of buffered results
       */
-    def listStandingQueries: Map[StandingQueryId, (StandingQuery, Instant, Int)] = {
+    def listStandingQueries: Map[StandingQueryId, (StandingQueryInfo, Instant, Int)] = {
       requireCompatibleNodeType()
       runningStandingQueries.fmap(sq => (sq.query, sq.startTime, sq.bufferCount))
     }
@@ -334,7 +304,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       }
 
     private def runStandingQuery(
-      sq: StandingQuery,
+      sq: StandingQueryInfo,
       outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]]
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
 

@@ -6,7 +6,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 
-import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQuery, defaultNamespaceId}
+import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQueryInfo, defaultNamespaceId}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
@@ -79,7 +79,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
   /** Get all standing queries across all namespaces
     */
-  def getAllStandingQueries(): Future[Map[NamespaceId, List[StandingQuery]]] =
+  def getAllStandingQueries(): Future[Map[NamespaceId, List[StandingQueryInfo]]] =
     Future
       .traverse(persistors: Iterable[(NamespaceId, NamespacedPersistenceAgent)]) { case (ns, pa) =>
         pa.getStandingQueries.map(ns -> _)(parasitic)

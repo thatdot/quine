@@ -17,8 +17,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -39,8 +39,8 @@ case object EnumerateSnapshotNodeIds extends PersistorCall
 case class PersistSnapshot(id: QuineId, atTime: EventTime, snapshotSize: Int) extends PersistorCall
 case class DeleteSnapshot(id: QuineId) extends PersistorCall
 case class GetLatestSnapshot(id: QuineId, upToTime: EventTime) extends PersistorCall
-case class PersistStandingQuery(standingQuery: StandingQuery) extends PersistorCall
-case class RemoveStandingQuery(standingQuery: StandingQuery) extends PersistorCall
+case class PersistStandingQuery(standingQuery: StandingQueryInfo) extends PersistorCall
+case class RemoveStandingQuery(standingQuery: StandingQueryInfo) extends PersistorCall
 case object GetStandingQueries extends PersistorCall
 case class GetMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case class DeleteMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
@@ -145,17 +145,17 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     persistenceAgent.getLatestSnapshot(id, upToTime)
   )
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = wrapException(
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = wrapException(
     PersistStandingQuery(standingQuery),
     persistenceAgent.persistStandingQuery(standingQuery)
   )
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = wrapException(
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = wrapException(
     RemoveStandingQuery(standingQuery),
     persistenceAgent.removeStandingQuery(standingQuery)
   )
 
-  def getStandingQueries: Future[List[StandingQuery]] = wrapException(
+  def getStandingQueries: Future[List[StandingQueryInfo]] = wrapException(
     GetStandingQueries,
     persistenceAgent.getStandingQueries
   )

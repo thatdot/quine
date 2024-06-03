@@ -16,7 +16,7 @@ import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.quine.app.RecipeInterpreter.RecipeState
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
-import com.thatdot.quine.graph.cypher.{QueryResults, Value}
+import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 
@@ -215,7 +215,7 @@ case class RecipeInterpreter(
       initialDelay = interval,
       delay = interval
     ) { () =>
-      val queryResults: QueryResults = com.thatdot.quine.compiler.cypher.queryCypherValues(
+      val queryResults: RunningCypherQuery = com.thatdot.quine.compiler.cypher.queryCypherValues(
         queryText = statusQuery.cypherQuery,
         namespace = namespace
       )(graphService)
@@ -238,7 +238,7 @@ case class RecipeInterpreter(
   }
 
   /** Formats query results into a multi-line string designed to be easily human-readable. */
-  private def queryResultToString(queryResults: QueryResults, resultContent: Seq[Seq[Value]])(implicit
+  private def queryResultToString(queryResults: RunningCypherQuery, resultContent: Seq[Seq[Value]])(implicit
     idProvider: QuineIdProvider
   ): String = {
 

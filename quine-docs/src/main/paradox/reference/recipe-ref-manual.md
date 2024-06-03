@@ -54,12 +54,12 @@ Each configuration object is defined by its corresponding API entity in the @ref
 | `contributor`     | String                            | URL to social profile of the person or organization responsible for this recipe            |
 | `summary`         | String                            | Brief information about this recipe                                                        |
 | `description`     | Text Block                        | Long form description about this recipe                                                    |
-| `ingestStreams`   | Array of [IngestStream](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.IngestStreamConfiguration) objects   | Define how data is read from data sources, transformed, and loaded into the graph           |
-| `standingQueries` | Array of [StandingQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.StandingQueryDefinition) objects  | Define both sub-graph patterns for Quine to match and subsequent output actions             |
-| `nodeAppearances` | Array of [NodeAppearance](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeAppearance) objects | Customize node appearance in the exploration UI                                             |
-| `quickQueries`    | Array of [QuickQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeQuickQuery) objects     | Add queries to node context menus in the exploration UI                                     |
-| `sampleQueries`   | Array of [SampleQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.SampleQuery) objects    | Customize sample queries listed in the exploration UI                                       |
-| `statusQuery`     | A [CypherQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.CypherQuery) object            | OPTIONAL Cypher query that is executed and reported to the terminal window during execution |
+| `ingestStreams`   | Array of [IngestStream](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.IngestStreamConfiguration) objects   | Define how data is read from data sources, transformed, and loaded into the graph           |
+| `standingQueries` | Array of [StandingQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.StandingQueryDefinition) objects  | Define both sub-graph patterns for Quine to match and subsequent output actions             |
+| `nodeAppearances` | Array of [NodeAppearance](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeAppearance) objects | Customize node appearance in the exploration UI                                             |
+| `quickQueries`    | Array of [QuickQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.UiNodeQuickQuery) objects     | Add queries to node context menus in the exploration UI                                     |
+| `sampleQueries`   | Array of [SampleQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.SampleQuery) objects    | Customize sample queries listed in the exploration UI                                       |
+| `statusQuery`     | A [CypherQuery](https://docs.quine.io/reference/rest-api.html#/schemas/com.thatdot.quine.routes.CypherQuery) object            | OPTIONAL Cypher query that is executed and reported to the terminal window during execution |
 
 ## Differences Between Recipes and the REST API
 

@@ -66,7 +66,7 @@ class GraphService(
               sqs.foreach { sq =>
                 standingQueries(namespace).foreach { sqns =>
                   // update references for every domain graph node used by this standing query… if its namespace exists
-                  sq.query match {
+                  sq.queryPattern match {
                     case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
                       dgnRegistry.registerDomainGraphNodePackage(
                         DomainGraphNodePackage(dgnPattern.dgnId, domainGraphNodes.get(_)),
@@ -77,7 +77,7 @@ class GraphService(
                   sqns.startStandingQuery(
                     sqId = sq.id,
                     name = sq.name,
-                    pattern = sq.query,
+                    pattern = sq.queryPattern,
                     outputs = Map.empty,
                     queueBackpressureThreshold = sq.queueBackpressureThreshold,
                     queueMaxSize = sq.queueMaxSize,

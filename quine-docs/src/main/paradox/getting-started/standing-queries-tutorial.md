@@ -10,7 +10,7 @@ Standing queries are a unique (and we think powerful) feature of Quine. Standing
 
 ## Format of a standing query
 
-A standing query is defined in two parts: a **pattern** and an **output**. The **pattern** defines what we want to match, expressed in Cypher using the form `MATCH … WHERE … RETURN …`. The **output** defines the action(s) to take for each result produced by the `RETURN`  in the pattern query.
+A standing query is defined in two parts: a **pattern** and an **output**. The **pattern** defines what we want to match, expressed in Cypher using the form `MATCH … WHERE … RETURN …`. The **output** defines the action(s) to take for each result produced by the `RETURN`  in the pattern query.
 
 In general, a standing query definition JSON object takes form as in this example.
 
@@ -29,19 +29,17 @@ In general, a standing query definition JSON object takes form as in this exampl
 }
 ```
 
-A StandingQueryResult is an object with 2 sub-objects: `meta` and `data`. The `meta` object consists of:
+A StandingQueryResult is an object with 2 sub-objects: `meta` and `data`. The `meta` object consists of:
 
-* UUID `resultId`
-* boolean `isPositiveMatch`
+* boolean `isPositiveMatch`
 
-When the `pattern` query makes a positive match, the `data` object consists of the data returned by the Standing Query.
+When the `pattern` query makes a positive match, the `data` object consists of the data returned by the Standing Query.
 
 For example, a StandingQueryResult may look like the following:
 
 ```json
 {
     "meta": {
-        "resultId": "b3c35fa4-2515-442c-8a6a-35a3cb0caf6b",
         "isPositiveMatch": true
     },
     "data": {
@@ -152,7 +150,7 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/query/standing/not-a-bot" \
 Almost immediately you should see "non-bot" generated events appear in the terminal window similar to the one below.
 
 ```shell
-2022-08-26 16:21:37,835 Standing query `print-output` match: {"meta":{"isPositiveMatch":true,"resultId":"bb9249d7-5102-4104-afce-c07a3d237546"},"data":{"properties(n)":{"$schema":"/mediawiki/revision/create/1.1.0","comment":"clean up","database":"enwiki","meta":{"domain":"en.wikipedia.org","dt":"2022-08-26T21:21:36Z","id":"7836bfc6-7372-4b6a-bd65-a3ed0a62f5de","offset":2838029929,"partition":0,"request_id":"b102aaf2-cd98-4829-a8fd-741663104215","stream":"mediawiki.revision-create","topic":"eqiad.mediawiki.revision-create","uri":"https://en.wikipedia.org/wiki/Luke_Harris"},"page_id":71585932,"page_is_redirect":false,"page_namespace":0,"page_title":"Luke_Harris","parsedcomment":"clean up","performer":{"user_edit_count":275949,"user_groups":["extendedconfirmed","*","user","autoconfirmed"],"user_id":14841472,"user_is_bot":false,"user_registration_dt":"2011-06-26T21:29:06Z","user_text":"Joeykai"},"rev_content_changed":true,"rev_content_format":"text/x-wiki","rev_content_model":"wikitext","rev_id":1106862807,"rev_len":3832,"rev_minor_edit":true,"rev_parent_id":1106729293,"rev_sha1":"ltx1i9nlezpw1wvak4mueahi6v3f155","rev_slots":{"main":{"rev_slot_content_model":"wikitext","rev_slot_origin_rev_id":1106862807,"rev_slot_sha1":"ltx1i9nlezpw1wvak4mueahi6v3f155","rev_slot_size":3832}},"rev_timestamp":"2022-08-26T21:21:36Z"}}}
+2022-08-26 16:21:37,835 Standing query `print-output` match: {"meta":{"isPositiveMatch":true},"data":{"properties(n)":{"$schema":"/mediawiki/revision/create/1.1.0","comment":"clean up","database":"enwiki","meta":{"domain":"en.wikipedia.org","dt":"2022-08-26T21:21:36Z","id":"7836bfc6-7372-4b6a-bd65-a3ed0a62f5de","offset":2838029929,"partition":0,"request_id":"b102aaf2-cd98-4829-a8fd-741663104215","stream":"mediawiki.revision-create","topic":"eqiad.mediawiki.revision-create","uri":"https://en.wikipedia.org/wiki/Luke_Harris"},"page_id":71585932,"page_is_redirect":false,"page_namespace":0,"page_title":"Luke_Harris","parsedcomment":"clean up","performer":{"user_edit_count":275949,"user_groups":["extendedconfirmed","*","user","autoconfirmed"],"user_id":14841472,"user_is_bot":false,"user_registration_dt":"2011-06-26T21:29:06Z","user_text":"Joeykai"},"rev_content_changed":true,"rev_content_format":"text/x-wiki","rev_content_model":"wikitext","rev_id":1106862807,"rev_len":3832,"rev_minor_edit":true,"rev_parent_id":1106729293,"rev_sha1":"ltx1i9nlezpw1wvak4mueahi6v3f155","rev_slots":{"main":{"rev_slot_content_model":"wikitext","rev_slot_origin_rev_id":1106862807,"rev_slot_sha1":"ltx1i9nlezpw1wvak4mueahi6v3f155","rev_slot_size":3832}},"rev_timestamp":"2022-08-26T21:21:36Z"}}}
 ```
 
 ## Next Steps

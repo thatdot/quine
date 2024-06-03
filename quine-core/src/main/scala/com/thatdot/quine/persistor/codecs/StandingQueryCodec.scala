@@ -10,8 +10,8 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{
   GraphQueryPattern,
   PatternOrigin,
-  StandingQuery,
   StandingQueryId,
+  StandingQueryInfo,
   StandingQueryPattern,
   cypher
 }
@@ -21,7 +21,7 @@ import com.thatdot.quine.persistence.ReturnColumnAllProperties
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 
-object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
+object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeReturnColumn(
     builder: FlatBufferBuilder,
@@ -549,11 +549,11 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
 
   private[this] def writeStandingQuery(
     builder: FlatBufferBuilder,
-    standingQuery: StandingQuery
+    standingQuery: StandingQueryInfo
   ): Offset = {
     val nameOff: Offset = builder.createString(standingQuery.name)
     val idOff: Offset = writeStandingQueryId(builder, standingQuery.id)
-    val TypeAndOffset(queryTyp, queryOff) = writeStandingQueryPattern(builder, standingQuery.query)
+    val TypeAndOffset(queryTyp, queryOff) = writeStandingQueryPattern(builder, standingQuery.queryPattern)
     persistence.StandingQuery.createStandingQuery(
       builder,
       nameOff,
@@ -567,10 +567,10 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
 
   private[this] def readStandingQuery(
     standingQuery: persistence.StandingQuery
-  ): StandingQuery = {
+  ): StandingQueryInfo = {
     val id: StandingQueryId = readStandingQueryId(standingQuery.id)
     val query: StandingQueryPattern = readStandingQueryPattern(standingQuery.queryType, standingQuery.query)
-    StandingQuery(
+    StandingQueryInfo(
       standingQuery.name,
       id,
       query,
@@ -582,11 +582,11 @@ object StandingQueryCodec extends PersistenceCodec[StandingQuery] {
     )
   }
 
-  val format: BinaryFormat[StandingQuery] = new PackedFlatBufferBinaryFormat[StandingQuery] {
-    def writeToBuffer(builder: FlatBufferBuilder, sq: StandingQuery): Offset =
+  val format: BinaryFormat[StandingQueryInfo] = new PackedFlatBufferBinaryFormat[StandingQueryInfo] {
+    def writeToBuffer(builder: FlatBufferBuilder, sq: StandingQueryInfo): Offset =
       writeStandingQuery(builder, sq)
 
-    def readFromBuffer(buffer: ByteBuffer): StandingQuery =
+    def readFromBuffer(buffer: ByteBuffer): StandingQueryInfo =
       readStandingQuery(persistence.StandingQuery.getRootAsStandingQuery(buffer))
   }
 }

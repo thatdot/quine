@@ -18,8 +18,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -43,7 +43,7 @@ class InMemoryPersistor(
   domainIndexEvents: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, DomainIndexEvent]] =
     new ConcurrentHashMap(),
   snapshots: ConcurrentMap[QuineId, ConcurrentNavigableMap[EventTime, Array[Byte]]] = new ConcurrentHashMap(),
-  standingQueries: ConcurrentMap[StandingQueryId, StandingQuery] = new ConcurrentHashMap(),
+  standingQueries: ConcurrentMap[StandingQueryId, StandingQueryInfo] = new ConcurrentHashMap(),
   multipleValuesStandingQueryStates: ConcurrentMap[
     QuineId,
     ConcurrentMap[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[
@@ -174,12 +174,12 @@ class InMemoryPersistor(
     )
   }
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = {
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = {
     standingQueries.put(standingQuery.id, standingQuery)
     Future.unit
   }
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = {
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = {
     standingQueries.remove(standingQuery.id)
     Future.unit
   }
@@ -218,7 +218,7 @@ class InMemoryPersistor(
     Future.unit
   }
 
-  def getStandingQueries: Future[List[StandingQuery]] =
+  def getStandingQueries: Future[List[StandingQueryInfo]] =
     Future.successful(standingQueries.values.asScala.toList)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] =

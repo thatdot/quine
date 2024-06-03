@@ -28,8 +28,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -348,12 +348,12 @@ final class MapDbPersistor(
       }(nodeDispatcherEC)
   }
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = Future {
     val bytes = StandingQueryCodec.format.write(standingQuery)
     val _ = standingQueries.add(bytes)
   }(blockingDispatcherEC)
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = Future {
     val bytes = StandingQueryCodec.format.write(standingQuery)
     val _ = standingQueries.remove(bytes)
 
@@ -363,11 +363,12 @@ final class MapDbPersistor(
       .clear()
   }(blockingDispatcherEC)
 
-  def getStandingQueries: Future[List[StandingQuery]] = Future(standingQueries.iterator().asScala)(blockingDispatcherEC)
-    .map(_.map(b => StandingQueryCodec.format.read(b).get).toList)(nodeDispatcherEC)
-    .recoverWith { case e =>
-      logger.error("getStandingQueries failed.", e); Future.failed(e)
-    }(nodeDispatcherEC)
+  def getStandingQueries: Future[List[StandingQueryInfo]] =
+    Future(standingQueries.iterator().asScala)(blockingDispatcherEC)
+      .map(_.map(b => StandingQueryCodec.format.read(b).get).toList)(nodeDispatcherEC)
+      .recoverWith { case e =>
+        logger.error("getStandingQueries failed.", e); Future.failed(e)
+      }(nodeDispatcherEC)
 
   override def getMultipleValuesStandingQueryStates(
     id: QuineId

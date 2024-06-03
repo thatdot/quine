@@ -6,7 +6,7 @@ import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
-class LocalPropertyStateTest extends AnyFunSuite {
+class LocalPropertyStateTests extends AnyFunSuite {
 
   test("any value constraint, no alias") {
 
@@ -21,7 +21,6 @@ class LocalPropertyStateTest extends AnyFunSuite {
     withClue("Initializing the state") {
       state.initialize() { effects =>
         assert(effects.isEmpty)
-        ()
       }
     }
 
@@ -32,13 +31,12 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    val resId1 = withClue("Setting the right property") {
+    withClue("Setting the right property issues a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext.empty)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext.empty))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
@@ -49,11 +47,11 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property reports an empty result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId1Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId1 == resId1Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -68,14 +66,11 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    val initialResultId = withClue("Initializing the state should yield a result") {
+    withClue("Initializing the state emits a 1-result group") {
       state.initialize() { effects =>
-        assert(effects.resultsReported.nonEmpty)
-        val (initialResultId, initialResult) = effects.resultsReported.dequeue()
-        // empty because no alias is provided so the result value is discarded
-        assert(initialResult === QueryContext.empty)
+        val initialResultFromNull = effects.resultsReported.dequeue()
+        assert(initialResultFromNull == Seq(QueryContext.empty))
         assert(effects.isEmpty)
-        initialResultId
       }
     }
 
@@ -86,29 +81,29 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property should cancel the result") {
+    withClue("Setting the right property reports an empty result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        assert(effects.resultsCancelled.nonEmpty)
-        val cancelledResultId = effects.resultsCancelled.dequeue()
-        assert(cancelledResultId === initialResultId)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
     withClue("Changing the right property after it is already set doesn't change anything") {
+      // this is an optimization to reduce extra intermediate events
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = false) { effects =>
         assert(effects.isEmpty)
       }
     }
 
-    withClue("Removing the right property creates a new result") {
+    withClue("Removing the right property emits a 1-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
         assert(effects.resultsReported.nonEmpty)
-        val (_, result1) = effects.resultsReported.dequeue()
-        assert(result1 === QueryContext.empty)
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext.empty))
         assert(effects.isEmpty)
       }
     }
@@ -124,13 +119,11 @@ class LocalPropertyStateTest extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    val initialResultId = withClue("Initializing the state should yield a result") {
+    withClue("Initializing the state should yield a 1-result group") {
       state.initialize() { effects =>
-        assert(effects.resultsReported.nonEmpty)
-        val (initialResultId, initialResult) = effects.resultsReported.dequeue()
-        assert(initialResult === QueryContext(Map(query.aliasedAs.get -> Expr.Null)))
+        val initialResultFromNull = effects.resultsReported.dequeue()
+        assert(initialResultFromNull == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Null))))
         assert(effects.isEmpty)
-        initialResultId
       }
     }
 
@@ -141,12 +134,11 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property should cancel the result") {
+    withClue("Setting the right property emits a 0-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        assert(effects.resultsCancelled.nonEmpty)
-        val cancelledResultId = effects.resultsCancelled.dequeue()
-        assert(cancelledResultId === initialResultId)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -158,12 +150,12 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Removing the right property creates a new result") {
+    withClue("Removing the right property emits a 1-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
         assert(effects.resultsReported.nonEmpty)
-        val (_, result1) = effects.resultsReported.dequeue()
-        assert(result1 === QueryContext(Map(query.aliasedAs.get -> Expr.Null)))
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Null))))
         assert(effects.isEmpty)
       }
     }
@@ -190,45 +182,41 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    val resId1 = withClue("Setting the right property") {
+    withClue("Setting the right property issues a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L)))))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
-    val resId2 = withClue("Changing the right property after it is already set") {
+    withClue("Changing the right property after it is already set issues a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId1Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId1 == resId1Cancelled)
-        val (resId2, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L)))))
         assert(effects.isEmpty)
-        resId2
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property issues an empty result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId2Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId2 == resId2Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    withClue("Multiple events emits only 1 result (assuming events are deduplicated prior to onNodeEvents)") {
+    withClue("Multiple events emits only 1 result group (assuming events are deduplicated prior to onNodeEvents)") {
       val wrongProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(8675309L)))
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
 
       state.reportNodeEvents(Seq(wrongProp, rightProp), shouldHaveEffects = true) { effects =>
         assert(effects.resultsReported.size == 1)
-        val (_, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L)))))
         assert(effects.isEmpty)
       }
     }
@@ -255,47 +243,47 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property with the wrong value") {
+    withClue("Setting the right property with the wrong value emits a 0-result group") {
       val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = false) { effects =>
+      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId1 = withClue("Setting the right property with the right value") {
+    withClue("Setting the right property with the right value should emit a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext.empty)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext.empty))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
-    withClue("Setting the right property back to the wrong value") {
+    withClue("Setting the right property back to the wrong value should emit a 0-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId1Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId1 == resId1Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId2 = withClue("Setting the right property back to the right value") {
+    withClue("Setting the right property back to the right value emits a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId2, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext.empty)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext.empty))
         assert(effects.isEmpty)
-        resId2
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property emits a 0-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId2Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId2 == resId2Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -322,47 +310,47 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property with the wrong value") {
+    withClue("Setting the right property with the wrong value emits a 0-result group") {
       val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = false) { effects =>
+      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId1 = withClue("Setting the right property with the right value") {
+    withClue("Setting the right property with the right value") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L)))))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
-    withClue("Setting the right property back to the wrong value") {
+    withClue("Setting the right property back to the wrong value emits a 0-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId1Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId1 == resId1Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId2 = withClue("Setting the right property back to the right value") {
+    withClue("Setting the right property back to the right value") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val (resId2, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L)))))
         assert(effects.isEmpty)
-        resId2
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property emits a 0-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId2Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId2 == resId2Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -388,51 +376,48 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    val resId1 = withClue("Setting the right property with a matching value returns a result") {
+    withClue("Setting the right property with a matching value emits a 1-result group") {
       val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
         assert(effects.resultsReported.nonEmpty)
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result === QueryContext.empty)
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext.empty))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
-    withClue("Setting the right property with an equal value cancels") {
+    withClue("Setting the right property with an equal value emits a 0-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        assert(effects.resultsCancelled.nonEmpty)
-        val cancelledResultId = effects.resultsCancelled.dequeue()
-        assert(cancelledResultId === resId1)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId2 =
-      withClue("Setting the right property back to a matching value creates a new result") {
-        val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-        state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-          assert(effects.resultsReported.nonEmpty)
-          val (resId2, result) = effects.resultsReported.dequeue()
-          assert(result === QueryContext.empty)
-          assert(effects.isEmpty)
-          resId2
-        }
+    withClue("Setting the right property back to a matching value emits a 1-result group") {
+      val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
+      state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
+        assert(effects.resultsReported.nonEmpty)
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext.empty))
+        assert(effects.isEmpty)
       }
+    }
 
-    withClue("Changing the right property to another matching value does nothing") {
+    withClue("Changing the right property to another matching value doesn't do anything") {
+      // this is an optimization to reduce extra intermediate events
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(5L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = false) { effects =>
         assert(effects.isEmpty)
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property emits a 0-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(5L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId2Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId2 === resId2Cancelled)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -458,64 +443,51 @@ class LocalPropertyStateTest extends AnyFunSuite {
       }
     }
 
-    val resId1 = withClue("Setting the right property with a matching value returns a result") {
+    withClue("Setting the right property with a matching value emits a 1-result group") {
       val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
       state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
         assert(effects.resultsReported.nonEmpty)
-        val (resId1, result) = effects.resultsReported.dequeue()
-        assert(result === QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L))))
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L)))))
         assert(effects.isEmpty)
-        resId1
       }
     }
 
-    withClue("Setting the right property with an equal value cancels") {
+    withClue("Setting the right property with an equal value emits a 0-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(1L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        assert(effects.resultsCancelled.nonEmpty)
-        val cancelledResultId = effects.resultsCancelled.dequeue()
-        assert(cancelledResultId === resId1)
+        val results = effects.resultsReported.dequeue()
+        assert(results == Seq.empty)
         assert(effects.isEmpty)
       }
     }
 
-    val resId2 =
-      withClue("Setting the right property back to a matching value creates a new result") {
-        val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-        state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-          assert(effects.resultsReported.nonEmpty)
-          val (resId2, result) = effects.resultsReported.dequeue()
-          assert(result === QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L))))
-          assert(effects.isEmpty)
-          resId2
-        }
+    withClue("Setting the right property back to a matching value emits a 1-result group") {
+      val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
+      state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
+        assert(effects.resultsReported.nonEmpty)
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(2L)))))
+        assert(effects.isEmpty)
       }
+    }
 
-    val resId3 = withClue(
-      "Changing the right property to another matching value issues a new match and cancels the old one"
-    ) {
+    withClue("Changing the right property to another matching value emits a 1-result group") {
       val rightProp = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(5L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        //old result cancelled
-        assert(effects.resultsCancelled.nonEmpty)
-        val resId2Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId2Cancelled === resId2)
-
-        // new result
         assert(effects.resultsReported.nonEmpty)
-        val (resId3, result) = effects.resultsReported.dequeue()
-        assert(result === QueryContext(Map(query.aliasedAs.get -> Expr.Integer(5L))))
-
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(5L)))))
         assert(effects.isEmpty)
-        resId3
       }
     }
 
-    withClue("Removing the right property invalidates the result") {
+    withClue("Removing the right property emits a 0-result group") {
       val rightProp = PropertyRemoved(query.propKey, PropertyValue(QuineValue.Integer(5L)))
       state.reportNodeEvents(Seq(rightProp), shouldHaveEffects = true) { effects =>
-        val resId3Cancelled = effects.resultsCancelled.dequeue()
-        assert(resId3 === resId3Cancelled)
+        assert(effects.resultsReported.nonEmpty)
+        val results = effects.resultsReported.dequeue()
+        assert(results === Seq.empty)
         assert(effects.isEmpty)
       }
     }

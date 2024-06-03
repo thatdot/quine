@@ -1,43 +1,50 @@
 package com.thatdot.quine.persistor.codecs
 
 import java.nio.ByteBuffer
-import java.util.UUID
 
-import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
-import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
+import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{MultipleValuesStandingQuerySubscriber, ResultId}
-import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, StandingQueryId, cypher}
-import com.thatdot.quine.model.{HalfEdge, QuineId}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
+import com.thatdot.quine.graph.{ByteBufferOps, MultipleValuesStandingQueryPartId, StandingQueryId, cypher}
+import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 
+/** Write and read methods for MultipleValuesStandingQueryState values. These translate between the in-memory
+  * representation held by nodes to execute multiple-value standing queries (id of the query part, cached results, etc),
+  * and the corresponding FlatBuffers representations defined in the interface-definition-language (.fbs file).
+  */
 object MultipleValuesStandingQueryStateCodec
-    extends PersistenceCodec[(MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)] {
+    extends PersistenceCodec[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] {
 
   private[this] def writeQueryContext(
     builder: FlatBufferBuilder,
     qc: cypher.QueryContext
   ): Offset = {
+    // Write reference values
     val env = qc.environment
-    val columnOffs: Array[Offset] = new Array[Offset](env.size)
-    val valueTypOffs: Array[Byte] = new Array[Byte](env.size)
-    val valueOffs: Array[Offset] = new Array[Offset](env.size)
+    val columnOffsets = new Array[Offset](env.size)
+    val valueTypeBytes = new Array[Byte](env.size)
+    val valueOffsets = new Array[Offset](env.size)
     for (((col, value), i) <- env.zipWithIndex) {
-      val TypeAndOffset(valueTyp, valueoff) = writeCypherValue(builder, value)
-      columnOffs(i) = builder.createString(col.name)
-      valueTypOffs(i) = valueTyp
-      valueOffs(i) = valueoff
+      val TypeAndOffset(valueType, valueOffset) = writeCypherValue(builder, value)
+      columnOffsets(i) = builder.createString(col.name)
+      valueTypeBytes(i) = valueType
+      valueOffsets(i) = valueOffset
     }
-    val columnsOff = persistence.QueryContext.createColumnsVector(builder, columnOffs)
-    val valueTypsOff = persistence.QueryContext.createValuesTypeVector(builder, valueTypOffs)
-    val valuesOff: Offset = persistence.QueryContext.createValuesVector(builder, valueOffs)
-    persistence.QueryContext.createQueryContext(builder, columnsOff, valueTypsOff, valuesOff)
+
+    import persistence.{QueryContext => queryC}
+    val columnsOffset = queryC.createColumnsVector(builder, columnOffsets)
+    val valueTypesOffset = queryC.createValuesTypeVector(builder, valueTypeBytes)
+    val valuesOffset = queryC.createValuesVector(builder, valueOffsets)
+
+    // Start, set fields, end
+    queryC.createQueryContext(builder, columnsOffset, valueTypesOffset, valuesOffset)
   }
 
   private[this] def readQueryContext(qc: persistence.QueryContext): cypher.QueryContext = {
@@ -54,377 +61,273 @@ object MultipleValuesStandingQueryStateCodec
     cypher.QueryContext(env.result())
   }
 
-  private[this] def readStandingQueryResultId(resId: persistence.StandingQueryResultId): ResultId =
-    ResultId(new UUID(resId.highBytes, resId.lowBytes))
-
-  private[this] def writeStandingQueryResultId(builder: FlatBufferBuilder, resId: ResultId): Offset =
-    persistence.StandingQueryResultId.createStandingQueryResultId(
-      builder,
-      resId.uuid.getLeastSignificantBits,
-      resId.uuid.getMostSignificantBits
-    )
-
-  private[this] def writeMultipleValuesUnitStandingQueryState(
+  /** Write a series of QueryContext tables followed by a vector containing their offsets.
+    * The offset of the vector itself may be absent, allowing this to encode Option[ Seq[cypher.QueryContext] ]
+    */
+  private[this] def writeMaybeQueryContexts(
     builder: FlatBufferBuilder,
-    unitState: cypher.UnitState
-  ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, unitState.queryPartId)
-    val resIdOff: Offset = unitState.resultId match {
-      case None => NoOffset
-      case Some(resId) => writeStandingQueryResultId(builder, resId)
-    }
-    persistence.MultipleValuesUnitStandingQueryState.createMultipleValuesUnitStandingQueryState(
-      builder,
-      sqIdOff,
-      resIdOff
-    )
+    maybeQueryContexts: Option[Seq[cypher.QueryContext]]
+  ): Offset = maybeQueryContexts match {
+    case Some(results) =>
+      val queryContextOffsets = new Array[Offset](results.length)
+      for ((result, i) <- results.zipWithIndex) {
+        val resultOffset = writeQueryContext(builder, result)
+        queryContextOffsets(i) = resultOffset
+      }
+      builder.createVectorOfTables(queryContextOffsets)
+    case None => NoOffset
   }
 
-  private[this] def readMultipleValuesUnitStandingQueryState(
-    unitState: persistence.MultipleValuesUnitStandingQueryState
-  ): cypher.UnitState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(unitState.queryPartId)
-    val resId: Option[ResultId] = Option(unitState.resultId).map(readStandingQueryResultId)
-    cypher.UnitState(sqId, resId)
+  /** Read a vector of persistence.QueryContext tables as an Option[ Seq[cypher.QueryContext] ], allowing a null
+    * reference for the vector to indicate None.
+    */
+  private[this] def readMaybeQueryContexts(
+    maybeNullQueryContextVec: persistence.QueryContext.Vector
+  ): Option[Seq[cypher.QueryContext]] =
+    Option(maybeNullQueryContextVec).map { queryContextVec =>
+      val length = queryContextVec.length()
+      var i = 0
+      val results = Seq.newBuilder[cypher.QueryContext]
+      while (i < length) {
+        results += readQueryContext(queryContextVec.get(i))
+        i += 1
+      }
+
+      results.result()
+    }
+
+  /** Write the given Option[ Seq[cypher.QueryContext] ] as a persistence.MultipleValuesStandingQueryResults table.
+    * This wrapping is only necessary when used as an element of a containing vector. FlatBuffers doesn't allow nested
+    * vectors, so the indirection provided by the table in required. When only encoding a single optional vector as a
+    * table field, the field type should just be a vector of persistence.QueryContext, since the field can already
+    * represent None by not being set.
+    */
+  private[this] def writeMultipleValuesStandingQueryResults(
+    builder: FlatBufferBuilder,
+    maybeResults: Option[Seq[cypher.QueryContext]]
+  ): Offset = {
+    val vectorOffset = writeMaybeQueryContexts(builder, maybeResults)
+    persistence.MultipleValuesStandingQueryResults.createMultipleValuesStandingQueryResults(builder, vectorOffset)
   }
+
+  /** Read a persistence.MultipleValuesStandingQueryResults as an Option[ Seq[cypher.QueryContext] ]. This extra
+    * container is only necessary when it is used as an element in a vector to allow optionality.
+    */
+  private[this] def readMultipleValuesStandingQueryResults(
+    results: persistence.MultipleValuesStandingQueryResults
+  ): Option[Seq[cypher.QueryContext]] = readMaybeQueryContexts(results.resultsVector())
 
   private[this] def writeMultipleValuesCrossStandingQueryState(
     builder: FlatBufferBuilder,
     crossState: cypher.CrossState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, crossState.queryPartId)
-    val accumulatedResultsOff: Offset = {
-      val accumulatedResultOffs: Array[Offset] = new Array(crossState.accumulatedResults.length)
-      for ((accRes, i) <- crossState.accumulatedResults.zipWithIndex) {
-        val resultsOff: Offset = {
-          val resultOffs: Array[Offset] = new Array(accRes.size)
-          for (((resId, qc), j) <- accRes.zipWithIndex) {
-            val resIdOff: Offset = writeStandingQueryResultId(builder, resId)
-            val resValueOff: Offset = writeQueryContext(builder, qc)
-            resultOffs(j) = persistence.MultipleValuesStandingQueryResult.createMultipleValuesStandingQueryResult(
-              builder,
-              resIdOff,
-              resValueOff
-            )
-          }
-          persistence.AccumulatedResults.createResultVector(builder, resultOffs)
-        }
-        accumulatedResultOffs(i) = persistence.AccumulatedResults.createAccumulatedResults(
-          builder,
-          resultsOff
-        )
-      }
-      persistence.MultipleValuesCrossStandingQueryState.createAccumulatedResultsVector(builder, accumulatedResultOffs)
+    import persistence.{MultipleValuesCrossStandingQueryState => cross}
+
+    // Write reference values
+    val resultsAccumulatorSize = crossState.resultsAccumulator.size
+    // results_accumulator_keys is a vector of structs, so we start it, write all the values inline in reverse order,
+    // then end it rather than creating it by passing in offsets and letting the create method do the
+    // (start, write-in-reverse-order, end) steps for us.
+    cross.startResultsAccumulatorKeysVector(builder, resultsAccumulatorSize)
+    val reversedKeys = crossState.resultsAccumulator.keys.toIndexedSeq.reverseIterator
+    for (partId <- reversedKeys) writeMultipleValuesStandingQueryPartId2(builder, partId)
+    val keysVecOffset = builder.endVector()
+
+    val valueOffsets = new Array[Offset](resultsAccumulatorSize)
+    for ((maybeResults, i) <- crossState.resultsAccumulator.values.zipWithIndex) {
+      val valueOff = writeMultipleValuesStandingQueryResults(builder, maybeResults)
+      valueOffsets(i) = valueOff
     }
-    val resultDependencyOff: Offset = {
-      val resultDependencyOffs: Array[Offset] = new Array(crossState.resultDependency.size)
-      for (((resId, depIds), i) <- crossState.resultDependency.zipWithIndex) {
-        val resIdOff: Offset = writeStandingQueryResultId(builder, resId)
-        val depsOff: Offset = {
-          val depOffs: Array[Offset] = new Array[Offset](depIds.length)
-          for ((depId, j) <- depIds.zipWithIndex)
-            depOffs(j) = writeStandingQueryResultId(builder, depId)
-          persistence.ResultDependency.createDependenciesVector(builder, depOffs)
-        }
-        resultDependencyOffs(i) = persistence.ResultDependency.createResultDependency(builder, resIdOff, depsOff)
-      }
-      persistence.MultipleValuesCrossStandingQueryState.createResultDependencyVector(builder, resultDependencyOffs)
-    }
-    persistence.MultipleValuesCrossStandingQueryState.createMultipleValuesCrossStandingQueryState(
-      builder,
-      sqIdOff,
-      crossState.subscriptionsEmitted,
-      accumulatedResultsOff,
-      resultDependencyOff
-    )
+    val valuesVecOffset = cross.createResultsAccumulatorValuesVector(builder, valueOffsets)
+
+    cross.startMultipleValuesCrossStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset: Offset = writeMultipleValuesStandingQueryPartId2(builder, crossState.queryPartId) // struct
+    cross.addQueryPartId(builder, queryPartIdOffset)
+    cross.addResultsAccumulatorKeys(builder, keysVecOffset)
+    cross.addResultsAccumulatorValues(builder, valuesVecOffset)
+
+    cross.endMultipleValuesCrossStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesCrossStandingQueryState(
     crossState: persistence.MultipleValuesCrossStandingQueryState
   ): cypher.CrossState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(crossState.queryPartId)
-    val accumulatedResults: ArraySeq[mutable.Map[ResultId, cypher.QueryContext]] = {
-      var i: Int = 0
-      val accumulatedResultsLength = crossState.accumulatedResultsLength
-      val underlying: Array[mutable.Map[ResultId, cypher.QueryContext]] = new Array(accumulatedResultsLength)
-      while (i < accumulatedResultsLength) {
-        val accRes: persistence.AccumulatedResults = crossState.accumulatedResults(i)
-        var j: Int = 0
-        val resultLength = accRes.resultLength
-        val builder = mutable.Map.empty[ResultId, cypher.QueryContext]
-        while (j < resultLength) {
-          val qr: persistence.MultipleValuesStandingQueryResult = accRes.result(j)
-          val resId: ResultId = readStandingQueryResultId(qr.resultId)
-          val resValues: cypher.QueryContext = readQueryContext(qr.resultValues)
-          builder += resId -> resValues
-          j += 1
-        }
-        underlying(i) = builder
-        i += 1
-      }
-      ArraySeq.unsafeWrapArray(underlying)
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(crossState.queryPartId)
+    val state = cypher.CrossState(sqId)
+
+    val resultsLength = crossState.resultsAccumulatorKeysLength()
+    val keysVec = crossState.resultsAccumulatorKeysVector()
+    val valuesVec = crossState.resultsAccumulatorValuesVector()
+
+    var i = 0
+    while (i < resultsLength) {
+      val queryPartId = readMultipleValuesStandingQueryPartId2(keysVec.get(i))
+      val maybeResults = readMultipleValuesStandingQueryResults(valuesVec.get(i))
+      state.resultsAccumulator.update(queryPartId, maybeResults)
+      i += 1
     }
-    val resultDependency: mutable.Map[ResultId, List[ResultId]] = {
-      val dependency = mutable.Map.empty[ResultId, List[ResultId]]
-      var i: Int = 0
-      val resultDependencyLength = crossState.resultDependencyLength
-      while (i < resultDependencyLength) {
-        val dep: persistence.ResultDependency = crossState.resultDependency(i)
-        val resId: ResultId = readStandingQueryResultId(dep.resultId)
-        val dependencies: List[ResultId] = {
-          val builder = List.newBuilder[ResultId]
-          var j: Int = 0
-          val dependenciesLength = dep.dependenciesLength
-          while (j < dependenciesLength) {
-            builder += readStandingQueryResultId(dep.dependencies(j))
-            j += 1
-          }
-          builder.result()
-        }
-        dependency += resId -> dependencies
-        i += 1
-      }
-      dependency
-    }
-    cypher.CrossState(sqId, crossState.subscriptionsEmitted, accumulatedResults, resultDependency)
+    state
   }
 
   private[this] def writeMultipleValuesLocalPropertyStandingQueryState(
     builder: FlatBufferBuilder,
     localPropState: cypher.LocalPropertyState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, localPropState.queryPartId)
-    val resIdOff: Offset = localPropState.currentResult match {
-      case None => NoOffset
-      case Some(resId) => writeStandingQueryResultId(builder, resId)
-    }
-    persistence.MultipleValuesLocalPropertyStandingQueryState.createMultipleValuesLocalPropertyStandingQueryState(
-      builder,
-      sqIdOff,
-      resIdOff
-    )
+    import persistence.{MultipleValuesLocalPropertyStandingQueryState => lp}
+
+    lp.startMultipleValuesLocalPropertyStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, localPropState.queryPartId) // struct
+    lp.addQueryPartId(builder, queryPartIdOffset)
+
+    lp.endMultipleValuesLocalPropertyStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesLocalPropertyStandingQueryState(
     localPropState: persistence.MultipleValuesLocalPropertyStandingQueryState
   ): cypher.LocalPropertyState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(localPropState.queryPartId)
-    val resId: Option[ResultId] = Option(localPropState.resultId).map(readStandingQueryResultId)
-    cypher.LocalPropertyState(sqId, resId)
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(localPropState.queryPartId)
+    cypher.LocalPropertyState(sqId)
   }
 
   private[this] def writeMultipleValuesLocalIdStandingQueryState(
     builder: FlatBufferBuilder,
     localIdState: cypher.LocalIdState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, localIdState.queryPartId)
-    val resIdOff: Offset = localIdState.resultId match {
-      case None => NoOffset
-      case Some(resId) => writeStandingQueryResultId(builder, resId)
-    }
-    persistence.MultipleValuesLocalIdStandingQueryState.createMultipleValuesLocalIdStandingQueryState(
-      builder,
-      sqIdOff,
-      resIdOff
-    )
+    import persistence.{MultipleValuesLocalIdStandingQueryState => lid}
+
+    lid.startMultipleValuesLocalIdStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, localIdState.queryPartId) // struct
+    lid.addQueryPartId(builder, queryPartIdOffset)
+
+    lid.endMultipleValuesLocalIdStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesLocalIdStandingQueryState(
     localIdState: persistence.MultipleValuesLocalIdStandingQueryState
   ): cypher.LocalIdState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(localIdState.queryPartId)
-    val resId: Option[ResultId] = Option(localIdState.resultId).map(readStandingQueryResultId)
-    cypher.LocalIdState(sqId, resId)
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(localIdState.queryPartId)
+    cypher.LocalIdState(sqId)
   }
 
   private[this] def writeMultipleValuesSubscribeAcrossEdgeStandingQueryState(
     builder: FlatBufferBuilder,
     edgeState: cypher.SubscribeAcrossEdgeState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, edgeState.queryPartId)
-    val edgesWatchedOff: Offset = {
-      val edgeWatchedOffs: Array[Offset] = new Array(edgeState.edgesWatched.size)
-      for (((he, (sqId, res)), i) <- edgeState.edgesWatched.zipWithIndex) {
-        val halfEdgeOff = writeHalfEdge(builder, he)
-        val sqIdOff = writeMultipleValuesStandingQueryPartId(builder, sqId)
-        val resOff: Offset = {
-          val resOffs: Array[Offset] = new Array(res.size)
-          for (((depId, (resId, qc)), i) <- res.zipWithIndex) {
-            val depIdOff: Offset = writeStandingQueryResultId(builder, depId)
-            val resIdOff: Offset = writeStandingQueryResultId(builder, resId)
-            val qcOff: Offset = writeQueryContext(builder, qc)
-            resOffs(i) = persistence.ReverseResultDependency.createReverseResultDependency(
-              builder,
-              depIdOff,
-              resIdOff,
-              qcOff
-            )
-          }
-          persistence.EdgeWatched.createReverseResultDependencyVector(builder, resOffs)
-        }
-        edgeWatchedOffs(i) = persistence.EdgeWatched.createEdgeWatched(
-          builder,
-          halfEdgeOff,
-          sqIdOff,
-          resOff
-        )
-      }
-      persistence.MultipleValuesSubscribeAcrossEdgeStandingQueryState.createEdgesWatchedVector(
-        builder,
-        edgeWatchedOffs
-      )
+    import persistence.{MultipleValuesSubscribeAcrossEdgeStandingQueryState => sub}
+
+    // Write reference values
+    val size = edgeState.edgeResults.size
+    val keyOffsets = new Array[Offset](size)
+    val valueOffsets = new Array[Offset](size)
+    for (((halfEdge, maybeResults), i) <- edgeState.edgeResults.zipWithIndex) {
+      keyOffsets(i) = writeHalfEdge2(builder, halfEdge)
+      valueOffsets(i) = writeMultipleValuesStandingQueryResults(builder, maybeResults)
     }
-    persistence.MultipleValuesSubscribeAcrossEdgeStandingQueryState
-      .createMultipleValuesSubscribeAcrossEdgeStandingQueryState(
-        builder,
-        sqIdOff,
-        edgesWatchedOff
-      )
+    val edgeResultsKeysOffset = sub.createEdgeResultsKeysVector(builder, keyOffsets)
+    val edgeResultsValuesOffset = sub.createEdgeResultsValuesVector(builder, valueOffsets)
+
+    sub.startMultipleValuesSubscribeAcrossEdgeStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, edgeState.queryPartId) // struct
+    sub.addQueryPartId(builder, queryPartIdOffset)
+    sub.addEdgeResultsKeys(builder, edgeResultsKeysOffset)
+    sub.addEdgeResultsValues(builder, edgeResultsValuesOffset)
+
+    sub.endMultipleValuesSubscribeAcrossEdgeStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesSubscribeAcrossEdgeStandingQueryState(
     edgeState: persistence.MultipleValuesSubscribeAcrossEdgeStandingQueryState
   ): cypher.SubscribeAcrossEdgeState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(edgeState.queryPartId)
-    val edgesWatched: mutable.Map[
-      HalfEdge,
-      (MultipleValuesStandingQueryPartId, mutable.Map[ResultId, (ResultId, cypher.QueryContext)])
-    ] = mutable.Map.empty
+    val queryPartId = readMultipleValuesStandingQueryPartId2(edgeState.queryPartId)
 
-    var i: Int = 0
-    val edgesWatchedLength = edgeState.edgesWatchedLength
-    while (i < edgesWatchedLength) {
-      val edgeWatched: persistence.EdgeWatched = edgeState.edgesWatched(i)
-      val halfEdge: HalfEdge = readHalfEdge(edgeWatched.halfEdge)
-      val queryPartId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(
-        edgeWatched.queryPartId
-      )
-      val reverseResultDependency: mutable.Map[ResultId, (ResultId, cypher.QueryContext)] = mutable.Map.empty
-
-      var j: Int = 0
-      val reverseResultDependencyLength = edgeWatched.reverseResultDependencyLength
-      while (j < reverseResultDependencyLength) {
-        val reverseResultDep: persistence.ReverseResultDependency = edgeWatched.reverseResultDependency(j)
-        val depId: ResultId = readStandingQueryResultId(reverseResultDep.dependency)
-        val resId: ResultId = readStandingQueryResultId(reverseResultDep.resultId)
-        val resValues: cypher.QueryContext = readQueryContext(reverseResultDep.resultValues)
-        reverseResultDependency += depId -> (resId -> resValues)
-        j += 1
-      }
-      edgesWatched += halfEdge -> (queryPartId -> reverseResultDependency)
+    val resultsLength = edgeState.edgeResultsKeysLength()
+    val edgeResultsKeysVec = edgeState.edgeResultsKeysVector()
+    val edgeResultsValuesVec = edgeState.edgeResultsValuesVector()
+    var i = 0
+    val state = cypher.SubscribeAcrossEdgeState(queryPartId)
+    while (i < resultsLength) {
+      val halfEdge = readHalfEdge2(edgeResultsKeysVec.get(i))
+      val resultValue = edgeResultsValuesVec.get(i)
+      val maybeResults = readMultipleValuesStandingQueryResults(resultValue)
+      state.edgeResults += (halfEdge -> maybeResults)
       i += 1
     }
-    cypher.SubscribeAcrossEdgeState(sqId, edgesWatched)
+    state
   }
 
   private[this] def writeMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(
     builder: FlatBufferBuilder,
     edgeState: cypher.EdgeSubscriptionReciprocalState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, edgeState.queryPartId)
-    val halfEdgeOff: Offset = writeHalfEdge(builder, edgeState.halfEdge)
-    val reverseDepsOff: Offset = {
-      val reverseDepOffs: Array[Offset] = new Array(edgeState.reverseResultDependency.size)
-      for (((depId, (resId, qc)), i) <- edgeState.reverseResultDependency.zipWithIndex) {
-        val depIdOff: Offset = writeStandingQueryResultId(builder, depId)
-        val resIdOff: Offset = writeStandingQueryResultId(builder, resId)
-        val qcOff: Offset = writeQueryContext(builder, qc)
-        reverseDepOffs(i) = persistence.ReverseResultDependency.createReverseResultDependency(
-          builder,
-          depIdOff,
-          resIdOff,
-          qcOff
-        )
-      }
-      persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQueryState.createReverseResultDependencyVector(
-        builder,
-        reverseDepOffs
-      )
-    }
-    val andThenOff: Offset = writeMultipleValuesStandingQueryPartId(builder, edgeState.andThenId)
-    persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQueryState
-      .createMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(
-        builder,
-        sqIdOff,
-        halfEdgeOff,
-        edgeState.currentlyMatching,
-        reverseDepsOff,
-        andThenOff
-      )
+    import persistence.{MultipleValuesEdgeSubscriptionReciprocalStandingQueryState => subRec}
+
+    // Write reference values
+    val halfEdgeOffset = writeHalfEdge2(builder, edgeState.halfEdge)
+    val maybeResultsOffset = writeMaybeQueryContexts(builder, edgeState.cachedResult)
+
+    subRec.startMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, edgeState.queryPartId) // struct
+    subRec.addQueryPartId(builder, queryPartIdOffset)
+    subRec.addHalfEdge(builder, halfEdgeOffset)
+    val andThenIdOffset = writeMultipleValuesStandingQueryPartId2(builder, edgeState.andThenId) // struct
+    subRec.addAndThenId(builder, andThenIdOffset)
+    subRec.addCurrentlyMatching(builder, edgeState.currentlyMatching)
+    subRec.addCachedResult(builder, maybeResultsOffset)
+
+    subRec.endMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesEdgeSubscriptionReciprocalStandingQueryState(
     edgeState: persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQueryState
   ): cypher.EdgeSubscriptionReciprocalState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(edgeState.queryPartId)
-    val halfEdge: HalfEdge = readHalfEdge(edgeState.halfEdge)
-    val reverseDeps: mutable.Map[ResultId, (ResultId, cypher.QueryContext)] = {
-      val builder = mutable.Map.empty[ResultId, (ResultId, cypher.QueryContext)]
-      var i: Int = 0
-      val reverseResultDependencyLength = edgeState.reverseResultDependencyLength
-      while (i < reverseResultDependencyLength) {
-        val reverseResultDep: persistence.ReverseResultDependency = edgeState.reverseResultDependency(i)
-        val depId: ResultId = readStandingQueryResultId(reverseResultDep.dependency)
-        val resId: ResultId = readStandingQueryResultId(reverseResultDep.resultId)
-        val resValues: cypher.QueryContext = readQueryContext(reverseResultDep.resultValues)
-        builder += depId -> (resId -> resValues)
-        i += 1
-      }
-      builder
-    }
-    val andThenId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(edgeState.andThenId)
-    cypher.EdgeSubscriptionReciprocalState(sqId, halfEdge, edgeState.currentlyMatching, reverseDeps, andThenId)
+    val sqId = readMultipleValuesStandingQueryPartId2(edgeState.queryPartId)
+    val halfEdge = readHalfEdge2(edgeState.halfEdge)
+    val andThenId = readMultipleValuesStandingQueryPartId2(edgeState.andThenId)
+    val currentlyMatching = edgeState.currentlyMatching
+    val cachedResult = readMaybeQueryContexts(edgeState.cachedResultVector)
+    val state = cypher.EdgeSubscriptionReciprocalState(sqId, halfEdge, andThenId)
+    state.currentlyMatching = currentlyMatching
+    state.cachedResult = cachedResult
+    state
   }
 
   private[this] def writeMultipleValuesFilterMapStandingQueryState(
     builder: FlatBufferBuilder,
     filterState: cypher.FilterMapState
   ): Offset = {
-    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, filterState.queryPartId)
-    val reverseDepsOff: Offset = {
-      val reverseDepOffs: Array[Offset] = new Array(filterState.keptResults.size)
-      for (((depId, (resId, qc)), i) <- filterState.keptResults.zipWithIndex) {
-        val depIdOff: Offset = writeStandingQueryResultId(builder, depId)
-        val resIdOff: Offset = writeStandingQueryResultId(builder, resId)
-        val qcOff: Offset = writeQueryContext(builder, qc)
-        reverseDepOffs(i) = persistence.ReverseResultDependency.createReverseResultDependency(
-          builder,
-          depIdOff,
-          resIdOff,
-          qcOff
-        )
-      }
-      persistence.MultipleValuesFilterMapStandingQueryState.createReverseResultDependencyVector(
-        builder,
-        reverseDepOffs
-      )
-    }
-    persistence.MultipleValuesFilterMapStandingQueryState.createMultipleValuesFilterMapStandingQueryState(
-      builder,
-      sqIdOff,
-      reverseDepsOff
-    )
+    import persistence.{MultipleValuesFilterMapStandingQueryState => fm}
+
+    // Write reference values
+    val keptResultsOffset = writeMaybeQueryContexts(builder, filterState.keptResults)
+
+    fm.startMultipleValuesFilterMapStandingQueryState(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, filterState.queryPartId) // struct
+    fm.addQueryPartId(builder, queryPartIdOffset)
+    fm.addKeptResults(builder, keptResultsOffset)
+
+    fm.endMultipleValuesFilterMapStandingQueryState(builder)
   }
 
   private[this] def readMultipleValuesFilterMapStandingQueryState(
     filterState: persistence.MultipleValuesFilterMapStandingQueryState
   ): cypher.FilterMapState = {
-    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(filterState.queryPartId)
-    val reverseDeps: mutable.Map[ResultId, (ResultId, cypher.QueryContext)] = {
-      val builder = mutable.Map.empty[ResultId, (ResultId, cypher.QueryContext)]
-      var i: Int = 0
-      val reverseResultDependencyLength = filterState.reverseResultDependencyLength
-      while (i < reverseResultDependencyLength) {
-        val reverseResultDep: persistence.ReverseResultDependency = filterState.reverseResultDependency(i)
-        val depId: ResultId = readStandingQueryResultId(reverseResultDep.dependency)
-        val resId: ResultId = readStandingQueryResultId(reverseResultDep.resultId)
-        val resValues: cypher.QueryContext = readQueryContext(reverseResultDep.resultValues)
-        builder += depId -> (resId -> resValues)
-        i += 1
-      }
-      builder
-    }
-    cypher.FilterMapState(sqId, reverseDeps)
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(filterState.queryPartId)
+    val maybeKeptResults = readMaybeQueryContexts(filterState.keptResultsVector())
+    val state = cypher.FilterMapState(sqId)
+    state.keptResults = maybeKeptResults
+    state
   }
 
   private[this] def writeMultipleValuesAllPropertiesStandingQueryState(
@@ -432,14 +335,9 @@ object MultipleValuesStandingQueryStateCodec
     localPropState: cypher.AllPropertiesState
   ): Offset = {
     val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, localPropState.queryPartId)
-    val resIdOff: Offset = localPropState.currentResult match {
-      case None => NoOffset
-      case Some(resId) => writeStandingQueryResultId(builder, resId)
-    }
     persistence.MultipleValuesAllPropertiesStandingQueryState.createMultipleValuesAllPropertiesStandingQueryState(
       builder,
-      sqIdOff,
-      resIdOff
+      sqIdOff
     )
   }
 
@@ -447,8 +345,7 @@ object MultipleValuesStandingQueryStateCodec
     localPropState: persistence.MultipleValuesAllPropertiesStandingQueryState
   ): cypher.AllPropertiesState = {
     val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(localPropState.queryPartId)
-    val resId: Option[ResultId] = Option(localPropState.resultId).map(readStandingQueryResultId)
-    cypher.AllPropertiesState(sqId, resId)
+    cypher.AllPropertiesState(sqId)
   }
 
   private[this] def writeMultipleValuesStandingQuerySubscriber(
@@ -457,24 +354,36 @@ object MultipleValuesStandingQueryStateCodec
   ): TypeAndOffset =
     subscriber match {
       case MultipleValuesStandingQuerySubscriber.NodeSubscriber(onNode, globalId, queryId) =>
-        val onNodeOff: Offset = writeQuineId(builder, onNode)
-        val queryPartIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, queryId)
-        val globalQueryIdOff: Offset = writeStandingQueryId(builder, globalId)
-        val offset: Offset = persistence.CypherNodeSubscriber.createCypherNodeSubscriber(
-          builder,
-          onNodeOff,
-          queryPartIdOff,
-          globalQueryIdOff
-        )
-        TypeAndOffset(persistence.MultipleValuesStandingQuerySubscriber.CypherNodeSubscriber, offset)
+        import persistence.{CypherNodeSubscriber => ns}
+
+        // Write reference values
+        val onNodeOffset = builder.createByteVector(onNode.array)
+
+        ns.startCypherNodeSubscriber(builder)
+
+        // Set fields
+        ns.addOnNode(builder, onNodeOffset)
+        val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, queryId) // struct
+        ns.addQueryPartId(builder, queryPartIdOffset)
+        val globalQueryIdOffset = writeStandingQueryId2(builder, globalId) // struct
+        ns.addGlobalQueryId(builder, globalQueryIdOffset)
+
+        val nodeSubscriberOffset = ns.endCypherNodeSubscriber(builder)
+
+        TypeAndOffset(persistence.MultipleValuesStandingQuerySubscriber.CypherNodeSubscriber, nodeSubscriberOffset)
 
       case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(globalId) =>
-        val globalQueryIdOff: Offset = writeStandingQueryId(builder, globalId)
-        val offset: Offset = persistence.CypherGlobalSubscriber.createCypherGlobalSubscriber(
-          builder,
-          globalQueryIdOff
-        )
-        TypeAndOffset(persistence.MultipleValuesStandingQuerySubscriber.CypherGlobalSubscriber, offset)
+        import persistence.{CypherGlobalSubscriber => gs}
+
+        gs.startCypherGlobalSubscriber(builder)
+
+        // Set fields
+        val globalQueryIdOffset = writeStandingQueryId2(builder, globalId) // struct
+        gs.addGlobalQueryId(builder, globalQueryIdOffset)
+
+        val globalSubscriberOffset = gs.endCypherGlobalSubscriber(builder)
+
+        TypeAndOffset(persistence.MultipleValuesStandingQuerySubscriber.CypherGlobalSubscriber, globalSubscriberOffset)
     }
 
   private[this] def readMultipleValuesStandingQuerySubscriber(
@@ -485,15 +394,15 @@ object MultipleValuesStandingQueryStateCodec
       case persistence.MultipleValuesStandingQuerySubscriber.CypherNodeSubscriber =>
         val nodeSub =
           makeSubscriber(new persistence.CypherNodeSubscriber()).asInstanceOf[persistence.CypherNodeSubscriber]
-        val onNode: QuineId = readQuineId(nodeSub.onNode)
-        val queryPartId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(nodeSub.queryPartId)
-        val globalQueryId: StandingQueryId = readStandingQueryId(nodeSub.globalQueryId)
+        val onNode: QuineId = QuineId(nodeSub.onNodeAsByteBuffer.remainingBytes)
+        val queryPartId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(nodeSub.queryPartId)
+        val globalQueryId: StandingQueryId = readStandingQueryId2(nodeSub.globalQueryId)
         MultipleValuesStandingQuerySubscriber.NodeSubscriber(onNode, globalQueryId, queryPartId)
 
       case persistence.MultipleValuesStandingQuerySubscriber.CypherGlobalSubscriber =>
         val globalSub =
           makeSubscriber(new persistence.CypherGlobalSubscriber()).asInstanceOf[persistence.CypherGlobalSubscriber]
-        val globalQueryId: StandingQueryId = readStandingQueryId(globalSub.globalQueryId)
+        val globalQueryId: StandingQueryId = readStandingQueryId2(globalSub.globalQueryId)
         MultipleValuesStandingQuerySubscriber.GlobalSubscriber(globalQueryId)
 
       case other =>
@@ -502,34 +411,44 @@ object MultipleValuesStandingQueryStateCodec
 
   private[this] def writeMultipleValuesStandingQuerySubscribers(
     builder: FlatBufferBuilder,
-    subscribers: MultipleValuesStandingQuerySubscribers
+    subscribers: MultipleValuesStandingQueryPartSubscription
   ): Offset = {
-    val queryPartIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, subscribers.forQuery)
-    val globalQueryIdOff: Offset = writeStandingQueryId(builder, subscribers.globalId)
-    val subTyps: Array[Byte] = new Array(subscribers.subscribers.size)
-    val subOffs: Array[Offset] = new Array(subscribers.subscribers.size)
+    // Write reference values
+    val subscriberTypeBytes = new Array[Byte](subscribers.subscribers.size)
+    val subscriberOffsets = new Array[Offset](subscribers.subscribers.size)
     for ((sub, i) <- subscribers.subscribers.zipWithIndex) {
       val TypeAndOffset(subTyp, subOff) = writeMultipleValuesStandingQuerySubscriber(builder, sub)
-      subTyps(i) = subTyp
-      subOffs(i) = subOff
+      subscriberTypeBytes(i) = subTyp
+      subscriberOffsets(i) = subOff
     }
-    val subsTypOff: Offset =
-      persistence.MultipleValuesStandingQuerySubscribers.createSubscribersTypeVector(builder, subTyps)
-    val subsOff: Offset = persistence.MultipleValuesStandingQuerySubscribers.createSubscribersVector(builder, subOffs)
-    persistence.MultipleValuesStandingQuerySubscribers.createMultipleValuesStandingQuerySubscribers(
-      builder,
-      queryPartIdOff,
-      globalQueryIdOff,
-      subsTypOff,
-      subsOff
-    )
+
+    import persistence.{MultipleValuesStandingQuerySubscribers => subs}
+
+    // Vectors of unions are represented as two vectors of the same length. One has type tags as bytes, and the other
+    // the values. See https://github.com/dvidelabs/flatcc/blob/master/doc/binary-format.md#unions
+    val subscriberTypesOffset = subs.createSubscribersTypeVector(builder, subscriberTypeBytes)
+    val subscribersOffset = subs.createSubscribersVector(builder, subscriberOffsets)
+
+    subs.startMultipleValuesStandingQuerySubscribers(builder)
+
+    // Set fields
+    val queryPartIdOffset = writeMultipleValuesStandingQueryPartId2(builder, subscribers.forQuery) // struct
+    subs.addQueryPartId(builder, queryPartIdOffset)
+    val globalQueryIdOffset = writeStandingQueryId2(builder, subscribers.globalId) // struct
+    subs.addGlobalQueryId(builder, globalQueryIdOffset)
+    subs.addSubscribersType(builder, subscriberTypesOffset)
+    subs.addSubscribers(builder, subscribersOffset)
+
+    subs.endMultipleValuesStandingQuerySubscribers(builder)
   }
 
   private[this] def readMultipleValuesStandingQuerySubscribers(
     subscribers: persistence.MultipleValuesStandingQuerySubscribers
-  ): MultipleValuesStandingQuerySubscribers = {
-    val queryPartId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(subscribers.queryPartId)
-    val globalQueryId: StandingQueryId = readStandingQueryId(subscribers.globalQueryId)
+  ): MultipleValuesStandingQueryPartSubscription = {
+    val queryPartId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId2(
+      subscribers.queryPartId
+    )
+    val globalQueryId: StandingQueryId = readStandingQueryId2(subscribers.globalQueryId)
     val subs: mutable.Set[MultipleValuesStandingQuerySubscriber] = {
       val builder = mutable.Set.empty[MultipleValuesStandingQuerySubscriber]
       var i: Int = 0
@@ -543,7 +462,7 @@ object MultipleValuesStandingQueryStateCodec
       }
       builder
     }
-    MultipleValuesStandingQuerySubscribers(queryPartId, globalQueryId, subs)
+    MultipleValuesStandingQueryPartSubscription(queryPartId, globalQueryId, subs)
   }
 
   private[this] def writeMultipleValuesStandingQueryState(
@@ -551,8 +470,10 @@ object MultipleValuesStandingQueryStateCodec
     state: MultipleValuesStandingQueryState
   ): TypeAndOffset =
     state match {
-      case unitState: cypher.UnitState =>
-        val offset: Offset = writeMultipleValuesUnitStandingQueryState(builder, unitState)
+      case _: cypher.UnitState =>
+        persistence.MultipleValuesUnitStandingQueryState.startMultipleValuesUnitStandingQueryState(builder)
+        val offset: Offset =
+          persistence.MultipleValuesUnitStandingQueryState.endMultipleValuesUnitStandingQueryState(builder)
         TypeAndOffset(persistence.MultipleValuesStandingQueryState.MultipleValuesUnitStandingQueryState, offset)
 
       case crossState: cypher.CrossState =>
@@ -602,9 +523,7 @@ object MultipleValuesStandingQueryStateCodec
   ): MultipleValuesStandingQueryState =
     typ match {
       case persistence.MultipleValuesStandingQueryState.MultipleValuesUnitStandingQueryState =>
-        val unitState = makeState(new persistence.MultipleValuesUnitStandingQueryState())
-          .asInstanceOf[persistence.MultipleValuesUnitStandingQueryState]
-        readMultipleValuesUnitStandingQueryState(unitState)
+        cypher.UnitState()
 
       case persistence.MultipleValuesStandingQueryState.MultipleValuesCrossStandingQueryState =>
         val crossState = makeState(new persistence.MultipleValuesCrossStandingQueryState())
@@ -648,40 +567,39 @@ object MultipleValuesStandingQueryStateCodec
   private[this] def writeMultipleValuesStandingQueryStateAndSubscribers(
     builder: FlatBufferBuilder,
     state: MultipleValuesStandingQueryState,
-    subscribers: MultipleValuesStandingQuerySubscribers
+    subscribers: MultipleValuesStandingQueryPartSubscription
   ): Offset = {
-    val TypeAndOffset(stateTyp, stateOff) = writeMultipleValuesStandingQueryState(builder, state)
-    val subscribersOff: Offset = writeMultipleValuesStandingQuerySubscribers(builder, subscribers)
+    val TypeAndOffset(stateType, stateOffset) = writeMultipleValuesStandingQueryState(builder, state)
+    val subscribersOffset = writeMultipleValuesStandingQuerySubscribers(builder, subscribers)
     persistence.MultipleValuesStandingQueryStateAndSubscribers.createMultipleValuesStandingQueryStateAndSubscribers(
       builder,
-      subscribersOff,
-      stateTyp,
-      stateOff
+      subscribersOffset,
+      stateType,
+      stateOffset
     )
   }
 
   private[this] def readMultipleValuesStandingQueryStateAndSubscribers(
     stateAndSubs: persistence.MultipleValuesStandingQueryStateAndSubscribers
-  ): (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState) = {
+  ): (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState) = {
     val state = readMultipleValuesStandingQueryState(stateAndSubs.stateType, stateAndSubs.state)
     val subscribers = readMultipleValuesStandingQuerySubscribers(stateAndSubs.subscribers)
     subscribers -> state
   }
-  val format: BinaryFormat[(MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)] =
-    new PackedFlatBufferBinaryFormat[(MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)] {
+  val format: BinaryFormat[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] =
+    new PackedFlatBufferBinaryFormat[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] {
       def writeToBuffer(
         builder: FlatBufferBuilder,
-        state: (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
+        state: (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
       ): Offset =
         writeMultipleValuesStandingQueryStateAndSubscribers(builder, state._2, state._1)
 
       def readFromBuffer(
         buffer: ByteBuffer
-      ): (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState) =
+      ): (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState) =
         readMultipleValuesStandingQueryStateAndSubscribers(
           persistence.MultipleValuesStandingQueryStateAndSubscribers
             .getRootAsMultipleValuesStandingQueryStateAndSubscribers(buffer)
         )
     }
-
 }

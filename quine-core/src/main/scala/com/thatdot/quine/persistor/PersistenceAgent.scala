@@ -18,8 +18,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -169,11 +169,11 @@ trait NamespacedPersistenceAgent extends StrictLogging {
     upToTime: EventTime
   ): Future[Option[Array[Byte]]]
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit]
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit]
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
 
-  def getStandingQueries: Future[List[StandingQuery]]
+  def getStandingQueries: Future[List[StandingQueryInfo]]
 
   /** Fetch the intermediate standing query states associated with a node
     *
@@ -185,6 +185,16 @@ trait NamespacedPersistenceAgent extends StrictLogging {
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]]
 
   /** Set the intermediate standing query state associated with a node
+    *
+    * NB the (StandingQueryId, QuineId, MultipleValuesStandingQueryPartId) tuple is necessary to
+    * allow persistors to efficiently implement an appropriate keying strategy for MVSQ states.
+    * However, the StandingQueryId and MultipleValuesStandingQueryPartId are currently duplicated
+    * in the serialized `state` parameter. Our current [[codecs.MultipleValuesStandingQueryStateCodec]]
+    * directly deserializes a [[MultipleValuesStandingQueryState]] rather than a POJO (or more accurately,
+    * POSO) and therefore requires the StandingQueryId and MultipleValuesStandingQueryPartId to be
+    * available within the serialized state. We could reduce the disk footprint by altering the serialization
+    * codec to instead [de]serialize an intermediate representation of the SQ states which could be zipped
+    * together with information from their keys at read time. This would save 32 bytes (or 2 UUIDs) per state.
     *
     * @param standingQuery   top-level standing query
     * @param id              node

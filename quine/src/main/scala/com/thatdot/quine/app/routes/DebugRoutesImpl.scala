@@ -8,7 +8,7 @@ import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
-  DgnLocalEventIndexSummary,
+  DgnWatchableEventIndexSummary,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
   SqStateResult,
@@ -60,8 +60,8 @@ trait DebugRoutesImpl
     implicit val lSq: Record[LocallyRegisteredStandingQuery] =
       genericRecord[LocallyRegisteredStandingQuery]
     implicit val sqIdSchema: Record[StandingQueryId] = genericRecord[StandingQueryId]
-    implicit val dgnLocalEventIndexSummarySchema: Record[DgnLocalEventIndexSummary] =
-      genericRecord[DgnLocalEventIndexSummary]
+    implicit val dgnLocalEventIndexSummarySchema: Record[DgnWatchableEventIndexSummary] =
+      genericRecord[DgnWatchableEventIndexSummary]
     implicit val neSchema: Tagged[NodeEvent] = genericTagged[NodeEvent]
     implicit val newtSchema: Record[NodeEvent.WithTime[NodeEvent]] = genericRecord[NodeEvent.WithTime[NodeEvent]]
     implicit val sqResult: Record[SqStateResult] = genericRecord[SqStateResult]

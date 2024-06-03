@@ -36,7 +36,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def multipleValuesStandingQueries: collection.Map[
     (StandingQueryId, MultipleValuesStandingQueryPartId),
-    (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
+    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
   ]
 
   protected def lastWriteMillis: Long

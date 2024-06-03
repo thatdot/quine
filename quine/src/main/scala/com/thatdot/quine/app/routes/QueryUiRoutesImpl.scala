@@ -20,7 +20,7 @@ import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.{
   CypherException,
   Expr => CypherExpr,
-  QueryResults,
+  RunningCypherQuery => CypherRunningQuery,
   Type => CypherType,
   Value => CypherValue
 }
@@ -221,7 +221,7 @@ trait QueryUiRoutesImpl
     namespace: NamespaceId,
     atTime: AtTime
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
-    val res: QueryResults = cypher.queryCypherValues(
+    val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,
@@ -273,7 +273,7 @@ trait QueryUiRoutesImpl
     atTime: AtTime,
     requestTimeout: Duration = Duration.Inf
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
-    val res: QueryResults = cypher.queryCypherValues(
+    val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,
@@ -321,7 +321,7 @@ trait QueryUiRoutesImpl
       case other => false -> other
     }
 
-    val res: QueryResults = cypher.queryCypherValues(
+    val res: CypherRunningQuery = cypher.queryCypherValues(
       queryText,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,

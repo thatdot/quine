@@ -38,8 +38,8 @@ import com.thatdot.quine.graph.{
   MemberIdx,
   NamespaceId,
   PatternOrigin,
-  StandingQuery,
   StandingQueryId,
+  StandingQueryInfo,
   defaultNamespaceId,
   namespaceFromString,
   namespaceToString
@@ -180,6 +180,7 @@ final class QuineApp(graph: GraphService)
             case StandingQueryPattern.Cypher(cypherQuery, mode) =>
               val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider)
               val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
+
               mode match {
                 case StandingQueryMode.DistinctId =>
                   if (!pattern.distinct) {
@@ -778,19 +779,19 @@ object QuineApp {
     * @param metrics    Quine metrics object
     */
   private def makeRegisteredStandingQuery(
-    internal: StandingQuery,
+    internal: StandingQueryInfo,
     inNamespace: NamespaceId,
     outputs: Map[String, StandingQueryResultOutputUserDef],
     startTime: Instant,
     bufferSize: Int,
     metrics: HostQuineMetrics
   ): RegisteredStandingQuery = {
-    val mode = internal.query match {
+    val mode = internal.queryPattern match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
       case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
       case _: graph.StandingQueryPattern.QuinePatternQueryPattern => StandingQueryMode.QuinePattern
     }
-    val pattern = internal.query.origin match {
+    val pattern = internal.queryPattern.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>
         Some(StandingQueryPattern.Cypher(cypherQuery, mode))
       case _ =>
@@ -805,7 +806,7 @@ object QuineApp {
       internal.id.uuid,
       pattern,
       outputs,
-      internal.query.includeCancellation,
+      internal.queryPattern.includeCancellation,
       internal.queueBackpressureThreshold,
       stats = Map(
         "local" -> StandingQueryStats(

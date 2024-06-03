@@ -19,7 +19,7 @@ import com.thatdot.quine.model.QuineIdProvider
   * @param environment mapping of variable to value
   */
 final case class QueryContext(
-  environment: Map[Symbol, Value]
+  environment: Map[Symbol, Value] // VariableName -> Value
 ) extends AnyVal {
 
   def +(kv: (Symbol, Value)): QueryContext = QueryContext(environment + kv)
@@ -49,7 +49,7 @@ final case class QueryContext(
   def prettyMap: Map[String, String] = environment.map { case (k, v) => k.name -> v.pretty }
 }
 object QueryContext {
-  val empty: QueryContext = QueryContext(Map.empty)
+  val empty: QueryContext = QueryContext(Map())
 
   /** Compare query contexts along an ordered list of criteria, each of which
     * can be be inverted (ie. descending instead of ascending)

@@ -32,7 +32,7 @@ Quine is designed to be deployed within an event streaming data pipeline.
 
 * Quine currently supports RocksDB (default), Cassandra, and MapDB for persisting ingested event data. Of course you need a storage plan with enough capacity to hold the amount of data your application needs. Cassandra allows for one Quine host and many Cassandra systems whereas RocksDB are MapDB persistors are available to use as local storage.
 
-* Because data is effectively infinite, Quine takes a unique approach to indexing, using a custom consistent hash Cypher function (`idFrom`). Use an event value to generate a Node ID that you can use to create or locate a node in the graph. In Quine, accessing data is very fast IF you know the ID of the node in the graph that you want to query (or start a query from). The `idFrom` built-in function is a convenient convention for referring to nodes using values to deterministically calculate a `nodeId` in the the graph.
+* Because data is effectively infinite, Quine takes a unique approach to indexing, using a custom consistent hash Cypher function (`idFrom`). Use an event value to generate a Node ID that you can use to create or locate a node in the graph. In Quine, accessing data is very fast IF you know the ID of the node in the graph that you want to query (or start a query from). The `idFrom` built-in function is a convenient convention for referring to nodes using values to deterministically calculate a `nodeId` in the the graph.
 
 * Quine ingest is backpressured which makes it very stable in a high-volume event stream.
 

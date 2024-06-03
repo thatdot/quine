@@ -7,11 +7,11 @@ import org.apache.pekko.stream.scaladsl.Source
   *
   * @param compiled       the query that produced these results: note that the starting location of the query is left
   *                       generic, as it does not matter for the query's results
-  * @param resultContexts the underlying Source of QueryContexts (rows) emitted by the query
+  * @param resultSource the underlying Source of QueryContexts (rows) emitted by the query
   */
-final case class QueryResults(
+final case class RunningCypherQuery(
   compiled: CompiledQuery[Location],
-  private val resultContexts: Source[QueryContext, NotUsed]
+  private val resultSource: Source[QueryContext, NotUsed]
 ) {
 
   /** Ordered variables returned by the query */
@@ -25,10 +25,10 @@ final case class QueryResults(
 
   /** Results, in the same order as [[columns]] */
   def results: Source[Vector[Value], NotUsed] =
-    resultContexts.map { (context: QueryContext) =>
+    resultSource.map { (context: QueryContext) =>
       columns.map(context.getOrElse(_, Expr.Null))
     }
 
-  @deprecated("Use `results` instead", "soon!")
-  def contexts: Source[QueryContext, NotUsed] = resultContexts
+//  @deprecated("Use `results` instead", "soon!")
+//  def contexts: Source[QueryContext, NotUsed] = resultSource
 }

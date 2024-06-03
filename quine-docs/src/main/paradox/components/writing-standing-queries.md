@@ -67,19 +67,19 @@ Quine has two modes available for writing pattern queries, `DistinctId`, and `Mu
 The following constraints apply to Cypher contained in the pattern `query` string when `mode` is set to the default `DistinctId`:
 
   1. Each node identified by the `MATCH` shall have the following:
-  1. Node variable name
-  2. Label (optional but not more than one)
-  3. Optional map of literal property values to match
+  2. Node variable name
+  3. Label (optional but not more than one)
+  4. Optional map of literal property values to match
 
-  2. Nodes in the `MATCH` must form a @link:[connected graph](https://en.wikipedia.org/wiki/Connectivity_(graph_theory)).
+  5. Nodes in the `MATCH` must form a @link:[connected graph](https://en.wikipedia.org/wiki/Connectivity_(graph_theory)).
 
-  3. Nodes in the `MATCH` must **not** contain any cycles. In other words, the pattern must be either linear or tree-shaped.
+  6. Nodes in the `MATCH` must **not** contain any cycles. In other words, the pattern must be either linear or tree-shaped.
 
-  4. Only node variables can be bound in the query `MATCH`. Edges **cannot** be aliased to a variable, and path expressions cannot be used (so `-[:has-father]->` is fine, but `-[e:has-father]->` is not).
+  7. Only node variables can be bound in the query `MATCH`. Edges **cannot** be aliased to a variable, and path expressions cannot be used (so `-[:has-father]->` is fine, but `-[e:has-father]->` is not).
 
-  5. Edges in the `MATCH` must be directed, have exactly one edge label, and **cannot be variable-length**.
+  8. Edges in the `MATCH` must be directed, have exactly one edge label, and **cannot be variable-length**.
 
-  6. Constraints inside the `WHERE` clause must be `AND`-ed together and of one of the following forms:
+  9. Constraints inside the `WHERE` clause must be `AND`-ed together and of one of the following forms:
 
      * `nodeName.property = 123` - the property has the literal value on the right
      * `nodeName.property <> 123` - the property must exist but be different than the literal value on the right
@@ -89,7 +89,7 @@ The following constraints apply to Cypher contained in the pattern `query` strin
      * `strId(nodeName) = "1234"` - the string version of the ID of the node must be exactly the literal value on the right
      * `strId(nodeName) = idFrom('values', 'to', 'hash')` - the ID of the node must match exactly the `idFrom()` computed from the literal values on the right
 
-  7. Exactly **one** value must be returned, and it must be either the `DISTINCT` `id` or `strId` of a node bound in the `MATCH`.
+  10. Exactly **one** value must be returned, and it must be either the `DISTINCT` `id` or `strId` of a node bound in the `MATCH`.
   
   For example, `RETURN DISTINCT strId(n)` or `RETURN DISTINCT id(n) as nId` are OK, but not `RETURN n.name` or `RETURN id(n) AS nId`. The node whose id is returned is the root node - the location in the graph from which the pattern starts being incrementally matched.
 
@@ -135,15 +135,13 @@ Since there isn't exactly one ID being returned, the root of the standing query 
 
 Both modes for the pattern query return a `StandingQueryResult` JSON object with `meta` and `data` sub-objects.
 
-The `meta` JSON sub-object consists of the following:
+The `meta` JSON sub-object consists of the following:
 
 * `isPositiveMatch`: whether the result is a new match. When this value is false, it signifies that a previously matched result no longer matches
 
-* `resultId`: a UUID generated for each result. This is useful if you wish to track a result in some external system since the `resultId` of the result with `isPositiveMatch = false` will match the `resultId` of the original result (when `isPositiveMatch = true`).
+The `data` JSON sub-object consists of the following:
 
-The `data` JSON sub-object consists of the following:
-
-* On a positive match, the `data` JSON object contains results returned by the pattern query.
+* On a positive match, the `data` JSON object contains results returned by the pattern query.
 * This objects keys are the names of the values returned (ex: `RETURN DISTINCT strId(n)` would have key `"strId(n)"` and `RETURN DISTINCT id(n) AS theId` would have key `"theId"`).
 * Each query data returned is analogous to a row returned from a regular Cypher query - the key names match what would normally be Cypher column names.
 
@@ -190,7 +188,6 @@ Sample `StandingQueryResult`:
 ```json
 {
     "meta": {
-        "resultId": "b3c35fa4-2515-442c-8a6a-35a3cb0caf6b",
         "isPositiveMatch": true
     },
     "data": {
@@ -301,15 +298,15 @@ data:
 
 data:
 
-data:{"data":{"id":"2756309260014435"},"meta":{"isInitialResult":true,"ispositivematch":true,"resultId":"8f408026-8fb3-3955-c81a-7259175f41b8"}}
+data:{"data":{"id":"2756309260014435"},"meta":{"isPositiveMatch":true}}
 event:result
 id:8f408026-8fb3-3955-c81a-7259175f41b8
 
-data:{"data":{"id":"7945274922095468"},"meta":{"isInitialResult":true,"isPositiveMatch":true,"resultId":"6a83dda3-08a1-e085-ee7d-14138398f336"}}
+data:{"data":{"id":"7945274922095468"},"meta":{"isPositiveMatch":true}}
 event:result
 id:6a83dda3-08a1-e085-ee7d-14138398f336
 
-data:{"data":{"id":"6994090876991233"},"meta":{"isInitialResult":true,"isPositiveMatch":true,"resultId":"59b215b4-4084-b5bb-379d-9654bb2a7c83"}}
+data:{"data":{"id":"6994090876991233"},"meta":{"isPositiveMatch":true}}
 event:result
 id:59b215b4-4084-b5bb-379d-9654bb2a7c83
 

@@ -4,7 +4,7 @@ import scala.collection.mutable
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
-import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
+import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.EventSubscriber
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.model
@@ -17,11 +17,11 @@ import com.thatdot.quine.model.{And, DomainGraphBranch, Mu, MuVar, Not, Or, Prop
   * store on a node becomes, but the more efficient we become at delivering just
   * the right event to the right stage.
   */
-sealed abstract class StandingQueryLocalEvents
-object StandingQueryLocalEvents {
-  final case class Edge(labelConstraint: Option[Symbol]) extends StandingQueryLocalEvents
-  final case class Property(propertyKey: Symbol) extends StandingQueryLocalEvents
-  final case object AnyProperty extends StandingQueryLocalEvents
+sealed abstract class WatchableEventType
+object WatchableEventType {
+  final case class EdgeChange(labelConstraint: Option[Symbol]) extends WatchableEventType
+  final case class PropertyChange(propertyKey: Symbol) extends WatchableEventType
+  final case object AnyPropertyChange extends WatchableEventType
 
   /** traverse a DomainGraphBranch (standing query) and extract the set of StandingQueryLocalEvents relevant to that
     * branch at its root node.
@@ -38,7 +38,7 @@ object StandingQueryLocalEvents {
     */
   def extractWatchableEvents(
     branch: DomainGraphBranch
-  ): Set[StandingQueryLocalEvents] = {
+  ): Set[WatchableEventType] = {
 
     /** Recursive helper to extract the StandingQueryLocalEvents as described.
       *
@@ -48,8 +48,8 @@ object StandingQueryLocalEvents {
       */
     def extractWatchables(
       branch: DomainGraphBranch,
-      acc: Seq[StandingQueryLocalEvents] = Nil
-    ): Seq[StandingQueryLocalEvents] = branch match {
+      acc: Seq[WatchableEventType] = Nil
+    ): Seq[WatchableEventType] = branch match {
       case SingleBranch(
             model.DomainNodeEquiv(_, localProps, circularEdges),
             id @ _,
@@ -57,12 +57,12 @@ object StandingQueryLocalEvents {
             _
           ) =>
         (
-          localProps.keys.view.map(StandingQueryLocalEvents.Property) ++
+          localProps.keys.view.map(WatchableEventType.PropertyChange) ++
           // circular edges
-          circularEdges.view.map { case (name, _) => StandingQueryLocalEvents.Edge(Some(name)) } ++
+          circularEdges.view.map { case (name, _) => WatchableEventType.EdgeChange(Some(name)) } ++
           // non-circular edges -- note that we do NOT traverse into domainEdge.branch, as that branch is the
           // responsibility of another node
-          nextBranches.view.map(domainEdge => StandingQueryLocalEvents.Edge(Some(domainEdge.edge.edgeType))) ++
+          nextBranches.view.map(domainEdge => WatchableEventType.EdgeChange(Some(domainEdge.edge.edgeType))) ++
           // previously collected watchables
           acc.view
         ).toSeq // optimization: combine SeqViews only once
@@ -95,50 +95,51 @@ object StandingQueryLocalEvents {
   * @param watchingForAnyEdge set of SQs interested in any edge
   */
 
-final case class StandingQueryLocalEventIndex(
+final case class StandingQueryWatchableEventIndex(
   watchingForProperty: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForEdge: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForAnyEdge: mutable.Set[EventSubscriber],
   watchingForAnyProperty: mutable.Set[EventSubscriber]
 ) {
 
-  /** Register a new SQ as being interested in a given event and return some
-    * initial state if there is any
+  /** Register a new SQ as being interested in a given event type and return an event to represent the  initial
+    * state if there is any.
     *
     * TODO: return iterable and avoid `toSeq`
     *
-    * @param handler standing query which is interested in certain node events
-    * @param event sort of event it is interested in
-    * @param node current node state
+    * @param subscriber standing query which is interested in certain node events
+    * @param eventType  watchable event relevant to the subscriber
+    * @param properties the current node's collection of properties used to produce the initial set of NodeChangeEvents
+    * @param edges      the current node's collection of edges used to produce the initial set of NodeChangeEvents
     * @return an iterator of initial node events (from the existing node state)
     */
   def registerStandingQuery(
-    handler: EventSubscriber,
-    event: StandingQueryLocalEvents,
+    subscriber: EventSubscriber,
+    eventType: WatchableEventType,
     properties: Map[Symbol, PropertyValue],
     edges: EdgeCollectionView
   ): Seq[NodeChangeEvent] =
-    event match {
-      case StandingQueryLocalEvents.Property(key) =>
-        watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
+    eventType match {
+      case WatchableEventType.PropertyChange(key) =>
+        watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += subscriber
         properties.get(key).toSeq.map { propVal =>
           PropertySet(key, propVal)
         }
 
-      case StandingQueryLocalEvents.AnyProperty =>
-        watchingForAnyProperty.add(handler)
+      case WatchableEventType.AnyPropertyChange =>
+        watchingForAnyProperty.add(subscriber)
         properties.map { case (k, v) =>
           PropertySet(k, v)
         }.toSeq
 
-      case StandingQueryLocalEvents.Edge(Some(key)) =>
-        watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler
+      case WatchableEventType.EdgeChange(Some(key)) =>
+        watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += subscriber
         edges.matching(key).toSeq.map { halfEdge =>
           EdgeAdded(halfEdge)
         }
 
-      case StandingQueryLocalEvents.Edge(None) =>
-        watchingForAnyEdge.add(handler)
+      case WatchableEventType.EdgeChange(None) =>
+        watchingForAnyEdge.add(subscriber)
         edges.all.toSeq.map { halfEdge =>
           EdgeAdded(halfEdge)
         }
@@ -146,24 +147,24 @@ final case class StandingQueryLocalEventIndex(
     }
 
   /** Unregister a SQ as being interested in a given event */
-  def unregisterStandingQuery(handler: EventSubscriber, event: StandingQueryLocalEvents): Unit =
+  def unregisterStandingQuery(handler: EventSubscriber, event: WatchableEventType): Unit =
     event match {
-      case StandingQueryLocalEvents.Property(key) =>
+      case WatchableEventType.PropertyChange(key) =>
         for (set <- watchingForProperty.get(key)) {
           set -= handler
           if (set.isEmpty) watchingForProperty -= key
         }
 
-      case StandingQueryLocalEvents.AnyProperty =>
+      case WatchableEventType.AnyPropertyChange =>
         watchingForAnyProperty -= handler
 
-      case StandingQueryLocalEvents.Edge(Some(key)) =>
+      case WatchableEventType.EdgeChange(Some(key)) =>
         for (set <- watchingForEdge.get(key)) {
           set -= handler
           if (set.isEmpty) watchingForProperty -= key
         }
 
-      case StandingQueryLocalEvents.Edge(None) =>
+      case WatchableEventType.EdgeChange(None) =>
         watchingForAnyEdge -= handler
     }
 
@@ -193,9 +194,9 @@ final case class StandingQueryLocalEventIndex(
     case _ => ()
   }
 }
-object StandingQueryLocalEventIndex {
+object StandingQueryWatchableEventIndex {
 
-  /** EventSubscribers are the recipients of the event types classifiable by [[StandingQueryLocalEvents]]
+  /** EventSubscribers are the recipients of the event types classifiable by [[WatchableEventType]]
     * See the concrete implementations for more detail
     */
   sealed trait EventSubscriber
@@ -225,7 +226,7 @@ object StandingQueryLocalEventIndex {
     */
   final case class DomainNodeIndexSubscription(dgnId: DomainGraphNodeId) extends EventSubscriber
 
-  def empty: StandingQueryLocalEventIndex = StandingQueryLocalEventIndex(
+  def empty: StandingQueryWatchableEventIndex = StandingQueryWatchableEventIndex(
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
     mutable.Set.empty[EventSubscriber],
@@ -244,8 +245,8 @@ object StandingQueryLocalEventIndex {
     multipleValuesStandingQueryStates: Iterator[
       ((StandingQueryId, MultipleValuesStandingQueryPartId), MultipleValuesStandingQueryState)
     ]
-  ): (StandingQueryLocalEventIndex, Iterable[DomainGraphNodeId]) = {
-    val toReturn = StandingQueryLocalEventIndex.empty
+  ): (StandingQueryWatchableEventIndex, Iterable[DomainGraphNodeId]) = {
+    val toReturn = StandingQueryWatchableEventIndex.empty
     val removed = Iterable.newBuilder[DomainGraphNodeId]
     val dgnEvents = for {
       dgnId <- dgnSubscribers
@@ -255,25 +256,25 @@ object StandingQueryLocalEventIndex {
           removed += dgnId
           Set.empty
       }
-      event <- StandingQueryLocalEvents.extractWatchableEvents(branch)
+      event <- WatchableEventType.extractWatchableEvents(branch)
     } yield event -> EventSubscriber(dgnId)
     val sqStateEvents = for {
       (sqIdAndPartId, queryState) <- multipleValuesStandingQueryStates
-      event <- queryState.relevantEvents
+      event <- queryState.relevantEventTypes
     } yield event -> EventSubscriber(sqIdAndPartId)
 
     (dgnEvents ++ sqStateEvents).foreach { case (event, handler) =>
       event match {
-        case StandingQueryLocalEvents.Property(key) =>
+        case WatchableEventType.PropertyChange(key) =>
           toReturn.watchingForProperty.getOrElseUpdate(key, mutable.Set.empty) += handler
 
-        case StandingQueryLocalEvents.AnyProperty =>
+        case WatchableEventType.AnyPropertyChange =>
           toReturn.watchingForAnyProperty += handler
 
-        case StandingQueryLocalEvents.Edge(Some(key)) =>
+        case WatchableEventType.EdgeChange(Some(key)) =>
           toReturn.watchingForEdge.getOrElseUpdate(key, mutable.Set.empty) += handler
 
-        case StandingQueryLocalEvents.Edge(None) =>
+        case WatchableEventType.EdgeChange(None) =>
           toReturn.watchingForAnyEdge += handler
       }
     }

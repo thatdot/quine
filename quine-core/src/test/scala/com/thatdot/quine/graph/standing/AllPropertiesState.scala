@@ -14,12 +14,21 @@ class AllPropertiesStateTest extends AnyFunSuite {
   test("all properties state with bootstrapped properties") {
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("Initializing the state reports an initial result") {
+    withClue("Initializing the state reports an initial 1-result group") {
       val initialProperties = Map(Symbol("one") -> QuineValue(1L), Symbol("two") -> QuineValue(2L))
 
       state.initialize(initialProperties.map { case (k, v) => k -> PropertyValue(v) }) { effects =>
-        val (resId @ _, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs -> Expr.Map.empty)))
+        val results = effects.resultsReported.dequeue()
+        assert(
+          results == Seq(
+            QueryContext(
+              Map(
+                query.aliasedAs ->
+                Expr.Map(initialProperties.map { case (k, v) => k.name -> Expr.fromQuineValue(v) })
+              )
+            )
+          )
+        )
         assert(effects.isEmpty)
       }
     }
@@ -43,80 +52,65 @@ class AllPropertiesStateTest extends AnyFunSuite {
     def makeSetEvent(prop: (Symbol, QuineValue)): PropertySet = PropertySet(prop._1, PropertyValue(prop._2))
     def makeDeleteEvent(prop: (Symbol, QuineValue)): PropertyRemoved = PropertyRemoved(prop._1, PropertyValue(prop._2))
 
-    val initialResultId = withClue("Initializing the state reports an initial result") {
+    withClue("Initializing the state reports no results") {
       state.initialize() { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext(Map(query.aliasedAs -> Expr.Map.empty)))
         assert(effects.isEmpty)
-        resId
       }
     }
-    val resultId1 = withClue("Adding a single property reports a new result and cancels the old one") {
+    withClue("Adding a single property reports a new 1-result group") {
       val events = Seq(prop1).map(makeSetEvent)
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(initialResultId == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
-    val resultId2 = withClue("Adding multiple properties reports a new result and cancels the old one") {
+    withClue("Adding multiple properties reports a new 1-result group") {
       val events = Seq(prop2, prop3, prop4, prop5, prop6).map(makeSetEvent)
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1, prop2, prop3, prop4, prop5, prop6)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(resultId1 == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
-    val resultId3 = withClue("Changing multiple properties reports a new result and cancels the old one") {
+    withClue("Changing multiple properties reports a new 1-result group") {
       val events = Seq(prop1ButFunky, prop2ButFunky).map(makeSetEvent)
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1ButFunky, prop2ButFunky, prop3, prop4, prop5, prop6)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(resultId2 == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
-    val resultId4 = withClue("Removing a single property reports a new result and cancels the old one") {
+    withClue("Removing a single property reports a new 1-result group") {
       val events = Seq(prop6).map(makeDeleteEvent)
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop1ButFunky, prop2ButFunky, prop3, prop4, prop5)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(resultId3 == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
-    val resultId5 = withClue("Removing multiple properties reports a new result and cancels the old one") {
+    withClue("Removing multiple properties reports a new 1-result group") {
       val events = Seq(prop1ButFunky, prop3).map(makeDeleteEvent)
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop2ButFunky, prop4, prop5)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(resultId4 == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
     withClue(
-      "Removing a single property and changing an existing property reports a new result and cancels the old one"
+      "Removing a single property and changing an existing property reports a new 1-result group"
     ) {
       val events = Seq(makeDeleteEvent(prop4), makeSetEvent(prop2))
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>
-        val (resId, result) = effects.resultsReported.dequeue()
+        val results = effects.resultsReported.dequeue()
         val expected = propsAsCypher(prop2, prop5)
-        assert(result == QueryContext(Map(query.aliasedAs -> expected)))
-        assert(resultId5 == effects.resultsCancelled.dequeue())
+        assert(results == Seq(QueryContext(Map(query.aliasedAs -> expected))))
         assert(effects.isEmpty)
-        resId
       }
     }
 

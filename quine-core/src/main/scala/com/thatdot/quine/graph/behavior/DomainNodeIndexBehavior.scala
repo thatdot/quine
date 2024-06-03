@@ -7,7 +7,7 @@ import scala.concurrent.Future
 import org.apache.pekko.actor.{Actor, ActorLogging}
 import org.apache.pekko.event.LoggingAdapter
 
-import com.thatdot.quine.graph.StandingQueryLocalEventIndex.EventSubscriber
+import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
@@ -27,9 +27,9 @@ import com.thatdot.quine.graph.{
   Notifiable,
   RunningStandingQuery,
   StandingQueryId,
-  StandingQueryLocalEvents,
   StandingQueryOpsGraph,
-  StandingQueryPattern
+  StandingQueryPattern,
+  WatchableEventType
 }
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, QuineId, SingleBranch}
@@ -357,14 +357,14 @@ trait DomainNodeIndexBehavior
     *  - adds new DistinctID SQs not already in the subscribers
     *  - removes SQs no longer in the graph state
     */
-  protected def updateDistinctIdStandingQueriesOnNode(shouldSendReplies: Boolean): Unit = {
+  protected def updateDistinctIdStandingQueriesOnNode(): Unit = {
     // Register new SQs in graph state but not in the subscribers
     // NOTE: we cannot use `+=` because if already registered we want to avoid duplicating the result
     for {
       (sqId, runningSq) <- graph
         .standingQueries(namespace) // Silently ignore absent namespace.
         .fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
-      query <- runningSq.query.query match {
+      query <- runningSq.query.queryPattern match {
         case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
         case _ => None
       }
@@ -565,7 +565,7 @@ trait DomainNodeIndexBehavior
     *
     * State removed might include upstream subscriptions to this node (from [[domainGraphSubscribers]]), downstream subscriptions
     * from this node (from [[domainNodeIndex]]), child->parent mappings tracking children of `dgnId` (from
-    * [[domainGraphNodeParentIndex]]), and local events watched by the SQ (from [[localEventIndex]])
+    * [[domainGraphNodeParentIndex]]), and local events watched by the SQ (from [[watchableEventIndex]])
     *
     * This always propagates "down" a standing query (ie, from the global subscriber to the node at the root of the SQ)
     */
@@ -613,11 +613,11 @@ trait DomainNodeIndexBehavior
 
       nextNodesToRemove match {
         case Some(downstreamNodes) =>
-          // update [[localEventIndex]]
+          // update [[watchableEventIndex]]
           dgnRegistry.withDomainGraphBranch(dgnId) {
-            StandingQueryLocalEvents
+            WatchableEventType
               .extractWatchableEvents(_)
-              .foreach(event => localEventIndex.unregisterStandingQuery(EventSubscriber(dgnId), event))
+              .foreach(event => watchableEventIndex.unregisterStandingQuery(EventSubscriber(dgnId), event))
           }
           for {
             downstreamNode <- downstreamNodes
@@ -721,10 +721,10 @@ trait DomainNodeIndexBehavior
       } else { // [[from]] is the first subscriber to this DGB, so register the DGB and add [[from]] as a subscriber
         updateRelevantToSnapshotOccurred()
         dgnRegistry.withDomainGraphBranch(dgnId) {
-          StandingQueryLocalEvents
+          WatchableEventType
             .extractWatchableEvents(_)
             .foreach { event =>
-              localEventIndex.registerStandingQuery(EventSubscriber(dgnId), event, properties, edges)
+              watchableEventIndex.registerStandingQuery(EventSubscriber(dgnId), event, properties, edges)
             }
         }
         subscribersToThisNode(dgnId) =

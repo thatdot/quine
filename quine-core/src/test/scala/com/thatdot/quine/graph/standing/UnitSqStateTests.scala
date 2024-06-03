@@ -4,10 +4,10 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QueryContext}
 
-class UnitSqStateTest extends AnyFunSuite {
+class UnitSqStateTests extends AnyFunSuite {
 
   def freshState() = new StandingQueryStateWrapper(
-    MultipleValuesStandingQuery.UnitSq()
+    MultipleValuesStandingQuery.UnitSq.instance
   )
 
   test("Unit state") {
@@ -16,11 +16,10 @@ class UnitSqStateTest extends AnyFunSuite {
 
     withClue("Initializing the state") {
       state.initialize() { effects =>
-        val (resId @ _, result) = effects.resultsReported.dequeue()
-        assert(result == QueryContext.empty)
+        val result = effects.resultsReported.dequeue()
+        assert(result == Seq(QueryContext.empty))
         assert(effects.isEmpty)
       }
     }
   }
-
 }

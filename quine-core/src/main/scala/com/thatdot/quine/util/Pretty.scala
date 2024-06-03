@@ -11,7 +11,7 @@ object Pretty {
     val sp = tabString(indent)
     val sp1 = tabString(indent + 1)
     mvsq match {
-      case MultipleValuesStandingQuery.UnitSq() => sp + "Unit"
+      case _: MultipleValuesStandingQuery.UnitSq => sp + "Unit"
       case MultipleValuesStandingQuery.Cross(queries, emitSubscriptionsLazily, _) =>
         val queriesString = s"List(\n${queries.map(q => treePrint(q, indent + 2)).mkString(",\n")}\n$sp1)"
         s"""${sp}Cross (

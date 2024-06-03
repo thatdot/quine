@@ -6,7 +6,7 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
-import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, QueryResults}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, RunningCypherQuery}
 import com.thatdot.quine.graph.messaging.CypherMessage.{
   CheckOtherHalfEdge,
   CypherQueryInstruction,
@@ -24,7 +24,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
   def runQuery(
     query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
-  ): QueryResults = {
+  ): RunningCypherQuery = {
     val nodeInterpreter = this: CypherInterpreter[Location.OnNode]
     query.run(parameters, Map.empty, nodeInterpreter)
   }

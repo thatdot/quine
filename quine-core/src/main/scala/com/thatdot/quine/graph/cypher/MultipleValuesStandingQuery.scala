@@ -3,12 +3,10 @@ package com.thatdot.quine.graph.cypher
 import java.util.regex.Pattern
 
 import scala.collection.immutable.ArraySeq
-import scala.collection.mutable
 
 import com.google.common.hash.Hashing.murmur3_128
 
 import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineValue}
 import com.thatdot.quine.util.Hashable
 
@@ -29,11 +27,11 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
 
   /** An unique identifier for this sub-query
     *
-    * @note [[id]] must be injective (so `q1.id == q2.id` implies `q1 == q2` where equality is
-    * structural, not by reference). In order to maximize sharing of standing query state, it is
-    * also desirable that `q1 == q2 implies `q1.id == q2.id` whenever possible.
+    * @note [[queryPartId]] must be injective (so `q1.queryPartId == q2.queryPartId` implies `q1 == q2` where equality
+    *       is structural, not by reference). In order to maximize sharing of standing query state, it is
+    *       also desirable that `q1 == q2 implies `q1.queryPartId == q2.queryPartId` whenever possible.
     */
-  val id: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
+  val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
     MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this)
   )
 
@@ -65,19 +63,18 @@ object MultipleValuesStandingQuery {
    */
 
   /** Produces exactly one result, as soon as initialized, with no columns */
-  final case class UnitSq() extends MultipleValuesStandingQuery {
+  final case class UnitSq private () extends MultipleValuesStandingQuery {
 
     type State = UnitState
 
     override def columns: Columns = Columns.Omitted
 
-    override def createState(): UnitState =
-      UnitState(
-        queryPartId = id,
-        resultId = None
-      )
+    override def createState(): UnitState = UnitState()
 
     val children: Seq[MultipleValuesStandingQuery] = Seq.empty
+  }
+  object UnitSq {
+    val instance = new UnitSq()
   }
 
   /** Produces a cross-product of queries, with columns that are the concatenation of the columns of
@@ -95,15 +92,7 @@ object MultipleValuesStandingQuery {
 
     type State = CrossState
 
-    override def createState(): CrossState =
-      CrossState(
-        queryPartId = id,
-        subscriptionsEmitted = 0,
-        accumulatedResults = ArraySeq.unsafeWrapArray( // Plan: use `ArraySeq.fill` when 2.12 support is dropped
-          Array.fill(queries.length)(mutable.Map.empty[ResultId, QueryContext])
-        ),
-        resultDependency = mutable.Map.empty
-      )
+    override def createState(): CrossState = CrossState(queryPartId)
 
     def children: Seq[MultipleValuesStandingQuery] = queries
   }
@@ -189,7 +178,7 @@ object MultipleValuesStandingQuery {
     columns: Columns = Columns.Omitted
   ) extends MultipleValuesStandingQuery {
     type State = AllPropertiesState
-    def createState(): AllPropertiesState = AllPropertiesState(queryPartId = id, currentResult = None)
+    def createState(): AllPropertiesState = AllPropertiesState(queryPartId)
     def children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
@@ -208,11 +197,7 @@ object MultipleValuesStandingQuery {
 
     type State = LocalPropertyState
 
-    override def createState(): LocalPropertyState =
-      LocalPropertyState(
-        queryPartId = id,
-        currentResult = None
-      )
+    override def createState(): LocalPropertyState = LocalPropertyState(queryPartId)
 
     val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
@@ -230,11 +215,7 @@ object MultipleValuesStandingQuery {
 
     type State = LocalIdState
 
-    override def createState(): LocalIdState =
-      LocalIdState(
-        queryPartId = id,
-        resultId = None
-      )
+    override def createState(): LocalIdState = LocalIdState(queryPartId)
 
     val children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
@@ -243,7 +224,11 @@ object MultipleValuesStandingQuery {
     *
     * @param edgeName if populated, the edges matched must have this label
     * @param edgeDirection if populated, the edges matched must have this direction
-    * @param andThen once an edge matched, this subquery must match on the other side
+    * @param andThen once an edge matched, this subquery must match on the other side.
+    *                note that this query will not actually directly subscribe to [[andThen]],
+    *                but rather to an ephemeral, reciprocal state (to account for the split
+    *                nature of half-edges). That reciprocal state is what actually subscribes
+    *                to [[andThen]]
     */
   final case class SubscribeAcrossEdge(
     edgeName: Option[Symbol],
@@ -254,11 +239,7 @@ object MultipleValuesStandingQuery {
 
     type State = SubscribeAcrossEdgeState
 
-    override def createState(): SubscribeAcrossEdgeState =
-      SubscribeAcrossEdgeState(
-        queryPartId = id,
-        edgesWatched = mutable.Map.empty
-      )
+    override def createState(): SubscribeAcrossEdgeState = SubscribeAcrossEdgeState(queryPartId)
 
     val children: Seq[MultipleValuesStandingQuery] = Seq(andThen)
   }
@@ -279,13 +260,7 @@ object MultipleValuesStandingQuery {
     type State = EdgeSubscriptionReciprocalState
 
     override def createState(): EdgeSubscriptionReciprocalState =
-      EdgeSubscriptionReciprocalState(
-        queryPartId = id,
-        halfEdge = halfEdge,
-        currentlyMatching = false,
-        reverseResultDependency = mutable.Map.empty,
-        andThenId = andThenId
-      )
+      EdgeSubscriptionReciprocalState(queryPartId, halfEdge, andThenId)
 
     // NB andThenId is technically the child of the [[SubscribeAcrossEdge]] query, NOT the reciprocal
     val children: Seq[MultipleValuesStandingQuery] = Seq.empty
@@ -308,11 +283,7 @@ object MultipleValuesStandingQuery {
 
     type State = FilterMapState
 
-    override def createState(): FilterMapState =
-      FilterMapState(
-        queryPartId = id,
-        keptResults = mutable.Map.empty
-      )
+    override def createState(): FilterMapState = FilterMapState(queryPartId)
 
     val children: Seq[MultipleValuesStandingQuery] = Seq(toFilter)
   }

@@ -7,7 +7,7 @@ import org.apache.pekko.stream.scaladsl.Sink
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, QueryResults}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, RunningCypherQuery}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
@@ -19,7 +19,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
   def runQuery(
     query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
-  ): QueryResults
+  ): RunningCypherQuery
 
   protected def algorithmBehavior(command: AlgorithmCommand): Unit = command match {
     case GetRandomWalk(collectQuery, depth, returnParam, inOutParam, seedOpt, replyTo) =>

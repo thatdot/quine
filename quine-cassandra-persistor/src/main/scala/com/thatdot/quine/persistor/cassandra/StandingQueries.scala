@@ -10,16 +10,16 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
-import com.thatdot.quine.graph.{NamespaceId, StandingQuery, StandingQueryId}
+import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryInfo}
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.persistor.codecs.StandingQueryCodec
 import com.thatdot.quine.util.T2
 
 trait StandingQueriesColumnNames {
   import CassandraCodecs._
-  val standingQueryCodec: TypeCodec[StandingQuery] = fromBinaryFormat(StandingQueryCodec.format)
+  val standingQueryCodec: TypeCodec[StandingQueryInfo] = fromBinaryFormat(StandingQueryCodec.format)
   final protected val queryIdColumn: CassandraColumn[StandingQueryId] = CassandraColumn("query_id")
-  final protected val queriesColumn: CassandraColumn[StandingQuery] = CassandraColumn("queries")(standingQueryCodec)
+  final protected val queriesColumn: CassandraColumn[StandingQueryInfo] = CassandraColumn("queries")(standingQueryCodec)
 }
 
 class StandingQueriesDefinition(namespace: NamespaceId)
@@ -27,7 +27,7 @@ class StandingQueriesDefinition(namespace: NamespaceId)
     with StandingQueriesColumnNames {
   protected val partitionKey: CassandraColumn[StandingQueryId] = queryIdColumn
   protected val clusterKeys = List.empty
-  protected val dataColumns: List[CassandraColumn[StandingQuery]] = List(queriesColumn)
+  protected val dataColumns: List[CassandraColumn[StandingQueryInfo]] = List(queriesColumn)
 
   protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(ddlTimeout)
 
@@ -73,12 +73,12 @@ class StandingQueries(
 
   import syntax._
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     executeFuture(insertStatement.bindColumns(queryIdColumn.set(standingQuery.id), queriesColumn.set(standingQuery)))
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     executeFuture(deleteStatement.bindColumns(queryIdColumn.set(standingQuery.id)))
 
-  def getStandingQueries: Future[List[StandingQuery]] =
+  def getStandingQueries: Future[List[StandingQueryInfo]] =
     selectColumn(selectAllStatement.bind(), queriesColumn)
 }

@@ -4,8 +4,8 @@ import java.time.Instant
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import org.apache.pekko.stream.BoundedSourceQueue
 import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter}
@@ -26,22 +26,22 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
   *
   * @param name standing query name
   * @param id unique ID of the standing query
-  * @param query the pattern being looked for
+  * @param queryPattern the pattern being looked for
   * @param queueBackpressureThreshold buffer size at which ingest starts being backpressured
   * @param queueMaxSize buffer size at which SQ results start being dropped
   */
-final case class StandingQuery(
+final case class StandingQueryInfo(
   name: String,
   id: StandingQueryId,
-  query: StandingQueryPattern,
+  queryPattern: StandingQueryPattern,
   queueBackpressureThreshold: Int,
   queueMaxSize: Int,
   shouldCalculateResultHashCode: Boolean
 )
 
-object StandingQuery {
+object StandingQueryInfo {
 
-  /** @see [[StandingQuery.queueMaxSize]]
+  /** @see [[StandingQueryInfo.queueMaxSize]]
     *
     * Beyond this size, the queue of SQ results will begin dropping results. We almost don't need
     * this limit since we should be backpressuring long before the limit is reached. However:
@@ -54,7 +54,7 @@ object StandingQuery {
     */
   val DefaultQueueMaxSize = 1048576 // 2^20
 
-  /** @see [[StandingQuery.queueBackpressureThreshold]]
+  /** @see [[StandingQueryInfo.queueBackpressureThreshold]]
     *
     * The queue backpressure threshold is similar in function to the small internal buffers Pekko
     * adds at async boundaries: a value of 1 is the most natural choice, but larger values may lead
@@ -90,7 +90,6 @@ object PatternOrigin {
 sealed abstract class StandingQueryPattern {
 
   def includeCancellation: Boolean
-
   def origin: PatternOrigin
 }
 object StandingQueryPattern extends LazyLogging {
@@ -114,7 +113,7 @@ object StandingQueryPattern extends LazyLogging {
   /** An SQv4 standing query (also referred to as a Cypher standing query)
     *
     * @param compiledQuery compiled query to execute
-    * @param includeCancellations should result cancellations be reported?
+    * @param includeCancellation should result cancellations be reported? (currently always treated as false)
     * @param origin how did the user specify this query?
     */
   final case class MultipleValuesQueryPattern(
@@ -143,18 +142,18 @@ object StandingQueryPattern extends LazyLogging {
   * @param startTime when the query was started (or restarted) running
   */
 final class RunningStandingQuery(
-  val resultsQueue: BoundedSourceQueue[StandingQueryResult],
-  val query: StandingQuery,
+  private val resultsQueue: BoundedSourceQueue[StandingQueryResult],
+  val query: StandingQueryInfo,
   val resultsHub: Source[StandingQueryResult, NotUsed],
   outputTermination: Future[Done],
   val resultMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant
-) {
+) extends LazyLogging {
 
   def this(
     resultsQueue: BoundedSourceQueue[StandingQueryResult],
-    query: StandingQuery,
+    query: StandingQueryInfo,
     inNamespace: NamespaceId,
     resultsHub: Source[StandingQueryResult, NotUsed],
     outputTermination: Future[Done],
@@ -181,4 +180,38 @@ final class RunningStandingQuery(
 
   /** How many results are currently accumulated in the buffer */
   def bufferCount: Int = resultsQueue.size()
+
+  /** Enqueue a result, returning true if the result was successfully enqueued, false otherwise
+    */
+  def offerResult(result: StandingQueryResult): Boolean =
+    resultsQueue.offer(result) match {
+      case QueueOfferResult.Enqueued =>
+        true
+      case QueueOfferResult.Failure(err) =>
+        droppedCounter.inc()
+        logger.warn(
+          s"onResult: failed to enqueue Standing Query result for: ${query.name} due to error: ${err.getMessage}"
+        )
+        logger.info(
+          s"onResult: failed to enqueue Standing Query result for: ${query.name}. Result: ${result}",
+          err
+        )
+        false
+      case QueueOfferResult.QueueClosed =>
+        logger.warn(
+          s"onResult: Standing Query Result arrived but result queue already closed for: ${query.name}"
+        )
+        logger.info(
+          s"onResult: Standing Query result queue already closed for: ${query.name}. Dropped result: ${result}"
+        )
+        false
+      case QueueOfferResult.Dropped =>
+        logger.warn(
+          s"onResult: dropped Standing Query result for: ${query.name}"
+        )
+        logger.info(
+          s"onResult: dropped Standing Query result for: ${query.name}. Result: ${result}"
+        )
+        false
+    }
 }

@@ -4,9 +4,17 @@ include "cypher.fbs";
 namespace com.thatdot.quine.persistence;
 
 // See [[com.thatdot.quine.graph.cypher.QueryContext]]
+// TODO: Consider a highly compacted representation of this type embedded in a byte array.
 table QueryContext {
   columns: [string];
   values: [CypherValue];
+}
+
+// Encoding of Option[Seq[cypher.QueryContext]]
+// A missing/null reference to one of these is considered None.
+// TODO: Consider a highly compacted representation of this type embedded in a byte array.
+table MultipleValuesStandingQueryResults {
+  results: [QueryContext]; // optional
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQueryState]]
@@ -22,83 +30,61 @@ union MultipleValuesStandingQueryState {
 }
 
 // See [[com.thatdot.quine.graph.cypher.UnitState]]
-table MultipleValuesUnitStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  result_id: StandingQueryResultId;
-}
-
+table MultipleValuesUnitStandingQueryState { }
 
 // See [[com.thatdot.quine.graph.cypher.CrossState]]
 table MultipleValuesCrossStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  subscriptions_emitted: int;
-  accumulated_results: [AccumulatedResults];
-  result_dependency: [ResultDependency];
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
+
+  // Map[c.t.q.graph.MultipleValuesStandingQueryPartId, Option[Seq[c.t.q.g.cypher.QueryContext]]]
+  results_accumulator_keys: [MultipleValuesStandingQueryPartId2];
+  results_accumulator_values: [MultipleValuesStandingQueryResults];
 }
 
-table AccumulatedResults {
-  result: [MultipleValuesStandingQueryResult];
-}
-
-table MultipleValuesStandingQueryResult {
-  result_id: StandingQueryResultId (required);
-  result_values: QueryContext (required);
-}
-
-table ResultDependency {
-  result_id: StandingQueryResultId (required);
-  dependencies: [StandingQueryResultId];
-}
 
 // See [[com.thatdot.quine.graph.cypher.LocalPropertyState]]
 table MultipleValuesLocalPropertyStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  result_id: StandingQueryResultId;
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.LocalIdState]]
 table MultipleValuesLocalIdStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  result_id: StandingQueryResultId;
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
 }
 
 // See [[com.thatdot.quine.graph.cypher.SubscribeAcrossEdgeState]]
 table MultipleValuesSubscribeAcrossEdgeStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  edges_watched: [EdgeWatched] (required);
-}
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
 
-table EdgeWatched {
-  half_edge: HalfEdge (required);
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  reverse_result_dependency: [ReverseResultDependency];
-}
-
-table ReverseResultDependency {
-  dependency: StandingQueryResultId (required);
-  result_id: StandingQueryResultId (required);
-  result_values: QueryContext (required);
+  // Map[c.t.q.model.HalfEdge, Option[Seq[c.t.q.g.cypher.QueryContext]]]
+  edge_results_keys: [HalfEdge2];
+  edge_results_values: [MultipleValuesStandingQueryResults];
 }
 
 // See [[com.thatdot.quine.graph.cypher.EdgeSubscriptionReciprocalState]]
 table MultipleValuesEdgeSubscriptionReciprocalStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  half_edge: HalfEdge (required);
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
+  half_edge: HalfEdge2 (required);
+  and_then_id: MultipleValuesStandingQueryPartId2;
   currently_matching: bool;
-  reverse_result_dependency: [ReverseResultDependency];
-  and_then_id: MultipleValuesStandingQueryPartId;
+  // Logically the same as a single MultipleValuesStandingQueryResults, but we can inline the result vector to eliminate
+  // an extra indirection since there is only one.
+  // Should decode to Option[Seq[c.t.q.g.cypher.QueryContext]]
+  cached_result: [QueryContext];
 }
 
 // See [[com.thatdot.quine.graph.cypher.FilterMapState]]
 table MultipleValuesFilterMapStandingQueryState {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  reverse_result_dependency: [ReverseResultDependency];
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
+  // kept_results could be a MultipleValuesStandingQueryResults, but nesting a single table in another takes up more
+  // space than inlining the fields. See https://flatbuffers.dev/flatbuffers_guide_tutorial.html
+  // Should decode to Option[Seq[c.t.q.g.cypher.QueryContext]]
+  kept_results: [QueryContext];
 }
 
 // See [[com.thatdot.quine.graph.cypher.AllPropertiesState]]
 table MultipleValuesAllPropertiesStandingQueryState {
   query_part_id: MultipleValuesStandingQueryPartId (required);
-  result_id: StandingQueryResultId;
 }
 
 // See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.CypherSubscriber]]
@@ -109,20 +95,20 @@ union MultipleValuesStandingQuerySubscriber {
 
 // See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.QuerySubscriber]]
 table CypherNodeSubscriber {
-  on_node: QuineId (required);
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  global_query_id: StandingQueryId (required);
+  on_node: [byte] (required); // QuineId
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
+  global_query_id: StandingQueryId2 (required);
 }
 
 // See [[com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.GlobalSubscriber]]
 table CypherGlobalSubscriber {
-  global_query_id: StandingQueryId (required);
+  global_query_id: StandingQueryId2 (required);
 }
 
 // See [[com.thatdot.quine.graph.behavior.StandingQuerySubscribers]]
 table MultipleValuesStandingQuerySubscribers {
-  query_part_id: MultipleValuesStandingQueryPartId (required);
-  global_query_id: StandingQueryId (required);
+  query_part_id: MultipleValuesStandingQueryPartId2 (required);
+  global_query_id: StandingQueryId2 (required);
   subscribers: [MultipleValuesStandingQuerySubscriber];
 }
 
@@ -131,4 +117,3 @@ table MultipleValuesStandingQueryStateAndSubscribers {
   state: MultipleValuesStandingQueryState (required);
 }
 root_type MultipleValuesStandingQueryStateAndSubscribers;
-

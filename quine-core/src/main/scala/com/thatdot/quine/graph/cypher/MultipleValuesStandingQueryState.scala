@@ -1,39 +1,41 @@
 package com.thatdot.quine.graph.cypher
 
-import scala.collection.immutable.ArraySeq
-import scala.collection.mutable
+import scala.annotation.unused
+import scala.collection.{View, mutable}
 
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
-  CancelMultipleValuesResult,
-  NewMultipleValuesResult,
-  ResultId
-}
-import com.thatdot.quine.graph.{
-  MultipleValuesStandingQueryPartId,
-  NodeChangeEvent,
-  PropertyEvent,
-  StandingQueryLocalEvents
-}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
+import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, PropertyEvent, WatchableEventType}
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{HalfEdge, Properties, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, QuineIdProvider}
 
-/** The stateful component of a standing query, holding on to the information
-  * necessary for:
+/** The stateful component of a standing query, holding on to the information necessary for:
   *
-  *   - reporting new matches
-  *   - invalidating previous matches
-  *   - retracing previous matches
+  *   - Recording subscribers to this node and the query for which they are interested in receiving results
+  *   - issuing subqueries
+  *   - caching results to those subqueries
+  *   - reporting new results
   *
-  * Performance note: There are very likely a *lot* of these in memory at a given time. Therefore,
-  * every effort should be made to keep the in-memory size of instances small. For example, rather
-  * than serializing and reconstructing the StandingQuery instance associated with a State (which
-  * would create multiple identical copies of the same Query objects in memory) the States leverage
-  * a global registry of StandingQuery instances, and only serialize as much information as
-  * necessary to `replayResults` when requested.
+  * A StandingQueryState is uniquely defined by the product of: (QuineId, globalSqId, and queryPartId).
+  * The QuineId portion of that is maintained on the node, and thus from the node's perspective, it manages a collection
+  * of states defined by (globalSqId, queryPartId). The node maintains a Map in `multipleValuesStandingQueries` of
+  * (globalSqId, queryPartId) -> (subscribers, state)  Each of those "states" maintains a cache of subquery results.
+  * When a new result comes in for the subquery, the cache is updated. Results are sent out from each state in the case
+  * of two kind of events: 1.) a new result comes in that is different than the result previously sent; 2.) a change to
+  * this node occurs (via NodeChangeEvent) which causes a meaningful alteration of the locally cached results (e.g. a
+  * property changes).
+  *
+  * Performance note: There are very likely a *lot* of these in memory at a given time. Therefore, every effort should
+  * be made to keep the in-memory size of instances small. For example, rather than serializing and reconstructing the
+  * StandingQuery instance associated with a State (which would create multiple identical copies of the same Query
+  * objects in memory) the States leverage a global registry of StandingQuery instances, and only serialize as much
+  * information as necessary to produce results when requested.
+  *
+  * All operations on these classes must be done on an Actor within the single-threaded flow of message processing.
+  * These operations **are not thread safe**.
   */
 sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
 
@@ -45,40 +47,43 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
     */
   type StateOf <: MultipleValuesStandingQuery
 
+  /** Refers to a [[MultipleValuesStandingQuery]] in the system's cache. `def query` may be safely used in any
+    * other function.
+    */
+  protected var _query: StateOf = _ // late-init
+  def query: StateOf = _query // readonly access for implementations
+
   /** the ID of the StandingQuery (part) associated with this state */
   def queryPartId: MultipleValuesStandingQueryPartId
 
-  /** Non-overlapping group of possible node event categories that state wants to be notified of */
-  def relevantEvents: Seq[StandingQueryLocalEvents] = Seq.empty
+  /** Non-overlapping group of possible node event categories that this state wants to be notified of */
+  def relevantEventTypes: Seq[WatchableEventType] = Seq.empty
 
-  /** Called on state creation or deserialization/wakeup, before `onInitialize`
-    * or any other external events/results.
+  /** Called on state creation or deserialization/wakeup, before `onInitialize` or any other external events/results.
     *
     * This is used to rehydrate fields which we don't want serialized.
     */
-  def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = ()
+  def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit =
+    // Cast here is safe thanks to the invariant documented on [[StateOf]]
+    _query = effectHandler.lookupQuery(queryPartId).asInstanceOf[StateOf]
 
-  /** Called the first time the state is created (but not when it is merely being woken up)
+  /** Called the first time the state is created (but not when it is merely being woken up).
+    * This SHOULD NOT emit any results derived from state that may change as a result of new events,
+    * but MUST emit any results derived from state that is known to never change (i.e., the node's ID
+    * or a Unit state result). The code that materializes this state will also compute the relevant
+    * initial events to issue to this state, and explicitly call [[onNodeEvents]]: see the behavior
+    * for [[CreateMultipleValuesStandingQuerySubscription]] messages.
     */
-  def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit = ()
+  def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit = ()
 
-  /** Called when the state (and its associated query) are deleted (but not when they are merely
-    * being put to sleep). This should cancel the query represented by this state (and clean up)
-    * TODO: consider return type `Future[Unit]`
-    */
-  def onShutdown(
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit = ()
-
-  /** Process node events
+  /** Process node events. Note that this may re-report any results that were previously reported,
+    * especially at node wake.
     *
     * Always called on the node's thread
     *
     * @param events which node-events happened (after node-side deduplication against current node state)
-    *               NB: multiple edge events within the same batch are no longer [1] deduplicated against one another,
-    *               but property events still are [2]
+    *               NB: multiple edge events within the same batch are no longer [1] deduplicated against
+    *               one another, but property events still are [2]
     * @see https://github.com/thatdot/quine-plus/pull/2280#discussion_r1115372792
     * @see https://github.com/thatdot/quine-plus/pull/2522
     * @param effectHandler handler for external effects
@@ -96,63 +101,41 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
     * @return whether the standing query state was updated (eg. is there anything new to save?)
     */
   def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = false
 
-  /** Called when one of the sub-queries invalidates a previous result
+  /** Read the current results for this SQ state.
     *
-    * @param result cancelled subscription result
-    * @param effectHandler handler for external effects
-    * @return whether the standing query state was updated (eg. is there anything new to save?)
-    */
-  def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = false
-
-  /** Re-create all past (not cancelled) results
-    *
-    * @note passing in the current node properties is done to enable some storage optimizations
-    *
-    * Suppose that we were to keep a `Map[ResultId, QueryContext]` from the moment that the query
-    * is initialized and every time a new result is reported with [[reportNewResult]] we add it
-    * to this map and every time a new result is cancelled with [[cancelOldResult]] we remove it
-    * from the map.Calling `replayResults` at any point in time should produce a `Map` matching
-    * that (hypothetical) map's contents, though the implementation may be optimized..
+    * @note passing in the current node properties is done to enable some storage optimizations. Be aware that
+    *       this will return results according to the properties that are passed in -- which may differ from the
+    *       properties returned by `effectHandler.currentProperties`
     *
     * @param localProperties current local node properties
-    * @return a map of all past (not cancelled) results, keyed by their original IDs
+    * @return Accumulated results at this moment.
+    *         `None` when the internal state has not yet received/produced a result (e.g. still waiting for subqueries).
+    *         `Some(Seq.empty)` when a result was produced but yielded no results
+    *         `Some(Seq(...))` when accumulated results have been resolved into Seq of resulting rows according to whatever
+    *         the StandingQueryState is meant to compute from its cached state.
     */
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext]
-}
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]]
 
-/** A [[MultipleValuesStandingQueryState]] that refers to a [[MultipleValuesStandingQuery]] in the system (graph)'s cache
-  * `query` may be safely used in any other function
-  */
-sealed trait CacheableQueryMultipleValues extends MultipleValuesStandingQueryState {
-  private[this] var _query: StateOf = _ // late-init
-  protected[this] def query: StateOf = _query // readonly access for implementations
-
-  override def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
-    super.preStart(effectHandler)
-
-    // Cast here is safe thanks to the invariant documented on [[StateOf]]
-    _query = effectHandler.lookupQuery(queryPartId).asInstanceOf[StateOf]
-  }
+  def pretty(implicit @unused idProvider: QuineIdProvider): String = this.toString
 }
 
 trait MultipleValuesStandingQueryLookupInfo {
 
   /** Get a [[MultipleValuesStandingQuery]] instance from the current graph
     *
-    * @param queryPartId
-    * @return
+    * @param queryPartId the identifier for a subquery saved in the system's standing query registry
+    * @return the relevant subquery for this standing query part ID
     */
+
+  @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
   def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery
 
   /** Current node */
-  val node: QuineId
+  val executingNodeId: QuineId
 
   /** ID provider */
   val idProvider: QuineIdProvider
@@ -173,259 +156,210 @@ trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLook
     */
   def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit
 
-  /** Cancel a previously issued subscription
+  /** Cancel a previously issued subscription. This method call is only initiated if an edge is removed, causing the
+    * tree of subqueries to become selectively irrelevant, and cancelled recursively. This method is not called when a
+    * standing query is cancelled.
     *
     * @param onNode node to which the cancellation is delivered
     * @param queryId ID of the standing query whose results were being subscribed to
     */
   def cancelSubscription(onNode: QuineId, queryId: MultipleValuesStandingQueryPartId): Unit
 
-  /** Report a fresh result
+  /** Report a new or updated result
     *
-    * @param resultId unique identifier for the new result
-    * @param result contents of the new results
+    * @param resultGroup Each item in the sequence represents on "row" of results.
+    *               (may be concatenated, appended, or crossed later with other results)
     */
-  def reportNewResult(resultId: ResultId, result: QueryContext): Unit
-
-  /** Cancel an existing result
-    *
-    * @param resultId unique identifier for the old result
-    */
-  def cancelOldResult(resultId: ResultId): Unit
+  def reportUpdatedResults(resultGroup: Seq[QueryContext]): Unit
 }
 
 /** State needed to process a [[MultipleValuesStandingQuery.UnitSq]]
   *
-  * @param queryPartId the ID of the unit query with this State
-  * @param resultId the ID of the one and only result that is created
+  * Algebraically, acts as an emitter for the 0-value for the cross product operation.
+  * Contextually, this is only ever used as the far side of a SubscribeAcrossEdge, eg in the pattern:
+  *
+  * MATCH (a)-->() WHERE a.x = 1 RETURN a
+  *
+  * In such a case, the only thing we care about of the unnamed node is that it exists (and that its
+  * half edge agrees with a's, but that concern is handled by the implicit EdgeSubscriptionReciprocal).
+  *
+  * In other words, this SQ's semantics are "confirm a node is here to run this SQ". This is so
+  * similar to what LocalId does that we could eliminate UnitSq and UnitState by merging them in
+  * to LocalId and LocalIdState.
   */
-final case class UnitState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  var resultId: Option[ResultId]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+final case class UnitState() extends MultipleValuesStandingQueryState {
+  type StateOf = MultipleValuesStandingQuery.UnitSq
+
+  def queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQuery.UnitSq.instance.queryPartId
+
+  /** There is only one possible result. It represents a positive result with zero data. It should not be only `Nil`
+    * because it should be able to be combined with other results in `Cross` with no effect.
+    */
+  private val result = Some(QueryContext.empty :: Nil)
 
   override def onInitialize(
     effectHandler: MultipleValuesStandingQueryEffects
   ): Unit =
-    if (resultId.isEmpty) {
-      val freshResultId = ResultId.fresh()
-      effectHandler.reportNewResult(freshResultId, QueryContext.empty)
-      resultId = Some(freshResultId)
-    } else
-      logger.error(s"$this cannot be re-initialized")
+    // this state is more similar to an local event driven state than a subquery-driven state,
+    // so we report an initial result (per the scaladoc on [[super]])
+    effectHandler.reportUpdatedResults(result.get)
 
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultId.map(_ -> QueryContext.empty).toMap
+  /** There is only one unit query, and we don't need to do a lookup to know its value. */
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit =
+    _query = MultipleValuesStandingQuery.UnitSq.instance
+
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = result
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.Cross]]
+/** Produce a Cartesian product from a sequence of subqueries. The subscriptions for subqueries might be emitted lazily.
+  *
+  * State needed to process a [[MultipleValuesStandingQuery.Cross]]
   *
   * @param queryPartId the ID of the cross-product query with this State
-  * @param subscriptionsEmitted total number of subscriptions emitted so far (this only grows)
-  * @param accumulatedResults results produced so far by each part of the cross-product
-  * @param resultDependency map of results emitted to their dependencies
   */
 final case class CrossState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  var subscriptionsEmitted: Int,
-  accumulatedResults: ArraySeq[mutable.Map[ResultId, QueryContext]],
-  resultDependency: mutable.Map[ResultId, List[ResultId]]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+  queryPartId: MultipleValuesStandingQueryPartId
+) extends MultipleValuesStandingQueryState {
+
   type StateOf = MultipleValuesStandingQuery.Cross
 
-  /** map of results received to the set of results emitted
-    *
-    * Invariant:
-    *
-    * {{{
-    * val deps1 = resultDependency.toSet.flatMap { case (res, deps) => deps.map(res -> _) }
-    * val deps2 = reverseResultDependency.toSet.flatMap { case (dep, ress) => ress.map(_ -> dep) }
-    * deps1 == deps2
-    * }}}
+  /** Internally cached state accumulated by this SQ State component. */
+  val resultsAccumulator: mutable.Map[MultipleValuesStandingQueryPartId, Option[Seq[QueryContext]]] = mutable.Map.empty
+
+  private def subscriptionsEmittedCount: Int = resultsAccumulator.size
+
+  /** Initialization for a `Cross` is a matter of issuing subscriptions to other nodes for subqueries.
+    * As an optimization, this uses the `emitSubscriptionsLazily` value to emit only the first subscription on init.
+    * When `emitSubscriptionsLazily` is `true`, new subscriptions for subsequent subqueries will be emitted only when
+    * there is one or more result returned for the prior query. This works because a Cartesian product that crosses any
+    * size collection with an empty set will itself always be empty. Additional subqueries are added in
+    * `def onNewSubscriptionResult`.
     */
-  val reverseResultDependency: mutable.Map[ResultId, mutable.Set[ResultId]] = mutable.Map.empty
-
-  /** just like `accumulatedResults`, but tracks the query ID alongside the results */
-  private[this] var accumulatedResultsWithId
-    : ArraySeq[(MultipleValuesStandingQueryPartId, mutable.Map[ResultId, QueryContext])] = _
-
-  override def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
-    super.preStart(effectHandler)
-
-    // Populate `reverseResultDependency`
-    for {
-      (resultId, dependsOn) <- resultDependency
-      dependedUpon <- dependsOn
-    } reverseResultDependency.getOrElseUpdate(dependedUpon, mutable.Set.empty).add(resultId)
-
-    // Populate `accumulatedResultsWithId`
-    accumulatedResultsWithId = ArraySeq
-      .newBuilder[(MultipleValuesStandingQueryPartId, mutable.Map[ResultId, QueryContext])]
-      .++=(query.queries.map(_.id).zip(accumulatedResults))
-      .result()
-  }
-
-  /** Record and emit a new result
-    *
-    * @param resultId new result ID
-    * @param result new result
-    * @param dependsOn recursive results which need to hold for this result to remain valid
-    */
-  private def newResult(
-    resultId: ResultId,
-    result: QueryContext,
-    dependsOn: List[ResultId],
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit = {
-    effectHandler.reportNewResult(resultId, result)
-    resultDependency += resultId -> dependsOn
-    for (dependedUpon <- dependsOn)
-      reverseResultDependency.getOrElseUpdate(dependedUpon, mutable.Set.empty).add(resultId)
-  }
-
-  /** Cancel results that are no longer valid due to a dependency that is no longer valid
-    *
-    * @param dependency recusive result which is no longer valid
-    */
-  private def cancelResults(
-    dependencyId: ResultId,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit =
-    for (invalidated <- reverseResultDependency.remove(dependencyId).getOrElse(Nil)) {
-      effectHandler.cancelOldResult(invalidated)
-      for (otherDep <- resultDependency.remove(invalidated).get; if otherDep != dependencyId) {
-        val resSet = reverseResultDependency(otherDep)
-        resSet.remove(invalidated)
-        if (resSet.isEmpty) reverseResultDependency.remove(otherDep)
-      }
-    }
-
   override def onInitialize(
     effectHandler: MultipleValuesStandingQueryEffects
   ): Unit =
     for (sq <- if (query.emitSubscriptionsLazily) query.queries.view.take(1) else query.queries.view) {
-      effectHandler.createSubscription(effectHandler.node, sq)
-      subscriptionsEmitted += 1
+      // In a `Cross`, `createSubscription` always ends up going to the same node as the Cross itself,
+      // so we don't need to store the QuineId.
+      effectHandler.createSubscription(effectHandler.executingNodeId, sq)
+      resultsAccumulator += (sq.queryPartId -> None)
     }
 
-  override def onShutdown(
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit =
-    for (sq <- query.queries.take(subscriptionsEmitted))
-      effectHandler.cancelSubscription(effectHandler.node, sq.id)
-
-  override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    if (!query.queries.exists(_.id == result.queryId)) {
-      logger.error(s"$this received subscription result it didn't subscribe to: $result")
-      return false
+  /** An internal optimization to track whether this state is ready to report results--because it has received at
+    * least one result for each subquery. This transition from `false` to `true` is always monotonic.
+    */
+  object isReadyToReport {
+    private[this] var isReadyToReportState = false
+    def apply(): Boolean = isReadyToReportState || { // short-circuits if `true`
+      val haveOneResultPerSubquery = resultsAccumulator.values.forall(_.isDefined) // avoid iterating this if possible!
+      if (haveOneResultPerSubquery) isReadyToReportState = true
+      haveOneResultPerSubquery
     }
-
-    if (subscriptionsEmitted != query.queries.length) {
-      // Don't bother trying to build up results - all subscriptions haven't been emitted yet!
-      val resultsIdx = query.queries.indexWhere(_.id == result.queryId)
-      val resultMap = accumulatedResults(resultsIdx)
-
-      // If this is the first result, make sure a subscription has been emitted for the next query
-      if (resultMap.isEmpty && resultsIdx == subscriptionsEmitted - 1) {
-        effectHandler.createSubscription(effectHandler.node, query.queries(subscriptionsEmitted))
-        subscriptionsEmitted += 1
-      }
-
-      resultMap += result.resultId -> result.result
-    } else {
-      // Build up an iterator of fresh results
-      val newResults = accumulatedResultsWithId.foldLeft(Iterator(List.empty[ResultId] -> QueryContext.empty)) {
-        case (crossAccumulator, (subId, resultMap)) =>
-          // What rows to use in the cross-product for this subscription?
-          val resultsIterator: Iterable[(ResultId, QueryContext)] = if (subId != result.queryId) {
-            resultMap
-          } else {
-            resultMap += result.resultId -> result.result
-            List(result.resultId -> result.result)
-          }
-
-          // Take a cross-product
-          for {
-            (dependsOnResultIds: List[ResultId @unchecked], crossRow: QueryContext) <-
-              crossAccumulator
-            (resultId, row) <- resultsIterator
-          } yield (resultId :: dependsOnResultIds, crossRow ++ row)
-      }
-
-      // Emit new results
-      for ((dependsOnResultIds: List[ResultId @unchecked], result: QueryContext) <- newResults)
-        newResult(ResultId.fresh(), result, dependsOnResultIds, effectHandler)
-    }
-
-    true
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
+  override def onNewSubscriptionResult(
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean =
-    accumulatedResultsWithId.find(_._1 == result.queryId) match {
+    resultsAccumulator.get(result.queryPartId) match {
       case None =>
-        logger.error(s"$this revieved subscription result it didn't subscribe to: $result")
+        logger.error(
+          s"$this received subscription result: $result not in the list of subscriptions: ${resultsAccumulator.keys
+            .mkString("[", ",", "]")}"
+        )
         false
+      case Some(existingResultOpt) =>
+        if (subscriptionsEmittedCount != query.queries.length) {
+          // NB query.emitSubscriptionsLazily must be true if we made it here
 
-      case Some((_, results)) =>
-        // Remove the invalidated result
-        results.remove(result.resultId)
+          // Which index (in the query list) does this result correspond to?
+          def queryIdxForResult: Int = query.queries.indexWhere(_.queryPartId == result.queryPartId)
 
-        // Invalidate results that depended on this
-        cancelResults(result.resultId, effectHandler)
+          // Has this CrossState already reported a result?
+          val crossHasAlreadyReported = existingResultOpt.nonEmpty
+          if (crossHasAlreadyReported) {
+            logger.info(
+              s"""CrossState for ${query} on ${effectHandler.executingNodeId} already reported a
+                 |result, but has not yet issued all its subscriptions (${subscriptionsEmittedCount}
+                 |of ${query.queries.length} issued). Results previously issued by this state are
+                 |suspect.""".stripMargin.replace('\n', ' ')
+            )
+          }
 
+          if (queryIdxForResult == subscriptionsEmittedCount - 1) {
+            // If this is the first result for the most recently-emitted subscription, make sure another subscription has
+            // been emitted for the NEXT query (because of the `emitSubscriptionsLazily` optimization).
+            val nextSubscriptionQuery = query.queries(subscriptionsEmittedCount)
+            effectHandler.createSubscription(effectHandler.executingNodeId, nextSubscriptionQuery)
+            resultsAccumulator += (nextSubscriptionQuery.queryPartId -> None) // Add new subscription with empty result.
+          }
+
+          // Don't bother trying to build up cross-product results - all subscriptions haven't been emitted yet!
+          // Instead, just cache the result and wait for the next one.
+          resultsAccumulator += (result.queryPartId -> Some(result.resultGroup)) // Cache the newly arrived result.
+        } else { // All subscriptions have been issued
+          resultsAccumulator += (result.queryPartId -> Some(result.resultGroup)) // Cache the newly arrived result.
+          val isNewResultGroup = !existingResultOpt.contains(result.resultGroup)
+          // Report results only if this result is new, and only when we have at least one result received for each subquery.
+          if (isNewResultGroup && isReadyToReport()) {
+            generateCrossProductResults.foreach(effectHandler.reportUpdatedResults)
+          }
+        }
         true
     }
 
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultDependency.toMap.map { case (resultId, dependsOnResultIds) =>
-      val recreatedResult = accumulatedResults.view
-        .map(
-          dependsOnResultIds.collectFirst(_).get
-        ) // TODO: handle `get` with an error explaining what invariant is violated
-        .foldLeft(QueryContext.empty)(_ ++ _)
-      resultId -> recreatedResult
+  private[this] def generateCrossProductResults: Option[List[QueryContext]] = {
+    import cats.implicits._
+    val results: List[Option[Seq[QueryContext]]] = resultsAccumulator.values.toList
+    // first, fish out any None value. This would mean we haven't yet gotten results
+    // from all subqueries. If everything is Some, we're good to continue.
+    val resultsOrNone: Option[List[Seq[QueryContext]]] = results.sequence
+
+    resultsOrNone.map { resultsFromAllChildren: List[Seq[QueryContext]] =>
+      resultsFromAllChildren.foldLeft(
+        // Before considering any subqueries, but knowing we want to emit a match,
+        // start with a single, empty row
+        List(QueryContext.empty)
+      ) { case (allRowsFromCombiningEarlierChildQueries, nextResultGroup) =>
+        // We're working through the child queries one by one, accumulating the cross product into the first argument.
+        // One by one, each child query's results gets a turn being the `nextResultGroup`, at which time, we
+        // zip each row from the previous cross product with each row from the new result group.
+        for {
+          rowSoFar: QueryContext <- allRowsFromCombiningEarlierChildQueries
+          newResultRowAddition: QueryContext <- nextResultGroup
+        } yield rowSoFar ++ newResultRowAddition
+      }
     }
+  }
+
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+    if (subscriptionsEmittedCount == query.queries.length && isReadyToReport()) generateCrossProductResults
+    else None
 }
 
-final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPartId, var currentResult: Option[ResultId])
-    extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPartId)
+    extends MultipleValuesStandingQueryState {
+
+  /** NB not serialized. We know that properties can only change when the node is awake, so
+    * we don't need to record the last-known properties when the node goes to sleep.
+    * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
+    * will duplicate the last result set reported. This is okay, as the event will be
+    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
+    * the [[MultipleValuesResultsReporter]] will deduplicate it).
+    */
+  private[this] var lastReportedProperties: Option[Properties] = None
+
   override type StateOf = MultipleValuesStandingQuery.AllProperties
 
-  private def props2Expr(props: Properties): Expr.Map = {
-    val cypherProperties: Map[String, Value] = props.map { case (k, v) =>
+  private def projectProperties(properties: Properties): View[(String, Value)] =
+    properties.view.map { case (k, v) =>
       k.name -> v.deserialized.fold[Value](_ => Expr.Null, qv => Expr.fromQuineValue(qv))
     }
 
-    Expr.Map(cypherProperties)
-  }
+  private def propertiesAsCypher(properties: Properties): Expr.Map =
+    Expr.Map(projectProperties(properties))
 
-  private def currentPropertiesAsMap(effectHandler: MultipleValuesStandingQueryEffects): Expr.Map = props2Expr(
-    effectHandler.currentProperties
-  )
-
-  override def relevantEvents: Seq[StandingQueryLocalEvents] = Seq(StandingQueryLocalEvents.AnyProperty)
-
-  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    if (currentResult.nonEmpty) {
-      logger.error(s"$this cannot be re-initialized")
-    } else {
-      currentResult = {
-        // Report the value as initially-empty (consistent with LocalPropertyState)
-        val result = QueryContext(Map(query.aliasedAs -> Expr.Map.empty))
-        val freshResultId = ResultId.fresh()
-        effectHandler.reportNewResult(freshResultId, result)
-        Some(freshResultId)
-      }
-    }
+  override def relevantEventTypes: Seq[WatchableEventType] = Seq(WatchableEventType.AnyPropertyChange)
 
   /** NB this rolls up all property-related changes in [[events]] into one downstream event. Alternatively, we _could_
     * emit one downstream event per incoming event, but since Cross et al is already the default mode of event
@@ -439,85 +373,89 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
-    val oldResult = currentResult
-    val propertyEvents: Seq[PropertyEvent] = events.collect { case propEvent: PropertyEvent =>
-      propEvent
+    val somePropertyChanged = events.exists {
+      case _: PropertyEvent => true
+      case _ => false
     }
 
-    if (propertyEvents.nonEmpty) {
-      for (resultId <- currentResult)
-        effectHandler.cancelOldResult(resultId)
-
-      val resId = ResultId.fresh()
-      effectHandler.reportNewResult(
-        resId,
-        QueryContext(
-          Map(
-            query.aliasedAs -> currentPropertiesAsMap(effectHandler)
-          )
-        )
-      )
-      currentResult = Some(resId)
+    if (somePropertyChanged) {
+      // The events contained a property update, so confirm that the set of properties really did change since our
+      // last recorded report
+      val previousProperties = lastReportedProperties
+      lastReportedProperties = Some(effectHandler.currentProperties)
+      if (previousProperties == lastReportedProperties) {
+        // the result has not changed, no need to report. This case is only expected when the node is first woken up.
+        false
+      } else {
+        val result = QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(lastReportedProperties.get))
+        effectHandler.reportUpdatedResults(result :: Nil)
+        true
+      }
+    } else {
+      // The events had no changes to properties, so do nothing
+      false
     }
-
-    oldResult != currentResult
 
   }
 
   override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
     logger.error(s"$this received subscription result it didn't subscribe to: $result")
     false
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    logger.error(s"$this received subscription result it didn't subscribe to: $result")
-    false
-  }
-
-  override def replayResults(localProperties: Properties): Map[ResultId, QueryContext] = currentResult.map { resId =>
-    resId -> QueryContext(Map(query.aliasedAs -> props2Expr(localProperties)))
-  }.toMap
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(
+    (QueryContext.empty + (query.aliasedAs -> Expr.Map(projectProperties(localProperties)))) :: Nil
+  )
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.LocalProperty]]
+/** Returns data from local properties. It completes immediately and always succeeds.
+  * It issues no subquery subscriptions.
+  *
+  * State needed to process a [[MultipleValuesStandingQuery.LocalProperty]]
   *
   * @param queryPartId the ID of the local property query with this State
-  * @param currentResult ID of a result if it has been returned
   */
 final case class LocalPropertyState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  var currentResult: Option[ResultId]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+  queryPartId: MultipleValuesStandingQueryPartId
+) extends MultipleValuesStandingQueryState {
+
   type StateOf = MultipleValuesStandingQuery.LocalProperty
 
-  override def relevantEvents: Seq[StandingQueryLocalEvents.Property] = Seq(
-    StandingQueryLocalEvents.Property(query.propKey)
+  /** The value of the watched property as of the last time we made a report
+    * This is either:
+    * None: we have not yet made a report since starting the query
+    * Some(None): our last report was based on the property being absent
+    * Some(Some(value)): our last report was based on the property having the given value
+    *
+    * NB on Null: It should not be possible to write a property with the Null value because
+    * the only interpreter that can write values (the ad-hoc cypher query interpreter) considers
+    * SETing a property to NULL to have the semantics of removing the property. However, this
+    * Standing Query is designed to be agnostic to the ad-hoc interpreter, and so will consider
+    * Null a valid, present value, distinct from the absence of the property. This means that a
+    * property with a Null value will be represented as Some(Some(Null)) in this state.
+    *
+    * NB not serialized. We know that properties can only change when the node is awake, so
+    * we don't need to record the last-known properties when the node goes to sleep.
+    * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
+    * will duplicate the last result set reported. This is okay, as the event will be
+    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
+    * the [[MultipleValuesResultsReporter]] will deduplicate it).
+    */
+  var valueAtLastReport: Option[Option[model.PropertyValue]] = None
+
+  /** Whether we have affirmatively matched based on [[valueAtLastReport]].
+    * If we haven't yet reported since registering, this is false.
+    */
+  var lastReportWasAMatch: Boolean = false
+
+  override def relevantEventTypes: Seq[WatchableEventType.PropertyChange] = Seq(
+    WatchableEventType.PropertyChange(query.propKey)
   )
 
-  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    if (currentResult.nonEmpty) {
-      logger.error(s"$this cannot be re-initialized")
-    } else if (query.propConstraint.satisfiedByNone) {
-      currentResult = {
-        // If the result is aliased, report the value as initially-null.
-        val result = query.aliasedAs match {
-          case None => QueryContext.empty
-          case Some(aliased) => QueryContext.empty + (aliased -> Expr.Null)
-        }
-
-        val freshResultId = ResultId.fresh()
-        effectHandler.reportNewResult(freshResultId, result)
-        Some(freshResultId)
-      }
-    }
-
+  //noinspection MapGetOrElseBoolean
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
@@ -532,178 +470,184 @@ final case class LocalPropertyState(
     val relevantChange: Option[PropertyEvent] = events.collectFirst {
       case pe: PropertyEvent if pe.key == query.propKey => pe
     }
-
-    val oldResult = currentResult
-    relevantChange.foreach {
-      case PropertySet(propKey, propVal) if query.propKey == propKey =>
-        // Does it pass the property value test?
-        val satisfiesValueConstraint =
-          query.propConstraint(propVal.deserialized.get) // TODO: review `Try.get`
-
-        currentResult match {
-          case Some(prev @ _) if query.aliasedAs.isEmpty && satisfiesValueConstraint =>
-          /* This is the case where: We already had a result, that result has changed (but still
-           * matches), but because the query doesn't return the property value, there is nothing
-           * new to report
-           */
-
-          case _ =>
-            // Invalidate the previous result
-            for (resultId <- currentResult)
-              effectHandler.cancelOldResult(resultId)
-
-            if (satisfiesValueConstraint) {
-              // Produce a new result
-              val freshResultId = ResultId.fresh()
-              val resultValue = Expr.fromQuineValue(propVal.deserialized.get)
-              val result = query.aliasedAs match {
-                case None => QueryContext.empty
-                case Some(aliased) => QueryContext.empty + (aliased -> resultValue)
-              }
-              currentResult = Some(freshResultId)
-              effectHandler.reportNewResult(freshResultId, result)
-            } else {
-              currentResult = None
-            }
+    relevantChange
+      .map { event =>
+        // define some booleans we might need
+        val currentProperty: Option[PropertyValue] = event match {
+          case PropertySet(_, value) => Some(value)
+          case PropertyRemoved(_, _) => None
+        }
+        lazy val currentPropertyDoesMatch = currentProperty match {
+          case Some(value) => query.propConstraint(value.deserialized.get)
+          case None => query.propConstraint.satisfiedByNone
         }
 
-      case PropertyRemoved(propKey, _) if query.propKey == propKey =>
-        if (query.propConstraint.satisfiedByNone && (currentResult.isEmpty || query.aliasedAs.isDefined)) {
-          currentResult = currentResult.orElse {
-            val result = query.aliasedAs match {
-              case None => QueryContext.empty
-              case Some(aliased) => QueryContext.empty + (aliased -> Expr.Null)
+        val somethingChanged = query.aliasedAs match {
+          case Some(alias) =>
+            // the query cares about all changes to the property, even those that bring it from matching to still matching
+            if (!valueAtLastReport.contains(currentProperty) && currentPropertyDoesMatch) {
+              val currentPropertyExpr =
+                currentProperty
+                  .map(pv =>
+                    // assume the value is a QuineValue
+                    pv.deserialized.map(Expr.fromQuineValue).get
+                  )
+                  .getOrElse(Expr.Null)
+              val result = QueryContext.empty + (alias -> currentPropertyExpr)
+              lastReportWasAMatch = true
+              effectHandler.reportUpdatedResults(result :: Nil)
+              true // we issued a new result
+            } else if (valueAtLastReport.contains(currentProperty)) {
+              // the property hasn't actually changed, so we don't need to do anything
+              false
+            } else if (valueAtLastReport.isEmpty) {
+              // we haven't yet reported whether we match, but we don't -- send a report.
+              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else if (lastReportWasAMatch) {
+              // we used to match but no longer do -- cancel the previous positive result
+              lastReportWasAMatch = false
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else {
+              // we didn't use to match and we still don't, nothing to do.
+              false
             }
-            val freshResultId = ResultId.fresh()
-            effectHandler.reportNewResult(freshResultId, result)
-            Some(freshResultId)
-          }
-        } else
-          // Invalidate the previous result
-          currentResult = currentResult.flatMap { resultId =>
-            effectHandler.cancelOldResult(resultId)
-            None
-          }
-
-      case _ => // Ignore
-    }
-    oldResult != currentResult
+          case None =>
+            // the query only cares about changes that bring the property from not matching to matching or vice versa
+            if (lastReportWasAMatch != currentPropertyDoesMatch) {
+              val resultGroup =
+                if (currentPropertyDoesMatch) {
+                  // we do match, but we didn't use to -- so emit one empty result.
+                  lastReportWasAMatch = true
+                  QueryContext.empty :: Nil
+                } else {
+                  // we don't match, but we used to -- so emit that nothing matches.
+                  lastReportWasAMatch = false
+                  Nil
+                }
+              effectHandler.reportUpdatedResults(resultGroup)
+              true
+            } else if (valueAtLastReport.isEmpty) {
+              // send initial report that nothing matches
+              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else {
+              // nothing changed that we need to report - no-op.
+              false
+            }
+        }
+        valueAtLastReport = Some(currentProperty)
+        somethingChanged
+      }
+      .getOrElse {
+        // there was no relevant change. We only have something to do if the query wants results for null values.
+        // As an optimization, we only do this if we haven't yet reported a result.
+        if (query.propConstraint.satisfiedByNone && readResults(effectHandler.currentProperties).isEmpty) {
+          val alwaysReportedPart: QueryContext = QueryContext.empty
+          val aliasedPart: Iterable[(Symbol, Value)] = query.aliasedAs.map(_ -> Expr.Null)
+          val result = Seq(alwaysReportedPart ++ aliasedPart)
+          valueAtLastReport = Some(None)
+          lastReportWasAMatch = true
+          effectHandler.reportUpdatedResults(result)
+          true // we issued a new result
+        } else {
+          // nothing changed that we need to report - no-op.
+          false
+        }
+      }
   }
 
   override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
     logger.error(s"$this received subscription result it didn't subscribe to: $result")
     false
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    logger.error(s"$this received subscription result it didn't subscribe to: $result")
-    false
-  }
-
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] = {
-    val resId = currentResult match {
-      case Some(resId) => resId
-      case None => return Map.empty
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+    if (!lastReportWasAMatch) valueAtLastReport.map(_ => Nil)
+    else {
+      query.aliasedAs match {
+        case Some(alias) =>
+          // we know the last report was a match, so we can `get` the last reported value
+          val lastCypherValue = valueAtLastReport.get match {
+            case Some(value) =>
+              // assume the value is a QuineValue
+              value.deserialized.map(Expr.fromQuineValue).get
+            case None => Expr.Null
+          }
+          Some(Seq(QueryContext.empty + (alias -> lastCypherValue)))
+        case None => Some(Seq(QueryContext.empty))
+      }
     }
-    val result = query.aliasedAs match {
-      case None => QueryContext.empty
-      case Some(aliased) =>
-        val propVal = localProperties(query.propKey)
-        val resultValue = Expr.fromQuineValue(propVal.deserialized.get) // TODO: review `get`
-        QueryContext.empty + (aliased -> resultValue)
-    }
-    Map(resId -> result)
-  }
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.LocalId]]
+/** Returns the ID of the node receiving this. It completes immediately, always succeeds, and behaves essentially
+  * like [[UnitState]] except that it stores a preference for string formatting.
+  *
+  * Note: the serialization code eliminates this state so that it isn't stored on disk.
+  *
+  * State needed to process a [[MultipleValuesStandingQuery.LocalId]]
   *
   * @param queryPartId the ID of the localId query with this State
-  * @param resultId the ID of the one and only result that is created
   */
 final case class LocalIdState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  var resultId: Option[ResultId]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+  queryPartId: MultipleValuesStandingQueryPartId
+) extends MultipleValuesStandingQueryState {
+
   type StateOf = MultipleValuesStandingQuery.LocalId
 
-  private[this] var idValue: Value = _
+  private var result: Seq[QueryContext] = _ // Set during `hydrate`
 
-  override def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
-    super.preStart(effectHandler)
-
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
+    super.rehydrate(effectHandler) // Sets `query`
     // Pre-compute the ID result value
-    idValue = if (query.formatAsString) {
-      Expr.Str(effectHandler.idProvider.qidToPrettyString(effectHandler.node))
+    val idValue = if (query.formatAsString) {
+      Expr.Str(effectHandler.idProvider.qidToPrettyString(effectHandler.executingNodeId))
     } else {
-      Expr.fromQuineValue(effectHandler.idProvider.qidToValue(effectHandler.node))
+      Expr.fromQuineValue(effectHandler.idProvider.qidToValue(effectHandler.executingNodeId))
     }
+    result = (QueryContext.empty + (query.aliasedAs -> idValue)) :: Nil
   }
 
-  override def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Unit = {
-    if (resultId.nonEmpty) {
-      logger.error(s"$this cannot be re-initialized")
-      return ()
-    }
-    val freshResultId = ResultId.fresh()
-    effectHandler.reportNewResult(freshResultId, QueryContext.empty + (query.aliasedAs -> idValue))
-    resultId = Some(freshResultId)
-  }
+  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
+    // this result is not dependent on any events, so we must report it immediately
+    effectHandler.reportUpdatedResults(result)
 
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    resultId match {
-      case Some(resId) => Map(resId -> (QueryContext.empty + (query.aliasedAs -> idValue)))
-      case None => Map.empty
-    }
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(result)
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.SubscribeAcrossEdge]]
+/** Issues the subquery across all edges which match the locally testable edge conditions. The reciprocal edge will be
+  * checked on the other side with [[EdgeSubscriptionReciprocalState]].
+  *
+  * State needed to process a [[MultipleValuesStandingQuery.SubscribeAcrossEdge]]
   *
   * @param queryPartId the ID of the subscribe-across-edge query with this State
-  * @param edgesWatched mapping of matching half edges that to results received & produced
   */
 final case class SubscribeAcrossEdgeState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  edgesWatched: mutable.Map[
-    HalfEdge,
-    (MultipleValuesStandingQueryPartId, mutable.Map[ResultId, (ResultId, QueryContext)])
-  ]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+  queryPartId: MultipleValuesStandingQueryPartId
+) extends MultipleValuesStandingQueryState {
+
   type StateOf = MultipleValuesStandingQuery.SubscribeAcrossEdge
 
-  /** mapping from standing queries emitted to the corresponding half edge
+  /** The results for this query state are cached by the edges along which that result is produced. The value will be
+    * `None` if a subscription has been made but no result received. If the value is `Some`, a response has been
+    * received from the node at `_.other` on the HalfEdge key.
     *
-    * Invariants:
-    *
-    * {{{
-    * val edges1 = edgesWatched.iterator.map { case (he, (sqId, _)) => sqId -> he }.toSet
-    * val edges2 = edgeQueryIds.iterator.map { case ((_, sqId), he) => sqId -> he }.toSet
-    * edges1 == edges2
-    *
-    * edgeQueryIds.forall { case ((other, _), he) => other == he.other }
-    * }}}
+    * The keys in this map are always a subset of what's in the node's `EdgeCollection`.
     */
-  val edgeQueryIds: mutable.Map[(QuineId, MultipleValuesStandingQueryPartId), HalfEdge] =
-    mutable.Map.empty[(QuineId, MultipleValuesStandingQueryPartId), HalfEdge]
+  val edgeResults: mutable.Map[HalfEdge, Option[Seq[QueryContext]]] = mutable.Map.empty
 
-  override def relevantEvents: Seq[StandingQueryLocalEvents.Edge] = Seq(StandingQueryLocalEvents.Edge(query.edgeName))
+  override def relevantEventTypes: Seq[WatchableEventType.EdgeChange] =
+    Seq(WatchableEventType.EdgeChange(query.edgeName))
 
-  override def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
-    super.preStart(effectHandler)
-
-    for ((he, (sqId, _)) <- edgesWatched)
-      edgeQueryIds += (he.other -> sqId) -> he
-  }
+  private[this] def edgeMatchesPattern(halfEdge: HalfEdge): Boolean =
+    query.edgeName.forall(_ == halfEdge.edgeType) &&
+    query.edgeDirection.forall(_ == halfEdge.direction)
 
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
@@ -711,81 +655,75 @@ final case class SubscribeAcrossEdgeState(
   ): Boolean = {
     var somethingChanged = false
     events.foreach {
-      case EdgeAdded(halfEdge)
-          if query.edgeName.forall(_ == halfEdge.edgeType) &&
-            query.edgeDirection.forall(_ == halfEdge.direction) =>
+      case EdgeAdded(halfEdge) if edgeMatchesPattern(halfEdge) =>
         // Create a new subscription
         val freshEdgeQuery = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
-          halfEdge.reflect(effectHandler.node),
-          query.andThen.id,
+          halfEdge.reflect(effectHandler.executingNodeId),
+          query.andThen.queryPartId,
           query.columns
         )
         effectHandler.createSubscription(halfEdge.other, freshEdgeQuery)
-        edgesWatched += halfEdge -> (freshEdgeQuery.id -> mutable.Map.empty)
-        edgeQueryIds += (halfEdge.other -> freshEdgeQuery.id) -> halfEdge
-
+        // Record that the subscription has been made, but no result (from the andThen via the reciprocal) yet.
+        edgeResults += (halfEdge -> None)
         somethingChanged = true
 
-      case EdgeRemoved(halfEdge) if edgesWatched.contains(halfEdge) =>
-        val (invalidatedQueryId, invalidatedResults) = edgesWatched.remove(halfEdge).get
-        edgeQueryIds -= (halfEdge.other -> invalidatedQueryId)
-
-        // Remove the subscription
-        effectHandler.cancelSubscription(halfEdge.other, invalidatedQueryId)
-
-        // Invalidate all results through this edge
-        for ((_, (resultId, _)) <- invalidatedResults)
-          effectHandler.cancelOldResult(resultId)
-
+      case EdgeRemoved(halfEdge) if edgeResults.contains(halfEdge) =>
+        val oldResult = edgeResults.remove(halfEdge).get
+        effectHandler.cancelSubscription(halfEdge.other, query.andThen.queryPartId)
+        // if we previously reported a result based on this edge's matching, we need to report a new result without it
+        if (oldResult.isDefined)
+          readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
         somethingChanged = true
 
-      case _ => // Ignore
+      case _ => () // Ignore all other events.
     }
     somethingChanged
   }
 
-  override def onShutdown(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    for ((heOther, edgeQueryId) <- edgeQueryIds.keys)
-      effectHandler.cancelSubscription(heOther, edgeQueryId)
-
   override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
-    val correspondingHalfEdge: HalfEdge = edgeQueryIds.get(result.from -> result.queryId) match {
-      case None => return false // can happen if a subscription cancellation races a new result
-      case Some(he) => he
+    // Silently drop the result (with an empty `needsUpdate`) if we aren't expecting a result from `result.other`.
+    // This can happen if the edge is removed (here first) then the other side reports no longer matching the reciprocal
+    // TODO does this race during creation?
+    val needsUpdate: Option[(HalfEdge, Option[Seq[QueryContext]])] =
+      edgeResults.find { case (he, _) =>
+        he.other == result.from && edgeMatchesPattern(he)
+      }
+
+    needsUpdate match {
+      case Some((edge, oldResult)) if !oldResult.contains(result.resultGroup) =>
+        edgeResults += (edge -> Some(result.resultGroup))
+        readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
+        true
+      case Some(_) => false // we found a matching edge, but its result didn't change
+      case _ => false // we found no matching edge
     }
-
-    val outputResultId = ResultId.fresh()
-    val resultToCache = outputResultId -> result.result
-    edgesWatched(correspondingHalfEdge)._2 += (result.resultId -> resultToCache)
-    effectHandler.reportNewResult(outputResultId, result.result)
-
-    true
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    val correspondingHalfEdge: HalfEdge = edgeQueryIds.get(result.from -> result.queryId) match {
-      case None => return false // can happen if a subscription cancellation races a cancelled result
-      case Some(he) => he
-    }
-
-    // Find the results across this edge and invalidate them
-    val invalidated = edgesWatched(correspondingHalfEdge)._2.remove(result.resultId).get._1
-    effectHandler.cancelOldResult(invalidated)
-
-    true
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = {
+    // the result set of a SubscribeAcrossEdge is the concatenation of all the result rows
+    // from the edges that could match the query's edge (because a MVSQ should report a row
+    // for each way by which it matches)
+    val results = edgeResults
+      .collect {
+        case (he @ _, Some(rows)) => rows
+        case (he @ _, None) => Nil
+      }
+      .flatten
+      .toSeq
+    if (results.nonEmpty) Some(results) else None
   }
 
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    edgesWatched.values.flatMap(_._2.values).toMap
+  override def pretty(implicit idProvider: QuineIdProvider): String =
+    s"${this.getClass.getSimpleName}($queryPartId, ${edgeResults.map { case (he, v) => he.pretty -> v }})"
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.EdgeSubscriptionReciprocal]]
+/** Validates this concluding half edge side of the edge and propagates results back to the subscribing side when
+  * available and when the edge is matching.
+  *
+  * State needed to process a [[MultipleValuesStandingQuery.EdgeSubscriptionReciprocal]]
   *
   * Since reciprocal queries are generated on the fly in [[SubscribeAcrossEdgeState]], they won't
   * show up when you try to look them up by ID globally. This is why this state inlines fields from
@@ -793,27 +731,45 @@ final case class SubscribeAcrossEdgeState(
   *
   * @param queryPartId the ID of the edge-subscript-reciprocal query with this State
   * @param halfEdge the half-edge descriptor to match on replay -- this should match the query's half-edge
-  * @param currentlyMatching is there currently a reciprocal half edge?
-  * @param reverseResultDependency mapping from received subquery result ID to what was emitted
   * @param andThenId ID of the standing query part following the completion of this cross-edge match
   */
 final case class EdgeSubscriptionReciprocalState(
   queryPartId: MultipleValuesStandingQueryPartId,
   halfEdge: HalfEdge,
-  var currentlyMatching: Boolean,
-  reverseResultDependency: mutable.Map[ResultId, (ResultId, QueryContext)],
   andThenId: MultipleValuesStandingQueryPartId
 ) extends MultipleValuesStandingQueryState {
 
+  require(
+    queryPartId != andThenId,
+    """Invariant violated: EdgeSubscriptionReciprocal had a matching andThen queryPartId and [self] queryPartId.
+      |An EdgeSubscriptionReciprocal's original query should not also be that query's andThen.
+      |""".stripMargin.replace('\n', ' ')
+  )
+
   type StateOf = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
 
+  /** Boolean to indicate whether there is currently a locally-matching reciprocal half edge */
+  var currentlyMatching: Boolean = false
+
+  // TODO: Should this track whether it did previously match, and if it then _changes_ to false, then cancel itself...?
+
+  /** Saved state from `andThen` query */
+  var cachedResult: Option[Seq[QueryContext]] = None // Result from the `andThen` query cached here.
+
+  /** The subquery to run when the reciprocal edge has been verified. */
   private[this] var andThen: MultipleValuesStandingQuery = _
 
-  override def preStart(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit =
+  override def rehydrate(
+    effectHandler: MultipleValuesStandingQueryLookupInfo
+  ): Unit =
+    // Do not call `super.preStart(effectHandler)` here because this `EdgeSubscriptionReciprocalState` is synthesized
+    // and its `queryPartId` is not in the global registry.
     andThen = effectHandler.lookupQuery(andThenId)
 
-  override def relevantEvents: Seq[StandingQueryLocalEvents.Edge] = Seq(
-    StandingQueryLocalEvents.Edge(Some(halfEdge.edgeType))
+  override def relevantEventTypes: Seq[WatchableEventType.EdgeChange] = Seq(
+    WatchableEventType.EdgeChange(
+      Some(halfEdge.edgeType)
+    )
   )
 
   override def onNodeEvents(
@@ -824,17 +780,14 @@ final case class EdgeSubscriptionReciprocalState(
     events.foreach {
       case EdgeAdded(newHalfEdge) if halfEdge == newHalfEdge =>
         currentlyMatching = true
-        effectHandler.createSubscription(effectHandler.node, andThen)
+        effectHandler.createSubscription(effectHandler.executingNodeId, andThen)
         somethingChanged = true
+        readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
 
       case EdgeRemoved(oldHalfEdge) if halfEdge == oldHalfEdge =>
         currentlyMatching = false
-        effectHandler.cancelSubscription(effectHandler.node, andThenId)
-
-        // Invalidate all results
-        for ((_, (resultId, _)) <- reverseResultDependency)
-          effectHandler.cancelOldResult(resultId)
-        reverseResultDependency.clear()
+        effectHandler.cancelSubscription(effectHandler.executingNodeId, andThenId)
+        effectHandler.reportUpdatedResults(Nil)
 
         somethingChanged = true
 
@@ -843,110 +796,74 @@ final case class EdgeSubscriptionReciprocalState(
     somethingChanged
   }
 
-  override def onShutdown(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    if (currentlyMatching) {
-      effectHandler.cancelSubscription(effectHandler.node, andThenId)
-    }
-
-  override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
+  override def onNewSubscriptionResult( // Happens when the subscription for the `andThen` returns a result
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
   ): Boolean = {
-    if (!currentlyMatching) return false
-
-    val outputResultId = ResultId.fresh()
-    reverseResultDependency += result.resultId -> (outputResultId -> result.result)
-    effectHandler.reportNewResult(outputResultId, result.result)
-
-    true
+    val resultIsUpdate = !cachedResult.contains(result.resultGroup)
+    cachedResult = Some(result.resultGroup)
+    // only propagate a result across an edge if that edge still exists, but cache the result regardless
+    if (resultIsUpdate && currentlyMatching) effectHandler.reportUpdatedResults(result.resultGroup)
+    resultIsUpdate
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    if (currentlyMatching) return false
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+    if (currentlyMatching && cachedResult.isDefined) cachedResult else None
 
-    if (!reverseResultDependency.contains(result.resultId)) {
-      logger.error(s"$this received subscription result it didn't subscribe to: $result")
-      return false
-    }
-
-    // Find the results across this edge and invalidate them
-    val invalidated = reverseResultDependency.remove(result.resultId).get._1
-    effectHandler.cancelOldResult(invalidated)
-
-    true
-  }
-
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    reverseResultDependency.values.toMap
+  override def pretty(implicit idProvider: QuineIdProvider): String =
+    s"${this.getClass.getSimpleName}($queryPartId, ${halfEdge.pretty}, $currentlyMatching, ${cachedResult.map(_.mkString("[", ",", "]"))}, $andThenId)"
 }
 
-/** State needed to process a [[MultipleValuesStandingQuery.FilterMap]]
+/** Filters incoming results (optionally) and transforms each result that passes the filter (optionally).
+  * State needed to process a [[MultipleValuesStandingQuery.FilterMap]]
   *
   * @param queryPartId the ID of the filter/map query with this State
-  * @param keptResults map of input result IDs that passed the filter to output result IDs
   */
 final case class FilterMapState(
-  queryPartId: MultipleValuesStandingQueryPartId,
-  keptResults: mutable.Map[ResultId, (ResultId, QueryContext)]
-) extends MultipleValuesStandingQueryState
-    with CacheableQueryMultipleValues {
+  queryPartId: MultipleValuesStandingQueryPartId
+) extends MultipleValuesStandingQueryState {
+
   type StateOf = MultipleValuesStandingQuery.FilterMap
 
+  var keptResults: Option[Seq[QueryContext]] = None
+
   override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    effectHandler.createSubscription(effectHandler.node, query.toFilter)
+    effectHandler.createSubscription(effectHandler.executingNodeId, query.toFilter)
 
-  override def onShutdown(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    effectHandler.cancelSubscription(effectHandler.node, query.toFilter.id)
+  private var condition: QueryContext => Boolean = _ // Set during `rehydrate`
+  private var mapper: QueryContext => QueryContext = _ // Set during `rehydrate`
 
-  override def onNewSubscriptionResult(
-    result: NewMultipleValuesResult,
-    effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    // Does the result pass the filter?
-    val passesFilter = query.condition.fold(true) { (cond: Expr) =>
-      // TODO: parameters
-      cond.eval(result.result)(effectHandler.idProvider, Parameters.empty) match {
-        case Expr.True => true
-        case Expr.List(l) => l.nonEmpty
-        case _ => false
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
+    super.rehydrate(effectHandler)
+    condition = query.condition.fold((r: QueryContext) => true) { (cond: Expr) => (r: QueryContext) =>
+      cond.eval(r)(effectHandler.idProvider, Parameters.empty) == Expr.True
+    }
+    mapper = (row: QueryContext) =>
+      query.toAdd.foldLeft(if (query.dropExisting) QueryContext.empty else row) { case (acc, (aliasedAs, exprToAdd)) =>
+        acc + (aliasedAs -> exprToAdd.eval(row)(
+          effectHandler.idProvider,
+          Parameters.empty
+        ))
       }
-    }
-
-    if (!passesFilter) return false
-
-    // Construct the output result
-    val initial = if (query.dropExisting) QueryContext.empty else result.result
-    val newResult = query.toAdd.foldLeft(initial) { case (acc, (aliasedAs, exprToAdd)) =>
-      acc + (aliasedAs -> exprToAdd.eval(result.result)(
-        effectHandler.idProvider,
-        Parameters.empty
-      ))
-    }
-
-    val outputResultId = ResultId.fresh()
-    effectHandler.reportNewResult(outputResultId, newResult)
-    keptResults += (result.resultId -> (outputResultId -> newResult))
-
-    true
   }
 
-  override def onCancelledSubscriptionResult(
-    result: CancelMultipleValuesResult,
+  override def onNewSubscriptionResult(
+    result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean =
-    keptResults.remove(result.resultId) match {
-      // the result had been filtered out
-      case None => false
-
-      // the result needs to be invalidatedd
-      case Some((invalidated: ResultId, _)) =>
-        effectHandler.cancelOldResult(invalidated)
-        true
+  ): Boolean = {
+    val newResults = result.resultGroup.collect {
+      case row if condition(row) => mapper(row)
     }
+    val isUpdated = !keptResults.contains(newResults)
+    if (isUpdated) {
+      effectHandler.reportUpdatedResults(newResults)
+      keptResults = Some(newResults)
+    }
+    isUpdated
+  }
 
-  def replayResults(localProperties: Properties): Map[ResultId, QueryContext] =
-    keptResults.values.toMap
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = keptResults
+
+  override def pretty(implicit idProvider: QuineIdProvider): String =
+    s"${this.getClass.getSimpleName}($queryPartId, ${keptResults.mkString("[", ",", "]")})"
 }

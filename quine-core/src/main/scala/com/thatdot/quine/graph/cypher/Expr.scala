@@ -403,7 +403,8 @@ object Expr {
       }
 
     override def toString(): String =
-      s"Bytes(${ByteConversions.formatHexBinary(b)})"
+      if (representsId) QuineId(b).toString
+      else s"Bytes(${ByteConversions.formatHexBinary(b)})"
 
     def typ = Type.Bytes
 
@@ -2012,7 +2013,7 @@ object Expr {
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
       val argVals = arguments.map(_.eval(qc))
-      if (function != Func.Coalesce && argVals.exists(_ == Expr.Null)) {
+      if (function != Func.Coalesce && argVals.contains(Expr.Null)) {
         Expr.Null
       } else {
         function.call(argVals)

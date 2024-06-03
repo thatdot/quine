@@ -8,6 +8,8 @@ import scala.util.control.NoStackTrace
 
 import cats.data.NonEmptyList
 import cats.implicits._
+import com.typesafe.scalalogging.LazyLogging
+import pprint.{apply => pprint}
 
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
@@ -47,7 +49,7 @@ final case class GraphQueryPattern(
   filterCond: Option[cypher.Expr],
   toReturn: Seq[(Symbol, cypher.Expr)],
   distinct: Boolean
-) {
+) extends LazyLogging {
 
   import GraphQueryPattern._
 
@@ -314,29 +316,29 @@ final case class GraphQueryPattern(
       }
 
       subQueries.result() match {
-        case ArraySeq() => MultipleValuesStandingQuery.UnitSq()
+        case ArraySeq() => MultipleValuesStandingQuery.UnitSq.instance
         case ArraySeq(singleQuery) => singleQuery
         case manyQueries => MultipleValuesStandingQuery.Cross(manyQueries, emitSubscriptionsLazily = true)
       }
     }
 
-    var query = synthesizeQuery(startingPoint)
+    val query = synthesizeQuery(startingPoint)
 
     // If we filter or map, insert a `FilterMap`
-    if (filterCond.nonEmpty || toReturn.nonEmpty) {
-      query = MultipleValuesStandingQuery.FilterMap(
+    val queryWithFilterMap = if (filterCond.nonEmpty || toReturn.nonEmpty) {
+      MultipleValuesStandingQuery.FilterMap(
         filterCond,
         query,
         dropExisting = toReturn.nonEmpty,
         toAdd = toReturn.toList
       )
-    }
+    } else query
+
+    logger.info("Compiled MVSQ: {}", pprint(query))
 
     if (remainingNodes.nonEmpty) {
       throw NotConnected
-    } else {
-      query
-    }
+    } else queryWithFilterMap
   }
 }
 

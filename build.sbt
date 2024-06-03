@@ -37,7 +37,8 @@ lazy val `quine-core`: Project = project
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
-      "com.thatdot" %% "query-language" % quineQueryV
+      "com.thatdot" %% "query-language" % quineQueryV,
+      "com.lihaoyi" %% "pprint" % pprintV
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {

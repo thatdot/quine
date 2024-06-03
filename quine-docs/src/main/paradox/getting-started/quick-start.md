@@ -193,7 +193,7 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/query/standing/wikipedia-new-page-n
 You will see new node events similar to the one below appear in the same console window where you launched Quine immediately after running the `curl` command. These events contain the `id` of each new node created in the graph.
 
 ```shell
-2022-08-23 14:06:55,174 Standing query `print-output` match: {"meta":{"isPositiveMatch":true,"resultId":"dab367a3-b272-7dba-c12e-a65bc9f5e0b8"},"data":{"id(n)":"911d88e0-413a-42bd-a0f8-dd15bbf6aff6"}}
+2022-08-23 14:06:55,174 Standing query `print-output` match: {"meta":{"isPositiveMatch":true},"data":{"id(n)":"911d88e0-413a-42bd-a0f8-dd15bbf6aff6"}}
 ```
 
 ## Ending the Stream

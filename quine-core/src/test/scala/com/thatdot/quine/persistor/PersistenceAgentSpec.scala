@@ -31,8 +31,8 @@ import com.thatdot.quine.graph.{
   PatternOrigin,
   QuineUUIDProvider,
   ScalaTestInstances,
-  StandingQuery,
   StandingQueryId,
+  StandingQueryInfo,
   StandingQueryPattern,
   defaultNamespaceId,
   namespaceFromString,
@@ -619,10 +619,10 @@ abstract class PersistenceAgentSpec
 
     describe("removeStandingQuery") {
       it("successfully does nothing when given a degenerate standing query id to remove while empty") {
-        val standingQuery = StandingQuery(
+        val standingQuery = StandingQueryInfo(
           name = "",
           id = StandingQueryId(new UUID(-1, -1)),
-          query = StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
+          queryPattern = StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
             dgnId = 1L,
             formatReturnAsStr = true,
             aliasReturnAs = Symbol("foo"),

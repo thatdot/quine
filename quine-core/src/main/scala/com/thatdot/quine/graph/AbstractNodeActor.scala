@@ -28,14 +28,15 @@ import com.thatdot.quine.graph.behavior.{
   GoToSleepBehavior,
   LiteralCommandBehavior,
   MultipleValuesStandingQueryBehavior,
-  MultipleValuesStandingQuerySubscribers,
+  MultipleValuesStandingQueryPartSubscription,
   PriorityStashingBehavior,
   QuinePatternQueryBehavior
 }
+import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter
 import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
-  DgnLocalEventIndexSummary,
+  DgnWatchableEventIndexSummary,
   LocallyRegisteredStandingQuery,
   NodeInternalState,
   SqStateResult,
@@ -64,6 +65,8 @@ import com.thatdot.quine.util.ByteConversions
   * @param actorRefLock a lock on this node's [[ActorRef]] used to hard-stop messages when sleeping the node (relayTell uses
   *                     tryReadLock during its tell, so if a write lock is held for a node's actor, no messages can be
   *                     sent to it)
+  * @param properties   the properties of this node. This must be a var of an immutable Map, as references to it are
+  *                     closed over (and expected to be immutable) by MultipleValuesStandingQueries
   */
 abstract private[graph] class AbstractNodeActor(
   val qidAtTime: SpaceTimeQuineId,
@@ -152,13 +155,13 @@ abstract private[graph] class AbstractNodeActor(
     latestUpdateAfterSnapshot = Some(peekEventSequence())
   }
 
-  /** @see [[StandingQueryLocalEventIndex]]
+  /** @see [[StandingQueryWatchableEventIndex]]
     */
-  protected var localEventIndex: StandingQueryLocalEventIndex =
+  protected var watchableEventIndex: StandingQueryWatchableEventIndex =
     // NB this initialization is non-authoritative: only after journal restoration is complete can this be
     // comprehensively reconstructed (see the block below the definition of [[nodeParentIndex]]). However, journal
     // restoration may access [[localEventIndex]] and/or [[nodeParentIndex]] so they must be at least initialized
-    StandingQueryLocalEventIndex
+    StandingQueryWatchableEventIndex
       .from(
         dgnRegistry,
         domainGraphSubscribers.subscribersToThisNode.keysIterator,
@@ -176,16 +179,22 @@ abstract private[graph] class AbstractNodeActor(
       .reconstruct(domainNodeIndex, domainGraphSubscribers.subscribersToThisNode.keys, dgnRegistry)
       ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
 
+  protected var multipleValuesResultReporters: Map[StandingQueryId, MultipleValuesResultsReporter] =
+    MultipleValuesResultsReporter.rehydrateReportersOnNode(
+      multipleValuesStandingQueries.values,
+      properties,
+      graph,
+      namespace
+    )
+
   /** Synchronizes this node's operating standing queries with those currently active on the thoroughgoing graph.
-    * After a node is woken and restored to the state it was in before sleeping, it may need to catch up on new/deleted
-    * standing queries which changed while it was asleep. This function catches the node up to the current collection
-    * of live standing queries. If called from a historical node, this function is a no-op.
+    * If called from a historical node, this function is a no-op
     * - Registers and emits initial results for any standing queries not yet registered on this node
     * - Removes any standing queries defined on this node but no longer known to the graph
     */
   protected def syncStandingQueries(): Unit =
     if (atTime.isEmpty) {
-      updateDistinctIdStandingQueriesOnNode(shouldSendReplies = true)
+      updateDistinctIdStandingQueriesOnNode()
       updateMultipleValuesStandingQueriesOnNode()
     }
 
@@ -445,16 +454,16 @@ abstract private[graph] class AbstractNodeActor(
     */
   protected[this] def runPostActions(events: List[NodeChangeEvent]): Unit = {
 
-    var eventsForMvsqs: Map[StandingQueryLocalEventIndex.StandingQueryWithId, Seq[NodeChangeEvent]] = Map.empty
+    var eventsForMvsqs: Map[StandingQueryWatchableEventIndex.StandingQueryWithId, Seq[NodeChangeEvent]] = Map.empty
 
     events.foreach { event =>
-      localEventIndex.standingQueriesWatchingNodeEvent(
+      watchableEventIndex.standingQueriesWatchingNodeEvent(
         event,
         {
-          case cypherSubscriber: StandingQueryLocalEventIndex.StandingQueryWithId =>
+          case cypherSubscriber: StandingQueryWatchableEventIndex.StandingQueryWithId =>
             eventsForMvsqs += cypherSubscriber -> (event +: eventsForMvsqs.getOrElse(cypherSubscriber, Seq.empty))
             false
-          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
             dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
               case Some(dgn) =>
                 // ensure that this node is subscribed to all other necessary nodes to continue processing the DGN
@@ -518,25 +527,25 @@ abstract private[graph] class AbstractNodeActor(
       .map(t => t._1.pretty -> t._2.map { case (a, c) => a -> c })
       .map(_.toString)
 
-    val dgnLocalEventIndexSummary = {
-      val propsIdx = localEventIndex.watchingForProperty.toMap.map { case (propertyName, notifiables) =>
+    val dgnWatchableEventIndexSummary = {
+      val propsIdx = watchableEventIndex.watchingForProperty.toMap.map { case (propertyName, notifiables) =>
         propertyName.name -> notifiables.toList.collect {
-          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
             dgnId
         }
       }
-      val edgesIdx = localEventIndex.watchingForEdge.toMap.map { case (edgeLabel, notifiables) =>
+      val edgesIdx = watchableEventIndex.watchingForEdge.toMap.map { case (edgeLabel, notifiables) =>
         edgeLabel.name -> notifiables.toList.collect {
-          case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+          case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
             dgnId
         }
       }
-      val anyEdgesIdx = localEventIndex.watchingForAnyEdge.collect {
-        case StandingQueryLocalEventIndex.DomainNodeIndexSubscription(dgnId) =>
+      val anyEdgesIdx = watchableEventIndex.watchingForAnyEdge.collect {
+        case StandingQueryWatchableEventIndex.DomainNodeIndexSubscription(dgnId) =>
           dgnId
       }
 
-      DgnLocalEventIndexSummary(
+      DgnWatchableEventIndexSummary(
         propsIdx,
         edgesIdx,
         anyEdgesIdx.toList
@@ -564,14 +573,14 @@ abstract private[graph] class AbstractNodeActor(
           subscribersStrings,
           domainNodeIndexStrings,
           getSqState(),
-          dgnLocalEventIndexSummary,
+          dgnWatchableEventIndexSummary,
           multipleValuesStandingQueries.toVector.map {
-            case ((globalId, sqId), (MultipleValuesStandingQuerySubscribers(_, _, subs), st)) =>
+            case ((globalId, sqId), (MultipleValuesStandingQueryPartSubscription(_, _, subs), st)) =>
               LocallyRegisteredStandingQuery(
                 sqId.toString,
                 globalId.toString,
-                subs.map(_.toString).toSet,
-                st.toString
+                subs.map(_.pretty).toSet,
+                s"${st.toString}{${st.readResults(properties).map(_.toList)}}"
               )
           },
           journal.toSet,

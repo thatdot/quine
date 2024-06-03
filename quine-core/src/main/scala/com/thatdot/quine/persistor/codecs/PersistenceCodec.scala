@@ -183,6 +183,25 @@ trait PersistenceCodec[T] extends LazyLogging {
       byte2EdgeDirection(edge.direction),
       readQuineId(edge.other)
     )
+
+  protected[this] def writeHalfEdge2(builder: FlatBufferBuilder, edge: HalfEdge): Offset = {
+    val edgeTypeOffset = builder.createSharedString(edge.edgeType.name)
+    val otherQuineIdOffset = builder.createByteVector(edge.other.array)
+    persistence.HalfEdge2.createHalfEdge2(
+      builder,
+      edgeTypeOffset,
+      edgeDirection2Byte(edge.direction),
+      otherQuineIdOffset
+    )
+  }
+
+  protected[this] def readHalfEdge2(edge: persistence.HalfEdge2): HalfEdge =
+    HalfEdge(
+      Symbol(edge.edgeType),
+      byte2EdgeDirection(edge.direction),
+      QuineId(edge.otherQuineIdAsByteBuffer.remainingBytes)
+    )
+
   protected[this] def writeQuineId(builder: FlatBufferBuilder, qid: QuineId): Offset =
     persistence.QuineId.createQuineId(
       builder,
@@ -1396,6 +1415,21 @@ trait PersistenceCodec[T] extends LazyLogging {
   ): MultipleValuesStandingQueryPartId =
     MultipleValuesStandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
 
+  protected[this] def writeMultipleValuesStandingQueryPartId2(
+    builder: FlatBufferBuilder,
+    sqId: MultipleValuesStandingQueryPartId
+  ): Offset =
+    persistence.MultipleValuesStandingQueryPartId2.createMultipleValuesStandingQueryPartId2(
+      builder,
+      sqId.uuid.getLeastSignificantBits,
+      sqId.uuid.getMostSignificantBits
+    )
+
+  protected[this] def readMultipleValuesStandingQueryPartId2(
+    sqId: persistence.MultipleValuesStandingQueryPartId2
+  ): MultipleValuesStandingQueryPartId =
+    MultipleValuesStandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
+
   protected[this] def writeStandingQueryId(builder: FlatBufferBuilder, sqId: StandingQueryId): Offset =
     persistence.StandingQueryId.createStandingQueryId(
       builder,
@@ -1404,6 +1438,16 @@ trait PersistenceCodec[T] extends LazyLogging {
     )
 
   protected[this] def readStandingQueryId(sqId: persistence.StandingQueryId): StandingQueryId =
+    StandingQueryId(new UUID(sqId.highBytes, sqId.lowBytes))
+
+  protected[this] def writeStandingQueryId2(builder: FlatBufferBuilder, sqId: StandingQueryId): Offset =
+    persistence.StandingQueryId2.createStandingQueryId2(
+      builder,
+      sqId.uuid.getLeastSignificantBits,
+      sqId.uuid.getMostSignificantBits
+    )
+
+  protected[this] def readStandingQueryId2(sqId: persistence.StandingQueryId2): StandingQueryId =
     StandingQueryId(new UUID(sqId.highBytes, sqId.lowBytes))
 
   private[this] def writeMultipleValuesCrossStandingQuery(
@@ -1769,7 +1813,7 @@ trait PersistenceCodec[T] extends LazyLogging {
   ): MultipleValuesStandingQuery =
     typ match {
       case persistence.MultipleValuesStandingQuery.MultipleValuesUnitStandingQuery =>
-        MultipleValuesStandingQuery.UnitSq()
+        MultipleValuesStandingQuery.UnitSq.instance
 
       case persistence.MultipleValuesStandingQuery.MultipleValuesCrossStandingQuery =>
         val cross =

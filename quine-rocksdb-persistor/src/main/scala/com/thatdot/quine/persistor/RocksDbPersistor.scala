@@ -23,8 +23,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -332,7 +332,7 @@ final class RocksDbPersistor(
 
   override def deleteSnapshots(qid: QuineId): Future[Unit] = deleteQid(qid, snapshotsCF)
 
-  def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
+  def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = Future {
     val sqBytes = StandingQueryCodec.format.write(standingQuery)
     putKeyValue(standingQueriesCF, standingQuery.name.getBytes(UTF_8), sqBytes)
   }(ioDispatcher)
@@ -402,7 +402,7 @@ final class RocksDbPersistor(
         }
     }
 
-  def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = Future {
+  def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = Future {
     withReadLock {
       db.delete(standingQueriesCF, writeOpts, standingQuery.name.getBytes(UTF_8))
       val beginKey = sqIdPrefixKey(standingQuery.id)
@@ -533,9 +533,9 @@ final class RocksDbPersistor(
     }
   }(ioDispatcher)
 
-  def getStandingQueries: Future[List[StandingQuery]] = Future(
+  def getStandingQueries: Future[List[StandingQueryInfo]] = Future(
     withReadLock {
-      val lb = List.newBuilder[StandingQuery]
+      val lb = List.newBuilder[StandingQueryInfo]
       val it = db.newIterator(standingQueriesCF)
       try {
         it.seekToFirst()

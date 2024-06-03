@@ -49,7 +49,7 @@ final case class CompiledQuery[+Start <: Location](
     parameters: Map[String, Value],
     initialColumnValues: Map[String, Value],
     initialInterpreter: CypherInterpreter[Start]
-  ): QueryResults = {
+  ): RunningCypherQuery = {
 
     /* Construct the runtime vector of parameters by combining the ones that
      * fixed at compile time to the ones specified here at runtime
@@ -83,6 +83,6 @@ final case class CompiledQuery[+Start <: Location](
         ) + "-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString)
       )
 
-    QueryResults(this, resultContexts = results)
+    RunningCypherQuery(this, resultSource = results)
   }
 }

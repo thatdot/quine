@@ -25,8 +25,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
@@ -166,10 +166,10 @@ abstract class CassandraPersistor(
         )
       )(multipartSnapshotExecutionContext)
 
-  override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  override def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     standingQueries.persistStandingQuery(standingQuery)
 
-  override def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] = {
+  override def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] = {
     // Just do the removal of standing query states as fire-and-forget in the background,
     // as it could take a while.
     standingQueryStates
@@ -185,7 +185,7 @@ abstract class CassandraPersistor(
     standingQueries.removeStandingQuery(standingQuery)
   }
 
-  override def getStandingQueries: Future[List[StandingQuery]] =
+  override def getStandingQueries: Future[List[StandingQueryInfo]] =
     standingQueries.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(

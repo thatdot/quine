@@ -14,8 +14,8 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -72,9 +72,9 @@ class EmptyPersistor(
   def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     Future.successful(None)
 
-  def persistStandingQuery(standingQuery: StandingQuery) = Future.unit
-  def removeStandingQuery(standingQuery: StandingQuery) = Future.unit
-  def getStandingQueries: Future[List[StandingQuery]] = Future.successful(List.empty)
+  def persistStandingQuery(standingQuery: StandingQueryInfo) = Future.unit
+  def removeStandingQuery(standingQuery: StandingQueryInfo) = Future.unit
+  def getStandingQueries: Future[List[StandingQueryInfo]] = Future.successful(List.empty)
 
   def getMultipleValuesStandingQueryStates(
     id: QuineId

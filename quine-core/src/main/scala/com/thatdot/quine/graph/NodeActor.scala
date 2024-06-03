@@ -102,15 +102,15 @@ private[graph] class NodeActor(
     // Once edge map is updated, recompute cost to sleep:
     costToSleep.set(Math.round(Math.round(edges.size.toDouble) / Math.log(2) - 2))
 
-    // Make a best-effort attempt at restoring the localEventIndex: This will fail for DGNs that no longer exist,
+    // Make a best-effort attempt at restoring the watchableEventIndex: This will fail for DGNs that no longer exist,
     // so also make note of which those are for further cleanup. Now that the journal and snapshot have both been
     // applied, we know that this reconstruction + removal detection will be as complete as possible
-    val (localEventIndexRestored, locallyWatchedDgnsToRemove) = StandingQueryLocalEventIndex.from(
+    val (watchableEventIndexRestored, locallyWatchedDgnsToRemove) = StandingQueryWatchableEventIndex.from(
       dgnRegistry,
       domainGraphSubscribers.subscribersToThisNode.keysIterator,
       multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state }
     )
-    this.localEventIndex = localEventIndexRestored
+    this.watchableEventIndex = watchableEventIndexRestored
 
     // Phase: The node has caught up to the target time, but some actions locally on the node need to catch up
     // with what happened with the graph while this node was asleep.
@@ -125,7 +125,7 @@ private[graph] class NodeActor(
       (sqId, runningSq) <- graph
         .standingQueries(namespace) // Silently ignore absent namespace.
         .fold(Map.empty[StandingQueryId, RunningStandingQuery])(_.runningStandingQueries)
-      dgnId <- runningSq.query.query match {
+      dgnId <- runningSq.query.queryPattern match {
         case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern => Some(dgnPattern.dgnId)
         case _ => None
       }
@@ -198,6 +198,6 @@ object NodeActor {
   type Journal = Iterable[NodeEvent]
   type MultipleValuesStandingQueries = mutable.Map[
     (StandingQueryId, MultipleValuesStandingQueryPartId),
-    (MultipleValuesStandingQuerySubscribers, MultipleValuesStandingQueryState)
+    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
   ]
 }

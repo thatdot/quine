@@ -6,7 +6,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.graph.DiffxInstances._
-import com.thatdot.quine.graph.behavior.MultipleValuesStandingQuerySubscribers
+import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.codecs._
@@ -55,7 +55,7 @@ class SerializationTests
   }
 
   it should "roundtrip StandingQuery" in {
-    forAll { (sq: StandingQuery) =>
+    forAll { (sq: StandingQueryInfo) =>
 
       val roundTripped = StandingQueryCodec.format.read(StandingQueryCodec.format.write(sq)).get
       /*
@@ -67,7 +67,7 @@ class SerializationTests
   }
 
   it should "roundtrip StandingQueryState" in {
-    forAll { (subs: MultipleValuesStandingQuerySubscribers, sq: MultipleValuesStandingQueryState) =>
+    forAll { (subs: MultipleValuesStandingQueryPartSubscription, sq: MultipleValuesStandingQueryState) =>
       assert(
         MultipleValuesStandingQueryStateCodec.format
           .read(MultipleValuesStandingQueryStateCodec.format.write(subs -> sq))

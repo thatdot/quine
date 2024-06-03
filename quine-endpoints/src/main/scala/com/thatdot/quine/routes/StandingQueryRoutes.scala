@@ -17,7 +17,7 @@ final case class StandingQueryDefinition(
   outputs: Map[String, StandingQueryResultOutputUserDef],
   @docs("Whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean = false,
-  @docs("How many standing query results to buffer before backpressuring")
+  @docs("how many standing query results to buffer before backpressuring")
   inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
   @docs("For debug and test only")
   shouldCalculateResultHashCode: Boolean = false
@@ -35,8 +35,9 @@ final case class RegisteredStandingQuery(
     s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}"
   )
   outputs: Map[String, StandingQueryResultOutputUserDef],
+  @docs("Whether or not to include cancellations in the results of this query")
   includeCancellations: Boolean,
-  @docs("How many standing query results to buffer on each host before backpressuring")
+  @docs("how many standing query results to buffer on each host before backpressuring")
   inputBufferSize: Int,
   @docs(s"Statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
   stats: Map[String, StandingQueryStats]
@@ -117,7 +118,6 @@ final case class StandingQueryCancelled(
   """A destination to which StandingQueryResults should be routed.
     |
     |A StandingQueryResult is an object with 2 sub-objects: `meta` and `data`. The `meta` object consists of:
-    | - a UUID `resultId`
     | - a boolean `isPositiveMatch`
     |
     |On a positive match, the `data` object consists of the data returned by the Standing Query.
@@ -125,13 +125,13 @@ final case class StandingQueryCancelled(
     |For example, a StandingQueryResult may look like the following:
     |
     |```
-    |{"meta": {"resultId": "b3c35fa4-2515-442c-8a6a-35a3cb0caf6b", "isPositiveMatch": true}, "data": {"strId(n)": "a0f93a88-ecc8-4bd5-b9ba-faa6e9c5f95d"}}
+    |{"meta": {"isPositiveMatch": true}, "data": {"strId(n)": "a0f93a88-ecc8-4bd5-b9ba-faa6e9c5f95d"}}
     |```
     |
     |While a cancellation of that result might look like the following:
     |
     |```
-    |{"meta": {"resultId": "b3c35fa4-2515-442c-8a6a-35a3cb0caf6b", "isPositiveMatch": false}, "data": {}}
+    |{"meta": {"isPositiveMatch": false}, "data": {}}
     |```
     |""".stripMargin
 )

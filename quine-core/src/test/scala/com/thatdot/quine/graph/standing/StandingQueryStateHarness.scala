@@ -3,14 +3,11 @@ package com.thatdot.quine.graph.standing
 import scala.collection.mutable
 
 import org.scalactic.source.Position
+import org.scalatest.Assertions
 
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryEffects, QueryContext}
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
-  CancelMultipleValuesResult,
-  NewMultipleValuesResult,
-  ResultId
-}
+import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.graph.{
   AbstractNodeActor,
   EdgeEvent,
@@ -27,16 +24,14 @@ import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
   * @param subscriptionsCreated queue of calls made to `createSubscription`
   * @param subscriptionsCancelled queue of calls made to `cancelSubscription`
   * @param resultsReported queue of calls made to `reportNewResult`
-  * @param resultsCancelled queue of calls made to `cancelOldResult`
-  * @param node ID of the fake node on which this is running
+  * @param executingNodeId ID of the fake node on which this is running
   * @param idProvider ID provider
   */
 final case class MultipleValuesStandingQueryEffectsTester(
   subscriptionsCreated: mutable.Queue[(QuineId, MultipleValuesStandingQuery)],
   subscriptionsCancelled: mutable.Queue[(QuineId, MultipleValuesStandingQueryPartId)],
-  resultsReported: mutable.Queue[(ResultId, QueryContext)],
-  resultsCancelled: mutable.Queue[ResultId],
-  node: QuineId,
+  resultsReported: mutable.Queue[Seq[QueryContext]],
+  executingNodeId: QuineId,
   idProvider: QuineIdProvider,
   knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]
 ) extends MultipleValuesStandingQueryEffects {
@@ -49,22 +44,19 @@ final case class MultipleValuesStandingQueryEffectsTester(
   }
 
   def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit = {
-    knownQueries += query.id -> query
+    knownQueries += query.queryPartId -> query
     subscriptionsCreated.enqueue(onNode -> query)
   }
 
   def cancelSubscription(onNode: QuineId, queryId: MultipleValuesStandingQueryPartId): Unit =
     subscriptionsCancelled.enqueue(onNode -> queryId)
 
-  def reportNewResult(resultId: ResultId, result: QueryContext): Unit =
-    resultsReported.enqueue(resultId -> result)
-
-  def cancelOldResult(resultId: ResultId): Unit =
-    resultsCancelled.enqueue(resultId)
+  def reportUpdatedResults(resultGroup: Seq[QueryContext]): Unit =
+    resultsReported.enqueue(resultGroup)
 
   def isEmpty: Boolean =
     subscriptionsCreated.isEmpty && subscriptionsCancelled.isEmpty &&
-    resultsReported.isEmpty && resultsCancelled.isEmpty
+    resultsReported.isEmpty
 
   def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = knownQueries(
     queryPartId
@@ -86,10 +78,10 @@ object MultipleValuesStandingQueryEffectsTester {
       mutable.Queue.empty,
       mutable.Queue.empty,
       mutable.Queue.empty,
-      mutable.Queue.empty,
       idProvider.newQid(),
       idProvider,
-      knownQueries = mutable.Map(query.id -> query) ++= initiallyKnownQueries.map(sq => sq.id -> sq).toMap
+      knownQueries =
+        mutable.Map(query.queryPartId -> query) ++= initiallyKnownQueries.map(sq => sq.queryPartId -> sq).toMap
     )
 }
 
@@ -102,7 +94,7 @@ object MultipleValuesStandingQueryEffectsTester {
 class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   final val query: S,
   final val knownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty
-) {
+) extends Assertions {
   final val sqState: query.State = query.createState()
   final val effects: MultipleValuesStandingQueryEffectsTester =
     MultipleValuesStandingQueryEffectsTester.empty(query, knownQueries)
@@ -112,15 +104,12 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   def initialize[A](
     initialProperties: Map[Symbol, PropertyValue] = Map.empty
   )(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
-    effects.trackPropertyEffects(initialProperties.map { case (k, v) => PropertySet(k, v) }.toSeq)
-    sqState.preStart(effects)
+    val initialPropertyEvents: Seq[NodeChangeEvent] = initialProperties.map { case (k, v) => PropertySet(k, v) }.toSeq
+    effects.trackPropertyEffects(initialPropertyEvents)
+    sqState.rehydrate(effects)
     sqState.onInitialize(effects)
+    sqState.onNodeEvents(initialPropertyEvents, effects)
     testInvariants()
-    thenCheck(effects)
-  }
-
-  def shutdown[A]()(thenCheck: MultipleValuesStandingQueryEffectsTester => A): A = {
-    sqState.onShutdown(effects)
     thenCheck(effects)
   }
 
@@ -146,7 +135,7 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     val hadEffects = sqState.onNodeEvents(finalEvents, effects)
     assert(
       shouldHaveEffects == hadEffects,
-      "New node events did not have the expected effects (or lack thereof)"
+      "New node events did not have the expected effects analysis"
     )
     testInvariants()
     thenCheck(effects)
@@ -159,32 +148,13 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     * @param thenCheck after processing the subscription, check something about the state
     * @return output of the check
     */
-  def reportNewSubscriptionResult[A](result: NewMultipleValuesResult, shouldHaveEffects: Boolean)(
+  def reportNewSubscriptionResult[A](result: NewMultipleValuesStateResult, shouldHaveEffects: Boolean)(
     thenCheck: MultipleValuesStandingQueryEffectsTester => A
   )(implicit pos: Position): A = {
     val hadEffects = sqState.onNewSubscriptionResult(result, effects)
     assert(
       shouldHaveEffects == hadEffects,
-      "New subscription did not have the expected effects (or lack thereof)"
-    )
-    testInvariants()
-    thenCheck(effects)
-  }
-
-  /** Simulate new subscription result cancellations
-    *
-    * @param result subscription cancellation simulated
-    * @param shouldHaveEffects assert whether this should cause an update in the state
-    * @param thenCheck after processing the subscription, check something about the state
-    * @return output of the check
-    */
-  def reportCancelledSubscriptionResult[A](result: CancelMultipleValuesResult, shouldHaveEffects: Boolean)(
-    thenCheck: MultipleValuesStandingQueryEffectsTester => A
-  )(implicit pos: Position): A = {
-    val hadEffects = sqState.onCancelledSubscriptionResult(result, effects)
-    assert(
-      shouldHaveEffects == hadEffects,
-      "Subscription cancellation did not have the expected effects (or lack thereof)"
+      "New node events did not have the expected effects analysis"
     )
     testInvariants()
     thenCheck(effects)

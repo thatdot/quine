@@ -6,7 +6,6 @@ import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 import io.circe.Json
 
-import com.thatdot.quine.graph.messaging.StandingQueryMessage.ResultId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 
 /** Standing query result or cancellation
@@ -138,15 +137,13 @@ object StandingQueryResult {
   /** (SQv4) standing query result
     *
     * @param isPositiveMatch is the result reporting a new match (vs. a cancellation)
-    * @param resultId ID associated with the result
     * @param data values returned by the standing query
     */
   def apply(
     isPositiveMatch: Boolean,
-    resultId: ResultId,
     data: Map[String, QuineValue]
   ): StandingQueryResult = StandingQueryResult(
-    StandingQueryResult.Meta(isPositiveMatch, resultId),
+    StandingQueryResult.Meta(isPositiveMatch),
     data
   )
 
@@ -167,7 +164,7 @@ object StandingQueryResult {
       if (formatAsString) QuineValue.Str(idProvider.qidToPrettyString(id))
       else idProvider.qidToValue(id)
     StandingQueryResult(
-      StandingQueryResult.Meta(isPositiveMatch, ResultId.fromQuineId(id)),
+      StandingQueryResult.Meta(isPositiveMatch),
       data = Map(aliasedAs -> idValue)
     )
   }
@@ -176,20 +173,17 @@ object StandingQueryResult {
     *
     * @param isPositiveMatch If this is a result, true. If this is a cancellation, false. If
     *                        cancellations are disabled for this query, always true.
-    * @param resultId An ID that uniquely identifies this result within a set of results
-    *                 for this standing query. Not necessarily unique across SQs
-    *                 TODO consider adding SQ id or name?
+    *
+    * TODO consider adding SQ id or name?
     */
-  final case class Meta(isPositiveMatch: Boolean, resultId: ResultId) {
+  final case class Meta(isPositiveMatch: Boolean) {
     def toMap: Map[String, QuineValue] = Map(
-      "isPositiveMatch" -> QuineValue(isPositiveMatch),
-      "resultId" -> QuineValue.Str(resultId.uuid.toString)
+      "isPositiveMatch" -> QuineValue(isPositiveMatch)
     )
 
     def toJson: Json = Json.fromFields(
       Seq(
-        ("isPositiveMatch", Json.fromBoolean(isPositiveMatch)),
-        ("resultId", Json.fromString(resultId.uuid.toString))
+        ("isPositiveMatch", Json.fromBoolean(isPositiveMatch))
       )
     )
   }

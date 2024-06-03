@@ -17,7 +17,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
   }
 
   "treePrint(UnitSq)" should "generate expected pretty output" in {
-    val result = Pretty.treePrint(MultipleValuesStandingQuery.UnitSq())
+    val result = Pretty.treePrint(MultipleValuesStandingQuery.UnitSq.instance)
 
     val expected = "Unit"
 
@@ -28,8 +28,8 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val exampleCross = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(
         List(
-          MultipleValuesStandingQuery.UnitSq(),
-          MultipleValuesStandingQuery.UnitSq()
+          MultipleValuesStandingQuery.UnitSq.instance,
+          MultipleValuesStandingQuery.UnitSq.instance
         ): _*
       ),
       emitSubscriptionsLazily = true
@@ -96,7 +96,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val exampleEdgeSub = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       edgeName = parent,
       edgeDirection = Some(EdgeDirection.Outgoing),
-      andThen = MultipleValuesStandingQuery.UnitSq()
+      andThen = MultipleValuesStandingQuery.UnitSq.instance
     )
 
     val result = Pretty.treePrint(exampleEdgeSub)
@@ -138,7 +138,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
 
     val exampleFilterMap = MultipleValuesStandingQuery.FilterMap(
       condition = Some(Expr.Equal(Expr.Variable(a), Expr.Str("hello"))),
-      toFilter = MultipleValuesStandingQuery.UnitSq(),
+      toFilter = MultipleValuesStandingQuery.UnitSq.instance,
       dropExisting = true,
       toAdd = Nil
     )

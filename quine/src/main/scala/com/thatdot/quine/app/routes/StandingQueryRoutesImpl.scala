@@ -179,7 +179,7 @@ trait StandingQueryRoutesImpl
                   ServerSentEvent(
                     data = sqResult.toJson.noSpaces,
                     eventType = Some(if (sqResult.meta.isPositiveMatch) "result" else "cancellation"),
-                    id = Some(sqResult.meta.resultId.uuid.toString)
+                    id = Some(sqResult.dataHashCode.toString)
                   )
                 )
             )

@@ -39,7 +39,7 @@ final case class AtLeastOnceCypherQuery(
     * @param value the query input to be passed to the Cypher interpreter as a parameter (as [[cypherParameterName]])
     * @return a Source that will yield a stream ending with one full set of results for [[query]] given [[value]] bound
     *         as [[cypherParameterName]]. This can be thought of as returning a weaker version of a
-    *          [[com.thatdot.quine.graph.cypher.QueryResults]]
+    *          [[com.thatdot.quine.graph.cypher.RunningCypherQuery]]
     */
   def stream(value: cypher.Value, intoNamespace: NamespaceId)(implicit
     graph: CypherOpsGraph

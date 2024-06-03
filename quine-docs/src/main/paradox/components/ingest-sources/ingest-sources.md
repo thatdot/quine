@@ -91,7 +91,7 @@ For example, constructing an ingest stream via the `/api/v1/ingest/{name}` [API]
 }
 ```
 
-Quine natively reads from standard-in, passing each line into a Cypher query as a parameter: `$that`. A unique node ID is generated using `idFrom($that)`. Then, each line is stored as a `line` property associated with a new node in the streaming graph.
+Quine natively reads from standard-in, passing each line into a Cypher query as a parameter: `$that`. A unique node ID is generated using `idFrom($that)`. Then, each line is stored as a `line` property associated with a new node in the streaming graph.
 
 When creating an ingest stream via the API, you are given the opportunity to name the stream with a name that has meaning. For example, you can name the above ingest stream `standardIn` to make it easier to reference in your application.
 

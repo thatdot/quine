@@ -171,7 +171,7 @@ object StaticNodeSupport {
               val lookupInfo = new MultipleValuesStandingQueryLookupInfo {
                 def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
                   sqns.getStandingQueryPart(queryPartId)
-                val node: QuineId = qid
+                val executingNodeId: QuineId = qid
                 val idProvider: QuineIdProvider = idProv
               }
               sqGraph.metrics.persistorGetMultipleValuesStandingQueryStatesTimer
@@ -190,7 +190,7 @@ object StaticNodeSupport {
                           ),
                         identity
                       )
-                    sqState._2.preStart(lookupInfo)
+                    sqState._2.rehydrate(lookupInfo)
                     sqIdAndPartId -> sqState
                   }
                 }(sqGraph.nodeDispatcherEC)

@@ -163,13 +163,13 @@ object LiteralMessage {
       extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
-  /** Debug (non-authoritative) summary of the LocalEventIndex entries that relate to DGN queries
+  /** Debug (non-authoritative) summary of the WatchableEventIndex entries that relate to DGN queries
     *
     * List is used for its relatively nice default toString
     *
     * INV: [[anyEdgeIdx]] must be distinct
     */
-  final case class DgnLocalEventIndexSummary(
+  final case class DgnWatchableEventIndexSummary(
     propIdx: Map[String, List[DomainGraphNodeId]],
     edgeIdx: Map[String, List[DomainGraphNodeId]],
     anyEdgeIdx: List[DomainGraphNodeId]
@@ -186,7 +186,7 @@ object LiteralMessage {
     subscribers: List[String], // TODO make this string more informative
     subscriptions: List[String], // TODO: make this string more informative
     sqStateResults: SqStateResults,
-    dgnLocalEventIndex: DgnLocalEventIndexSummary,
+    dgnWatchableEventIndex: DgnWatchableEventIndexSummary,
     multipleValuesStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
     journal: Set[NodeEvent.WithTime[NodeEvent]],
     graphNodeHashCode: Long

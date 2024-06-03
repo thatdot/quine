@@ -14,8 +14,8 @@ import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   NodeEvent,
-  StandingQuery,
-  StandingQueryId
+  StandingQueryId,
+  StandingQueryInfo
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -83,13 +83,13 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   override def getLatestSnapshot(id: QuineId, upToTime: EventTime): Future[Option[Array[Byte]]] =
     getAgent(id).getLatestSnapshot(id, upToTime)
 
-  override def persistStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  override def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     rootAgent.persistStandingQuery(standingQuery)
 
-  override def removeStandingQuery(standingQuery: StandingQuery): Future[Unit] =
+  override def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
     rootAgent.removeStandingQuery(standingQuery)
 
-  override def getStandingQueries: Future[List[StandingQuery]] =
+  override def getStandingQueries: Future[List[StandingQueryInfo]] =
     rootAgent.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(

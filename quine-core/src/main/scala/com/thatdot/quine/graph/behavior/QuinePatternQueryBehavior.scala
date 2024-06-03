@@ -213,7 +213,7 @@ trait QuinePatternQueryBehavior
 
     for {
       (sqId, runningSQ) <- runningStandingQueries
-      query <- runningSQ.query.query match {
+      query <- runningSQ.query.queryPattern match {
         case qp: StandingQueryPattern.QuinePatternQueryPattern => Some(qp.quinePattern)
         case _ => None
       }

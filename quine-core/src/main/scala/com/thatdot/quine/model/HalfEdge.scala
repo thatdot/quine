@@ -20,4 +20,7 @@ final case class HalfEdge(
   /** Make a reciprocal half edge
     */
   def reflect(thisNode: QuineId): HalfEdge = HalfEdge(edgeType, direction.reverse, thisNode)
+
+  def pretty(implicit idProvider: QuineIdProvider): String =
+    s"${this.getClass.getSimpleName}(${edgeType.name}, $direction, ${other.pretty})"
 }

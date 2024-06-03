@@ -10,7 +10,7 @@ import com.thatdot.quine.util.ByteConversions
   * The purpose of this abstraction is to delay doing serialization work until
   * as late as possible, and then to have that work be cached. One important
   * path to optimize: when nodes are woken up, properties are left in their
-  * deserialized form, since they're probably never even going to be read.
+  * serialized form, since they're probably never even going to be read.
   */
 sealed abstract class PropertyValue extends Equals {
 
