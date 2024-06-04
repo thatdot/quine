@@ -286,4 +286,22 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     )
   }
 
+  test("recipe canonical name") {
+    val invalidShortName: String = "somethingElse"
+    val validShortName: String = "wikipedia"
+    val url: String = "https://raw.githubusercontent.com/thatdot/quine/main/quine/recipes/ethereum.yaml"
+    val fileName: String = "wikipedia.yaml"
+
+    // Currently, the getCanonicalName function does not distinguish between a "valid" or "invalid" canonical name.
+    // For telemetry, the value will only be sent if the recipe was successfully loaded, so only "valid" recipe names
+    // actually appear in telemetry. Therefore, this "invalid" name should still return a Some().
+    assert(Recipe.getCanonicalName(invalidShortName).contains(invalidShortName))
+    // Valid canonical name should return a Some()
+    assert(Recipe.getCanonicalName(validShortName).contains(validShortName))
+    // any url should return None
+    assert(Recipe.getCanonicalName(url).isEmpty)
+    // any file name should return None
+    assert(Recipe.getCanonicalName(fileName).isEmpty)
+  }
+
 }

@@ -376,6 +376,8 @@ object Recipe {
       Validated.valid(input)
     }
 
+  val recipeFileExtensions: List[String] = List(".json", ".yaml", ".yml")
+
   /** Synchronously maps a string that identifies a Recipe to the actual Recipe
     * content as a parsed and validated document.
     *
@@ -389,8 +391,8 @@ object Recipe {
     *
     * Any errors are converted to a sequence of user-facing messages.
     */
+
   def get(recipeIdentifyingString: String): Either[Seq[String], Recipe] = {
-    val recipeFileExtensions = List(".json", ".yaml", ".yml")
     val recipeRedirectServiceUrlPrefix = "https://recipes.quine.io/"
     val requiredRecipeContentUrlPrefix = "https://raw.githubusercontent.com/thatdot/quine/main/"
     for {
@@ -433,6 +435,17 @@ object Recipe {
       _ <- validateRecipeCurrentVersion(recipe)
     } yield recipe
   }
+
+  /** Get the Recipe's canonical name if one was used.
+    * @return The string value of the canonical recipe name if one was used, or None if a URL or file was
+    *         specified directly.
+    */
+  def getCanonicalName(recipeIdentifyingString: String): Option[String] =
+    catching(classOf[MalformedURLException]).opt(new URL(recipeIdentifyingString)) match {
+      case Some(_) => None
+      case None if recipeFileExtensions exists (recipeIdentifyingString.toLowerCase.endsWith(_)) => None
+      case None => Some(recipeIdentifyingString)
+    }
 
   def validateRecipeCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
     recipe.isVersion(currentVersion),

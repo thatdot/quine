@@ -32,7 +32,7 @@ import com.thatdot.quine.app.ImproveQuine.{
 }
 import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
 import com.thatdot.quine.graph.defaultNamespaceId
-import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery}
+import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery, StandingQueryResultOutputUserDef}
 
 object ImproveQuine {
 
@@ -56,6 +56,8 @@ object ImproveQuine {
     persistor: String,
     sources: Option[List[String]],
     sinks: Option[List[String]],
+    recipe: Boolean,
+    recipe_canonical_name: Option[String],
     apiKey: Option[String]
   )
 
@@ -70,6 +72,8 @@ object ImproveQuine {
     persistor: String,
     sources: Option[List[String]],
     sinks: Option[List[String]],
+    recipeUsed: Boolean,
+    recipeCanonicalName: Option[String],
     apiKey: Option[String]
   )(implicit system: ActorSystem)
       extends StrictLogging {
@@ -90,6 +94,8 @@ object ImproveQuine {
         persistor,
         sources,
         sinks,
+        recipeUsed,
+        recipeCanonicalName,
         apiKey
       )
 
@@ -119,9 +125,20 @@ object ImproveQuine {
       .toSet
       .toList
 
+  def unrollCypherOutput(output: StandingQueryResultOutputUserDef): List[StandingQueryResultOutputUserDef] =
+    output match {
+      case cypherOutput: StandingQueryResultOutputUserDef.CypherQuery =>
+        cypherOutput.andThen match {
+          case None => List(cypherOutput)
+          case Some(nextOutput) => cypherOutput :: unrollCypherOutput(nextOutput)
+        }
+      case otherOutput => List(otherOutput)
+    }
+
   def sinksFromStandingQueries(standingQueries: List[RegisteredStandingQuery]): List[String] =
     standingQueries
       .flatMap(_.outputs.values)
+      .flatMap(unrollCypherOutput)
       .map(_.slug)
       .distinct
 
@@ -132,6 +149,8 @@ class ImproveQuine(
   version: String,
   persistor: String,
   app: Option[StandingQueryStore with IngestStreamState],
+  recipeUsed: Boolean = false,
+  recipeCanonicalName: Option[String] = None,
   apiKey: Option[String] = None
 )(implicit system: ActorSystem) {
 
@@ -205,6 +224,8 @@ class ImproveQuine(
       persistor,
       sources,
       sinks,
+      recipeUsed,
+      recipeCanonicalName,
       apiKey
     )
       .run()

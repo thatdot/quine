@@ -194,7 +194,9 @@ object Main extends App with LazyLogging {
       service = "Quine",
       version = BuildInfo.version,
       persistor = config.store.label,
-      app = Some(quineApp)
+      app = Some(quineApp),
+      recipeUsed = recipe.isDefined,
+      recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None
     )
     iq.startTelemetry()
   }
