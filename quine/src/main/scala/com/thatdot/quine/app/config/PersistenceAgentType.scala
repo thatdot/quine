@@ -4,7 +4,6 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.nio.file.Paths
 
-import scala.annotation.nowarn
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
@@ -141,7 +140,7 @@ object PersistenceAgentType extends PureconfigInstances {
   }
   implicit lazy val configConvert: ConfigConvert[PersistenceAgentType] = {
     // This assumes the Cassandra port if port is omitted! (so beware about re-using it)
-    @nowarn implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
+    implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
       ConfigConvert.viaNonEmptyString[InetSocketAddress](
         s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
         addr => addr.getHostString + ':' + addr.getPort

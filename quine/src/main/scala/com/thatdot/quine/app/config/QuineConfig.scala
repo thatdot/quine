@@ -1,6 +1,5 @@
 package com.thatdot.quine.app.config
 
-import scala.annotation.nowarn
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
 import org.apache.pekko.util.Timeout
@@ -52,13 +51,13 @@ object QuineConfig extends PureconfigInstances {
   val webserverEnabledLens: Lens[QuineConfig, Boolean] = webserverLens >> Symbol("enabled")
 
   implicit val configConvert: ConfigConvert[QuineConfig] = {
-    @nowarn implicit val configConvert = deriveConvert[QuineConfig]
+    implicit val configConvert = deriveConvert[QuineConfig]
 
     // This class is necessary to make sure our config is always situated at the `quine` root
     case class QuineConfigRoot(quine: QuineConfig = QuineConfig())
 
     // Allow other top-level keys that are not "quine"
-    @nowarn implicit val topLevelProductHint: ProductHint[QuineConfigRoot] =
+    implicit val topLevelProductHint: ProductHint[QuineConfigRoot] =
       ProductHint[QuineConfigRoot](allowUnknownKeys = true)
 
     deriveConvert[QuineConfigRoot].xmap[QuineConfig](_.quine, QuineConfigRoot(_))
