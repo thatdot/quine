@@ -10,15 +10,15 @@ import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
-import io.circe.Json
 import org.webjars.WebJarAssetLocator
 
+import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
-import com.thatdot.quine.app.{BaseApp, BuildInfo}
+import com.thatdot.quine.app.v2api.{OssApiInterface, V2OssRoutes}
+import com.thatdot.quine.app.{BuildInfo, QuineApp}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.v2api.{OssApiInterface, V2OssRoutes}
 
 /** Main webserver routes for Quine
   *
@@ -26,14 +26,14 @@ import com.thatdot.quine.v2api.{OssApiInterface, V2OssRoutes}
   *
   * @param graph underlying graph
   * @param quineApp quine application state
-  * @param currentConfig rendered JSON config
+  * @param config current application config
   * @param uri The url from which these routes will be served (used for docs generation)
   * @param timeout timeout
   */
 class QuineAppRoutes(
   val graph: LiteralOpsGraph with AlgorithmGraph with CypherOpsGraph with StandingQueryOpsGraph,
   val quineApp: AdministrationRoutesState with QueryUiConfigurationState with StandingQueryStore with IngestStreamState,
-  val currentConfig: Json,
+  val config: BaseConfig,
   val uri: Uri,
   val timeout: Timeout,
   val apiV2Enabled: Boolean
@@ -53,6 +53,7 @@ class QuineAppRoutes(
 
   implicit val system: ActorSystem = graph.system
 
+  val currentConfig = config.loadedConfigJson
   val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
 
   val version = BuildInfo.version
@@ -132,7 +133,9 @@ class QuineAppRoutes(
     }
 
     if (apiV2Enabled) {
-      val v2Route = new V2OssRoutes(new OssApiInterface(graph, quineApp.asInstanceOf[BaseApp])).v2Routes
+      val v2Route = new V2OssRoutes(
+        new OssApiInterface(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout)
+      ).v2Routes
       logger.warn("Starting with Api V2 endpoints enabled")
       v1Routes ~ v2Route
     } else {

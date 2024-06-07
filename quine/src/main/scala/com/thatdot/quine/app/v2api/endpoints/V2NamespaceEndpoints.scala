@@ -1,8 +1,9 @@
-package com.thatdot.quine.app.v2api.definitions.endpoints
+package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
 import io.circe.{Decoder, Encoder}
+import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Schema, path}
 
@@ -12,7 +13,7 @@ import com.thatdot.quine.app.v2api.definitions._
 trait V2NamespaceEndpoints extends V2EndpointDefinitions {
 
   private def namespaceEndpoint[T](implicit
-    schema: Schema[T],
+    schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T]
   ) = baseEndpoint[T]("namespace")

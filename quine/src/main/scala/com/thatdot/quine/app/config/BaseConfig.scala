@@ -28,4 +28,5 @@ trait BaseConfig {
     Files.writeString(Path.of(path), loadedConfigJson.spaces2)
     ()
   }
+
 }

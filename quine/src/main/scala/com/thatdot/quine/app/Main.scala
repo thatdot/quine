@@ -202,7 +202,7 @@ object Main extends App with LazyLogging {
   }
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, quineApp, config.loadedConfigJson, resolvableUrl, timeout, config.api2Enabled)(
+    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled)(
       ExecutionContext.parasitic
     )
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)

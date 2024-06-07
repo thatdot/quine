@@ -17,10 +17,13 @@ import sttp.tapir.server.pekkohttp.{PekkoHttpServerInterpreter, PekkoHttpServerO
 abstract class TapirRoutes {
   protected val apiEndpoints: List[ServerEndpoint[Any, Future]]
 
+  /** List of endpoints that should not appear in api docs. */
+  protected val hiddenEndpoints: Set[ServerEndpoint[Any, Future]]
+
   val app: ApplicationApiInterface
   private def docEndpoints: Seq[ServerEndpoint[Any, Future]] =
     RedocInterpreter(redocUIOptions = RedocUIOptions.default.copy(pathPrefix = List("v2docs")))
-      .fromServerEndpoints[Future](apiEndpoints, "thatdot-api-v2", "1.0.0")
+      .fromServerEndpoints[Future](apiEndpoints.filterNot(hiddenEndpoints.contains(_)), "thatdot-api-v2", "1.0.0")
 
   private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions = PekkoHttpServerOptions.default
 

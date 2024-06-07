@@ -1,13 +1,21 @@
-package com.thatdot.quine.v2api
+package com.thatdot.quine.app.v2api
+
+import org.apache.pekko.util.Timeout
 
 import com.typesafe.scalalogging.LazyLogging
 
-import com.thatdot.quine.app.BaseApp
+import com.thatdot.quine.app.QuineApp
+import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
 import com.thatdot.quine.app.v2api.definitions.ApplicationApiInterface
-import com.thatdot.quine.graph.{BaseGraph, LiteralOpsGraph}
-class OssApiInterface(val graph: BaseGraph with LiteralOpsGraph, val app: BaseApp)
-    extends ApplicationApiInterface
+import com.thatdot.quine.graph.GraphService
+class OssApiInterface(
+  val graph: GraphService,
+  val app: QuineApp,
+  val config: BaseConfig,
+  val timeout: Timeout
+) extends ApplicationApiInterface
     with LazyLogging {
   val thisMemberIdx: Int = 0
 
+  override def emptyConfigExample: BaseConfig = QuineConfig()
 }
