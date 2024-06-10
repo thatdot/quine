@@ -183,12 +183,11 @@ final class RunningStandingQuery(
 
   /** Enqueue a result, returning true if the result was successfully enqueued, false otherwise
     */
-  def offerResult(result: StandingQueryResult): Boolean =
-    resultsQueue.offer(result) match {
+  def offerResult(result: StandingQueryResult): Boolean = {
+    val success = resultsQueue.offer(result) match {
       case QueueOfferResult.Enqueued =>
         true
       case QueueOfferResult.Failure(err) =>
-        droppedCounter.inc()
         logger.warn(
           s"onResult: failed to enqueue Standing Query result for: ${query.name} due to error: ${err.getMessage}"
         )
@@ -214,4 +213,11 @@ final class RunningStandingQuery(
         )
         false
     }
+    // On results (but not cancellations) update the relevant metrics
+    if (result.meta.isPositiveMatch) {
+      if (success) resultMeter.mark()
+      else droppedCounter.inc()
+    }
+    success
+  }
 }

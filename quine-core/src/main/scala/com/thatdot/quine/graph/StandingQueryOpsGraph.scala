@@ -120,7 +120,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
     def reportStandingResult(sqId: StandingQueryId, sqResult: SqResultLike): Boolean =
       runningStandingQuery(sqId) exists { standingQuery =>
         if (sqResult.isPositive || standingQuery.query.queryPattern.includeCancellation) {
-          standingQuery.resultMeter.mark()
           sqResult
             .standingQueryResults(standingQuery.query, idProvider)
             .forall(standingQuery.offerResult)
