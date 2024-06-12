@@ -53,7 +53,8 @@ package object webapp {
         case "tree" => NetworkLayout.Tree
         case "graph" | _ => NetworkLayout.Graph
       },
-      queryMethod = if (useWs) QueryMethod.WebSocket else QueryMethod.Restful
+      queryMethod = if (useWs) QueryMethod.WebSocket else QueryMethod.Restful,
+      isQuineOSS = options.isQuineOSS
     )
   }
 
@@ -136,5 +137,8 @@ package webapp {
 
     /** call this when creating a `vis` network */
     val onNetworkCreate: js.UndefOr[js.Function1[vis.Network, js.Any]] = js.undefined
+
+    /** Boolean flagging which product is being launched */
+    val isQuineOSS: Boolean
   }
 }

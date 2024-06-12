@@ -5,7 +5,11 @@ import scala.scalajs.js.annotation.JSImport
 
 @JSImport("resources/logo.svg", JSImport.Default)
 @js.native
-object ThatDotLogoImg extends js.Object
+object QuineLogo extends js.Object
+
+@JSImport("resources/thatdot-logo.png", JSImport.Default)
+@js.native
+object ThatDotLogo extends js.Object
 
 /** Classes defined in `IndexCSS`.
   *

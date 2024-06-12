@@ -41,6 +41,7 @@ import com.thatdot.{visnetwork => vis}
     * @param initialLayout how is the network initially laid out?
     * @param edgeQueryLanguage which query language is used for edge queries
     * @param queryMethod how should the query UI relay queries to the backend?
+    * @param isQuineOSS is this Quine OSS or Quine Enterprise?
     */
   case class Props(
     routes: ClientRoutes,
@@ -56,7 +57,8 @@ import com.thatdot.{visnetwork => vis}
     initialLayout: NetworkLayout = NetworkLayout.Graph,
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
     queryMethod: QueryMethod = QueryMethod.WebSocket,
-    initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter
+    initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
+    isQuineOSS: Boolean
   )
 
   /** @param query input in the query bar
@@ -1449,7 +1451,8 @@ import com.thatdot.{visnetwork => vis}
           toggleLayout = toggleNetworkLayout,
           recenterViewport = recenterNetworkViewport
         ),
-        downloadSvg = () => downloadSvgSnapshot()
+        downloadSvg = () => downloadSvgSnapshot(),
+        props.isQuineOSS
       )
     }
 

@@ -28,6 +28,7 @@ window.onload = function() {
         },
         documentationUrl: document.baseURI + "docs/openapi.json",
         baseURI: document.baseURI,
-        serverUrl: document.baseURI.replace(/\/$/, "")
+        serverUrl: document.baseURI.replace(/\/$/, ""),
+        isQuineOSS: true,
     });
 };
