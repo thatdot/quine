@@ -175,6 +175,12 @@ trait NamespacedPersistenceAgent extends StrictLogging {
 
   def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
 
+  /** Remove a standing query from the persistence layer
+    * Implementers MUST remove the record of the standing query itself (such that it
+    * no longer appears in the results of [[getStandingQueries]]), and SHOULD remove
+    * additional state associated with the standing query on a best-effort basis (e.g.,
+    * MVSQ states for that query).
+    */
   def removeStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
 
   def getStandingQueries: Future[List[StandingQueryInfo]]

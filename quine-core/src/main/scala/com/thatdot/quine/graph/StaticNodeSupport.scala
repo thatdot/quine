@@ -4,6 +4,8 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
+import com.typesafe.scalalogging.LazyLogging
+
 import com.thatdot.quine.graph.NodeActor.{Journal, MultipleValuesStandingQueries}
 import com.thatdot.quine.graph.StaticNodeSupport.{deserializeSnapshotBytes, getMultipleValuesStandingQueryStates}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryLookupInfo}
@@ -137,7 +139,7 @@ abstract class StaticNodeSupport[
     }(graph.nodeDispatcherEC)
 }
 
-object StaticNodeSupport {
+object StaticNodeSupport extends LazyLogging {
   @throws[NodeWakeupFailedException]("When snapshot could not be deserialized")
   private def deserializeSnapshotBytes[Snapshot <: AbstractNodeSnapshot](
     snapshotBytes: Array[Byte],
@@ -180,7 +182,7 @@ object StaticNodeSupport {
                 }
                 .map { multipleValuesStandingQueryStates =>
                   // partition the retrieved MVSQ states into those that are still running and those that are not
-                  val (keepThese, removeThese @ _) = multipleValuesStandingQueryStates.partition {
+                  val (keepThese, removeThese) = multipleValuesStandingQueryStates.partition {
                     case ((sqId, partId @ _), _) => sqns.runningStandingQuery(sqId).isDefined
                   }
                   // `removeThese` represents standing queries that have been cancelled since the previous time the
@@ -188,9 +190,13 @@ object StaticNodeSupport {
                   // relevant, and they will not be found if the we try to `rehydrate` them during construction.
                   // Therefore, we can safely remove them from the persistor as an optimization in disk space and
                   // future wake-up latencies.
-                  // TODO fire-and-forget removing `removeThese` from the persistor (i.e, define
+                  // QU-1921 fire-and-forget removing `removeThese` from the persistor (i.e., define
                   //  `removeStandingQueryStatesForQidAndSqId` so it can be used like:)
                   //  removeThese.keySet.map(_._1).foreach(persistor.removeStandingQueryStatesForQidAndSqId(qid, _))
+                  logger.debug(
+                    s"""During node constructor assembly, found ${removeThese.size} no-longer-relevant
+                       |MVSQ states for node: ${qidAtTime.debug(idProv)}""".stripMargin.replace('\n', ' ')
+                  )
 
                   // with the still-relevant SQ states, continue to assemble the node's constructor arguments
                   keepThese.map { case (sqIdAndPartId, bytes) =>
