@@ -104,6 +104,14 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     state: Option[Array[Byte]]
   ): Future[Unit] = getAgent(id).setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
+  def containsMultipleValuesStates(): Future[Boolean] =
+    Future
+      .traverse(getAgents)(_.containsMultipleValuesStates())(implicitly, ExecutionContext.parasitic)
+      .map { eachPersistorHasStates =>
+        val anyPersistorHasStates = eachPersistorHasStates.exists(identity)
+        anyPersistorHasStates
+      }(ExecutionContext.parasitic)
+
   override def getMetaData(key: String): Future[Option[Array[Byte]]] = rootAgent.getMetaData(key)
 
   override def getAllMetaData(): Future[Map[String, Array[Byte]]] = rootAgent.getAllMetaData()

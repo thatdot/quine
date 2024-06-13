@@ -90,6 +90,8 @@ class EmptyPersistor(
 
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future.unit
 
+  def containsMultipleValuesStates(): Future[Boolean] = Future.successful(false)
+
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future.successful(None)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future.successful(Map.empty)

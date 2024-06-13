@@ -206,7 +206,7 @@ object StandingQueryResultOutput extends LazyLogging {
         graph.system.registerOnTermination(awsSnsClient.close()) // TODO
 
         // NB: by default, this will make 10 parallel requests [configurable via parameter to SnsPublisher.flow]
-        // TODO: FIXME if any request to SNS errors, that thread (of the aforementioned 10) will retry its request
+        // TODO if any request to SNS errors, that thread (of the aforementioned 10) will retry its request
         // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
         Flow[StandingQueryResult]
           .map(result => result.toJson(graph.idProvider).noSpaces + "\n")

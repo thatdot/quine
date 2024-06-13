@@ -218,6 +218,8 @@ class InMemoryPersistor(
     Future.unit
   }
 
+  def containsMultipleValuesStates(): Future[Boolean] = Future.successful(!multipleValuesStandingQueryStates.isEmpty)
+
   def getStandingQueries: Future[List[StandingQueryInfo]] =
     Future.successful(standingQueries.values.asScala.toList)
 

@@ -44,7 +44,7 @@ import com.thatdot.quine.persistor.codecs.{
   * @param persistenceConfig configuration for persistence
   */
 final class RocksDbPersistor(
-  filePath: String,
+  val filePath: String,
   val namespace: NamespaceId,
   writeAheadLog: Boolean,
   syncWrites: Boolean,
@@ -264,15 +264,18 @@ final class RocksDbPersistor(
     key: Array[Byte]
   ): Option[Array[Byte]] = withReadLock(Option(db.get(columnFamily, key)))
 
-  override def emptyOfQuineData(): Future[Boolean] = {
-    def columnFamilyIsEmpty(cf: ColumnFamilyHandle): Boolean = {
-      val it = db.newIterator(cf)
-      try {
-        it.seekToFirst()
-        !it.isValid // the iterator is valid iff the column family is nonempty
-      } finally it.close()
-    }
+  /** Check if a column family is empty. This does not acquire its own ReadLock, so
+    * it must only be called from within a `withReadLock`
+    */
+  private[this] def columnFamilyIsEmpty(cf: ColumnFamilyHandle): Boolean = {
+    val it = db.newIterator(cf)
+    try {
+      it.seekToFirst()
+      !it.isValid // the iterator is valid iff the column family is nonempty
+    } finally it.close()
+  }
 
+  override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future {
       withReadLock(
@@ -284,7 +287,6 @@ final class RocksDbPersistor(
         columnFamilyIsEmpty(domainGraphNodesCF)
       )
     }(ioDispatcher)
-  }
 
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
     Future {
@@ -457,6 +459,13 @@ final class RocksDbPersistor(
       mb.result()
     }
   }(ioDispatcher)
+
+  def containsMultipleValuesStates(): Future[Boolean] =
+    Future {
+      withReadLock {
+        !columnFamilyIsEmpty(standingQueryStatesCF)
+      }
+    }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))

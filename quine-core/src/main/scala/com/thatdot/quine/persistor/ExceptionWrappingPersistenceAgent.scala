@@ -44,6 +44,7 @@ case class RemoveStandingQuery(standingQuery: StandingQueryInfo) extends Persist
 case object GetStandingQueries extends PersistorCall
 case class GetMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case class DeleteMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
+case object ContainsMultipleValuesStates extends PersistorCall
 case class SetStandingQueryState(
   standingQuery: StandingQueryId,
   id: QuineId,
@@ -175,6 +176,11 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
   ): Future[Unit] = wrapException(
     SetStandingQueryState(standingQuery, id, standingQueryId, state.map(_.length)),
     persistenceAgent.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
+  )
+
+  def containsMultipleValuesStates(): Future[Boolean] = wrapException(
+    ContainsMultipleValuesStates,
+    persistenceAgent.containsMultipleValuesStates()
   )
 
   override def declareReady(graph: BaseGraph): Unit = persistenceAgent.declareReady(graph)

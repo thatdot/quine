@@ -188,4 +188,6 @@ private class BloomFilteredPersistor(
 
   override def delete(): Future[Unit] =
     wrappedPersistor.delete()
+
+  def containsMultipleValuesStates(): Future[Boolean] = wrappedPersistor.containsMultipleValuesStates()
 }

@@ -23,8 +23,10 @@ import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
 import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerConfig}
+import com.thatdot.quine.app.migrations.QuineMigrations
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.graph._
+import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
 
 object Main extends App with LazyLogging {
 
@@ -162,7 +164,63 @@ object Main extends App with LazyLogging {
   val ec: ExecutionContext = graph.shardDispatcherEC
   val quineApp = new QuineApp(graph)
 
-  quineApp.restoreNonDefaultNamespacesFromMetaData(ec)
+  // Initialize the namespaces and apply migrations
+  val hydrateAndMigrate: Future[Either[MigrationError, Unit]] = {
+    val allMigrations = migrations.instances.all
+    val GoalVersion: MigrationVersion = allMigrations.last.to
+    val currentVersionFut = MigrationVersion
+      .getFrom(graph.namespacePersistor)
+      .map(_.getOrElse(MigrationVersion(0)))(ExecutionContext.parasitic)
+    currentVersionFut.flatMap[Either[MigrationError, Unit]] {
+      case GoalVersion =>
+        // we are already at our goal version, so we can just load namespaces
+        quineApp.restoreNonDefaultNamespacesFromMetaData(ec).map(Right(_))(ExecutionContext.parasitic)
+      case versionWentBackwards if versionWentBackwards > GoalVersion =>
+        // the version we pulled from the persistor is greater than the `to` of the final migration we're aware of
+        Future.successful(Left(MigrationError.PreviousMigrationTooAdvanced(versionWentBackwards, GoalVersion)))
+      case currentVersion =>
+        // the found version indicates we need to run at least one migration
+        // TODO figure out which Migration.Apply instances to run based on the needed Migrations and the product
+        //  running the migrations. For now, with one migration, and in Quine's main, we know what to run
+        require(
+          currentVersion == MigrationVersion(0) && GoalVersion == MigrationVersion(1),
+          s"Unexpected migration versions (current: $currentVersion, goal: $GoalVersion)"
+        )
+        val migrationApply = new QuineMigrations.ApplyMultipleValuesRewrite(
+          graph.namespacePersistor,
+          graph.getNamespaces.toSet
+        )
+
+        quineApp
+          .restoreNonDefaultNamespacesFromMetaData(ec)
+          .flatMap { _ =>
+            migrationApply.run()(graph.dispatchers)
+          }(graph.nodeDispatcherEC)
+          .flatMap {
+            case err @ Left(_) => Future.successful(err)
+            case Right(_) =>
+              // the migration succeeded, so we can set the version to the `to` version of the migration
+              MigrationVersion
+                .set(graph.namespacePersistor, migrationApply.migration.to)
+                .map(Right(_))(ExecutionContext.parasitic)
+          }(ExecutionContext.parasitic)
+    }(graph.nodeDispatcherEC)
+  }
+  // if there was a migration error, present it to the user then exit
+  Await.result(hydrateAndMigrate, timeout.duration).left.foreach { error: MigrationError =>
+    error match {
+      case includeDiagnosticInfo: Throwable =>
+        statusLines.error(
+          s"Encountered a migration error during startup. Shutting down.",
+          includeDiagnosticInfo
+        )
+      case opaque =>
+        statusLines.error(
+          s"Encountered a migration error during startup. Shutting down. Error: ${opaque.message}"
+        )
+    }
+    sys.exit(1)
+  }
 
   val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
   Await.result(loadDataFut, timeout.duration * 2)

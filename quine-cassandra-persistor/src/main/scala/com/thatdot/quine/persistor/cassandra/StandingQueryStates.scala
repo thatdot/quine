@@ -53,6 +53,9 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
       .where(quineIdColumn.is.eq)
       .build()
 
+  private val getStandingQueryStatesCount =
+    select.countAll.build()
+
   private val removeStandingQueryState =
     delete
       .where(
@@ -98,7 +101,20 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
       T2(getMultipleValuesStandingQueryStates, getIdsForStandingQuery)
         .map(prepare(session, readSettings))
         .toTuple
-    ).mapN(new StandingQueryStates(session, firstRowStatement, dropTableStatement, _, _, _, _, _, _))
+    ).mapN(
+      new StandingQueryStates(
+        session,
+        firstRowStatement,
+        dropTableStatement,
+        _,
+        _,
+        _,
+        _,
+        getStandingQueryStatesCount,
+        _,
+        _
+      )
+    )
   }
 
 }
@@ -110,6 +126,7 @@ class StandingQueryStates(
   removeStandingQueryStateStatement: PreparedStatement,
   removeStandingQueryStatement: PreparedStatement,
   deleteStandingQueryStatesByQid: PreparedStatement,
+  getStandingQueryStatesCount: SimpleStatement,
   getMultipleValuesStandingQueryStatesStatement: PreparedStatement,
   getIdsForStandingQueryStatement: PreparedStatement
 )(implicit mat: Materializer)
@@ -156,6 +173,9 @@ class StandingQueryStates(
   def deleteStandingQueryStates(id: QuineId): Future[Unit] = executeFuture(
     deleteStandingQueryStatesByQid.bindColumns(quineIdColumn.set(id))
   )
+
+  def containsMultipleValuesStates(): Future[Boolean] =
+    queryCount(getStandingQueryStatesCount).map(_ > 0)(ExecutionContext.parasitic)
 
   def removeStandingQuery(standingQuery: StandingQueryId): Future[Unit] =
     executeSource(getIdsForStandingQueryStatement.bindColumns(standingQueryIdColumn.set(standingQuery)))

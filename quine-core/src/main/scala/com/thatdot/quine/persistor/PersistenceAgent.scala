@@ -53,6 +53,10 @@ trait NamespacedPersistenceAgent extends StrictLogging {
     */
   def emptyOfQuineData(): Future[Boolean]
 
+  /** Returns `true` if and only if this persistor contains any MultipleValuesStandingQueryStates
+    */
+  def containsMultipleValuesStates(): Future[Boolean]
+
   /** Provides the [[BaseGraph]] instance to the [[PersistenceAgent]] when the [[BaseGraph]] is ready for use.
     * Used to trigger initialization behaviors that depend on [[BaseGraph]].
     * Default implementation is a no op.

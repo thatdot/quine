@@ -118,6 +118,10 @@ abstract class CassandraPersistor(
 ) extends NamespacedPersistenceAgent
     with MultipartSnapshotPersistenceAgent {
 
+  /** The current keyspace to which this persistor is connected, or None if not connected.
+    */
+  def keyspace: Option[String] = session.getKeyspace.asScala.map(_.asCql(true))
+
   import MultipartSnapshotPersistenceAgent._
 
   protected val multipartSnapshotExecutionContext: ExecutionContext = materializer.executionContext
@@ -206,6 +210,8 @@ abstract class CassandraPersistor(
   )
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     standingQueryStates.deleteStandingQueryStates(id)
+
+  def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
 
   override def shutdown(): Future[Unit] = session.closeAsync().toScala.void
 

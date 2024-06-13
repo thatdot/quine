@@ -335,7 +335,7 @@ trait IngestRoutesImpl
           case _ =>
             val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
             val ingestStatus = flippedValve.flatMap { _ =>
-              ingest.restoredStatus = None; // FIXME not threadsafe
+              ingest.restoredStatus = None; // TODO not threadsafe
               stream2Info(ingest)
             }(graph.nodeDispatcherEC)
             ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)

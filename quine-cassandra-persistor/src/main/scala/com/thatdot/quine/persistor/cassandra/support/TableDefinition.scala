@@ -29,8 +29,12 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     writeSettings: CassandraStatementSettings
   )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[A]
 
+  /** The name of the table defined by this class.
+    * This does include the namespace, but not the keyspace.
+    */
+  val name: String = namespace.fold("")(_.name + "_") + unqualifiedTableName
   protected val tableName: CqlIdentifier =
-    CqlIdentifier.fromCql(namespace.fold("")(_.name + "_") + unqualifiedTableName)
+    CqlIdentifier.fromCql(name)
 
   protected def partitionKey: CassandraColumn[_]
   protected def clusterKeys: List[CassandraColumn[_]]

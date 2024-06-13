@@ -428,6 +428,10 @@ final class MapDbPersistor(
       Future.failed(e)
     }(nodeDispatcherEC)
 
+  def containsMultipleValuesStates(): Future[Boolean] = Future {
+    !multipleValuesStandingQueryStates.isEmpty
+  }(blockingDispatcherEC)
+
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future(Option(metaData.get(key)))(blockingDispatcherEC)
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = Future(metaData.asScala.toMap)(blockingDispatcherEC)
@@ -493,7 +497,6 @@ final class MapDbPersistor(
       domainIndexEvents.entrySet().removeIf(e => DomainIndexEventCodec.format.read(e.getValue).get.dgnId == dgnId)
       ()
     }(blockingDispatcherEC)
-
 }
 
 object MapDbPersistor {
