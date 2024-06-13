@@ -535,7 +535,10 @@ final private[quine] class GraphShardActor(
                     case Failure(error) => // Some persistor error, likely
                       nodeMap.remove(id)
                       unlikelyUnexpectedWakeUpErrCounter(id.namespace).inc()
-                      if (log.isInfoEnabled) log.info(s"$remaining retries remaining. Retrying because of a $error")
+                      if (remaining == 1)
+                        log.error(error, s"Failed to wake up ${id.pretty} on the last retry.")
+                      else if (log.isInfoEnabled)
+                        log.info(s"$remaining retries remaining waking up ${id.pretty}. Retrying because of a $error")
                       val eKey = WakeUpErrorStates.UnexpectedWakeUpError
                       val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
                       val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)

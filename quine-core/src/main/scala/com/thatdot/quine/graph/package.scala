@@ -22,7 +22,7 @@ package object graph {
   /** The default namespace is referred to with `None`. It is a special case because of backwards compatibility. */
   type NamespaceId = Option[Symbol]
 
-  val DefaultNamespaceName: String = "default"
+  private val DefaultNamespaceName: String = "default"
 
   val defaultNamespaceId: NamespaceId = None
 

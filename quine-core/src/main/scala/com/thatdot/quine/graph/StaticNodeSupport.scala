@@ -179,7 +179,21 @@ object StaticNodeSupport {
                   persistor.getMultipleValuesStandingQueryStates(qid)
                 }
                 .map { multipleValuesStandingQueryStates =>
-                  multipleValuesStandingQueryStates.map { case (sqIdAndPartId, bytes) =>
+                  // partition the retrieved MVSQ states into those that are still running and those that are not
+                  val (keepThese, removeThese @ _) = multipleValuesStandingQueryStates.partition {
+                    case ((sqId, partId @ _), _) => sqns.runningStandingQuery(sqId).isDefined
+                  }
+                  // `removeThese` represents standing queries that have been cancelled since the previous time the
+                  // node was awoken. Because these are no longer running, their persisted information is no longer
+                  // relevant, and they will not be found if the we try to `rehydrate` them during construction.
+                  // Therefore, we can safely remove them from the persistor as an optimization in disk space and
+                  // future wake-up latencies.
+                  // TODO fire-and-forget removing `removeThese` from the persistor (i.e, define
+                  //  `removeStandingQueryStatesForQidAndSqId` so it can be used like:)
+                  //  removeThese.keySet.map(_._1).foreach(persistor.removeStandingQueryStatesForQidAndSqId(qid, _))
+
+                  // with the still-relevant SQ states, continue to assemble the node's constructor arguments
+                  keepThese.map { case (sqIdAndPartId, bytes) =>
                     val sqState = MultipleValuesStandingQueryStateCodec.format
                       .read(bytes)
                       .fold(

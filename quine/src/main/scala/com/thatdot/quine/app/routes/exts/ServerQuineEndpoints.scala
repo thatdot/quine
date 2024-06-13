@@ -6,7 +6,7 @@ import org.apache.pekko.util.ByteString
 
 import endpoints4s.{Codec, Invalid, Valid, Validated}
 
-import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.{NamespaceId, namespaceFromString}
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
 
@@ -77,5 +77,5 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
     byteStringSchema.xmap[Array[Byte]](_.toArray)(ByteString.apply)
 
   def namespaceFromParam(namespaceParameter: NamespaceParameter): NamespaceId =
-    Option.when(namespaceParameter.namespaceId != "default")(Symbol(namespaceParameter.namespaceId))
+    namespaceFromString(namespaceParameter.namespaceId)
 }

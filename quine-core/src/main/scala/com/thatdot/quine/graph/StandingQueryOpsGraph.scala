@@ -16,10 +16,11 @@ import org.apache.pekko.util.Timeout
 import org.apache.pekko.{Done, NotUsed}
 
 import cats.implicits._
+import com.google.common.cache.CacheLoader.InvalidCacheLoadException
 import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
-import com.thatdot.quine.graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern
+import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
@@ -92,7 +93,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
           )
           val runningSqs = runningStandingQueries.values
             .map(_.query.queryPattern)
-            .collect { case StandingQueryPattern.MultipleValuesQueryPattern(sq, _, _) => sq }
+            .collect { case MultipleValuesQueryPattern(sq, _, _) => sq }
             .toVector
           val runningSqParts = runningSqs.toSet
             .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
@@ -299,7 +300,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
     def getStandingQueryPart(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
       try standingQueryPartIndex.get(queryPartId)
       catch {
-        case _: ExecutionException => throw new NoSuchElementException(s"No such standing query part: $queryPartId")
+        case _: ExecutionException | _: InvalidCacheLoadException =>
+          throw new NoSuchElementException(s"No such standing query part: $queryPartId")
       }
 
     private def runStandingQuery(

@@ -31,7 +31,7 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
     *       is structural, not by reference). In order to maximize sharing of standing query state, it is
     *       also desirable that `q1 == q2 implies `q1.queryPartId == q2.queryPartId` whenever possible.
     */
-  val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
+  final val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
     MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this)
   )
 
