@@ -268,23 +268,12 @@ final case class CrossState(
             .mkString("[", ",", "]")}"
         )
         false
-      case Some(existingResultOpt) =>
+      case Some(previousResultsFromChild) =>
         if (subscriptionsEmittedCount != query.queries.length) {
           // NB query.emitSubscriptionsLazily must be true if we made it here
 
           // Which index (in the query list) does this result correspond to?
           def queryIdxForResult: Int = query.queries.indexWhere(_.queryPartId == result.queryPartId)
-
-          // Has this CrossState already reported a result?
-          val crossHasAlreadyReported = existingResultOpt.nonEmpty
-          if (crossHasAlreadyReported) {
-            logger.info(
-              s"""CrossState for ${query} on ${effectHandler.executingNodeId} already reported a
-                 |result, but has not yet issued all its subscriptions (${subscriptionsEmittedCount}
-                 |of ${query.queries.length} issued). Results previously issued by this state are
-                 |suspect.""".stripMargin.replace('\n', ' ')
-            )
-          }
 
           if (queryIdxForResult == subscriptionsEmittedCount - 1) {
             // If this is the first result for the most recently-emitted subscription, make sure another subscription has
@@ -299,7 +288,7 @@ final case class CrossState(
           resultsAccumulator += (result.queryPartId -> Some(result.resultGroup)) // Cache the newly arrived result.
         } else { // All subscriptions have been issued
           resultsAccumulator += (result.queryPartId -> Some(result.resultGroup)) // Cache the newly arrived result.
-          val isNewResultGroup = !existingResultOpt.contains(result.resultGroup)
+          val isNewResultGroup = !previousResultsFromChild.contains(result.resultGroup)
           // Report results only if this result is new, and only when we have at least one result received for each subquery.
           if (isNewResultGroup && isReadyToReport()) {
             generateCrossProductResults.foreach(effectHandler.reportUpdatedResults)
