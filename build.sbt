@@ -32,7 +32,6 @@ lazy val `quine-core`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
-      "com.softwaremill.diffx" %% "diffx-scalatest-should" % diffxV % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
       "org.typelevel" %% "cats-core" % catsV,
@@ -45,6 +44,10 @@ lazy val `quine-core`: Project = project
       (Compile / sourceDirectory).value / "scala-2.13"
     },
     addCompilerPlugin("org.typelevel" %% "kind-projector" % kindProjectorV cross CrossVersion.full)
+    // Uncomment the following 2 lines to generate flamegraphs for the project's compilation in target/scala-2.13/classes/META-INF
+    // (look for `.flamegraph` files -- these may be imported into intellij profiler or flamegraph.pl)
+    // ThisBuild / scalacOptions += "-Vstatistics",
+    // addCompilerPlugin("ch.epfl.scala" %% "scalac-profiling" % "1.1.0-RC3" cross CrossVersion.full)
   )
   .enablePlugins(BuildInfoPlugin, FlatcPlugin)
   .settings(

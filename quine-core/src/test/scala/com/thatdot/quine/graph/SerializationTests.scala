@@ -1,11 +1,9 @@
 package com.thatdot.quine.graph
 
-import com.softwaremill.diffx.generic.auto._
-import com.softwaremill.diffx.scalatest.DiffShouldMatcher
 import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.graph.DiffxInstances._
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
@@ -15,7 +13,7 @@ class SerializationTests
     extends AnyFlatSpec
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryInstances
-    with DiffShouldMatcher {
+    with should.Matchers {
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =
@@ -62,7 +60,7 @@ class SerializationTests
       The value "shouldCalculateResultHashCode" is not stored in flatbuffers and is always deserialized to "false",
       so we omit from the comparison for randomly generated test values.
        */
-      roundTripped shouldMatchTo sq.copy(shouldCalculateResultHashCode = false)
+      roundTripped shouldEqual sq.copy(shouldCalculateResultHashCode = false)
     }
   }
 
