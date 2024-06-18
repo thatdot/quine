@@ -4,7 +4,7 @@
       <div class="md-flex__cell md-flex__cell--shrink">
         <a
           class="md-header-nav__button md-logo"
-          href="https://quine.io/"
+          href="https://thatdot.com/"
           $ if (page.properties.("logo.link.title")) $
             title="$page.properties.("logo.link.title")$"
           $ else $

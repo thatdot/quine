@@ -30,13 +30,13 @@ pre, code, kbd {
 button[data-md-color-primary="thatdot-blue"],
 [data-md-color-primary="thatdot-blue"] .md-header,
 [data-md-color-primary="thatdot-blue"] .md-hero {
-  background-color: #173759;
+  background-color: #0a295b;
 }
 
 [data-md-color-primary="thatdot-blue"] .md-typeset a,
 [data-md-color-primary="thatdot-blue"] .md-nav__link:active,
 [data-md-color-primary="thatdot-blue"] .md-nav__link--active {
-  color: #173759;
+  color: #0a295b;
 }
 
 [data-md-color-primary="thatdot-blue"] .md-nav__item--nested > .md-nav__link {
@@ -79,7 +79,7 @@ button[data-md-color-accent="thatdot-grey"],
 
 @media only screen and (max-width: 76.1875em) {
   html [data-md-color-primary="thatdot-blue"] .md-nav--primary .md-nav__title--site {
-    background-color: #798089;
+    background-color: #0a295b;
   }
   html [data-md-color-primary="thatdot-blue"] .md-nav--primary .md-nav__title--site .md-nav__button {
     display: block;
@@ -94,7 +94,7 @@ button[data-md-color-accent="thatdot-grey"],
 
 [data-md-color-primary="thatdot-blue"] .md-footer-nav,
 [data-md-color-primary="thatdot-blue"] .md-footer-meta {
-  background-color: #173759;
+  background-color: #0a295b;
 }
 [data-md-color-primary="thatdot-blue"] .md-footer-copyright__highlight {
   color: rgba(255, 255, 255, 0.5);
