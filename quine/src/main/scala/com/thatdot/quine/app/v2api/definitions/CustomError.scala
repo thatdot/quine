@@ -5,6 +5,7 @@ case class ServerError(what: String) extends CustomError
 case class BadRequest(what: String) extends CustomError
 case class NotFound(what: String) extends CustomError
 case class Unauthorized(realm: String) extends CustomError
+case class ServiceUnavailable(what: String) extends CustomError
 case class Unknown(code: Int, msg: String) extends CustomError
 case object NoContent extends CustomError
 

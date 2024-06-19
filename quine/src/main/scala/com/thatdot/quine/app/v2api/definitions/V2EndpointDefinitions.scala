@@ -1,30 +1,39 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import java.nio.charset.StandardCharsets
+import java.nio.charset.{Charset, StandardCharsets}
+import java.util.concurrent.TimeUnit
 
 import scala.annotation.unused
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
+import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
 import sttp.tapir.generic.auto.schemaForCaseClass
-import sttp.tapir.json.circe.jsonBody
+import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{EndpointOutput, _}
 
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.routes.IngestRoutes
 
 /** Response Envelopes */
 case class ErrorEnvelope[T](error: T)
 case class ObjectEnvelope[T](data: T)
 
 /** Component definitions for Tapir endpoints. */
-trait V2EndpointDefinitions {
+trait V2EndpointDefinitions extends TapirJsonCirce with LazyLogging {
+
+  // ------- parallelism -----------
+  val parallelismParameter: EndpointInput.Query[Option[Int]] = query[Option[Int]](name = "parallelism")
+    .description(s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`")
+  // ------- atTime ----------------
 
   type AtTime = Milliseconds
 
@@ -39,8 +48,14 @@ trait V2EndpointDefinitions {
   }
 
   /** Schema for an at time */
-  implicit lazy val atTimeEndpointCodec: Codec[String, AtTime, TextPlain] = Codec.long.mapDecode(toAtTime)(_.millis)
+  implicit val atTimeEndpointCodec: Codec[String, AtTime, TextPlain] = Codec.long.mapDecode(toAtTime)(_.millis)
 
+  val atTimeParameter: EndpointInput.Query[Option[AtTime]] =
+    query[Option[AtTime]]("atTime").description(
+      "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query"
+    )
+
+  // ------- id ----------------
   protected def toQuineId(s: String): DecodeResult[QuineId] =
     idProvider.qidFromPrettyString(s) match {
       case Success(id) => Value(id)
@@ -53,6 +68,16 @@ trait V2EndpointDefinitions {
   implicit val quineIdCodec: Codec[String, QuineId, TextPlain] =
     Codec.string.mapDecode(toQuineId)(idProvider.qidToPrettyString)
 
+  // ------ timeout -------------
+
+  implicit val timeoutCodec: Codec[String, FiniteDuration, TextPlain] =
+    Codec.long.mapDecode(l => DecodeResult.Value(FiniteDuration(l, TimeUnit.MILLISECONDS)))(_.toMillis)
+
+  val timeoutParameter: EndpointInput.Query[Option[FiniteDuration]] =
+    query[Option[FiniteDuration]]("timeout").description(
+      "Milliseconds to wait before the HTTP request times out"
+    )
+
   type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T]]
 
   /** OSS Specific behavior defined in [[com.thatdot.quine.v2api.V2OssRoutes]]. */
@@ -60,14 +85,16 @@ trait V2EndpointDefinitions {
 
   /** OSS Specific behavior defined in [[V2OssRoutes]]. */
   def namespaceParameter: EndpointInput[Option[String]]
-  def atTimeParameter: EndpointInput.Query[Option[AtTime]] =
-    query[Option[AtTime]]("atTime").description(
-      "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query"
-    )
 
   //TODO port logic from QuineEndpoints NamespaceParameter
   def namespaceFromParam(ns: Option[String]): NamespaceId =
     ns.flatMap(t => Option.when(t != "default")(Symbol(t)))
+
+  def ifNamespaceFound[A](namespaceId: NamespaceId)(
+    ifFound: => Future[Either[CustomError, A]]
+  ): Future[Either[CustomError, Option[A]]] =
+    if (!app.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
+    else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
 
   val app: ApplicationApiInterface
 
@@ -89,6 +116,10 @@ trait V2EndpointDefinitions {
       oneOfVariantFromMatchType(
         statusCode(StatusCode.Unauthorized).and(jsonBody[ErrorEnvelope[Unauthorized]].description("unauthorized"))
       ),
+      oneOfVariantFromMatchType(
+        statusCode(StatusCode.ServiceUnavailable)
+          .and(jsonBody[ErrorEnvelope[ServiceUnavailable]].description("service unavailable"))
+      ),
       oneOfVariantFromMatchType(statusCode(StatusCode.NoContent).and(emptyOutputAs(ErrorEnvelope(NoContent)))),
       oneOfDefaultVariant(
         statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[Unknown]].description("server error"))
@@ -100,7 +131,32 @@ trait V2EndpointDefinitions {
   private def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
     c => decoder.apply(c.downField("data").root).map(ObjectEnvelope(_))
 
-  /** Base for api/v2 endpoints with common errors that expects the universal parameters memberIdx, namespace.
+  type EndpointBase = Endpoint[Unit, Option[Int], Unit, Unit, Any]
+
+  /** Base for api/v2 endpoints with common errors that expects the universal parameter memberIdx.
+    *
+    * We sometimes require access to an endpoint definition with no output type specified, because Tapir will not allow
+    * a 204 output response with defined outputs.
+    *
+    * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
+    */
+  def rawEndpoint(
+    basePaths: String*
+  ): Endpoint[Unit, Option[Int], Unit, Unit, Any] =
+    endpoint
+      .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
+      .in(memberIdxParameter)
+
+  def withOutput[T](endpoint: EndpointBase)(implicit
+    schema: Schema[ObjectEnvelope[T]],
+    encoder: Encoder[T],
+    decoder: Decoder[T]
+  ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
+    endpoint
+      .errorOut(commonErrorOutput)
+      .out(jsonBody[ObjectEnvelope[T]](toObjectEnvelopeEncoder(encoder), toObjectEnvelopeDecoder(decoder), schema))
+
+  /** Base endpoint type with output type defined within a common [[ObjectEnvelope]] and common error output.
     * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
     */
   def baseEndpoint[T](
@@ -110,13 +166,9 @@ trait V2EndpointDefinitions {
     encoder: Encoder[T],
     decoder: Decoder[T]
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    endpoint
-      .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
-      .in(memberIdxParameter)
-      .errorOut(commonErrorOutput)
-      .out(jsonBody[ObjectEnvelope[T]](toObjectEnvelopeEncoder(encoder), toObjectEnvelopeDecoder(decoder), schema))
+    withOutput[T](rawEndpoint(basePaths: _*))
 
-  private def yamlBody[T]()(implicit
+  def yamlBody[T]()(implicit
     schema: Schema[T],
     encoder: Encoder[T],
     decoder: Decoder[T]
@@ -129,6 +181,9 @@ trait V2EndpointDefinitions {
     decoder: Decoder[T]
   ): EndpointIO.OneOfBody[T, T] =
     oneOfBody[T](jsonBody[T], yamlBody[T]())
+
+  def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
+    stringBodyAnyFormat(codec, Charset.defaultCharset())
 
   //TODO split into definitions in extensions of [[TapirRoutes]] that support specific platforms.
   /** Wrap server responses in their respective output envelopes. */
@@ -152,6 +207,7 @@ trait V2EndpointDefinitions {
     in: IN,
     f: IN => Future[Either[CustomError, OUT]]
   ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
+    logger.debug(s"Received arguments $cmd: $in")
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
     f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
   }

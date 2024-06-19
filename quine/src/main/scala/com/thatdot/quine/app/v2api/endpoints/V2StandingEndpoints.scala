@@ -4,16 +4,22 @@ import scala.concurrent.Future
 
 import io.circe.generic.auto._
 import io.circe.{Decoder, Encoder}
+import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{EndpointInput, Schema, path, query}
+import sttp.tapir.{EndpointInput, Schema, path, query, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes.{RegisteredStandingQuery, StandingQueryDefinition, StandingQueryResultOutputUserDef}
 
 trait V2StandingEndpoints extends V2EndpointDefinitions {
+
+  private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => (s.toString -> s)).toMap
+  implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
+  implicit val sqModeDecoder: Decoder[StandingQueryMode] = Decoder.decodeString.map(s => sqModesMap.get(s).get)
 
   /** SQ Name path element */
   private val sqName: EndpointInput.PathCapture[String] =
@@ -73,10 +79,12 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
                      |  * When interactively constructing a standing query for already-ingested data
                      |  * When creating a new standing query that needs to be applied to recent data
                      |""".stripMargin)
+      .in("control")
+      .in("propagate")
       .in(query[Option[Boolean]]("include-sleeping"))
       .in(namespaceParameter)
       .in(query[Option[Int]]("wake-up-parallelism"))
-      .post
+      .get //NOTE this is a POST in V1, tapir does not accept a post with an empty body
       .serverLogic { case (memberIdx, includeSleeping, namespace, wakeUpParallelism) =>
         runServerLogic[(Option[Boolean], NamespaceId, Int), Unit](
           PropagateSQsApiCmd,
@@ -95,9 +103,11 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
       "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed."
     )
     .in(sqName)
+    .in("output")
     .in(sqOutputName)
     .in(namespaceParameter)
     .in(jsonOrYamlBody[StandingQueryResultOutputUserDef])
+    .out(statusCode(StatusCode.Created))
     .post
     .serverLogic { case (memberIdx, sqName, sqOutputName, namespace, outputDef) =>
       runServerLogicWithError[(String, String, NamespaceId, StandingQueryResultOutputUserDef), Unit](
@@ -127,6 +137,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
     .in(namespaceParameter)
     .in(jsonOrYamlBody[StandingQueryDefinition])
     .post
+    .out(statusCode(StatusCode.Created))
     .serverLogic { case (memberIdx, sqName, namespace, definition) =>
       runServerLogicWithError[(String, NamespaceId, StandingQueryDefinition), Option[Unit]](
         CreateSQApiCmd,

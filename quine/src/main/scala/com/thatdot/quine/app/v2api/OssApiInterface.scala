@@ -10,7 +10,7 @@ import com.thatdot.quine.app.v2api.definitions.ApplicationApiInterface
 import com.thatdot.quine.graph.GraphService
 class OssApiInterface(
   val graph: GraphService,
-  val app: QuineApp,
+  val quineApp: QuineApp,
   val config: BaseConfig,
   val timeout: Timeout
 ) extends ApplicationApiInterface
@@ -18,4 +18,5 @@ class OssApiInterface(
   val thisMemberIdx: Int = 0
 
   override def emptyConfigExample: BaseConfig = QuineConfig()
+
 }

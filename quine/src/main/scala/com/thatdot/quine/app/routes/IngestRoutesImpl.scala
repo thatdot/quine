@@ -5,24 +5,22 @@ import java.time.temporal.ChronoUnit.MILLIS
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.Sink
-import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 import org.apache.pekko.util.Timeout
 import org.apache.pekko.{Done, NotUsed, pattern}
 
 import com.codahale.metrics.Metered
 import com.typesafe.scalalogging.LazyLogging
-import endpoints4s.Invalid
 import io.circe.Json
 
 import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
+import com.thatdot.quine.graph.{MemberIdx, NamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
@@ -60,7 +58,7 @@ trait IngestStreamState {
   *
   * @param optWs (for websocket ingest streams only) a Sink and IngestMeter via which additional records may be injected into this ingest stream
   */
-final private[thatdot] case class IngestStreamWithControl[+Conf](
+final case class IngestStreamWithControl[+Conf](
   settings: Conf,
   metrics: IngestMetrics,
   valve: () => Future[ValveSwitch],
@@ -166,23 +164,13 @@ final private[thatdot] case class IngestMetrics(
 /** The Pekko HTTP implementation of [[IngestRoutes]] */
 trait IngestRoutesImpl
     extends IngestRoutes
+    with IngestApiMethods
     with endpoints4s.pekkohttp.server.Endpoints
     with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
     with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
 
   implicit def timeout: Timeout
   implicit def materializer: Materializer
-  def graph: BaseGraph
-
-  private def stream2Info(conf: IngestStreamWithControl[IngestStreamConfiguration]): Future[IngestStreamInfo] =
-    conf.status.map { status =>
-      IngestStreamInfo(
-        status,
-        conf.terminated().value collect { case Failure(exception) => exception.toString },
-        conf.settings,
-        conf.metrics.toEndpointResponse
-      )
-    }(graph.shardDispatcherEC)
 
   val quineApp: IngestStreamState
 
@@ -313,48 +301,11 @@ trait IngestRoutesImpl
     }
   }
 
-  sealed private case class PauseOperationException(statusMsg: String) extends Exception with NoStackTrace
-
-  private object PauseOperationException {
-    object Completed extends PauseOperationException("completed")
-    object Terminated extends PauseOperationException("terminated")
-    object Failed extends PauseOperationException("failed")
-  }
-  private[this] def setIngestStreamPauseState(
-    name: String,
-    namespace: NamespaceId,
-    newState: SwitchMode
-  ): Future[Option[IngestStreamInfoWithName]] =
-    quineApp.getIngestStream(name, namespace) match {
-      case None => Future.successful(None)
-      case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        ingest.restoredStatus match {
-          case Some(IngestStreamStatus.Completed) => Future.failed(PauseOperationException.Completed)
-          case Some(IngestStreamStatus.Terminated) => Future.failed(PauseOperationException.Terminated)
-          case Some(IngestStreamStatus.Failed) => Future.failed(PauseOperationException.Failed)
-          case _ =>
-            val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
-            val ingestStatus = flippedValve.flatMap { _ =>
-              ingest.restoredStatus = None; // TODO not threadsafe
-              stream2Info(ingest)
-            }(graph.nodeDispatcherEC)
-            ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
-        }
-    }
-
-  private def mkPauseOperationError(operation: String): PartialFunction[Throwable, Either[Invalid, Nothing]] = {
-    case _: StreamDetachedException =>
-      // A StreamDetachedException always occurs when the ingest has failed
-      Left(endpoints4s.Invalid(s"Cannot $operation a failed ingest."))
-    case e: PauseOperationException =>
-      Left(endpoints4s.Invalid(s"Cannot $operation a ${e.statusMsg} ingest."))
-  }
-
   private val ingestStreamPauseRoute = ingestStreamPause.implementedByAsync { case (ingestName, namespaceParam) =>
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Close)
         .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("pause", endpoints4s.Invalid(_)))(ExecutionContext.parasitic)
     }
   }
 
@@ -362,7 +313,7 @@ trait IngestRoutesImpl
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceFromParam(namespaceParam), SwitchMode.Open)
         .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("resume", endpoints4s.Invalid(_)))(ExecutionContext.parasitic)
     }
   }
 

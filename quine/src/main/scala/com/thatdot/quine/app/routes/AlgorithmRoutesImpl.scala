@@ -20,9 +20,36 @@ import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherException, Location}
 import com.thatdot.quine.graph.{AlgorithmGraph, NamespaceId}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.AlgorithmRoutes
+trait AlgorithmMethods {
+  def compileWalkQuery(queryOpt: Option[String]): CompiledQuery[Location.OnNode] = {
+    val queryText = queryOpt.fold(AlgorithmGraph.defaults.walkQuery)(AlgorithmGraph.defaults.walkPrefix + _)
+    val compiledQuery = cypher.compile(queryText, unfixedParameters = List("n"))
+    require(compiledQuery.isReadOnly, s"Query must conclusively be a read-only query. Provided: $queryText")
+    require(!compiledQuery.canContainAllNodeScan, s"Query must not scan all nodes. Provided: $queryText")
+    compiledQuery
+  }
+
+  def generateDefaultFileName(
+    atTime: Option[Milliseconds],
+    lengthOpt: Option[Int],
+    countOpt: Option[Int],
+    queryOpt: Option[String],
+    returnParamOpt: Option[Double],
+    inOutParamOpt: Option[Double],
+    seedOpt: Option[String]
+  ): String = s"""graph-walk-
+              |${atTime.map(_.millis).getOrElse(s"${System.currentTimeMillis}_T")}-
+              |${lengthOpt.getOrElse(AlgorithmGraph.defaults.walkLength)}x
+              |${countOpt.getOrElse(AlgorithmGraph.defaults.walkCount)}-q
+              |${queryOpt.map(_.length).getOrElse("0")}-
+              |${returnParamOpt.getOrElse(AlgorithmGraph.defaults.returnParam)}x
+              |${inOutParamOpt.getOrElse(AlgorithmGraph.defaults.inOutParam)}-
+              |${seedOpt.getOrElse("_")}.csv""".stripMargin.replace("\n", "")
+}
 
 trait AlgorithmRoutesImpl
     extends AlgorithmRoutes
+    with AlgorithmMethods
     with endpoints4s.pekkohttp.server.Endpoints
     with JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints {
@@ -30,14 +57,6 @@ trait AlgorithmRoutesImpl
   implicit def graph: AlgorithmGraph
 
   implicit def timeout: Timeout
-
-  private def compileWalkQuery(queryOpt: Option[String]): CompiledQuery[Location.OnNode] = {
-    val queryText = queryOpt.fold(AlgorithmGraph.defaults.walkQuery)(AlgorithmGraph.defaults.walkPrefix + _)
-    val compiledQuery = cypher.compile(queryText, unfixedParameters = List("n"))
-    require(compiledQuery.isReadOnly, s"Query must conclusively be a read-only query. Provided: $queryText")
-    require(!compiledQuery.canContainAllNodeScan, s"Query must not scan all nodes. Provided: $queryText")
-    compiledQuery
-  }
 
   private val algorithmSaveRandomWalksRoute = algorithmSaveRandomWalks.implementedBy {
     case (
@@ -57,14 +76,8 @@ trait AlgorithmRoutesImpl
       if (!graph.getNamespaces.contains(namespaceId)) Right(None)
       else {
         val defaultFileName =
-          s"""graph-walk-
-             |${atTime.map(_.millis).getOrElse(s"${System.currentTimeMillis}_T")}-
-             |${lengthOpt.getOrElse(AlgorithmGraph.defaults.walkLength)}x
-             |${countOpt.getOrElse(AlgorithmGraph.defaults.walkCount)}-q
-             |${queryOpt.map(_.length).getOrElse("0")}-
-             |${returnParamOpt.getOrElse(AlgorithmGraph.defaults.returnParam)}x
-             |${inOutParamOpt.getOrElse(AlgorithmGraph.defaults.inOutParam)}-
-             |${seedOpt.getOrElse("_")}.csv""".stripMargin.replace("\n", "")
+          generateDefaultFileName(atTime, lengthOpt, countOpt, queryOpt, returnParamOpt, inOutParamOpt, seedOpt)
+
         val fileName = saveLocation match {
           case S3Bucket(_, keyOpt) => keyOpt.getOrElse(defaultFileName)
           case LocalFile(None) => defaultFileName

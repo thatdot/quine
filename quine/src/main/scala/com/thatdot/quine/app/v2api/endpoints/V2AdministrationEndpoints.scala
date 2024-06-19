@@ -2,16 +2,14 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.circe.generic.auto._
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
+import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir.generic.auto._
-import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.server.ServerEndpoint.Full
-import sttp.tapir.{Endpoint, Schema, path, query}
+import sttp.tapir.{Endpoint, Schema, path, query, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
@@ -127,12 +125,12 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2AdministrationEndpoints extends V2EndpointDefinitions with TapirJsonCirce {
+trait V2AdministrationEndpoints extends V2EndpointDefinitions {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
 
-  // implicit val graphHashCodeEncoder: Encoder[TGraphHashCode] = deriveEncoder[TGraphHashCode]
+  implicit val graphHashCodeEncoder: Encoder[TGraphHashCode] = deriveEncoder[TGraphHashCode]
   implicit val graphHashCodeDecoder: Decoder[TGraphHashCode] = deriveDecoder[TGraphHashCode]
   implicit val infoEncoder: Encoder.AsObject[TQuineInfo] = deriveEncoder[TQuineInfo]
   implicit val infoDecoder: Decoder[TQuineInfo] = deriveDecoder[TQuineInfo]
@@ -161,13 +159,16 @@ trait V2AdministrationEndpoints extends V2EndpointDefinitions with TapirJsonCirc
     .description("A map of shard IDs to shard in-memory node limits")
     .encodedExample(exampleShardMap.asJson)
 
+  private def rawAdminEndpoint(path: String): EndpointBase =
+    rawEndpoint("admin").in(path).tag("Administration")
+
   /** Generate an endpoint at  /api/ v2/admin/$path */
   private def adminEndpoint[T](path: String)(implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T]
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    baseEndpoint[T]("admin").in(path).tag("Administration")
+    withOutput[T](rawAdminEndpoint(path))
 
   private val buildInfoEndpoint = adminEndpoint[TQuineInfo]("build-info")
     .name("Build Information")
@@ -202,14 +203,14 @@ endpoint.
       _ <: CustomError
     ], ObjectEnvelope[TGraphHashCode], Any, Future] = adminEndpoint[TGraphHashCode]("graph-hash-code")
     .description("""Generate a hash of the state of the graph at the provided timestamp.
-        |
-        |This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
-        |generating a checksum based on their (serialized) properties and edges.
-        |
-        |The timestamp defaults to the server's current clock time if not provided.
-        |
-        |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
-        |journals disabled.""".stripMargin)
+                   |
+                   |This is done by materializing readonly/historical versions of all nodes at a particular timestamp and
+                   |generating a checksum based on their (serialized) properties and edges.
+                   |
+                   |The timestamp defaults to the server's current clock time if not provided.
+                   |
+                   |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
+                   |journals disabled.""".stripMargin)
     .name("Graph Hashcode")
     .in(atTimeParameter)
     .in(namespaceParameter)
@@ -223,23 +224,16 @@ endpoint.
       )
     }
 
-  private val livenessEndpoint
-    : Full[Unit, Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[Boolean], Any, Future] =
-    adminEndpoint[Boolean]("liveness")
+  private val livenessEndpoint =
+    rawAdminEndpoint("liveness")
       .name("Process Liveness")
       .description("""This is a basic no-op endpoint for use when checking if the system is hung or responsive.
-               | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
-              | It does not otherwise indicate readiness to handle data requests or system health.
-               | Returns a 204 response.""")
+                     | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
+                     | It does not otherwise indicate readiness to handle data requests or system health.
+                     | Returns a 204 response.""")
       .get
-      .serverLogic { memberIdx =>
-        runServerLogic[Unit, Boolean](
-          GetLivenessApiCmd,
-          memberIdx,
-          (),
-          _ => Future.successful(app.isLive)
-        )
-      }
+      .out(statusCode(StatusCode.NoContent))
+      .serverLogicSuccess(_ => Future.successful(()))
 
   private val readinessEndpoint = adminEndpoint[Boolean]("readiness")
     .name("Process Readiness")
@@ -248,11 +242,11 @@ The intended use is for a load balancer to use this to know when the instance is
 up ready and start routing user requests to it.
 """).get
     .serverLogic { memberIdx =>
-      runServerLogic[Unit, Boolean](
+      runServerLogicWithError[Unit, Boolean](
         GetReadinessApiCmd,
         memberIdx,
         (),
-        _ => Future.successful(app.isReady)
+        _ => Future.successful(Either.cond(app.isReady, true, ServiceUnavailable("System is not ready")))
       )
     }
 
@@ -289,30 +283,30 @@ up ready and start routing user requests to it.
     .summary("Metrics Summary")
     .description(
       """Returns a JSON object containing metrics data used in the Quine
-                   |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring)
-                   |dashboard. The selection of metrics is based on current configuration and execution environment, and is
-                   |subject to change. A few metrics of note include:""".stripMargin.replace('\n', ' ') +
+        |[Monitoring](https://docs.quine.io/core-concepts/operational-considerations.html#monitoring)
+        |dashboard. The selection of metrics is based on current configuration and execution environment, and is
+        |subject to change. A few metrics of note include:""".stripMargin.replace('\n', ' ') +
       """
-        |
-        |Counters
-        |
-        | - `node.edge-counts.*`: Histogram-style summaries of edges per node
-        | - `node.property-counts.*`: Histogram-style summaries of properties per node
-        | - `shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
-        |   states. These can be used to estimate the number of awake nodes.
-        |
-        |Timers
-        |
-        | - `persistor.get-journal`: Time taken to read and deserialize a single node's relevant journal
-        | - `persistor.persist-event`: Time taken to serialize and persist one message's worth of on-node events
-        | - `persistor.get-latest-snapshot`: Time taken to read (but not deserialize) a single node snapshot
-        |
-        | Gauges
-        | - `memory.heap.*`: JVM heap usage
-        | - `memory.total`: JVM combined memory usage
-        | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
-        | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
-        |""".stripMargin
+          |
+          |Counters
+          |
+          | - `node.edge-counts.*`: Histogram-style summaries of edges per node
+          | - `node.property-counts.*`: Histogram-style summaries of properties per node
+          | - `shard.*.sleep-counters`: Count of nodes managed by a shard that have gone through various lifecycle
+          |   states. These can be used to estimate the number of awake nodes.
+          |
+          |Timers
+          |
+          | - `persistor.get-journal`: Time taken to read and deserialize a single node's relevant journal
+          | - `persistor.persist-event`: Time taken to serialize and persist one message's worth of on-node events
+          | - `persistor.get-latest-snapshot`: Time taken to read (but not deserialize) a single node snapshot
+          |
+          | Gauges
+          | - `memory.heap.*`: JVM heap usage
+          | - `memory.total`: JVM combined memory usage
+          | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
+          | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
+          |""".stripMargin
     )
     .get
     .serverLogic { memberIdx =>
@@ -324,6 +318,7 @@ up ready and start routing user requests to it.
       )
     }
 
+  //TODO shardMapLimitSchema
   private val shardSizesEndpoint = adminEndpoint[Map[Int, TShardInMemoryLimit]]("shard-sizes").post
     .name("Shard Sizes")
     .description("""Get and update the in-memory node limits.
@@ -353,6 +348,7 @@ up ready and start routing user requests to it.
                    |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin)
     .in(path[QuineId]("nodeIdSegment"))
     .in(query[Option[String]]("namespace"))
+    .out(statusCode(StatusCode.Accepted))
     .serverLogic { case (memberIdx, nodeId, namespace) =>
       runServerLogic[(QuineId, NamespaceId), Unit](
         SleepNodeApiCmd,

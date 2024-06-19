@@ -15,7 +15,7 @@ import org.webjars.WebJarAssetLocator
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
 import com.thatdot.quine.app.v2api.{OssApiInterface, V2OssRoutes}
-import com.thatdot.quine.app.{BuildInfo, QuineApp}
+import com.thatdot.quine.app.{BaseApp, BuildInfo, QuineApp}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
@@ -32,7 +32,11 @@ import com.thatdot.quine.model.QuineId
   */
 class QuineAppRoutes(
   val graph: LiteralOpsGraph with AlgorithmGraph with CypherOpsGraph with StandingQueryOpsGraph,
-  val quineApp: AdministrationRoutesState with QueryUiConfigurationState with StandingQueryStore with IngestStreamState,
+  val quineApp: BaseApp
+    with AdministrationRoutesState
+    with QueryUiConfigurationState
+    with StandingQueryStore
+    with IngestStreamState,
   val config: BaseConfig,
   val uri: Uri,
   val timeout: Timeout,
@@ -51,10 +55,12 @@ class QuineAppRoutes(
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazyLogging {
 
+  //
+  //override val app: BaseApp with StandingQueryStore with IngestStreamState = ???
   implicit val system: ActorSystem = graph.system
 
   val currentConfig = config.loadedConfigJson
-  val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
+  private val webSocketQuinePatternServer = new WebSocketQuinePatternServer(system)
 
   val version = BuildInfo.version
   val gremlin: GremlinQueryRunner = GremlinQueryRunner(graph)(timeout)
