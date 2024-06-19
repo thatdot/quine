@@ -33,7 +33,6 @@
       <link rel="stylesheet" href="$page.base$$page.properties.("material.custom.stylesheet")$">
     $ endif $
     <link rel="stylesheet" href="$page.base$assets/stylesheets/application.451f80e5.css">
-    <link rel="stylesheet" href="$page.base$assets/stylesheets/quine-theme.css">
     $ if (page.properties.("material.color.primary")) $
       <link rel="stylesheet" href="$page.base$assets/stylesheets/application-palette.22915126.css">
       $ if (page.properties.("material.color.primary.theme")) $
@@ -120,6 +119,7 @@
     <script type="text/javascript" src="$page.base$lib/prettify/lang-scala.js"></script>
     <script type="text/javascript" src="$page.base$assets/javascripts/lang-cypher.js"></script>
     <script type="text/javascript" src="$page.base$assets/javascripts/lang-yaml.js"></script>
+    <script type="text/javascript" src="$page.base$assets/javascripts/lang-sql.js"></script>
     $ if (page.properties.("material.custom.javascript")) $
       <script src="$page.base$$page.properties.("material.custom.javascript")$"></script>
     $ endif $
