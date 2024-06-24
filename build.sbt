@@ -252,7 +252,7 @@ lazy val `quine`: Project = project
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.github.davidb" % "metrics-influxdb" % metricsInfluxdbV,
       "com.github.jnr" % "jnr-posix" % jnrPosixV,
-      "com.github.pjfanning" %% "pekko-http-circe" % "2.4.0",
+      "com.github.pjfanning" %% "pekko-http-circe" % "2.6.0",
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
       "com.github.scopt" %% "scopt" % scoptV,
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
