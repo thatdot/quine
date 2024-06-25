@@ -17,6 +17,7 @@ import slinky.core.facade.ReactElement
 import slinky.web.html._
 
 import com.thatdot.quine.routes.{ClientRoutes, Counter, MetricsReport, ShardInMemoryLimit}
+import com.thatdot.quine.webapp.SlinkyReadWriteInstances._
 import com.thatdot.quine.webapp.components.dashboard._
 object MetricsDashboard {
   def extractShardIds(counters: Seq[Counter]): SortedSet[Int] = SortedSet(counters.collect {
