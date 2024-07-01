@@ -19,7 +19,7 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, Uri}
 import org.apache.pekko.pattern.retry
 
-import com.typesafe.scalalogging.StrictLogging
+import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 import io.circe.generic.auto._
 import io.circe.syntax._
 
@@ -152,7 +152,8 @@ class ImproveQuine(
   recipeUsed: Boolean = false,
   recipeCanonicalName: Option[String] = None,
   apiKey: Option[String] = None
-)(implicit system: ActorSystem) {
+)(implicit system: ActorSystem)
+    extends LazyLogging {
 
   private val invalidMacAddresses = Set(
     Array.fill[Byte](6)(0x00),
@@ -255,6 +256,7 @@ class ImproveQuine(
   /** Fire and forget function to send startup telemetry and schedule regular heartbeat events.
     */
   def startTelemetry(): Unit = {
+    logger.info(s"Starting usage telemetry")
     implicit val ec: ExecutionContext = system.dispatcher
     val sources = getSources
     for {
