@@ -362,13 +362,16 @@ object CypherIdFrom extends UserDefinedFunction {
 }
 
 // trait for functions that require a position-aware IdProvider to function
-// TODO only register these when an appropriate idProvider is configured (or when the cluster size is 1?)
 trait PositionSensitiveFunction extends UserDefinedFunction {
   final def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value = idProvider match {
     case namespacedProvider: PositionAwareIdProvider => callWithPositioning(arguments)(namespacedProvider)
     case notNamespacedProvider @ _ =>
       throw CypherException.ConstraintViolation(
-        s"Unable to use a non-namespaced ID provider ($notNamespacedProvider) with a namespace-dependent function $name",
+        s"""
+           |Unable to use a function ($name) using the configured ID provider ($notNamespacedProvider),
+           |because the configured ID provider is not position-aware. Consider setting `quine.id.partitioned = true`
+           |in your configuration.
+           |""".stripMargin.replace('\n', ' ').trim,
         None
       )
   }

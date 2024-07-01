@@ -166,7 +166,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       )
     )
 
-    // multiple non-conflicting heterogenous id constraints in where condition
+    // multiple non-conflicting heterogeneous id constraints in where condition
     testQuery(
       "MATCH (n) WHERE strId(n) = '100' AND id(n) = 100 RETURN DISTINCT id(n)",
       GraphQueryPattern(
@@ -264,7 +264,11 @@ class StandingQueryPatternsTest extends AnyFunSpec {
     interceptQuery(
       "MATCH (n) WHERE strId(n) = locIdFrom('partitioned', '0118 999 881 999 119 7253') RETURN DISTINCT strId(n)",
       CypherException.ConstraintViolation(
-        s"Unable to use a non-namespaced ID provider ($idProvider) with a namespace-dependent function locIdFrom",
+        s"""
+           |Unable to use a function (locIdFrom) using the configured ID provider ($idProvider),
+           |because the configured ID provider is not position-aware. Consider setting `quine.id.partitioned = true`
+           |in your configuration.
+           |""".stripMargin.replace('\n', ' ').trim,
         None
       )
     )
