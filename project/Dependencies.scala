@@ -79,7 +79,7 @@ object Dependencies {
   val tapirRecdocV = "1.10.10"
   val tapirV = "1.10.10"
   val ujsonV = "1.6.0"
-  val circeV = "0.14.7"
+  val circeV = "0.14.8"
   val circeOpticsV = "0.15.0"
   val visNetworkV = "8.2.0"
   val webjarsLocatorV = "0.52"
