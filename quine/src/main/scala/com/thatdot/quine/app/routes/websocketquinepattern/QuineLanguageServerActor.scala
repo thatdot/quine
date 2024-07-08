@@ -7,11 +7,12 @@ import org.apache.pekko.actor.Actor
 import org.apache.pekko.http.scaladsl.model.ws.{BinaryMessage, TextMessage}
 import org.apache.pekko.stream.Materializer
 
-import com.quine.language.server.QuineLanguageServer
 import io.circe.parser.decode
 import io.circe.syntax._
 import io.circe.{Decoder, HCursor}
 import org.eclipse.lsp4j.InitializeParams
+
+import com.thatdot.language.server.QuineLanguageServer
 
 object QuineLanguageServerActor {
   sealed trait ClientMessage

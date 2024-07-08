@@ -1,12 +1,8 @@
 package com.thatdot.quine.graph.behavior
 
-import scala.collection.mutable
-
 import org.apache.pekko.actor.Actor
 
-import cats.implicits._
-
-import com.thatdot.quine.graph.cypher.{BinOp, Expr, Parameters, Projection, QueryContext, QuinePattern, Value}
+import com.thatdot.quine.graph.cypher.{BinOp, Expr, QueryContext, QuinePattern}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, RunningStandingQuery, StandingQueryId, StandingQueryPattern}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId, QuineValue}
@@ -44,32 +40,6 @@ trait QuinePatternQueryBehavior
   def publishResults(id: StandingQueryId, results: List[QueryContext]): Unit =
     resultPatterns.get(id).foreach(f => f(results))
 
-  def project(proj: Projection, results: List[QueryContext]): Option[List[QueryContext]] = proj match {
-    case prop: Projection.Property =>
-      results.traverse { qc =>
-        for {
-          pv <- qc.get(prop.of)
-          vm <- pv match {
-            case Expr.Map(map) => Some(map)
-            case _ => Option.empty[mutable.SortedMap[String, Value]]
-          }
-          v <- vm.get(prop.name.name)
-        } yield qc + (prop.as -> v)
-      }
-    case Projection.Calculation(expr, name) =>
-      Some(results.map { qc =>
-        val result = expr.eval(qc)(this.idProvider, Parameters.empty)
-        qc + (name -> result)
-      })
-    case Projection.Serial(_) => ???
-    case Projection.Parallel(subs) =>
-      results.flatTraverse(qc =>
-        subs.toList.foldM(List(qc)) { (result, p) =>
-          project(p, result)
-        }
-      )
-  }
-
   def patternToEffect(qp: QuinePattern, id: StandingQueryId, sendTo: Option[QuineId]): Effects = {
     qp match {
       case QuinePattern.QuineUnit =>
@@ -84,7 +54,7 @@ trait QuinePatternQueryBehavior
             val propMap: Iterable[(String, QuineValue)] =
               properties.map(p => p._1.name -> p._2.deserialized.get)
             val qv: QuineValue = QuineValue.Map.apply(propMap)
-            val result = List(QueryContext.empty + (name -> Expr.fromQuineValue(qv)))
+            val result = List(QueryContext.empty + (name.name -> Expr.fromQuineValue(qv)))
             publishResults(id, result)
           })),
           edgeEffect = Map(),
@@ -105,7 +75,7 @@ trait QuinePatternQueryBehavior
           })),
           resultEffect = Map()
         )
-      case QuinePattern.Fold(init, over, f, proj) =>
+      case QuinePattern.Fold(init, over, f, _) =>
         val binOpEffect = (results: List[QueryContext]) => {
           val ids = (0 to over.size).map(n => StandingQueryId.fresh())
           val result = f match {
@@ -140,7 +110,7 @@ trait QuinePatternQueryBehavior
             output += (id -> result)
             sendTo match {
               case Some(subscriberId) => subscriberId ! ExampleMessages.QuinePatternMessages.NewResults(result, id)
-              case None => ???
+              case None => ()
             }
           }
         }
@@ -158,7 +128,7 @@ trait QuinePatternQueryBehavior
           val effect = patternToEffect(qp, effectId, None)
           val resultEffectFunc = (results: List[QueryContext]) => {
             val prevResult = output.getOrElse(effectId, List.empty[QueryContext])
-            val newResult = proj.fold(results)(p => project(p, results).getOrElse(List.empty[QueryContext]))
+            val newResult = results
             if (newResult != prevResult) {
               output += (effectId -> newResult)
               publishResults(id, newResult)
@@ -169,7 +139,7 @@ trait QuinePatternQueryBehavior
               (results: List[QueryContext]) => {
                 oldEffect(results)
                 val prevResult = output.getOrElse(effectId, List.empty[QueryContext])
-                val newResult = proj.fold(results)(p => project(p, prevResult).getOrElse(List.empty[QueryContext]))
+                val newResult = results
                 if (newResult != prevResult) {
                   output += (effectId -> newResult)
                   publishResults(id, newResult)

@@ -1,22 +1,11 @@
 package com.thatdot.quine.graph.cypher
 
-import cats.data.{NonEmptyList, StateT}
+import cats.data.{NonEmptyList, State}
 import cats.implicits._
-import com.quine.language.ast.{Expression, Operator, Predicate}
-import com.quine.language.{ast => QueryAST}
 
-import com.thatdot.quine.graph.GraphQueryPattern.{NodePattern, NodePatternId, ReturnColumn}
-import com.thatdot.quine.graph.InvalidQueryPattern.HasACycle
-import com.thatdot.quine.graph.{GraphQueryPattern, InvalidQueryPattern}
-
-sealed trait Projection
-
-object Projection {
-  case class Property(of: Symbol, name: Symbol, as: Symbol) extends Projection
-  case class Calculation(expr: Expr, as: Symbol) extends Projection
-  case class Serial(subs: NonEmptyList[Projection]) extends Projection
-  case class Parallel(subs: NonEmptyList[Projection]) extends Projection
-}
+import com.thatdot.cypher.phases.SymbolAnalysisModule.SymbolTable
+import com.thatdot.language.ast.Identifier.{UnqualifiedIdentifier, toList}
+import com.thatdot.language.ast._
 
 sealed trait BinOp
 
@@ -27,222 +16,245 @@ object BinOp {
 
 sealed trait QuinePattern
 
+sealed trait Output
+
 object QuinePattern {
   case object QuineUnit extends QuinePattern
-  case class Node(binding: Symbol) extends QuinePattern
+  case class Node(binding: Identifier.UnqualifiedIdentifier) extends QuinePattern
   case class Edge(edgeLabel: Symbol, remotePattern: QuinePattern) extends QuinePattern
 
-  case class Fold(init: QuinePattern, over: List[QuinePattern], f: BinOp, projection: Option[Projection])
-      extends QuinePattern
+  case class Fold(init: QuinePattern, over: List[QuinePattern], f: BinOp, output: Output) extends QuinePattern
 }
 
 object Compiler {
-  class StateHelper[S, E] {
-    type Program[A] = StateT[Either[E, *], S, A]
 
-    def pure[A](a: A): Program[A] = StateT.pure(a)
-    def error(e: E): Program[Unit] = StateT.liftF(Left(e))
-    def get: Program[S] = StateT.get
-    def mod(update: S => S): Program[Unit] = StateT.modify(update)
-    def updateAndGet(update: S => S): Program[S] = mod(update) *> get
-    def inspect[A](view: S => A): Program[A] = StateT.inspect(view)
-    def failIf(test: => Boolean, e: E): Program[Unit] = if (test) {
-      error(e)
-    } else {
-      pure(())
-    }
-  }
-
-  case class CompilerState(
-    gqp: GraphQueryPattern,
-    nodesById: Map[NodePatternId, NodePattern],
-    visited: Set[NodePatternId]
-  )
-
-  val helper = new StateHelper[CompilerState, InvalidQueryPattern]
-
-  import helper._
-
-  def compileNodePattern(nodePattern: NodePattern): Program[QuinePattern] = for {
-    visited <- inspect(_.visited)
-    _ <- mod(st => st.copy(visited = st.visited + nodePattern.id))
-    edges <- inspect(_.gqp.edges)
-    unhandledEdges = edges.toList.filterNot(edge => visited.contains(edge.to) || visited.contains(edge.from))
-    interestingEdges = unhandledEdges.filter(edge => edge.to == nodePattern.id || edge.from == nodePattern.id)
-    edgeQueries <- interestingEdges.traverse { edge =>
-      val interestingId = if (nodePattern.id == edge.from) edge.to else edge.from
-      val subPattern = compileFromStartingPoint(interestingId)
-      subPattern.map(pattern => QuinePattern.Edge(edge.label, pattern))
-    }
-    extractions <- inspect(_.gqp.toExtract)
-    interestingExtractions = extractions.toList.filter {
-      case ReturnColumn.Id(node, _, _) => node == nodePattern.id
-      case ReturnColumn.Property(node, _, _) => node == nodePattern.id
-      case ReturnColumn.AllProperties(_, _) => ???
-    }.toNel
-    properties = interestingExtractions.flatMap { extracts =>
-      val maybeProjections = extracts.toList
-        .map {
-          case ReturnColumn.Id(_, _, _) => None
-          case ReturnColumn.Property(node, propertyKey, aliasedAs) =>
-            Some(Projection.Property(Symbol(node.id.toString), propertyKey, aliasedAs))
-          case ReturnColumn.AllProperties(_, _) => ???
-        }
-        .filter(_.isDefined)
-      if (maybeProjections.isEmpty) {
-        None
-      } else {
-        Some(Projection.Parallel(NonEmptyList.fromListUnsafe(maybeProjections.sequence.get)))
-      }
-    }
-    returns <- inspect(_.gqp.toReturn)
-  } yield {
-    val nodePat = QuinePattern.Node(Symbol(nodePattern.id.id.toString))
-    val withProperties = properties match {
-      case Some(p) =>
-        QuinePattern.Fold(
-          init = QuinePattern.QuineUnit,
-          over = List(nodePat),
-          f = BinOp.Append,
-          projection = Some(p)
-        )
-      case None => nodePat
-    }
-    val withEdges = if (edgeQueries.isEmpty) {
-      withProperties
-    } else {
-      QuinePattern.Fold(
-        init = QuinePattern.QuineUnit,
-        over = withProperties :: edgeQueries,
-        f = BinOp.Merge,
-        projection = None
-      )
-    }
-    if (returns.isEmpty) {
-      withEdges
-    } else {
-      QuinePattern.Fold(
-        init = QuinePattern.QuineUnit,
-        over = withEdges :: Nil,
-        f = BinOp.Merge,
-        projection = Some(
-          Projection.Parallel(NonEmptyList.fromListUnsafe(returns.map(p => Projection.Calculation(p._2, p._1)).toList))
-        )
-      )
-    }
-  }
-
-  def compileFromStartingPoint(pid: NodePatternId): Program[QuinePattern] = for {
-    alreadySeen <- inspect(_.visited.contains(pid))
-    _ <- failIf(alreadySeen, HasACycle)
-    node <- inspect(_.nodesById(pid))
-    qp <- compileNodePattern(node)
-  } yield qp
-
-  def compileFromQueryPattern(gqp: GraphQueryPattern): QuinePattern = {
-    val nodesById: Map[NodePatternId, NodePattern] = gqp.nodes.map(pattern => pattern.id -> pattern).toList.toMap
-    println(s"Edges ${gqp.edges}")
-    println(s"ToExtract ${gqp.toExtract}")
-    println(s"Filter ${gqp.filterCond}")
-    println(s"Return ${gqp.toReturn}")
-    compileFromStartingPoint(gqp.startingPoint).runA(CompilerState(gqp, nodesById, Set.empty[NodePatternId])) match {
-      case Left(err) => throw err
-      case Right(quinePattern) => quinePattern
-    }
-  }
-
-  def compileFromPredicate(predicate: QueryAST.Predicate): QuinePattern = {
-    def findNodes(p: Predicate): List[Symbol] = p match {
-      case Predicate.And(_, lhs, rhs) => findNodes(lhs) ++ findNodes(rhs)
-      case Predicate.Or(_, _, _) => Nil
-      case Predicate.ExistsNode(_, binding, _) => binding :: Nil
-      case Predicate.ExistsPath(_, _, _, _) => Nil
-      case Predicate.ExistsEdge(_, _, _, _, _) => Nil
-      case Predicate.Satisfies(_, _) => Nil
-      case Predicate.True => Nil
-      case Predicate.False => Nil
-    }
-
-    val nodes = findNodes(predicate)
-
-    def findEdges(p: Predicate): (Map[Symbol, Symbol], Map[Symbol, Symbol]) = p match {
-      case Predicate.And(_, lhs, rhs) =>
-        val (ls, ld) = findEdges(lhs)
-        val (rs, rd) = findEdges(rhs)
-        (ls ++ rs, ld ++ rd)
-      case Predicate.Or(_, _, _) => (Map(), Map())
-      case Predicate.ExistsNode(_, _, _) => (Map(), Map())
-      case Predicate.ExistsPath(_, _, _, _) => (Map(), Map())
-      case Predicate.ExistsEdge(_, edge, _, src, dest) => (Map(edge -> src), Map(edge -> dest))
-      case Predicate.Satisfies(_, _) => (Map(), Map())
-      case Predicate.True => (Map(), Map())
-      case Predicate.False => (Map(), Map())
-    }
-
-    val edges = findEdges(predicate)
-
-    println(edges)
-
-    val startingPoint = nodes.find(node => !edges._2.values.toSet.contains(node)).get
-
-    def buildExecutionPlan(from: Symbol): QuinePattern = {
-      val interestingEdges = edges._1.toList.filter(p => p._2 == from).map(p => p._1 -> edges._2(p._1))
-      val nodePat = QuinePattern.Node(from)
-      val edgePats = interestingEdges.map(e => QuinePattern.Edge(Symbol("edge"), buildExecutionPlan(e._2)))
-      QuinePattern.Fold(
-        init = QuinePattern.QuineUnit,
-        over = nodePat :: edgePats,
-        f = BinOp.Merge,
-        projection = None
-      )
-    }
-
-    buildExecutionPlan(startingPoint)
-  }
-
-  def expressionFromDesc(exp: QueryAST.Expression): Expr = exp match {
-    case Expression.Ident(_, name) => Expr.Variable(name)
-    case Expression.Apply(_, _, _) => ???
-    case Expression.Literal(_, _) => ???
-    case Expression.Parameter(_, _) => ???
-    case Expression.UnaryOp(_, _, _) => ???
+  def expressionFromDesc(exp: com.thatdot.language.ast.Expression): Expr = exp match {
+    case Expression.Apply(_, name, args) =>
+      val f = Func.builtinFunctions.find(_.name == name.name).get
+      Expr.Function(f, args.map(expressionFromDesc).toVector)
     case Expression.BinOp(_, op, lhs, rhs) =>
       op match {
         case Operator.Plus => Expr.Add(expressionFromDesc(lhs), expressionFromDesc(rhs))
-        case Operator.Dot => Expr.Property(expressionFromDesc(lhs), rhs.asInstanceOf[Expression.Ident].name)
-        case Operator.And => ???
-        case Operator.Or => ???
-        case Operator.LessThan => ???
-        case Operator.Equals => ???
-        case Operator.GreaterThan => ???
-        case Operator.GreaterThanEqual => ???
-        case Operator.Minus => ???
-        case Operator.Not => ???
-        case Operator.XOr => ???
+        case _ => ???
       }
+    case com.thatdot.language.ast.Expression.Ident(_, name) =>
+      name.toList
+        .foldLeft(Option.empty[Expr]) { (e, n) =>
+          e match {
+            case Some(value) => Some(Expr.Property(value, n))
+            case None => Some(Expr.Variable(n))
+          }
+        }
+        .get
+    case _ =>
+      println(exp)
+      ???
   }
 
-  def projectionFromDesc(projection: QueryAST.Projection): Projection = projection match {
-    case QueryAST.Projection.Parallel(projections) =>
-      Projection.Parallel(NonEmptyList.fromListUnsafe(projections.map(projectionFromDesc)))
-    case QueryAST.Projection.Calculation(expression, as) => Projection.Calculation(expressionFromDesc(expression), as)
+  sealed trait DependencyGraph
+
+  object DependencyGraph {
+    case class Independent(steps: NonEmptyList[DependencyGraph]) extends DependencyGraph
+    case class Dependent(first: DependencyGraph, second: DependencyGraph) extends DependencyGraph
+    case class Step(instruction: Instruction) extends DependencyGraph
+    case object Empty extends DependencyGraph
+
+    def empty: DependencyGraph = Empty
   }
 
-  def compileFromAST(ast: QueryAST.Query): QuinePattern = ast match {
-    case QueryAST.Query.Union(_, lhs, rhs) =>
-      QuinePattern.Fold(
-        init = QuinePattern.QuineUnit,
-        over = List(compileFromAST(lhs), compileFromAST(rhs)),
-        f = BinOp.Append,
-        projection = None
-      )
-    case QueryAST.Query.Single(_, predicate, _, projection) =>
-      QuinePattern.Fold(
-        init = QuinePattern.QuineUnit,
-        over = List(compileFromPredicate(predicate)),
-        f = BinOp.Merge,
-        projection = projection.map(p => projectionFromDesc(p))
-      )
-    case QueryAST.Query.Empty => QuinePattern.QuineUnit
+  case class DependencyGraphState(
+    graph: DependencyGraph,
+    deferred: List[(Set[UnqualifiedIdentifier], Instruction)],
+    symbolTable: SymbolTable
+  )
+
+  type DependencyGraphProgram[A] = State[DependencyGraphState, A]
+
+  def pure[A](a: A): DependencyGraphProgram[A] = State.pure(a)
+  def inspect[A](view: DependencyGraphState => A): DependencyGraphProgram[A] = State.inspect(view)
+  def mod(update: DependencyGraphState => DependencyGraphState): DependencyGraphProgram[Unit] =
+    State.modify(update)
+  def noop: DependencyGraphProgram[Unit] = pure(())
+
+  def analyzeExpressionDeps(expression: Expression): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+    expression match {
+      case apply: Expression.Apply =>
+        apply.args.foldM(Set.empty[UnqualifiedIdentifier])((deps, exp) => analyzeExpressionDeps(exp).map(deps union _))
+      case _: Expression.AtomicLiteral => pure(Set.empty[UnqualifiedIdentifier])
+      case binary: Expression.BinOp =>
+        for {
+          leftDeps <- analyzeExpressionDeps(binary.lhs)
+          rightDeps <- analyzeExpressionDeps(binary.rhs)
+        } yield leftDeps union rightDeps
+      case id: Expression.Ident =>
+        id.identifier match {
+          case uid: UnqualifiedIdentifier => pure(Set(uid))
+          case qid: Identifier.QualifiedIdentifier => pure(Set(UnqualifiedIdentifier(qid.qualifier)))
+        }
+      case _ =>
+        println(expression)
+        ???
+    }
+
+  def analyzeInstructionDeps(instruction: Instruction): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+    instruction match {
+      case _: Instruction.LocalNode => pure(Set.empty)
+      case proj: Instruction.Proj => analyzeExpressionDeps(proj.expression)
+      case filter: Instruction.Filter => analyzeExpressionDeps(filter.expression)
+      case _ =>
+        println(instruction)
+        ???
+    }
+
+  def analyzeInstructionIntros(instruction: Instruction): Set[UnqualifiedIdentifier] = instruction match {
+    case local: Instruction.LocalNode => Set(local.binding)
+    case _: Instruction.Proj => Set.empty
+    case _ =>
+      println(instruction)
+      ???
+  }
+
+  val tryDeferred: DependencyGraphProgram[Unit] =
+    inspect(_.deferred) >>= (deferred => deferred.sortBy(_._1.size).traverse_(p => insertIntoGraph(p._2)))
+
+  def defer(instruction: Instruction, deps: Set[UnqualifiedIdentifier]): DependencyGraphProgram[Unit] =
+    mod(st => st.copy(deferred = st.deferred :+ (deps -> instruction)))
+
+  def reduceDeps(
+    instruction: Instruction,
+    steps: List[DependencyGraph],
+    unused: List[DependencyGraph],
+    used: List[DependencyGraph],
+    deps: Set[UnqualifiedIdentifier]
+  ): (Set[UnqualifiedIdentifier], DependencyGraph) =
+    steps match {
+      case Nil =>
+        deps -> (if (unused.isEmpty) DependencyGraph.Empty
+                 else DependencyGraph.Independent(NonEmptyList.fromListUnsafe(unused)))
+      case h :: t =>
+        val tryInsertAtHead = depthFirstInsertPure(instruction, h, deps)
+        if (tryInsertAtHead._1.isEmpty) {
+          val independentSteps = unused ::: t
+          val comesFirst = DependencyGraph.Independent(NonEmptyList.fromListUnsafe(used))
+          val depStep = DependencyGraph.Dependent(comesFirst, tryInsertAtHead._2)
+          val resultStep = DependencyGraph.Independent(NonEmptyList.fromListUnsafe(independentSteps :+ depStep))
+          Set.empty[UnqualifiedIdentifier] -> resultStep
+        } else {
+          if (tryInsertAtHead._1.size < deps.size) {
+            reduceDeps(instruction, t, unused, h :: used, tryInsertAtHead._1)
+          } else {
+            reduceDeps(instruction, t, h :: unused, used, deps)
+          }
+        }
+    }
+
+  def depthFirstInsertPure(
+    instruction: Instruction,
+    graph: DependencyGraph,
+    deps: Set[UnqualifiedIdentifier]
+  ): (Set[UnqualifiedIdentifier], DependencyGraph) =
+    graph match {
+      case ind: DependencyGraph.Independent =>
+        if (deps.isEmpty) {
+          deps -> DependencyGraph.Independent(NonEmptyList.of(ind, DependencyGraph.Step(instruction)))
+        } else {
+          reduceDeps(instruction, ind.steps.toList, Nil, Nil, deps)
+        }
+      case dep: DependencyGraph.Dependent =>
+        if (deps.isEmpty) {
+          deps -> DependencyGraph.Independent(NonEmptyList.of(dep, DependencyGraph.Step(instruction)))
+        } else {
+          val tryInsertFirst = depthFirstInsertPure(instruction, dep.first, deps)
+          if (tryInsertFirst._1.isEmpty) {
+            Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
+              dep.first,
+              DependencyGraph.Independent(NonEmptyList.of(dep.second, tryInsertFirst._2))
+            )
+          } else {
+            val unmet = tryInsertFirst._1
+            val tryInsertSecond = depthFirstInsertPure(instruction, dep.second, unmet)
+            if (tryInsertSecond._1.isEmpty) {
+              Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
+                dep.first,
+                DependencyGraph.Dependent(dep.second, tryInsertSecond._2)
+              )
+            } else {
+              val remaining = tryInsertSecond._1
+              remaining -> dep
+            }
+          }
+        }
+      case step: DependencyGraph.Step =>
+        if (deps.isEmpty) {
+          deps -> DependencyGraph.Independent(NonEmptyList.of(step, DependencyGraph.Step(instruction)))
+        } else {
+          val intros = analyzeInstructionIntros(step.instruction)
+          val unmet = deps diff intros
+          if (unmet.isEmpty)
+            unmet -> DependencyGraph.Dependent(step, DependencyGraph.Step(instruction))
+          else
+            unmet -> step
+        }
+      case DependencyGraph.Empty =>
+        deps -> (if (deps.isEmpty) DependencyGraph.Step(instruction) else DependencyGraph.Empty)
+    }
+
+  def depthFirstInsert(
+    instruction: Instruction,
+    deps: Set[UnqualifiedIdentifier]
+  ): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+    for {
+      graph <- inspect(_.graph)
+      insertResult = depthFirstInsertPure(instruction, graph, deps)
+      _ <- mod(st => st.copy(graph = insertResult._2)).whenA(insertResult._1.isEmpty)
+    } yield insertResult._1
+
+  def insertIntoGraph(instruction: Instruction): DependencyGraphProgram[Unit] =
+    for {
+      deps <- analyzeInstructionDeps(instruction)
+      unmetDeps <- depthFirstInsert(instruction, deps)
+      _ <- if (unmetDeps.isEmpty) tryDeferred else defer(instruction, unmetDeps)
+    } yield ()
+
+  def buildDependencyGraph(program: List[Instruction]): DependencyGraphProgram[Unit] =
+    program.traverse_(insertIntoGraph)
+
+  def instructionToQuinePattern(instruction: Instruction): QuinePattern =
+    instruction match {
+      case Instruction.Filter(_) => QuinePattern.QuineUnit
+      case Instruction.LocalNode(binding) => QuinePattern.Node(binding)
+      case Instruction.Proj(_, _) => QuinePattern.QuineUnit
+      case _ =>
+        println(instruction)
+        ???
+    }
+
+  def compileFromDependencyGraph(graph: DependencyGraph, symbolTable: SymbolTable): QuinePattern =
+    graph match {
+      case DependencyGraph.Independent(steps) =>
+        QuinePattern.Fold(
+          init = QuinePattern.QuineUnit,
+          over = steps.toList.map(step => compileFromDependencyGraph(step, symbolTable)),
+          f = BinOp.Merge,
+          output = null
+        )
+      case DependencyGraph.Dependent(first, second) =>
+        QuinePattern.Fold(
+          init = compileFromDependencyGraph(first, symbolTable),
+          over = List(compileFromDependencyGraph(second, symbolTable)),
+          f = BinOp.Merge,
+          output = null
+        )
+      case DependencyGraph.Step(instruction) => instructionToQuinePattern(instruction)
+      case DependencyGraph.Empty => QuinePattern.QuineUnit
+    }
+
+  def compile(program: List[Instruction], symbolTable: SymbolTable): QuinePattern = {
+    val dependencyGraph =
+      buildDependencyGraph(program).runS(DependencyGraphState(DependencyGraph.empty, Nil, symbolTable)).value
+    if (dependencyGraph.deferred.nonEmpty) {
+      sys.error(s"Unresolved dependencies! ${dependencyGraph.deferred}")
+    }
+    compileFromDependencyGraph(dependencyGraph.graph, symbolTable)
   }
 }
