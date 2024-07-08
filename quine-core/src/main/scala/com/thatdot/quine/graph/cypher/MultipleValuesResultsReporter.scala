@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.cypher
 import scala.collection.View
 
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
+import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter.generateResultReports
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
 import com.thatdot.quine.graph.{
   NamespaceId,
@@ -39,26 +40,38 @@ class MultipleValuesResultsReporter(
     * valid. Returns true iff all reports were successfully enqueued.
     */
   def applyAndEmitResults(resultsGroup: Seq[QueryContext]): Boolean = {
-    val removedRows = lastResults.diff(resultsGroup)
-    val addedRows = resultsGroup.diff(lastResults)
-    val diff = addedRows.view.map(_ -> true) ++ removedRows.view.map(_ -> false)
-    val reports: View[StandingQueryResult] = diff.map { case (values, isPositiveMatch) =>
-      StandingQueryResult(
-        isPositiveMatch,
-        values.environment.map { case (k, v) =>
-          k.name -> Expr.toQuineValue(v)
-        }
-      )
-    }
+    val reports =
+      generateResultReports(lastResults, resultsGroup, includeCancellations = sq.query.queryPattern.includeCancellation)
 
-    val allReportsSucceeded =
-      reports.map(sq.offerResult).toSeq.forall(identity)
+    val allReportsSucceeded = reports.map(sq.offerResult).toSeq.forall(identity)
 
     lastResults = resultsGroup
     allReportsSucceeded
   }
 }
 object MultipleValuesResultsReporter {
+
+  def generateResultReports(
+    trackedResults: Seq[QueryContext],
+    newResults: Seq[QueryContext],
+    includeCancellations: Boolean
+  ): View[StandingQueryResult] = {
+    val removedRows = trackedResults.diff(newResults)
+    val addedRows = newResults.diff(trackedResults)
+    val diff = addedRows.view.map(_ -> true) ++ removedRows.view.map(_ -> false)
+    diff.collect {
+      case (values, isPositiveMatch)
+          // we only need to report the members of the diff that are positive matches, unless the query
+          // specifies to include cancellations
+          if isPositiveMatch || includeCancellations =>
+        StandingQueryResult(
+          isPositiveMatch,
+          values.environment.map { case (k, v) =>
+            k.name -> Expr.toQuineValue(v)
+          }
+        )
+    }
+  }
 
   /** Utility to assist in rehydrating the reporters for a node. This is used while waking a node, and should be called
     * from the node's constructor, as it closes over both the node's properties and its standing query states.

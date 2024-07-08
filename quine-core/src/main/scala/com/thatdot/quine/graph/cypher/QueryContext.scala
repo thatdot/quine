@@ -49,7 +49,7 @@ final case class QueryContext(
   def prettyMap: Map[String, String] = environment.map { case (k, v) => k.name -> v.pretty }
 }
 object QueryContext {
-  val empty: QueryContext = QueryContext(Map())
+  val empty: QueryContext = QueryContext(Map.empty)
 
   /** Compare query contexts along an ordered list of criteria, each of which
     * can be be inverted (ie. descending instead of ascending)
