@@ -159,7 +159,10 @@ trait StaticShardGraph extends BaseGraph {
     }
 
     metrics.relayAskMetrics.markLocal()
-    promise.future
+    promise.future.transform { result =>
+      if (result.isFailure) metrics.relayAskMetrics.markLocalFailure()
+      result
+    }(ExecutionContext.parasitic)
   }
 
   def shutdown(): Future[Unit] = {

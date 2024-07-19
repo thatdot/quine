@@ -45,6 +45,13 @@ final private[quine] class ExactlyOnceAskActor[Resp](
 ) extends Actor
     with ActorLogging
     with Timers {
+  // Schedule a timeout to give up waiting
+  timers.startSingleTimer(
+    key = GiveUpWaiting,
+    msg = GiveUpWaiting,
+    timeout
+  )
+
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
 
   private val timerContext: Timer.Context = metrics.timeMessageSend()
@@ -66,13 +73,6 @@ final private[quine] class ExactlyOnceAskActor[Resp](
     timerContext.stop()
     Cancellable.alreadyCancelled
   }
-
-  // Schedule a timeout
-  timers.startSingleTimer(
-    key = GiveUpWaiting,
-    msg = GiveUpWaiting,
-    timeout
-  )
 
   private def receiveResponse(response: QuineResponse): Unit = {
     resultHandler.receiveResponse(response, promisedResult)(context.system)
@@ -110,7 +110,12 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       val neverGotAcked = retryTimeout.cancel()
       val waitingFor = if (neverGotAcked && refIsRemote) "`Ack`/reply" else "reply"
       val timeoutException = new ExactlyOnceTimeoutException(
-        s"$self timed out after $timeout waiting for $waitingFor to `$msg` from originalSender: $originalSender to: $actorRef"
+        s"""$self timed out after $timeout waiting for $waitingFor to `$msg` from originalSender:
+           |$originalSender to: $actorRef""".stripMargin.replace('\n', ' ').trim
+      )
+      log.warning(
+        s"""Timed out after $timeout waiting for $waitingFor to message of type: ${msg.getClass.getSimpleName}
+           |from originalSender: $originalSender to: $actorRef""".stripMargin.replace('\n', ' ').trim
       )
       promisedResult.tryFailure(timeoutException)
       context.system.stop(self)

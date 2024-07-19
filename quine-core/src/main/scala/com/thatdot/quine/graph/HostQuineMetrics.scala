@@ -174,8 +174,11 @@ object HostQuineMetrics {
   sealed trait MessagingMetric {
     def markLocal(): Unit
     def markRemote(): Unit
-    def timeMessageSend[T](send: => Future[T]): Future[T]
 
+    def markLocalFailure(): Unit
+    def markRemoteFailure(): Unit
+
+    def timeMessageSend[T](send: => Future[T]): Future[T]
     def timeMessageSend(): Timer.Context
   }
   sealed trait RelayAskMetric extends MessagingMetric
@@ -191,6 +194,14 @@ object HostQuineMetrics {
     // tracks time between initiating a message send and receiving an ack (or a result, if a result comes sooner)
     protected[this] val sendTimer: Timer =
       metricRegistry.timer(MetricRegistry.name("messaging", messageProtocol, "latency"))
+    // tracks failed message sends (defined as in sendTimer)
+    protected[this] val totalFailedSendMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "failed"))
+    protected[this] val localFailedSendMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "failed", "local"))
+    protected[this] val remoteFailedSendMeter: Meter =
+      metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "failed", "remote"))
+
     def markLocal(): Unit = {
       totalMeter.mark()
       localMeter.mark()
@@ -200,6 +211,15 @@ object HostQuineMetrics {
       totalMeter.mark()
       remoteMeter.mark()
     }
+    def markLocalFailure(): Unit = {
+      totalFailedSendMeter.mark()
+      localFailedSendMeter.mark()
+    }
+    def markRemoteFailure(): Unit = {
+      totalFailedSendMeter.mark()
+      remoteFailedSendMeter.mark()
+    }
+
     def timeMessageSend[T](send: => Future[T]): Future[T] =
       sendTimer.time(send)
 
@@ -217,6 +237,10 @@ object HostQuineMetrics {
     def markLocal(): Unit = ()
 
     def markRemote(): Unit = ()
+
+    def markLocalFailure(): Unit = ()
+
+    def markRemoteFailure(): Unit = ()
 
     def timeMessageSend[T](send: => Future[T]): Future[T] = send
 
