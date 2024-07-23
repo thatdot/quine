@@ -151,6 +151,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherMapDropNullValues,
     CypherTextSplit,
     CypherTextRegexFirstMatch,
+    CypherTextRegexReplaceAll,
     CypherTextUrlEncode,
     CypherTextUrlDecode,
     CypherDateTime,
@@ -710,6 +711,27 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
             i <- 0 to m.groupCount
           } yield Expr.Str(m.group(i))
         )
+      case other => throw wrongSignature(other)
+    }
+}
+
+object CypherTextRegexReplaceAll extends UserDefinedFunction {
+  val name = "text.regexReplaceAll"
+  val isPure = true
+  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector("text" -> Type.Str, "regex" -> Type.Str, "replacement" -> Type.Str),
+      output = Type.Str,
+      description =
+        "Replaces all instances of the regular expression `regex` in the string `text` with the `replacement` string. Numbered capture groups may be referenced with $1, $2, etc."
+    )
+  )
+  val category = Category.STRING
+
+  def call(args: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
+    args match {
+      case Vector(Expr.Str(text), Expr.Str(regex), Expr.Str(replacement)) =>
+        Expr.Str(regex.r.replaceAllIn(text, replacement))
       case other => throw wrongSignature(other)
     }
 }
