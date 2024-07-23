@@ -1,5 +1,5 @@
-import QuineSettings._
-import Dependencies._
+import QuineSettings.*
+import Dependencies.*
 
 ThisBuild / resolvers += "thatDot maven" at "https://s3.us-west-2.amazonaws.com/com.thatdot.dependencies/release/"
 

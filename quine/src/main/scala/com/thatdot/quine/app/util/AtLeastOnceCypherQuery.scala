@@ -71,11 +71,14 @@ final case class AtLeastOnceCypherQuery(
       .recoverWithRetries(
         attempts = -1, // retry forever, relying on the relayAsk (used in the Cypher interpreter) to slow down attempts
         { case RetriableQueryFailure(e) =>
-          logger.debug(
-            s"""Suppressed ${e.getClass.getSimpleName} during execution of query: $debugName, retrying now.
-               |Ingested item: $value. Query: "${query.queryText}". Suppressed exception:
-               |${e.getMessage}"""".stripMargin.replace('\n', ' ')
-          )
+          logger.whenDebugEnabled {
+            lazy val queryStr = query.queryText.fold("")(q => s"""Query: "$q".""")
+            logger.debug(
+              s"""Suppressed ${e.getClass.getSimpleName} during execution of query: $debugName, retrying now.
+                 |Ingested item: $value. $queryStr"""".stripMargin.replace('\n', ' ').trim,
+              e
+            )
+          }
           bestEffortSource
         }
       )

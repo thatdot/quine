@@ -92,7 +92,7 @@ final private[quine] class GraphShardActor(
   def requestShutdown(): ShardShutdownProgress = {
     if (!timers.isTimerActive(ShuttingDownShard)) {
       this.receive(ShuttingDownShard)
-      timers.startTimerWithFixedDelay(ShuttingDownShard, ShuttingDownShard, 200 milliseconds)
+      timers.startTimerWithFixedDelay(ShuttingDownShard, ShuttingDownShard, 200.milliseconds)
     }
     ShardShutdownProgress(namespacedNodes.map(_._2.size).sum)
   }
@@ -557,7 +557,7 @@ final private[quine] class GraphShardActor(
             val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
             // TODO: don't hardcode the time until retry
             log.warning("Failed to wake up {} due to hard in-memory limit: {} (retrying)", id, inMemoryLimit)
-            context.system.scheduler.scheduleOnce(0.01 second)(self ! msgToDeliver)(context.dispatcher)
+            context.system.scheduler.scheduleOnce(0.01.second)(self ! msgToDeliver)(context.dispatcher)
             // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
             ()
           }

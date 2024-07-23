@@ -999,4 +999,71 @@ object Query {
       copy(subQuery = subQuery.substitute(parameters))
     def children: Seq[Query[Location]] = Seq(subQuery)
   }
+
+  /** Recurse over a query,
+    *
+    * @param subQuery              The query to run repeatedly
+    *                              Invariants:
+    *                              - `subquery.isIdempotent`
+    *                              - `subquery.columns` is a (non-strict) superset of `Columns.Specified(variables)`
+    *                                (after some amount of processing/demangling, and up to column ordering)
+    *                              - `columns` is equivalent to `variables`
+    * @param inputVariableToPlain  A map from the recursive variables to the versions that appear in the query source.
+    *                              After construction, refer to this as `variableMappings.inputToPlain`
+    *                              INV: this relationship is bijective
+    * @param outputVariableToPlain A map from the final (output) variables to the versions that appear in the query
+    *                              source. After construction, refer to this as `variableMappings.outputToPlain`
+    *                              INV: this relationship is bijective
+    * @param doneExpression        The expression to evaluate to determine whether to recurse on the row or return it
+    */
+  final case class RecursiveSubQuery[+Start <: Location](
+    subQuery: Query[Start],
+    private val inputVariableToPlain: Map[Symbol, Symbol],
+    private val outputVariableToPlain: Map[Symbol, Symbol],
+    doneExpression: Expr,
+    columns: Columns = Columns.Omitted
+  ) extends Query[Start] {
+
+    /** Mappings between different names for the same conceptual variable.
+      * By the logic of a vanilla subquery, a subquery that takes a variable `x` and returns a variable `x` is actually
+      * taking and returning different variables, maybe `x@0` and `x@1`. In order to recurse, we need to know what to
+      * rename the variable `x@1` to (which would be `x@0`).
+      *
+      * Similarly, when reporting errors, we want to report the original variable name (that the user wrote in their
+      * query), not the one that OpenCypher has rewritten on the user's behalf.
+      */
+    object variableMappings {
+
+      val outputToPlain = outputVariableToPlain
+      val inputToPlain = inputVariableToPlain
+
+      val plainToOutput: Map[Symbol, Symbol] = outputToPlain.map(_.swap)
+      val plainToInput: Map[Symbol, Symbol] = inputToPlain.map(_.swap)
+
+      /** keys are columns output by subQuery, values are columns input to subQuery that represent the same semantic column
+        */
+      val outputToInput: Map[Symbol, Symbol] =
+        outputToPlain
+          .collect {
+            case (outputVar, demangledVar) if plainToInput.contains(demangledVar) =>
+              outputVar -> plainToInput(demangledVar)
+          }
+    }
+
+    /** The recursive variables used by this query.
+      */
+    val inputVariables: Iterable[Symbol] = variableMappings.inputToPlain.keys
+
+    def isReadOnly: Boolean = subQuery.isReadOnly
+    def isIdempotent: Boolean = subQuery.isIdempotent // QU-1843 is particularly important here as a false positive
+    def cannotFail: Boolean = subQuery.cannotFail
+    def canDirectlyTouchNode: Boolean = subQuery.canDirectlyTouchNode
+    def canContainAllNodeScan: Boolean = subQuery.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start] =
+      copy(
+        subQuery = subQuery.substitute(parameters),
+        doneExpression = doneExpression.substitute(parameters)
+      )
+    def children: Seq[Query[Location]] = Seq(subQuery)
+  }
 }

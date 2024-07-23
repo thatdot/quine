@@ -41,7 +41,7 @@ class MasterStream(mat: Materializer) extends LazyLogging {
 
   Source
     .repeat(IdleToken)
-    .throttle(1, 1 second)
+    .throttle(1, 1.second)
     .mergePreferred(ingestSource, preferNewHubOverUpstream)
     .mergePreferred(sqResultsSource, preferNewHubOverUpstream)
     .mergePreferred(nodeSleepSource, preferNewHubOverUpstream)

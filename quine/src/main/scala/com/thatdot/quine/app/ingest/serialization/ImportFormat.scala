@@ -83,7 +83,7 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
     // TODO this should be lifted to an (overridable, see allowAllNodeScan in SQ outputs) API error
     logger.warn(
       "Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
-      "The provided query was: " + compiled.queryText
+      compiled.queryText.fold("")(q => "The provided query was: " + q)
     )
   }
   if (!compiled.query.isIdempotent) {

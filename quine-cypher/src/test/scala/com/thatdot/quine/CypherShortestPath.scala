@@ -42,7 +42,7 @@ class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
     pos: Position
   ): Unit =
     testQuery(
-      queryText = s"MATCH (n), (m) WHERE id(n) = $from AND id(m) = $to RETURN $shortestPathText",
+      query = s"MATCH (n), (m) WHERE id(n) = $from AND id(m) = $to RETURN $shortestPathText",
       expectedColumns = Vector(shortestPathText),
       expectedRows = expectedValue.map(Vector(_)).toSeq,
       skip = skip

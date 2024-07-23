@@ -712,7 +712,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
     }
     // verify its results
     testQuery(
-      queryText = kitchenSink,
+      query = kitchenSink,
       expectedColumns = Vector("x", "sum(x)", "r"),
       expectedRows = Seq(
         Vector(Expr.Integer(2), Expr.Integer(2), Expr.List(Expr.Str("hello"))),

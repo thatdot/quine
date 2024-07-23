@@ -15,7 +15,7 @@ import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.{Assertion, BeforeAndAfterAll}
 
 import com.thatdot.quine.graph._
-import com.thatdot.quine.graph.cypher.CompiledQuery
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, RunningCypherQuery, Value}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 
@@ -47,6 +47,22 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
   override def afterAll(): Unit =
     Await.result(graph.shutdown(), timeout.duration * 2L)
 
+  sealed protected trait RunnableCypher[T] {
+    def run(t: T, parameters: Map[String, cypher.Value]): RunningCypherQuery
+    def testName(t: T): String
+  }
+  implicit final protected object RunnableString extends RunnableCypher[String] {
+    def run(t: String, parameters: Map[String, cypher.Value]): RunningCypherQuery =
+      queryCypherValues(t, cypherHarnessNamespace, parameters, cacheCompilation = false)(graph)
+    def testName(t: String): String = s"String Query: $t"
+  }
+  implicit final protected object RunnableCompiledQuery extends RunnableCypher[CompiledQuery[Location.External]] {
+    def run(t: CompiledQuery[Location.External], parameters: Map[String, Value]): RunningCypherQuery =
+      graph.cypherOps.query(t, cypherHarnessNamespace, None, parameters)
+    def testName(t: CompiledQuery[Location.External]): String =
+      s"CompiledQuery: ${t.queryText.getOrElse(t.query.toString)}"
+  }
+
   /** Check that a given query matches an expected output.
     *
     * @param queryText query whose output we are checking
@@ -61,8 +77,8 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param skip should the test be skipped
     * @param pos source position of the call to `testQuery`
     */
-  final def testQuery(
-    queryText: String,
+  final def testQuery[T](
+    query: T,
     expectedColumns: Vector[String],
     expectedRows: Seq[Vector[cypher.Value]],
     expectedIsReadOnly: Boolean = true,
@@ -73,10 +89,11 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     ordered: Boolean = true,
     skip: Boolean = false
   )(implicit
+    queryHandler: RunnableCypher[T],
     pos: Position
   ): Unit = {
     def theTest(): Future[Assertion] = {
-      val queryResults = queryCypherValues(queryText, cypherHarnessNamespace, parameters = parameters)(graph)
+      val queryResults = queryHandler.run(query, parameters)
       assert(expectedColumns.map(Symbol(_)) === queryResults.columns, "columns must match")
       val (killSwitch, rowsFut) = queryResults.results
         .viaMat(KillSwitches.single)(Keep.right)
@@ -107,9 +124,9 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     }
 
     if (skip)
-      ignore(queryText)(theTest())(pos)
+      ignore(queryHandler.testName(query))(theTest())(pos)
     else
-      it(queryText)(theTest())(pos)
+      it(queryHandler.testName(query))(theTest())(pos)
   }
 
   /** Check that a given expression matches an expected output
@@ -137,7 +154,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     pos: Position
   ): Unit =
     testQuery(
-      queryText = queryPreamble + expressionText,
+      query = queryPreamble + expressionText,
       expectedColumns = Vector(expressionText),
       expectedRows = Seq(Vector(expectedValue)),
       expectedIsReadOnly = expectedIsReadOnly,
@@ -157,7 +174,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     pos: Position
   ): Unit = {
     def theTest(): Assertion = {
-      val actual = intercept[E](queryCypherValues(queryText, cypherHarnessNamespace)(graph))
+      val actual = intercept[E](queryCypherValues(queryText, cypherHarnessNamespace, cacheCompilation = false)(graph))
       assert(actual.getMessage == expectedError.getMessage, "Query construction did not fail with expected error")
     }
     it(queryText)(theTest())

@@ -537,7 +537,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
 
   describe("reify.time") {
     testQuery(
-      queryText = """CALL reify.time(
+      query = """CALL reify.time(
           |  datetime("2023-04-25T22:04:39Z"),
           |  ["year", "month", "day", "hour", "minute", "second"]
           |) YIELD node AS leafNode

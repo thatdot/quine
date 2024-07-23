@@ -353,7 +353,7 @@ trait BaseGraph extends StrictLogging {
   def getGraphHashCode(namespace: NamespaceId, atTime: Option[Milliseconds]): Future[Long] =
     enumerateAllNodeIds(namespace)
       .mapAsyncUnordered(parallelism = 16) { qid =>
-        val timeout = 1 second
+        val timeout = 1.second
         val resultHandler = implicitly[ResultHandler[GraphNodeHashCode]]
         val ec = ExecutionContext.parasitic
         relayAsk(SpaceTimeQuineId(qid, namespace, atTime), GetNodeHashCode)(timeout, resultHandler).map(_.value)(ec)

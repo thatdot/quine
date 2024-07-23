@@ -70,6 +70,7 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
       case query: SubQuery[Location.External @unchecked] => interpretSubQuery(query, context)
+      case query: RecursiveSubQuery[Location.External @unchecked] => interpretRecursiveSubquery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
     }
@@ -248,6 +249,7 @@ trait OnNodeInterpreter
       case query: Delete => interpretDelete(query, context)
       case query: ProcedureCall => interpretProcedureCall(query, context)
       case query: SubQuery[Location.OnNode @unchecked] => interpretSubQuery(query, context)
+      case query: RecursiveSubQuery[Location.OnNode @unchecked] => interpretRecursiveSubquery(query, context)
     } catch {
       case NonFatal(e) => Source.failed(e)
     }
@@ -293,6 +295,18 @@ trait OnNodeInterpreter
       case Some(other) => other
       case None => return Source.empty
     }
+
+    /** Apply(this, that)
+      *
+      * ArgumentEntry {
+      *   andThen: that
+      * }
+      *
+      * Apply(ArgumentEntry(Apply(LocalNode, SetProperties)), Apply(ArgumentEntry, Apply(AE, Apply(AE, Apply(AE, ))))
+      *
+      * ArgumentEntry(Apply(SetProperties, ArgumentEntry(...)))
+      * AE(Apply(_, AE(Apply(_, )))
+      */
 
     if (other == qid) {
       interpret(query.andThen, context)
@@ -1281,4 +1295,71 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
      * Collisions between subquery column outputs and existing columns are ruled out statically.
      */
     interpret(query.subQuery, context.subcontext(query.importedVariables)).map(_ ++ context)
+
+  final private[quine] def interpretRecursiveSubquery(query: RecursiveSubQuery[Start], context: QueryContext)(implicit
+    parameters: Parameters
+  ): Source[QueryContext, _] = {
+    val initialRecursiveContext = context.subcontext(query.inputVariables.toVector)
+    // input name -> type
+    val initializedValueTypes: Map[Symbol, Type] = initialRecursiveContext.environment.view.mapValues(_.typ).toMap
+    // Recursive function that runs the recursive subquery.
+    // QU-1947 we should be retaining a cache of the QueryContexts we've seen so far to detect (and error out of)
+    //   an infinite loop
+    def run(context: QueryContext): Source[QueryContext, _] = {
+      require(context.environment.keySet == query.inputVariables.toSet)
+      case class PartialResults(wip: Seq[QueryContext], done: Seq[QueryContext])
+
+      // First, invoke the subquery given the context we were provided
+      val results = interpret(query.subQuery, context)
+        .map { resultContext =>
+          // NB this row-by-row typecheck is inefficient, but it's the only way to get the error messages right
+          // We may want to consider making this toggleable between "errors that cite the place the problem occurred"
+          // vs "errors that cite the wrong spot but are cheap". In either case, we should get errors on the same
+          // queries.
+
+          val illegalTypes = for {
+            (outputVariable, value) <- resultContext.environment.view
+            if query.variableMappings.outputToInput.contains(outputVariable) // if this is a recursive variable
+            actualType = value.typ
+            expectedType = initializedValueTypes(query.variableMappings.outputToInput(outputVariable))
+            if !expectedType.assignableFrom(actualType)
+            plainVariable = query.variableMappings.outputToPlain(outputVariable)
+          } yield CypherException.TypeMismatch(
+            expected = Seq(expectedType),
+            actualValue = value,
+            context = s"recursive subquery return value (variable `${plainVariable.name}`)"
+          )
+
+          illegalTypes.headOption.foreach(throw _) // fail the query if there are any type errors
+
+          resultContext
+        }
+      val folded: Source[PartialResults, _] = results
+        .fold(PartialResults(Nil, Nil)) { case (PartialResults(wip, done), resultContext) =>
+          // partition this invocation of the subquery into 2 classes of rows: "WIP" (done = false) and "done" (done = true)
+          if (query.doneExpression.eval(resultContext) == Expr.True) PartialResults(wip, done :+ resultContext)
+          else PartialResults(wip :+ resultContext, done)
+        }
+      val doneThenRecursedResults: Source[QueryContext, _] = folded.flatMapConcat { case PartialResults(wip, done) =>
+        // Return the "done" rows as-is, then recursively run the "WIP" rows
+        val doneSource: Source[QueryContext, NotUsed] = Source(done)
+        // For the "wip" rows (those that haven't yet hit the termination condition) filter the columns down to only
+        // those explicitly specified as recursive inputs, then recurse
+        val wipSource: Source[QueryContext, NotUsed] = Source(wip)
+          .map { resultContext =>
+            // Downsample each context to only the relevant variables, rebinding them from their "output" names to their
+            // "input" names in the process
+            val reboundRecursiveVariables = resultContext.environment.collect {
+              case (k, v) if query.variableMappings.outputToInput.contains(k) =>
+                query.variableMappings.outputToInput(k) -> v
+            }
+            QueryContext(reboundRecursiveVariables)
+          }
+          .flatMapConcat(run)
+        doneSource.concat(wipSource)
+      }
+      doneThenRecursedResults
+    }
+    run(initialRecursiveContext)
+  }
 }

@@ -1,6 +1,18 @@
 package com.thatdot.quine.graph.cypher
 
 sealed abstract class Type {
+  def assignableFrom(that: Type, anythingIsBottomType: Boolean = false): Boolean =
+    (this == that) || // reflexive
+    (this == Type.Anything) || // top type is universal receiver
+    (that == Type.Null) || // bottom type is universal... donor?
+    (anythingIsBottomType && that == Type.Anything) || // alternate bottom type, if allowed
+    ((this -> that) match {
+      case (Type.List(a), Type.List(b)) => a.assignableFrom(b, anythingIsBottomType)
+      case (Type.Number, Type.Integer) => true
+      case (Type.Number, Type.Floating) => true
+      case (Type.Floating, Type.Number) => true
+      case _ => false
+    })
 
   /** Pretty-print the type
     *
@@ -49,6 +61,8 @@ object Type {
   case object LocalTime extends Type
   case object Anything extends Type
 
+  /** Lists may be heterogenous or homogenous. Heterogenous lists are considered ListOfAnything.
+    */
   val ListOfAnything: List = List(Anything)
 
   final def number() = Number

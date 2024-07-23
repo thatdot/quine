@@ -29,7 +29,7 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
          |""".stripMargin
 
     testQuery(
-      queryText = query,
+      query,
       parameters = Map("personBytes" -> testPersonBytes),
       expectedColumns = Vector("pbBytes"),
       expectedRows = Seq(Vector(testPersonBytes)),

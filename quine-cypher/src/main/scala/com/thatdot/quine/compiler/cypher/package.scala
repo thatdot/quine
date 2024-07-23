@@ -192,7 +192,7 @@ package object cypher {
       else compileFresh(uncompiled, customParsingContext)
 
     CompiledQuery(
-      uncompiled.queryText,
+      Some(uncompiled.queryText),
       query = compiled,
       unfixedParameters,
       fixedParameters,

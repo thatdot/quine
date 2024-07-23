@@ -1,51 +1,198 @@
 package com.thatdot.quine.compiler.cypher
 
 import cats.implicits._
-import org.opencypher.v9_0.expressions.{LogicalVariable, Pattern, functions}
+import org.opencypher.v9_0.ast.Initialization
+import org.opencypher.v9_0.expressions.{
+  Expression => OCExpression,
+  LogicalVariable,
+  Pattern,
+  Variable => OCVariable,
+  functions
+}
 import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
+import org.opencypher.v9_0.util.helpers.NameDeduplicator
 import org.opencypher.v9_0.{ast, expressions, util}
 
 import com.thatdot.quine.graph.cypher
-import com.thatdot.quine.graph.cypher.{Location, Query}
+import com.thatdot.quine.graph.cypher.{Expr, Location, Query}
 
 object QueryPart {
+
+  sealed abstract class SubQueryType
+  final case object SubQuery extends SubQueryType
+  final case class RecursiveSubQuery(initializers: Seq[Initialization], doneCondition: OCExpression)
+      extends SubQueryType
 
   /** Compile a `front-end` query
     *
     * @param queryPart query to compiler
     * @param isEntireQuery this query part is the whole query
-    * @param isSubQuery is this inside a `CALL { .. }`?
+    * @param subQueryType is this inside a `CALL { .. }`?
     * @return execution instructions for Quine
     */
   def compile(
     queryPart: ast.QueryPart,
     avng: AnonymousVariableNameGenerator,
     isEntireQuery: Boolean = true,
-    isSubQuery: Boolean = false
+    subQueryType: Option[SubQueryType] = None
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     queryPart match {
       case sq: ast.SingleQuery =>
-        if (!isSubQuery) {
-          compileClauses(sq.clauses, avng, isEntireQuery)
-        } else {
-          for {
-            // Prepare for the subquery to run by setting the imported columns
-            initialColumns: Vector[Symbol] <- CompM.getColumns
-            importedVariables =
-              if (sq.isCorrelated) {
-                sq.importColumns.view.map(Symbol.apply).toVector
-              } else {
-                initialColumns
+        subQueryType match {
+          case None => compileClauses(sq.clauses, avng, isEntireQuery)
+          case Some(RecursiveSubQuery(initializers, doneCondition)) =>
+            /** For now, we forbid subquery-style imports in recursive subqueries.
+              * This is to limit confusion in cases like the following:
+              * ```
+              * WITH 1 AS y
+              * CALL RECURSIVELY WITH 0 AS x UNTIL x > 2 { WITH y
+              *    RETURN y + 1 AS y, x + 1 AS x
+              * }
+              * ```
+              * eg "I am treating `x` and `y` consistently, so why does `x` keep incrementing but `y` keep resetting?"
+              *
+              * (expected result follows:)
+              * y=2 x=1
+              * y=2 x=2
+              * y=2 x=3
+              */
+
+            // TODO this should be a compile exception
+            if (sq.importColumns.nonEmpty)
+              CompM.raiseCompileError(
+                "Recursive subqueries cannot use import-`WITH` subquery syntax. Use `CALL RECURSIVELY WITH` syntax instead",
+                queryPart
+              )
+            else
+              for {
+                // stash the parent's columns
+                parentColumns: Vector[Symbol] <- CompM.getColumns
+                // define initial variables
+                () <- CompM.clearColumns
+                recursiveVariableBindings: Seq[(cypher.Expr.Variable, WithQuery[cypher.Expr])] <- initializers
+                  .traverse { case Initialization(OCVariable(sym), expression) =>
+                    for {
+                      expr <- Expression.compileM(expression, avng)
+                      sym <- CompM.addColumn(Symbol(sym))
+                    } yield sym -> expr
+                  }
+                recursiveVariablesBoundColumns <- CompM.getColumns
+                // recursiveVariables = recursiveVariableBindings.map(_._1.id).toVector.map(_.id)
+                // _ = require(recursiveVariables == initialVariables, "Recursive variables must be the same as the initial variables")
+                recursiveVariableInitializers: Seq[WithQuery[Expr]] = recursiveVariableBindings.map(_._2)
+
+                recursiveSubQuery <- compileClauses(
+                  sq.clauses,
+                  avng,
+                  isEntireQuery
+                ) // NB this will register the appropriate columns for the subquery
+
+                subqueryBoundColumns <- CompM.getColumns
+
+                /** Use name demangling to cache the output -> recursive input variable mappings.
+                  * This demangling is necessary because, as far as vanilla Cypher is concerned, there's no way a
+                  * variable returned by a subquery can be the same as a variable passed into a subquery. Therefore,
+                  * openCypher will rename these variables distinctly. For example, the column `x` bound in a recursive
+                  * variable initializer might be renamed to `  x@2`, while the column `x` (syntactically identical from
+                  * the user's perspective) might be renamed to `  x@7` by the openCypher parser/semantic analysis
+                  * pipeline. Both of these names, however, demangle to the same `x`, which is good, since they also both
+                  * refer to the same concept in the user's mind (i.e, the column `x` meant to be passed from the query
+                  * to itself). In order to implement this, we maintain a mapping of "output" names (eg `  x@7`) to/from
+                  * "plain" names (eg `x`), and the same between plain names and "input" names (eg `  x@2`)
+                  */
+                // QU-1947 we should detect when computing these mappings fails and raise a compile error
+                outputNamesToPlain: Map[Symbol, String] =
+                  subqueryBoundColumns
+                    .zip(
+                      subqueryBoundColumns
+                        .map(_.name)
+                        .map(NameDeduplicator.removeGeneratedNamesAndParams)
+                    )
+                    .toMap
+                inputNamesToPlain: Map[Symbol, String] =
+                  recursiveVariablesBoundColumns
+                    .zip(
+                      recursiveVariablesBoundColumns
+                        .map(_.name)
+                        .map(NameDeduplicator.removeGeneratedNamesAndParams)
+                    )
+                    .toMap
+
+                // ensure the inner query returns all the recursive variables. Put another way,
+                // the inner query must return all the variables that the outer query imports
+                missingRecursiveVariables: Seq[String] = inputNamesToPlain.values.toVector.diff(
+                  outputNamesToPlain.values.toVector
+                )
+                _ <-
+                  if (missingRecursiveVariables.nonEmpty) {
+                    val recursiveVariablesAsString =
+                      inputNamesToPlain.values.mkString("[`", "`, `", "`]")
+                    val missingVariablesAsString =
+                      missingRecursiveVariables.mkString("[`", "`, `", "`]")
+                    CompM.raiseCompileError(
+                      s"""Recursive subquery declares recursive variable(s): $recursiveVariablesAsString
+                         |but does not return all of them. Missing variable(s): $missingVariablesAsString
+                         |""".stripMargin.replace('\n', ' ').trim,
+                      queryPart
+                    )
+                  } else CompM.pure(())
+
+                // define done condition
+                doneCondWithQuery <- Expression.compileM(doneCondition, avng)
+                doneCond: Expr = doneCondWithQuery.result
+
+                // Update the columns by appending back originals
+                () <- parentColumns.traverse_(CompM.addColumn)
+              } yield {
+                val initializeAllInitializers =
+                  recursiveVariableInitializers.foldLeft[cypher.Query[Location.Anywhere]](cypher.Query.Unit())(
+                    (acc, init) => cypher.Query.apply(acc, init.query)
+                  )
+                cypher.Query.apply(
+                  // make all initializers valid for evaluation
+                  initializeAllInitializers,
+                  cypher.Query.apply(
+                    // evaluate all initializers
+                    cypher.Query.adjustContext(
+                      dropExisting = true,
+                      toAdd = recursiveVariableBindings.map {
+                        case (cypher.Expr.Variable(name), WithQuery(expr, query @ _)) => name -> expr
+                      }.toVector,
+                      cypher.Query.Unit()
+                    ),
+                    cypher.Query.RecursiveSubQuery(
+                      cypher.Query.apply(
+                        // run the recursive subquery
+                        recursiveSubQuery,
+                        // make the done condition valid for evaluation
+                        doneCondWithQuery.query
+                      ),
+                      inputNamesToPlain.view.mapValues(Symbol.apply).toMap,
+                      outputNamesToPlain.view.mapValues(Symbol.apply).toMap,
+                      doneCond
+                    )
+                  )
+                )
               }
-            () <- CompM.clearColumns
-            () <- importedVariables.traverse_(CompM.addColumn)
+          case Some(SubQuery) =>
+            for {
+              // Prepare for the subquery to run by setting the imported columns
+              initialColumns: Vector[Symbol] <- CompM.getColumns
+              importedVariables =
+                if (sq.isCorrelated) {
+                  sq.importColumns.view.map(Symbol.apply).toVector
+                } else {
+                  initialColumns
+                }
+              () <- CompM.clearColumns
+              () <- importedVariables.traverse_(CompM.addColumn)
 
-            // Compile the subquery
-            subQuery <- compileClauses(sq.clausesExceptLeadingImportWith, avng, isEntireQuery)
+              // Compile the subquery
+              subQuery <- compileClauses(sq.clausesExceptLeadingImportWith, avng, isEntireQuery)
 
-            // Update the columns by appending back all of the initial columns
-            () <- initialColumns.traverse_(CompM.addColumn)
-          } yield cypher.Query.SubQuery(subQuery, importedVariables)
+              // Update the columns by appending back all of the initial columns
+              () <- initialColumns.traverse_(CompM.addColumn)
+            } yield cypher.Query.SubQuery(subQuery, importedVariables)
         }
 
       case union: ast.ProjectingUnion =>
@@ -54,13 +201,13 @@ object QueryPart {
             .flatMap(_.traverse((col: Symbol) => CompM.getVariable(col, union).map(col -> _)))
           compiledPart <- CompM.withIsolatedContext {
             for {
-              p <- compile(union.part, avng, isEntireQuery = false, isSubQuery)
+              p <- compile(union.part, avng, isEntireQuery = false, subQueryType)
               mapping <- compileUnionMapping(isPart = true, union.unionMappings, union.part)
             } yield cypher.Query.adjustContext(true, mapping ++ identityMapping, p)
           }
           compiledSingle <- CompM.withIsolatedContext {
             for {
-              q <- compile(union.query, avng, isEntireQuery = false, isSubQuery)
+              q <- compile(union.query, avng, isEntireQuery = false, subQueryType)
               mapping <- compileUnionMapping(isPart = false, union.unionMappings, union.query)
             } yield cypher.Query.adjustContext(dropExisting = true, mapping ++ identityMapping, q)
           }
@@ -714,9 +861,22 @@ object QueryPart {
       case (accQuery, f: ast.Foreach) =>
         compileForeach(f, avng).map(cypher.Query.apply(accQuery, _))
 
-      case (accQuery, ast.SubqueryCall(part, _)) =>
+      case (
+            accQuery,
+            ast.SubqueryCall(part, recursiveInitializations, recursiveDoneCondition, _)
+          ) if recursiveInitializations.nonEmpty =>
         for {
-          subQuery <- compile(part, avng, isEntireQuery = false, isSubQuery = true)
+          recursiveSubQuery <- compile(
+            part,
+            avng,
+            isEntireQuery = false,
+            subQueryType = Some(RecursiveSubQuery(recursiveInitializations, recursiveDoneCondition))
+          )
+        } yield cypher.Query.apply(accQuery, recursiveSubQuery)
+      case (accQuery, ast.SubqueryCall(part, _, _, _)) =>
+        // non-recursive subquery
+        for {
+          subQuery <- compile(part, avng, isEntireQuery = false, subQueryType = Some(SubQuery))
         } yield cypher.Query.apply(accQuery, subQuery)
 
       case (accQuery, QuineProcedureCall(proc, unresolvedCall)) =>

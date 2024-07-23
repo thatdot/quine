@@ -6,14 +6,14 @@ import com.thatdot.quine.graph.namespaceToString
 
 /** Packages together all the information about a query that can be run
   *
-  * @param queryText the original query
+  * @param queryText the original query (for log messages and diagnostics)
   * @param query compiled query
   * @param unfixedParameters parameter names that still need to be specified
   * @param fixedParameters vector of parameters already specified
   * @param initialColumns columns that will need to initially be in scope
   */
 final case class CompiledQuery[+Start <: Location](
-  queryText: String,
+  queryText: Option[String],
   query: Query[Start],
   unfixedParameters: Seq[String],
   fixedParameters: Parameters,

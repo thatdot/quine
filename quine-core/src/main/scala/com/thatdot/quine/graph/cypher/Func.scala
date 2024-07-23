@@ -494,7 +494,7 @@ object Func {
     name = "range",
     isPure = true,
     description = "construct a list of integers representing a range",
-    signature = "(start :: INTEGER?, end :: INTEGER, step :: INTEGER) :: LIST? OF INTEGER?"
+    signature = "(start :: INTEGER, end :: INTEGER, step :: INTEGER?) :: LIST? OF INTEGER?"
   ) {
     override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
       args match {

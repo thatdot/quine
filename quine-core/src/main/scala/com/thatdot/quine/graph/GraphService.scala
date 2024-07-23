@@ -92,7 +92,7 @@ class GraphService(
             }
           }(shardDispatcherEC)
       }(shardDispatcherEC),
-    10 seconds
+    10.seconds
   )
 
   // Provide the [[PersistenceAgent]] with the ready-to-use graph

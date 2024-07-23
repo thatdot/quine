@@ -85,6 +85,7 @@ object VariableRewriter {
       case query: Delete => convertDelete(query, columnsIn)
       case query: ProcedureCall => convertProcedureCall(query, columnsIn)
       case query: SubQuery[Location.OnNode @unchecked] => convertSubQuery(query, columnsIn)
+      case query: RecursiveSubQuery[Location.OnNode @unchecked] => convertRecursiveSubQuery(query, columnsIn)
     }
 
     protected def convertGetDegree(
@@ -181,6 +182,7 @@ object VariableRewriter {
       case query: Delete => convertDelete(query, columnsIn)
       case query: ProcedureCall => convertProcedureCall(query, columnsIn)
       case query: SubQuery[Location.Anywhere @unchecked] => convertSubQuery(query, columnsIn)
+      case query: RecursiveSubQuery[Location.Anywhere @unchecked] => convertRecursiveSubQuery(query, columnsIn)
     }
   }
 
@@ -432,6 +434,17 @@ trait VariableRewriter[Start <: Location] {
     columnsIn: Columns
   ): SubQuery[Start] = {
     val subQuery = convertQuery(query.subQuery, Columns.Specified(query.importedVariables))
+    query.copy(
+      subQuery = subQuery,
+      columns = subQuery.columns ++ columnsIn
+    )
+  }
+
+  protected def convertRecursiveSubQuery(
+    query: RecursiveSubQuery[Start],
+    columnsIn: Columns
+  ): RecursiveSubQuery[Start] = {
+    val subQuery = convertQuery(query.subQuery, Columns.Specified(query.inputVariables.toVector))
     query.copy(
       subQuery = subQuery,
       columns = subQuery.columns ++ columnsIn
