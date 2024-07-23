@@ -93,7 +93,7 @@ pre.wrap {
   display: flex;
   flex-wrap: wrap;
   overflow: hidden;
-  background-color: #1F4C7C;
+  background-color: #0a295b;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.28);
   position: relative;
   z-index: 5;

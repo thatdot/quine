@@ -75,7 +75,10 @@ package object webapp {
           DocumentationIcon,
           "Interactive Docs",
           "/docs",
-          StoplightElements(options.documentationUrl, logo = options.baseURI + "favicon.ico"),
+          StoplightElements(
+            options.documentationUrl,
+            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico")
+          ),
           options.baseURI
         ),
         Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI)
