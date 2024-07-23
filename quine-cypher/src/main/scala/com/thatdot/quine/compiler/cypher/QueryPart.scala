@@ -57,7 +57,6 @@ object QueryPart {
               * y=2 x=3
               */
 
-            // TODO this should be a compile exception
             if (sq.importColumns.nonEmpty)
               CompM.raiseCompileError(
                 "Recursive subqueries cannot use import-`WITH` subquery syntax. Use `CALL RECURSIVELY WITH` syntax instead",
@@ -67,17 +66,18 @@ object QueryPart {
               for {
                 // stash the parent's columns
                 parentColumns: Vector[Symbol] <- CompM.getColumns
-                // define initial variables
-                () <- CompM.clearColumns
-                recursiveVariableBindings: Seq[(cypher.Expr.Variable, WithQuery[cypher.Expr])] <- initializers
+                // define initial variables. We need to compile the RHS in the parent's column context,
+                // then clear the columns to establish the child column context
+                // QU-1947 add support for grouping / aggregation (see `compileReturnItems`)
+                recursiveVariableBindings: Seq[(Symbol, WithQuery[cypher.Expr])] <- initializers
                   .traverse { case Initialization(OCVariable(sym), expression) =>
                     for {
                       expr <- Expression.compileM(expression, avng)
-                      sym <- CompM.addColumn(Symbol(sym))
-                    } yield sym -> expr
+                    } yield Symbol(sym) -> expr
                   }
+                () <- CompM.clearColumns
+                () <- recursiveVariableBindings.map(_._1).traverse_(CompM.addColumn)
                 recursiveVariablesBoundColumns <- CompM.getColumns
-                // recursiveVariables = recursiveVariableBindings.map(_._1.id).toVector.map(_.id)
                 // _ = require(recursiveVariables == initialVariables, "Recursive variables must be the same as the initial variables")
                 recursiveVariableInitializers: Seq[WithQuery[Expr]] = recursiveVariableBindings.map(_._2)
 
@@ -155,8 +155,8 @@ object QueryPart {
                     // evaluate all initializers
                     cypher.Query.adjustContext(
                       dropExisting = true,
-                      toAdd = recursiveVariableBindings.map {
-                        case (cypher.Expr.Variable(name), WithQuery(expr, query @ _)) => name -> expr
+                      toAdd = recursiveVariableBindings.map { case (name, WithQuery(expr, query @ _)) =>
+                        name -> expr
                       }.toVector,
                       cypher.Query.Unit()
                     ),

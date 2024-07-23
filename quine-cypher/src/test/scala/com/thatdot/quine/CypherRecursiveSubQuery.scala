@@ -178,7 +178,6 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     )
   }
   describe("Malformed inner queries") {
-
     val columnNotImported = "WITH 0 AS foo CALL RECURSIVELY WITH 0 AS x UNTIL (x > 0) { RETURN foo, 2 AS x } RETURN x"
     assertStaticQueryFailure(
       columnNotImported,
@@ -255,6 +254,39 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     // TODO name remapping doesn't break on weird names
     // RETURN 1 AS x, 0 AS `  x @ 0`
   }
+  describe("Malformed subquery boundary") {
+
+    it("has known bugs: unhelpful error messages / missing errors") {
+      pendingUntilFixed {
+        val subqueryReturnsConflictingColumn =
+          """WITH 0 AS x
+            |CALL RECURSIVELY WITH x AS x UNTIL (x > 5) {
+            |  RETURN x + 1 AS x
+            |} RETURN x
+            |""".stripMargin.replace('\n', ' ').trim
+        assertStaticQueryFailure(
+          subqueryReturnsConflictingColumn,
+          CypherException.Compile(
+            "Recursive subquery binds column[s] already bound in the parent query: [`x`]",
+            Some(Position(1, 46, 45, SourceText(subqueryReturnsConflictingColumn)))
+          )
+        )
+        val unsupportedAggregationInVariables =
+          """WITH 0 AS x
+            |CALL RECURSIVELY WITH sum(x) AS x UNTIL (x > 5) {
+            |  RETURN x + 1 AS x
+            |} RETURN x
+            |""".stripMargin.replace('\n', ' ').trim
+        assertStaticQueryFailure(
+          unsupportedAggregationInVariables,
+          CypherException.Compile(
+            "Recursive subquery initializers may not use aggregators: [`x`]",
+            Some(Position(1, 46, 45, SourceText(unsupportedAggregationInVariables)))
+          )
+        )
+      }
+    }
+  }
 
   describe("runaway recursion detection") {
     val query =
@@ -316,5 +348,23 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         )
       }
     }
+  }
+
+  describe("Recursive subqueries should work even if they're not at the beginning of a query") {
+
+    val query2 =
+      """WITH 0 AS x
+        |CALL RECURSIVELY WITH x AS y UNTIL (y > 5) {
+        |  RETURN y + 1 AS y
+        |} RETURN y
+        |""".stripMargin
+
+    testQuery(
+      query2,
+      Vector("y"),
+      Seq(
+        Vector(Expr.Integer(6))
+      )
+    )
   }
 }
