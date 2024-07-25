@@ -1000,7 +1000,7 @@ object QueryPart {
           deduped <- isDistinct match {
             case false => CompM.pure[cypher.Query[cypher.Location.Anywhere]](grouped)
             case true =>
-              clause.returnColumns
+              items.aliases.toList
                 .traverse(CompM.getVariable(_, clause))
                 .map(distinctBy => cypher.Query.Distinct(distinctBy, grouped))
           }
