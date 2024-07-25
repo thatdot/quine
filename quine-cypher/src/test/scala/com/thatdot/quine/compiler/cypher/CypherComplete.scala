@@ -795,6 +795,21 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       )
     }
   }
+
+  describe("DISTINCT in a WITH clause") {
+    testQuery(
+      "UNWIND [1,2,1] AS x WITH DISTINCT(x) AS y UNWIND [3,4] AS z RETURN y, z",
+      expectedColumns = Vector("y", "z"),
+      expectedRows = Seq(
+        Vector(Expr.Integer(1L), Expr.Integer(3L)),
+        Vector(Expr.Integer(1L), Expr.Integer(4L)),
+        Vector(Expr.Integer(2L), Expr.Integer(3L)),
+        Vector(Expr.Integer(2L), Expr.Integer(4L))
+      ),
+      expectedIsReadOnly = true,
+      expectedCannotFail = true
+    )
+  }
 }
 
 // For testing only...
