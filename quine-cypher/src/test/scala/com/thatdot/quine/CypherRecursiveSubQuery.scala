@@ -19,7 +19,6 @@ import com.thatdot.quine.graph.cypher.{
 class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries") {
 
   describe("Basic recursive subquery") {
-
     val setXToZero: AdjustContext[Location.Anywhere] = AdjustContext( // x = 0
       dropExisting = true,
       toAdd = Vector(
@@ -87,8 +86,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     )
 
   }
-  describe("Fan-out recursive subquery") {
 
+  describe("Fan-out recursive subquery") {
     val setMaxTo1: AdjustContext[Location.Anywhere] = AdjustContext( // max = 1
       dropExisting = true,
       toAdd = Vector(
@@ -177,6 +176,7 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       )
     )
   }
+
   describe("Malformed inner queries") {
     val columnNotImported = "WITH 0 AS foo CALL RECURSIVELY WITH 0 AS x UNTIL (x > 0) { RETURN foo, 2 AS x } RETURN x"
     assertStaticQueryFailure(
@@ -218,7 +218,7 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       )
     )
 
-    it("has known bugs: unhelpful error messages / missing errors") {
+    it("QU-1947: unhelpful error messages / missing errors") {
       pendingUntilFixed {
         val nonIdempotentSubquery = "CALL RECURSIVELY WITH 0 AS x UNTIL (x > 0) { CREATE () RETURN x } RETURN x"
         assertStaticQueryFailure(
@@ -250,13 +250,10 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         )
       }
     }
-
-    // TODO name remapping doesn't break on weird names
-    // RETURN 1 AS x, 0 AS `  x @ 0`
   }
-  describe("Malformed subquery boundary") {
 
-    it("has known bugs: unhelpful error messages / missing errors") {
+  describe("Malformed subquery boundary") {
+    it("QU-1947: unhelpful error messages / missing errors") {
       pendingUntilFixed {
         val subqueryReturnsConflictingColumn =
           """WITH 0 AS x
@@ -294,7 +291,7 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         |  RETURN x
         |} RETURN x
         |""".stripMargin.replace('\n', ' ').trim
-    it("has known bug: Does not detect infinite loops") {
+    it("QU-1947: Does not detect infinite loops") {
       pendingUntilFixed {
         assertQueryExecutionFailure(
           query,
@@ -314,18 +311,16 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         |} RETURN `  x @ 0`
         |""".stripMargin.replace('\n', ' ').trim
 
-    it("has known bug: demangles incorrectly") {
-      pendingUntilFixed {
-        testQuery(
-          query,
-          Vector("  x @ 0"),
-          Seq(
-            Vector(Expr.Integer(1))
-          )
-        )
-      }
-    }
+    testQuery(
+      query,
+      Vector("  x @ 0"),
+      Seq(
+        Vector(Expr.Integer(1))
+      ),
+      skip = true // QU-1947: demangles incorrectly
+    )
   }
+
   describe("Nested recursive subquery") {
     val nestedQuery =
       """CALL RECURSIVELY WITH 0 AS i, 0 AS x UNTIL (i = 10) {
@@ -337,21 +332,17 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         |RETURN i, j, x
         |""".stripMargin.replace('\n', ' ').trim
 
-    it("has known bug: fails to parse in OpenCypher") {
-      pendingUntilFixed {
-        testQuery(
-          nestedQuery,
-          Vector("i", "j", "x"),
-          Seq(
-            Vector(Expr.Integer(10), Expr.Integer(10), Expr.Integer(55))
-          )
-        )
-      }
-    }
+    testQuery(
+      nestedQuery,
+      Vector("i", "j", "x"),
+      Seq(
+        Vector(Expr.Integer(10), Expr.Integer(10), Expr.Integer(55))
+      ),
+      skip = true // QU-1947: fails to parse in openCypher
+    )
   }
 
   describe("Recursive subqueries should work even if they're not at the beginning of a query") {
-
     val query2 =
       """WITH 0 AS x
         |CALL RECURSIVELY WITH x AS y UNTIL (y > 5) {
