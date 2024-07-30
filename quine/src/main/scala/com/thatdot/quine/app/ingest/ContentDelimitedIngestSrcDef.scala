@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** Ingest source runtime that requires managing its own record delimitation -- for example, line-based ingests or CSV
@@ -89,7 +90,7 @@ case class CsvIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
       new CypherRawInputFormat(format.query, format.parameter),
@@ -141,8 +142,8 @@ case class CsvIngestSrcDef(
   def rawBytes(value: List[ByteString]): Array[Byte] = {
     // inefficient, but should never be used anyways since csv defines its own deserializeAndMeter
     logger.debug(
-      s"${getClass.getSimpleName}.rawBytes was called: this function has an inefficient implementation but should not" +
-      s"be accessible during normal operation."
+      safe"""${Safe(getClass.getSimpleName)}.rawBytes was called: this function has an inefficient
+            |implementation but should not be accessible during normal operation.""".cleanLines
     )
     value.reduce { (l, r) =>
       val bs = ByteString.createBuilder
@@ -166,7 +167,7 @@ case class StringIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,
@@ -199,7 +200,7 @@ case class JsonLinesIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,
@@ -236,7 +237,7 @@ object ContentDelimitedIngestSrcDef {
     maxPerSecond: Option[Int],
     name: String,
     intoNamespace: NamespaceId
-  )(implicit graph: CypherOpsGraph): ContentDelimitedIngestSrcDef =
+  )(implicit graph: CypherOpsGraph, logConfig: LogConfig): ContentDelimitedIngestSrcDef =
     format match {
       case CypherLine(query, parameter) =>
         StringIngestSrcDef(

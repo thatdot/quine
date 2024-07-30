@@ -8,7 +8,6 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import com.google.protobuf.InvalidProtocolBufferException
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher.{
@@ -22,12 +21,13 @@ import com.thatdot.quine.graph.cypher.{
   Value
 }
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 /** Parse a protobuf message into a Cypher map according to a schema provided by a schema cache.
   * Because loading the schema is asynchronous, this must be a procedure rather than a function.
   */
-class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazyLogging {
+class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazySafeLogging {
   def name: String = "parseProtobuf"
 
   def canContainUpdates: Boolean = false
@@ -38,14 +38,15 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val (bytes, schemaUrl, typeName): (Array[Byte], URL, String) = arguments match {
       case Seq(Expr.Bytes(bytes, bytesRepresentId), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
         if (bytesRepresentId)
           logger.info(
-            s"""Received an ID (${QuineId(bytes).pretty(location.idProvider)}) as a source of
-                 |bytes to parse a protobuf value of type: $typeName.""".stripMargin.replace('\n', ' ')
+            safe"""Received an ID (${Safe(QuineId(bytes).pretty(location.idProvider, logConfig))}) as a source of
+                 |bytes to parse a protobuf value of type: ${Safe(typeName)}.""".cleanLines
           )
         (bytes, filenameOrUrl(schemaUrl), typeName)
       case _ =>
@@ -60,9 +61,12 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
           // run (eg, default to erroring in an ad-hoc query but default to returning null in an ingest, unless the
           // ingest is set to halt on error). However, we don't have that information here, so we default to
           // returning null.
-          .recover { case _: ClassCastException | _: InvalidProtocolBufferException =>
-            logger.warn(s"${name} procedure received corrupted protobuf record -- returning null")
-            Expr.Null
+          .recover {
+            case e if e.isInstanceOf[ClassCastException] || e.isInstanceOf[InvalidProtocolBufferException] =>
+              logger.warn(
+                log"${Safe(name)} procedure received corrupted protobuf record -- returning null" withException e
+              )
+              Expr.Null
           }.get
         Vector(result)
       }

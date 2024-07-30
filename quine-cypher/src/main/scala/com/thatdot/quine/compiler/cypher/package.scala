@@ -31,6 +31,7 @@ import org.opencypher.v9_0.{ast, expressions}
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 
 package object cypher {
 
@@ -250,14 +251,15 @@ package object cypher {
   @throws[CypherException]
   def compileStandingQueryGraphPattern(
     queryText: String
-  )(implicit idProvider: QuineIdProvider): GraphQueryPattern = {
+  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): GraphQueryPattern = {
     val source = SourceText(queryText)
     val startPosition = InputPosition(0, 1, 1)
     // compile and do basic (front-end) semantic analysis on queryText
     val astState = openCypherParseAndRewrite(queryText, Seq.empty, startPosition, openCypherStandingPipeline)(source)
     StandingQueryPatterns.compile(astState.statement(), astState.anonymousVariableNameGenerator, ParametersIndex.empty)(
       source,
-      idProvider
+      idProvider,
+      logConfig
     )
   }
 
@@ -582,7 +584,7 @@ package object cypher {
 /**
   * Like [[nameAllPatternElements]], but does not rewrite naked pattern elements in MATCH clauses.
   */
-//case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazyLogging {
+//case object nameAllPatternElementsInPatternComprehensions extends Rewriter with StepSequencer.Step with ASTRewriterFactory with LazySafeLogging {
 //
 //  override def getRewriter(
 //    innerVariableNamer: InnerVariableNamer,

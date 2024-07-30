@@ -2,7 +2,6 @@ package com.thatdot.quine.app.ingest.util
 
 import scala.reflect.{ClassTag, classTag}
 
-import com.typesafe.scalalogging.LazyLogging
 import software.amazon.awssdk.auth.credentials.{
   AwsBasicCredentials,
   AwsCredentialsProvider,
@@ -13,8 +12,9 @@ import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
 
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.util.Log._
 
-case object AwsOps extends LazyLogging {
+case object AwsOps extends LazySafeLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
   // invariant: all AWS clients using HTTP will set this as a maximum concurrency value
   val httpConcurrencyPerClient = 100
@@ -48,7 +48,9 @@ case object AwsOps extends LazyLogging {
     def credentials(credsOpt: Option[AwsCredentials]): Builder = {
       val creds = credsOpt.orElse {
         logger.info(
-          s"No AWS credentials provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental credentials."
+          safe"""No AWS credentials provided while building AWS client of type
+               |${Safe(classTag[Client].runtimeClass.getSimpleName)}. Defaulting
+               |to environmental credentials.""".cleanLines
         )
         None
       }
@@ -58,7 +60,9 @@ case object AwsOps extends LazyLogging {
     def region(regionOpt: Option[AwsRegion]): Builder =
       regionOpt.fold {
         logger.info(
-          s"No AWS region provided while building AWS client of type ${classTag[Client].runtimeClass.getSimpleName}. Defaulting to environmental settings."
+          safe"""No AWS region provided while building AWS client of type:
+                |${Safe(classTag[Client].runtimeClass.getSimpleName)}.
+                |Defaulting to environmental settings.""".cleanLines
         )
         builder.applyMutation(_ => ()) // return the builder unmodified
       }(region => builder.region(Region.of(region.region)))

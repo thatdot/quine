@@ -5,7 +5,8 @@ import java.util.{LinkedHashMap => JavaLinkedHashMap, Map => JavaMap}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-import com.typesafe.scalalogging.LazyLogging
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 abstract class NanoTimeSource {
   def nanoTime(): Long
@@ -139,7 +140,7 @@ private[quine] object ExpiringLruSet {
     initialNanosExpiry: Long,
     nanoTimeSource: NanoTimeSource = SystemNanoTime
   ) extends ExpiringLruSet[A]
-      with LazyLogging {
+      with LazySafeLogging {
     private[this] var _maximumSize: Int = initialMaximumSize
     private[this] var _maximumNanosExpiry: Long = initialNanosExpiry
 
@@ -240,7 +241,7 @@ private[quine] object ExpiringLruSet {
           progressMadeThisIteration = false
         } else {
           logger.warn(
-            s"doExpiration: halting due to lack of progress, but LRU cache is still oversized by: $oversizedBy"
+            safe"doExpiration: halting due to lack of progress, but LRU cache is still oversized by: ${Safe(oversizedBy)}"
           )
           return
         }

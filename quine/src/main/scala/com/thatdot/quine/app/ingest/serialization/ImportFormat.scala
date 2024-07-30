@@ -7,13 +7,13 @@ import org.apache.pekko.Done
 import org.apache.pekko.stream.scaladsl.Sink
 
 import com.typesafe.config.ConfigFactory
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.jawn.CirceSupportParser
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
+import com.thatdot.quine.util.Log._
 
 /** Describes formats that Quine can import
   * Deserialized type refers to the the (nullable) type to be produced by invocations of this [[ImportFormat]]
@@ -71,9 +71,10 @@ class TestOnlyDrop extends ImportFormat {
   ): Future[Done] = Future.successful(Done)
 }
 
-abstract class CypherImportFormat(query: String, parameter: String) extends ImportFormat with LazyLogging {
+abstract class CypherImportFormat(query: String, parameter: String) extends ImportFormat with LazySafeLogging {
 
   override val label: String = "Cypher " + query
+  implicit protected def logConfig: LogConfig
 
   // TODO: think about error handling of failed compilation
   val compiled: CompiledQuery[Location.Anywhere] = compiler.cypher.compile(query, unfixedParameters = Seq(parameter))
@@ -82,15 +83,15 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
   if (compiled.query.canContainAllNodeScan) {
     // TODO this should be lifted to an (overridable, see allowAllNodeScan in SQ outputs) API error
     logger.warn(
-      "Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
-      compiled.queryText.fold("")(q => "The provided query was: " + q)
+      log"Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
+      compiled.queryText.fold(log"")(q => log"The provided query was: $q")
     )
   }
   if (!compiled.query.isIdempotent) {
     // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
     logger.warn(
-      """Could not verify that the provided ingest query is idempotent. If timeouts occur, query
-        |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
+      safe"""Could not verify that the provided ingest query is idempotent. If timeouts occur, query
+            |execution may be retried and duplicate data may be created.""".cleanLines
     )
   }
   def writeValueToGraph(
@@ -104,7 +105,8 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
 }
 //"Drop Format" should not run a query but should still read from ...
 
-class CypherJsonInputFormat(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
+class CypherJsonInputFormat(query: String, parameter: String)(implicit val logConfig: LogConfig)
+    extends CypherImportFormat(query, parameter) {
 
   override def importBytes(data: Array[Byte]): Try[cypher.Value] =
     // deserialize bytes into JSON without going through string
@@ -114,7 +116,7 @@ class CypherJsonInputFormat(query: String, parameter: String) extends CypherImpo
 
 }
 
-class CypherStringInputFormat(query: String, parameter: String, charset: String)
+class CypherStringInputFormat(query: String, parameter: String, charset: String)(implicit val logConfig: LogConfig)
     extends CypherImportFormat(query, parameter) {
 
   override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
@@ -122,14 +124,15 @@ class CypherStringInputFormat(query: String, parameter: String, charset: String)
 
 }
 
-class CypherRawInputFormat(query: String, parameter: String) extends CypherImportFormat(query, parameter) {
+class CypherRawInputFormat(query: String, parameter: String)(implicit val logConfig: LogConfig)
+    extends CypherImportFormat(query, parameter) {
 
   override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
     Success(cypher.Expr.Bytes(arr, representsId = false))
 
 }
 
-class ProtobufInputFormat(query: String, parameter: String, parser: ProtobufParser)
+class ProtobufInputFormat(query: String, parameter: String, parser: ProtobufParser)(implicit val logConfig: LogConfig)
     extends CypherImportFormat(query, parameter) {
 
   override protected def importBytes(data: Array[Byte]): Try[cypher.Value] = Try(parser.parseBytes(data))

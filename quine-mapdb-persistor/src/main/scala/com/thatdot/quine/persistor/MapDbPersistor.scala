@@ -17,7 +17,6 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegistry}
-import com.typesafe.scalalogging.StrictLogging
 import org.mapdb._
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
 
@@ -40,6 +39,8 @@ import com.thatdot.quine.persistor.codecs.{
   StandingQueryCodec
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 
 /** Embedded persistence implementation based on MapDB
@@ -78,7 +79,8 @@ final class MapDbPersistor(
   metricRegistry: MetricRegistry = new NoopMetricRegistry(),
   ExecutionContext: ComputeAndBlockingExecutionContext,
   scheduler: Scheduler
-) extends PersistenceAgent {
+)(implicit val logConfig: LogConfig)
+    extends PersistenceAgent {
 
   val nodeEventSize: Histogram =
     metricRegistry.histogram(MetricRegistry.name("map-db-persistor", "journal-event-size"))
@@ -219,7 +221,7 @@ final class MapDbPersistor(
     }.toSeq
   }(blockingDispatcherEC)
     .recoverWith { case e =>
-      logger.error("getNodeChangeEvents failed", e)
+      logger.error(log"getNodeChangeEvents failed" withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -235,7 +237,7 @@ final class MapDbPersistor(
     }.toSeq
   }(blockingDispatcherEC)
     .recoverWith { case e =>
-      logger.error("getDomainIndexEvents failed", e)
+      logger.error(log"getDomainIndexEvents failed" withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -249,7 +251,7 @@ final class MapDbPersistor(
       }
       val _ = nodeChangeEvents.putAll((eventsMap.toMap).asJava)
     }(blockingDispatcherEC).recoverWith { case e =>
-      logger.error("persist NodeChangeEvent failed.", e)
+      logger.error(log"persist NodeChangeEvent failed." withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -261,7 +263,7 @@ final class MapDbPersistor(
     quineIdTimeRangeEntries(map, qid, EventTime.MinValue, EventTime.MaxValue)
       .foreach(entry => map.remove(entry.getKey))
   }(blockingDispatcherEC).recoverWith { case e =>
-    logger.error(methodName + " failed.", e)
+    logger.error(log"${Safe(methodName)} failed." withException e)
     Future.failed(e)
   }(nodeDispatcherEC)
 
@@ -278,7 +280,7 @@ final class MapDbPersistor(
       }
       val _ = domainIndexEvents.putAll((eventsMap toMap).asJava)
     }(blockingDispatcherEC).recoverWith { case e =>
-      logger.error("persist DomainIndexEvent failed.", e); Future.failed(e)
+      logger.error(log"persist DomainIndexEvent failed." withException e); Future.failed(e)
     }(nodeDispatcherEC)
 
   override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] =
@@ -302,7 +304,7 @@ final class MapDbPersistor(
     Future {
       val _ = snapshots.put(Array[AnyRef](id.array, Long.box(atTime.eventTime)), snapshotBytes)
     }(blockingDispatcherEC).recoverWith { case e =>
-      logger.error("persistSnapshot failed.", e)
+      logger.error(log"persistSnapshot failed." withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -323,7 +325,10 @@ final class MapDbPersistor(
       .recoverWith {
         case e: org.mapdb.DBException.GetVoid if remainingAttempts > 0 =>
           // This is a known MapDB issue, see <https://github.com/jankotek/mapdb/issues/966>
-          logger.info(s"tryGetLatestSnapshot failed. Remaining attempts: $remainingAttempts Message: ${e.getMessage}")
+          logger.info(
+            log"tryGetLatestSnapshot failed. Remaining attempts: ${Safe(remainingAttempts)}"
+            withException e
+          )
           tryGetLatestSnapshot(startingKey, endingKey, remainingAttempts - 1)
       }(nodeDispatcherEC)
 
@@ -343,7 +348,7 @@ final class MapDbPersistor(
         maybeEntry.map(_.getValue)
       }(blockingDispatcherEC)
       .recoverWith { case e =>
-        logger.error(s"getLatestSnapshot failed on $id. ${e.getMessage}")
+        logger.error(log"getLatestSnapshot failed on ${Safe(id)}." withException e)
         Future.failed(e)
       }(nodeDispatcherEC)
   }
@@ -367,7 +372,7 @@ final class MapDbPersistor(
     Future(standingQueries.iterator().asScala)(blockingDispatcherEC)
       .map(_.map(b => StandingQueryCodec.format.read(b).get).toList)(nodeDispatcherEC)
       .recoverWith { case e =>
-        logger.error("getStandingQueries failed.", e); Future.failed(e)
+        logger.error(log"getStandingQueries failed." withException e); Future.failed(e)
       }(nodeDispatcherEC)
 
   override def getMultipleValuesStandingQueryStates(
@@ -424,7 +429,7 @@ final class MapDbPersistor(
     }
   }(blockingDispatcherEC)
     .recoverWith { case e =>
-      logger.error("deleteMultipleValuesStandingQueryStates failed", e)
+      logger.error(log"deleteMultipleValuesStandingQueryStates failed" withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -461,7 +466,7 @@ final class MapDbPersistor(
     Future(domainGraphNodes.asScala.toMap.map { case (dgnId, dgnBytes) =>
       Long.unbox(dgnId) -> DomainGraphNodeCodec.format.read(dgnBytes).get
     })(blockingDispatcherEC).recoverWith { case e =>
-      logger.error("getDomainGraphNodes failed.", e)
+      logger.error(log"getDomainGraphNodes failed." withException e)
       Future.failed(e)
     }(nodeDispatcherEC)
 
@@ -485,7 +490,7 @@ final class MapDbPersistor(
       try Files.deleteIfExists(Paths.get(file))
       catch {
         case NonFatal(err) =>
-          logger.error("Failed to delete DB file {} ({})", file, err)
+          logger.error(log"Failed to delete DB file ${Safe(file)}" withException err)
       }
   }(blockingDispatcherEC)
 
@@ -522,12 +527,14 @@ object MapDbPersistor {
   case object TemporaryDb extends DbPath
   case object InMemoryDb extends DbPath
   final case class PersistedDb(path: File) extends DbPath
-  object PersistedDb extends StrictLogging {
+  object PersistedDb extends StrictSafeLogging {
     def makeDirIfNotExists(createParentDir: Boolean, path: File): PersistedDb = {
       val parentDir = path.getAbsoluteFile.getParentFile
       if (createParentDir)
         if (parentDir.mkdirs())
-          logger.warn("Parent directory: {} of requested persistence location did not exist; created.", parentDir)
+          logger.warn(
+            safe"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created."
+          )
         else if (!parentDir.isDirectory) sys.error(s"$parentDir is not a directory")
       PersistedDb(path)
     }

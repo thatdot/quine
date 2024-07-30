@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.cypher
 import scala.collection.mutable.ArrayBuffer
 
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 sealed abstract class Aggregator {
 
@@ -10,7 +11,7 @@ sealed abstract class Aggregator {
     * all internally and presenting a monomorphic interface to the external
     * world.
     */
-  def aggregate(): AggregateState
+  def aggregate()(implicit logConfig: LogConfig): AggregateState
 
   /** Is this a pure aggregate? A pure aggregate satisfies all of:
     *
@@ -57,7 +58,7 @@ object Aggregator {
     private val seen = collection.mutable.HashSet.empty[Value]
 
     /** Aggregate results over a fresh row */
-    def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Unit = {
+    def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit = {
       val newValue: Value = computeOnEveryRow.eval(qc)
       if (!distinct || seen.add(newValue))
         state = combine(state, newValue)
@@ -70,7 +71,7 @@ object Aggregator {
 
   /** Tally up the number of results */
   case object countStar extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Long](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Long](
       initial = 0L,
       computeOnEveryRow = Expr.Null,
       distinct = false,
@@ -84,7 +85,7 @@ object Aggregator {
 
   /** Tally up the number of non-null results */
   final case class count(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Long](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Long](
       initial = 0L,
       computeOnEveryRow = expr,
       distinct,
@@ -98,7 +99,7 @@ object Aggregator {
 
   /** Accumulate the results in a list value */
   final case class collect(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[List[Value]](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[List[Value]](
       initial = List.empty,
       computeOnEveryRow = expr,
       distinct,
@@ -112,7 +113,7 @@ object Aggregator {
 
   /** Compute the average of numeric results */
   final case class avg(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Option[(Long, Double)]](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[(Long, Double)]](
       initial = None,
       computeOnEveryRow = expr,
       distinct,
@@ -156,7 +157,7 @@ object Aggregator {
     * if this is not the case).
     */
   final case class sum(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Expr.Number](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Expr.Number](
       initial = Expr.Integer(0L),
       computeOnEveryRow = expr,
       distinct,
@@ -190,7 +191,7 @@ object Aggregator {
     * values, this returns [[Expr.Null]].
     */
   final case class max(expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Option[Value]](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[Value]](
       initial = None,
       computeOnEveryRow = expr,
       distinct = false,
@@ -217,7 +218,7 @@ object Aggregator {
     * values, this returns [[Expr.Null]].
     */
   final case class min(expr: Expr) extends Aggregator {
-    def aggregate(): AggregateState = aggregateWith[Option[Value]](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[Value]](
       initial = None,
       computeOnEveryRow = expr,
       distinct = false,
@@ -245,11 +246,11 @@ object Aggregator {
     * @param partialSample is the sampling partial or complete (affects the denominator)
     */
   final case class StDev(expr: Expr, partialSampling: Boolean) extends Aggregator {
-    def aggregate(): AggregateState = new AggregateState {
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = new AggregateState {
       var sum = 0.0d
       val original = ArrayBuffer.empty[Double]
 
-      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Unit =
+      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit =
         expr.eval(qc) match {
           // Skip null values
           case Expr.Null =>
@@ -293,7 +294,7 @@ object Aggregator {
     * @param continuous is the sampling interpolated
     */
   final case class Percentile(expr: Expr, percentileExpr: Expr, continuous: Boolean) extends Aggregator {
-    def aggregate(): AggregateState = new AggregateState {
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = new AggregateState {
       val original = ArrayBuffer.empty[Expr.Number]
 
       /** This is the percentile value and it gets filled in based on the firs
@@ -302,7 +303,7 @@ object Aggregator {
         */
       var percentileOpt: Option[Double] = None
 
-      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Unit = {
+      def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit = {
         expr.eval(qc) match {
           // Skip null values
           case Expr.Null =>
@@ -382,7 +383,7 @@ sealed abstract class AggregateState {
     * @param params constant parameters in the query
     */
   @throws[CypherException]
-  def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, params: Parameters): Unit
+  def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, params: Parameters, logConfig: LogConfig): Unit
 
   /** Extract the aggregated result
     *

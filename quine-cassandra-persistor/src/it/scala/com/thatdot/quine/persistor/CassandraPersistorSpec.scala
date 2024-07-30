@@ -9,14 +9,15 @@ import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Setting
 import com.thatdot.quine.persistor.cassandra
 import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import scala.concurrent.Await
 import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
-class CassandraPersistorSpec extends PersistenceAgentSpec {
+class CassandraPersistorSpec()(implicit val logConfig: LogConfig) extends PersistenceAgentSpec {
 
   val statementSettings = CassandraStatementSettings(ConsistencyLevel.ONE, 1.second)
   val cassandraWrapper: CassandraInstanceWrapper[PrimeCassandraPersistor] =
@@ -58,8 +59,10 @@ class CassandraPersistorSpec extends PersistenceAgentSpec {
   * - If that fails will default to InMemoryPersistor
   */
 class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFromAddress: InetSocketAddress => T)(
-  implicit val system: ActorSystem
-) extends LazyLogging {
+  implicit
+  val system: ActorSystem,
+  protected val logConfig: LogConfig
+) extends LazySafeLogging {
 
   private var embeddedCassandra: Cassandra = _
 
@@ -110,11 +113,11 @@ class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFrom
     try {
       embeddedCassandra = launchEmbeddedCassanrda()
       val address = addressFromEmbeddedCassandra(embeddedCassandra.getSettings)
-      logger.warn(s"Using embedded cassandra at: $address")
+      logger.warn(log"Using embedded cassandra at: ${Safe(address)}")
       address
     } catch {
       case NonFatal(exception) =>
-        logger.warn("Found no local cassandra, and embedded cassandra failed to launch", exception)
+        logger.warn(log"Found no local cassandra, and embedded cassandra failed to launch" withException exception)
         throw exception
     }
   }
@@ -125,5 +128,4 @@ class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFrom
   }
 
   lazy val instance: T = buildFromAddress(runnableAddress)
-
 }

@@ -10,6 +10,8 @@ import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQuery
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFilterSize: Option[Long])(implicit
   materializer: Materializer
@@ -21,7 +23,9 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType
 
-  private def bloomFilter(persistor: NamespacedPersistenceAgent): NamespacedPersistenceAgent =
+  private def bloomFilter(persistor: NamespacedPersistenceAgent)(implicit
+    logConfig: LogConfig
+  ): NamespacedPersistenceAgent =
     BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, persistor, persistenceConfig)
 
   private def wrapExceptions(persistor: NamespacedPersistenceAgent): NamespacedPersistenceAgent =
@@ -115,23 +119,25 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
   ): Future[Unit] =
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
-        logger.info(s"No version was set in the persistence backend for: $context, initializing to: $currentVersion")
+        logger.info(
+          safe"No version was set in the persistence backend for: ${Safe(context)}, initializing to: $currentVersion"
+        )
         setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
 
       case Some(persistedVBytes) =>
         Version.fromBytes(persistedVBytes) match {
           case None =>
-            val msg = s"Persistence backend cannot parse version for: $context at: $versionMetaDataKey"
+            val msg = s"Persistence backend cannot parse version for: ${Safe(context)} at: ${Safe(versionMetaDataKey)}"
             Future.failed(new IllegalStateException(msg))
           case Some(compatibleV) if currentVersion.canReadFrom(compatibleV) =>
             if (currentVersion <= compatibleV) {
               logger.info(
-                s"Persistence backend for: $context is at: $compatibleV, this is usable as-is by: $currentVersion"
+                safe"Persistence backend for: ${Safe(context)} is at: $compatibleV, this is usable as-is by: $currentVersion"
               )
               Future.unit
             } else {
               logger.info(
-                s"Persistence backend for: $context was at: $compatibleV, upgrading to compatible: $currentVersion"
+                safe"Persistence backend for: ${Safe(context)} was at: $compatibleV, upgrading to compatible: $currentVersion"
               )
               setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
             }
@@ -139,7 +145,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
             isDataEmpty().flatMap {
               case true =>
                 logger.warn(
-                  s"Persistor reported that the last run used an incompatible: $incompatibleV for: $context, but no data was saved, so setting version to: $currentVersion and continuing"
+                  safe"Persistor reported that the last run used an incompatible: $incompatibleV for: ${Safe(context)}, but no data was saved, so setting version to: $currentVersion and continuing"
                 )
                 setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
               case false =>

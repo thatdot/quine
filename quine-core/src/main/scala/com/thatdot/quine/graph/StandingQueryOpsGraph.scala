@@ -25,6 +25,7 @@ import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
+import com.thatdot.quine.util.Log._
 
 /** Functionality for namespaced standing queries. */
 trait StandingQueryOpsGraph extends BaseGraph {
@@ -89,7 +90,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
           keys: lang.Iterable[_ <: MultipleValuesStandingQueryPartId]
         ): util.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = {
           logger.info(
-            s"Performing a full update of the standingQueryPartIndex because of query for part IDs ${keys.asScala.toList}"
+            safe"Performing a full update of the standingQueryPartIndex because of query for part IDs ${Safe(keys.asScala.toList.toString)}"
           )
           val runningSqs = runningStandingQueries.values
             .map(_.query.queryPattern)
@@ -103,8 +104,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
             .toMap
           val runningPartsKeys = runningSqParts.keySet
           keys.asScala.collectFirst {
-            case part if !runningPartsKeys.contains(part) =>
-              logger.warn(s"Unable to find running Standing Query part: $part")
+            case partId if !runningPartsKeys.contains(partId) =>
+              logger.warn(safe"Unable to find running Standing Query part: ${Safe(partId.toString)}")
           }
           runningSqParts.asJava
         }
@@ -248,7 +249,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     }
 
     private def logSqOutputFailure(name: String, err: Throwable): Unit =
-      logger.error(s"Standing query output stream has failed for $name:", err)
+      logger.error(log"Standing query output stream has failed for ${Safe(name)}:" withException err)
 
     /** List standing queries that are currently registered
       *

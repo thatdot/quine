@@ -4,8 +4,7 @@ import scala.annotation.nowarn
 import scala.collection.{immutable, mutable}
 import scala.concurrent.Future
 
-import org.apache.pekko.actor.{Actor, ActorLogging}
-import org.apache.pekko.event.LoggingAdapter
+import org.apache.pekko.actor.Actor
 
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
@@ -33,6 +32,8 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, QuineId, SingleBranch}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Conceptual note:
   * Standing queries should really be a subscription to whether the other satisfies a domain node (branch) or not,
@@ -145,7 +146,7 @@ object DomainNodeIndexBehavior {
       result: Boolean,
       relatedQueries: Set[StandingQueryId],
       inNamespace: NamespaceId
-    )(implicit graph: StandingQueryOpsGraph, log: LoggingAdapter): Unit =
+    )(implicit graph: StandingQueryOpsGraph, log: SafeLogger): Unit =
       if (index contains fromOther) index(fromOther)(dgnId) = Some(result)
       else {
         // if at least one related query is still active in the graph
@@ -157,7 +158,7 @@ object DomainNodeIndexBehavior {
         } else {
           // intentionally ignore because this update is about [a] SQ[s] we know to be deleted
           log.info(
-            s"Declining to create a DomainNodeIndex entry tracking node: ${fromOther} for a deleted Standing Query"
+            safe"Declining to create a DomainNodeIndex entry tracking node: $fromOther for a deleted Standing Query"
           )
         }
       }
@@ -324,7 +325,7 @@ object DomainNodeIndexBehavior {
 
 trait DomainNodeIndexBehavior
     extends Actor
-    with ActorLogging
+    with ActorSafeLogging
     with BaseNodeActor
     with DomainNodeTests
     with QuineIdOps
@@ -357,7 +358,7 @@ trait DomainNodeIndexBehavior
     *  - adds new DistinctID SQs not already in the subscribers
     *  - removes SQs no longer in the graph state
     */
-  protected def updateDistinctIdStandingQueriesOnNode(): Unit = {
+  protected def updateDistinctIdStandingQueriesOnNode()(implicit logConfig: LogConfig): Unit = {
     // Register new SQs in graph state but not in the subscribers
     // NOTE: we cannot use `+=` because if already registered we want to avoid duplicating the result
     for {
@@ -476,7 +477,7 @@ trait DomainNodeIndexBehavior
     dgnId: DomainGraphNodeId,
     relatedQueries: Set[StandingQueryId],
     shouldSendReplies: Boolean
-  ): Unit = {
+  )(implicit logConfig: LogConfig): Unit = {
     domainGraphSubscribers.add(from, dgnId, relatedQueries)
     val existingAnswerOpt = domainGraphSubscribers.getAnswer(dgnId)
     existingAnswerOpt match {
@@ -549,7 +550,7 @@ trait DomainNodeIndexBehavior
     otherDgnId: DomainGraphNodeId,
     result: Boolean,
     shouldSendReplies: Boolean
-  ): Unit = {
+  )(implicit logConfig: LogConfig): Unit = {
     val relatedQueries =
       domainGraphNodeParentIndex.parentNodesOf(otherDgnId) flatMap { dgnId =>
         domainGraphSubscribers.getRelatedQueries(dgnId)
@@ -573,7 +574,7 @@ trait DomainNodeIndexBehavior
     dgnId: DomainGraphNodeId,
     subscriber: Option[Notifiable], // TODO just move this to the caller only
     shouldSendReplies: Boolean
-  ): Unit = {
+  )(implicit logConfig: LogConfig): Unit = {
     // update [[subscribers]]
     val abandoned = subscriber.map(s => domainGraphSubscribers.removeSubscriber(s, dgnId)).getOrElse(Map.empty)
 
@@ -589,9 +590,9 @@ trait DomainNodeIndexBehavior
         case wrongNodesRemoved =>
           // indicates a bug in [[subscribers.remove]]: we removed more nodes than the one we intended to
           log.info(
-            s"""Expected to clear a specific DGN from this node, instead started deleting multiple. Re-subscribing the
-               |inadvertently removed DGNs. Expected: $dgn but found: ${wrongNodesRemoved.size} node[s]:
-               |${wrongNodesRemoved.toList}""".stripMargin.replace('\n', ' ')
+            log"""Expected to clear a specific DGN from this node, instead started deleting multiple. Re-subscribing the
+               |inadvertently removed DGNs. Expected: ${dgn.toString} but found: ${Safe(wrongNodesRemoved.size)} node[s]:
+               |${wrongNodesRemoved.toList.toString}""".cleanLines
           )
           // re-subscribe any extra nodes removed
           (wrongNodesRemoved - dgnId).foreach {
@@ -758,7 +759,9 @@ trait DomainNodeIndexBehavior
       "Use updateAnswerAndPropagateToRelevantSubscribers for the propagation case, and the identity of the DGB for the wake-up/initial registration case",
       "Nov 2021"
     )
-    private[this] def updateAnswerAndNotifySubscribersInefficiently(shouldSendReplies: Boolean): Unit =
+    private[this] def updateAnswerAndNotifySubscribersInefficiently(
+      shouldSendReplies: Boolean
+    )(implicit logConfig: LogConfig): Unit =
       subscribersToThisNode.keys.foreach { dgnId =>
         dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
           case Some(dgn) => updateAnswerAndNotifySubscribers(dgn, shouldSendReplies)
@@ -769,7 +772,7 @@ trait DomainNodeIndexBehavior
     def updateAnswerAndPropagateToRelevantSubscribers(
       downstreamNode: DomainGraphNodeId,
       shouldSendReplies: Boolean
-    ): Unit = {
+    )(implicit logConfig: LogConfig): Unit = {
       val parentNodes = domainGraphNodeParentIndex.parentNodesOf(downstreamNode)
       // this should always be the case: we shouldn't be getting subscription results for DGBs that we don't track
       // a parent of
@@ -797,9 +800,10 @@ trait DomainNodeIndexBehavior
           // recovery succeeded -- add recovered entries to nodeParentIndex and continue, logging an INFO-level notice
           // no data was lost, but this is a bug
           log.info(
-            s"""Found out-of-sync nodeParentIndex while propagating a DGN result. Previously-untracked DGN ID was:
-               |$downstreamNode. Previously only tracking children: ${domainGraphNodeParentIndex.knownChildren.toList}.
-               |""".stripMargin.replace('\n', ' ')
+            safe"""Found out-of-sync nodeParentIndex while propagating a DGN result. Previously-untracked DGN ID was:
+                  |${Safe(downstreamNode)}. Previously only tracking children:
+                  |${Safe(domainGraphNodeParentIndex.knownChildren.toList)}.
+                  |""".cleanLines
           )
           domainGraphNodeParentIndex = recoveredIndex
         } else {
@@ -807,20 +811,22 @@ trait DomainNodeIndexBehavior
           // [[NodeParentIndex.reconstruct]] (or any combination thereof).
           if (shouldSendReplies)
             log.error(
-              s"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+              log"""While propagating a result of a DGN match, found no upstream subscribers that might care about
                  |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
-                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is: $downstreamNode
-                 |""".trim.stripMargin.replace('\n', ' ')
+                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
+                 |${Safe(downstreamNode)}
+                 |""".trim.stripMargin.replaceNewline(' ')
             )
           else {
             // if shouldSendReplies == false, we're probably restoring a node from sleep via journals. In this case,
             // an incomplete nodeParentIndex is not surprising
             log.debug(
-              s"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+              log"""While propagating a result of a DGN match, found no upstream subscribers that might care about
                  |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
-                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is: $downstreamNode.
+                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
+                 |${Safe(downstreamNode)}.
                  |However, this is expected during initial journal replay on a node after wake when snapshots are
-                 |disabled or otherwise missing.""".stripMargin.replace('\n', ' ')
+                 |disabled or otherwise missing.""".stripMargin.replaceNewline(' ')
             )
           }
           updateAnswerAndNotifySubscribersInefficiently(shouldSendReplies): @nowarn
@@ -831,7 +837,7 @@ trait DomainNodeIndexBehavior
     def updateAnswerAndNotifySubscribers(
       identifiedDomainGraphNode: IdentifiedDomainGraphNode,
       shouldSendReplies: Boolean
-    ): Unit = {
+    )(implicit logConfig: LogConfig): Unit = {
       val IdentifiedDomainGraphNode(dgnId, testDgn) = identifiedDomainGraphNode
       testDgn match {
         // TODO this is the only variant used for standing queries
@@ -996,7 +1002,8 @@ trait DomainNodeIndexBehavior
           }
 
         case mu @ (DomainGraphNode.Mu(_, _) | DomainGraphNode.MuVar(_)) =>
-          log.error("Standing query test node contains illegal sub-node: {}", mu)
+          // While this is a part of a query, it cannot contain PII, so it is safe to log
+          log.error(safe"Standing query test node contains illegal sub-node: ${Safe(mu.toString)}")
       }
     }
   }

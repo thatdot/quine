@@ -8,17 +8,19 @@ import cats.data.NonEmptyList
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 class PersistorFirstEdgeProcessor(
   edges: SyncEdgeCollection,
   persistToJournal: NonEmptyList[NodeEvent.WithTime[EdgeEvent]] => Future[Unit],
-  pauseMessageProcessingUntil: (Future[Unit], Try[Unit] => Unit) => Future[Unit],
+  pauseMessageProcessingUntil: (Future[Unit], Try[Unit] => Unit, Boolean) => Future[Unit],
   updateSnapshotTimestamp: () => Unit,
   runPostActions: List[NodeChangeEvent] => Unit,
   qid: QuineId,
   costToSleep: CostToSleep,
   nodeEdgesCounter: BinaryHistogramCounter
-)(implicit idProvider: QuineIdProvider)
+)(implicit idProvider: QuineIdProvider, val logConfig: LogConfig)
     extends SynchronousEdgeProcessor(edges, qid, costToSleep, nodeEdgesCounter) {
 
   protected def journalAndApplyEffects(
@@ -36,11 +38,12 @@ class PersistorFirstEdgeProcessor(
           runPostActions(events)
         case Failure(err) =>
           logger.error(
-            s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
-            s"events: $effectingEvents to in-memory state. Returning failed result.",
-            err
+            log"""Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply
+                 |events: $effectingEvents to in-memory state. Returning failed result.""".cleanLines
+            withException err
           )
-      }
+      },
+      true
     )
 
 }

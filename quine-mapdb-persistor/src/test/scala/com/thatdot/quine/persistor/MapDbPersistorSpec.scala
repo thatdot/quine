@@ -6,8 +6,9 @@ import scala.concurrent.duration.DurationInt
 import com.codahale.metrics.NoopMetricRegistry
 
 import com.thatdot.quine.util.FromSingleExecutionContext
+import com.thatdot.quine.util.Log._
 
-class MapDbPersistorSpec extends PersistenceAgentSpec {
+class MapDbPersistorSpec(implicit protected val logConfig: LogConfig) extends PersistenceAgentSpec {
 
   lazy val persistor: TempMapDbPrimePersistor =
     new TempMapDbPrimePersistor(

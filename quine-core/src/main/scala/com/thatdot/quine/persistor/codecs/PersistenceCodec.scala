@@ -5,7 +5,6 @@ import java.util.UUID
 import scala.collection.immutable.ArraySeq
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
@@ -13,6 +12,7 @@ import com.thatdot.quine.model._
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
 import com.thatdot.quine.persistor.{BinaryFormat, PersistenceAgent}
+import com.thatdot.quine.util.Log._
 
 /** The deserialization failed because a union (eg, a coproduct or enum) was tagged with an unknown type.
   *
@@ -70,7 +70,7 @@ class InvalidPersistedQuineData(
   *   - is `null` supposed to work? The `has*` generated guards don't seem to work
   *   - sometimes the `create*` static methods are missing (eg. Instant)
   */
-trait PersistenceCodec[T] extends LazyLogging {
+trait PersistenceCodec[T] extends LazySafeLogging {
 
   val format: BinaryFormat[T]
 

@@ -18,6 +18,8 @@ import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
 import org.msgpack.core.{ExtensionTypeHeader, MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 
+import com.thatdot.quine.util.Log._
+
 /** Values that are recognized by the Quine interpreter. When talking about Quine
   * as a graph interpreter, these are a part of the "values" handled by this
   * interpreter.
@@ -32,7 +34,7 @@ sealed abstract class QuineValue {
   def underlyingJvmValue: JvmType
 
   /** Return a presentable string representation */
-  def pretty(implicit idProvider: QuineIdProvider): String
+  def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String
 }
 object QuineValue {
   def apply(v: Str#JvmType): QuineValue = Str(v)
@@ -57,7 +59,7 @@ object QuineValue {
     def quineType = QuineType.Str
     def underlyingJvmValue = string
 
-    def pretty(implicit idProvider: QuineIdProvider): String = string
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = string
   }
 
   final case class Integer private (long: Long) extends QuineValue {
@@ -66,7 +68,7 @@ object QuineValue {
     def quineType = QuineType.Integer
     def underlyingJvmValue = long
 
-    def pretty(implicit idProvider: QuineIdProvider): String = long.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = long.toString
   }
   object Integer {
 
@@ -94,7 +96,7 @@ object QuineValue {
     def quineType = QuineType.Floating
     def underlyingJvmValue = double
 
-    def pretty(implicit idProvider: QuineIdProvider): String = double.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = double.toString
   }
 
   case object True extends QuineValue {
@@ -103,7 +105,7 @@ object QuineValue {
     def quineType = QuineType.Boolean
     def underlyingJvmValue = true
 
-    def pretty(implicit idProvider: QuineIdProvider): String = "true"
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = "true"
   }
 
   case object False extends QuineValue {
@@ -112,7 +114,7 @@ object QuineValue {
     def quineType = QuineType.Boolean
     def underlyingJvmValue = false
 
-    def pretty(implicit idProvider: QuineIdProvider): String = "false"
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = "false"
   }
 
   case object Null extends QuineValue {
@@ -121,7 +123,7 @@ object QuineValue {
     def quineType = QuineType.Null
     def underlyingJvmValue = ()
 
-    def pretty(implicit idProvider: QuineIdProvider): String = "null"
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = "null"
   }
 
   final case class Bytes(bytes: Array[Byte]) extends QuineValue {
@@ -137,7 +139,7 @@ object QuineValue {
     def quineType = QuineType.Bytes
     def underlyingJvmValue = bytes
 
-    def pretty(implicit idProvider: QuineIdProvider): String = bytes.mkString("<", ",", ">")
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = bytes.mkString("<", ",", ">")
   }
 
   final case class List(list: Vector[QuineValue]) extends QuineValue {
@@ -146,7 +148,8 @@ object QuineValue {
     def quineType = QuineType.List
     def underlyingJvmValue: JvmType = list.map(_.underlyingJvmValue)
 
-    def pretty(implicit idProvider: QuineIdProvider): String = list.map(_.pretty).mkString("[", ",", "]")
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
+      list.map(_.pretty).mkString("[", ",", "]")
   }
 
   final case class Map private (map: SortedMap[String, QuineValue]) extends QuineValue {
@@ -155,7 +158,7 @@ object QuineValue {
     def quineType = QuineType.Map
     def underlyingJvmValue: SortedMap[String, Any] = SortedMap.from(map.view.mapValues(_.underlyingJvmValue))
 
-    def pretty(implicit idProvider: QuineIdProvider): String =
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
       map.map { case (k, v) => s"$k : ${v.pretty}" }.mkString("{", ",", "}")
   }
   object Map {
@@ -170,7 +173,7 @@ object QuineValue {
     def quineType = QuineType.DateTime
     def underlyingJvmValue = instant
 
-    def pretty(implicit idProvider: QuineIdProvider): String = instant.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = instant.toString
   }
 
   /** @param duration  A java.time.Duration models a quantity or amount of time in terms of seconds and nanoseconds.
@@ -183,7 +186,7 @@ object QuineValue {
 
     def underlyingJvmValue = duration
 
-    def pretty(implicit idProvider: QuineIdProvider): String = duration.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = duration.toString
   }
 
   /** @param date A date without a time-zone in the ISO-8601 calendar system, such as 2007-12-03.
@@ -196,7 +199,7 @@ object QuineValue {
 
     def underlyingJvmValue = date
 
-    def pretty(implicit idProvider: QuineIdProvider): String = date.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = date.toString
   }
 
   /** @param time A time without a time-zone in the ISO-8601 calendar system, such as 10:15:30.
@@ -209,7 +212,7 @@ object QuineValue {
 
     def underlyingJvmValue = time
 
-    def pretty(implicit idProvider: QuineIdProvider): String = time.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = time.toString
   }
 
   final case class Time(time: OffsetTime) extends QuineValue {
@@ -220,7 +223,7 @@ object QuineValue {
 
     def underlyingJvmValue = time
 
-    def pretty(implicit idProvider: QuineIdProvider): String = time.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = time.toString
   }
 
   /** @param localDateTime A date-time without a time-zone in the ISO-8601 calendar system, such as 2007-12-03T10:15:30.
@@ -233,7 +236,7 @@ object QuineValue {
 
     def underlyingJvmValue = localDateTime
 
-    def pretty(implicit idProvider: QuineIdProvider): String = localDateTime.toString
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = localDateTime.toString
   }
 
   object Id {
@@ -247,7 +250,7 @@ object QuineValue {
     def quineType: QuineType = QuineType.Id
     def underlyingJvmValue: JvmType = id
 
-    def pretty(implicit idProvider: QuineIdProvider): String = idProvider.qidToPrettyString(id)
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = idProvider.qidToPrettyString(id)
   }
 
   /** Attempt to decoded a Quine value from a JSON-encoded value
@@ -281,7 +284,7 @@ object QuineValue {
     * @param idProvider ID provider used to try to serialize IDs nicely
     * @return encoded JSON value
     */
-  def toJson(value: QuineValue)(implicit idProvider: QuineIdProvider): Json = value match {
+  def toJson(value: QuineValue)(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json = value match {
     case QuineValue.Null => Json.Null
     case QuineValue.Str(str) => Json.fromString(str)
     case QuineValue.False => Json.False

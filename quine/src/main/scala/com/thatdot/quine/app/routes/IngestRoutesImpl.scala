@@ -15,13 +15,13 @@ import org.apache.pekko.util.Timeout
 import org.apache.pekko.{Done, NotUsed, pattern}
 
 import com.codahale.metrics.Metered
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
 import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.{MemberIdx, NamespaceId}
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
 trait IngestStreamState {
@@ -66,7 +66,8 @@ final case class IngestStreamWithControl[+Conf](
   var close: () => Unit = () => (),
   var restoredStatus: Option[IngestStreamStatus] = None,
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None
-) extends LazyLogging {
+)(implicit logConfig: LogConfig)
+    extends LazySafeLogging {
 
   // Returns a simpler version of status. Only possible values are completed, failed, or running
   private def checkTerminated(implicit materializer: Materializer): Future[IngestStreamStatus] = {
@@ -76,7 +77,7 @@ final case class IngestStreamWithControl[+Conf](
         case Some(Success(Done)) => IngestStreamStatus.Completed
         case Some(Failure(e)) =>
           // If exception occurs, it means that the ingest stream has failed
-          logger.warn(s"Ingest stream: $settings failed.", e)
+          logger.warn(log"Ingest stream: ${settings.toString} failed." withException e)
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       }
@@ -178,6 +179,7 @@ trait IngestRoutesImpl
     * The Either represents a bad request on the Left, and the inner Option represents Some(success) or that the
     * namespace was not found (404).
     */
+  implicit protected def logConfig: LogConfig
   private val ingestStreamStartRoute: Route = {
     val http404: Either[ClientErrors, Option[Nothing]] = Right(None)
     def http400(errors: ClientErrors): Either[ClientErrors, Option[Nothing]] = Left(errors)

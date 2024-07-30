@@ -7,6 +7,8 @@ import scala.concurrent.ExecutionContext
 import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 class RocksDbPrimePersistor(
   createParentDir: Boolean = true,
@@ -17,13 +19,13 @@ class RocksDbPrimePersistor(
   persistenceConfig: PersistenceConfig = PersistenceConfig(),
   bloomFilterSize: Option[Long] = None,
   ioDispatcher: ExecutionContext
-)(implicit materializer: Materializer)
+)(implicit materializer: Materializer, val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
   private val parentDir = topLevelPath.getAbsoluteFile.getParentFile
   if (createParentDir)
     if (parentDir.mkdirs())
-      logger.warn(s"Configured persistence directory: $parentDir did not exist; created.")
+      logger.warn(log"Configured persistence directory: ${Safe(parentDir)} did not exist; created.")
     else if (!parentDir.isDirectory)
       sys.error(s"Error: $parentDir does not exist") // Replaces exception thrown by RocksDB
 
@@ -43,9 +45,9 @@ class RocksDbPrimePersistor(
     catch {
       case err: UnsatisfiedLinkError =>
         logger.error(
-          "RocksDB native library could not be loaded. " +
-          "Consider using MapDB instead by specifying `quine.store.type=map-db`",
-          err
+          log"""RocksDB native library could not be loaded. You may be using an incompatible architecture.
+               |Consider using MapDB instead by specifying `quine.store.type=map-db`
+               |""".cleanLines withException err
         )
         sys.exit(1)
     }

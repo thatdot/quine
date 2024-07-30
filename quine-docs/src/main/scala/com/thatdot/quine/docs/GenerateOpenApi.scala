@@ -8,8 +8,9 @@ import endpoints4s.openapi.model.OpenApi
 import com.thatdot.quine.app.routes.QuineAppOpenApiDocs
 import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.QuineUUIDProvider
+import com.thatdot.quine.util.Log._
 
-object GenerateOpenApi extends App {
+class GenerateOpenApi(implicit protected val logConfig: LogConfig) extends App {
 
   private val (outputPath: Path, isEnterprise: Boolean) = args match {
     case Array(stringPath) => (Paths.get(stringPath), false)

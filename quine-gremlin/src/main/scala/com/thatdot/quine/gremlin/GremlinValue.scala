@@ -8,6 +8,7 @@ import org.apache.commons.text.StringEscapeUtils
 
 import com.thatdot.quine.graph.{BaseGraph, cypher, idFrom}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 /** A Gremlin vertex object. This is what gets returned from a query like `g.V().has("foo")`.
   *
@@ -76,7 +77,7 @@ sealed abstract class GremlinExpression extends Positional {
     * @param graph needed for printing custom user IDs
     * @return a pretty-printed representation of the value
     */
-  def pprint(implicit idProvider: QuineIdProvider): String = this match {
+  def pprint(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = this match {
 
     case TypedValue(QuineValue.Str(str)) => "\"" + StringEscapeUtils.escapeJson(str) + "\""
 
@@ -129,7 +130,7 @@ sealed private[gremlin] trait GremlinPredicateExpression extends Positional {
       GremlinPredicate[String]((s: String) => s.matches(reg), this)
   }
 
-  def pprint(implicit idProvider: QuineIdProvider): String = this match {
+  def pprint(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = this match {
     case EqPred(x) => "eq(" + x.pprint + ")"
     case NeqPred(x) => "neq(" + x.pprint + ")"
     case WithinPred(xs) => "within(" + xs.pprint + ")"
@@ -181,9 +182,10 @@ final case class GremlinPredicate[Input: ClassTag](
     value: Any,
     pos: Option[Position]
   )(implicit
-    graph: BaseGraph
+    graph: BaseGraph,
+    logConfig: LogConfig
   ): Try[Boolean] = {
-    def printedPredicate = evaluatedFrom.pprint(graph.idProvider)
+    def printedPredicate = evaluatedFrom.pprint(graph.idProvider, logConfig)
     value
       .castTo[Input](s"the predicate `$printedPredicate` can't be used on `$value`", pos)
       .map(predicate)

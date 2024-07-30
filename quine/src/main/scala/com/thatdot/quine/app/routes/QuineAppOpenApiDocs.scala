@@ -12,12 +12,13 @@ import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.OpenApiServer
+import com.thatdot.quine.util.Log._
 
 /** The OpenAPI docs for our API
   *
   * @param idProvider the Quine ID provider (relevant for serialization of IDs and examples)
   */
-final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
+final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protected val logConfig: LogConfig)
     extends DebugOpsRoutes
     with AlgorithmRoutes
     with AdministrationRoutes
@@ -106,7 +107,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)
   *
   * @param graph the Quine graph
   */
-final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)
+final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)(implicit protected val logConfig: LogConfig)
     extends endpoints4s.pekkohttp.server.Endpoints
     with endpoints4s.pekkohttp.server.JsonEntitiesFromEncodersAndDecoders {
 

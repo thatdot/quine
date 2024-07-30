@@ -13,6 +13,7 @@ import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
 
 trait DomainGraphNodeColumnNames {
@@ -48,12 +49,9 @@ object DomainGraphNodesDefinition
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean
-  )(implicit
-    mat: Materializer,
-    futureInstance: Applicative[Future]
-  ): Future[DomainGraphNodes] = {
+  )(implicit mat: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[DomainGraphNodes] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     val createdSchema = futureInstance.whenA(
       shouldCreateTables
@@ -77,7 +75,11 @@ object DomainGraphNodesDefinition
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[DomainGraphNodes] = ???
+  )(implicit
+    materializer: Materializer,
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
+  ): Future[DomainGraphNodes] = ???
 }
 
 class DomainGraphNodes(

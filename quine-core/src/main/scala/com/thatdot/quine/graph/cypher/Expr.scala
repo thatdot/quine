@@ -15,6 +15,7 @@ import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{ByteConversions, TypeclassInstances}
 
 /** Maps directly onto Cypher's expressions
@@ -49,7 +50,8 @@ sealed abstract class Expr {
     context: QueryContext
   )(implicit
     idProvider: QuineIdProvider,
-    parameters: Parameters
+    parameters: Parameters,
+    logConfig: LogConfig
   ): Value
 
   /** substitute all parameters in this expression and all descendants
@@ -734,7 +736,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Variable = this
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       qc.getOrElse(id, Null)
   }
 
@@ -758,7 +760,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Property = copy(expr = expr.substitute(parameters))
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       expr.eval(qc) match {
         case Node(_, _, props) => props.getOrElse(key, Null)
         case Relationship(_, _, props, _) => props.getOrElse(key, Null)
@@ -820,7 +822,7 @@ object Expr {
       keyExpr = keyExpr.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       expr.eval(qc) match {
         case Node(_, _, props) =>
           val key = keyExpr.eval(qc).asString("dynamic property on node")
@@ -894,7 +896,7 @@ object Expr {
       to = to.map(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       list.eval(qc) match {
         case List(elems) =>
           val fromVal: Option[Int] = from.map { (fromExpr: Expr) =>
@@ -940,7 +942,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Expr = parameters.getOrElse(this, this)
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       p.params.apply(name)
   }
 
@@ -961,7 +963,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): ListLiteral =
       copy(expressions = expressions.map(_.substitute(parameters)))
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       List(expressions.map(_.eval(qc)))
   }
 
@@ -983,7 +985,7 @@ object Expr {
       entries = entries.fmap(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Map(entries.fmap(_.eval(qc)))
   }
 
@@ -1014,7 +1016,7 @@ object Expr {
       items = items.map { case (str, expr) => str -> expr.substitute(parameters) }
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
       val newItems: Seq[(String, Value)] = items.map { case (variable, expr) =>
         variable -> expr.eval(qc)
       }
@@ -1053,7 +1055,7 @@ object Expr {
       nodeEdges = nodeEdges.map(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
       val evaled = nodeEdges.map(_.eval(qc))
       val head = evaled.head.asInstanceOf[Node]
       val tail = evaled.tail
@@ -1082,7 +1084,7 @@ object Expr {
       relationship = relationship.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       relationship.eval(qc) match {
         case Null => Null
         case Relationship(start, _, _, _) => Bytes(start)
@@ -1111,7 +1113,7 @@ object Expr {
       relationship = relationship.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       relationship.eval(qc) match {
         case Null => Null
         case Relationship(_, _, _, end) => Bytes(end)
@@ -1146,7 +1148,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       Value.compare(lhs.eval(qc), rhs.eval(qc))
   }
 
@@ -1165,7 +1167,7 @@ object Expr {
     // Non-number arguments
     def cannotFail: Boolean = false
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Number =
       (lhs.eval(qc), rhs.eval(qc)) match {
         case (n1: Number, n2: Number) =>
           try operation(n1, n2)
@@ -1214,7 +1216,7 @@ object Expr {
     )
 
     @throws[ArithmeticException]("if the result overflows")
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       (lhs.eval(qc), rhs.eval(qc)) match {
         case (Null, _) | (_, Null) => Null
 
@@ -1385,7 +1387,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       (lhs.eval(qc), rhs.eval(qc)) match {
         case (Null, _) | (_, Null) => Null
 
@@ -1473,7 +1475,7 @@ object Expr {
       argument = argument.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Number =
       argument.eval(qc) match {
         case n: Number => n
 
@@ -1505,7 +1507,7 @@ object Expr {
       argument = argument.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Number =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Number =
       argument.eval(qc) match {
         case n: Number =>
           try -n
@@ -1548,7 +1550,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x >= 0) True else False
         case None => Null
@@ -1577,7 +1579,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x <= 0) True else False
         case None => Null
@@ -1606,7 +1608,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x > 0) True else False
         case None => Null
@@ -1635,7 +1637,7 @@ object Expr {
       rhs = rhs.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Value.partialOrder.tryCompare(lhs.eval(qc), rhs.eval(qc)) match {
         case Some(x) => if (x < 0) True else False
         case None => Null
@@ -1666,7 +1668,7 @@ object Expr {
       list = list.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       (element.eval(qc), list.eval(qc)) match {
         case (_, Null) => Null
         case (x, List(es)) =>
@@ -1702,7 +1704,7 @@ object Expr {
       startsWith = startsWith.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       (scrutinee.eval(qc), startsWith.eval(qc)) match {
         case (Str(scrut), Str(start)) => Bool.apply(scrut.startsWith(start))
         case _ => Null
@@ -1729,7 +1731,7 @@ object Expr {
       endsWith = endsWith.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       (scrutinee.eval(qc), endsWith.eval(qc)) match {
         case (Str(scrut), Str(end)) => Bool.apply(scrut.endsWith(end))
         case _ => Null
@@ -1756,7 +1758,7 @@ object Expr {
       contained = contained.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       (scrutinee.eval(qc), contained.eval(qc)) match {
         case (Str(scrut), Str(cont)) => Bool.apply(scrut.contains(cont))
         case _ => Null
@@ -1789,7 +1791,7 @@ object Expr {
       regex = regex.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       (scrutinee.eval(qc), regex.eval(qc)) match {
         case (Str(scrut), Str(reg)) => Bool.apply(scrut.matches(reg))
         case _ => Null
@@ -1814,7 +1816,7 @@ object Expr {
       notNull = notNull.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       notNull.eval(qc) match {
         case Null => False
         case _ => True
@@ -1839,7 +1841,7 @@ object Expr {
       isNull = isNull.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       isNull.eval(qc) match {
         case Null => True
         case _ => False
@@ -1866,7 +1868,7 @@ object Expr {
       negated = negated.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       negated.eval(qc) match {
         case bool: Bool => bool.negate
         case other =>
@@ -1899,7 +1901,7 @@ object Expr {
       conjuncts = conjuncts.map(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       conjuncts.foldLeft[Bool](True) { case (acc: Bool, boolExpr: Expr) =>
         boolExpr.eval(qc) match {
           case bool: Bool => acc.and(bool)
@@ -1934,7 +1936,7 @@ object Expr {
       disjuncts = disjuncts.map(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       disjuncts.foldLeft[Bool](False) { case (acc: Bool, boolExpr: Expr) =>
         boolExpr.eval(qc) match {
           case bool: Bool => acc.or(bool)
@@ -1977,7 +1979,7 @@ object Expr {
       default = default.map(_.substitute(parameters))
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
       val scrut = scrutinee.getOrElse(True).eval(qc)
       branches
         .find { case (comp, _) => Value.ordering.equiv(comp.eval(qc), scrut) }
@@ -2011,7 +2013,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): Function =
       copy(arguments = arguments.map(_.substitute(parameters)))
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = {
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
       val argVals = arguments.map(_.eval(qc))
       if (function != Func.Coalesce && argVals.contains(Expr.Null)) {
         Expr.Null
@@ -2050,7 +2052,7 @@ object Expr {
       extract = extract.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): List =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): List =
       List(
         list
           .eval(qc)
@@ -2096,7 +2098,7 @@ object Expr {
       filterPredicate = filterPredicate.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       list
         .eval(qc)
         .asList("all list predicate")
@@ -2142,7 +2144,7 @@ object Expr {
       filterPredicate = filterPredicate.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
       list
         .eval(qc)
         .asList("any list predicate")
@@ -2188,7 +2190,7 @@ object Expr {
       filterPredicate = filterPredicate.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Bool = {
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool = {
       val (truesCount: Int, sawNull: Boolean) = list
         .eval(qc)
         .asList("single list predicate")
@@ -2251,7 +2253,7 @@ object Expr {
       reducer = reducer.substitute(parameters)
     )
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       list
         .eval(qc)
         .asList("reduce list")
@@ -2272,7 +2274,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): FreshNodeId.type = this
 
-    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value =
+    override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
       Expr.fromQuineValue(idp.qidToValue(idp.newQid()))
   }
 }
@@ -2347,7 +2349,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.NoSuchField(fieldName, asMap(context).keySet, context)
     )
 
-  override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters): Value = this
+  override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = this
 
   /** Runtime representation of the type of the value
     *
@@ -2870,7 +2872,7 @@ object Value {
     * @param idProvider ID provider used to try to serialize IDs nicely
     * @return encoded JSON value
     */
-  def toJson(value: Value)(implicit idProvider: QuineIdProvider): Json = value match {
+  def toJson(value: Value)(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json = value match {
     case Expr.Null => Json.Null
     case Expr.Str(str) => Json.fromString(str)
     // Can't use `case Expr.Bool(b) =>` here because then scalac thinks the match isn't exhaustive

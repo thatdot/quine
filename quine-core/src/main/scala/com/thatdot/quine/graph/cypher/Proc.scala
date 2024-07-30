@@ -11,6 +11,7 @@ import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.LiteralOpsGraph
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.quine.util.Log._
 
 /** Cypher procedure
   *
@@ -45,7 +46,8 @@ sealed abstract class Proc {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _]
 
 }
@@ -74,7 +76,8 @@ object Proc {
       location: ProcedureExecutionLocation
     )(implicit
       parameters: Parameters,
-      timeout: Timeout
+      timeout: Timeout,
+      logConfig: LogConfig
     ): Source[Vector[Value], _] = {
 
       val (startNode, endNode, options): (QuineId, QuineId, Map[String, Value]) = arguments match {
@@ -295,7 +298,8 @@ object Proc {
       location: ProcedureExecutionLocation
     )(implicit
       parameters: Parameters,
-      timeout: Timeout
+      timeout: Timeout,
+      logConfig: LogConfig
     ): Source[Vector[Value], _] =
       underlying.call(context, arguments, location)
   }

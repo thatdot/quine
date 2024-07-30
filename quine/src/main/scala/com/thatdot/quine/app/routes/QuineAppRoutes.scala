@@ -9,7 +9,6 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 import org.apache.pekko.util.Timeout
 
-import com.typesafe.scalalogging.LazyLogging
 import org.webjars.WebJarAssetLocator
 
 import com.thatdot.quine.app.config.BaseConfig
@@ -19,6 +18,7 @@ import com.thatdot.quine.app.{BaseApp, BuildInfo, QuineApp}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
 
 /** Main webserver routes for Quine
   *
@@ -41,7 +41,7 @@ class QuineAppRoutes(
   val uri: Uri,
   val timeout: Timeout,
   val apiV2Enabled: Boolean
-)(implicit val ec: ExecutionContext)
+)(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
     with QueryUiRoutesImpl
     with WebSocketQueryProtocolServer
@@ -53,7 +53,7 @@ class QuineAppRoutes(
     with StandingQueryRoutesImpl
     with exts.ServerEntitiesWithExamples
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
-    with LazyLogging {
+    with LazySafeLogging {
 
   //
   //override val app: BaseApp with StandingQueryStore with IngestStreamState = ???
@@ -142,7 +142,7 @@ class QuineAppRoutes(
       val v2Route = new V2OssRoutes(
         new OssApiInterface(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout)
       ).v2Routes
-      logger.warn("Starting with Api V2 endpoints enabled")
+      logger.warn(safe"Starting with Api V2 endpoints enabled")
       v1Routes ~ v2Route
     } else {
       v1Routes

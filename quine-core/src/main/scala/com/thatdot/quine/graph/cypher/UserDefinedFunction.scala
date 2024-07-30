@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.cypher
 import scala.jdk.CollectionConverters._
 
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Cypher user defined functions (UDF) must extend this class
   *
@@ -40,7 +41,7 @@ abstract class UserDefinedFunction {
     * @return output value of the UDF
     */
   @throws[CypherException]
-  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value
+  def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value
 
   /** Signature of the function
     *
@@ -76,7 +77,7 @@ abstract class JavaUserDefinedFunction(
   @throws[CypherException]
   def call(arguments: java.util.List[Value], idProvider: QuineIdProvider): Value
 
-  final override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider): Value =
+  final override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value =
     call(arguments.asJava, idProvider)
 
   final override def signatures = udfSignatures.asScala.toVector

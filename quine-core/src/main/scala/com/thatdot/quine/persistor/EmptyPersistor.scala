@@ -19,6 +19,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.util.Log._
 
 /** Persistence agent which never saves anything
   *
@@ -36,7 +37,7 @@ class EmptyPersistor(
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = {
     logger.warn(
-      "Attempted to enumerate all node IDs on an empty persistor which never returns anything."
+      safe"Attempted to enumerate all node IDs on an empty persistor which never returns anything."
     )
     Source.empty[QuineId]
   }

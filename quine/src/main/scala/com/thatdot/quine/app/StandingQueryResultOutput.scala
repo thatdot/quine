@@ -23,7 +23,6 @@ import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import cats.syntax.either._
-import com.typesafe.scalalogging.{LazyLogging, Logger}
 import io.circe.Json
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
@@ -35,7 +34,7 @@ import software.amazon.awssdk.services.sns.SnsAsyncClient
 
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, QuineValueToProtobuf}
+import com.thatdot.quine.app.serialization.{ConversionFailure, ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
@@ -43,16 +42,18 @@ import com.thatdot.quine.graph.cypher.QueryContext
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, StandingQueryResult, cypher}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.wireTapFirst
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
-object StandingQueryResultOutput extends LazyLogging {
+object StandingQueryResultOutput extends LazySafeLogging {
 
   import StandingQueryResultOutputUserDef._
 
   // Invariant: these keys must be fixed to the names of the loggers in Quine App's application.conf
-  private val printLogger = Logger("thatdot.StandingQueryResults")
-  private val printLoggerNonBlocking = Logger("thatdot.StandingQueryResultsSampled")
+  private val printLogger = SafeLogger("thatdot.StandingQueryResults")
+  private val printLoggerNonBlocking = SafeLogger("thatdot.StandingQueryResultsSampled")
 
   /** Construct a destination to which results are output
     *
@@ -66,7 +67,10 @@ object StandingQueryResultOutput extends LazyLogging {
     inNamespace: NamespaceId,
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph
-  )(implicit protobufSchemaCache: ProtobufSchemaCache): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
+  )(implicit
+    protobufSchemaCache: ProtobufSchemaCache,
+    logConfig: LogConfig
+  ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
     val execToken = SqResultsExecToken(s"SQ: $name in: $inNamespace")
     output match {
       case Drop => Flow[StandingQueryResult].map(_ => execToken)
@@ -113,14 +117,15 @@ object StandingQueryResultOutput extends LazyLogging {
                       .andThen {
                         case Failure(err) =>
                           logger.error(
-                            s"Failed to deserialize error response from POST $result to $url. " +
-                            s"Response status was ${response.status}",
-                            err
+                            log"""Failed to deserialize error response from POST $result to ${Safe(url)}.
+                                 |Response status was ${Safe(response.status.value)}""".cleanLines
+                            withException err
                           )
                         case Success(responseBody) =>
                           logger.error(
-                            s"Failed to POST $result to $url. " +
-                            s"Response was ${response.status} (body: $responseBody)"
+                            log"""Failed to POST $result to ${Safe(url)}.
+                                 |Response was ${Safe(response.status.value)}
+                                 |""".cleanLines + log": ${Safe(responseBody)}"
                           )
                       }(system.dispatcher)
                   }
@@ -129,7 +134,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
             // TODO: principled error handling
             posted.recover { case err =>
-              logger.error("Failed to POST standing query result", err)
+              logger.error(log"Failed to POST standing query result" withException err)
               execToken
             }(system.dispatcher)
           }
@@ -141,7 +146,7 @@ object StandingQueryResultOutput extends LazyLogging {
           new ByteArraySerializer
         ).withBootstrapServers(bootstrapServers)
           .withProperties(properties)
-        logger.info(s"Writing to kafka with properties $properties")
+        logger.info(log"Writing to kafka with properties ${properties}")
         serialized(name, format, graph)
           .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
           .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))
@@ -209,17 +214,17 @@ object StandingQueryResultOutput extends LazyLogging {
         // TODO if any request to SNS errors, that thread (of the aforementioned 10) will retry its request
         // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
         Flow[StandingQueryResult]
-          .map(result => result.toJson(graph.idProvider).noSpaces + "\n")
+          .map(result => result.toJson(graph.idProvider, logConfig).noSpaces + "\n")
           .viaMat(SnsPublisher.flow(topic)(awsSnsClient).named(s"sq-output-sns-producer-for-$name"))(Keep.right)
           .map(_ => execToken)
 
       case PrintToStandardOut(logLevel, logMode) =>
         import PrintToStandardOut._
-        val resultLogger: Logger = logMode match {
+        val resultLogger: SafeLogger = logMode match {
           case LogMode.Complete => printLogger
           case LogMode.FastSampling => printLoggerNonBlocking
         }
-        val logFn: String => Unit =
+        val logFn: SafeInterpolator => Unit =
           logLevel match {
             case LogLevel.Trace => resultLogger.trace(_)
             case LogLevel.Debug => resultLogger.debug(_)
@@ -229,13 +234,16 @@ object StandingQueryResultOutput extends LazyLogging {
           }
 
         Flow[StandingQueryResult].map { result =>
-          logFn(s"Standing query `$name` match: ${result.toJson(graph.idProvider).noSpaces}")
+          // NB we are using `Safe` here despite `result` potentially containing PII because the entire purpose of this
+          // output is to log SQ results. If the user has configured this output, they have accepted the risk of PII
+          // in their logs.
+          logFn(log"Standing query `${Safe(name)}` match: ${Safe(result.toJson(graph.idProvider, logConfig).noSpaces)}")
           execToken
         }
 
       case WriteToFile(path) =>
         Flow[StandingQueryResult]
-          .map(result => ByteString(result.toJson(graph.idProvider).noSpaces + "\n"))
+          .map(result => ByteString(result.toJson(graph.idProvider, logConfig).noSpaces + "\n"))
           .alsoTo(
             FileIO
               .toPath(
@@ -278,14 +286,16 @@ object StandingQueryResultOutput extends LazyLogging {
                     .andThen {
                       case Failure(err) =>
                         logger.error(
-                          s"Failed to deserialize error response from POST ${result.slackJson} to slack webhook. " +
-                          s"Response status was ${response.status}",
-                          err
+                          log"""Failed to deserialize error response from POST ${result.slackJson} to slack webhook.
+                               |Response status was ${Safe(response.status.value)}
+                               |""".cleanLines
+                          withException err
                         )
                       case Success(responseBody) =>
                         logger.error(
-                          s"Failed to POST ${result.slackJson} to slack webhook. " +
-                          s"Response status was ${response.status}. Body was $responseBody"
+                          log"Failed to POST ${result.slackJson} to slack webhook. " +
+                          log"Response status was ${Safe(response.status.value)}: " +
+                          log"${Safe(responseBody)}"
                         )
                     }(system.dispatcher)
                 }
@@ -294,7 +304,7 @@ object StandingQueryResultOutput extends LazyLogging {
 
             // TODO: principled error handling
             posted.recover { case err =>
-              logger.error("Failed to POST standing query result", err)
+              logger.error(log"Failed to POST standing query result" withException err)
               execToken
             }(system.dispatcher)
           }
@@ -314,9 +324,9 @@ object StandingQueryResultOutput extends LazyLogging {
         }
         if (!queryAst.isIdempotent && shouldRetry) {
           logger.warn(
-            """Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
-              |occur, query execution may be retried and duplicate data may be created. To avoid this,
-              |set shouldRetry = false in the Standing Query output""".stripMargin.replace('\n', ' ')
+            log"""Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
+                 |occur, query execution may be retried and duplicate data may be created. To avoid this
+                 |set shouldRetry = false in the Standing Query output""".cleanLines
           )
         }
 
@@ -325,9 +335,9 @@ object StandingQueryResultOutput extends LazyLogging {
             case None =>
               wireTapFirst[(StandingQueryResult.Meta, cypher.QueryContext)](tup =>
                 logger.warn(
-                  s"""Unused Cypher Standing Query output for Standing Query output: $name with:
-                             |${tup._2.environment.size} columns. Did you mean to specify `andThen`?""".stripMargin
-                    .replace('\n', ' ')
+                  safe"""Unused Cypher Standing Query output for Standing Query output:
+                        |${Safe(name)} with: ${Safe(tup._2.environment.size)} columns.
+                        |Did you mean to specify `andThen`?""".cleanLines
                 )
               ).map(_ => execToken)
 
@@ -337,12 +347,8 @@ object StandingQueryResultOutput extends LazyLogging {
                   val newData = qc.environment.map { case (keySym, cypherVal) =>
                     keySym.name -> Try(cypher.Expr.toQuineValue(cypherVal)).getOrElse {
                       logger.warn(
-                        s"""Cypher Standing Query output: $name included cypher value not representable as a
-                           |Quine value (logged at INFO level). Using `null` instead.""".stripMargin.replace('\n', ' ')
-                      )
-                      logger.info(
-                        s"""Cypher Value: $cypherVal could not be represented as a Quine value in Standing
-                           |Query output: $name""".stripMargin.replace('\n', ' ')
+                        log"""Cypher Value: ${cypherVal.toString} could not be represented as a Quine value in Standing
+                             |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines
                       )
                       QuineValue.Null
                     }
@@ -388,10 +394,13 @@ object StandingQueryResultOutput extends LazyLogging {
     name: String,
     format: OutputFormat,
     graph: BaseGraph
-  )(implicit protobufSchemaCache: ProtobufSchemaCache): Flow[StandingQueryResult, Array[Byte], NotUsed] =
+  )(implicit
+    protobufSchemaCache: ProtobufSchemaCache,
+    logConfig: LogConfig
+  ): Flow[StandingQueryResult, Array[Byte], NotUsed] =
     format match {
       case OutputFormat.JSON =>
-        Flow[StandingQueryResult].map(_.toJson(graph.idProvider).noSpaces.getBytes)
+        Flow[StandingQueryResult].map(_.toJson(graph.idProvider, logConfig).noSpaces.getBytes)
       case OutputFormat.Protobuf(schemaUrl, typeName) =>
         val serializer: Future[QuineValueToProtobuf] =
           protobufSchemaCache
@@ -409,14 +418,11 @@ object StandingQueryResultOutput extends LazyLogging {
           .map { case (result, serializer) =>
             serializer
               .toProtobufBytes(result.data)
-              .leftMap { err =>
+              .leftMap { (err: ConversionFailure) =>
                 logger.warn(
-                  s"""On Standing Query output: $name, can't serialize provided datum (logged at INFO level)
-                     |to protobuf type: $typeName. Skipping datum.""".stripMargin.replace('\n', ' ')
-                )
-                logger.info(
-                  s"Standing Query output: $name failed to serialize Standing Query result as Protobuf: $result",
-                  err
+                  log"""On Standing Query output: ${Safe(name)}, can't serialize provided datum: $result
+                       |to protobuf type: ${Safe(typeName)}. Skipping datum. Error: ${err.toString}
+                       |""".cleanLines
                 )
               }
           }
@@ -431,7 +437,8 @@ object StandingQueryResultOutput extends LazyLogging {
 
   object SlackSerializable {
     def apply(positiveOnly: Boolean, results: Seq[StandingQueryResult])(implicit
-      idProvider: QuineIdProvider
+      idProvider: QuineIdProvider,
+      logConfig: LogConfig
     ): Option[SlackSerializable] = results match {
       case Seq() => None // no new results or cancellations
       case cancellations if positiveOnly && !cancellations.exists(_.meta.isPositiveMatch) =>
@@ -456,7 +463,7 @@ object StandingQueryResultOutput extends LazyLogging {
     }
   }
 
-  final case class NewResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider)
+  final case class NewResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider, logConfig: LogConfig)
       extends SlackSerializable {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
@@ -477,8 +484,10 @@ object StandingQueryResultOutput extends LazyLogging {
       .noSpaces
   }
 
-  final case class CancelledResult(data: Map[String, QuineValue])(implicit idProvider: QuineIdProvider)
-      extends SlackSerializable {
+  final case class CancelledResult(data: Map[String, QuineValue])(implicit
+    idProvider: QuineIdProvider,
+    protected val logConfig: LogConfig
+  ) extends SlackSerializable {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
     private val dataPrettyJson: String =
@@ -507,7 +516,9 @@ object StandingQueryResultOutput extends LazyLogging {
   }
 
   final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[StandingQueryResult])(
-    implicit idProvider: QuineIdProvider
+    implicit
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig
   ) extends SlackSerializable {
     val newResultsBlocks: Vector[Json] = newResults match {
       case Seq() => Vector.empty

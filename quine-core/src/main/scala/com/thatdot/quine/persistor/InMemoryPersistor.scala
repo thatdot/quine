@@ -23,6 +23,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.util.Log._
 
 /** Persistence implementation which actually just keeps everything in memory
   *
@@ -54,7 +55,8 @@ class InMemoryPersistor(
   domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
   val namespace: NamespaceId = None
-) extends PersistenceAgent {
+)(implicit val logConfig: LogConfig)
+    extends PersistenceAgent {
 
   private val allTables =
     Seq(journals, domainIndexEvents, snapshots, standingQueries, multipleValuesStandingQueryStates, domainGraphNodes)
@@ -259,13 +261,13 @@ class InMemoryPersistor(
 object InMemoryPersistor {
 
   /** Create a new empty in-memory persistor */
-  def empty() = new InMemoryPersistor()
+  def empty() = new InMemoryPersistor()(LogConfig.strictest)
 
   def namespacePersistor: PrimePersistor = new StatelessPrimePersistor(
     PersistenceConfig(),
     None,
-    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
-  )(null) // Materializer is never used if bloomFilterSize is set to none
+    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strictest)
+  )(null, LogConfig.strictest) // Materializer is never used if bloomFilterSize is set to none
   def persistorMaker: ActorSystem => PrimePersistor =
     _ => namespacePersistor
 }

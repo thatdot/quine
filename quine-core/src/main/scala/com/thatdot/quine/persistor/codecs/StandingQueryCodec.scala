@@ -438,17 +438,6 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         val graphPatOrigin = makeBranchOrigin(new persistence.GraphPatternOrigin())
           .asInstanceOf[persistence.GraphPatternOrigin]
         val readOrigin = readGraphPatternOrigin(graphPatOrigin)
-        // MultipleValues queries do not yet support distinct (QU-568) so warn if that is requested
-        if (readOrigin.pattern.distinct) {
-          logger.warn(
-            readOrigin.cypherOriginal match {
-              case Some(cypherQuery) =>
-                s"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '$cypherQuery'"
-              case None =>
-                s"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: $readOrigin"
-            }
-          )
-        }
         readOrigin
 
       case other =>

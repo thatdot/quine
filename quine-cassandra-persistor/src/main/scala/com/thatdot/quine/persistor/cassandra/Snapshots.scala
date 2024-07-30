@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.{EventTime, NamespaceId}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
 import com.thatdot.quine.persistor.cassandra.support._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T4}
 
 trait SnapshotsColumnNames {
@@ -64,10 +65,11 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
     writeSettings: CassandraStatementSettings
   )(implicit
     materializer: Materializer,
-    futureInstance: Applicative[Future]
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
   ): Future[Snapshots] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(log"Preparing statements for ${(Safe(tableName.toString))}")
 
     (
       T2(insertStatement, deleteAllByPartitionKeyStatement)

@@ -8,6 +8,7 @@ import scala.concurrent.duration.DurationInt
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.{GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
+import com.thatdot.quine.util.Log._
 
 /** An input stream that can be written to for testing input-stream based  ingest types. */
 class WritableInputStream() extends AutoCloseable {
@@ -52,7 +53,7 @@ object IngestTestGraph {
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = QuineIdLongProvider()
-    ),
+    )(LogConfig.testing),
     5.seconds
   )
 }

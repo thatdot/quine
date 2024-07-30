@@ -3,11 +3,12 @@ package com.thatdot.quine.graph.edges
 import scala.concurrent.Future
 
 import cats.data.NonEmptyList
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime}
 import com.thatdot.quine.model._
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 //abstract class DontCareWrapper(edges: AbstractEdgeCollectionView[F forSome { type F[_] }, S forSome { type S[_] }])
 //    extends EdgeProcessor(edges)
@@ -31,12 +32,12 @@ abstract class EdgeProcessor(
   def processEdgeEvents(
     events: List[EdgeEvent],
     atTime: () => EventTime
-  ): Future[Unit]
+  )(implicit logConfig: LogConfig): Future[Unit]
 
   /** Apply a single edge event to the edge collection without causing any other side effects (SQs, metrics
     * upkeep, etc).
     */
-  def updateEdgeCollection(event: EdgeEvent): Unit
+  def updateEdgeCollection(event: EdgeEvent)(implicit logConfig: LogConfig): Unit
 
   import edges.{toSyncFuture, toSyncStream}
   def size: Int = toSyncFuture(edges.size)
@@ -83,7 +84,9 @@ abstract class SynchronousEdgeProcessor(
   nodeEdgesCounter: BinaryHistogramCounter
 )(implicit idProvider: QuineIdProvider)
     extends EdgeProcessor(edgeCollection)
-    with LazyLogging {
+    with LazySafeLogging {
+
+  implicit protected def logConfig: LogConfig
 
   /** Fast check for if a number is a power of 2 */
   private def isPowerOfTwo(n: Int): Boolean = (n & (n - 1)) == 0
@@ -98,13 +101,13 @@ abstract class SynchronousEdgeProcessor(
     produceTimestamp: () => EventTime
   ): Future[Unit]
 
-  def processEdgeEvents(events: List[EdgeEvent], atTime: () => EventTime): Future[Unit] =
+  def processEdgeEvents(events: List[EdgeEvent], atTime: () => EventTime)(implicit logConfig: LogConfig): Future[Unit] =
     NonEmptyList.fromList(events.filter(edgeEventHasEffect)) match {
       case Some(effectingEvents) => journalAndApplyEffects(effectingEvents, atTime)
       case None => Future.unit
     }
 
-  def updateEdgeCollection(event: EdgeEvent): Unit = event match {
+  def updateEdgeCollection(event: EdgeEvent)(implicit logConfig: LogConfig): Unit = event match {
     case EdgeEvent.EdgeAdded(edge) =>
       edgeCollection.addEdge(edge)
     case EdgeEvent.EdgeRemoved(edge) =>
@@ -122,7 +125,7 @@ abstract class SynchronousEdgeProcessor(
 
         val edgeCollectionSizeWarningInterval = 10000
         if ((oldSize + 1) % edgeCollectionSizeWarningInterval == 0)
-          logger.warn(s"Node ${qid.pretty} has: ${oldSize + 1} edges")
+          logger.warn(log"Node ${Safe(qid.pretty)} has: ${Safe(oldSize + 1)} edges")
         nodeEdgesCounter.increment(previousCount = oldSize)
       case EdgeEvent.EdgeRemoved(_) =>
         nodeEdgesCounter.decrement(previousCount = oldSize)

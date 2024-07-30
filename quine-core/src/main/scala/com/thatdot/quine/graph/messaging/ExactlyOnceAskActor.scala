@@ -4,11 +4,13 @@ import scala.concurrent.Promise
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.util.Random
 
-import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
+import org.apache.pekko.actor.{Actor, ActorRef, Cancellable, Timers}
 
 import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph.HostQuineMetrics.RelayAskMetric
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Temporary actor facilitating asks with exactly-once delivery across the Quine graph
   *
@@ -42,8 +44,9 @@ final private[quine] class ExactlyOnceAskActor[Resp](
   timeout: FiniteDuration,
   resultHandler: ResultHandler[Resp],
   metrics: RelayAskMetric
-) extends Actor
-    with ActorLogging
+)(implicit logConfig: LogConfig)
+    extends Actor
+    with ActorSafeLogging
     with Timers {
   // Schedule a timeout to give up waiting
   timers.startSingleTimer(
@@ -113,14 +116,15 @@ final private[quine] class ExactlyOnceAskActor[Resp](
         s"""$self timed out after $timeout waiting for $waitingFor to `$msg` from originalSender:
            |$originalSender to: $actorRef""".stripMargin.replace('\n', ' ').trim
       )
-      log.warning(
-        s"""Timed out after $timeout waiting for $waitingFor to message of type: ${msg.getClass.getSimpleName}
-           |from originalSender: $originalSender to: $actorRef""".stripMargin.replace('\n', ' ').trim
+      log.warn(
+        log"""Timed out after ${Safe(timeout)} waiting for ${Safe(waitingFor)} to message of type:
+             |${Safe(msg.getClass.getSimpleName)} from originalSender: ${Safe(originalSender)}
+             |to: ${Safe(actorRef)}""".cleanLines
       )
       promisedResult.tryFailure(timeoutException)
       context.system.stop(self)
 
     case x =>
-      log.error(s"ExactlyOnceAskActor asking: $actorRef received unknown message: $x")
+      log.error(log"ExactlyOnceAskActor asking: ${Safe(actorRef)} received unknown message: ${x.toString}")
   }
 }

@@ -4,6 +4,7 @@ import org.apache.pekko.actor.ActorRef
 
 import com.thatdot.quine.graph.{NamespaceId, namespaceFromString, namespaceToString}
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 
 /** Something to which we can send a message from inside the Quine actor system
   *
@@ -41,7 +42,7 @@ final case class SpaceTimeQuineId(
   }
 
   /** Print a user-facing representation of an ID (which is invertible via `qidFromPrettyString`) */
-  def pretty(implicit idProvider: QuineIdProvider): String = atTime match {
+  def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = atTime match {
     case None => id.pretty
     case Some(t) => s"${id.pretty} (at time $t)"
   }

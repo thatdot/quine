@@ -15,6 +15,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
+import com.thatdot.quine.util.Log._
 
 trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with QuineIdOps with QuineRefOps {
 
@@ -24,14 +25,14 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
   def runQuery(
     query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
-  ): RunningCypherQuery = {
+  )(implicit logConfig: LogConfig): RunningCypherQuery = {
     val nodeInterpreter = this: CypherInterpreter[Location.OnNode]
     query.run(parameters, Map.empty, nodeInterpreter)
   }
 
-  def cypherBehavior(instruction: CypherQueryInstruction): Unit = instruction match {
+  def cypherBehavior(instruction: CypherQueryInstruction)(implicit logConfig: LogConfig): Unit = instruction match {
     case qp @ QueryPackage(query, parameters, qc, _) =>
-      qp ?! interpret(query, qc)(parameters)
+      qp ?! interpret(query, qc)(parameters, logConfig)
         .mapMaterializedValue(_ => NotUsed)
         .map(QueryContextResult)
     case ce @ CheckOtherHalfEdge(halfEdge, action, query, parameters, qc, _) =>
@@ -42,7 +43,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         // Add edge
         case Some(true) =>
           val edgeAdded = processEdgeEvents(EdgeAdded(halfEdge) :: Nil)
-          val interpreted = interpret(query, qc)(parameters)
+          val interpreted = interpret(query, qc)(parameters, logConfig)
           ce ?! Source
             .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContext.parasitic))
             .map(QueryContextResult)
@@ -51,7 +52,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         // Remove edge
         case Some(false) =>
           val edgeRemoved = processEdgeEvents(EdgeRemoved(halfEdge) :: Nil)
-          val interpreted = interpret(query, qc)(parameters)
+          val interpreted = interpret(query, qc)(parameters, logConfig)
           ce ?! Source
             .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContext.parasitic))
             .map(QueryContextResult)

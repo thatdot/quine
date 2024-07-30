@@ -5,7 +5,6 @@ import scala.concurrent.duration.Duration
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
 import com.thatdot.quine.compiler.cypher
@@ -19,10 +18,12 @@ import com.thatdot.quine.graph.cypher.{
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log._
 
-trait QueryUiCypherApiMethods extends LazyLogging {
+trait QueryUiCypherApiMethods extends LazySafeLogging {
   implicit def graph: LiteralOpsGraph with CypherOpsGraph
   implicit def idProvider: QuineIdProvider
+  implicit protected def logConfig: LogConfig
 
   /** Compute the host of a quine ID */
   def hostIndex(qid: QuineId): Int
@@ -163,7 +164,7 @@ trait QueryUiCypherApiMethods extends LazyLogging {
       val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
       (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
     } else {
-      logger.debug(s"User requested EXPLAIN of query: ${res.compiled.query}")
+      logger.debug(log"User requested EXPLAIN of query: ${res.compiled.query.toString}")
       val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
       (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
     }
@@ -171,7 +172,9 @@ trait QueryUiCypherApiMethods extends LazyLogging {
 
 }
 
-class OSSQueryUiCypherMethods(quineGraph: LiteralOpsGraph with CypherOpsGraph) extends QueryUiCypherApiMethods() {
+class OSSQueryUiCypherMethods(quineGraph: LiteralOpsGraph with CypherOpsGraph)(implicit
+  protected val logConfig: LogConfig
+) extends QueryUiCypherApiMethods() {
   def hostIndex(qid: com.thatdot.quine.model.QuineId): Int = 0
   override def idProvider: QuineIdProvider = graph.idProvider
   def transformUiNode(uiNode: com.thatdot.quine.routes.UiNode[com.thatdot.quine.model.QuineId]) = uiNode

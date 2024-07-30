@@ -8,7 +8,6 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import cats.implicits.toFunctorOps
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.graph.cypher.{
@@ -22,9 +21,10 @@ import com.thatdot.quine.graph.cypher.{
   Value
 }
 import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
-class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazyLogging {
+class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazySafeLogging {
   def name: String = "toProtobuf"
 
   def canContainUpdates: Boolean = false
@@ -35,7 +35,8 @@ class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefin
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val (value, schemaUrl, typeName): (Map[String, QuineValue], URL, String) = arguments match {
       case Seq(Expr.Map(value), Expr.Str(schemaUrl), Expr.Str(typeName)) =>

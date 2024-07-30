@@ -16,11 +16,10 @@ import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.app.config.SslConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 object MediaTypes {
   val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
@@ -45,7 +44,7 @@ object SslHelper {
     sslContext
   }
 }
-trait BaseAppRoutes extends LazyLogging with endpoints4s.pekkohttp.server.Endpoints {
+trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.Endpoints {
 
   val graph: BaseGraph
 

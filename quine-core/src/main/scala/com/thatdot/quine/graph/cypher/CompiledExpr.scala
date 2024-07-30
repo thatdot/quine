@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Packages together all the information about a query that can be run
   *
@@ -29,7 +30,8 @@ final case class CompiledExpr(
     parameters: Map[String, Value] = Map.empty,
     initialColumnValues: Map[String, Value] = Map.empty
   )(implicit
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig
   ): Value = {
 
     /* Construct the runtime vector of parameters by combining the ones that
@@ -55,6 +57,6 @@ final case class CompiledExpr(
       )
     }
 
-    expr.eval(initialContext)(idProvider, params)
+    expr.eval(initialContext)(idProvider, params, logConfig)
   }
 }

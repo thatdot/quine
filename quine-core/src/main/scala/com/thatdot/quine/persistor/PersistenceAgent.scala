@@ -7,7 +7,6 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
-import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -23,6 +22,8 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 object PersistenceAgent {
 
@@ -34,7 +35,7 @@ object PersistenceAgent {
 }
 
 /** Interface for a Quine storage layer that only exposes a namespace's data */
-trait NamespacedPersistenceAgent extends StrictLogging {
+trait NamespacedPersistenceAgent extends StrictSafeLogging {
 
   /** Each persistor is instantiated with exactly one namespace which it is allowed to access, and prohibited from
     * accessing any other namespace. The allowed namespace is determined and passed in by the system instantiating
@@ -261,7 +262,8 @@ trait MultipartSnapshotPersistenceAgent {
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = {
     val parts = state.sliding(snapshotPartMaxSizeBytes, snapshotPartMaxSizeBytes).toSeq
     val partCount = parts.length
-    if (partCount > 1000) logger.warn(s"Writing multipart snapshot for node: $id with part count: $partCount")
+    if (partCount > 1000)
+      logger.warn(safe"Writing multipart snapshot for node: ${Safe(id)} with part count: ${Safe(partCount)}")
     Future
       .sequence {
         for {
@@ -281,7 +283,9 @@ trait MultipartSnapshotPersistenceAgent {
         if (validateSnapshotParts(parts))
           Future.successful(Some(parts.flatMap(_.partBytes).toArray))
         else {
-          logger.warn(s"Failed reading multipart snapshot for id: $id upToTime: $upToTime; retrying with time: $time")
+          logger.warn(
+            safe"Failed reading multipart snapshot for id: ${Safe(id)} upToTime: ${Safe(upToTime)}; retrying with time: ${Safe(time)}"
+          )
           getLatestSnapshot(id, time)
         }
       case None =>
@@ -293,11 +297,11 @@ trait MultipartSnapshotPersistenceAgent {
     var result = true
     for { (MultipartSnapshotPart(_, multipartIndex, multipartCount), partIndex) <- parts.zipWithIndex } {
       if (multipartIndex != partIndex) {
-        logger.warn(s"Snapshot part has unexpected index: $multipartIndex (expected: $partIndex)")
+        logger.warn(safe"Snapshot part has unexpected index: ${Safe(multipartIndex)} (expected: ${Safe(partIndex)})")
         result = false
       }
       if (multipartCount != partsLength) {
-        logger.warn(s"Snapshot part has unexpected count: $multipartCount (expected: $partsLength)")
+        logger.warn(safe"Snapshot part has unexpected count: ${Safe(multipartCount)} (expected: ${Safe(partsLength)})")
         result = false
       }
     }

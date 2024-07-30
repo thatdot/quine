@@ -10,6 +10,7 @@ import cats.implicits._
 
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 
 /** Cypher user defined procedures (UDP) must extend this class
   *
@@ -45,7 +46,8 @@ trait UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _]
 
   /** Signature of the procedure */

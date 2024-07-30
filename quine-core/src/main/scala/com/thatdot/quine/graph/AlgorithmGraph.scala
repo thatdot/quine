@@ -119,7 +119,7 @@ trait AlgorithmGraph extends BaseGraph {
             .map(walk =>
               // Prepending the QuineId as the first row value in the final output to indicate where each walk began.
               // Note that if a user provides a query, it could be that the node ID never shows up; this mitigates that.
-              ByteString(s"${(qid.pretty(idProvider) :: walk.acc).mkString(",")}\n")
+              ByteString(s"${(qid.pretty(idProvider, logConfig) :: walk.acc).mkString(",")}\n")
             )(nodeDispatcherEC)
         }
         .runWith(saveSink)

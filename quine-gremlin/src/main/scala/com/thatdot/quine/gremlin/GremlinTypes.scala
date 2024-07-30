@@ -8,14 +8,13 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.util.Timeout
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.PekkoStreams.{statefulFilter, wireTapFirst}
 
 // Functionality for describing and running queries
-private[gremlin] trait GremlinTypes extends LazyLogging {
+private[gremlin] trait GremlinTypes extends LazySafeLogging {
 
   implicit val graph: LiteralOpsGraph
   implicit val idProvider: QuineIdProvider = graph.idProvider
@@ -34,7 +33,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       * @param atTime moment in time to query
       * @return back-pressured source of results from running the query
       */
-    def run(store: VariableStore, namespace: NamespaceId, atTime: AtTime): Source[Any, NotUsed]
+    def run(store: VariableStore, namespace: NamespaceId, atTime: AtTime, logConfig: LogConfig): Source[Any, NotUsed]
   }
 
   /** Gremlin query prefixed by a literal assignment to add to the context of the query
@@ -45,13 +44,18 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     * @param `then` the query to run with the new context, like `g.V(x)` in the example
     */
   case class AssignLiteral(name: Symbol, value: GremlinExpression, `then`: Query) extends Query {
-    override def run(context: VariableStore, namespace: NamespaceId, atTime: AtTime): Source[Any, NotUsed] = {
+    override def run(
+      context: VariableStore,
+      namespace: NamespaceId,
+      atTime: AtTime,
+      logConfig: LogConfig
+    ): Source[Any, NotUsed] = {
       val evaled = value.evalTo[Any]("unexpected type error - hitting this constitutes a bug")(
         implicitly,
         context,
         idProvider
       )
-      `then`.run(context + (name -> evaled), namespace, atTime)
+      `then`.run(context + (name -> evaled), namespace, atTime, logConfig)
     }
   }
 
@@ -61,30 +65,39 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     * @param traversal the [[Traversal]] this query instructs the queryrunner to perform
     */
   case class FinalTraversal(traversal: Traversal) extends Query {
-    override def run(context: VariableStore, namespace: NamespaceId, atTime: AtTime): Source[Any, NotUsed] =
-      traversal.flow(context, namespace, atTime) match {
+    override def run(
+      context: VariableStore,
+      namespace: NamespaceId,
+      atTime: AtTime,
+      logConfig: LogConfig
+    ): Source[Any, NotUsed] =
+      traversal.flow(context, namespace, atTime, logConfig) match {
         case Failure(err) => Source.failed(err)
         case Success(flow) => Source.empty[Result].via(flow).map(_.unwrap)
       }
   }
 
   // Warn if there are inputs, since these are going to be completely ignored
-  private def dropAndWarn(stepName: String): Flow[Result, Result, NotUsed] = wireTapFirst[Result] { result =>
-    logger.warn(
-      s"Gremlin query step: `$stepName` discarded a result (logged at INFO level) additional discards will not be logged."
-    )
-    logger.info(s"Gremlin query step: `$stepName` step discarded a result: ${result.unwrap}")
-  // Can't replace this with e.g. `take(0)` otherwise the above warning won't get executed.
-  }.filter(_ => false)
+  private def dropAndWarn(stepName: String)(implicit logConfig: LogConfig): Flow[Result, Result, NotUsed] =
+    wireTapFirst[Result] { result =>
+      logger.warn(log"""Gremlin query step: `${Safe(stepName)}` step discarded a result: ${result.unwrap.toString}.
+                       |Additional discards will not be logged.""".cleanLines)
+    // Can't replace this with e.g. `take(0)` otherwise the above warning won't get executed.
+    }.filter(_ => false)
 
   case class Traversal(steps: Seq[TraversalStep]) {
-    def flow(implicit ctx: VariableStore, namespace: NamespaceId, atTime: AtTime): Try[Flow[Result, Result, NotUsed]] =
+    def flow(implicit
+      ctx: VariableStore,
+      namespace: NamespaceId,
+      atTime: AtTime,
+      logConfig: LogConfig
+    ): Try[Flow[Result, Result, NotUsed]] =
       Try(steps.foldLeft(Flow[Result])((acc, step) => acc.via(step.flow.get)))
 
     /** Ideally, this roundtrips parsing. We can't guarantee that though.
       * See [[GremlinExpression.pprint]] for why.
       */
-    def pprint: String = steps.map(_.pprint).mkString
+    def pprint(implicit logConfig: LogConfig): String = steps.map(_.pprint).mkString
   }
 
   /** Intermediate type that gets threaded through traversals
@@ -107,12 +120,17 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       * @param atTime moment in time to query
       * @returns a flow which transforms input results into output ones
       */
-    def flow(implicit ctx: VariableStore, namespace: NamespaceId, atTime: AtTime): Try[Flow[Result, Result, NotUsed]]
+    def flow(implicit
+      ctx: VariableStore,
+      namespace: NamespaceId,
+      atTime: AtTime,
+      logConfig: LogConfig
+    ): Try[Flow[Result, Result, NotUsed]]
 
     /** Ideally, this roundtrips parsing. We can't guarantee that though.
       * See [[GremlinExpression.pprint]] for why.
       */
-    def pprint: String
+    def pprint(implicit logConfig: LogConfig): String
   }
 
   /** Implicitly enumerate every node
@@ -121,7 +139,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = {
       val allNodes = graph
         .enumerateAllNodeIds(namespace)
@@ -132,7 +151,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       Success(dropAndWarn(pprint).concat(allNodes))
     }
 
-    override val pprint = ".V()"
+    override def pprint(implicit logConfig: LogConfig) = ".V()"
   }
 
   // Invariant: vertices is non-empty
@@ -142,7 +161,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       c: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Parse an ID (either because it is already the right type, or by parsing it from a string)
@@ -188,7 +208,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         )
     }
 
-    override def pprint: String = vertices.map(_.pprint).mkString(".V(", ",", ")")
+    override def pprint(implicit logConfig: LogConfig): String = vertices.map(_.pprint).mkString(".V(", ",", ")")
   }
 
   /** Ignore all inputs and output some sample of recently touched nodes.
@@ -200,7 +220,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the limit
       val lim = limit.fold(100L) {
@@ -227,7 +248,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         })
     }
 
-    override def pprint: String = s".recentV($limit)"
+    override def pprint(implicit logConfig: LogConfig): String = s".recentV($limit)"
   }
 
   case class EqToVar(
@@ -236,7 +257,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the variable name
       val str = key.evalTo[String]("`.eqToVar(...)` requires its argument to be a string")
@@ -247,7 +269,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         .filter { case Result(curr, _, m) => curr == m.get(keySym, pos) }
     }
 
-    def pprint: String = ".eqToVar(" + key.pprint + ")"
+    def pprint(implicit logConfig: LogConfig): String = ".eqToVar(" + key.pprint + ")"
   }
 
   sealed abstract class HasTests
@@ -262,7 +284,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the property key name
       val keyStr = key.evalTo[String]("`.has(...)` requires its key argument to be a string")
@@ -304,7 +327,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override def pprint: String =
+    override def pprint(implicit logConfig: LogConfig): String =
       hasRestriction match {
         case NoTest => s"has(${key.pprint})"
         case NegatedTest => s"hasNot(${key.pprint})"
@@ -318,7 +341,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the accepted IDs
@@ -338,7 +362,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override def pprint: String = ids.map(_.pprint).mkString(".hasId(", ",", ")")
+    override def pprint(implicit logConfig: LogConfig): String = ids.map(_.pprint).mkString(".hasId(", ",", ")")
   }
 
   sealed abstract class HopTypes
@@ -356,7 +380,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the valid outgoing edge names
@@ -446,7 +471,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       lim.fold(flw)(flw.take)
     }
 
-    override def pprint: String = edgeNames.map(_.pprint).mkString(s".$name(", ",", ")")
+    override def pprint(implicit logConfig: LogConfig): String = edgeNames.map(_.pprint).mkString(s".$name(", ",", ")")
 
     def name: String = dirRestriction match {
       case OutAndIn => "both" + (if (toVertex) "" else "E")
@@ -462,7 +487,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .flatMapConcat { case Result(u, path, matchContext) =>
@@ -482,7 +508,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override def pprint: String = s".$name()"
+    override def pprint(implicit logConfig: LogConfig): String = s".$name()"
 
     def name: String = dirRestriction match {
       case OutAndIn => "bothV"
@@ -504,7 +530,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Produce a flow which passes through elements only if those elements
@@ -562,7 +589,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       }
     }
 
-    override def pprint: String = s"$name(${subs.map(_.pprint).mkString("_", ",_", "")})"
+    override def pprint(implicit logConfig: LogConfig): String = s"$name(${subs.map(_.pprint).mkString("_", ",_", "")})"
 
     def subs: Seq[Traversal] = kind match {
       case Not(t) => Seq(t)
@@ -583,7 +610,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val unionFlows = combined.map(_.flow.get)
       Flow[Result].flatMapConcat { (elem: Result) =>
@@ -594,7 +622,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       }
     }
 
-    def pprint: String = s"union(${combined.map(_.pprint).mkString("_", ",_", "")})"
+    def pprint(implicit logConfig: LogConfig): String = s"union(${combined.map(_.pprint).mkString("_", ",_", "")})"
 
   }
 
@@ -603,7 +631,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the valid outgoing edge names
@@ -649,7 +678,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override def pprint: String = keys.map(_.pprint).mkString(s".$name(", ",", ")")
+    override def pprint(implicit logConfig: LogConfig): String = keys.map(_.pprint).mkString(s".$name(", ",", ")")
 
     def name: String =
       if (groupResultsInMap) "valueMap"
@@ -665,7 +694,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       val pred = testAgainst.evalPredicate()
 
@@ -674,7 +704,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         .filter { case Result(u, _, _) => pred.testAgainst(u, Some(pos)).get }
     }
 
-    override def pprint: String = "is(" + testAgainst.pprint + ")"
+    override def pprint(implicit logConfig: LogConfig): String = "is(" + testAgainst.pprint + ")"
   }
 
   /** Only emit an input value if it hasn't already been emitted
@@ -683,12 +713,13 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       statefulFilter(Set.empty[Any])((seen, result) => (seen + result.unwrap, !seen.contains(result.unwrap)))
     }
 
-    override val pprint = ".dedup()"
+    override def pprint(implicit logConfig: LogConfig) = ".dedup()"
   }
 
   /** Add the current input value to the result context and output it
@@ -699,7 +730,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val keyStr = key.evalTo[String]("`.as(...)` requires its argument to be a string")
       val keySym = Symbol(keyStr)
@@ -707,7 +739,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         .map { case Result(u, p, m) => Result(u, p, m + (keySym -> u)) }
     }
 
-    override def pprint: String = ".as(" + key.pprint + ")"
+    override def pprint(implicit logConfig: LogConfig): String = ".as(" + key.pprint + ")"
   }
 
   /** Given a set of keys (which must be strings), look inside the context of
@@ -721,7 +753,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the variable name(s)
@@ -749,7 +782,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       }
     }
 
-    override def pprint: String = keys.map(_.pprint).mkString(".select(", ",", ")")
+    override def pprint(implicit logConfig: LogConfig): String = keys.map(_.pprint).mkString(".select(", ",", ")")
   }
 
   /** Emits only the first `num` inputs
@@ -760,7 +793,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val limitBy = num.evalTo[Long](
         "`.limit(...)` requires its argument to be a long"
@@ -768,7 +802,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
       Flow[Result].take(limitBy)
     }
 
-    override def pprint: String = ".limit(" + num.pprint + ")"
+    override def pprint(implicit logConfig: LogConfig): String = ".limit(" + num.pprint + ")"
   }
 
   /** Emit the ID of every input (requires all inputs to be nodes)
@@ -777,7 +811,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .mapConcat { case Result(u, path, matchContext) =>
@@ -794,7 +829,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override val pprint: String = if (stringOutput) ".strId()" else ".id()"
+    override def pprint(implicit logConfig: LogConfig): String = if (stringOutput) ".strId()" else ".id()"
   }
 
   /** For every input, emits all of the nodes that were traversed getting to
@@ -804,7 +839,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .flatMapConcat { case Result(_, path, matchContext) =>
@@ -814,7 +850,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override val pprint = ".unrollPath()"
+    override def pprint(implicit logConfig: LogConfig) = ".unrollPath()"
   }
 
   /** Groups its inputs and emits one output at the end: a map from each
@@ -824,7 +860,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .fold(Map.empty[Any, Long]) { case (seenCounts, Result(u, _, _)) =>
@@ -835,7 +872,7 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override val pprint = ".groupCount()"
+    override def pprint(implicit logConfig: LogConfig) = ".groupCount()"
   }
 
   /** Counts all of its inputs and emits one output at the end: the total
@@ -844,7 +881,8 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
-      atTime: AtTime
+      atTime: AtTime,
+      logConfig: LogConfig
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .fold(0)((counter, _) => counter + 1)
@@ -853,6 +891,6 @@ private[gremlin] trait GremlinTypes extends LazyLogging {
         }
     }
 
-    override val pprint = ".count()"
+    override def pprint(implicit logConfig: LogConfig) = ".count()"
   }
 }

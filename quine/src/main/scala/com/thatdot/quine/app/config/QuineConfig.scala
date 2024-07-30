@@ -12,6 +12,7 @@ import pureconfig.generic.semiauto.deriveConvert
 import shapeless.{Lens, lens}
 
 import com.thatdot.quine.persistor.PersistenceConfig
+import com.thatdot.quine.util.Log.LogConfig
 
 /** Top-level config for Quine
   *
@@ -38,7 +39,8 @@ final case class QuineConfig(
   metricsReporters: List[MetricsReporter] = List(MetricsReporter.Jmx),
   metrics: MetricsConfig = MetricsConfig(),
   helpMakeQuineBetter: Boolean = true,
-  api2Enabled: Boolean = false
+  api2Enabled: Boolean = false,
+  logConfig: LogConfig = LogConfig.strictest
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig

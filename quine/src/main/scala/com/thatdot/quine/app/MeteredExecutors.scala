@@ -14,16 +14,17 @@ import org.apache.pekko.dispatch.{
 import com.codahale.metrics.InstrumentedExecutorService
 import com.google.common.cache.{Cache, CacheBuilder}
 import com.typesafe.config.{Config => TypesafeConfig, ConfigException, ConfigRenderOptions}
-import com.typesafe.scalalogging.LazyLogging
 import pureconfig.ConfigWriter
 
 import com.thatdot.quine.graph.HostQuineMetrics
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Morally, Metered Executors are more of a Quine construct (internal metering of internal properties) but because
   * MeteredExecutors depend on access to the same HostQuineMetrics instance that the application uses at runtime,
   * we must define these in Quine App.
   */
-object MeteredExecutors extends LazyLogging {
+object MeteredExecutors extends LazySafeLogging {
 
   private val instrumentedExecutors: Cache[String, InstrumentedExecutorService] = CacheBuilder.newBuilder().build()
 
@@ -32,18 +33,23 @@ object MeteredExecutors extends LazyLogging {
     prerequisites: DispatcherPrerequisites,
     underlying: ExecutorServiceConfigurator,
     registry: HostQuineMetrics
-  ) extends ExecutorServiceConfigurator(config, prerequisites) {
+  ) extends ExecutorServiceConfigurator(config, prerequisites)
+      with LazySafeLogging {
+    implicit protected def logConfig: LogConfig
+
     logger.whenDebugEnabled {
       var verbose = false
       logger.whenTraceEnabled {
         verbose = true
       }
       logger.debug(
-        s"Metered Configurator created with config read from ${config.origin()}: ${ConfigWriter[TypesafeConfig]
-          .to(config)
-          .render(
-            ConfigRenderOptions.defaults().setComments(verbose).setOriginComments(false).setJson(false)
-          )}"
+        safe"Metered Configurator created with config read from ${Safe(config.origin())}: ${Safe(
+          ConfigWriter[TypesafeConfig]
+            .to(config)
+            .render(
+              ConfigRenderOptions.defaults().setComments(verbose).setOriginComments(false).setJson(false)
+            )
+        )}"
       )
     }
 
@@ -75,14 +81,14 @@ object MeteredExecutors extends LazyLogging {
   private def mergeConfigWithUnderlying(config: TypesafeConfig, underlyingConfigKey: String): TypesafeConfig =
     config.withFallback(config.getConfig(underlyingConfigKey))
 
-  def quineMetrics(config: TypesafeConfig): HostQuineMetrics = {
+  def quineMetrics(config: TypesafeConfig)(implicit logConfig: LogConfig): HostQuineMetrics = {
     val ConfigPath = "quine.metrics.enable-debug-metrics"
     val useEnhancedMetrics: Boolean =
       try config.getBoolean(ConfigPath)
       catch {
         case _: ConfigException.Missing => false
         case wrongType: ConfigException.WrongType =>
-          logger.warn(s"Found invalid setting for boolean config key $ConfigPath", wrongType)
+          logger.warn(log"Found invalid setting for boolean config key ${Safe(ConfigPath)}" withException wrongType)
           false
       }
 
@@ -100,8 +106,9 @@ object MeteredExecutors extends LazyLogging {
     *       Options may still be passed to the underlying thread-pool-executor as normal
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L60-L75>
     */
-  final class MeteredThreadPoolConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)
-      extends Configurator(
+  final class MeteredThreadPoolConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
+    protected val logConfig: LogConfig
+  ) extends Configurator(
         mergeConfigWithUnderlying(config, "thread-pool-executor"),
         prerequisites,
         new ThreadPoolExecutorConfigurator(mergeConfigWithUnderlying(config, "thread-pool-executor"), prerequisites),
@@ -116,8 +123,9 @@ object MeteredExecutors extends LazyLogging {
     *       Options may still be passed to the underlying fork-join-executor as normal
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L77-L85>
     */
-  final class MeteredForkJoinConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)
-      extends Configurator(
+  final class MeteredForkJoinConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
+    protected val logConfig: LogConfig
+  ) extends Configurator(
         mergeConfigWithUnderlying(config, "fork-join-executor"),
         prerequisites,
         new ForkJoinExecutorConfigurator(
@@ -135,14 +143,15 @@ object MeteredExecutors extends LazyLogging {
     *       Options may still be passed to the underlying default-executor as normal, except that
     *       default-executor.fallback is ignored in favor of MeteredForkJoin (chosen because the default value as of pekko 1.0.0 was fork-join-executor)
     */
-  final class MeteredDefaultConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)
-      extends Configurator(
+  final class MeteredDefaultConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
+    protected val logConfig: LogConfig
+  ) extends Configurator(
         mergeConfigWithUnderlying(config, "default-executor"),
         prerequisites, {
           if (prerequisites.defaultExecutionContext.isEmpty)
             logger.warn(
-              "The default pekko executor should only be metered in conjunction with an explicit default executor" +
-              " (this may be set at pekko.actor.default-dispatcher.default-executor). Defaulting to fork-join"
+              safe"The default pekko executor should only be metered in conjunction with an explicit default executor" +
+              safe" (this may be set at pekko.actor.default-dispatcher.default-executor). Defaulting to fork-join"
             )
           new DefaultExecutorServiceConfigurator(
             mergeConfigWithUnderlying(config, "default-executor"),

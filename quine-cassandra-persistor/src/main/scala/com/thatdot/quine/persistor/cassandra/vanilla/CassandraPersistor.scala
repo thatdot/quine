@@ -15,7 +15,6 @@ import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata
 import com.datastax.oss.driver.api.core.{CqlSession, CqlSessionBuilder, InvalidKeyspaceException}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
-import com.typesafe.scalalogging.LazyLogging
 import shapeless.syntax.std.tuple._
 
 import com.thatdot.quine.graph.NamespaceId
@@ -23,6 +22,8 @@ import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, NoOpChunker, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.CompletionException
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
   constructor: (
@@ -33,9 +34,10 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     CassandraStatementSettings,
     Boolean,
     Int,
-    Materializer
+    Materializer,
+    LogConfig
   ) => C
-) extends LazyLogging {
+) extends LazySafeLogging {
 
   /** @param endpoints           address(s) (host and port) of the Cassandra cluster to connect to.
     * @param localDatacenter      If endpoints are specified, this argument is required. Default value on a new Cassandra install is 'datacenter1'.
@@ -58,7 +60,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     writeSettings: CassandraStatementSettings,
     snapshotPartMaxSizeBytes: Int,
     metricRegistry: Option[MetricRegistry]
-  )(implicit materializer: Materializer): Future[PrimeCassandraPersistor] = {
+  )(implicit materializer: Materializer, logConfig: LogConfig): Future[PrimeCassandraPersistor] = {
 
     // This is mutable, so needs to be a def to get a new one w/out prior settings.
     def sessionBuilder: CqlSessionBuilder = CqlSession.builder
@@ -82,7 +84,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
         clazz <- keyspaceReplicationConfig.get("class") if clazz == "org.apache.cassandra.locator.SimpleStrategy"
         factor <- keyspaceReplicationConfig.get("replication_factor") if factor.toInt != replicationFactor
       } logger.info(
-        s"Unexpected replication factor: $factor (expected: $replicationFactor) for Cassandra keyspace: $keyspace"
+        safe"Unexpected replication factor: ${Safe(factor)} (expected: ${Safe(replicationFactor)}) for Cassandra keyspace: ${Safe(keyspace)}"
       )
     }
 
@@ -112,7 +114,8 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
         writeSettings,
         shouldCreateTables,
         snapshotPartMaxSizeBytes,
-        materializer
+        materializer,
+        logConfig
       )
     }(ExecutionContext.parasitic)
   }
@@ -120,7 +123,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
 }
 object PrimeCassandraPersistor
     extends AbstractGlobalCassandraPersistor[PrimeCassandraPersistor](
-      new PrimeCassandraPersistor(_, _, _, _, _, _, _, _)
+      new PrimeCassandraPersistor(_, _, _, _, _, _, _, _)(_)
     )
 
 /** A "factory" object to create per-namespace instances of CassandraPersistor.
@@ -135,7 +138,8 @@ class PrimeCassandraPersistor(
   shouldCreateTables: Boolean,
   snapshotPartMaxSizeBytes: Int,
   materializer: Materializer
-) extends cassandra.PrimeCassandraPersistor(
+)(implicit val logConfig: LogConfig)
+    extends cassandra.PrimeCassandraPersistor(
       persistenceConfig,
       bloomFilterSize,
       session,
@@ -150,7 +154,8 @@ class PrimeCassandraPersistor(
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
     if (shouldCreateTables || namespace.nonEmpty) {
       CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(
-        materializer.executionContext
+        materializer.executionContext,
+        logConfig
       )
     } else {
       Future.unit
@@ -171,7 +176,7 @@ class PrimeCassandraPersistor(
       readSettings,
       writeSettings,
       snapshotPartMaxSizeBytes
-    )(materializer)
+    )(materializer, logConfig)
 
 }
 
@@ -190,7 +195,8 @@ class CassandraPersistor(
   writeSettings: CassandraStatementSettings,
   snapshotPartMaxSizeBytes: Int
 )(implicit
-  materializer: Materializer
+  materializer: Materializer,
+  val logConfig: LogConfig
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
       session,

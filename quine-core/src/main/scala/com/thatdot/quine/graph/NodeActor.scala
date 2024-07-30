@@ -14,6 +14,8 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, PropertyValue}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 case class NodeConstructorArgs(
   properties: Map[Symbol, PropertyValue],
@@ -55,7 +57,8 @@ private[graph] class NodeActor(
   ],
   domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
   multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries,
-  initialJournal: NodeActor.Journal
+  initialJournal: NodeActor.Journal,
+  logConfig: LogConfig
 ) extends AbstractNodeActor(
       qidAtTime,
       graph,
@@ -67,7 +70,8 @@ private[graph] class NodeActor(
       distinctIdSubscribers,
       domainNodeIndex,
       multipleValuesStandingQueries
-    ) {
+    )(logConfig) {
+  implicit def logConfig_ : LogConfig = logConfig
   def receive: Receive = actorClockBehavior {
     case control: NodeControlMessage => goToSleepBehavior(control)
     case StashedMessage(message) => receive(message)
@@ -85,7 +89,7 @@ private[graph] class NodeActor(
         val pr = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]
         publishResults(pr.pid, pr.results)
       } else {
-        log.error("Node received an unknown message (from {}): {}", sender(), msg)
+        log.error(log"Node received an unknown message (from ${Safe(sender())}): ${msg.toString}")
       }
   }
 
@@ -147,12 +151,12 @@ private[graph] class NodeActor(
     domainGraphSubscribers.removeSubscribersOf(propogationDgnsToRemove)
 
     // Now that we have a comprehensive diff of the SQs added/removed, debug-log that diff.
-    if (log.isDebugEnabled) {
+    log.whenDebugEnabled {
       // serializing DGN collections is potentially nontrivial work, so only do it when the target log level is enabled
       log.debug(
-        s"""Detected Standing Query changes while asleep. Removed DGNs:
-           |${(propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct}.
-           |Added DGNs: ${newDistinctIdSqDgns}. Catching up now.""".stripMargin.replace('\n', ' ')
+        safe"""Detected Standing Query changes while asleep. Removed DGN IDs:
+              |${Safe((propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
+              |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines
       )
     }
 

@@ -29,6 +29,7 @@ import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** The definition of a source stream from Amazon Kinesis
@@ -55,7 +56,7 @@ final case class KinesisSrcDef(
   numRetries: Int,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder]
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,

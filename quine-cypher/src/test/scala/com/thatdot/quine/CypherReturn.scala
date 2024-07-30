@@ -27,6 +27,7 @@ import com.thatdot.quine.graph.cypher.{
   Value
 }
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 // disable warnings raised by giving names to parts of pattern matches to make the large pattern matches more readable
 @nowarn(
@@ -762,7 +763,7 @@ object SnitchFunction extends UserDefinedFunction {
     )
   )
 
-  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
     args match {
       case Vector(x) => snitched.add(x); x
       case _ => throw new Exception("This should never happen!")

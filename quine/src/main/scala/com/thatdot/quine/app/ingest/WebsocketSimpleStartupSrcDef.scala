@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 object WebsocketSimpleStartupSrcDef {
@@ -37,7 +38,7 @@ final case class WebsocketSimpleStartupSrcDef(
   parallelism: Int,
   encoding: String,
   initialSwitchMode: SwitchMode
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, Seq(), s"$name (WS ingest)") {
 
   type InputType = ByteString

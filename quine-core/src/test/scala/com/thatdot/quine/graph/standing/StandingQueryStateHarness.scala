@@ -17,6 +17,7 @@ import com.thatdot.quine.graph.{
   QuineIdLongProvider
 }
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 
 /** Mocked up handler of standing query effects - instead of actually doing anything with the
   * effects, they just get queued up for easy testing
@@ -98,6 +99,8 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   final val sqState: query.State = query.createState()
   final val effects: MultipleValuesStandingQueryEffectsTester =
     MultipleValuesStandingQueryEffectsTester.empty(query, knownQueries)
+
+  implicit val logConfig: LogConfig = LogConfig.testing
 
   def testInvariants()(implicit pos: Position): Unit = ()
 

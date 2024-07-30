@@ -7,6 +7,7 @@ import com.google.common.hash.{HashCode, Hasher, Hashing}
 import io.circe.Json
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 /** Standing query result or cancellation
   *
@@ -29,7 +30,7 @@ final case class StandingQueryResult(
     )
   )
 
-  def toJson(implicit idProvider: QuineIdProvider): Json =
+  def toJson(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json =
     Json.fromFields(
       Seq(
         ("meta", meta.toJson),
@@ -159,7 +160,7 @@ object StandingQueryResult {
     id: QuineId,
     formatAsString: Boolean,
     aliasedAs: String
-  )(implicit idProvider: QuineIdProvider): StandingQueryResult = {
+  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): StandingQueryResult = {
     val idValue =
       if (formatAsString) QuineValue.Str(idProvider.qidToPrettyString(id))
       else idProvider.qidToValue(id)

@@ -7,13 +7,13 @@ import java.nio.file.Paths
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 import com.datastax.oss.driver.api.core.{ConsistencyLevel, DefaultConsistencyLevel}
-import com.typesafe.scalalogging.LazyLogging
 import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 import software.amazon.awssdk.regions.Region
 
 import com.thatdot.quine.persistor._
+import com.thatdot.quine.util.Log._
 
 /** Options for persistence */
 sealed abstract class PersistenceAgentType(val isLocal: Boolean, val label: String) {
@@ -108,7 +108,7 @@ object PersistenceAgentType extends PureconfigInstances {
     password: String = sys.env.getOrElse("CLICKHOUSE_PASSWORD", "quine"),
     bloomFilterSize: Option[Long] = None
   ) extends PersistenceAgentType(isLocal = false, "clickhouse")
-      with LazyLogging {
+      with LazySafeLogging {
 
     /** By default, the ClickHouse client uses the default SSLContext (configured by standard java truststore and
       * keystore properties). If the CLICKHOUSE_CERTIFICATE_PEM environment variable is set and points to a file,
@@ -120,9 +120,9 @@ object PersistenceAgentType extends PureconfigInstances {
       .filter(Paths.get(_).toFile.exists())
       .map { x =>
         logger.warn(
-          s"""Using certificate at: $x to authenticate ClickHouse server. For better security, we recommend using a
-             |password-protected Java truststore instead (this can be configured with the `javax.net.ssl.trustStore`
-             |and `javax.net.ssl.trustStorePassword` properties)""".stripMargin.replace('\n', ' ')
+          safe"""Using certificate at: ${Safe(x)} to authenticate ClickHouse server. For better security, we
+                |recommend using a password-protected Java truststore instead (this can be configured with the
+                |`javax.net.ssl.trustStore` and `javax.net.ssl.trustStorePassword` properties)""".cleanLines
         )
         x
       }

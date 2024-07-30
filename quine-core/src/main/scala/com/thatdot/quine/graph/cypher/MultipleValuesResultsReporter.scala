@@ -13,6 +13,7 @@ import com.thatdot.quine.graph.{
   StandingQueryResult
 }
 import com.thatdot.quine.model.Properties
+import com.thatdot.quine.util.Log.LogConfig
 
 /** This class manages a stateful flatmap operation for SQ results reporting. Effectively, this is a node's
   * representation / proxy to the GlobalSubscriber for a given SQ. Because MVSQ results are reported in groups
@@ -23,7 +24,7 @@ import com.thatdot.quine.model.Properties
 class MultipleValuesResultsReporter(
   val sq: RunningStandingQuery,
   initialResultsSnapshot: Seq[QueryContext]
-) {
+)(implicit protected val logConfig: LogConfig) {
 
   /** This can be thought of as a table, with all the same columns as each QueryContext, plus an additional column
     * tracking who reported the result. However, since results always arrive in complete snapshots, we can just
@@ -81,7 +82,7 @@ object MultipleValuesResultsReporter {
     nodeProperties: Properties,
     graph: StandingQueryOpsGraph,
     namespace: NamespaceId
-  ): Map[StandingQueryId, MultipleValuesResultsReporter] = {
+  )(implicit logConfig: LogConfig): Map[StandingQueryId, MultipleValuesResultsReporter] = {
     def containsGlobalSubscriber(subscribers: Iterable[MultipleValuesStandingQuerySubscriber]): Boolean =
       subscribers.exists {
         case _: MultipleValuesStandingQuerySubscriber.GlobalSubscriber => true

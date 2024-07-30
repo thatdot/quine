@@ -11,8 +11,9 @@ import org.apache.pekko.stream.Materializer
 import org.apache.commons.io.FileUtils
 
 import com.thatdot.quine.graph.HistoricalQueryTests
+import com.thatdot.quine.util.Log._
 
-class RocksDbPersistorTests extends HistoricalQueryTests {
+class RocksDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
 
   override val runnable: Boolean = RocksDbPersistor.loadRocksDbLibrary()
 
@@ -29,10 +30,11 @@ class RocksDbPersistorTests extends HistoricalQueryTests {
         persistenceConfig = PersistenceConfig(),
         bloomFilterSize = None,
         ioDispatcher = ExecutionContext.parasitic
-      )(Materializer.matFromSystem(system))
+      )(Materializer.matFromSystem(system), logConfig)
     } else {
       new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))(
-        Materializer.matFromSystem(system)
+        Materializer.matFromSystem(system),
+        logConfig
       )
     }
 }

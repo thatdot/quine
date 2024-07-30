@@ -14,14 +14,15 @@ import org.apache.pekko.stream.stage._
 import org.apache.pekko.stream.{Attributes, Outlet, SourceShape}
 import org.apache.pekko.util.ByteString
 
-import com.typesafe.scalalogging.LazyLogging
 import jnr.posix.POSIXFactory
 
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.routes.FileIngestMode.NamedPipe
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.QuineDispatchers
 
-object NamedPipeSource extends LazyLogging {
+object NamedPipeSource extends LazySafeLogging {
   def fromPath(
     path: Path,
     chunkSize: Int = 8192,
@@ -38,17 +39,17 @@ object NamedPipeSource extends LazyLogging {
   def fileOrNamedPipeSource(
     path: Path,
     fileIngestMode: Option[FileIngestMode]
-  ): Source[ByteString, NotUsed] = {
+  )(implicit logConfig: LogConfig): Source[ByteString, NotUsed] = {
     val isNamedPipe = fileIngestMode map (_ == NamedPipe) getOrElse {
       try POSIXFactory.getPOSIX.stat(path.toString).isFifo
       catch {
         case e: IllegalStateException =>
-          logger.warn(s"Unable to determine if path $path is named pipe (${e.getMessage})")
+          logger.warn(log"Unable to determine if path ${Safe(path)} is named pipe" withException e)
           false
       }
     }
     if (isNamedPipe) {
-      logger.debug(s"Using named pipe mode for reading $path")
+      logger.debug(safe"Using named pipe mode for reading ${Safe(path)}")
       NamedPipeSource.fromPath(path)
     } else
       FileIO.fromPath(path).mapMaterializedValue(_ => NotUsed)

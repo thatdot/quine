@@ -9,11 +9,13 @@ import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Func, Position, SourceText}
 import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider, WithExplicitPositions, idFrom}
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 class StandingQueryPatternsTest extends AnyFunSpec {
   import GraphQueryPattern._
 
   implicit val idProvider: QuineIdRandomLongProvider.type = QuineIdRandomLongProvider
+  implicit val logConfig: LogConfig = LogConfig.testing
 
   def testQuery(
     queryText: String,
@@ -238,7 +240,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
 
       val compiled = compileStandingQueryGraphPattern(
         "MATCH (n) WHERE strId(n) = locIdFrom(10, 101) RETURN DISTINCT strId(n)"
-      )(namespacedIdProvider)
+      )(namespacedIdProvider, logConfig)
       assert(
         compiled ===
           GraphQueryPattern(

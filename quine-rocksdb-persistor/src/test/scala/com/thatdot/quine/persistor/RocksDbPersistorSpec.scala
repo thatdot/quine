@@ -9,7 +9,9 @@ import org.apache.pekko.actor.CoordinatedShutdown
 
 import org.apache.commons.io.FileUtils
 
-class RocksDbPersistorSpec extends PersistenceAgentSpec {
+import com.thatdot.quine.util.Log._
+
+class RocksDbPersistorSpec(implicit protected val logConfig: LogConfig) extends PersistenceAgentSpec {
 
   /** Tests should run if RocksDB could be started or if in CI (in CI, we want
     * to know if tests couldn't run).

@@ -17,6 +17,8 @@ import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace}
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PrimePersistor}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.QuineDispatchers
 
 class GraphService(
@@ -33,7 +35,8 @@ class GraphService(
   val labelsProperty: Symbol,
   val edgeCollectionFactory: QuineId => SyncEdgeCollection,
   val metrics: HostQuineMetrics
-) extends StaticShardGraph
+)(implicit val logConfig: LogConfig)
+    extends StaticShardGraph
     with LiteralOpsGraph
     with AlgorithmGraph
     with CypherOpsGraph
@@ -51,7 +54,7 @@ class GraphService(
   def initialShardInMemoryLimit: Option[InMemoryNodeLimit] =
     InMemoryNodeLimit.fromOptions(inMemorySoftNodeLimit, inMemoryHardNodeLimit)
 
-  val shards: ArraySeq[LocalShardRef] = initializeShards()
+  val shards: ArraySeq[LocalShardRef] = initializeShards()(logConfig)
 
   /** asynchronous construction effect: load Domain Graph Nodes and Standing Queries from the persistor
     */
@@ -65,14 +68,38 @@ class GraphService(
             _ foreach { case (namespace, sqs) =>
               sqs.foreach { sq =>
                 standingQueries(namespace).foreach { sqns =>
-                  // update references for every domain graph node used by this standing query… if its namespace exists
+                  // do pre-run checks and initialization for the standing query (if its namespace still exists)
                   sq.queryPattern match {
+                    // in the case of a DGN query, register the DGN package against the in-memory registry
                     case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
                       dgnRegistry.registerDomainGraphNodePackage(
                         DomainGraphNodePackage(dgnPattern.dgnId, domainGraphNodes.get(_)),
                         sq.id
                       )
-                    case _ =>
+                    // in the case of an SQv4 query, do a final verification that the pattern origin is sane
+                    case StandingQueryPattern.MultipleValuesQueryPattern(_, _, PatternOrigin.DirectSqV4) =>
+                      // no additional validation is needed for MVSQs that use a SQV4 origin
+                      ()
+                    case StandingQueryPattern
+                          .MultipleValuesQueryPattern(_, _, PatternOrigin.GraphPattern(pattern, cypherOriginal))
+                        if pattern.distinct =>
+                      // For an MVSQ based on a GraphPattern, warn the user that DISTINCT is not yet supported in MVSQ.
+                      // QU-568
+                      logger.warn(
+                        cypherOriginal match {
+                          case Some(cypherQuery) =>
+                            log"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '${cypherQuery}'"
+                          case None =>
+                            log"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: ${pattern.toString}"
+                        }
+                      )
+                    case StandingQueryPattern
+                          .MultipleValuesQueryPattern(_, _, PatternOrigin.GraphPattern(_, _)) =>
+                      // this is an MVSQ based on a GraphPattern, but it doesn't illegally specify DISTINCT. No further action needed.
+                      ()
+                    case StandingQueryPattern.QuinePatternQueryPattern(_, _, _) =>
+                      // no additional validation is needed for QuinePattern SQs
+                      ()
                   }
                   sqns.startStandingQuery(
                     sqId = sq.id,
@@ -88,7 +115,7 @@ class GraphService(
               val dgnsLen = domainGraphNodes.size
               val sqsLen = sqs.size
               if (dgnsLen + sqsLen > 0)
-                logger.info(s"Restored $dgnsLen domain graph nodes and $sqsLen standing queries")
+                logger.info(log"Restored ${Safe(dgnsLen)} domain graph nodes and ${Safe(sqsLen)} standing queries")
             }
           }(shardDispatcherEC)
       }(shardDispatcherEC),
@@ -170,7 +197,7 @@ object GraphService {
     edgeCollectionFactory: QuineId => SyncEdgeCollection = new ReverseOrderedEdgeCollection(_),
     metricRegistry: MetricRegistry = new MetricRegistry,
     enableDebugMetrics: Boolean = false
-  ): Future[GraphService] =
+  )(implicit logConfig: LogConfig): Future[GraphService] =
     try {
       // Must happen before instantiating the actor system extensions
       SharedMetricRegistries.add(HostQuineMetrics.MetricsRegistryName, metricRegistry)

@@ -15,19 +15,19 @@ import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.{createTable, drop
 import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection
 import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.Chunker
+import com.thatdot.quine.util.Log._
 
-abstract class TableDefinition[A](unqualifiedTableName: String, namespace: NamespaceId) extends LazyLogging {
+abstract class TableDefinition[A](unqualifiedTableName: String, namespace: NamespaceId) extends LazySafeLogging {
 
   def create(
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[A]
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[A]
 
   /** The name of the table defined by this class.
     * This does include the namespace, but not the keyspace.
@@ -42,8 +42,10 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
 
   protected def prepare(session: AsyncCqlSession, settings: CassandraStatementSettings)(
     statement: SimpleStatement
-  ): Future[PreparedStatement] = {
-    logger.trace("Preparing {}", statement.getQuery)
+  )(implicit logConfig: LogConfig): Future[PreparedStatement] = {
+    // NB the PII these statements use is not yet bound, so the statement itself is safe (using placeholder
+    // variables where the PII *will* go)
+    logger.trace(log"Preparing ${Safe(statement.getQuery)}")
     session.prepareAsync(settings(statement)).toScala
   }
 

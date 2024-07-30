@@ -9,10 +9,11 @@ import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter}
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Information about a standing query that gets persisted and reloaded on startup
   *
@@ -92,7 +93,7 @@ sealed abstract class StandingQueryPattern {
   def includeCancellation: Boolean
   def origin: PatternOrigin
 }
-object StandingQueryPattern extends LazyLogging {
+object StandingQueryPattern {
 
   /** A DomainGraphNode standing query
     *
@@ -149,7 +150,7 @@ final class RunningStandingQuery(
   val resultMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant
-) extends LazyLogging {
+) extends LazySafeLogging {
 
   def this(
     resultsQueue: BoundedSourceQueue[StandingQueryResult],
@@ -183,33 +184,25 @@ final class RunningStandingQuery(
 
   /** Enqueue a result, returning true if the result was successfully enqueued, false otherwise
     */
-  def offerResult(result: StandingQueryResult): Boolean = {
+  def offerResult(result: StandingQueryResult)(implicit logConfig: LogConfig): Boolean = {
     val success = resultsQueue.offer(result) match {
       case QueueOfferResult.Enqueued =>
         true
       case QueueOfferResult.Failure(err) =>
         logger.warn(
-          s"onResult: failed to enqueue Standing Query result for: ${query.name} due to error: ${err.getMessage}"
-        )
-        logger.info(
-          s"onResult: failed to enqueue Standing Query result for: ${query.name}. Result: ${result}",
-          err
+          log"onResult: failed to enqueue Standing Query result for: ${Safe(query.name)}. Result: $result"
+          withException err
         )
         false
       case QueueOfferResult.QueueClosed =>
         logger.warn(
-          s"onResult: Standing Query Result arrived but result queue already closed for: ${query.name}"
-        )
-        logger.info(
-          s"onResult: Standing Query result queue already closed for: ${query.name}. Dropped result: ${result}"
+          log"""onResult: Standing Query Result arrived but result queue already closed for:
+               |${Safe(query.name)}. Dropped result: $result""".cleanLines
         )
         false
       case QueueOfferResult.Dropped =>
         logger.warn(
-          s"onResult: dropped Standing Query result for: ${query.name}"
-        )
-        logger.info(
-          s"onResult: dropped Standing Query result for: ${query.name}. Result: ${result}"
+          log"onResult: dropped Standing Query result for: ${Safe(query.name)}. Result: $result"
         )
         false
     }

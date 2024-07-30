@@ -14,6 +14,7 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NamespaceId, StandingQueryId}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T4}
 
 trait StandingQueryStatesColumnNames {
@@ -89,10 +90,11 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
     writeSettings: CassandraStatementSettings
   )(implicit
     materializer: Materializer,
-    futureInstance: Applicative[Future]
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
   ): Future[StandingQueryStates] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
 
     (
       T4(insertStatement, removeStandingQueryState, removeStandingQuery, deleteAllByPartitionKeyStatement)

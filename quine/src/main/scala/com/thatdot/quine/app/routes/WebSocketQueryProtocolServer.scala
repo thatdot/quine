@@ -14,7 +14,6 @@ import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.{Done, NotUsed}
 
 import cats.syntax.either._
-import com.typesafe.scalalogging.LazyLogging
 import io.circe
 import io.circe.{Decoder, Encoder}
 
@@ -31,6 +30,7 @@ import com.thatdot.quine.routes.{
   UiEdge,
   UiNode
 }
+import com.thatdot.quine.util.Log._
 
 /** Information about the queries that are running under a websocket connection
   *
@@ -56,9 +56,10 @@ trait WebSocketQueryProtocolServer
     extends QueryProtocolMessageSchema
     with exts.ServerQuineEndpoints
     with QueryUiRoutesImpl
-    with LazyLogging {
+    with LazySafeLogging {
 
   import QueryProtocolMessage._
+  implicit protected def logConfig: LogConfig
 
   implicit private[this] val clientMessageDecoder: Decoder[ClientMessage] = clientMessageSchema.decoder
   private[this] val serverMessageEncoder: Encoder[ServerMessage[Id]] = serverMessageSchema.encoder
@@ -180,8 +181,8 @@ trait WebSocketQueryProtocolServer
       case iae: IllegalArgumentException => iae.getMessage
       case other =>
         val message = s"Query failed with log ID: ${Random.alphanumeric.take(10).mkString}"
-        logger.error(message, other)
-        message
+        logger.error(log"$message" withException other)
+        "message"
     }
 
   /** Process a client message and return the message with which to reply

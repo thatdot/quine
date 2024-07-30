@@ -14,6 +14,7 @@ import com.thatdot.quine.persistor.{
   WrappedPersistenceAgent
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
+import com.thatdot.quine.util.Log._
 
 /** [[Migration.Apply]] instances for the Quine application. These may be reused by the other Quine-based applications
   * if appropriate.
@@ -56,8 +57,8 @@ object QuineMigrations {
                 "See https://github.com/thatdot/quine/releases/tag/v1.7.0 for complete change notes"
               Left(
                 MigrationError.UserInterventionRequired(
-                  s"$adviceContext $userAdvice" + "\n" +
-                  changeReference
+                  safe"${Safe(adviceContext)} ${Safe(userAdvice)}" + safe"\n" +
+                  safe"${Safe(changeReference)}"
                 )
               )
             }

@@ -23,6 +23,8 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 // This needs to be serializable for the bloom filter to be serializable
 case object QuineIdFunnel extends Funnel[QuineId] {
@@ -38,7 +40,8 @@ object BloomFilteredPersistor {
     persistor: NamespacedPersistenceAgent,
     persistenceConfig: PersistenceConfig
   )(implicit
-    materializer: Materializer
+    materializer: Materializer,
+    logConfig: LogConfig
   ): NamespacedPersistenceAgent =
     maybeSize.fold(persistor)(new BloomFilteredPersistor(persistor, _, persistenceConfig))
 }
@@ -56,7 +59,7 @@ private class BloomFilteredPersistor(
   bloomFilterSize: Long,
   val persistenceConfig: PersistenceConfig,
   falsePositiveRate: Double = 0.1
-)(implicit materializer: Materializer)
+)(implicit materializer: Materializer, logConfig: LogConfig)
     extends WrappedPersistenceAgent(wrappedPersistor) {
 
   val namespace: NamespaceId = wrappedPersistor.namespace
@@ -64,7 +67,7 @@ private class BloomFilteredPersistor(
   private val bloomFilter: BloomFilter[QuineId] =
     BloomFilter.create[QuineId](QuineIdFunnel, bloomFilterSize, falsePositiveRate)
 
-  logger.info(s"Initialized persistor bloom filter with size: $bloomFilterSize records")
+  logger.info(safe"Initialized persistor bloom filter with size: ${Safe(bloomFilterSize)} records")
 
   @volatile private var mightContain: QuineId => Boolean = (_: QuineId) => true
 
@@ -172,10 +175,10 @@ private class BloomFilteredPersistor(
         case Success(_) =>
           val d = System.currentTimeMillis - t0
           val c = bloomFilter.approximateElementCount()
-          logger.info(s"Finished loading in duration: $d ms; node set size ~ $c QuineIDs)")
+          logger.info(log"Finished loading in duration: ${Safe(d)} ms; node set size ~ ${Safe(c)} QuineIDs)")
           mightContain = bloomFilter.mightContain
         case Failure(ex) =>
-          logger.warn("Error loading; continuing to run in degraded state", ex)
+          logger.warn(log"Error loading; continuing to run in degraded state" withException ex)
       }(ExecutionContext.parasitic)
     ()
   }

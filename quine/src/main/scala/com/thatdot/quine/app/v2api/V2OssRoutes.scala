@@ -14,10 +14,11 @@ import com.thatdot.quine.app.v2api.endpoints.{
   V2IngestEndpoints,
   V2StandingEndpoints
 }
+import com.thatdot.quine.util.Log._
 
 /** Gathering of Quine OSS tapir-defined routes.
   */
-class V2OssRoutes(val app: OssApiInterface)
+class V2OssRoutes(val app: OssApiInterface)(implicit protected val logConfig: LogConfig)
     extends TapirRoutes
     with V2AdministrationEndpoints
     with V2StandingEndpoints

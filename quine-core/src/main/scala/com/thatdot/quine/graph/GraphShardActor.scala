@@ -11,7 +11,7 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters.ConcurrentMapHasAsScala
 import scala.util.{Failure, Success}
 
-import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, InvalidActorNameException, Props, Timers}
+import org.apache.pekko.actor.{Actor, ActorRef, InvalidActorNameException, Props, Timers}
 import org.apache.pekko.dispatch.Envelope
 import org.apache.pekko.stream.scaladsl.Source
 
@@ -42,6 +42,8 @@ import com.thatdot.quine.graph.messaging.{
   SpaceTimeQuineId
 }
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 
 /** Shard in the Quine graph
@@ -66,8 +68,9 @@ final private[quine] class GraphShardActor(
   shardId: Int,
   namespacedNodes: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]],
   private var inMemoryLimit: Option[InMemoryNodeLimit]
-) extends Actor
-    with ActorLogging
+)(implicit val logConfig: LogConfig)
+    extends Actor
+    with ActorSafeLogging
     with QuineRefOps
     with Timers {
 
@@ -142,7 +145,7 @@ final private[quine] class GraphShardActor(
       (nodeId, nodeState) <- nodes if predicate(nodeId)
     } nodeState match {
       case NodeState.WakingNode =>
-        if (log.isInfoEnabled) log.info(s"Got message to remove node $nodeId that's not yet awake")
+        log.info(safe"Got message to remove node ${Safe(nodeId.pretty)} that's not yet awake")
         noWakingNodesExist = false
       case NodeState.LiveNode(_, actorRef, _, _) =>
         nodes.remove(nodeId)
@@ -214,17 +217,17 @@ final private[quine] class GraphShardActor(
 
         // If the node was not already considering sleep, tell it to
         if (previous == WakefulState.Awake) {
-          log.debug("sleepActor: sent GoToSleep request to: {}", target)
+          log.debug(safe"sleepActor: sent GoToSleep request to: $target")
           actorRef ! GoToSleep
         } else {
-          log.debug("sleepActor: {} is already: {}", target, previous)
+          log.debug(safe"sleepActor: target is already: $previous")
         }
 
       case Some(NodeState.WakingNode) =>
-        log.info("Ignoring instruction to sleep a node not yet awake: {}", target)
+        log.info(safe"Ignoring instruction to sleep a node not yet awake: $target")
 
       case None =>
-        log.warning("sleepActor: cannot find actor for: {}", target)
+        log.warn(safe"sleepActor: cannot find actor for: $target")
     }
 
   /** Basic LRU cache of the dedup IDs of the last 10000 delivery relays
@@ -308,7 +311,9 @@ final private[quine] class GraphShardActor(
     qid: SpaceTimeQuineId,
     originalSender: ActorRef
   ): Unit = {
-    log.debug(s"Shard: $shardId is delivering local message: $message to: $qid, from: $originalSender")
+    log.debug(
+      log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(originalSender)}"
+    )
     getAwakeNode(qid) match {
       case LivenessStatus.AlreadyAwake(nodeActor) => nodeActor.tell(message, originalSender)
       case LivenessStatus.WakingUp =>
@@ -364,13 +369,13 @@ final private[quine] class GraphShardActor(
     case NodeStateRehydrated(id, nodeArgs, remaining, errorCount) =>
       namespacedNodes.get(id.namespace) match {
         case None => // This is not an error but a no-op because the namespace could have just been deleted.
-          log.info(s"Tried to rehydrate a node at: $id but its namespace was absent")
+          log.info(log"Tried to rehydrate a node at: ${Safe(id)} but its namespace was absent")
         case Some(nodesMap) =>
           val costToSleep = new CostToSleep(0L) // Will be re-calculated from edge count later.
           val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake)
           val actorRefLock = new StampedLock()
           val finalNodeArgs = id :: graph :: costToSleep :: wakefulState :: actorRefLock ::
-            nodeArgs.productIterator.toList
+            nodeArgs.productIterator.toList ++ List(logConfig)
           val props = Props(
             graph.nodeStaticSupport.nodeClass.runtimeClass,
             finalNodeArgs: _*
@@ -429,7 +434,7 @@ final private[quine] class GraphShardActor(
 
     // Actor shut down completely
     case SleepOutcome.SleepSuccess(id, shardPromise) =>
-      log.debug("Sleep succeeded for {}", id.debug)
+      log.debug(safe"Sleep succeeded for ${Safe(id.debug)}")
       namespacedNodes.get(id.namespace).foreach(_.remove(id))
       inMemoryActorList.remove(id)
       nodesSleptSuccessCounter(id.namespace).inc()
@@ -437,11 +442,11 @@ final private[quine] class GraphShardActor(
       if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
         shardPromise.future.value.get match {
           case Success(_) =>
-            log.info("Received redundant notification about successfully slept node: {}", id.debug)
+            log.debug(log"Received redundant notification about successfully slept node: ${id.debug}")
           case Failure(_) =>
             log.error(
-              """Received notification that node: {} slept, but that node already reported a failure for the same sleep request""",
-              id.debug
+              safe"""Received notification that node: ${Safe(id.debug)} slept,
+                    |but that node already reported a failure for the same sleep request""".cleanLines
             )
         }
       }
@@ -456,20 +461,12 @@ final private[quine] class GraphShardActor(
       */
     case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
       log.error(
-        exception,
-        "Failed to store: {} bytes on: {}, composed of: {} edges and: {} properties. Restoring the node.",
-        snapshot.length,
-        id.debug,
-        numEdges,
-        propertySizes.size
+        log"Failed to store: ${Safe(snapshot.length)} bytes on: ${Safe(id.debug)}, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
+        withException exception
       )
-      if (log.isInfoEnabled) {
-        log.info(
-          "Property sizes on failed store: {}: {}",
-          id.debug,
-          propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")
-        )
-      }
+      log.info(
+        log"Property sizes on failed store: ${Safe(id.debug)}: ${propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")}"
+      )
       namespacedNodes.get(id.namespace).foreach(_.remove(id)) // Remove it to be added again by WakeUp below.
       inMemoryActorList.remove(id)
       nodesSleptFailureCounter(id.namespace).inc()
@@ -478,14 +475,13 @@ final private[quine] class GraphShardActor(
         shardPromise.future.value.get match {
           case Success(_) =>
             log.error(
-              """A node failed to sleep: {}, but that node already reported a success for the same sleep request""",
-              id.debug
+              safe"""A node failed to sleep: ${Safe(id.debug)}, but that node already
+                    |reported a success for the same sleep request""".cleanLines
             )
           case Failure(e) =>
-            log.warning(
-              s"A node failed to sleep, and reported that failure multiple times: {}. Latest error was: {}",
-              id.debug,
-              e
+            log.warn(
+              log"""A node failed to sleep: ${Safe(id.debug)}, and reported that failure
+                   |multiple times""".cleanLines withException e
             )
         }
       }
@@ -504,14 +500,13 @@ final private[quine] class GraphShardActor(
         case badOutcome if remaining <= 0 =>
           unlikelyWakeupFailed(id.namespace).inc()
           val stats = shardStats
-          if (log.isErrorEnabled)
-            log.error(
-              s"No more retries waking up: ${id.debug} " +
-              s"with sleep status: ${namespacedNodes.get(id.namespace).flatMap(_.get(id))} " +
-              s"with nodes-on-shard: ${stats.awake} awake, ${stats.goingToSleep} going to sleep " +
-              s"Outcome: $badOutcome " +
-              s"Errors: " + errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", ")
-            )
+          log.error(
+            safe"No more retries waking up: ${Safe(id.debug)} " +
+            safe"with sleep status: ${Safe(namespacedNodes.get(id.namespace).flatMap(_.get(id)).toString)} " +
+            safe"with nodes-on-shard: ${Safe(stats.awake)} awake, ${Safe(stats.goingToSleep)} going to sleep " +
+            safe"Outcome: ${Safe(badOutcome.toString)} " +
+            safe"Errors:  + ${Safe(errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", "))}"
+          )
         case LivenessStatus.IncompleteActorShutdown(nodeRemovedFromMaps) =>
           nodeRemovedFromMaps.onComplete { _ =>
             val eKey = WakeUpErrorStates.IncompleteActorShutdown
@@ -524,7 +519,9 @@ final private[quine] class GraphShardActor(
           if (canCreateNewNodes) {
             namespacedNodes.get(id.namespace) match {
               case None => // This is not an error but a no-op because the namespace could have just been deleted.
-                log.info(s"Tried to wake a node at: $id but its namespace was absent from: ${namespacedNodes.keySet}")
+                log.info(
+                  safe"Tried to wake a node at: ${Safe(id)} but its namespace was absent from: ${Safe(namespacedNodes.keySet)}"
+                )
               case Some(nodeMap) =>
                 nodeMap(id) = NodeState.WakingNode
                 graph.nodeStaticSupport
@@ -536,9 +533,12 @@ final private[quine] class GraphShardActor(
                       nodeMap.remove(id)
                       unlikelyUnexpectedWakeUpErrCounter(id.namespace).inc()
                       if (remaining == 1)
-                        log.error(error, s"Failed to wake up ${id.pretty} on the last retry.")
-                      else if (log.isInfoEnabled)
-                        log.info(s"$remaining retries remaining waking up ${id.pretty}. Retrying because of a $error")
+                        log.error(log"Failed to wake up ${Safe(id.pretty)} on the last retry." withException error)
+                      else
+                        log.info(
+                          log"${Safe(remaining)} retries remaining waking up ${Safe(id.pretty)}. Retrying."
+                          withException error
+                        )
                       val eKey = WakeUpErrorStates.UnexpectedWakeUpError
                       val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
                       val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
@@ -556,7 +556,9 @@ final private[quine] class GraphShardActor(
             val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
             val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
             // TODO: don't hardcode the time until retry
-            log.warning("Failed to wake up {} due to hard in-memory limit: {} (retrying)", id, inMemoryLimit)
+            log.warn(
+              safe"Failed to wake up ${Safe(id)} due to hard in-memory limit: ${Safe(inMemoryLimit.toString)} (retrying)"
+            )
             context.system.scheduler.scheduleOnce(0.01.second)(self ! msgToDeliver)(context.dispatcher)
             // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
             ()
@@ -600,8 +602,8 @@ final private[quine] class GraphShardActor(
       val remaining = requestShutdown() // Reports the count of live actors remaining
       if (remaining.remainingNodeActorCount > 0)
         log.info(
-          s"Shard #${shardId} has ${remaining.remainingNodeActorCount} node(s) awake. Sample of awake nodes: " +
-          s"${namespacedNodes.take(5).mkString(", ")}"
+          safe"""Shard #${Safe(shardId)} has ${Safe(remaining.remainingNodeActorCount)} node(s) awake.
+                |Sample of awake nodes: ${Safe(namespacedNodes.take(5).mkString(", "))}""".cleanLines
         )
       msg ?! remaining
 
@@ -634,7 +636,7 @@ final private[quine] class GraphShardActor(
       namespacedNodes -= namespace
       msg ?! NamespaceChangeResult(hasEffect)
 
-    case m => log.error(s"Message unhandled by GraphShardActor: $m")
+    case m => log.error(log"Message unhandled by GraphShardActor: ${m.toString}")
   }
 }
 object GraphShardActor {

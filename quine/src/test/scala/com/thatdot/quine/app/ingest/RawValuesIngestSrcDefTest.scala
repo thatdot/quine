@@ -24,7 +24,9 @@ import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInp
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, NamespaceId}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
+
 class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
   implicit val graph: GraphService = IngestTestGraph.makeGraph()
@@ -40,13 +42,15 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         new CypherJsonInputFormat(
           s"""MATCH (p) WHERE id(p) = idFrom('test','$label', $$that.$label) SET p.value = $$that RETURN (p)""",
           "that"
-        ),
+        )(LogConfig.testing),
         SwitchMode.Open,
         10,
         maxPerSecond,
         decoders,
         label
       ) {
+
+    implicit protected val logConfig: LogConfig = LogConfig.testing
 
     type InputType = ByteString
     val intoNamespace: NamespaceId = None

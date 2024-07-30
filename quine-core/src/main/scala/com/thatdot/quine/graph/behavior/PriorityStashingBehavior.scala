@@ -7,10 +7,12 @@ import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 import scala.util.Try
 
-import org.apache.pekko.actor.{Actor, ActorLogging}
+import org.apache.pekko.actor.Actor
 import org.apache.pekko.dispatch.Envelope
 
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Functionality for pausing the processing of messages while a future completes.
   *
@@ -24,10 +26,11 @@ import com.thatdot.quine.model.{QuineId, QuineIdProvider}
   * @note actors extending this trait should have a priority mailbox with the priority function wrapped in
   *       [[StashedMessage.priority]] — that way, the order of messages that get unstashed is correct.
   */
-trait PriorityStashingBehavior extends Actor with ActorLogging {
+trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
 
   def qid: QuineId
   implicit def idProvider: QuineIdProvider
+  implicit protected def logConfig: LogConfig
 
   sealed trait PausedMessageCallback[A] {
     def id: Int
@@ -50,21 +53,16 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
   val pendingCallbacks: mutable.ArrayBuffer[PausedMessageCallback[_]] = mutable.ArrayBuffer.empty
   private var idCounter = 0 // Used only to uniquely identify futures in progress. OK if it rolls over.
 
-  // Convenience method which doesn't eagerly evaluate strings.
-  private def debug(msg: => String): Unit = if (log.isDebugEnabled) log.debug(msg)
-
   def enqueueCallback(callback: Pending[_]): Unit =
     pendingCallbacks.append(callback)
 
-  def addResultToCallback[A](findId: Int, result: Try[A]): Unit =
+  def addResultToCallback[A](findId: Int, result: Try[A], isResultSafe: Boolean): Unit =
     pendingCallbacks.indexWhere(_.id == findId) match {
       case -1 =>
-        log.warning(
-          "Received a result on node: {} (logged at INFO level) for a callback with unknown ID: {} in pendingCallbacks",
-          qid.debug,
-          findId
+        log.warn(
+          log"Received a result on node: ${Safe(qid.debug)} for unknown callback ID: ${Safe(findId)}. Result was ${if (isResultSafe) Safe(result.toString)
+          else result.toString}"
         )
-        log.info("Received a result on node: {} for unknown callback ID: {}. Result was {}", qid.debug, findId, result)
       case i =>
         pendingCallbacks(i) match {
           case cb: PausedMessageCallback[A @unchecked] =>
@@ -73,18 +71,18 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     }
 
   @tailrec
-  private def processReadyCallbacks(): Unit = {
-    debug(
-      s"pendingCallbacks on node: ${qid.pretty} size: ${pendingCallbacks.size} first is: " +
-      s"${pendingCallbacks.headOption} Stashed size: ${messageBuffer.size}"
+  private def processReadyCallbacks()(implicit logConfig: LogConfig): Unit = {
+    log.debug(
+      log"""pendingCallbacks on node: ${Safe(qid.pretty)} size: ${Safe(pendingCallbacks.size)} first is:
+           |${pendingCallbacks.headOption.toString} Stashed size: ${Safe(messageBuffer.size)}""".cleanLines
     )
     pendingCallbacks.headOption match {
       case Some(_: Pending[_]) =>
         () // wait for this result to complete before more processing to maintain effect order
-        debug(s"Pending item is next on node ${qid.pretty}. Size is: ${pendingCallbacks.size}")
+        log.debug(safe"Pending item is next on node ${Safe(qid.pretty)}. Size is: ${Safe(pendingCallbacks.size)}")
       case Some(r: Ready[_]) =>
-        debug(
-          s"Ready item: ${r.id} is next on node: ${qid.pretty}. Remaining after removal: ${pendingCallbacks.size - 1}"
+        log.debug(
+          safe"Ready item: ${Safe(r.id)} is next on node: ${Safe(qid.pretty)}. Remaining after removal: ${Safe(pendingCallbacks.size - 1)}"
         )
         val _ = pendingCallbacks.remove(0)
         r.runCallback()
@@ -92,12 +90,14 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
       case None =>
         /* Go back to the regular behaviour and enqueue stashed messages back into the actor mailbox. The
          * `StashedMessage` wrapper ensures that re-enqueued messages get processed as if they had arrived first. */
-        debug(
-          s"Unbecoming on: ${qid.pretty} Remaining size: ${pendingCallbacks.size} stashed size: ${messageBuffer.size}"
+        log.debug(
+          safe"Unbecoming on: ${Safe(qid.pretty)} Remaining size: ${Safe(pendingCallbacks.size)} stashed size: ${Safe(messageBuffer.size)}"
         )
         context.unbecome()
         messageBuffer.foreach { e =>
-          debug(s"Unstashing message: ${e.message} on node: ${qid.pretty} stashed size: ${messageBuffer.size}")
+          log.debug(
+            log"Unstashing message: ${e.message.toString} on node: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}"
+          )
           self.tell(StashedMessage(e.message), e.sender)
         }
         messageBuffer.clear()
@@ -125,13 +125,16 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     */
   final protected def pauseMessageProcessingUntil[A](
     until: Future[A],
-    onComplete: Try[A] => Unit
+    onComplete: Try[A] => Unit,
+    isResultSafe: Boolean
   ): Future[Unit] = if (until.isCompleted && pendingCallbacks.isEmpty) {
     // If the future is already completed and no other callbacks are enqueued ahead of it, apply effects immediately
     Future.successful(onComplete(until.value.get))
   } else {
-    if (log.isDebugEnabled && !isCalled.compareAndSet(false, true))
-      throw new Exception(s"pauseMessageProcessingUntil was called concurrently on node ${qid.pretty}!")
+    log.whenDebugEnabled {
+      if (!isCalled.compareAndSet(false, true))
+        throw new Exception(s"pauseMessageProcessingUntil was called concurrently on node ${qid.pretty}!")
+    }
 
     val thisFutureId = idCounter
     idCounter += 1
@@ -140,23 +143,31 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
 
     // Temporarily change the actor behavior to only buffer messages
     if (pendingCallbacks.size == 1) {
-      debug(s"Becoming on: ${qid.pretty} stashed size: ${messageBuffer.size}")
+      log.debug(
+        log"Becoming PriorityStashingBehavior on: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}"
+      )
       context.become(
         {
           case StashedResultDelivery(id, result) =>
-            debug(s"Result delivery for: $id with payload: $result on node: ${qid.pretty}")
-            addResultToCallback(id, result)
+            log.debug(
+              log"Result delivery for: ${Safe(id)} with payload: ${result.toString} on node: ${Safe(qid.pretty)}"
+            )
+            addResultToCallback(id, result, isResultSafe)
             // Every time a result is delivered, iterate through zero or more results to apply callback effects.
             processReadyCallbacks()
 
           /* We are are receiving a message that was un-stashed before. Re-stash it. */
           case StashedMessage(msg) =>
             messageBuffer += Envelope(msg, sender())
-            debug(s"Restashed message: $msg on node: ${qid.pretty} size: ${messageBuffer.size}")
+            log.debug(
+              log"Restashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}"
+            )
 
           case msg =>
             messageBuffer += Envelope(msg, sender())
-            debug(s"Stashed message: $msg on node: ${qid.pretty} size: ${messageBuffer.size}")
+            log.debug(
+              log"Stashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}"
+            )
         },
         discardOld = false
       )
@@ -165,14 +176,17 @@ trait PriorityStashingBehavior extends Actor with ActorLogging {
     // Schedule the message which will restore the previous actor behavior after the future completes.
     until.onComplete { (done: Try[_]) =>
       done.toEither.left.foreach(err =>
-        debug(s"pauseMessageProcessingUntil: future for: $thisFutureId failed on node ${qid.debug(idProvider)}")
+        log.debug(
+          safe"pauseMessageProcessingUntil: future for: ${Safe(thisFutureId)} failed on node ${Safe(qid.debug)}"
+        )
       )
       self ! StashedResultDelivery(thisFutureId, done)
     }(context.dispatcher)
 
-    if (log.isDebugEnabled && !isCalled.compareAndSet(true, false))
-      throw new Exception(s"pauseMessageProcessingUntil was called concurrently on node ${qid.pretty}!")
-
+    log.whenDebugEnabled {
+      if (!isCalled.compareAndSet(true, false))
+        throw new Exception(s"pauseMessageProcessingUntil was called concurrently on node ${qid.pretty}!")
+    }
     pending.promise.future
   }
 }

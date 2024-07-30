@@ -7,6 +7,7 @@ import scala.util.hashing.MurmurHash3
 import com.google.common.collect.{Interner, Interners}
 
 import com.thatdot.quine.util.ByteConversions
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.TypeclassInstances.ByteArrOrdering
 
 /** The internal ID type used by Quine for identifying nodes.
@@ -30,7 +31,7 @@ final case class QuineId private (array: Array[Byte]) extends Ordered[QuineId] {
     idProvider.customIdStringFromQid(this).getOrElse(toString)
 
   /** Print a user-facing representation of an ID (which is invertible via `qidFromPrettyString`) */
-  def pretty(implicit idProvider: QuineIdProvider): String =
+  def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
     idProvider.qidToPrettyString(this)
 
   /** The internal unambiguous string representation of the ID.

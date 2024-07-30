@@ -5,12 +5,13 @@ import scala.util.Success
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.util.Log._
 
 class ImportFormatTest extends AnyFunSuite {
 
   test("Json import properly deserializes large numbers") {
 
-    val format = new CypherJsonInputFormat("MATCH (n) WHERE id(n) = 1 RETURN n", "n")
+    val format = new CypherJsonInputFormat("MATCH (n) WHERE id(n) = 1 RETURN n", "n")(LogConfig.testing)
     def testInput(jsonString: String) = format.importBytes(jsonString.getBytes("UTF-8"))
 
     val l = Long.MaxValue - 1

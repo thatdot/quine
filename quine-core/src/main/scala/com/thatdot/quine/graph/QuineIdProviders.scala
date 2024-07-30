@@ -12,6 +12,7 @@ import memeid.{UUID => UUID4s}
 
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineGraphLocation, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.ByteConversions.uuidToBytes
+import com.thatdot.quine.util.Log._
 
 /** This provider is special: it is a no-op provider in the sense that none of the
   * conversions do any work. [[com.thatdot.quine.model.QuineId]] is the ID type.
@@ -191,7 +192,7 @@ object WithExplicitPositions {
     */
   private val ExplicitlyPositionedIdString = "([0-9a-fA-F]{8})/(.*)".r
 
-  def apply(underlying: QuineIdProvider): PositionAwareIdProvider = underlying match {
+  def apply(underlying: QuineIdProvider)(implicit logConfig: LogConfig): PositionAwareIdProvider = underlying match {
     case alreadyNamespaced: PositionAwareIdProvider => alreadyNamespaced
     case notNamespaced => new WithExplicitPositions(notNamespaced)
   }
@@ -209,7 +210,9 @@ object WithExplicitPositions {
   *
   * @see [[WithExplicitPositions.Id]]
   */
-final case class WithExplicitPositions private (underlying: QuineIdProvider) extends PositionAwareIdProvider {
+final case class WithExplicitPositions private (underlying: QuineIdProvider)(implicit
+  protected val logConfig: LogConfig
+) extends PositionAwareIdProvider {
   type CustomIdType = WithExplicitPositions.Id[underlying.CustomIdType]
 
   val customIdTag: ClassTag[WithExplicitPositions.Id[underlying.CustomIdType]] =
@@ -298,9 +301,10 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider) ext
   override def nodeLocation(qid: QuineId): QuineGraphLocation = customIdFromBytes(qid.array) match {
     case Failure(exception) =>
       logger.warn(
-        s"""Couldn't parse out an explicitly-positioned Quine Id from provided id ${qid.pretty(this)}.
-            |Falling back to the underlying node location algorithm""".stripMargin.replace('\n', ' '),
-        exception
+        log"""Couldn't parse out an explicitly-positioned QuineId from provided id
+            |${Safe(qid.pretty(this, logConfig))}. Falling back to the underlying node
+            |location algorithm""".cleanLines
+        withException exception
       )
       underlying.nodeLocation(qid)
     case Success(id) =>
@@ -335,7 +339,7 @@ final case class NameSpacedUuidProvider(
   val customIdTag: ClassTag[(String, UUID)] = classTag[(String, UUID)]
 
   logger.warn(
-    "NamespacedUuidProvider is deprecated - use a specific-version UUID provider with explicit positioning instead"
+    safe"NamespacedUuidProvider is deprecated - use a specific-version UUID provider with explicit positioning instead"
   )
 
   require(thisNamespaceIdx <= localNamespaces.size - 1 && thisNamespaceIdx >= 0)

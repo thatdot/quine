@@ -3,12 +3,14 @@ package com.thatdot.quine.graph.cypher
 import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef}
+import org.apache.pekko.actor.{Actor, ActorRef}
 import org.apache.pekko.stream.scaladsl.{BroadcastHub, Source}
 
 import com.thatdot.quine.graph.cypher.Query.Return
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, SkipOptimizerKey}
 import com.thatdot.quine.model.Milliseconds
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Manages SKIP optimizations for a [family of] queries, eg (SKIP n LIMIT m, SKIP n+m LIMIT o, ...)
   *
@@ -34,8 +36,9 @@ class SkipOptimizingActor(
   QueryFamily: Query[Location.External],
   namespace: NamespaceId,
   atTime: Option[Milliseconds]
-) extends Actor
-    with ActorLogging {
+)(implicit protected val logConfig: LogConfig)
+    extends Actor
+    with ActorSafeLogging {
   import SkipOptimizingActor._
 
   /** Decommissions this actor by removing it from the skipOptimizerCache
@@ -48,7 +51,9 @@ class SkipOptimizingActor(
     graph.cypherOps.skipOptimizerCache.invalidate(SkipOptimizerKey(QueryFamily, namespace, atTime))
 
   private def startQuery() = {
-    log.debug(s"SkipOptimizingActor is beginning execution of query. AtTime: ${atTime}; query: $QueryFamily")
+    log.debug(
+      log"SkipOptimizingActor is beginning execution of query. AtTime: ${Safe(atTime)}; query: ${QueryFamily.toString}"
+    )
     graph.cypherOps
       .continueQuery(QueryFamily, parameters = Parameters.empty, namespace = namespace, atTime = atTime)
       .watchTermination() { case (mat, completesWithStream) =>
@@ -66,7 +71,7 @@ class SkipOptimizingActor(
           */
         completesWithStream.onComplete { status =>
           log.debug(
-            s"SkipOptimizingActor finished execution of query (cleanly: ${status.isSuccess}) and will terminate: ${QueryFamily}"
+            log"SkipOptimizingActor finished execution of query (cleanly: ${Safe(status.isSuccess)}) and will terminate: ${QueryFamily.toString}"
           )
           decommission()
         }(ExecutionContext.parasitic)
@@ -97,8 +102,8 @@ class SkipOptimizingActor(
     context: QueryContext,
     parameters: Parameters
   ): Either[SkipOptimizationError.InvalidSkipLimit, (Long, Option[Long])] = {
-    val skipVal = query.drop.map(_.eval(context)(graph.idProvider, parameters))
-    val limitVal = query.take.map(_.eval(context)(graph.idProvider, parameters))
+    val skipVal = query.drop.map(_.eval(context)(graph.idProvider, parameters, logConfig))
+    val limitVal = query.take.map(_.eval(context)(graph.idProvider, parameters, logConfig))
     for {
       skip <- skipVal match {
         case Some(Expr.Integer(skipCount)) => Right(skipCount)
@@ -140,7 +145,7 @@ class SkipOptimizingActor(
           if (!isCurrentlyStreaming && (skipOffset >= 0 || restartIfAppropriate)) {
             isCurrentlyStreaming = true
             log.debug(
-              s"SkipOptimizingActor received query eligible for pagination for atTime: $atTime. computed SKIP: $skip"
+              safe"SkipOptimizingActor received query eligible for pagination for atTime: ${Safe(atTime)}. computed SKIP: ${Safe(skip)}"
             )
             // apply the SKIP rule (resetting the queryHub if appropriate)
             val skippedStream: Source[QueryContext, NotUsed] =
@@ -152,11 +157,10 @@ class SkipOptimizingActor(
               } else {
                 // actor is in the wrong state to resume query, but has been allowed to restart the query
                 log.info(
-                  """Processing a ResumeQuery that requires resetting the
-                     |SkipOptimizingActor's state. As restartIfAppropriate = true, the query will be restarted,
-                     |replaying and dropping results up to the SKIP value provided in the latest query: {}""".stripMargin
-                    .replace('\n', ' '),
-                  query
+                  log"""Processing a ResumeQuery that requires resetting the
+                       |SkipOptimizingActor's state. As restartIfAppropriate = true, the query will be restarted,
+                       |replaying and dropping results up to the SKIP value provided in the latest query: ${query.toString}
+                       |""".cleanLines
                 )
                 queryHub = startQuery()
                 queryHub.drop(skip)

@@ -26,6 +26,8 @@ import com.thatdot.quine.graph.messaging.{
   WrappedActorRef
 }
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{QuineDispatchers, Retry}
 
 /** Graph implementation that assumes a basic static topology of shards. */
@@ -52,9 +54,9 @@ trait StaticShardGraph extends BaseGraph {
   /** Creates an actor for each of the configured static shards, returning the array of shards.
     * This is a function rather than inlined in the `val shards = ...` to resolve an initialization order issue
     */
-  protected[this] def initializeShards(): ArraySeq[LocalShardRef] =
+  protected[this] def initializeShards()(implicit logConfig: LogConfig): ArraySeq[LocalShardRef] =
     ArraySeq.unsafeWrapArray(Array.tabulate(shardCount) { (shardId: Int) =>
-      logger.info(s"Adding a new local shard at idx: $shardId")
+      logger.info(safe"Adding a new local shard at idx: ${Safe(shardId)}")
 
       val nodeMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]] =
         mutable.Map(defaultNamespaceId -> new ConcurrentHashMap[SpaceTimeQuineId, NodeState]().asScala)

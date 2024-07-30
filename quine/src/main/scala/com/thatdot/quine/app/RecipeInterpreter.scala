@@ -19,6 +19,8 @@ import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationStat
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 object RecipeInterpreter {
 
@@ -51,18 +53,18 @@ case class RecipeInterpreter(
   /** Returns true if all the tasks report isCancelled true. */
   override def isCancelled: Boolean = tasks.forall(_.isCancelled)
 
-  def run(memberIdx: MemberIdx): Unit = {
+  def run(memberIdx: MemberIdx)(implicit logConfig: LogConfig): Unit = {
 
     if (recipe.nodeAppearances.nonEmpty) {
-      statusLines.info(s"Using ${recipe.nodeAppearances.length} node appearances")
+      statusLines.info(log"Using ${Safe(recipe.nodeAppearances.length)} node appearances")
       appState.setNodeAppearances(recipe.nodeAppearances.toVector)
     }
     if (recipe.quickQueries.nonEmpty) {
-      statusLines.info(s"Using ${recipe.quickQueries.length} quick queries ")
+      statusLines.info(log"Using ${Safe(recipe.quickQueries.length)} quick queries ")
       appState.setQuickQueries(recipe.quickQueries.toVector)
     }
     if (recipe.sampleQueries.nonEmpty) {
-      statusLines.info(s"Using ${recipe.sampleQueries.length} sample queries ")
+      statusLines.info(log"Using ${Safe(recipe.sampleQueries.length)} sample queries ")
       appState.setSampleQueries(recipe.sampleQueries.toVector)
     }
 
@@ -77,13 +79,16 @@ case class RecipeInterpreter(
         standingQueryDefinition
       )
       try if (!Await.result(addStandingQueryResult, 5 seconds)) {
-        statusLines.error(s"Standing Query $standingQueryName already exists")
+        statusLines.error(log"Standing Query ${Safe(standingQueryName)} already exists")
       } else {
-        statusLines.info(s"Running Standing Query $standingQueryName")
+        statusLines.info(log"Running Standing Query ${Safe(standingQueryName)}")
         tasks +:= standingQueryProgressReporter(statusLines, appState, graphService, standingQueryName)
       } catch {
         case NonFatal(ex) =>
-          statusLines.error(s"Failed creating Standing Query $standingQueryName: $standingQueryDefinition", ex)
+          statusLines.error(
+            log"Failed creating Standing Query ${Safe(standingQueryName)}: ${standingQueryDefinition.toString}",
+            ex
+          )
       }
       ()
     }
@@ -103,11 +108,14 @@ case class RecipeInterpreter(
         memberIdx = Some(memberIdx)
       ) match {
         case Failure(ex) =>
-          statusLines.error(s"Failed creating Ingest Stream $ingestStreamName\n$ingestStream", ex)
+          statusLines.error(
+            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}\n${ingestStream.toString}",
+            ex
+          )
         case Success(false) =>
-          statusLines.error(s"Ingest Stream $ingestStreamName already exists")
+          statusLines.error(log"Ingest Stream ${Safe(ingestStreamName)} already exists")
         case Success(true) =>
-          statusLines.info(s"Running Ingest Stream $ingestStreamName")
+          statusLines.info(log"Running Ingest Stream ${Safe(ingestStreamName)}")
           tasks +:= ingestStreamProgressReporter(statusLines, appState, graphService, ingestStreamName)
       }
 
@@ -117,7 +125,7 @@ case class RecipeInterpreter(
       } {
         for {
           url <- quineWebserverUri
-        } statusLines.info("Status query URL is " + url.withFragment(cypherQuery))
+        } statusLines.info(log"Status query URL is ${url.withFragment(cypherQuery).toString}")
         tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
       }
     }
@@ -130,7 +138,7 @@ case class RecipeInterpreter(
     graphService: BaseGraph,
     ingestStreamName: String,
     interval: FiniteDuration = 1 second
-  ): Cancellable = {
+  )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
@@ -139,7 +147,7 @@ case class RecipeInterpreter(
     ) { () =>
       appState.getIngestStream(ingestStreamName, namespace) match {
         case None =>
-          statusLines.error(s"Failed getting Ingest Stream $ingestStreamName (it does not exist)")
+          statusLines.error(log"Failed getting Ingest Stream ${Safe(ingestStreamName)} (it does not exist)")
           task.cancel()
           statusLines.remove(statusLine)
           ()
@@ -151,7 +159,7 @@ case class RecipeInterpreter(
               val message =
                 s"$ingestStreamName status is ${status.toString.toLowerCase} and ingested ${stats.ingestedCount}"
               if (status.isTerminal) {
-                statusLines.info(message)
+                statusLines.info(log"${Safe(message)}")
                 task.cancel()
                 statusLines.remove(statusLine)
               } else {
@@ -172,7 +180,7 @@ case class RecipeInterpreter(
     graph: BaseGraph,
     standingQueryName: String,
     interval: FiniteDuration = 1 second
-  ): Cancellable = {
+  )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graph.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
@@ -183,12 +191,12 @@ case class RecipeInterpreter(
         .getStandingQuery(standingQueryName, namespace)
         .onComplete {
           case Failure(ex) =>
-            statusLines.error(s"Failed getting Standing Query $standingQueryName", ex)
+            statusLines.error(log"Failed getting Standing Query ${Safe(standingQueryName)}" withException ex)
             task.cancel()
             statusLines.remove(statusLine)
             ()
           case Success(None) =>
-            statusLines.error(s"Failed getting Standing Query $standingQueryName (it does not exist)")
+            statusLines.error(log"Failed getting Standing Query ${Safe(standingQueryName)} (it does not exist)")
             task.cancel()
             statusLines.remove(statusLine)
             ()
@@ -208,7 +216,7 @@ case class RecipeInterpreter(
     graphService: CypherOpsGraph,
     statusQuery: StatusQuery,
     interval: FiniteDuration = 5 second
-  )(implicit idProvider: QuineIdProvider): Cancellable = {
+  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val changed = new OnChanged[String]
     lazy val task: Cancellable = actorSystem.scheduler.scheduleWithFixedDelay(
@@ -229,9 +237,9 @@ case class RecipeInterpreter(
               .run()(graphService.materializer),
             5 seconds
           )
-        changed(queryResultToString(queryResults, resultContent))(statusLines.info)
+        changed(queryResultToString(queryResults, resultContent))(s => statusLines.info(log"$s"))
       } catch {
-        case _: TimeoutException => statusLines.warn("Status query timed out")
+        case _: TimeoutException => statusLines.warn(log"Status query timed out")
       }
     }(graphService.system.dispatcher)
     task
@@ -239,7 +247,8 @@ case class RecipeInterpreter(
 
   /** Formats query results into a multi-line string designed to be easily human-readable. */
   private def queryResultToString(queryResults: RunningCypherQuery, resultContent: Seq[Seq[Value]])(implicit
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig
   ): String = {
 
     /** Builds a repeated string by concatenation. */

@@ -6,7 +6,6 @@ import scala.collection.mutable
 
 import cats.data.NonEmptyList
 import cats.implicits.toTraverseOps
-import com.typesafe.scalalogging.LazyLogging
 import org.opencypher.v9_0.ast.ReturnItem
 import org.opencypher.v9_0.expressions.{LabelExpression, functions}
 import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
@@ -18,8 +17,9 @@ import com.thatdot.quine.graph.GraphQueryPattern
 import com.thatdot.quine.graph.cypher.Expr.toQuineValue
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Query, SourceText, UserDefinedFunction}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
-object StandingQueryPatterns extends LazyLogging {
+object StandingQueryPatterns extends LazySafeLogging {
 
   import GraphQueryPattern._
 
@@ -36,7 +36,8 @@ object StandingQueryPatterns extends LazyLogging {
     paramsIdx: ParametersIndex
   )(implicit
     source: SourceText,
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig
   ): GraphQueryPattern = {
     val (parts, whereOpt, hints, returnItems, distinct) = statement match {
       case ast.Query(
@@ -463,7 +464,8 @@ object StandingQueryPatterns extends LazyLogging {
   def partitionConstraints(
     whereOpt: Option[ast.Where]
   )(implicit
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
+    logConfig: LogConfig
   ): (
     mutable.Map[expressions.LogicalVariable, Map[Symbol, PropertyValuePattern]],
     mutable.Map[expressions.LogicalVariable, QuineId],
@@ -635,21 +637,21 @@ object StandingQueryPatterns extends LazyLogging {
             result match {
               case Expr.Bytes(qidBytes, representsId @ false) =>
                 logger.info(
-                  "Precomputing ID predicate in Standing Query returned bytes not tagged as an ID. Using as an ID anyways"
+                  safe"Precomputing ID predicate in Standing Query returned bytes not tagged as an ID. Using as an ID anyways"
                 )
                 Some(QuineId(qidBytes))
               case Expr.Bytes(qidBytes, representsId @ true) =>
                 logger.debug(
-                  """Precomputing ID predicate in Standing Query returned ID-tagged bytes, but idProvider didn't
-                    |recognize the value as a QuineId. This is most likely a bug in toQuineValue or
-                    |idProvider.valueToQid""".stripMargin.replace('\n', ' ')
+                  safe"""Precomputing ID predicate in Standing Query returned ID-tagged bytes, but idProvider didn't
+                        |recognize the value as a QuineId. This is most likely a bug in toQuineValue or
+                        |idProvider.valueToQid, unless the user switched their ID provider""".cleanLines
                 )
                 Some(QuineId(qidBytes))
               case cantBeUsedAsId =>
                 logger.warn(
-                  s"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom). Precomputing
-                     |the ID predicate produced a constraint with type: ${cantBeUsedAsId.typ}""".stripMargin
-                    .replace('\n', ' ')
+                  log"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom).
+                        |Precomputing the ID predicate produced a constraint (${cantBeUsedAsId.toString}) with type:
+                        |${Safe(cantBeUsedAsId.typ.toString)}""".cleanLines
                 )
                 None
             }

@@ -7,8 +7,9 @@ import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.HistoricalQueryTests
 import com.thatdot.quine.util.FromSingleExecutionContext
+import com.thatdot.quine.util.Log._
 
-class MapDbPersistorTests extends HistoricalQueryTests {
+class MapDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
 
   override def makePersistor(system: ActorSystem): PrimePersistor = new StatelessPrimePersistor(
     PersistenceConfig(),
@@ -21,6 +22,6 @@ class MapDbPersistorTests extends HistoricalQueryTests {
         ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic),
         scheduler = system.scheduler
       )
-  )(Materializer.matFromSystem(system))
+  )(Materializer.matFromSystem(system), logConfig)
 
 }

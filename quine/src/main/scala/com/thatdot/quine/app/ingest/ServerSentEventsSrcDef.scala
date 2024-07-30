@@ -10,6 +10,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 final case class ServerSentEventsSrcDef(
@@ -21,7 +22,7 @@ final case class ServerSentEventsSrcDef(
   parallelism: Int,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder]
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,

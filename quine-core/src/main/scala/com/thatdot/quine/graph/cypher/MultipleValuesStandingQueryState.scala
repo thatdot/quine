@@ -3,14 +3,14 @@ package com.thatdot.quine.graph.cypher
 import scala.annotation.unused
 import scala.collection.{View, mutable}
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, PropertyEvent, WatchableEventType}
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** The stateful component of a standing query, holding on to the information necessary for:
   *
@@ -37,7 +37,7 @@ import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, Qu
   * All operations on these classes must be done on an Actor within the single-threaded flow of message processing.
   * These operations **are not thread safe**.
   */
-sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
+sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
 
   /** Type of standing query from which this state was created
     *
@@ -63,7 +63,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
     *
     * This is used to rehydrate fields which we don't want serialized.
     */
-  def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit =
+  def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit @unused logConfig: LogConfig): Unit =
     // Cast here is safe thanks to the invariant documented on [[StateOf]]
     _query = effectHandler.lookupQuery(queryPartId).asInstanceOf[StateOf]
 
@@ -92,7 +92,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
   def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = false
+  )(implicit logConfig: LogConfig): Boolean = false
 
   /** Called when one of the sub-queries delivers a new result
     *
@@ -103,7 +103,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
   def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = false
+  )(implicit logConfig: LogConfig): Boolean = false
 
   /** Read the current results for this SQ state.
     *
@@ -120,7 +120,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazyLogging {
     */
   def readResults(localProperties: Properties): Option[Seq[QueryContext]]
 
-  def pretty(implicit @unused idProvider: QuineIdProvider): String = this.toString
+  def pretty(implicit @unused idProvider: QuineIdProvider, @unused logConfig: LogConfig): String = this.toString
 }
 
 trait MultipleValuesStandingQueryLookupInfo {
@@ -205,7 +205,7 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
     effectHandler.reportUpdatedResults(result.get)
 
   /** There is only one unit query, and we don't need to do a lookup to know its value. */
-  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit =
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit =
     _query = MultipleValuesStandingQuery.UnitSq.instance
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = result
@@ -260,12 +260,14 @@ final case class CrossState(
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean =
+  )(implicit logConfig: LogConfig): Boolean =
     resultsAccumulator.get(result.queryPartId) match {
       case None =>
         logger.error(
-          s"$this received subscription result: $result not in the list of subscriptions: ${resultsAccumulator.keys
-            .mkString("[", ",", "]")}"
+          log"${this.toString} received subscription result: $result not in the list of subscriptions: ${Safe(
+            resultsAccumulator.keys
+              .mkString("[", ",", "]")
+          )}"
         )
         false
       case Some(previousResultsFromChild) =>
@@ -361,7 +363,7 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     val somePropertyChanged = events.exists {
       case _: PropertyEvent => true
       case _ => false
@@ -390,8 +392,11 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    logger.error(s"$this received subscription result it didn't subscribe to: $result")
+  )(implicit logConfig: LogConfig): Boolean = {
+    logger.warn(
+      log"""MVSQ state: ${this.toString} for Part ID: ${Safe(queryPartId)} received subscription
+           |result it didn't subscribe to: $result""".cleanLines
+    )
     false
   }
 
@@ -448,7 +453,7 @@ final case class LocalPropertyState(
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     // this check can be uncommented for debugging purposes
 //    require(
 //      events.collect { case pe: PropertyEvent if pe.key == query.propKey => pe }.size <= 1,
@@ -552,8 +557,11 @@ final case class LocalPropertyState(
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
-    logger.error(s"$this received subscription result it didn't subscribe to: $result")
+  )(implicit logConfig: LogConfig): Boolean = {
+    logger.warn(
+      log"""MVSQ state: ${this.toString} for Part ID: ${Safe(queryPartId)} received subscription
+           |result it didn't subscribe to: $result""".cleanLines
+    )
     false
   }
 
@@ -592,7 +600,7 @@ final case class LocalIdState(
 
   private var result: Seq[QueryContext] = _ // Set during `hydrate`
 
-  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit = {
     super.rehydrate(effectHandler) // Sets `query`
     // Pre-compute the ID result value
     val idValue = if (query.formatAsString) {
@@ -641,7 +649,7 @@ final case class SubscribeAcrossEdgeState(
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     var somethingChanged = false
     events.foreach {
       case EdgeAdded(halfEdge) if edgeMatchesPattern(halfEdge) =>
@@ -672,7 +680,7 @@ final case class SubscribeAcrossEdgeState(
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     // Silently drop the result (with an empty `needsUpdate`) if we aren't expecting a result from `result.other`.
     // This can happen if the edge is removed (here first) then the other side reports no longer matching the reciprocal
     // TODO does this race during creation?
@@ -705,7 +713,7 @@ final case class SubscribeAcrossEdgeState(
     if (results.nonEmpty) Some(results) else None
   }
 
-  override def pretty(implicit idProvider: QuineIdProvider): String =
+  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${edgeResults.map { case (he, v) => he.pretty -> v }})"
 }
 
@@ -750,7 +758,7 @@ final case class EdgeSubscriptionReciprocalState(
 
   override def rehydrate(
     effectHandler: MultipleValuesStandingQueryLookupInfo
-  ): Unit =
+  )(implicit logConfig: LogConfig): Unit =
     // Do not call `super.preStart(effectHandler)` here because this `EdgeSubscriptionReciprocalState` is synthesized
     // and its `queryPartId` is not in the global registry.
     andThen = effectHandler.lookupQuery(andThenId)
@@ -764,7 +772,7 @@ final case class EdgeSubscriptionReciprocalState(
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     var somethingChanged = false
     events.foreach {
       case EdgeAdded(newHalfEdge) if halfEdge == newHalfEdge =>
@@ -788,7 +796,7 @@ final case class EdgeSubscriptionReciprocalState(
   override def onNewSubscriptionResult( // Happens when the subscription for the `andThen` returns a result
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     val resultIsUpdate = !cachedResult.contains(result.resultGroup)
     cachedResult = Some(result.resultGroup)
     // only propagate a result across an edge if that edge still exists, but cache the result regardless
@@ -799,7 +807,7 @@ final case class EdgeSubscriptionReciprocalState(
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
     if (currentlyMatching && cachedResult.isDefined) cachedResult else None
 
-  override def pretty(implicit idProvider: QuineIdProvider): String =
+  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${halfEdge.pretty}, $currentlyMatching, ${cachedResult.map(_.mkString("[", ",", "]"))}, $andThenId)"
 }
 
@@ -822,16 +830,17 @@ final case class FilterMapState(
   private var condition: QueryContext => Boolean = _ // Set during `rehydrate`
   private var mapper: QueryContext => QueryContext = _ // Set during `rehydrate`
 
-  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo): Unit = {
+  override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit = {
     super.rehydrate(effectHandler)
     condition = query.condition.fold((r: QueryContext) => true) { (cond: Expr) => (r: QueryContext) =>
-      cond.eval(r)(effectHandler.idProvider, Parameters.empty) == Expr.True
+      cond.eval(r)(effectHandler.idProvider, Parameters.empty, logConfig) == Expr.True
     }
     mapper = (row: QueryContext) =>
       query.toAdd.foldLeft(if (query.dropExisting) QueryContext.empty else row) { case (acc, (aliasedAs, exprToAdd)) =>
         acc + (aliasedAs -> exprToAdd.eval(row)(
           effectHandler.idProvider,
-          Parameters.empty
+          Parameters.empty,
+          logConfig
         ))
       }
   }
@@ -839,7 +848,7 @@ final case class FilterMapState(
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects
-  ): Boolean = {
+  )(implicit logConfig: LogConfig): Boolean = {
     val newResults = result.resultGroup.collect {
       case row if condition(row) => mapper(row)
     }
@@ -853,6 +862,6 @@ final case class FilterMapState(
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = keptResults
 
-  override def pretty(implicit idProvider: QuineIdProvider): String =
+  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${keptResults.mkString("[", ",", "]")})"
 }

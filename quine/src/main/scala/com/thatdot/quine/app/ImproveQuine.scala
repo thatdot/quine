@@ -19,7 +19,6 @@ import org.apache.pekko.http.scaladsl.Http
 import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpRequest, Uri}
 import org.apache.pekko.pattern.retry
 
-import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 import io.circe.generic.auto._
 import io.circe.syntax._
 
@@ -33,6 +32,7 @@ import com.thatdot.quine.app.ImproveQuine.{
 import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery, StandingQueryResultOutputUserDef}
+import com.thatdot.quine.util.Log._
 
 object ImproveQuine {
 
@@ -76,11 +76,11 @@ object ImproveQuine {
     recipeCanonicalName: Option[String],
     apiKey: Option[String]
   )(implicit system: ActorSystem)
-      extends StrictLogging {
+      extends StrictSafeLogging {
     implicit private val executionContext: ExecutionContext = system.dispatcher
     implicit private val scheduler: Scheduler = system.scheduler
 
-    def run(): Future[Unit] = {
+    def run()(implicit logConfig: LogConfig): Future[Unit] = {
       val now = java.time.OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
       val telemetryData = TelemetryData(
@@ -111,7 +111,7 @@ object ImproveQuine {
             )
           )
 
-      logger.info(s"Sending anonymous usage data: $body")
+      logger.info(log"Sending anonymous usage data: ${Safe(body)}")
       retry(send, 3, 5.seconds)
         .transform(_ => Success(()))
     }
@@ -152,8 +152,8 @@ class ImproveQuine(
   recipeUsed: Boolean = false,
   recipeCanonicalName: Option[String] = None,
   apiKey: Option[String] = None
-)(implicit system: ActorSystem)
-    extends LazyLogging {
+)(implicit system: ActorSystem, logConfig: LogConfig)
+    extends LazySafeLogging {
 
   private val invalidMacAddresses = Set(
     Array.fill[Byte](6)(0x00),
@@ -213,7 +213,7 @@ class ImproveQuine(
     event: ImproveQuine.Event,
     sources: Option[List[String]],
     sinks: Option[List[String]]
-  )(implicit system: ActorSystem): Future[Unit] = {
+  )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = {
     val uptime: Long = startTime.until(Instant.now(), ChronoUnit.SECONDS)
     TelemetryRequest(
       event,
@@ -256,7 +256,7 @@ class ImproveQuine(
   /** Fire and forget function to send startup telemetry and schedule regular heartbeat events.
     */
   def startTelemetry(): Unit = {
-    logger.info(s"Starting usage telemetry")
+    logger.info(safe"Starting usage telemetry")
     implicit val ec: ExecutionContext = system.dispatcher
     val sources = getSources
     for {

@@ -4,13 +4,14 @@ import scala.concurrent.Promise
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 import scala.util.Random
 
-import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, Cancellable, Timers}
+import org.apache.pekko.actor.{Actor, ActorRef, Cancellable, Timers}
 
 import com.codahale.metrics.Timer
 
 import com.thatdot.quine.graph.Expires
 import com.thatdot.quine.graph.HostQuineMetrics.RelayAskMetric
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Temporary actor facilitating asks to nodes with exactly-once delivery across the Quine graph
   *
@@ -46,8 +47,9 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
   timeout: FiniteDuration,
   resultHandler: ResultHandler[Resp],
   metrics: RelayAskMetric
-) extends Actor
-    with ActorLogging
+)(implicit logConf: LogConfig)
+    extends Actor
+    with ActorSafeLogging
     with Timers {
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
 
@@ -132,6 +134,6 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
 
     case x =>
       val name = recipient.toInternalString
-      log.error(s"ExactlyOnceNodeAskActor asking: $name received unknown message: $x")
+      log.error(log"ExactlyOnceNodeAskActor asking: ${Safe(name)} received unknown message: ${x.toString}")
   }
 }

@@ -19,6 +19,7 @@ import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
+import com.thatdot.quine.util.Log._
 
 /** The Pekko HTTP implementation of [[DebugOpsRoutes]] */
 trait DebugRoutesImpl
@@ -26,6 +27,8 @@ trait DebugRoutesImpl
     with endpoints4s.pekkohttp.server.Endpoints
     with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
     with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
+
+  implicit protected def logConfig: LogConfig
 
   private def toEdgeDirection(dir: model.EdgeDirection): EdgeDirection = dir match {
     case model.EdgeDirection.Outgoing => Outgoing
@@ -81,7 +84,7 @@ trait DebugRoutesImpl
           .zip(edgesF)
           .map { case (props, edges) =>
             LiteralNode(
-              props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider) },
+              props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider, logConfig) },
               edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) }
             )
           }(graph.nodeDispatcherEC)
@@ -190,7 +193,9 @@ trait DebugRoutesImpl
         graph
           .literalOps(namespaceFromParam(namespaceParam))
           .getProps(qid, atTime)
-          .map(m => m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider)))(
+          .map(m =>
+            m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig))
+          )(
             graph.nodeDispatcherEC
           )
       }

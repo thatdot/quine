@@ -34,6 +34,7 @@ import com.thatdot.quine.persistor.codecs.{
   NodeChangeEventCodec,
   StandingQueryCodec
 }
+import com.thatdot.quine.util.Log._
 
 /** Embedded persistence implementation based on RocksDB
   *
@@ -51,7 +52,8 @@ final class RocksDbPersistor(
   dbOptionProperties: java.util.Properties,
   val persistenceConfig: PersistenceConfig,
   ioDispatcher: ExecutionContext
-) extends PersistenceAgent {
+)(implicit val logConfig: LogConfig)
+    extends PersistenceAgent {
 
   /* TODO: which other `DBOptions` should we expose? Maybe `setIncreaseParallelism` (as per the
    * docs: "You almost definitely want to call this function if your system is bottlenecked by
@@ -690,9 +692,9 @@ final class RocksDbPersistor(
 
   def delete(): Future[Unit] = Future {
     shutdownSync()
-    logger.info(s"Destroying RocksDB at $filePath...")
+    logger.info(safe"Destroying RocksDB at ${Safe(filePath)}...")
     RocksDB.destroyDB(filePath, new Options())
-    logger.info(s"Destroyed RocksDB at $filePath.")
+    logger.info(safe"Destroyed RocksDB at ${Safe(filePath)}.")
   }(ioDispatcher)
 }
 

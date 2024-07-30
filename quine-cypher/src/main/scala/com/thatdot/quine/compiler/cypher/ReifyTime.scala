@@ -14,6 +14,7 @@ import com.thatdot.quine.graph.cypher.CypherException.ConstraintViolation
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{LiteralOpsGraph, idFrom}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 object ReifyTime extends UserDefinedProcedure {
   val name = "reify.time"
@@ -39,7 +40,8 @@ object ReifyTime extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
 
     // Read call arguments and default values

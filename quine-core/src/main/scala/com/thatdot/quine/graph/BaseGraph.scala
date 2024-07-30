@@ -12,8 +12,6 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
 import org.apache.pekko.util.Timeout
 
-import com.typesafe.scalalogging.StrictLogging
-
 import com.thatdot.quine.graph.edges.SyncEdgeCollection
 import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
 import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
@@ -29,9 +27,10 @@ import com.thatdot.quine.graph.messaging.{
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
 
-trait BaseGraph extends StrictLogging {
+trait BaseGraph extends StrictSafeLogging {
 
   def system: ActorSystem
 
@@ -48,6 +47,8 @@ trait BaseGraph extends StrictLogging {
 
   val namespacePersistor: PrimePersistor
 
+  implicit protected def logConfig: LogConfig
+
   val metrics: HostQuineMetrics
 
   type Node <: AbstractNodeActor
@@ -62,7 +63,7 @@ trait BaseGraph extends StrictLogging {
   val ingestValve: SharedValve = new SharedValve("ingest")
   metrics.registerGaugeValve(ingestValve)
 
-  val masterStream: MasterStream = new MasterStream(materializer)
+  val masterStream: MasterStream = new MasterStream(materializer)(logConfig)
 
   def ingestThrottleFlow[A]: Flow[A, A, NotUsed] = Flow.fromGraph(new ValveFlow[A](ingestValve))
 

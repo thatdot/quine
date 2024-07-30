@@ -9,6 +9,7 @@ import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{Offset, TypeAndOffset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
+
 object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
 
   private[this] def writeNodeEventUnion(

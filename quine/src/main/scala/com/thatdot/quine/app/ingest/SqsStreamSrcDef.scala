@@ -19,6 +19,7 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** The definition of an incoming AWS SQS stream.
@@ -46,7 +47,7 @@ final case class SqsStreamSrcDef(
   deleteReadMessages: Boolean,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder]
-)(implicit graph: CypherOpsGraph)
+)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,

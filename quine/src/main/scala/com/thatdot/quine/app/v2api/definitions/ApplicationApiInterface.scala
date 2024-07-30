@@ -26,6 +26,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{T
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, NamespaceNotFoundException}
+import com.thatdot.quine.graph.EventTime.logConfig
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   AlgorithmGraph,
@@ -410,7 +411,9 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
       graph
         .literalOps(namespaceId)
         .getProps(qid, atTime)
-        .map(m => m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider)))(
+        .map(m =>
+          m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig))
+        )(
           graph.nodeDispatcherEC
         )
     }
@@ -423,7 +426,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
         .zip(edgesF)
         .map { case (props, edges) =>
           TLiteralNode(
-            props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider) },
+            props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider, logConfig) },
             edges.toSeq.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) }
           )
         }(graph.nodeDispatcherEC)

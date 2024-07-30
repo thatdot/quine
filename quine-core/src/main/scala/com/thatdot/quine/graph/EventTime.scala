@@ -1,11 +1,10 @@
 package com.thatdot.quine.graph
 
-import org.apache.pekko.event.LoggingAdapter
-
 import cats.Order
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.model.Milliseconds
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Timestamp for providing a strict total ordering on events observed along one clock. See
   * [[ActorClock]] for a concrete example of such a clock.
@@ -59,16 +58,14 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
     * @note this is supposed to almost always have the same logical time, but if the event sequence
     * number overflows, it'll increment the logical time too.
     */
-  def tickEventSequence(logOpt: Option[LoggingAdapter]): EventTime = {
+  def tickEventSequence(logOpt: Option[SafeLogger]): EventTime = {
     val nextTime = new EventTime(eventTime + 1L)
     logOpt.foreach { log =>
       if (nextTime.millis != millis) {
-        log.warning(
-          """Too many operations on this node caused tickEventSequence to overflow
-            |milliseconds from: {} to: {}. Historical queries for the overflowed
-            |millisecond may not reflect all updates.""".stripMargin.replace('\n', ' '),
-          millis,
-          nextTime.millis
+        log.warn(
+          safe"""Too many operations on this node caused tickEventSequence to overflow
+                |milliseconds from: ${Safe(millis)} to: ${Safe(nextTime.millis)}. Historical
+                |queries for the overflowed millisecond may not reflect all updates.""".cleanLines
         )
       }
     }
@@ -106,7 +103,7 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
   override def toString: String = f"EventTime(${millis}%013d|${timestampSequence}%05d|${eventSequence}%03d)"
 
 }
-object EventTime extends LazyLogging {
+object EventTime extends LazySafeLogging {
 
   implicit val ordering: Order[EventTime] = Order.fromOrdering
 
@@ -123,6 +120,8 @@ object EventTime extends LazyLogging {
   final private val MillisOffset: Int = TimestampSequenceOffset + TimestampSequenceBits
   final private val MillisBits: Int = 42
   final private val MillisMax: Long = 1L << MillisBits
+
+  implicit val logConfig: LogConfig = LogConfig.strictest
 
   /** Create a new actor event timestamp
     *
@@ -144,16 +143,17 @@ object EventTime extends LazyLogging {
       (timestampSequence << TimestampSequenceOffset) +
       eventSequence
     )
-
     // Warn on various overflows
     if (milliseconds < 0L || MillisMax <= milliseconds) {
-      logger.error(s"Milliseconds: $milliseconds in: $time needs to be between 0 and $MillisMax")
+      logger.error(
+        log"Milliseconds: ${Safe(milliseconds)} in: ${Safe(time)} needs to be between 0 and ${Safe(MillisMax)}"
+      )
     }
     if (timestampSequence < 0L || TimestampSequenceMax <= timestampSequence) {
-      logger.warn(s"Timestamp sequence number: $timestampSequence in: $time overflowed")
+      logger.warn(log"Timestamp sequence number: ${Safe(timestampSequence)} in: ${Safe(time)} overflowed")
     }
     if (eventSequence < 0L || EventSequenceMax <= eventSequence) {
-      logger.warn(s"Event sequence number: $eventSequence in: $time overflowed")
+      logger.warn(log"Event sequence number: ${Safe(eventSequence)} in: ${Safe(time)} overflowed")
     }
 
     time

@@ -18,6 +18,7 @@ import scala.math.BigDecimal.RoundingMode.{
 }
 
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Scalar Cypher function
   *
@@ -46,7 +47,7 @@ sealed abstract class Func {
     * @param args arguments to the function
     * @return the output
     */
-  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value
 }
 
 /** Built-in Cypher function (aka. functions that are hardwired into the language)
@@ -97,7 +98,7 @@ object Func {
     description = "absolute value of a number",
     signature = "(NUMBER?) :: NUMBER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Integer(lng)) => Expr.Integer(Math.abs(lng))
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.abs(dbl))
@@ -111,7 +112,7 @@ object Func {
     description = "arcosine (in radians) of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.acos(dbl))
         case other => throw wrongSignature(other)
@@ -124,7 +125,7 @@ object Func {
     description = "arcsine (in radians) of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.asin(dbl))
         case other => throw wrongSignature(other)
@@ -137,7 +138,7 @@ object Func {
     description = "arctangent (in radians) of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.atan(dbl))
         case other => throw wrongSignature(other)
@@ -150,7 +151,7 @@ object Func {
     description = "arctangent (in radians) of the quotient of its arguments",
     signature = "(NUMBER?, NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl1), Expr.Number(dbl2)) =>
           Expr.Floating(Math.atan2(dbl1, dbl2))
@@ -164,7 +165,7 @@ object Func {
     description = "smallest integer greater than or equal to the input",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(int: Expr.Integer) => Expr.Floating(int.long.toDouble)
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.ceil(dbl))
@@ -178,7 +179,7 @@ object Func {
     "returns the first non-`null` value in a list of expressions",
     "(ANY?, ..) :: ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args.find(_ != Expr.Null).getOrElse(Expr.Null)
   }
 
@@ -188,7 +189,7 @@ object Func {
     description = "cosine of a number of radians",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.cos(dbl))
         case other => throw wrongSignature(other)
@@ -201,7 +202,7 @@ object Func {
     description = "cotangent of a number of radians",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Floating(dbl)) => Expr.Floating(1.0 / Math.tan(dbl))
         case other => throw wrongSignature(other)
@@ -214,7 +215,7 @@ object Func {
     description = "convert radians to degrees",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.toDegrees(dbl))
         case other => throw wrongSignature(other)
@@ -227,7 +228,7 @@ object Func {
     "mathematical constant `e`",
     "() :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector() => Expr.Floating(Math.E)
         case other => throw wrongSignature(other)
@@ -240,7 +241,7 @@ object Func {
     description = "return the mathematical constant `e` raised to the power of the input",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.exp(dbl))
         case other => throw wrongSignature(other)
@@ -253,7 +254,7 @@ object Func {
     description = "largest integer less than or equal to the input",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(int: Expr.Integer) => Expr.Floating(int.long.toDouble)
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.floor(dbl))
@@ -267,7 +268,7 @@ object Func {
     description = "half the versine of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Floating(dbl)) =>
           Expr.Floating({
@@ -284,7 +285,7 @@ object Func {
     description = "extract the first element of a list",
     signature = "(LIST? OF ANY?) :: ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(Vector())) => Expr.Null
         case Vector(Expr.List(nonEmptyVec)) => nonEmptyVec.head
@@ -298,7 +299,7 @@ object Func {
     description = "extract the ID of a node",
     signature = "(NODE?) :: ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Node(qid, _, _)) => Expr.fromQuineValue(idp.qidToValue(qid))
         case other => throw wrongSignature(other)
@@ -311,7 +312,7 @@ object Func {
     description = "extract the keys from a map, node, or relationship",
     signature = "(ANY?) :: LIST? OF STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Map(map)) =>
           Expr.List(map.keys.map(k => Expr.Str(k)).toVector)
@@ -329,7 +330,7 @@ object Func {
     description = "extract the labels of a node or relationship",
     signature = "(ANY?) :: LIST? OF STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Node(_, lbls, _)) =>
           Expr.List(lbls.map(lbl => Expr.Str(lbl.name)).toVector)
@@ -345,7 +346,7 @@ object Func {
     "extract the last element of a list",
     "(LIST? OF ANY?) :: ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(lst)) => lst.lastOption.getOrElse(Expr.Null)
         case other => throw wrongSignature(other)
@@ -358,7 +359,7 @@ object Func {
     description = "string containing the specified number of leftmost characters of the original string",
     signature = "(STRING?, INTEGER?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str), Expr.Integer(n)) => Expr.Str(str.take(n.toInt))
         case other => throw wrongSignature(other)
@@ -372,7 +373,7 @@ object Func {
     description = "length of a path (ie. the number of relationships in it)",
     signature = "(PATH?) :: INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(lst)) => Expr.Integer(lst.length.toLong)
         case Vector(Expr.Str(str)) => Expr.Integer(str.length().toLong)
@@ -387,7 +388,7 @@ object Func {
     description = "natural logarithm of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.log(dbl))
         case other => throw wrongSignature(other)
@@ -400,7 +401,7 @@ object Func {
     "common logarithm (base 10) of a number",
     "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.log10(dbl))
         case other => throw wrongSignature(other)
@@ -413,7 +414,7 @@ object Func {
     description = "original string with leading whitespace removed",
     signature = "(STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Str(str.replaceAll("^\\s+", ""))
         case other => throw wrongSignature(other)
@@ -426,7 +427,7 @@ object Func {
     description = "extract a list of nodes in a path",
     signature = "(PATH?) :: LIST? OF NODE?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Path(h, t)) => Expr.List(h +: t.map(_._2))
         case other => throw wrongSignature(other)
@@ -439,7 +440,7 @@ object Func {
     description = "mathematical constant `π`",
     signature = "() :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector() => Expr.Floating(Math.PI)
         case other => throw wrongSignature(other)
@@ -452,7 +453,7 @@ object Func {
     description = "extract the properties from a map, node, or relationship",
     signature = "(ANY?) :: MAP?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(map: Expr.Map) => map
         case Vector(Expr.Node(_, _, map)) =>
@@ -469,7 +470,7 @@ object Func {
     description = "convert degrees to radians",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Integer(l)) => Expr.Floating(Math.toRadians(l.toDouble))
         case Vector(Expr.Floating(dbl)) => Expr.Floating(Math.toRadians(dbl))
@@ -483,7 +484,7 @@ object Func {
     description = "random float between 0 (inclusive) and 1 (exclusive)",
     signature = "() :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector() => Expr.Floating(scala.util.Random.nextDouble())
         case other => throw wrongSignature(other)
@@ -496,7 +497,7 @@ object Func {
     description = "construct a list of integers representing a range",
     signature = "(start :: INTEGER, end :: INTEGER, step :: INTEGER?) :: LIST? OF INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Integer(start), Expr.Integer(end)) =>
           val range = collection.immutable.Range.inclusive(start.toInt, end.toInt)
@@ -514,7 +515,7 @@ object Func {
     description = "extract a list of relationships in a path",
     signature = "(PATH?) :: LIST? OF RELATIONSHIP?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Path(_, t)) => Expr.List(t.map(_._1))
         case other => throw wrongSignature(other)
@@ -527,7 +528,7 @@ object Func {
     description = "replace every occurrence of a target string",
     signature = "(original :: STRING?, target :: STRING?, replacement :: STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(original), Expr.Str(search), Expr.Str(replace)) =>
           Expr.Str(original.replace(search, replace))
@@ -541,7 +542,7 @@ object Func {
     description = "reverse a string or list",
     signature = "(ANY?) :: ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(lst)) => Expr.List(lst.reverse)
         case Vector(Expr.Str(str)) => Expr.Str(str.reverse)
@@ -555,7 +556,7 @@ object Func {
     description = "string containing the specified number of rightmost characters of the original string",
     signature = "(STRING?, INTEGER?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str), Expr.Integer(n)) => Expr.Str(str.takeRight(n.toInt))
         case other => throw wrongSignature(other)
@@ -568,7 +569,7 @@ object Func {
     description = "original string with trailing whitespace removed",
     signature = "(STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Str(str.replaceAll("\\s+$", ""))
         case other => throw wrongSignature(other)
@@ -600,7 +601,7 @@ object Func {
       )
     }
 
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = {
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value = {
       args match {
         case Vector(int: Expr.Integer) =>
           doRounding(BigDecimal(int.long), 0, HALF_UP)
@@ -631,7 +632,7 @@ object Func {
     description = "signum of a number",
     signature = "(NUMBER?) :: INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Integer(lng)) => Expr.Integer(java.lang.Long.signum(lng).toLong)
         case Vector(Expr.Floating(dbl)) => Expr.Integer(Math.signum(dbl).toLong)
@@ -645,7 +646,7 @@ object Func {
     description = "sine of a number of radians",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.sin(dbl))
         case other => throw wrongSignature(other)
@@ -658,7 +659,7 @@ object Func {
     description = "number of elements in a list or characters in a string",
     signature = "(ANY?) :: INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(lst)) => Expr.Integer(lst.length.toLong)
         case Vector(Expr.Str(str)) => Expr.Integer(str.length().toLong)
@@ -672,7 +673,7 @@ object Func {
     description = "split a string on every instance of a delimiter",
     signature = "(input :: STRING?, delimiter :: STRING?) :: LIST? OF STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str), Expr.Str(delim)) =>
           Expr.List(str.split(Pattern.quote(delim)).view.map(Expr.Str(_)).toVector)
@@ -686,7 +687,7 @@ object Func {
     description = "square root of a number",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.sqrt(dbl))
         case other => throw wrongSignature(other)
@@ -699,7 +700,7 @@ object Func {
     description = "substring of the original string, beginning with a 0-based index start and length",
     signature = "(original :: STRING?, start :: INTEGER? [, end :: INTEGER? ]) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str), Expr.Integer(start)) =>
           Expr.Str(str.drop(start.toInt))
@@ -715,7 +716,7 @@ object Func {
     description = "return the list without its first element",
     signature = "(LIST? OF ANY?) :: LIST? OF ANY?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.List(Vector())) => Expr.List(Vector())
         case Vector(Expr.List(nonEmptyVec)) => Expr.List(nonEmptyVec.tail)
@@ -729,7 +730,7 @@ object Func {
     description = "tangent of a number of radians",
     signature = "(NUMBER?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Number(dbl)) => Expr.Floating(Math.tan(dbl))
         case other => throw wrongSignature(other)
@@ -742,7 +743,7 @@ object Func {
     description = "number of milliseconds elapsed since midnight, January 1, 1970 UTC",
     signature = "() :: INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector() => Expr.Integer(System.currentTimeMillis())
         case other => throw wrongSignature(other)
@@ -755,7 +756,7 @@ object Func {
     description = "convert a string into a boolean",
     signature = "(STRING?) :: BOOLEAN?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Bool(str.trim().toBoolean)
         case Vector(bool: Expr.Bool) => bool
@@ -769,7 +770,7 @@ object Func {
     description = "convert a string or integer into a float",
     signature = "(ANY?) :: FLOAT?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(flt: Expr.Floating) => flt
         case Vector(Expr.Integer(lng)) => Expr.Floating(lng.toDouble)
@@ -788,7 +789,7 @@ object Func {
     description = "convert a string or float into an integer",
     signature = "(ANY?) :: INTEGER?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(int: Expr.Integer) => int
         case Vector(Expr.Floating(d)) => Expr.Integer(d.toLong)
@@ -817,7 +818,7 @@ object Func {
     description = "convert a string to lowercase",
     signature = "(STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Str(str.toLowerCase())
         case other => throw wrongSignature(other)
@@ -830,7 +831,7 @@ object Func {
     description = "convert a string to uppercase",
     signature = "(STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Str(str.toUpperCase())
         case other => throw wrongSignature(other)
@@ -843,7 +844,7 @@ object Func {
     description = "convert a value to a string",
     signature = "(ANY?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(s: Expr.Str) => s
         case Vector(other) => Expr.Str(other.pretty)
@@ -857,7 +858,7 @@ object Func {
     description = "removing leading and trailing whitespace from a string",
     signature = "(STRING?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Str(str)) => Expr.Str(str.trim())
         case other => throw wrongSignature(other)
@@ -870,7 +871,7 @@ object Func {
     description = "return the name of a relationship",
     signature = "(RELATIONSHIP?) :: STRING?"
   ) {
-    override def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+    override def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
       args match {
         case Vector(Expr.Relationship(_, lbl, _, _)) => Expr.Str(lbl.name)
         case other => throw wrongSignature(other)
@@ -880,7 +881,7 @@ object Func {
   final case class UserDefined(name: String) extends Func {
     private lazy val underlying = userDefinedFunctions(name.toLowerCase)
 
-    def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value = underlying.call(args)
+    def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value = underlying.call(args)
 
     def isPure: Boolean = underlying.isPure
   }

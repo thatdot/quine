@@ -5,21 +5,22 @@ import scala.util.{Failure, Success}
 
 import org.apache.pekko.stream.scaladsl.Sink
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, RunningCypherQuery}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
 
-trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazyLogging {
+trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazySafeLogging {
+
+  implicit protected def logConfig: LogConfig
 
   /** Dependency: run a cypher query on this node (implemented by [[CypherBehavior.runQuery]]) */
   def runQuery(
     query: CompiledQuery[Location.OnNode],
     parameters: Map[String, cypher.Value]
-  ): RunningCypherQuery
+  )(implicit logConfig: LogConfig): RunningCypherQuery
 
   protected def algorithmBehavior(command: AlgorithmCommand): Unit = command match {
     case GetRandomWalk(collectQuery, depth, returnParam, inOutParam, seedOpt, replyTo) =>
@@ -89,7 +90,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
               RandomWalkResult((strings.reverse ++ prependAcc).reverse, didComplete = true)
           case Failure(e) =>
-            logger.error(s"Getting walk values on node: ${qid.pretty} failed: $e")
+            logger.error(log"Getting walk values on node: ${Safe(qid.pretty)} failed" withException e)
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
             RandomWalkResult(prependAcc.reverse, didComplete = false)
         }(graph.nodeDispatcherEC)
@@ -130,7 +131,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
             qidAtTime.copy(id = chosenEdge.other) ! msg
           case Failure(e) =>
             // If collecting values fails, conclude/truncate the walk and return the results accumulated so far.
-            logger.error(s"Getting walk values on node: ${qid.pretty} failed: $e")
+            logger.error(log"Getting walk values on node: ${Safe(qid.pretty)} failed" withException e)
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
             RandomWalkResult(prependAcc.reverse, didComplete = false)
         }(graph.nodeDispatcherEC)

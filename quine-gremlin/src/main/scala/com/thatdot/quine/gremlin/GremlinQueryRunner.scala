@@ -10,6 +10,7 @@ import org.apache.pekko.util.Timeout
 
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineValue}
+import com.thatdot.quine.util.Log._
 
 /** Entry point for running Gremlin queries on Quine.
   *
@@ -65,13 +66,15 @@ final case class GremlinQueryRunner(
     parameters: Map[Symbol, QuineValue] = Map.empty,
     namespace: NamespaceId = None,
     atTime: Option[Milliseconds] = None
-  ): Source[Any, NotUsed] = {
+  )(implicit logConfig: LogConfig): Source[Any, NotUsed] = {
     val query: Query = parseQuery(new lexer.Scanner(queryString))
     val store =
       parameters.view.mapValues(TypedValue.apply).foldLeft(VariableStore.empty) { case (store, (name, value)) =>
         store + ((name, value.eval()(store, idProvider)))
       }
-    query.run(store, namespace, atTime).named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
+    query
+      .run(store, namespace, atTime, logConfig: LogConfig)
+      .named(s"gremlin-query-atTime-${atTime.fold("none")(_.millis.toString)}")
   }
 
   /** Execute a Gremlin query on the graph, collect the results, and cast them to the desired type */
@@ -81,7 +84,7 @@ final case class GremlinQueryRunner(
     parameters: Map[Symbol, QuineValue] = Map.empty,
     namespace: NamespaceId = None,
     atTime: Option[Milliseconds] = None
-  ): Source[T, NotUsed] = {
+  )(implicit logConfig: LogConfig): Source[T, NotUsed] = {
     val msg = "Top level query was required by the user to have a different type"
     query(queryString, parameters, namespace, atTime)
       .map(_.castTo[T](msg, None).get)

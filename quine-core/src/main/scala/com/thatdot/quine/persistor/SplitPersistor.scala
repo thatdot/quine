@@ -6,6 +6,7 @@ import scala.jdk.CollectionConverters._
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents,
   * creating new agents the first time new partition keys are seen.
@@ -24,7 +25,8 @@ final class SplitPersistor[K](
   val persistenceConfig: PersistenceConfig,
   val namespace: NamespaceId = None,
   val parts: ConcurrentHashMap[K, PersistenceAgent] = new ConcurrentHashMap[K, PersistenceAgent]()
-) extends PartitionedPersistenceAgent {
+)(implicit val logConfig: LogConfig)
+    extends PartitionedPersistenceAgent {
 
   @inline
   def getAgent(id: QuineId): PersistenceAgent = {

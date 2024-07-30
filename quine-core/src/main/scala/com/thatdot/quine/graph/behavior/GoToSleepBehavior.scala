@@ -17,6 +17,8 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
@@ -100,7 +102,9 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
         case _: WakefulState.GoingToSleep =>
           // Log something if this (bad) case occurs
           if (latestUpdateAfterSnapshot.isDefined && atTime.nonEmpty) {
-            log.error(s"Update occurred on a historical node $atTime (but it won't be persisted)")
+            log.error(
+              safe"Update occurred on a historical node with timestamp: ${Safe(atTime)} (but it won't be persisted)"
+            )
           }
 
           latestUpdateAfterSnapshot match {

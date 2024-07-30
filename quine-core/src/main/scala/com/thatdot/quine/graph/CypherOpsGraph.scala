@@ -12,6 +12,8 @@ import org.apache.pekko
 
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.model._
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 final case class SkipOptimizerKey(
   location: Query[Location.External],
@@ -68,9 +70,9 @@ trait CypherOpsGraph extends BaseGraph {
               notification.getValue ! PoisonPill
             else
               logger.info(
-                s"""SkipOptimizingActor at ${notification.getValue} is being replaced in the Cypher skipOptimizerCache
-                   |without removing. This is expected in tests, but not in production. Shutdown protocol will
-                   |not be initiated on the actor.""".stripMargin.replace('\n', ' ')
+                log"""SkipOptimizingActor at ${Safe(notification.getValue)} is being replaced in the Cypher
+                     |skipOptimizerCache without removing. This is expected in tests, but not in production. Shutdown
+                     |protocol will not be initiated on the actor.""".cleanLines
               )
         }
         .build(loader)
@@ -122,7 +124,7 @@ trait CypherOpsGraph extends BaseGraph {
       )
 
       interpreter
-        .interpret(query, context)(parameters)
+        .interpret(query, context)(parameters, logConfig)
         .mapMaterializedValue(_ => NotUsed)
         .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
     }

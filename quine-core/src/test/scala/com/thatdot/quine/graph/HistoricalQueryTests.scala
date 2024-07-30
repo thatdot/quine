@@ -19,8 +19,9 @@ import com.thatdot.quine.persistor.{
   PrimePersistor,
   StatelessPrimePersistor
 }
+import com.thatdot.quine.util.Log.LogConfig
 
-class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
+class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSuite with BeforeAndAfterAll {
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true
@@ -30,7 +31,7 @@ class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
       PersistenceConfig(),
       None,
       (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
-    )(Materializer.matFromSystem(system))
+    )(Materializer.matFromSystem(system), logConfig)
 
   implicit val timeout: Timeout = Timeout(10.seconds)
   val idProvider: QuineIdLongProvider = QuineIdLongProvider()

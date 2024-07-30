@@ -1,5 +1,7 @@
 package com.thatdot.quine.model
 
+import com.thatdot.quine.util.Log.LogConfig
+
 /** Half of an edge in Quine
   *
   * An edge in Quine exists iff there exist two reciprocal half edges on the two
@@ -21,6 +23,6 @@ final case class HalfEdge(
     */
   def reflect(thisNode: QuineId): HalfEdge = HalfEdge(edgeType, direction.reverse, thisNode)
 
-  def pretty(implicit idProvider: QuineIdProvider): String =
+  def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
     s"${this.getClass.getSimpleName}(${edgeType.name}, $direction, ${other.pretty})"
 }

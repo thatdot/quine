@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.cypher
 import org.apache.pekko.NotUsed
 
 import com.thatdot.quine.graph.namespaceToString
+import com.thatdot.quine.util.Log._
 
 /** Packages together all the information about a query that can be run
   *
@@ -49,7 +50,7 @@ final case class CompiledQuery[+Start <: Location](
     parameters: Map[String, Value],
     initialColumnValues: Map[String, Value],
     initialInterpreter: CypherInterpreter[Start]
-  ): RunningCypherQuery = {
+  )(implicit logConfig: LogConfig): RunningCypherQuery = {
 
     /* Construct the runtime vector of parameters by combining the ones that
      * fixed at compile time to the ones specified here at runtime
@@ -75,7 +76,7 @@ final case class CompiledQuery[+Start <: Location](
     }
 
     val results = initialInterpreter
-      .interpret(query, initialContext)(params)
+      .interpret(query, initialContext)(params, logConfig)
       .mapMaterializedValue(_ => NotUsed)
       .named(
         "cypher-query-namespace-" + namespaceToString(

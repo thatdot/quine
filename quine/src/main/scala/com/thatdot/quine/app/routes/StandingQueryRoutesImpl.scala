@@ -26,6 +26,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log._
 
 trait StandingQueryStore {
 
@@ -66,6 +67,8 @@ trait StandingQueryRoutesImpl
   implicit def timeout: Timeout
 
   implicit def materializer: Materializer
+
+  implicit protected def logConfig: LogConfig
 
   def quineApp: StandingQueryStore
 

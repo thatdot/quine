@@ -5,8 +5,7 @@ import scala.concurrent.ExecutionContext
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.dispatch.MessageDispatcher
 
-import com.typesafe.scalalogging.LazyLogging
-
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.QuineDispatchers._
 
 abstract class ComputeAndBlockingExecutionContext {
@@ -21,7 +20,7 @@ abstract class ComputeAndBlockingExecutionContext {
   *
   * @param system the actorsystem for which the dispatchers will be retrieved
   */
-class QuineDispatchers(system: ActorSystem) extends ComputeAndBlockingExecutionContext with LazyLogging {
+class QuineDispatchers(system: ActorSystem) extends ComputeAndBlockingExecutionContext with LazySafeLogging {
   val shardDispatcherEC: MessageDispatcher =
     system.dispatchers.lookup(shardDispatcherName)
   val nodeDispatcherEC: MessageDispatcher =

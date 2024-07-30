@@ -8,7 +8,6 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
@@ -22,13 +21,16 @@ import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
+import com.thatdot.quine.util.Log._
 
 /** Response Envelopes */
 case class ErrorEnvelope[T](error: T)
 case class ObjectEnvelope[T](data: T)
 
 /** Component definitions for Tapir endpoints. */
-trait V2EndpointDefinitions extends TapirJsonCirce with LazyLogging {
+trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
+
+  implicit protected def logConfig: LogConfig
 
   // ------- parallelism -----------
   val parallelismParameter: EndpointInput.Query[Option[Int]] = query[Option[Int]](name = "parallelism")
@@ -207,7 +209,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazyLogging {
     in: IN,
     f: IN => Future[Either[CustomError, OUT]]
   ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
-    logger.debug(s"Received arguments $cmd: $in")
+    logger.debug(log"Received arguments for API call ${Safe(cmd.toString)}: ${in.toString}")
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
     f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
   }

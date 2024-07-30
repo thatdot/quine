@@ -13,16 +13,18 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryInfo}
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.persistor.codecs.StandingQueryCodec
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
 
 trait StandingQueriesColumnNames {
   import CassandraCodecs._
+  implicit def logConfig: LogConfig
   val standingQueryCodec: TypeCodec[StandingQueryInfo] = fromBinaryFormat(StandingQueryCodec.format)
   final protected val queryIdColumn: CassandraColumn[StandingQueryId] = CassandraColumn("query_id")
   final protected val queriesColumn: CassandraColumn[StandingQueryInfo] = CassandraColumn("queries")(standingQueryCodec)
 }
 
-class StandingQueriesDefinition(namespace: NamespaceId)
+class StandingQueriesDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
     extends TableDefinition[StandingQueries]("standing_queries", namespace)
     with StandingQueriesColumnNames {
   protected val partitionKey: CassandraColumn[StandingQueryId] = queryIdColumn
@@ -48,10 +50,11 @@ class StandingQueriesDefinition(namespace: NamespaceId)
     writeSettings: CassandraStatementSettings
   )(implicit
     mat: Materializer,
-    futureInstance: Applicative[Future]
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
   ): Future[StandingQueries] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
 
     (
       T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
@@ -67,7 +70,7 @@ class StandingQueries(
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement
-)(implicit mat: Materializer)
+)(implicit mat: Materializer, val logConfig: LogConfig)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with StandingQueriesColumnNames {
 

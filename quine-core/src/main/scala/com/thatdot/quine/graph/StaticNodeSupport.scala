@@ -12,6 +12,7 @@ import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValu
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.{AbstractSnapshotCodec, MultipleValuesStandingQueryStateCodec}
+import com.thatdot.quine.util.Log._
 
 abstract class StaticNodeSupport[
   Node <: AbstractNodeActor,
@@ -37,7 +38,7 @@ abstract class StaticNodeSupport[
     quineIdAtTime: SpaceTimeQuineId,
     recoverySnapshotBytes: Option[Array[Byte]],
     graph: BaseGraph
-  ): Future[ConstructorRecord] =
+  )(implicit logConfig: LogConfig): Future[ConstructorRecord] =
     recoverySnapshotBytes match {
       case Some(recoverySnapshotBytes) =>
         val snapshot =
@@ -68,7 +69,7 @@ abstract class StaticNodeSupport[
   def restoreFromSnapshotAndJournal(
     quineIdAtTime: SpaceTimeQuineId,
     graph: BaseGraph
-  ): Future[ConstructorRecord] = graph
+  )(implicit logConfig: LogConfig): Future[ConstructorRecord] = graph
     .namespacePersistor(quineIdAtTime.namespace)
     .fold {
       Future.successful(((None: Option[Snapshot], Nil: Journal), mutable.Map.empty: MultipleValuesStandingQueries))
@@ -144,7 +145,10 @@ object StaticNodeSupport extends LazyLogging {
   private def deserializeSnapshotBytes[Snapshot <: AbstractNodeSnapshot](
     snapshotBytes: Array[Byte],
     qidForDebugging: SpaceTimeQuineId
-  )(implicit idProvider: QuineIdProvider, snapshotCodec: AbstractSnapshotCodec[Snapshot]): Snapshot =
+  )(implicit
+    idProvider: QuineIdProvider,
+    snapshotCodec: AbstractSnapshotCodec[Snapshot]
+  ): Snapshot =
     snapshotCodec.format
       .read(snapshotBytes)
       .fold(
@@ -159,7 +163,7 @@ object StaticNodeSupport extends LazyLogging {
   private def getMultipleValuesStandingQueryStates(
     qidAtTime: SpaceTimeQuineId,
     graph: BaseGraph
-  ): Future[MultipleValuesStandingQueries] = (graph -> qidAtTime) match {
+  )(implicit logConfig: LogConfig): Future[MultipleValuesStandingQueries] = (graph -> qidAtTime) match {
     case (sqGraph: StandingQueryOpsGraph, SpaceTimeQuineId(qid, namespace, None)) =>
       sqGraph
         .namespacePersistor(namespace)

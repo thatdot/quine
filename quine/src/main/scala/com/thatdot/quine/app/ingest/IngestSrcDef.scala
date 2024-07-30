@@ -18,7 +18,6 @@ import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
-import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.KafkaException
 
 import com.thatdot.quine.app.ingest.serialization._
@@ -30,6 +29,8 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 
@@ -57,8 +58,9 @@ abstract class IngestSrcDef(
   maxPerSecond: Option[Int],
   val name: String
 )(implicit graph: CypherOpsGraph)
-    extends LazyLogging {
+    extends LazySafeLogging {
   implicit val system: ActorSystem = graph.system
+  implicit protected def logConfig: LogConfig
   val isSingleHost: Boolean = graph.isSingleHost
   val intoNamespace: NamespaceId
   // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
@@ -109,12 +111,9 @@ abstract class IngestSrcDef(
         // Future.failed(deserializationError)
         // If stream should log and keep consuming:
         logger.warn(
-          s"""Ingest $name in namespace $intoNamespace failed to deserialize record.
-             |Error and record will be logged at INFO level""".stripMargin.replace('\n', ' ')
-        )
-        logger.info(
-          s"""Ingest $name in namespace $intoNamespace failed to deserialize ingested record: $sourceRecord""",
-          deserializationError
+          log"""Ingest ${Safe(name)} in namespace ${Safe(intoNamespace)} 
+               |failed to deserialize ingested record: ${sourceRecord.toString}
+               |""".cleanLines withException deserializationError
         )
         Future.successful(failedAttempt)
     }
@@ -218,11 +217,11 @@ abstract class RawValuesIngestSrcDef(
 
 }
 
-object IngestSrcDef extends LazyLogging {
+object IngestSrcDef extends LazySafeLogging {
 
   private def importFormatFor(
     label: StreamedRecordFormat
-  )(implicit protobufSchemaCache: ProtobufSchemaCache): ImportFormat =
+  )(implicit protobufSchemaCache: ProtobufSchemaCache, logConfig: LogConfig): ImportFormat =
     label match {
       case StreamedRecordFormat.CypherJson(query, parameter) =>
         new CypherJsonInputFormat(query, parameter)
@@ -262,7 +261,7 @@ object IngestSrcDef extends LazyLogging {
         userCharset -> Flow[ByteString]
       case otherCharset =>
         logger.warn(
-          s"Charset-sensitive ingest does not directly support $otherCharset - transcoding through UTF-8 first"
+          safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset)} - transcoding through UTF-8 first"
         )
         StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
     }
@@ -279,7 +278,8 @@ object IngestSrcDef extends LazyLogging {
     initialSwitchMode: SwitchMode
   )(implicit
     graph: CypherOpsGraph,
-    protobufSchemaCache: ProtobufSchemaCache
+    protobufSchemaCache: ProtobufSchemaCache,
+    logConfig: LogConfig
   ): ValidatedNel[String, IngestSrcDef] = settings match {
     case KafkaIngest(
           format,

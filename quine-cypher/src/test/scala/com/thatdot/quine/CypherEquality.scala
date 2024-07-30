@@ -183,7 +183,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
           )
         )
       )
-      assert(gt.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.True)
+      assert(gt.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.True)
     }
 
     it("{a: 'six'} < {a: 6}") {
@@ -199,7 +199,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
           )
         )
       )
-      assert(lt.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.True)
+      assert(lt.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.True)
     }
 
     it("{a: 1} <= {a: 1, b: null} should return null") {
@@ -216,7 +216,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
           )
         )
       )
-      assert(lte.eval(QueryContext.empty)(idProv, Parameters.empty) === Expr.Null)
+      assert(lte.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.Null)
     }
   }
 }

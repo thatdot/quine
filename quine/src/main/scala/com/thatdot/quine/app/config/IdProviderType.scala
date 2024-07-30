@@ -15,6 +15,7 @@ import com.thatdot.quine.graph.{
   WithExplicitPositions
 }
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Options for ID representations */
 sealed abstract class IdProviderType {
@@ -23,7 +24,7 @@ sealed abstract class IdProviderType {
   val partitioned: Boolean
 
   /** Construct the ID provider associated with this configuration */
-  def idProvider: QuineIdProvider = {
+  def idProvider(implicit logConfig: LogConfig): QuineIdProvider = {
     val baseProvider = createUnpartitioned
     if (partitioned) WithExplicitPositions(baseProvider) else baseProvider
   }

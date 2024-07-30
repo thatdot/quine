@@ -25,6 +25,7 @@ import com.thatdot.quine.persistor.cassandra.support.{
   TableDefinition,
   syntax
 }
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T9}
 
 trait JournalColumnNames {
@@ -99,9 +100,13 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[Journals] = {
+  )(implicit
+    materializer: Materializer,
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
+  ): Future[Journals] = {
     import shapeless.syntax.std.tuple._ // to concatenate tuples
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     (
       T9(

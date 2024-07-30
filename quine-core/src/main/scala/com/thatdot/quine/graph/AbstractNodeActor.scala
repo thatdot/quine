@@ -9,7 +9,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-import org.apache.pekko.actor.{Actor, ActorLogging}
+import org.apache.pekko.actor.Actor
 import org.apache.pekko.stream.scaladsl.Keep
 
 import cats.data.NonEmptyList
@@ -47,6 +47,8 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.ByteConversions
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** The fundamental graph unit for both data storage (eg [[properties]]) and
   * computation (as a Pekko actor).
@@ -82,8 +84,9 @@ abstract private[graph] class AbstractNodeActor(
   ],
   protected val domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
   protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries
-) extends Actor
-    with ActorLogging
+)(implicit protected val logConfig: LogConfig)
+    extends Actor
+    with ActorSafeLogging
     with BaseNodeActor
     with QuineRefOps
     with QuineIdOps
@@ -137,7 +140,7 @@ abstract private[graph] class AbstractNodeActor(
           qid = qid,
           costToSleep = costToSleep,
           nodeEdgesCounter = metrics.nodeEdgesCounter(namespace)
-        )(graph.system, idProvider)
+        )(graph.system, idProvider, logConfig)
     }
   }
 
@@ -149,7 +152,7 @@ abstract private[graph] class AbstractNodeActor(
 
   protected def updateRelevantToSnapshotOccurred(): Unit = {
     if (atTime.nonEmpty) {
-      log.warning("Attempted to flag a historical node as being updated -- this update will not be persisted.")
+      log.warn(safe"Attempted to flag a historical node as being updated -- this update will not be persisted.")
     }
     // TODO: should this update `lastWriteMillis` too?
     latestUpdateAfterSnapshot = Some(peekEventSequence())
@@ -311,8 +314,9 @@ abstract private[graph] class AbstractNodeActor(
             (e: Throwable) => {
               val attemptCount = persistAttempts.getAndIncrement()
               log.info(
-                s"Retrying persistence from node: ${qid.pretty} with events: $effectingEvents after: " +
-                s"$attemptCount attempts, with error: $e"
+                log"""Retrying persistence from node: ${Safe(qid.pretty)} with events:
+                     |${effectingEvents.toString} after: ${Safe(attemptCount)} attempts
+                     |""".cleanLines withException e
               )
               e
             }
@@ -344,10 +348,11 @@ abstract private[graph] class AbstractNodeActor(
               notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
             case Failure(e) =>
               log.info(
-                s"Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply " +
-                s"events: $effectingEvents to in-memory state. Returning failed result. Error: $e"
+                log"Persistor error occurred when writing events to journal on node: ${Safe(qid.pretty)} Will not apply " +
+                log"events: ${effectingEvents.toString} to in-memory state. Returning failed result" withException e
               )
-          }
+          },
+          true
         ).map(_ => Done)(ExecutionContext.parasitic)
     }
 
@@ -368,24 +373,25 @@ abstract private[graph] class AbstractNodeActor(
           )
         )
 
-    def infinitePersisting(logFunc: String => Unit, f: => Future[Unit]): Future[Unit] =
+    def infinitePersisting(logFunc: SafeInterpolator => Unit, f: => Future[Unit]): Future[Unit] =
       f.recoverWith { case NonFatal(e) =>
-        logFunc(s"Persisting snapshot for: $occurredAt is being retried after the error: $e")
+        logFunc(log"Persisting snapshot for: ${Safe(occurredAt)} is being retried after the error:" withException e)
         infinitePersisting(logFunc, f)
       }(cypherEc)
 
     graph.effectOrder match {
       case EventEffectOrder.MemoryFirst =>
-        infinitePersisting(log.info, persistSnapshot())
+        infinitePersisting(s => log.info(s), persistSnapshot())
       case EventEffectOrder.PersistorFirst =>
         // There's nothing sane to do if this fails; there's no query result to fail. Just retry forever and deadlock.
         // The important intention here is to disallow any subsequent message (e.g. query) until the persist succeeds,
         // and to disallow `runPostActions` until persistence succeeds.
-        val _ = pauseMessageProcessingUntil[Unit](infinitePersisting(log.warning, persistSnapshot()), _ => ())
+        val _ =
+          pauseMessageProcessingUntil[Unit](infinitePersisting(s => log.warn(s), persistSnapshot()), _ => (), true)
     }
     latestUpdateAfterSnapshot = None
   } else {
-    log.debug("persistSnapshot called on historical node: This indicates programmer error.")
+    log.debug(safe"persistSnapshot called on historical node: This indicates programmer error.")
   }
 
   /** The folling two methods apply effects of the provided events to the node state.
@@ -397,7 +403,7 @@ abstract private[graph] class AbstractNodeActor(
     case PropertySet(key, value) =>
       if (value == PropertyValue(QuineValue.Null)) {
         // Should be impossible. If it's not, we'd like to know and fix it.
-        logger.warn(s"Setting a null property on key: $key. This should have been a property removal.")
+        logger.warn(log"Setting a null property on key: $key. This should have been a property removal.")
       }
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
@@ -482,7 +488,7 @@ abstract private[graph] class AbstractNodeActor(
       )
     }
     eventsForMvsqs.foreach { case (sq, events) =>
-      updateMultipleValuesSqs(events, sq)
+      updateMultipleValuesSqs(events, sq)(logConfig)
     }
   }
 
@@ -561,7 +567,7 @@ abstract private[graph] class AbstractNodeActor(
         includeDomainIndexEvents = false
       )
       .recover { case err =>
-        log.error(err, "failed to get journal for node: {}", qidAtTime.debug)
+        log.error(log"failed to get journal for node: ${Safe(qidAtTime.debug)}" withException err)
         Iterable.empty
       }(context.dispatcher)
       .map { journal =>

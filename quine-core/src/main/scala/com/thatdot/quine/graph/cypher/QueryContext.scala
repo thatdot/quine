@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
 
 /** Container for query results
   *
@@ -59,7 +60,7 @@ object QueryContext {
     */
   def orderingBy(
     exprs: Seq[(Expr, Boolean)]
-  )(implicit idp: QuineIdProvider, p: Parameters): Ordering[QueryContext] =
+  )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Ordering[QueryContext] =
     exprs.foldRight[Ordering[QueryContext]](Ordering.by(_ => ())) { case ((by, isAscending), tieBreaker) =>
       val evaluated = Ordering.by[QueryContext, Value](by.eval(_))(Value.ordering)
       val directed = if (isAscending) evaluated.reverse else evaluated

@@ -3,8 +3,7 @@ package com.thatdot.quine.graph
 import org.apache.pekko.actor.SupervisorStrategy._
 import org.apache.pekko.actor.{OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
 
-import com.typesafe.scalalogging.LazyLogging
-class NodeAndShardSupervisorStrategy extends SupervisorStrategyConfigurator with LazyLogging {
+class NodeAndShardSupervisorStrategy extends SupervisorStrategyConfigurator {
   private val specialCases: Decider = {
     // irrecoverable by definition
     case _: NodeWakeupFailedException =>

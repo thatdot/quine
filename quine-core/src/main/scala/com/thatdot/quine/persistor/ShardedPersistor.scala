@@ -2,6 +2,7 @@ package com.thatdot.quine.persistor
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.util.Log._
 
 /** Persistence agent that multiplexes nodes across a pre-determined number of underlying
   * persistence agents.
@@ -14,7 +15,8 @@ class ShardedPersistor(
   shards: Vector[PersistenceAgent],
   val persistenceConfig: PersistenceConfig,
   partitionFunction: QuineId => Int = _.hashCode
-) extends PartitionedPersistenceAgent {
+)(implicit val logConfig: LogConfig)
+    extends PartitionedPersistenceAgent {
 
   val allShardsAreInSameNamespace: Boolean = shards.headOption.fold(true) { h =>
     shards.tail.forall(_.namespace == h.namespace)

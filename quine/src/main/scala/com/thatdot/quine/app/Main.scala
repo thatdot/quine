@@ -17,7 +17,6 @@ import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
 import ch.qos.logback.classic.LoggerContext
-import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
@@ -27,20 +26,22 @@ import com.thatdot.quine.app.migrations.QuineMigrations
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
-object Main extends App with LazyLogging {
+object Main extends App with LazySafeLogging {
 
   private val statusLines =
     new StatusLines(
       // This name comes from quine's logging.conf
-      Logger("thatdot.Interactive"),
+      SafeLogger("thatdot.Interactive"),
       System.err
     )
 
   // Warn if character encoding is unexpected
   if (Charset.defaultCharset != StandardCharsets.UTF_8) {
     statusLines.warn(
-      s"System character encoding is ${Charset.defaultCharset} - did you mean to specify -Dfile.encoding=UTF-8?"
+      log"System character encoding is ${Safe(Charset.defaultCharset)} - did you mean to specify -Dfile.encoding=UTF-8?"
     )
   }
 
@@ -85,7 +86,7 @@ object Main extends App with LazyLogging {
         tempDataFile.deleteOnExit()
       } else {
         // Only print the data file name when NOT DELETING the temporary file
-        statusLines.info(s"Using data path ${tempDataFile.getAbsolutePath}")
+        statusLines.info(log"Using data path ${Safe(tempDataFile.getAbsolutePath)}")
       }
       withWebserverOverrides.copy(
         store = PersistenceAgentType.RocksDb(
@@ -94,10 +95,11 @@ object Main extends App with LazyLogging {
       )
     } else withWebserverOverrides
   }
+  implicit protected def logConfig: LogConfig = config.logConfig
 
   // Optionally print a message on startup
   if (BuildInfo.startupMessage.nonEmpty) {
-    statusLines.warn(BuildInfo.startupMessage)
+    statusLines.warn(log"${Safe(BuildInfo.startupMessage)}")
   }
 
   logger.info {
@@ -108,11 +110,11 @@ object Main extends App with LazyLogging {
         NumberFormat.getInstance.format(maxGigaBytes) + "GiB max heap size"
     }
     val numCores = NumberFormat.getInstance.format(sys.runtime.availableProcessors.toLong)
-    s"Running ${BuildInfo.version} with $numCores available cores and $maxHeapSize."
+    safe"Running ${Safe(BuildInfo.version)} with ${Safe(numCores)} available cores and ${Safe(maxHeapSize)}."
   }
 
   if (config.dumpConfig) {
-    statusLines.info(config.loadedConfigHocon)
+    statusLines.info(log"${Safe(config.loadedConfigHocon)}")
   }
 
   val timeout: Timeout = config.timeout
@@ -126,7 +128,7 @@ object Main extends App with LazyLogging {
         GraphService(
           persistorMaker = system => {
             val persistor =
-              PersistenceBuilder.build(config.store, config.persistence)(Materializer.matFromSystem(system))
+              PersistenceBuilder.build(config.store, config.persistence)(Materializer.matFromSystem(system), logConfig)
             persistor.initializeOnce // Initialize the default namespace
             persistor
           },
@@ -156,7 +158,7 @@ object Main extends App with LazyLogging {
       )
     catch {
       case NonFatal(err) =>
-        statusLines.error("Unable to start graph", err)
+        statusLines.error(log"Unable to start graph", err)
         sys.exit(1)
     }
 
@@ -211,12 +213,12 @@ object Main extends App with LazyLogging {
     error match {
       case includeDiagnosticInfo: Throwable =>
         statusLines.error(
-          s"Encountered a migration error during startup. Shutting down.",
-          includeDiagnosticInfo
+          log"Encountered a migration error during startup. Shutting down."
+          withException includeDiagnosticInfo
         )
       case opaque =>
         statusLines.error(
-          s"Encountered a migration error during startup. Shutting down. Error: ${opaque.message}"
+          log"Encountered a migration error during startup. Shutting down. Error: ${opaque.message}"
         )
     }
     sys.exit(1)
@@ -225,7 +227,7 @@ object Main extends App with LazyLogging {
   val loadDataFut: Future[Unit] = quineApp.loadAppData(timeout, config.shouldResumeIngest)
   Await.result(loadDataFut, timeout.duration * 2)
 
-  statusLines.info("Graph is ready")
+  statusLines.info(log"Graph is ready")
 
   // The web service is started unless it was disabled.
   val bindAndResolvableAddresses: Option[(WebServerConfig, Uri)] = Option.when(config.webserver.enabled) {
@@ -261,33 +263,34 @@ object Main extends App with LazyLogging {
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled)(
-      ExecutionContext.parasitic
+      ExecutionContext.parasitic,
+      logConfig
     )
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)
-          statusLines.info(s"Quine web server available at $resolvableUrl")
+          statusLines.info(log"Quine web server available at ${Safe(resolvableUrl.toString)}")
           if (config.api2Enabled) {
-            statusLines.info("Api v2 enabled")
+            statusLines.info(log"Api v2 enabled")
           }
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
   }
 
   CoordinatedShutdown(system).addTask(CoordinatedShutdown.PhaseBeforeClusterShutdown, "Shutdown") { () =>
-    statusLines.info("Quine is shutting down... ")
+    statusLines.info(log"Quine is shutting down... ")
     try recipeInterpreterTask.foreach(_.cancel())
     catch {
       case NonFatal(e) =>
-        statusLines.error("Graceful shutdown of Recipe interpreter encountered an error:", e)
+        statusLines.error(log"Graceful shutdown of Recipe interpreter encountered an error:", e)
     }
     implicit val ec = ExecutionContext.parasitic
     for {
       _ <- quineApp.shutdown()
       _ <- graph.shutdown()
     } yield {
-      statusLines.info("Shutdown complete.")
+      statusLines.info(log"Shutdown complete.")
       Done
     }
   }

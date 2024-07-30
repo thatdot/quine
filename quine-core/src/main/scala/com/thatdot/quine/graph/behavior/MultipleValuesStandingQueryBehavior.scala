@@ -3,9 +3,7 @@ package com.thatdot.quine.graph.behavior
 import scala.collection.mutable
 import scala.concurrent.Future
 
-import org.apache.pekko.actor.{Actor, ActorLogging}
-
-import com.typesafe.scalalogging.LazyLogging
+import org.apache.pekko.actor.Actor
 
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.{EventSubscriber, StandingQueryWithId}
 import com.thatdot.quine.graph.cypher.{
@@ -44,10 +42,12 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig, PersistenceSchedule}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 trait MultipleValuesStandingQueryBehavior
     extends Actor
-    with ActorLogging
+    with ActorSafeLogging
     with BaseNodeActor
     with QuineIdOps
     with QuineRefOps
@@ -58,6 +58,7 @@ trait MultipleValuesStandingQueryBehavior
   protected def persistor: NamespacedPersistenceAgent
 
   protected def persistenceConfig: PersistenceConfig
+  implicit protected def logConfig: LogConfig
 
   /** Bring this node's locally-tracked standing queries in sync with the current graph state. While the node is asleep,
     * no events could have occurred on the node itself, but there might have been state changes to the graph which
@@ -93,7 +94,7 @@ trait MultipleValuesStandingQueryBehavior
 
   implicit class MultipleValuesStandingQuerySubscribersOps(subs: MultipleValuesStandingQueryPartSubscription)
       extends MultipleValuesStandingQueryEffects
-      with LazyLogging {
+      with LazySafeLogging {
 
     @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
     def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery =
@@ -119,7 +120,8 @@ trait MultipleValuesStandingQueryBehavior
         onNode ! CancelMultipleValuesSubscription(subscriber, queryId)
       } else {
         logger.info(
-          s"Declining to process MultipleValues cancellation message on node: $onNode for deleted Standing Query ${subs.globalId}"
+          safe"""Declining to process MultipleValues cancellation message on node: ${Safe(onNode)}
+                |for deleted Standing Query with ID ${Safe(subs.globalId)}""".cleanLines
         )
       }
     }
@@ -183,7 +185,7 @@ trait MultipleValuesStandingQueryBehavior
   final protected def updateMultipleValuesSqs(
     events: Seq[NodeChangeEvent],
     subscriber: StandingQueryWithId
-  ): Future[Unit] = {
+  )(implicit logConfig: LogConfig): Future[Unit] = {
 
     val persisted: Option[Future[Unit]] = for {
       tup <- multipleValuesStandingQueries.get((subscriber.queryId, subscriber.partId))
@@ -318,16 +320,17 @@ trait MultipleValuesStandingQueryBehavior
       // Deliver the result to interested standing query state
       multipleValuesStandingQueries.get(globalId -> queryPartIdForResult) match {
         case None =>
-          log.warning(
-            """Got a result from {} for {}, but this node does not track {} ({})""",
-            fromQid.pretty,
-            queryPartIdForResult,
-            queryPartIdForResult,
-            graph
+          log.whenWarnEnabled {
+            val relevantSqPart = graph
               .standingQueries(namespace)
               .get
               .getStandingQueryPart(queryPartIdForResult)
-          )
+            log.warn(
+              log"""Got a result from: ${Safe(fromQid.pretty)} for: ${Safe(queryPartIdForResult)},
+                   |but this node does not track: ${Safe(queryPartIdForResult)} ($relevantSqPart)
+                   |""".cleanLines
+            )
+          }
         // Possible if local shutdown happens right before a result is received
         case Some(tup @ (subscribers, sqState)) =>
           val somethingDidChange = sqState.onNewSubscriptionResult(newResult, subscribers)

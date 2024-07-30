@@ -14,7 +14,6 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
 import cats.syntax.either._
-import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 import io.circe.parser.parse
 import org.opencypher.v9_0.ast
 import org.opencypher.v9_0.frontend.phases._
@@ -48,6 +47,7 @@ import com.thatdot.quine.graph.{
   StandingQueryResult
 }
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 /** Like [[UnresolvedCall]] but where the procedure has been resolved
   *
@@ -152,7 +152,8 @@ object RecentNodeIds extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val limit: Int = arguments match {
       case Seq() => 10
@@ -165,7 +166,7 @@ object RecentNodeIds extends UserDefinedProcedure {
         .recentNodes(limit, location.namespace, location.atTime)
         .map { (nodes: Set[QuineId]) =>
           Source(nodes)
-            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
+            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider, logConfig))))
         }(location.graph.nodeDispatcherEC)
     }
   }
@@ -189,7 +190,8 @@ object RecentNodes extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val limit: Int = arguments match {
       case Seq() => 10
@@ -230,7 +232,8 @@ final case class CypherGetRoutingTable(addresses: Seq[String]) extends UserDefin
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] =
     Source.single(
       Vector(
@@ -264,7 +267,8 @@ object JsonLoad extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val urlOrPath = arguments match {
       case Seq(Expr.Str(s)) => s
@@ -303,7 +307,8 @@ abstract class StubbedUserDefinedProcedure(
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = Source.empty
 }
 
@@ -365,7 +370,8 @@ object IncrementCounter extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -395,7 +401,7 @@ object IncrementCounter extends UserDefinedProcedure {
 /** Increment an integer property on a node atomically (doing the get and the
   * set in one step with no intervening operation)
   */
-object AddToInt extends UserDefinedProcedure with LazyLogging {
+object AddToInt extends UserDefinedProcedure with LazySafeLogging {
   val name = "int.add"
   val canContainUpdates = true
   val isIdempotent = false
@@ -413,7 +419,8 @@ object AddToInt extends UserDefinedProcedure with LazyLogging {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -441,9 +448,9 @@ object AddToInt extends UserDefinedProcedure with LazyLogging {
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
-              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
-                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as an integer
-                 |by: $name.""".stripMargin.replace('\n', ' ')
+              log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)}
+                   |reports a current value of ${successOfDifferentType.valueFound.toString} but reports
+                   |successfully being updated as an integer by: ${Safe(name)}.""".cleanLines
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Integer),
@@ -458,7 +465,7 @@ object AddToInt extends UserDefinedProcedure with LazyLogging {
 /** Increment a floating-point property on a node atomically (doing the get and the
   * set in one step with no intervening operation)
   */
-object AddToFloat extends UserDefinedProcedure with LazyLogging {
+object AddToFloat extends UserDefinedProcedure with LazySafeLogging {
   val name = "float.add"
   val canContainUpdates = true
   val isIdempotent = false
@@ -476,7 +483,8 @@ object AddToFloat extends UserDefinedProcedure with LazyLogging {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -504,9 +512,9 @@ object AddToFloat extends UserDefinedProcedure with LazyLogging {
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
-              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
-                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a float
-                 |by: $name.""".stripMargin.replace('\n', ' ')
+              log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)} reports a current value
+                   |of ${successOfDifferentType.valueFound.toString} but reports successfully being updated as a float
+                   |by: ${Safe(name)}.""".cleanLines
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Floating),
@@ -521,7 +529,7 @@ object AddToFloat extends UserDefinedProcedure with LazyLogging {
 /** Add to a list-typed property on a node atomically, treating the list as a set (doing the get, the deduplication, and
   * the set in one step with no intervening operation)
   */
-object InsertToSet extends UserDefinedProcedure with LazyLogging {
+object InsertToSet extends UserDefinedProcedure with LazySafeLogging {
   val name = "set.insert"
   val canContainUpdates = true
   val isIdempotent = true
@@ -540,7 +548,8 @@ object InsertToSet extends UserDefinedProcedure with LazyLogging {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -567,9 +576,9 @@ object InsertToSet extends UserDefinedProcedure with LazyLogging {
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
-              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
-                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a list (used as set)
-                 |by: $name.""".stripMargin.replace('\n', ' ')
+              log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)}
+                   |reports a current value of ${successOfDifferentType.valueFound.toString} but reports
+                   |successfully being updated as a list (used as set) by: ${Safe(name)}.""".cleanLines
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
@@ -584,7 +593,7 @@ object InsertToSet extends UserDefinedProcedure with LazyLogging {
 /** Add to a list-typed property on a node atomically, treating the list as a set (doing the get, the deduplication, and
   * the set in one step with no intervening operation)
   */
-object UnionToSet extends UserDefinedProcedure with LazyLogging {
+object UnionToSet extends UserDefinedProcedure with LazySafeLogging {
   val name = "set.union"
   val canContainUpdates = true
   val isIdempotent = true
@@ -604,7 +613,8 @@ object UnionToSet extends UserDefinedProcedure with LazyLogging {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -631,9 +641,9 @@ object UnionToSet extends UserDefinedProcedure with LazyLogging {
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
-              s"""Verify data integrity on node: ${nodeId.pretty}. Property: ${propertyKey} reports a current value
-                 |of ${successOfDifferentType.valueFound} but reports successfully being updated as a list (used as set)
-                 |by: $name.""".stripMargin.replace('\n', ' ')
+              log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)} reports a
+                   |current value of ${successOfDifferentType.valueFound.toString} but reports successfully being
+                   |updated as a list (used as set) by: ${Safe(name)}.""".cleanLines
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
@@ -645,7 +655,7 @@ object UnionToSet extends UserDefinedProcedure with LazyLogging {
   }
 }
 
-object CypherLogging extends UserDefinedProcedure with StrictLogging {
+object CypherLogging extends UserDefinedProcedure with StrictSafeLogging {
   val name = "log"
   val canContainUpdates = false
   val isIdempotent = true
@@ -662,27 +672,29 @@ object CypherLogging extends UserDefinedProcedure with StrictLogging {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val prettyStr: String = arguments match {
       case Seq(Expr.Str(lvl), any) =>
         val prettied = any.pretty
+        val sprettied = Safe(prettied)
         lvl.toLowerCase match {
-          case "error" => logger.error(prettied)
-          case "warn" | "warning" => logger.warn(prettied)
-          case "info" => logger.info(prettied)
-          case "debug" => logger.debug(prettied)
-          case "trace" => logger.trace(prettied)
+          case "error" => logger.error(log"$sprettied")
+          case "warn" | "warning" => logger.warn(log"$sprettied")
+          case "info" => logger.info(log"$sprettied")
+          case "debug" => logger.debug(log"$sprettied")
+          case "trace" => logger.trace(log"$sprettied")
           case other =>
-            logger.error(s"Unrecognized log level $other, falling back to `warn`")
-            logger.warn(prettied)
+            logger.error(log"Unrecognized log level ${Safe(other)}, falling back to `warn`")
+            logger.warn(log"$sprettied")
         }
         prettied
 
       case Seq(any) =>
         val prettied = any.pretty
-        logger.warn(prettied)
+        logger.warn(log"$prettied")
         prettied
 
       case other => throw wrongSignature(other)
@@ -738,7 +750,8 @@ object CypherDebugNode extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
@@ -813,7 +826,8 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
     implicit val idProv: QuineIdProvider = location.graph.idProvider
@@ -865,7 +879,8 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], _] = {
     val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
     implicit val idProv: QuineIdProvider = location.graph.idProvider
@@ -915,7 +930,8 @@ object PurgeNode extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = LiteralOpsGraph.getOrThrow(s"$name Cypher procedure", location.graph)
@@ -952,7 +968,8 @@ object CypherDebugSleep extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = location.graph
@@ -990,7 +1007,8 @@ object CypherBuiltinFunctions extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1021,7 +1039,8 @@ object CypherFunctions extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1070,7 +1089,8 @@ object CypherProcedures extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1112,7 +1132,8 @@ object CypherDoWhen extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     // This helper function is to work around an (possibly compiler) error for the subsequent
@@ -1166,7 +1187,8 @@ object CypherDoIt extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     def extractSeq(values: Seq[Value]): (String, Map[String, Value]) = arguments match {
@@ -1210,7 +1232,8 @@ object CypherDoCase extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     def extractSeq(values: Seq[Value]): (Vector[Value], String, Map[String, Value]) = arguments match {
@@ -1278,7 +1301,8 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val (query: String, parameters: Map[String, Value], t: Long) = arguments match {
@@ -1322,7 +1346,8 @@ object CypherSleep extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val sleepMillis: Long = arguments match {
@@ -1353,7 +1378,8 @@ object CypherCreateRelationship extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1390,7 +1416,8 @@ object CypherCreateSetProperty extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1424,7 +1451,8 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1470,7 +1498,8 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val standingQueryId: StandingQueryId = arguments match {
@@ -1571,7 +1600,8 @@ object RandomWalk extends UserDefinedProcedure {
     location: ProcedureExecutionLocation
   )(implicit
     parameters: Parameters,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = AlgorithmGraph.getOrThrow(s"`$name` procedure", location.graph)

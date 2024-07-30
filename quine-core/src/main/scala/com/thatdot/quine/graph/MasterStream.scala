@@ -7,10 +7,11 @@ import org.apache.pekko.stream.scaladsl.{MergeHub, Sink, Source}
 import org.apache.pekko.stream.{Materializer, UniqueKillSwitch}
 import org.apache.pekko.{Done, NotUsed}
 
-import com.typesafe.scalalogging.LazyLogging
 import org.apache.pekko
 
-class MasterStream(mat: Materializer) extends LazyLogging {
+import com.thatdot.quine.util.Log._
+
+class MasterStream(mat: Materializer)(implicit val logConfig: LogConfig) extends LazySafeLogging {
   import MasterStream._
 
   def addIngestSrc(src: IngestSrcType): NotUsed = ingestHub.runWith(src)(mat)
@@ -37,7 +38,7 @@ class MasterStream(mat: Materializer) extends LazyLogging {
   private val preferNewHubOverUpstream = false // Pekko docs are misleading. `false` gives the desired merge preference.
 
   val loggingSink: Sink[ExecutionToken, Future[Done]] =
-    Sink.foreach[ExecutionToken](x => logger.trace(x.name)).named("master-stream-logging-sink")
+    Sink.foreach[ExecutionToken](x => logger.trace(safe"${Safe(x.name)}")).named("master-stream-logging-sink")
 
   Source
     .repeat(IdleToken)

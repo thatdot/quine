@@ -8,12 +8,15 @@ import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscript
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.codecs._
+import com.thatdot.quine.util.Log.LogConfig
 
 class SerializationTests
     extends AnyFlatSpec
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryInstances
     with should.Matchers {
+
+  implicit val logConfig: LogConfig = LogConfig.testing
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =

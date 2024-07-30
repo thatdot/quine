@@ -29,6 +29,7 @@ import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 object KafkaSrcDef {
@@ -93,7 +94,10 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph): ValidatedNel[KafkaSettingsValidator.ErrorString, IngestSrcDef] = {
+  )(implicit
+    graph: CypherOpsGraph,
+    logConfig: LogConfig
+  ): ValidatedNel[KafkaSettingsValidator.ErrorString, IngestSrcDef] = {
     val isSingleHost: Boolean = graph.isSingleHost
     val subscription: Subscription = topics.fold(
       KafkaSubscriptions.topics,
@@ -171,7 +175,7 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph)
+  )(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
 
     type InputType = NoOffset
@@ -197,7 +201,7 @@ object KafkaSrcDef {
     maxPerSecond: Option[Int],
     koc: KafkaOffsetCommitting.ExplicitCommit,
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph)
+  )(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
     type InputType = WithOffset
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =

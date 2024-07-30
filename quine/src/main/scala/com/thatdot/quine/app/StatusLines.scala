@@ -5,17 +5,17 @@ import java.io.PrintStream
 import scala.collection.mutable
 import scala.concurrent.blocking
 
-import com.typesafe.scalalogging.Logger
+import com.thatdot.quine.util.Log._
 
 class StatusLines(
-  logger: Logger,
+  logger: SafeLogger,
   realtimeOutput: PrintStream
 ) {
 
   /** Logs an informational message and refreshes the status lines display.
     * @param message
     */
-  def info(message: String): Unit = {
+  def info(message: SafeInterpolator)(implicit logConfig: LogConfig): Unit = {
     logger.info(message)
     refreshStatusLines()
   }
@@ -23,7 +23,7 @@ class StatusLines(
   /** Logs an warning message and refreshes the status lines display.
     * @param message
     */
-  def warn(message: String): Unit = {
+  def warn(message: SafeInterpolator)(implicit logConfig: LogConfig): Unit = {
     logger.warn(message)
     refreshStatusLines()
   }
@@ -31,15 +31,15 @@ class StatusLines(
   /** Logs an warning message and refreshes the status lines display.
     * @param message
     */
-  def warn(message: String, t: Throwable): Unit = {
-    logger.warn(message, t)
+  def warn(message: SafeInterpolator, t: Throwable)(implicit logConfig: LogConfig): Unit = {
+    logger.warn(message withException t)
     refreshStatusLines()
   }
 
   /** Logs an error message and refreshes the status lines display.
     * @param message
     */
-  def error(message: String): Unit = {
+  def error(message: SafeInterpolator)(implicit logConfig: LogConfig): Unit = {
     logger.error(message)
     refreshStatusLines()
   }
@@ -47,8 +47,8 @@ class StatusLines(
   /** Logs an error message and refreshes the status lines display.
     * @param message
     */
-  def error(message: String, t: Throwable): Unit = {
-    logger.error(message, t)
+  def error(message: SafeInterpolator, t: Throwable)(implicit logConfig: LogConfig): Unit = {
+    logger.error(message withException t)
     refreshStatusLines()
   }
 

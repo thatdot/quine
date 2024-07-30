@@ -16,6 +16,7 @@ import com.thatdot.quine.graph.cypher.{
   Value
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 /** Catch-all suite for validating the correctness of the Cypher compiler and interpreter. For specific
   * clause validation, see other [[CypherHarness]] subclasses, eg [[CypherReturn]], [[CypherLists]],
@@ -819,7 +820,7 @@ object MyReverse extends UserDefinedFunction {
     )
   )
 
-  def call(args: Vector[Value])(implicit idp: QuineIdProvider): Value =
+  def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
     args match {
       case Vector(Expr.Str(str)) => Expr.Str(str.reverse)
       case Vector(Expr.List(lst)) => Expr.List(lst.reverse)
@@ -843,7 +844,8 @@ object MyUnwind extends UserDefinedProcedure {
     location: cypher.ProcedureExecutionLocation
   )(implicit
     parameters: cypher.Parameters,
-    timeout: pekko.util.Timeout
+    timeout: pekko.util.Timeout,
+    logConfig: LogConfig
   ): pekko.stream.scaladsl.Source[Vector[cypher.Value], _] =
     arguments match {
       case Seq(Expr.List(l)) => pekko.stream.scaladsl.Source(l.map(Vector(_)))

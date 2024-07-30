@@ -2,10 +2,10 @@ package com.thatdot.quine.bolt
 
 import scala.util.hashing.MurmurHash3
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** The Bolt protocol talks about how to serialize arbitrary structures,
   * and uses this to describe the format of nodes, relationships, paths, etc.
@@ -52,7 +52,7 @@ trait Structured[A] {
 
 }
 
-object Structured extends LazyLogging {
+object Structured extends LazySafeLogging {
 
   /** Cypher nodes are represented as structures.
     *
@@ -104,7 +104,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing node: ${node.id.debug} with a non-integer ID may cause Bolt clients to crash"
+            safe"Serializing node: ${Safe(node.id.debug)} with a non-integer ID may cause Bolt clients to crash"
           )
           other
       },
@@ -167,7 +167,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing edge with a non-integer start ID: $other may cause Bolt clients to crash"
+            safe"Serializing edge with a non-integer start ID: ${Safe(other)} may cause Bolt clients to crash"
           )
           other
       },
@@ -175,7 +175,7 @@ object Structured extends LazyLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            s"Serializing edge with a non-integer end ID: $other may cause Bolt clients to crash"
+            safe"Serializing edge with a non-integer end ID: ${Safe(other)} may cause Bolt clients to crash"
           )
           other
       },

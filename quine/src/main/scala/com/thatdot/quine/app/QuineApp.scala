@@ -15,7 +15,6 @@ import org.apache.pekko.util.Timeout
 import cats.Applicative
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, ProgramPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.ingest.IngestSrcDef
@@ -47,13 +46,15 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.SwitchMode
 
 /** The Quine application state
   *
   * @param graph reference to the underlying graph
   */
-final class QuineApp(graph: GraphService)
+final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     extends BaseApp(graph)
     with AdministrationRoutesState
     with QueryUiConfigurationState
@@ -63,7 +64,7 @@ final class QuineApp(graph: GraphService)
     with StandingQuerySchemas
     with IngestSchemas
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
-    with LazyLogging {
+    with LazySafeLogging {
 
   import QuineApp._
 
@@ -173,11 +174,11 @@ final class QuineApp(graph: GraphService)
         else {
           val sqId = StandingQueryId.fresh()
           val sqResultsConsumers = query.outputs.map { case (k, v) =>
-            k -> StandingQueryResultOutput.resultHandlingFlow(k, inNamespace, v, graph)(protobufSchemaCache)
+            k -> StandingQueryResultOutput.resultHandlingFlow(k, inNamespace, v, graph)(protobufSchemaCache, logConfig)
           }
           val (pattern, dgnPackage) = query.pattern match {
             case StandingQueryPattern.Cypher(cypherQuery, mode) =>
-              val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider)
+              val pattern = cypher.compileStandingQueryGraphPattern(cypherQuery)(graph.idProvider, logConfig)
               val origin = PatternOrigin.GraphPattern(pattern, Some(cypherQuery))
 
               mode match {
@@ -303,7 +304,8 @@ final class QuineApp(graph: GraphService)
             .viaMat(KillSwitches.single)(Keep.right)
             .via(
               StandingQueryResultOutput.resultHandlingFlow(outputName, inNamespace, sqResultOutput, graph)(
-                protobufSchemaCache
+                protobufSchemaCache,
+                logConfig
               )
             )
           val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
@@ -396,14 +398,13 @@ final class QuineApp(graph: GraphService)
           val now = Instant.now
           metrics.stop(now)
           logger.error(
-            s"Ingest stream '$name' has failed after ${metrics.millisSinceStart(now)}ms",
-            err
+            log"Ingest stream '${Safe(name)}' has failed after ${Safe(metrics.millisSinceStart(now))}ms" withException err
           )
         case Success(_) =>
           val now = Instant.now
           metrics.stop(now)
           logger.info(
-            s"Ingest stream '$name' successfully completed after ${metrics.millisSinceStart(now)}ms"
+            log"Ingest stream '${Safe(name)}' successfully completed after ${Safe(metrics.millisSinceStart(now))}ms"
           )
       }(ec)
   }
@@ -439,7 +440,7 @@ final class QuineApp(graph: GraphService)
               intoNamespace,
               settings,
               valveSwitchMode
-            )(graph, protobufSchemaCache)
+            )(graph, protobufSchemaCache, logConfig)
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
 
@@ -650,7 +651,8 @@ final class QuineApp(graph: GraphService)
                     .viaMat(KillSwitches.single)(Keep.right)
                     .via(
                       StandingQueryResultOutput.resultHandlingFlow(outputName, namespace, sqResultOutput, graph)(
-                        protobufSchemaCache
+                        protobufSchemaCache,
+                        logConfig
                       )
                     )
                   // ^^ Attach the SQ result source to each consumer and backpressure with the masterStream vv
@@ -679,10 +681,12 @@ final class QuineApp(graph: GraphService)
             case Success(true) => ()
             case Success(false) =>
               logger.error(
-                s"Duplicate ingest stream attempted to start with name: $name and settings: ${ingest.config}"
+                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}"
               )
             case Failure(e) =>
-              logger.error(s"Error when restoring ingest stream: $name with settings: ${ingest.config}", e)
+              logger.error(
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e
+              )
           }
         }
       }

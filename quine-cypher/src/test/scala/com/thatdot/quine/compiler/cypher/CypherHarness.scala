@@ -18,6 +18,7 @@ import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, RunningCypherQuery, Value}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
+import com.thatdot.quine.util.Log._
 
 class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAfterAll {
 
@@ -32,6 +33,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
   // Used for e.g. literal ops that insert data - they use this as the timeout on relayAsk invocations.
   implicit val relayAskTimeout: Timeout = Timeout(3.seconds)
   implicit val idProv: QuineIdLongProvider = QuineIdLongProvider()
+  implicit protected val logConfig: LogConfig = LogConfig.testing
   val graph: BaseGraph with CypherOpsGraph with LiteralOpsGraph = Await.result(
     GraphService(
       graphName,

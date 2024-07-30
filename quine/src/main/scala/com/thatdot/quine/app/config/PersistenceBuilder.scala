@@ -7,20 +7,20 @@ import scala.concurrent.duration._
 
 import org.apache.pekko.stream.Materializer
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, ClickHouse, Keyspaces, MapDb}
 import com.thatdot.quine.persistor._
 import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Options for persistence */
-object PersistenceBuilder extends LazyLogging {
+object PersistenceBuilder {
   def build(pt: PersistenceAgentType, persistenceConfig: PersistenceConfig)(implicit
-    materializer: Materializer
+    materializer: Materializer,
+    logConfig: LogConfig
   ): PrimePersistor = {
     val quineDispatchers = new QuineDispatchers(materializer.system)
     pt match {

@@ -11,6 +11,7 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
 import com.thatdot.quine.persistor.cassandra.support._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
 
 trait MetaDataColumnName {
@@ -51,10 +52,11 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
     shouldCreateTables: Boolean
   )(implicit
     mat: Materializer,
-    futureInstance: Applicative[Future]
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
   ): Future[MetaData] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     val createdSchema = futureInstance.whenA(shouldCreateTables)(
       session
@@ -76,7 +78,8 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[MetaData] = ???
+  )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[MetaData] =
+    ???
 }
 
 class MetaData(

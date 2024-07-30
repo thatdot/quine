@@ -13,12 +13,12 @@ import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, Prepared
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
-import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NamespaceId, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support._
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T3, T9}
 
 trait DomainIndexEventColumnNames {
@@ -33,6 +33,7 @@ class DomainIndexEvents(
   session: CqlSession,
   chunker: Chunker,
   writeSettings: CassandraStatementSettings,
+  val logConfig: LogConfig,
   firstRowStatement: SimpleStatement,
   dropTableStatement: SimpleStatement,
   selectByQuineId: PreparedStatement,
@@ -50,7 +51,7 @@ class DomainIndexEvents(
 )(implicit materializer: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with DomainIndexEventColumnNames
-    with LazyLogging {
+    with LazySafeLogging {
 
   import syntax._
 
@@ -153,7 +154,7 @@ class DomainIndexEvents(
 
 }
 
-class DomainIndexEventsDefinition(namespace: NamespaceId)
+class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
     extends TableDefinition[DomainIndexEvents]("domain_index_events", namespace)
     with DomainIndexEventColumnNames {
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
@@ -225,9 +226,13 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future]): Future[DomainIndexEvents] = {
+  )(implicit
+    materializer: Materializer,
+    futureInstance: Applicative[Future],
+    logConfig: LogConfig
+  ): Future[DomainIndexEvents] = {
     import shapeless.syntax.std.tuple._
-    logger.debug("Preparing statements for {}", tableName)
+    logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     val selects = T9(
       selectByQuineIdQuery.build,
@@ -250,6 +255,7 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)
         session,
         chunker,
         writeSettings,
+        logConfig,
         firstRowStatement,
         dropTableStatement,
         _,

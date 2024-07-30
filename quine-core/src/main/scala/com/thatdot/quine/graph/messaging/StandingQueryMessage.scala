@@ -11,6 +11,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.util.Log._
 
 /** Top-level type of all SQ-related messages relayed through the graph
   *
@@ -25,7 +26,7 @@ object StandingQueryMessage {
 
   sealed abstract class MultipleValuesStandingQuerySubscriber {
     val globalId: StandingQueryId
-    def pretty(implicit idProvider: QuineIdProvider): String
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String
   }
   object MultipleValuesStandingQuerySubscriber {
 
@@ -36,7 +37,7 @@ object StandingQueryMessage {
       globalId: StandingQueryId,
       queryId: MultipleValuesStandingQueryPartId
     ) extends MultipleValuesStandingQuerySubscriber {
-      def pretty(implicit idProvider: QuineIdProvider): String =
+      def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
         s"${this.getClass.getSimpleName}(${subscribingNode.pretty}, $globalId, $queryId)"
     }
 
@@ -47,7 +48,7 @@ object StandingQueryMessage {
     final case class GlobalSubscriber(
       globalId: StandingQueryId
     ) extends MultipleValuesStandingQuerySubscriber {
-      def pretty(implicit idProvider: QuineIdProvider): String = this.toString
+      def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = this.toString
     }
   }
 
@@ -93,7 +94,7 @@ object StandingQueryMessage {
         StandingQueryResult(isPositiveMatch = isPositive, data = qvResult)
       }
 
-    def pretty(implicit idProvider: QuineIdProvider): String =
+    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
       s"${this.getClass.getSimpleName}(${from.pretty}, $queryPartId, $globalId, $resultGroup"
   }
 
@@ -117,7 +118,9 @@ object StandingQueryMessage {
 
     def isPositive: Boolean = result
 
-    def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider): Seq[StandingQueryResult] = {
+    def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider)(implicit
+      logConfig: LogConfig
+    ): Seq[StandingQueryResult] = {
       val (formatAsString, aliasedAs) = sq.queryPattern match {
         case pat: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
           pat.formatReturnAsStr -> pat.aliasReturnAs.name
@@ -126,7 +129,7 @@ object StandingQueryMessage {
         case _: StandingQueryPattern.QuinePatternQueryPattern =>
           throw new RuntimeException(s"Received branch result $this for QuinePattern query $sq")
       }
-      StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider) :: Nil
+      StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider, logConfig) :: Nil
     }
   }
 
@@ -158,6 +161,8 @@ object StandingQueryMessage {
     /** Is this result reporting a new match (as opposed to a cancellation)? */
     def isPositive: Boolean
 
-    def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider): Seq[StandingQueryResult]
+    def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider)(implicit
+      logConfig: LogConfig
+    ): Seq[StandingQueryResult]
   }
 }

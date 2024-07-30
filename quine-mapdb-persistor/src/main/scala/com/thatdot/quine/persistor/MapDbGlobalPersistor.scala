@@ -10,6 +10,8 @@ import com.codahale.metrics.MetricRegistry
 
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 abstract class AbstractMapDbPrimePersistor(
   writeAheadLog: Boolean,
@@ -18,7 +20,7 @@ abstract class AbstractMapDbPrimePersistor(
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long] = None,
   ExecutionContext: ComputeAndBlockingExecutionContext
-)(implicit materializer: Materializer)
+)(implicit materializer: Materializer, val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
   //private val quineDispatchers = new QuineDispatchers(materializer.system)
@@ -44,7 +46,7 @@ class TempMapDbPrimePersistor(
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
   ExecutionContext: ComputeAndBlockingExecutionContext
-)(implicit materializer: Materializer)
+)(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
       commitInterval,
@@ -71,7 +73,7 @@ class PersistedMapDbPrimePersistor(
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
   ExecutionContext: ComputeAndBlockingExecutionContext
-)(implicit materializer: Materializer)
+)(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
       commitInterval,
@@ -85,7 +87,7 @@ class PersistedMapDbPrimePersistor(
 
   if (createParentDir)
     if (parentDir.mkdirs())
-      logger.warn("Parent directory: {} of requested persistence location did not exist; created.", parentDir)
+      logger.warn(log"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created")
     else if (!parentDir.isDirectory)
       sys.error(s"$parentDir is not a directory")
 

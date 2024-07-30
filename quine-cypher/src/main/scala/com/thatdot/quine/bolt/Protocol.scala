@@ -7,15 +7,15 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.{ByteString, ByteStringBuilder, Timeout}
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.BuildInfo
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.utils.CypherLoggables._
 
-object Protocol extends LazyLogging {
+object Protocol extends LazySafeLogging {
 
   // Namespaces other than the default are not supported in the Bolt Protocol.
   val namespace: NamespaceId = None
@@ -26,10 +26,10 @@ object Protocol extends LazyLogging {
     final type Handler =
       PartialFunction[(ProtocolMessage, Source[Record, NotUsed]), State.HandlerResult]
 
-    def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler
+    def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler
   }
 
-  object State extends LazyLogging {
+  object State extends LazySafeLogging {
     object HandlerResult {
       def apply(nextState: State, response: ProtocolMessage): HandlerResult =
         HandlerResult(nextState, Source.single(response))
@@ -46,7 +46,7 @@ object Protocol extends LazyLogging {
       resultsQueue: Source[Record, NotUsed] = Source.empty
     )
     case object Uninitialized extends State {
-      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler = {
+      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler = {
 
         // TODO: actual authentication
         case (Init(_, _), _) => // in the Uninitialized state, there cannot be a results buffer
@@ -65,7 +65,7 @@ object Protocol extends LazyLogging {
     }
 
     case object Ready extends State {
-      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler = {
+      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler = {
         // in the Ready state, there cannot be a buffer, but Source.empty is unstable so we can't match on it
         case (Run(statement, parameters), _) =>
           Try {
@@ -86,7 +86,7 @@ object Protocol extends LazyLogging {
             val resultAvailableAfter = 1L // milliseconds after which results may be requested
 
             if (explained) {
-              logger.debug(s"User requested EXPLAIN of query: ${queryResult.compiled.query}")
+              logger.debug(log"User requested EXPLAIN of query: ${queryResult.compiled.query.toString}")
               // EXPLAIN'ed results do not get executed
               (
                 Success(
@@ -131,7 +131,7 @@ object Protocol extends LazyLogging {
     /** The server has results queued and ready for streaming
       */
     case object Streaming extends State {
-      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler = {
+      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler = {
         case (PullAll(), queryResults) =>
           val response: Source[ProtocolMessage, NotUsed] = queryResults
             .concat(
@@ -155,7 +155,7 @@ object Protocol extends LazyLogging {
                 )
               case err =>
                 logger.error(
-                  s"Cypher handler threw unexpected error while streaming results to client: $err"
+                  log"Cypher handler threw unexpected error while streaming results to client: " withException err
                 )
                 throw err // TODO possibly terminate connection
             }
@@ -178,7 +178,7 @@ object Protocol extends LazyLogging {
     }
 
     case object Failed extends State {
-      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler = {
+      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler = {
         case (AckFailure(), resultsQueue) =>
           HandlerResult(State.Ready, Success(), resultsQueue)
         case (Run(_, _), resultsQueue) =>
@@ -196,7 +196,7 @@ object Protocol extends LazyLogging {
 //    }
 
     case object Defunct extends State {
-      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout): Handler =
+      override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler =
         PartialFunction.empty
     } // This state means the connection is terminated
   }
@@ -208,7 +208,8 @@ object Protocol extends LazyLogging {
     */
   def bolt(implicit
     graph: CypherOpsGraph,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Flow[ByteString, ByteString, NotUsed] =
     Protocol.handleMessages
       .join(Protocol.protocolMessageSerialization(graph.idProvider))
@@ -254,13 +255,15 @@ object Protocol extends LazyLogging {
                 || !header.grouped(4).contains(ByteString(0x00, 0x00, 0x00, 0x01))
               ) {
                 logger.info(
-                  s"Handshake ${header.toPrettyString} received from client did not pass. The rest was ${rest.toPrettyString}. Full string on next line.\n${(header ++ rest).toHexString}"
+                  safe"Handshake ${Safe(header.toPrettyString)} received from client did not pass. The rest was ${Safe(
+                    rest.toPrettyString
+                  )}. Full string on next line.\n${Safe((header ++ rest).toHexString)}"
                 )
                 ???
                 // TODO somehow kill connection and respond with ByteString(0x00, 0x00, 0x00, 0x00)
               } else {
                 handshakeSucceeded = true
-                logger.debug("Received valid BOLT handshake supporting version 1")
+                logger.debug(safe"Received valid BOLT handshake supporting version 1")
               }
               List(rest)
             } else {
@@ -342,14 +345,16 @@ object Protocol extends LazyLogging {
 
   def handleMessages(implicit
     graph: CypherOpsGraph,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Flow[ProtocolMessage, ProtocolMessage, NotUsed] =
-    handleMessagesToSources(graph, timeout).flatMapConcat(identity)
+    handleMessagesToSources(graph, timeout, logConfig).flatMapConcat(identity)
 
   @nowarn("cat=deprecation") // statefulMapConcat is deprecated, but I don't care enough about bolt to fix it.
   def handleMessagesToSources(implicit
     graph: CypherOpsGraph,
-    timeout: Timeout
+    timeout: Timeout,
+    logConfig: LogConfig
   ): Flow[ProtocolMessage, Source[ProtocolMessage, NotUsed], NotUsed] =
     Flow[ProtocolMessage].statefulMapConcat { () =>
       var connectionState: State = State.Uninitialized
@@ -357,9 +362,9 @@ object Protocol extends LazyLogging {
       var queryResults: Source[Record, NotUsed] = Source.empty
 
       (msg: ProtocolMessage) =>
-        logger.debug(s"Received message $msg")
+        logger.debug(log"Received message $msg")
         val State.HandlerResult(newState, response, resultsQueue) = connectionState
-          .handleMessage(graph, timeout)
+          .handleMessage(graph, timeout, logConfig)
           .applyOrElse[(ProtocolMessage, Source[Record, NotUsed]), State.HandlerResult](
             (msg, queryResults),
             {
@@ -367,22 +372,19 @@ object Protocol extends LazyLogging {
                 State.HandlerResult(State.Ready, Success(), Source.empty)
               case _ =>
                 logger.warn(
-                  s"Received message that is invalid for current BOLT protocol state: $connectionState (logged at INFO level)."
-                )
-                logger.info(
-                  s"Received message that is invalid for current BOLT protocol state $connectionState. Message: $msg"
+                  log"Received message that is invalid for current BOLT protocol state ${Safe(connectionState.toString)}. Message: $msg"
                 )
                 State.HandlerResult(State.Defunct)
             }
           )
         if (newState == State.Defunct) {
           logger.error(
-            "Message handler explicitly indicated the connection should be killed"
+            safe"Message handler explicitly indicated the connection should be killed"
           ) // TODO actually terminate
         }
         connectionState = newState
         queryResults = resultsQueue
-        logger.debug(s"Returning messages $response")
+        logger.debug(log"Returning messages ${response.toString}")
         Vector(response)
     }
 

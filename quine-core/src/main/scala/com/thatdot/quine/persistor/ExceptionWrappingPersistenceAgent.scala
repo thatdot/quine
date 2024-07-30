@@ -7,7 +7,6 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
-import com.typesafe.scalalogging.StrictLogging
 
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -22,6 +21,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
+import com.thatdot.quine.util.Log._
 
 /** Reified version of persistor call for logging purposes
   */
@@ -63,21 +63,23 @@ class WrappedPersistorException(val persistorCall: PersistorCall, wrapped: Throw
     extends Exception("Error calling " + persistorCall, wrapped)
     with NoStackTrace
 
-trait ExceptionWrapper extends StrictLogging {
+trait ExceptionWrapper extends StrictSafeLogging {
+  implicit protected def logConfig: LogConfig
   protected def wrapException[A](reifiedCall: PersistorCall, future: Future[A]): Future[A] =
     future.transform {
       case s: Success[A] => s
       case Failure(exception) =>
         val wrapped = new WrappedPersistorException(reifiedCall, exception)
-        logger.warn("Intercepted persistor error", wrapped)
+        logger.warn(log"Intercepted persistor error" withException wrapped)
         Failure(wrapped)
     }(ExecutionContext.parasitic)
 }
 
 /** @param ec EC on which to schedule error-wrapping logic (low CPU, nonblocking workload)
   */
-class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceAgent)
-    extends WrappedPersistenceAgent(persistenceAgent)
+class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceAgent)(implicit
+  override val logConfig: LogConfig
+) extends WrappedPersistenceAgent(persistenceAgent)
     with ExceptionWrapper {
 
   val namespace: NamespaceId = persistenceAgent.namespace

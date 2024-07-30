@@ -52,7 +52,7 @@ class CmdArgsTest extends AnyFunSuite with EitherValues {
     val cmdArgs = CmdArgs(Array("-W", "-p", "1234"))
     assert(
       contentOf("""Error: use only one: --disable-web-service, or --port
-        |Try --help for more information.""".stripMargin) == contentOf(cmdArgs.left.value)
+                  |Try --help for more information.""".stripMargin) == contentOf(cmdArgs.left.value)
     )
   }
 

@@ -6,7 +6,6 @@ import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
 import cats.data.NonEmptyList
-import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -16,8 +15,9 @@ import org.apache.kafka.common.config.{AbstractConfig, ConfigDef, ConfigValue}
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.routes.KafkaIngest.KafkaProperties
 import com.thatdot.quine.routes.KafkaOffsetCommitting
+import com.thatdot.quine.util.Log._
 
-object KafkaSettingsValidator extends LazyLogging {
+object KafkaSettingsValidator extends LazySafeLogging {
   type ErrorString = String
 
   private def underlyingValidator[C <: AbstractConfig](c: Class[C]): ConfigDef = Try {
@@ -28,8 +28,9 @@ object KafkaSettingsValidator extends LazyLogging {
     case Failure(e) =>
       // Should be impossible.
       logger.error(
-        s"Expected Kafka settings validator to be available at ${c.getName}.CONFIG -- " +
-        s"did you override your classpath with a custom kafka JAR? Kafka config validation will now fail."
+        safe"""Expected Kafka settings validator to be available at ${Safe(c.getName)}.CONFIG --
+              |did you override your classpath with a custom kafka JAR? Kafka config validation
+              |will now fail.""".cleanLines
       )
       throw e
     case Success(validator) => validator
@@ -148,7 +149,7 @@ object KafkaSettingsValidator extends LazyLogging {
 class KafkaSettingsValidator(
   validator: ConfigDef,
   properties: KafkaProperties
-) extends LazyLogging {
+) extends LazySafeLogging {
 
   private val underlyingKnownKeys: Set[String] = validator.configKeys.values.asScala.map(_.name).toSet
   def underlyingValues: Seq[ConfigValue] = validator.validate(properties.asJava).asScala.toVector

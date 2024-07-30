@@ -6,8 +6,9 @@ import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 
 import scala.concurrent.Await
+import com.thatdot.quine.util.Log._
 
-class KeyspacesPersistorSpec extends PersistenceAgentSpec {
+class KeyspacesPersistorSpec(implicit protected val logConfig: LogConfig) extends PersistenceAgentSpec {
 
   private val statementSettings = CassandraStatementSettings(ConsistencyLevel.LOCAL_QUORUM, 1.second)
   override def afterAll(): Unit = {

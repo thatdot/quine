@@ -6,9 +6,8 @@ import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
 import scala.util.{Failure, Try}
 
-import com.typesafe.scalalogging.StrictLogging
-
 import com.thatdot.quine.util.ByteConversions
+import com.thatdot.quine.util.Log._
 
 /** Used to map user node IDs to the representation used internally by Quine.
   *
@@ -34,7 +33,7 @@ import com.thatdot.quine.util.ByteConversions
   *                newCustomId -------'
   * }}}
   */
-abstract class QuineIdProvider extends StrictLogging {
+abstract class QuineIdProvider extends StrictSafeLogging {
   type CustomIdType
   val customIdTag: ClassTag[CustomIdType]
 
@@ -99,11 +98,11 @@ abstract class QuineIdProvider extends StrictLogging {
     * @param qid ID to pretty-print
     * @return pretty-printed ID
     */
-  def qidToPrettyString(qid: QuineId): String =
+  def qidToPrettyString(qid: QuineId)(implicit logConfig: LogConfig): String =
     customIdFromQid(qid).fold(
       err => {
         val qidStr = "#" + ByteConversions.formatHexBinary(qid.array)
-        logger.info(s"Failed to serialize QID ${qidStr} with the configured ID provider.", err)
+        logger.info(log"Failed to serialize QID ${Safe(qidStr)} with the configured ID provider." withException err)
         qidStr
       },
       customIdToString

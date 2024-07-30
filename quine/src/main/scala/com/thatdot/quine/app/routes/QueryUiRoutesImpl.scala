@@ -12,7 +12,6 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.Timeout
 
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.Json
 
 import com.thatdot.quine.graph.cypher.CypherException
@@ -20,6 +19,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.gremlin._
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes.{CypherQueryResult, GremlinQuery, QueryUiRoutes, UiEdge, UiNode}
+import com.thatdot.quine.util.Log._
 
 trait QueryUiRoutesImpl
     extends QueryUiRoutes
@@ -28,7 +28,7 @@ trait QueryUiRoutesImpl
     with exts.circe.JsonEntitiesFromSchemas
     with exts.ServerQuineEndpoints
     with exts.ServerRequestTimeoutOps
-    with LazyLogging {
+    with LazySafeLogging {
 
   val gremlin: GremlinQueryRunner
 

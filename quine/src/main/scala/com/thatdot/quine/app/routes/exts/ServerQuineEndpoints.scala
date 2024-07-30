@@ -9,6 +9,7 @@ import endpoints4s.{Codec, Invalid, Valid, Validated}
 import com.thatdot.quine.graph.{NamespaceId, namespaceFromString}
 import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
+import com.thatdot.quine.util.Log._
 
 /** Implementation of [[QuineEndpoints]] for servers, along with some schemas
   * for types that are defined in the `model` model (and therefore can't
@@ -17,6 +18,7 @@ import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
 trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonSchemas {
 
   implicit def idProvider: QuineIdProvider
+  implicit protected def logConfig: LogConfig
 
   /** The server resolves all IDs straight into [[QuineId]] */
   type Id = QuineId

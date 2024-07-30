@@ -32,6 +32,8 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable, TableDefinition}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, NamespacedPersistenceAgent, PersistenceConfig}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Used to break up large batch queries on AWS Keyspaces - which doesn't support batches of over 30 elements
   * This class exists because Scala 2 doesn't (natively) support polymorphic function values (lambdas),
@@ -60,7 +62,7 @@ class SizeBoundedChunker(maxBatchSize: Int, parallelism: Int, materializer: Mate
 abstract class CassandraPersistorDefinition {
   protected def journalsTableDef(namespace: NamespaceId): JournalsTableDefinition
   protected def snapshotsTableDef(namespace: NamespaceId): SnapshotsTableDefinition
-  def tablesForNamespace(namespace: NamespaceId): (
+  def tablesForNamespace(namespace: NamespaceId)(implicit logConfig: LogConfig): (
     TableDefinition[Journals],
     TableDefinition[Snapshots],
     TableDefinition[StandingQueries],
@@ -78,7 +80,7 @@ abstract class CassandraPersistorDefinition {
     namespace: NamespaceId,
     session: CqlSession,
     verifyTable: CqlSession => CqlIdentifier => Future[Unit]
-  )(implicit ec: ExecutionContext): Future[Unit] =
+  )(implicit ec: ExecutionContext, logConfig: LogConfig): Future[Unit] =
     Future
       .traverse(tablesForNamespace(namespace).productIterator)(
         // TODO: This cast is perfectly safe, but to get rid of it:
@@ -98,7 +100,7 @@ class PrepareStatements(
   chunker: Chunker,
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings
-)(implicit materializer: Materializer, futureInstance: Applicative[Future])
+)(implicit materializer: Materializer, futureInstance: Applicative[Future], val logConfig: LogConfig)
     extends (TableDefinition ~> Future) {
   def apply[A](f: TableDefinition[A]): Future[A] = f.create(session, chunker, readSettings, writeSettings)
 }
@@ -114,7 +116,8 @@ abstract class CassandraPersistor(
   namespace: NamespaceId,
   protected val snapshotPartMaxSizeBytes: Int
 )(implicit
-  materializer: Materializer
+  materializer: Materializer,
+  logConfig: LogConfig
 ) extends NamespacedPersistenceAgent
     with MultipartSnapshotPersistenceAgent {
 
@@ -182,8 +185,8 @@ abstract class CassandraPersistor(
         case Success(_) => ()
         case Failure(e) =>
           logger.error(
-            s"Error deleting rows in namespace ${namespaceToString(namespace)} from standing query states table for $standingQuery",
-            e
+            log"Error deleting rows in namespace ${Safe(namespaceToString(namespace))} from standing query states table for ${standingQuery}"
+            withException e
           )
       }(materializer.executionContext)
     standingQueries.removeStandingQuery(standingQuery)

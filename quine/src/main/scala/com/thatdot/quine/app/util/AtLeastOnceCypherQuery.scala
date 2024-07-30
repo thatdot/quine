@@ -6,14 +6,15 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
-import com.typesafe.scalalogging.LazyLogging
 import org.apache.pekko
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, NamespaceId, ShardNotAvailableException, cypher}
 import com.thatdot.quine.persistor.WrappedPersistorException
+import com.thatdot.quine.util.Log._
 
 /** A Cypher query that will be retried against the graph until the entire query succeeds
   *
@@ -29,7 +30,8 @@ final case class AtLeastOnceCypherQuery(
   cypherParameterName: String,
   debugName: String = "unnamed",
   startupRetryDelay: FiniteDuration = 100.millis
-) extends LazyLogging {
+)(implicit logConfig: LogConfig)
+    extends LazySafeLogging {
 
   /** Runs a compiled Cypher query with simple retry logic, ensuring that ephemeral failures such as temporary network
     * outages (@see [[RetriableQueryFailure]]) don't cause the query to fail entirely. However, side effects as a
@@ -74,9 +76,9 @@ final case class AtLeastOnceCypherQuery(
           logger.whenDebugEnabled {
             lazy val queryStr = query.queryText.fold("")(q => s"""Query: "$q".""")
             logger.debug(
-              s"""Suppressed ${e.getClass.getSimpleName} during execution of query: $debugName, retrying now.
-                 |Ingested item: $value. $queryStr"""".stripMargin.replace('\n', ' ').trim,
-              e
+              log"""Suppressed ${Safe(e.getClass.getSimpleName)} during execution of query:
+                   |${Safe(debugName)}, retrying now. Ingested item: $value. Query: $queryStr
+                   |""".cleanLines withException e
             )
           }
           bestEffortSource

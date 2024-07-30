@@ -3,8 +3,11 @@ package com.thatdot.quine.graph.standing
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
+import com.thatdot.quine.util.Log._
 
 class LocalIdStateTests extends AnyFunSuite {
+
+  implicit protected val logConfig: LogConfig = LogConfig.testing
 
   test("local id state") {
 

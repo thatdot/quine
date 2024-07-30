@@ -24,7 +24,6 @@ import com.datastax.oss.driver.api.core.{
 }
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{literal, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
-import com.typesafe.scalalogging.LazyLogging
 import shapeless.syntax.std.tuple._
 import software.amazon.awssdk.auth.credentials.{AwsCredentialsProvider, DefaultCredentialsProvider}
 import software.amazon.awssdk.regions.Region
@@ -46,6 +45,8 @@ import com.thatdot.quine.persistor.cassandra.{
   SnapshotsTableDefinition
 }
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
+import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 import com.thatdot.quine.util.Retry
 
@@ -60,9 +61,10 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     Boolean,
     (CqlSession => CqlIdentifier => Future[Unit]),
     Int,
-    Materializer
+    Materializer,
+    LogConfig
   ) => C
-) extends LazyLogging {
+) extends LazySafeLogging {
 
   def writeSettings(writeTimeout: FiniteDuration): CassandraStatementSettings = CassandraStatementSettings(
     ConsistencyLevel.LOCAL_QUORUM, // Write consistency fixed by AWS Keyspaces
@@ -81,7 +83,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     shouldCreateTables: Boolean,
     metricRegistry: Option[MetricRegistry],
     snapshotPartMaxSizeBytes: Int
-  )(implicit materializer: Materializer): Future[PrimeKeyspacesPersistor] = {
+  )(implicit materializer: Materializer, logConfig: LogConfig): Future[PrimeKeyspacesPersistor] = {
     val region: Region = awsRegion getOrElse new DefaultAwsRegionProviderChain().getRegion
 
     // From https://docs.aws.amazon.com/keyspaces/latest/devguide/programmatic.endpoints.html
@@ -164,7 +166,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
             .isEqualTo(literal(keyspace))
             .build
           while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
-            logger.info(s"Keyspace $keyspace does not yet exist, re-checking in 4s")
+            logger.info(log"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
             Thread.sleep(4000)
           }
           sess.close()
@@ -190,7 +192,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContext.parasitic),
         (status: Option[String]) =>
           (status contains "ACTIVE") || {
-            logger.info(s"$tableName status is $status; polling status again")
+            logger.info(log"${Safe(tableName.toString)} status is ${Safe(status)}; polling status again")
             false
           },
         15,
@@ -210,7 +212,8 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         shouldCreateTables,
         verifyTable,
         snapshotPartMaxSizeBytes,
-        materializer
+        materializer,
+        logConfig
       )
     )
   }
@@ -219,7 +222,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
 
 object PrimeKeyspacesPersistor
     extends AbstractGlobalKeyspacesPersistor[PrimeKeyspacesPersistor](
-      new PrimeKeyspacesPersistor(_, _, _, _, _, _, _, _, _, _)
+      new PrimeKeyspacesPersistor(_, _, _, _, _, _, _, _, _, _)(_)
     )
 
 class PrimeKeyspacesPersistor(
@@ -233,7 +236,8 @@ class PrimeKeyspacesPersistor(
   verifyTable: CqlSession => CqlIdentifier => Future[Unit],
   snapshotPartMaxSizeBytes: Int,
   materializer: Materializer
-) extends cassandra.PrimeCassandraPersistor(
+)(implicit val logConfig: LogConfig)
+    extends cassandra.PrimeCassandraPersistor(
       persistenceConfig,
       bloomFilterSize,
       session,
@@ -249,7 +253,10 @@ class PrimeKeyspacesPersistor(
 
   override def prepareNamespace(namespace: NamespaceId): Future[Unit] =
     if (shouldCreateTables || namespace.nonEmpty) {
-      KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(materializer.executionContext)
+      KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(
+        materializer.executionContext,
+        logConfig
+      )
     } else {
       Future.unit
     }
@@ -265,7 +272,7 @@ class PrimeKeyspacesPersistor(
     writeTimeout,
     chunker,
     snapshotPartMaxSizeBytes
-  )(materializer)
+  )(materializer, logConfig)
 }
 
 // Keyspaces doesn't differ from Cassandra in the schema, just in he lack of `DISTINCT` on the prepared
@@ -300,7 +307,8 @@ class KeyspacesPersistor(
   protected val chunker: Chunker,
   snapshotPartMaxSizeBytes: Int
 )(implicit
-  materializer: Materializer
+  materializer: Materializer,
+  val logConfig: LogConfig
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
       session,
