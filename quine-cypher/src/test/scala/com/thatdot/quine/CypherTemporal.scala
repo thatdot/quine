@@ -1,5 +1,6 @@
 package com.thatdot.quine.compiler.cypher
 
+import java.time.temporal.ChronoUnit
 import java.time.{
   Duration => JavaDuration,
   LocalDateTime => JavaLocalDateTime,
@@ -9,7 +10,7 @@ import java.time.{
 
 import com.thatdot.quine.graph.cypher.Expr
 
-class CypherDates extends CypherHarness("cypher-dates-tests") {
+class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
 
   describe("construct dates/durations from options") {
     testExpression(
@@ -72,6 +73,12 @@ class CypherDates extends CypherHarness("cypher-dates-tests") {
       Expr.Duration(JavaDuration.parse("PT20.345S")),
       expectedIsIdempotent = true
     )
+
+    testExpression(
+      "duration({ years: 800 })",
+      Expr.Duration(ChronoUnit.YEARS.getDuration.multipliedBy(800L)),
+      expectedIsIdempotent = true
+    )
   }
 
   describe("extract parts of dates/durations as properties") {
@@ -102,6 +109,36 @@ class CypherDates extends CypherHarness("cypher-dates-tests") {
       "datetime({ year: 1995, month: 4, day: 24, timezone: 'Asia/Hong_Kong' }).epochSeconds",
       Expr.Integer(798652800L),
       expectedIsIdempotent = false
+    )
+
+    testExpression(
+      "duration({ days: 24 }).seconds",
+      Expr.Integer(24 * 86400L),
+      expectedIsIdempotent = true
+    )
+
+    testExpression(
+      "duration({ nanoseconds: 200, milliseconds: 80 }).nanoseconds",
+      Expr.Integer(80 * 1000L * 1000L + 200L),
+      expectedIsIdempotent = true
+    )
+
+    val oneYearAsSeconds = 31556952L // 365.2425 days
+    testExpression(
+      "duration({ years: 300, milliseconds: 125 }).milliseconds",
+      Expr.Integer(300 * oneYearAsSeconds * 1000L + 125L),
+      expectedIsIdempotent = true
+    )
+    testExpression(
+      "duration({ years: 100, minutes: 4, seconds: 5 })['seconds']",
+      Expr.Integer(100 * oneYearAsSeconds + 4 * 60L + 5L),
+      expectedIsIdempotent = true
+    )
+
+    testExpression(
+      "duration({ years: 350 })['nanoseconds']", // overflow -- too many nanoseconds for a Long
+      Expr.Null,
+      expectedIsIdempotent = true
     )
   }
 

@@ -7,10 +7,12 @@ import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, 
 import java.util.Base64
 
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
+import scala.util.Try
 import scala.util.hashing.MurmurHash3
 
 import cats.implicits._
 import com.google.common.hash.{HashCode, Hasher, Hashing}
+import com.typesafe.scalalogging.LazyLogging
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
@@ -690,6 +692,8 @@ object Expr {
     "epochSeconds" -> ChronoField.INSTANT_SECONDS
   )
 
+  // The set of temporal units we allow in a duration constructor (eg `WITH duration({years: 2}) AS d`)
+  // or in a duration dot-dereference (eg `d.years`)
   val temporalUnits: ScalaMap[String, TemporalUnit] = ScalaMap(
     "years" -> ChronoUnit.YEARS,
     "quarters" -> IsoFields.QUARTER_YEARS,
@@ -707,11 +711,10 @@ object Expr {
   /** A cypher duration
     *
     * @note this is not like Neo4j's duration!
-    * TODO: support for more temporal unit "properties" - most will throw an exception right now
     *
     * @param duration seconds/nanoseconds between two times
     */
-  final case class Duration(duration: JavaDuration) extends PropertyValue {
+  final case class Duration(duration: JavaDuration) extends PropertyValue with LazyLogging {
 
     def typ = Type.Duration
 
@@ -720,6 +723,24 @@ object Expr {
         .putInt("Duration".hashCode)
         .putInt(duration.getNano)
         .putLong(duration.getSeconds)
+
+    // Returns the number of [unit] in this duration, rounded down.
+    def as(unit: TemporalUnit): Either[ArithmeticException, Expr.Integer] = {
+      // It's tempting to just take the duration as a nanoseconds measure then convert to the desired unit, but
+      // that would overflow on durations longer than 293 years (ie, MAX_LONG nanoseconds), regardless
+      // of the target unit. Instead, we consider the seconds and nanoseconds parts separately, then add them.
+      // Additionally, we choose not to worry about estimated vs precise durations. For example, we'll say a day
+      // is 86400 seconds (`ChronoUnit.DAYS.getDuration`), even though some days have a leap second.
+      val unitDuration = unit.getDuration
+      Try(duration.dividedBy(unitDuration)).fold(
+        {
+          case e: ArithmeticException =>
+            Left(e)
+          case unexpectedError => throw unexpectedError
+        },
+        result => Right(Expr.Integer(result))
+      )
+    }
   }
 
   /** A cypher variable
@@ -751,7 +772,7 @@ object Expr {
     * @param expr expression whose property is being access
     * @param key name of the property
     */
-  final case class Property(expr: Expr, key: Symbol) extends Expr {
+  final case class Property(expr: Expr, key: Symbol) extends Expr with LazyLogging {
 
     def isPure: Boolean = expr.isPure
 
@@ -776,10 +797,26 @@ object Expr {
             .map(u => Expr.Integer(t.getLong(u)))
             .orElse(dt.timezoneFields(key.name))
             .getOrElse(Null)
-        case Duration(d) =>
+        case d @ Duration(_) =>
           temporalUnits
             .get(key.name)
-            .fold[Value](Null)(u => Expr.Integer(d.get(u)))
+            .toRight[Value](Null)
+            .flatMap(units =>
+              d.as(units).leftMap { e =>
+                // If this dereference caused an overflow, we log a warning and return Null.
+                // This is a deliberate deviation from Cypher idioms, which would have the exception wrapped
+                // as a CypherException then thrown. We choose an error handling path here that avoids
+                // terminating the query, because this is the kind of functionality that is likely present
+                // in a stream (ingest or standing query output), and which is likely to work for some records
+                // of that stream but fail on others. It is (arguably) a better user experience to have the
+                // partially-processed stream and warnings indicating why the stream was only partially processed
+                // than to require manual intervention. Ideally, however, this would be configured by the
+                // stream's error handling mode.
+                logger.warn("Duration property access failed due to arithmetic exception. Returning Null.", e)
+                Null
+              }
+            )
+            .merge
 
         case other =>
           throw CypherException.TypeMismatch(
@@ -810,7 +847,7 @@ object Expr {
     * @param expr expression whose property is being access
     * @param keyExpr expression for the name of the property
     */
-  final case class DynamicProperty(expr: Expr, keyExpr: Expr) extends Expr {
+  final case class DynamicProperty(expr: Expr, keyExpr: Expr) extends Expr with LazyLogging {
 
     def isPure: Boolean = expr.isPure && keyExpr.isPure
 
@@ -847,6 +884,28 @@ object Expr {
             .map(u => Expr.Integer(t.getLong(u)))
             .orElse(dt.timezoneFields(key))
             .getOrElse(Null)
+
+        case d @ Duration(_) =>
+          val key = keyExpr.eval(qc).asString("dynamic property on duration")
+          temporalUnits
+            .get(key)
+            .toRight[Value](Null)
+            .flatMap(units =>
+              d.as(units).leftMap { e =>
+                // If this dereference caused an overflow, we log a warning and return Null.
+                // This is a deliberate deviation from Cypher idioms, which would have the exception wrapped
+                // as a CypherException then thrown. We choose an error handling path here that avoids
+                // terminating the query, because this is the kind of functionality that is likely present
+                // in a stream (ingest or standing query output), and which is likely to work for some records
+                // of that stream but fail on others. It is (arguably) a better user experience to have the
+                // partially-processed stream and warnings indicating why the stream was only partially processed
+                // than to require manual intervention. Ideally, however, this would be configured by the
+                // stream's error handling mode.
+                logger.warn("Duration property access failed due to arithmetic exception. Returning Null.", e)
+                Null
+              }
+            )
+            .merge
 
         case List(elems) =>
           val keyVal = keyExpr.eval(qc)

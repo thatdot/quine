@@ -1299,7 +1299,7 @@ object CypherLocalTime extends UserDefinedFunction {
     }
 }
 
-object CypherDuration extends UserDefinedFunction {
+object CypherDuration extends UserDefinedFunction with LazyLogging {
   val name = "duration"
   val isPure = true
   val signatures: Seq[UserDefinedFunctionSignature] = Vector(
@@ -1335,7 +1335,20 @@ object CypherDuration extends UserDefinedFunction {
             unitFieldName,
             throw CypherException.Runtime(s"Unknown field in options map: `$unitFieldName`")
           )
-          duration = duration.plus(unitQuantity, unit)
+          duration = if (unit.isDurationEstimated) {
+            logger.whenWarnEnabled {
+              val nanoSeconds = unit.getDuration.getNano
+              val nanoSecondsMessage = if (nanoSeconds == 0) "" else s" and $nanoSeconds nanoseconds"
+              logger.warn(
+                s"""Adding: $unitQuantity $unit to a duration. Note that $unit is an estimated unit, so a value of
+                   |${unit.getDuration.getSeconds} seconds$nanoSecondsMessage will be added as an approximation.
+                   |""".stripMargin.replace('\n', ' ').trim
+              )
+            }
+            duration.plus(unit.getDuration.multipliedBy(unitQuantity))
+          } else {
+            duration.plus(unitQuantity, unit)
+          }
         }
 
         Expr.Duration(duration)
