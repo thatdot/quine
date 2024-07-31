@@ -45,7 +45,7 @@ object Dependencies {
   val metricsInfluxdbV = "1.1.0"
   val msgPackV = "0.9.8"
   val openApiCirceYamlV = "0.10.0"
-  val openCypherV = "9.2.1"
+  val openCypherV = "9.2.2"
   val parboiledV = "1.4.1"
   val pegdownV = "1.6.0"
   val plotlyV = "1.57.1"

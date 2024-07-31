@@ -252,6 +252,26 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     }
   }
 
+  describe("Allow variables to be passed-through unchanged") {
+    // we're looking at `x` here -- `y` just makes sure the other requirements
+    // for a recursive subquery are met (eg no infinite loops)
+    it("Known bug: wrapped query causes incorrect output context") {
+      pendingUntilFixed {
+        val variableReturnedUnchanged =
+          """CALL RECURSIVELY WITH 0 AS x, 1 AS y UNTIL (y > 0) {
+          |  RETURN x, y+1 AS y
+          |} RETURN x, y""".stripMargin.replace('\n', ' ').trim
+        testQuery(
+          variableReturnedUnchanged,
+          Vector("x", "y"),
+          Seq(
+            Vector(Expr.Integer(0), Expr.Integer(2))
+          )
+        )
+      }
+    }
+  }
+
   describe("Malformed subquery boundary") {
     it("QU-1947: unhelpful error messages / missing errors") {
       pendingUntilFixed {
@@ -285,6 +305,24 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     }
   }
 
+  describe("Refers to correct instance of variables in initializers") {
+    val variableBoundBeforeAfterAndUsedDuring =
+      """WITH 1 AS openCypherAmbiguous
+        |CALL RECURSIVELY WITH openCypherAmbiguous AS y UNTIL (y > 0) {
+        |  RETURN 2 AS y
+        |}
+        |WITH 3 AS openCypherAmbiguous
+        |RETURN openCypherAmbiguous""".stripMargin
+    testQuery(
+      variableBoundBeforeAfterAndUsedDuring,
+      Vector("openCypherAmbiguous"),
+      Seq(
+        Vector(Expr.Integer(3))
+      ),
+      expectedCannotFail = true
+    )
+  }
+
   describe("runaway recursion detection") {
     val query =
       """CALL RECURSIVELY WITH 0 AS x UNTIL (x > 5) {
@@ -305,6 +343,7 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
   }
 
   describe("variable demangling works even in weird conditions") {
+    // The variable name here is `  x @ 0` which looks a lot like a post-Namespacer openCypher variable
     val query =
       """CALL RECURSIVELY WITH 0 AS `  x @ 0` UNTIL (`  x @ 0` > 0) {
         |  RETURN `  x @ 0` + 1 AS `  x @ 0`
@@ -342,8 +381,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     )
   }
 
-  describe("Recursive subqueries should work even if they're not at the beginning of a query") {
-    val query2 =
+  describe("works even mid-query") {
+    val midQueryCallRecursively =
       """WITH 0 AS x
         |CALL RECURSIVELY WITH x AS y UNTIL (y > 5) {
         |  RETURN y + 1 AS y
@@ -351,7 +390,7 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         |""".stripMargin
 
     testQuery(
-      query2,
+      midQueryCallRecursively,
       Vector("y"),
       Seq(
         Vector(Expr.Integer(6))
