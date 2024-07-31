@@ -4,8 +4,6 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
-import com.typesafe.scalalogging.LazyLogging
-
 import com.thatdot.quine.graph.NodeActor.{Journal, MultipleValuesStandingQueries}
 import com.thatdot.quine.graph.StaticNodeSupport.{deserializeSnapshotBytes, getMultipleValuesStandingQueryStates}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryLookupInfo}
@@ -13,6 +11,7 @@ import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.{AbstractSnapshotCodec, MultipleValuesStandingQueryStateCodec}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 abstract class StaticNodeSupport[
   Node <: AbstractNodeActor,
@@ -140,7 +139,7 @@ abstract class StaticNodeSupport[
     }(graph.nodeDispatcherEC)
 }
 
-object StaticNodeSupport extends LazyLogging {
+object StaticNodeSupport extends LazySafeLogging {
   @throws[NodeWakeupFailedException]("When snapshot could not be deserialized")
   private def deserializeSnapshotBytes[Snapshot <: AbstractNodeSnapshot](
     snapshotBytes: Array[Byte],
@@ -198,8 +197,8 @@ object StaticNodeSupport extends LazyLogging {
                   //  `removeStandingQueryStatesForQidAndSqId` so it can be used like:)
                   //  removeThese.keySet.map(_._1).foreach(persistor.removeStandingQueryStatesForQidAndSqId(qid, _))
                   logger.debug(
-                    s"""During node constructor assembly, found ${removeThese.size} no-longer-relevant
-                       |MVSQ states for node: ${qidAtTime.debug(idProv)}""".stripMargin.replace('\n', ' ')
+                    safe"""During node constructor assembly, found ${Safe(removeThese.size)} no-longer-relevant
+                         |MVSQ states for node: ${Safe(qidAtTime.debug(idProv))}""".cleanLines
                   )
 
                   // with the still-relevant SQ states, continue to assemble the node's constructor arguments

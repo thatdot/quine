@@ -1299,7 +1299,7 @@ object CypherLocalTime extends UserDefinedFunction {
     }
 }
 
-object CypherDuration extends UserDefinedFunction with LazyLogging {
+object CypherDuration extends UserDefinedFunction with LazySafeLogging {
   val name = "duration"
   val isPure = true
   val signatures: Seq[UserDefinedFunctionSignature] = Vector(
@@ -1338,11 +1338,11 @@ object CypherDuration extends UserDefinedFunction with LazyLogging {
           duration = if (unit.isDurationEstimated) {
             logger.whenWarnEnabled {
               val nanoSeconds = unit.getDuration.getNano
-              val nanoSecondsMessage = if (nanoSeconds == 0) "" else s" and $nanoSeconds nanoseconds"
+              val nanoSecondsMessage = Safe(if (nanoSeconds == 0) "" else s" and $nanoSeconds nanoseconds")
               logger.warn(
-                s"""Adding: $unitQuantity $unit to a duration. Note that $unit is an estimated unit, so a value of
-                   |${unit.getDuration.getSeconds} seconds$nanoSecondsMessage will be added as an approximation.
-                   |""".stripMargin.replace('\n', ' ').trim
+                log"""Adding: ${unitQuantity.toString} $unit to a duration. Note that $unit is an estimated unit,
+                   |so a value of ${unit.getDuration.getSeconds.toString} seconds$nanoSecondsMessage will be added
+                   |as an approximation.""".cleanLines
               )
             }
             duration.plus(unit.getDuration.multipliedBy(unitQuantity))

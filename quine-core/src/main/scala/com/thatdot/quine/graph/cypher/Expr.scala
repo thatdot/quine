@@ -12,7 +12,6 @@ import scala.util.hashing.MurmurHash3
 
 import cats.implicits._
 import com.google.common.hash.{HashCode, Hasher, Hashing}
-import com.typesafe.scalalogging.LazyLogging
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
@@ -714,7 +713,7 @@ object Expr {
     *
     * @param duration seconds/nanoseconds between two times
     */
-  final case class Duration(duration: JavaDuration) extends PropertyValue with LazyLogging {
+  final case class Duration(duration: JavaDuration) extends PropertyValue {
 
     def typ = Type.Duration
 
@@ -772,7 +771,7 @@ object Expr {
     * @param expr expression whose property is being access
     * @param key name of the property
     */
-  final case class Property(expr: Expr, key: Symbol) extends Expr with LazyLogging {
+  final case class Property(expr: Expr, key: Symbol) extends Expr with LazySafeLogging {
 
     def isPure: Boolean = expr.isPure
 
@@ -812,7 +811,10 @@ object Expr {
                 // partially-processed stream and warnings indicating why the stream was only partially processed
                 // than to require manual intervention. Ideally, however, this would be configured by the
                 // stream's error handling mode.
-                logger.warn("Duration property access failed due to arithmetic exception. Returning Null.", e)
+                logger.warn(
+                  log"""Duration property access failed on duration value: ${d.toString} due to arithmetic
+                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e
+                )
                 Null
               }
             )
@@ -847,7 +849,7 @@ object Expr {
     * @param expr expression whose property is being access
     * @param keyExpr expression for the name of the property
     */
-  final case class DynamicProperty(expr: Expr, keyExpr: Expr) extends Expr with LazyLogging {
+  final case class DynamicProperty(expr: Expr, keyExpr: Expr) extends Expr with LazySafeLogging {
 
     def isPure: Boolean = expr.isPure && keyExpr.isPure
 
@@ -901,7 +903,10 @@ object Expr {
                 // partially-processed stream and warnings indicating why the stream was only partially processed
                 // than to require manual intervention. Ideally, however, this would be configured by the
                 // stream's error handling mode.
-                logger.warn("Duration property access failed due to arithmetic exception. Returning Null.", e)
+                logger.warn(
+                  log"""Duration property access failed on duration value: ${d.toString} due to arithmetic
+                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e
+                )
                 Null
               }
             )

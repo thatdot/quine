@@ -8,8 +8,10 @@ import org.scalatest.funsuite.AnyFunSuite
 import com.thatdot.quine.graph.InvalidQueryPattern.{HasACycle, NotConnected}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model._
+import com.thatdot.quine.util.Log.LogConfig
 
 class GraphQueryPatternTest extends AnyFunSuite {
+  implicit val logConfig: LogConfig = LogConfig.testing
 
   val labelsProp: Symbol = Symbol("_LABEL")
 

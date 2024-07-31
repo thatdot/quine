@@ -8,13 +8,13 @@ import scala.util.control.NoStackTrace
 
 import cats.data.NonEmptyList
 import cats.implicits._
-import com.typesafe.scalalogging.LazyLogging
 import pprint.{apply => pprint}
 
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.util.Log._
 
 sealed abstract class InvalidQueryPattern(val message: String) extends RuntimeException(message) with NoStackTrace
 object InvalidQueryPattern {
@@ -49,7 +49,7 @@ final case class GraphQueryPattern(
   filterCond: Option[cypher.Expr],
   toReturn: Seq[(Symbol, cypher.Expr)],
   distinct: Boolean
-) extends LazyLogging {
+) extends LazySafeLogging {
 
   import GraphQueryPattern._
 
@@ -169,7 +169,7 @@ final case class GraphQueryPattern(
   def compiledMultipleValuesStandingQuery(
     labelsProperty: Symbol,
     idProvider: QuineIdProvider
-  ): MultipleValuesStandingQuery = {
+  )(implicit logConfig: LogConfig): MultipleValuesStandingQuery = {
 
     val watchedProperties: Map[NodePatternId, Map[Symbol, Symbol]] = toExtract
       .collect { case p: ReturnColumn.Property => p }
@@ -334,7 +334,7 @@ final case class GraphQueryPattern(
       )
     } else query
 
-    logger.info("Compiled MVSQ: {}", pprint(query))
+    logger.debug(log"Compiled MVSQ: ${pprint(query).toString}")
 
     if (remainingNodes.nonEmpty) {
       throw NotConnected

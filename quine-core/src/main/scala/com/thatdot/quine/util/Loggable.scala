@@ -3,6 +3,7 @@ package com.thatdot.quine.util
 import java.net.InetSocketAddress
 import java.nio.charset.Charset
 import java.nio.file.Path
+import java.time.temporal.TemporalUnit
 
 import scala.jdk.CollectionConverters._
 
@@ -195,6 +196,7 @@ object Log {
     implicit val LogUrl: Loggable[java.net.URL] = toStringLoggable[java.net.URL]
     implicit val LogInetSocketAddress: Loggable[InetSocketAddress] = toStringLoggable[InetSocketAddress]
     implicit val LogEventTime: Loggable[EventTime] = toStringLoggable[EventTime]
+    implicit val LogTemporalUnit: Loggable[TemporalUnit] = toStringLoggable[TemporalUnit]
     implicit val LogStandingQueryId: AlwaysSafeLoggable[StandingQueryId] =
       Loggable.alwaysSafe[StandingQueryId](_.toString)
     implicit val LogCharset: AlwaysSafeLoggable[Charset] = Loggable.alwaysSafe[Charset](_.toString)
