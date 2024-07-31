@@ -28,14 +28,8 @@ object Docker extends AutoPlugin {
       val jar: sbt.File = assembly.value
       val jarPath = "/" + jar.name
       new Dockerfile {
-        /* Our public mirror of this docker image from docker hub to avoid:
-         * "toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit"
-         * Published by docker/update_cached_jvm_base_image.sh in our opstools repo to https://us-west-2.console.aws.amazon.com/ecr/repositories/public/507566592123/eclipse-temurin
-         */
         from(
           ImageName(
-            registry = Some("public.ecr.aws"),
-            namespace = Some("thatdot"),
             repository = "eclipse-temurin",
             tag = Some("21_35-jre-jammy")
           )
