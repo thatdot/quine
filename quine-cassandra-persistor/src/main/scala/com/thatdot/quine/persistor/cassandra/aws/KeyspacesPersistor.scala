@@ -4,9 +4,9 @@ import java.net.InetSocketAddress
 import java.util.Collections.singletonMap
 import javax.net.ssl.SSLContext
 
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.jdk.FutureConverters._
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
@@ -188,7 +188,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
       .until(
         session
           .executeAsync(tableStatusQuery(tableName))
-          .toScala
+          .asScala
           .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContext.parasitic),
         (status: Option[String]) =>
           (status contains "ACTIVE") || {

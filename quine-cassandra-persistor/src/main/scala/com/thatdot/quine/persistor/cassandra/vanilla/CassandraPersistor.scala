@@ -2,10 +2,10 @@ package com.thatdot.quine.persistor.cassandra.vanilla
 
 import java.net.InetSocketAddress
 
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
+import scala.jdk.FutureConverters._
 
 import org.apache.pekko.stream.Materializer
 
@@ -71,7 +71,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     def createQualifiedSession(): Future[CqlSession] = sessionBuilder
       .withKeyspace(keyspace)
       .buildAsync()
-      .toScala
+      .asScala
 
     // CREATE KEYSPACE IF NOT EXISTS `keyspace` WITH replication={'class':'SimpleStrategy','replication_factor':1}
     val createKeyspaceStatement: SimpleStatement =
@@ -98,9 +98,9 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
         case CompletionException(_: InvalidKeyspaceException) if shouldCreateKeyspace =>
           import materializer.executionContext
           for {
-            sess <- sessionBuilder.buildAsync().toScala
-            _ <- sess.executeAsync(createKeyspaceStatement).toScala
-            _ <- sess.closeAsync().toScala
+            sess <- sessionBuilder.buildAsync().asScala
+            _ <- sess.executeAsync(createKeyspaceStatement).asScala
+            _ <- sess.closeAsync().asScala
             qualifiedSess <- createQualifiedSession()
           } yield qualifiedSess
       }(materializer.executionContext)

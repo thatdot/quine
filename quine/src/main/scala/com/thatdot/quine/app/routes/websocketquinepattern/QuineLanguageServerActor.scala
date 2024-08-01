@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.routes.websocketquinepattern
 
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.ExecutionContextExecutor
+import scala.jdk.FutureConverters._
 
 import org.apache.pekko.actor.Actor
 import org.apache.pekko.http.scaladsl.model.ws.{BinaryMessage, TextMessage}
@@ -61,7 +61,7 @@ class QuineLanguageServerActor extends Actor {
       tm.textStream.runFold("")(_ + _).foreach { textString =>
         decode[ClientMessage](textString) match {
           case Right(Initialize) =>
-            Option(quineLanguageServer.initialize(new InitializeParams())).map(_.toScala) match {
+            Option(quineLanguageServer.initialize(new InitializeParams())).map(_.asScala) match {
               case Some(_) => sender ! serverMessageToTextMessage(InitializeSuccess)
 
               // .initialize currently returns null, so we need to handle this case until it is updated

@@ -1,8 +1,8 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.jdk.FutureConverters.CompletionStageOps
 
 import org.apache.pekko.stream.Materializer
 
@@ -34,7 +34,7 @@ abstract class PrimeCassandraPersistor(
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.
   implicit protected val futureInstance: Monad[Future] = catsStdInstancesForFuture(ExecutionContext.parasitic)
-  def shutdown(): Future[Unit] = session.closeAsync().toScala.void
+  def shutdown(): Future[Unit] = session.closeAsync().asScala.void
 
   private lazy val (metaData, domainGraphNodes) = Await.result(
     (

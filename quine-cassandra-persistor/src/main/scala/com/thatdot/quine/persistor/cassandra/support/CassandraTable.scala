@@ -1,8 +1,8 @@
 package com.thatdot.quine.persistor.cassandra.support
 
 import scala.collection.{Factory, immutable}
-import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters.CompletionStageOps
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
@@ -75,7 +75,7 @@ abstract class CassandraTable(
     executeSelect(statement)(pair(colA, colB))
 
   final private def queryFuture[A](statement: Statement[_], f: AsyncResultSet => A): Future[A] =
-    session.executeAsync(statement).toScala.map(f)(ExecutionContext.parasitic)
+    session.executeAsync(statement).asScala.map(f)(ExecutionContext.parasitic)
 
   final private def singleRow[A](col: CassandraColumn[A])(resultSet: AsyncResultSet): Option[A] =
     Option(resultSet.one()).map(col.get)
@@ -104,5 +104,5 @@ abstract class CassandraTable(
     * @return a future that returns true iff the provided query yields at least 1 result
     */
   final protected def yieldsResults(statement: Statement[_]): Future[Boolean] =
-    session.executeAsync(statement).thenApply[Boolean](_.currentPage.iterator.hasNext).toScala
+    session.executeAsync(statement).thenApply[Boolean](_.currentPage.iterator.hasNext).asScala
 }

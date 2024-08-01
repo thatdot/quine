@@ -2,8 +2,8 @@ package com.thatdot.quine.persistor.cassandra.support
 
 import java.time.Duration
 
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters._
 
 import org.apache.pekko.stream.Materializer
 
@@ -46,7 +46,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     // NB the PII these statements use is not yet bound, so the statement itself is safe (using placeholder
     // variables where the PII *will* go)
     logger.trace(log"Preparing ${Safe(statement.getQuery)}")
-    session.prepareAsync(settings(statement)).toScala
+    session.prepareAsync(settings(statement)).asScala
   }
 
   /** Start building a CREATE TABLE statement, based on the {{{partitionKey}}}, {{{clusterKeys}}}, and {{{dataColumns}}}
@@ -67,7 +67,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
   def executeCreateTable(session: AsyncCqlSession, verifyCreated: CqlIdentifier => Future[Unit])(implicit
     ec: ExecutionContext
   ): Future[Unit] =
-    session.executeAsync(createTableStatement).toScala.flatMap(_ => verifyCreated(tableName))(ec)
+    session.executeAsync(createTableStatement).asScala.flatMap(_ => verifyCreated(tableName))(ec)
 
   protected def select: SelectFrom = selectFrom(tableName)
   protected def delete: DeleteSelection = deleteFrom(tableName)

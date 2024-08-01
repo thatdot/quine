@@ -18,7 +18,6 @@ lazy val `quine-core`: Project = project
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % shapelessV,
       "com.google.guava" % "guava" % guavaV,
-      "org.scala-lang.modules" %% "scala-java8-compat" % scalaJava8CompatV,
       "org.apache.pekko" %% "pekko-actor" % pekkoV,
       "org.apache.pekko" %% "pekko-stream" % pekkoStreamV,
       "org.apache.pekko" %% "pekko-slf4j" % pekkoV,

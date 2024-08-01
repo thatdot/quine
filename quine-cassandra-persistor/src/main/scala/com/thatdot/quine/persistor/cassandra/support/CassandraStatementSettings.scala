@@ -7,7 +7,7 @@ import com.datastax.oss.driver.api.core.cql.Statement
 
 // to be applied to a statement
 case class CassandraStatementSettings(consistency: ConsistencyLevel, timeout: FiniteDuration) {
-  import scala.compat.java8.DurationConverters.toJava
+  import scala.jdk.javaapi.DurationConverters.toJava
   def apply[SelfT <: Statement[SelfT]](statement: SelfT): SelfT =
     statement.setConsistencyLevel(consistency).setTimeout(toJava(timeout))
 }

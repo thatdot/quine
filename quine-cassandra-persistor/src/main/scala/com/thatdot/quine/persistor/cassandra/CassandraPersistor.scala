@@ -1,8 +1,8 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.java8.FutureConverters._
-import scala.compat.java8.OptionConverters._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters._
+import scala.jdk.OptionConverters._
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.NotUsed
@@ -123,7 +123,7 @@ abstract class CassandraPersistor(
 
   /** The current keyspace to which this persistor is connected, or None if not connected.
     */
-  def keyspace: Option[String] = session.getKeyspace.asScala.map(_.asCql(true))
+  def keyspace: Option[String] = session.getKeyspace.toScala.map(_.asCql(true))
 
   import MultipartSnapshotPersistenceAgent._
 
@@ -216,7 +216,7 @@ abstract class CassandraPersistor(
 
   def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
 
-  override def shutdown(): Future[Unit] = session.closeAsync().toScala.void
+  override def shutdown(): Future[Unit] = session.closeAsync().asScala.void
 
   override def getNodeChangeEventsWithTime(
     id: QuineId,
@@ -249,9 +249,9 @@ abstract class CassandraPersistor(
   def delete(): Future[Unit] =
     Future.traverse(dataTables)(_.delete())(implicitly, materializer.executionContext).void
 
-  def deleteKeyspace(): Future[Unit] = session.getKeyspace.asScala match {
+  def deleteKeyspace(): Future[Unit] = session.getKeyspace.toScala match {
     case Some(keyspace) =>
-      session.executeAsync(dropKeyspace(keyspace).build).thenApply[Unit](_ => ()).toScala
+      session.executeAsync(dropKeyspace(keyspace).build).thenApply[Unit](_ => ()).asScala
     case None =>
       Future.failed(new RuntimeException("Can't drop keyspace when no keyspace set for " + session.getName))
   }

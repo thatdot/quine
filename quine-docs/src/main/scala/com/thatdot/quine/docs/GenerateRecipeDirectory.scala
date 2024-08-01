@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import scala.collection.immutable
-import scala.compat.java8.StreamConverters._
+import scala.jdk.StreamConverters._
 
 import com.thatdot.quine.app.{Recipe, RecipePackage}
 
@@ -24,7 +24,7 @@ object GenerateRecipeDirectory extends App {
     .list(recipeSourceInputDir)
     .filter(x => x.getFileName.toString.endsWith("yaml"))
     .map[RecipePackage](RecipePackage.fromFile)
-    .toScala
+    .toScala(Seq)
 
   println(s"Read ${recipes.length} Recipes from input directory $recipeSourceInputDir")
   println(s"Generating markdown in output directory $recipeMarkdownOutputDir")

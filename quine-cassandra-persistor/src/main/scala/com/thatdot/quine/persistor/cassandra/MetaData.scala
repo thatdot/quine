@@ -1,7 +1,7 @@
 package com.thatdot.quine.persistor.cassandra
 
-import scala.compat.java8.FutureConverters._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.FutureConverters._
 
 import org.apache.pekko.stream.Materializer
 
@@ -61,7 +61,7 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
     val createdSchema = futureInstance.whenA(shouldCreateTables)(
       session
         .executeAsync(createTableStatement)
-        .toScala
+        .asScala
         .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic)
     )
 
