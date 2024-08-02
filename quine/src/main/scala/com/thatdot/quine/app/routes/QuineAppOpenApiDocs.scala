@@ -11,7 +11,6 @@ import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes._
-import com.thatdot.quine.routes.exts.OpenApiServer
 import com.thatdot.quine.util.Log._
 
 /** The OpenAPI docs for our API
@@ -107,22 +106,34 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protec
   *
   * @param graph the Quine graph
   */
-final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, uri: Uri)(implicit protected val logConfig: LogConfig)
+final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: Uri)(implicit protected val logConfig: LogConfig)
     extends endpoints4s.pekkohttp.server.Endpoints
     with endpoints4s.pekkohttp.server.JsonEntitiesFromEncodersAndDecoders {
 
-  val doc = new QuineAppOpenApiDocs(graph.idProvider)
+  private val relativePathsApi = new QuineAppOpenApiDocs(graph.idProvider).api
+  private val absolutePathsApi = relativePathsApi.withServers(Seq(Server(url.toString)))
 
   val route: Route = {
     val docEndpoint = endpoint(
-      get(path / "docs" / "openapi.json"),
+      get(
+        path / "docs" / "openapi.json" /? qs[Option[Boolean]](
+          "relative",
+          Some("Whether to use relative paths in the rendered API spec. Defaults to false.")
+        )
+      ),
       ok(
         jsonResponse[endpoints4s.openapi.model.OpenApi](
-          OpenApiRenderer(isEnterprise = false).stringEncoder(Some(Seq(OpenApiServer(uri.toString))))
+          OpenApiRenderer(isEnterprise = false).stringEncoder
         )
       )
     )
 
-    docEndpoint.implementedBy(_ => doc.api)
+    docEndpoint.implementedBy { //noinspection MatchToPartialFunction
+      relative =>
+        relative match {
+          case Some(true) => relativePathsApi
+          case _ => absolutePathsApi
+        }
+    }
   }
 }

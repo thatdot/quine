@@ -22,7 +22,7 @@ class GenerateOpenApi(implicit protected val logConfig: LogConfig) extends App {
 
   val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider).api
   val openApiDocumentationJson: String =
-    OpenApiRenderer(isEnterprise).stringEncoder(servers = None).encode(openApiRoutes)
+    OpenApiRenderer(isEnterprise).stringEncoder.encode(openApiRoutes)
 
   Files.createDirectories(outputPath.getParent())
   Files.write(

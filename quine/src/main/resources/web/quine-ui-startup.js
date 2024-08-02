@@ -26,7 +26,7 @@ window.onload = function() {
         onNetworkCreate: function(n) {
             network = n;
         },
-        documentationUrl: document.baseURI + "docs/openapi.json",
+        documentationUrl: document.baseURI + "docs/openapi.json?relative=true",
         baseURI: document.baseURI,
         serverUrl: document.baseURI.replace(/\/$/, ""),
         isQuineOSS: true,

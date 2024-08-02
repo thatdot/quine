@@ -1,4 +1,6 @@
 // Copied from https://github.com/endpoints4s/endpoints4s/blob/f9ac4c66e83ae2b38c8c538ca5caba8524afc1a4/openapi/openapi/src/main/scala/endpoints4s/openapi/model/OpenApi.scala
+// Changes we have applied intentionally are marked with "FORK DIFFERENCE" comments.
+// Other changes should be kept in sync with upstream updates as time allows
 package com.thatdot.quine.app.util
 
 import scala.collection.mutable
@@ -19,12 +21,12 @@ import endpoints4s.openapi.model.{
   ResponseHeader,
   Schema,
   SecurityRequirement,
-  SecurityScheme
+  SecurityScheme,
+  Server,
+  ServerVariable
 }
 import io.circe.yaml.v12.syntax._
 import ujson.circe.CirceJson
-
-import com.thatdot.quine.routes.exts.{OpenApiServer, OpenApiServerVariable}
 
 case class OpenApiRenderer(isEnterprise: Boolean) {
   import OpenApiRenderer._
@@ -141,6 +143,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
          * (eg. for a `description`, `example`, etc.), we need to nest the
          * schema reference object inside a `allOf` or `anyOf` field, depending
          * on if we're using Swagger-UI or Stoplight Elements.
+         * This is a FORK DIFFERENCE
          *
          * See <https://stackoverflow.com/a/41752575/3072788>.
          */
@@ -237,6 +240,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     }
     if (operation.parameters.nonEmpty) {
       fields += "parameters" -> ujson.Arr(
+        // FORK DIFFERENCE
         operation.parameters
           .filter(param => isEnterprise || !enterpriseParams.contains(param.name))
           .map(parameterJson): _*
@@ -287,6 +291,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
       case In.Cookie => ujson.Str("cookie")
     }
 
+  // FORK DIFFERENCE utility for resolving indirect examples
   private def getExample(schema: Schema): Option[ujson.Value] = schema match {
     case reference: Schema.Reference => reference.example orElse reference.original.flatMap(_.example)
     case other => other.example
@@ -295,6 +300,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
       "content" -> ujson.Obj.from(body.content map { case (k, v) =>
         val schemaJson = mediaTypeJson(v)
+        // FORK DIFFERENCE yaml example support
         // TODO: Add support for an optional example field to endpoints4s.openapi.model.MediaType upstream,
         // besides just its current schema field. That way we can do this in `def yamlRequest` and the `mediaTypeJson`
         // method, instead of special-casing "application/yaml" here.
@@ -329,6 +335,29 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     new ujson.Obj(fields)
   }
 
+  private def serverJson(server: Server): ujson.Value = {
+    val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
+      "url" -> ujson.Str(server.url)
+    )
+    for (description <- server.description)
+      fields += "description" -> ujson.Str(description)
+    if (server.variables.nonEmpty) {
+      fields += "variables" -> mapJson(server.variables)(serverVariableJson)
+    }
+    ujson.Obj(fields)
+  }
+
+  private def serverVariableJson(variable: ServerVariable): ujson.Value = {
+    val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
+      "default" -> ujson.Str(variable.default)
+    )
+    for (description <- variable.description)
+      fields += "description" -> ujson.Str(description)
+    for (alternatives <- variable.`enum`)
+      fields += "enum" -> ujson.Arr(alternatives.map(alternative => ujson.Str(alternative)): _*)
+    ujson.Obj(fields)
+  }
+
   private def externalDocumentationObjectJson(
     externalDoc: ExternalDocumentationObject
   ): ujson.Value = {
@@ -354,31 +383,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
   private def pathsJson(paths: collection.Map[String, PathItem]): ujson.Obj =
     mapJson(paths)(pathItem => mapJson(pathItem.operations)(operationJson))
 
-  private def serverVariableJson(variable: OpenApiServerVariable): ujson.Obj = variable match {
-    case OpenApiServerVariable(enumAlternatives, default, description) =>
-      val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-        "default" -> ujson.Str(default)
-      )
-      description.foreach(desc => fields += "description" -> ujson.Str(desc))
-      enumAlternatives.foreach(alternates => fields += "enum" -> ujson.Arr.from(alternates.map(ujson.Str)))
-      ujson.Obj(fields)
-  }
-  private def serversJson(servers: Seq[OpenApiServer]): ujson.Arr =
-    ujson.Arr.from(servers.map { case OpenApiServer(url, description, variables) =>
-      val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-        "url" -> ujson.Str(url)
-      )
-      description.foreach(desc => fields += "description" -> ujson.Str(desc))
-      if (variables.nonEmpty) {
-        val variablesFields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap()
-        variables.foreach { case (k, v) => variablesFields += k -> serverVariableJson(v) }
-        fields += "variables" -> ujson.Obj(variablesFields)
-      }
-
-      ujson.Obj(fields)
-    })
-
-  private def jsonEncoder(servers: Option[Seq[OpenApiServer]]): Encoder[OpenApi, ujson.Value] =
+  private val jsonEncoder: Encoder[OpenApi, ujson.Value] =
     openApi => {
       val fields: mutable.LinkedHashMap[String, ujson.Value] =
         mutable.LinkedHashMap(
@@ -386,6 +391,10 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
           "info" -> infoJson(openApi.info),
           "paths" -> pathsJson(openApi.paths)
         )
+      if (openApi.servers.nonEmpty) {
+        val serversAsJson = openApi.servers.map(server => serverJson(server))
+        fields += "servers" -> ujson.Arr(serversAsJson: _*)
+      }
       if (openApi.tags.nonEmpty) {
         val tagsAsJson = openApi.tags.map(tag => tagJson(tag)).toList
         fields += "tags" -> ujson.Arr(tagsAsJson: _*)
@@ -393,12 +402,11 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
       if (openApi.components.schemas.nonEmpty || openApi.components.securitySchemes.nonEmpty) {
         fields += "components" -> componentsJson(openApi.components)
       }
-      servers.foreach(servers => fields += "servers" -> serversJson(servers))
       new ujson.Obj(fields)
     }
 
-  def stringEncoder(servers: Option[Seq[OpenApiServer]]): Encoder[OpenApi, String] =
-    openApi => jsonEncoder(servers).encode(openApi).transform(ujson.StringRenderer()).toString
+  implicit val stringEncoder: Encoder[OpenApi, String] =
+    openApi => jsonEncoder.encode(openApi).transform(ujson.StringRenderer()).toString
 
 }
 
