@@ -18,7 +18,7 @@ object Dependencies {
   val catsV = "2.12.0"
   val catsEffectV = "3.5.4"
   val circeYamlV = "0.15.3"
-  val commonsCodecV = "1.17.0"
+  val commonsCodecV = "1.17.1"
   val commonsTextV = "1.12.0"
   val commonsIoV = "2.16.1"
   val dropwizardMetricsV = "4.2.25"
