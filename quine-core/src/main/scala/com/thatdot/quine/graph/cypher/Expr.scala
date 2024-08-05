@@ -74,7 +74,7 @@ object Expr {
   /** Helpful marker trait for values that have a property type. These are:
     * integers, floating, string, and booleans.
     *
-    * @note this does not include [[Null]]
+    * @note this does not include [[Null]] or graph objects like [[Node]]
     *
     * TODO: spatial types
     */
@@ -430,7 +430,7 @@ object Expr {
     id: QuineId,
     labels: Set[Symbol],
     properties: ScalaMap[Symbol, Value]
-  ) extends PropertyValue {
+  ) extends Value {
 
     def typ = Type.Node
 
@@ -454,7 +454,7 @@ object Expr {
     name: Symbol,
     properties: ScalaMap[Symbol, Value],
     end: QuineId
-  ) extends PropertyValue {
+  ) extends Value {
 
     def typ = Type.Relationship
 
@@ -531,7 +531,7 @@ object Expr {
     * @param head first node in the path
     * @param tails sequence of edges and nodes following the head
     */
-  final case class Path(head: Node, tails: Vector[(Relationship, Node)]) extends PropertyValue {
+  final case class Path(head: Node, tails: Vector[(Relationship, Node)]) extends Value {
 
     def typ = Type.Path
 
