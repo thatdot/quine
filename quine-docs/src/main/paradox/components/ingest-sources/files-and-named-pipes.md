@@ -3,7 +3,7 @@ description: Quine streaming graph ingest events from files and named pipes
 ---
 # Files and Named Pipes
 
-Files are a stream of data. It's easy to think of a file as a singular chunk, but on disk it is a linear sequence of bits. Reading data from a file is the process of starting at the beginning, and reading each bit in sequence, until you reach the end. Programs usually do this under the hood and deliver a single result when finished, but that data can be handled by a program before the end of file is reached. Reading a file until a particular sequence is found (the "delimiter") will yield a sequence of bytes which can be handled as a single event. This is how data is streamed into Quine from a file—making it a very natural and convenient way to load data into Quine.
+Files are a stream of data. It's easy to think of a file as a singular chunk, but on disk it is a linear sequence of bits. Reading data from a file is the process of starting at the beginning, and reading each bit in sequence, until you reach the end. Programs usually do this under the hood and deliver a single result when finished, but that data can be handled by a program before the end of file is reached. Reading a file until a particular sequence is found (the "delimiter") will yield a sequence of bytes which can be handled as a single event. This is how data is streamed into Quine from a file — making it a very natural and convenient way to load data into Quine.
 
 ## File Ingest Format
 
@@ -31,7 +31,7 @@ Any text file can be used as as stream of input to Quine. Using the `CypherLine`
 
 ## Named Pipe
 
-A named pipe is an operating-system/file-system abstraction typically used for inter-process communication. A named pipe has a file-like representation in the filesystem—so it looks like a file to most programs—but it does not persist data. The operating system uses this object that looks like a file as a communication channel. One program can write to a named pipe, and if another program is actively reading from the same named pipe, then the second program receives the data written by the first program.
+A named pipe is an operating-system/file-system abstraction typically used for inter-process communication. A named pipe has a file-like representation in the filesystem — so it looks like a file to most programs — but it does not persist data. The operating system uses this object that looks like a file as a communication channel. One program can write to a named pipe, and if another program is actively reading from the same named pipe, then the second program receives the data written by the first program.
 
 Quine supports named pipes on Unix-like operating systems (MacOS, Linux, etc), but not on Windows. On most Unix-like operating systems, Quine will automatically detect whether the provided path refers to a regular file or a named pipe. Automatic detection can be overridden by setting the `fileIngestMode` setting in the ingest API.
 

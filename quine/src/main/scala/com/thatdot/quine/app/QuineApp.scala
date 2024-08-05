@@ -88,7 +88,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     * Get/set example:
     * - `getQuickQueries` relies only on @volatile for its synchronization, because @volatile ensures all threads
     * read the same state of the underlying `quickQueries` variable
-    * - `setQuickQueries` is wrapped in a `…Lock.synchronized` to ensure that 2 simultaneous calls to `setQuickQueries`
+    * - `setQuickQueries` is wrapped in a `...Lock.synchronized` to ensure that 2 simultaneous calls to `setQuickQueries`
     * will not interleave their local and remote update steps. Without synchronized, execution (1) might set the local
     * variable while execution (2) sets the persisted version
     *
@@ -96,7 +96,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     * with a lock on `this`, because all accesses involve both a read and a write which might race concurrent executions.
     *
     * Add example:
-    * - `addIngestStream` is wrapped in a `…Lock.synchronized` because the updates it makes to `ingestStreams` depend on
+    * - `addIngestStream` is wrapped in a `...Lock.synchronized` because the updates it makes to `ingestStreams` depend on
     * the results of a read of `ingestStreams`. Thus, the read and the write must happen atomically with respect to
     * other `addIngestStream` invocations. Additionally, the `synchronized` ensures the local and persisted copies of
     * the collection are kept in sync (as in the get/set case)

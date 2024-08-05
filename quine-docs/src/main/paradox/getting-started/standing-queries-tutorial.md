@@ -10,7 +10,7 @@ Standing queries are a unique (and we think powerful) feature of Quine. Standing
 
 ## Format of a standing query
 
-A standing query is defined in two parts: a **pattern** and an **output**. The **pattern** defines what we want to match, expressed in Cypher using the form `MATCH … WHERE … RETURN …`. The **output** defines the action(s) to take for each result produced by the `RETURN`  in the pattern query.
+A standing query is defined in two parts: a **pattern** and an **output**. The **pattern** defines what we want to match, expressed in Cypher using the form `MATCH ... WHERE ... RETURN ...`. The **output** defines the action(s) to take for each result produced by the `RETURN`  in the pattern query.
 
 In general, a standing query definition JSON object takes form as in this example.
 

@@ -17,7 +17,7 @@ many times. In 2015, Wright partnered with DARPA, through its Transparent
 Computing program, to accelerate development.
 
 The decision to open source the Quine graph streaming engine underscores the
-thatDot team’s conviction that the best infrastructure software thrives within
+thatDot team's conviction that the best infrastructure software thrives within
 an open, diverse community of contributors and that well-made software freely
 available benefits everyone.
 

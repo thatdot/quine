@@ -99,7 +99,7 @@ Quine recipes are a great way to get started developing with Quine. A recipe is 
 * [Standing Queries](https://quine.io/components/standing-queries/) to transform graph data, and to produce aggregates and other outputs
 * UI configuration to specialize the web user interface for the use-case that is the subject of the Recipe
 
-Please see [Quine’s Recipe repository](https://quine.io/recipes/) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
+Please see [Quine's Recipe repository](https://quine.io/recipes/) for a list of available Recipes. Or create your own and contribute it back to the community for others to use.
 
 ## Contributing to Quine
 

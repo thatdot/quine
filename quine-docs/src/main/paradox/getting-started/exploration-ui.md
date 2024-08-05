@@ -71,7 +71,7 @@ Queries are issued in one of three ways:
 
 @@@ warning
 
-Because the Exploration UI generates a snapshot of the graph, it can give Quine the appearance of database. This is just a convenient way to explore the data structures but make no mistake: Quine is a streaming graph interpreter designed to process what are effectively infinite streams of data. Quine is run without indices by default. If Quine is managing a large amount of data, some queries which require scanning all nodes can take a very long time and slow down other functionality. It is strongly recommended to use a node ID in each query or use built in functions like `idFrom(…)` or `recentNodes()` to efficiently pull out small amounts of data. @ref:[See this page for more guidance on querying infinite data](../components/id-provider.md).
+Because the Exploration UI generates a snapshot of the graph, it can give Quine the appearance of database. This is just a convenient way to explore the data structures but make no mistake: Quine is a streaming graph interpreter designed to process what are effectively infinite streams of data. Quine is run without indices by default. If Quine is managing a large amount of data, some queries which require scanning all nodes can take a very long time and slow down other functionality. It is strongly recommended to use a node ID in each query or use built in functions like `idFrom(...)` or `recentNodes()` to efficiently pull out small amounts of data. @ref:[See this page for more guidance on querying infinite data](../components/id-provider.md).
 
 @@@
 
@@ -115,7 +115,7 @@ The Exploration UI is an interface into the underlying graph data managed by Qui
 
 ![Historical query](./ex-ui/historical-query.png)
 
-Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the Standing Query and if that second query modifies the data—for instance, adding an edge connected to the node.
+Querying for a matched node is especially useful if there is a Cypher query registered as one of the outputs of the Standing Query and if that second query modifies the data — for instance, adding an edge connected to the node.
 
 ## Reference: Key Combinations
 

@@ -43,7 +43,7 @@ Connect web server available at http://0.0.0.0:8080</code></pre>
     "path": "/directory/data-source",
     "format": {
       "type": "CypherLine",
-      "query": “CREATE ($that)”
+      "query": "CREATE ($that)"
     }
   }'</code></pre>
                     </div>

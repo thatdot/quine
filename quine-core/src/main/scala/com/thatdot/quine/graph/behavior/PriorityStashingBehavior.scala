@@ -24,7 +24,7 @@ import com.thatdot.quine.util.Log.implicits._
   * So effects are ordered, but they are not dependent.
   *
   * @note actors extending this trait should have a priority mailbox with the priority function wrapped in
-  *       [[StashedMessage.priority]] — that way, the order of messages that get unstashed is correct.
+  *       [[StashedMessage.priority]] - that way, the order of messages that get unstashed is correct.
   */
 trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
 

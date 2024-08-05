@@ -9,7 +9,7 @@ The result is:
 
 * An interconnected graph of original data loaded into the system
 * Associated new data which is smaller in size, but more meaningful
-* Many possible “interpretations” of data living together happily in a streaming system
+* Many possible "interpretations" of data living together happily in a streaming system
 
 ```raw
 <video width="688" height=516 autoplay playsInline muted loop>
@@ -51,7 +51,7 @@ For convenience, the dataset has been preprocessed and made available as a line-
 }
 ```
 
-For the ingest steps below, we will make each message a node in a graph. The node ID will be deterministically generated from the email metadata. All JSON fields are stored on the node as key/value pairs (or “properties”) on the respective node. For convenience, each node will be given a label of “Message”.
+For the ingest steps below, we will make each message a node in a graph. The node ID will be deterministically generated from the email metadata. All JSON fields are stored on the node as key/value pairs (or "properties") on the respective node. For convenience, each node will be given a label of "Message".
 
 This ingest plan will create a single node for each email message, entirely disconnected from any other node in the graph. This structure is directly analogous to each email message representing one row of a relational database, where the columns are the JSON object keys.
 
@@ -65,11 +65,11 @@ SET n = $that, n:Message
 
 ## Step #2: Set Standing Queries
 
-_Quine_ has the unique ability to set a query which lives inside the graph, propagates automatically, and can trigger arbitrary action immediately for each result found when new data completes the query. standing queries can be applied to existing data, or only to new data coming in. We will use “universal standing queries” which are applied to new data to shape the graph. We will set the standing queries ahead of time and once they are all set up, we will begin ingesting the data.
+_Quine_ has the unique ability to set a query which lives inside the graph, propagates automatically, and can trigger arbitrary action immediately for each result found when new data completes the query. standing queries can be applied to existing data, or only to new data coming in. We will use "universal standing queries" which are applied to new data to shape the graph. We will set the standing queries ahead of time and once they are all set up, we will begin ingesting the data.
 
 ### Standing Query #1: Connect Nodes via SENDER Email Address
 
-Streaming data does not need to begin in a graph structure. Typical row or column-oriented data is a perfectly fine starting point, as is the de facto standard JSON format. But the building consensus of modern data processing is that connected data is more valuable than disconnected data. We’ll illustrate and make the connections here with a standing query.
+Streaming data does not need to begin in a graph structure. Typical row or column-oriented data is a perfectly fine starting point, as is the de facto standard JSON format. But the building consensus of modern data processing is that connected data is more valuable than disconnected data. We'll illustrate and make the connections here with a standing query.
 
 We want a standing query that starts with this raw `message` node:
 
@@ -79,7 +79,7 @@ and turns it into this connected set of nodes:
 
 ![Message With Address](3d-data/message_with_address.png)
 
-We can accomplish this with a standing query consisting of a pair of Cypher queries—one describing the pattern to find each node of interest:
+We can accomplish this with a standing query consisting of a pair of Cypher queries — one describing the pattern to find each node of interest:
 
 ```cypher
 MATCH (n) WHERE exists(n.from) RETURN DISTINCT id(n) AS id
@@ -134,9 +134,9 @@ curl -X 'POST' \
 
 ### Standing Query #2: Connect Nodes via RECEIVER Email Address
 
-Similar to the first standing query, now we want to pull out the email addresses in the “To:” field of each email message and connect the `Message` node to the nodes corresponding to each email address node. Unlike the “From:” field, there are often many addresses in the “To:” field.
+Similar to the first standing query, now we want to pull out the email addresses in the "To:" field of each email message and connect the `Message` node to the nodes corresponding to each email address node. Unlike the "From:" field, there are often many addresses in the "To:" field.
 
-We’d like to take data that looks like this:
+We'd like to take data that looks like this:
 
 ![Message Node](3d-data/message_node.png)
 
@@ -144,7 +144,7 @@ And turn it into data like this:
 
 ![Message Node](3d-data/message_with_to_addresses.png)
 
-As we did in the the first standing query, this is done with two Cypher queries. One to match the Message node, just as before, but with a “to” field:
+As we did in the the first standing query, this is done with two Cypher queries. One to match the Message node, just as before, but with a "to" field:
 
 ```cypher
 MATCH (n) WHERE exists(n.to) RETURN DISTINCT id(n) AS id
@@ -268,7 +268,7 @@ curl -X 'POST' \
 
 ## Step #3: Start Data Ingest
 
-With the desired standing queries established, all new incoming data will advance the overall structure of the system’s data toward the patterns described in those standing queries. As new data comes in and results in matches being produced, the update will be applied automatically—regardless of the order in which the data arrives or the number of matches made, in progress, or incomplete so far. Quine supports many ingest sources, including some streaming systems such as AWS Kinesis, as well as local resources such as files.
+With the desired standing queries established, all new incoming data will advance the overall structure of the system's data toward the patterns described in those standing queries. As new data comes in and results in matches being produced, the update will be applied automatically — regardless of the order in which the data arrives or the number of matches made, in progress, or incomplete so far. Quine supports many ingest sources, including some streaming systems such as AWS Kinesis, as well as local resources such as files.
 
 Quine can read directly from the local filesystems via common data formats. To start data ingest from a line-based JSON file on the Quine host, we will use the same Cypher query (as mentioned in Step #1) to write a single node for each JSON object:
 

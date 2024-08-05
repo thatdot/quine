@@ -10,7 +10,7 @@ A streaming system like Quine continuously receives data from an upstream source
 
 ## ID Providers
 
-Each node in Quine's graph is defined by its ID—referred to internally as `QuineId`. The ID itself is fundamentally an uninterpreted sequence of bytes, but using each ID is mediated by a class of objects referred to as `IdProviders`. ID providers make working with IDs more convenient and allow for multiple types to be used or migration from one type to another.
+Each node in Quine's graph is defined by its ID — referred to internally as `QuineId`. The ID itself is fundamentally an uninterpreted sequence of bytes, but using each ID is mediated by a class of objects referred to as `IdProviders`. ID providers make working with IDs more convenient and allow for multiple types to be used or migration from one type to another.
 
 An ID Provider is chosen at startup for an instance of the graph. the default ID provider creates and expects to find IDs that can be read as UUIDs. This means that every node in the graph is defined by a UUID.
 
@@ -22,10 +22,10 @@ Different ID Providers can implement different strategies for allocating new IDs
 - `uuid-3` - Generate and read only Version-3 compliant UUIDs.
 - `uuid-4` - Generate and read only Version-4 compliant UUIDs. When returning random UUIDs, and using `idFrom` (described below), deterministic UUIDs with Version-4 identifying bytes will be used.
 - `uuid-5` - Generate and read only Version-5 compliant UUIDs.
-- `long` - Generate random integer IDs in the range: [-(2^53-1), 2^53-1] -- these may be safely used as IEEE double-precision floating-point values without loss of precision. This id scheme is not appropriate for large-scale datasets because of the high likelihood of a collision.
+- `long` - Generate random integer IDs in the range: [-(2^53-1), 2^53-1] — these may be safely used as IEEE double-precision floating-point values without loss of precision. This id scheme is not appropriate for large-scale datasets because of the high likelihood of a collision.
 - `byte-array` - generate unstructured byte arrays as IDs.
 
-## idFrom(…)
+## idFrom(...)
 
 Quine has a unique challenge: how to maintain state for a potentially infinite stream of data. One key strategy Quine uses is to deterministically generate known IDs from data. The `idFrom` function does exactly that. `idFrom` is a function we've added to Cypher which will take any number of arguments and deterministically produce a ID from that data. This is similar to a consistent-hashing strategy, except that the ID produced from this function is always an ID that conforms to the type chosen for the ID provider.
 
@@ -57,7 +57,7 @@ RETURN
   grandpa.name AS paternalGrandfather,
   grandma.name AS maternalGrandmother
 ```
-Unless you are running in a debug environment that has little data, we recommend avoiding queries that involve scanning the entire graph. The simplest way to avoid a scan is to make sure at least some part of a `MATCH (n) …` pattern has a constraint of the form `id(n) = ...` in the `WHERE` clause. This allows the query compiler to optimize the execution plan to begin with a hop to a node with a known ID instead of needing to consider every node ever seen as a potential starting point.
+Unless you are running in a debug environment that has little data, we recommend avoiding queries that involve scanning the entire graph. The simplest way to avoid a scan is to make sure at least some part of a `MATCH (n) ...` pattern has a constraint of the form `id(n) = ...` in the `WHERE` clause. This allows the query compiler to optimize the execution plan to begin with a hop to a node with a known ID instead of needing to consider every node ever seen as a potential starting point.
 
 @@@ note
 Examples of queries that scan the entire graph are `MATCH (n) RETURN n LIMIT 20` or `MATCH (n) RETURN count(*)`. These queries are tempting to use for exploration on traditional databases, but are not efficient to use in streaming analysis.
@@ -74,7 +74,7 @@ CALL recentNodes(20)
 CALL recentNodes(20) YIELD node RETURN node
 ```
 
-This approach can be used to anchor larger queries too, like the paternal grandparents query from above. This time, we don't need to know the ID of any of the nodes in the pattern -- we just need to constrain at least one of them using the `recentNodesIds`function.
+This approach can be used to anchor larger queries too, like the paternal grandparents query from above. This time, we don't need to know the ID of any of the nodes in the pattern — we just need to constrain at least one of them using the `recentNodesIds`function.
 
 ```cypher
 // Sample the recent part of the graph looking for people and paternal grandparents

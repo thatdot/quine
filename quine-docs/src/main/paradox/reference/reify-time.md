@@ -15,7 +15,7 @@ determining which nodes must exist, and either reading them from the graph or cr
 * To reduce the boilerplate necessary to ingest time-series data usefully
 * To create a modification point where in the future, changes can be made to how time-series data is modeled in the graph and have this change applied to all usages
 * To organize data to be more useful in the Quine web UI
-* To settle on a unified convention for representing time so that users don’t have to spend brainpower to create something bespoke (and inconsistent among different users)
+* To settle on a unified convention for representing time so that users don't have to spend brainpower to create something bespoke (and inconsistent among different users)
 * To create the persistent graph structure upon which time-series aggregate values can be stored or related
 
 `reify.time` builds a hierarchy of related nodes for a single datetime value. Each node in this hierarchy represents a different period where the input datetime value belongs. 

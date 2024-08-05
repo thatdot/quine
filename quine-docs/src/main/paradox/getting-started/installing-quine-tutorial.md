@@ -91,7 +91,7 @@ Shutdown complete
 
 ## Distribution File
 
-Using a distribution file to run Quine locally provides the most flexibility …
+Using a distribution file to run Quine locally provides the most flexibility ...
 
 * Evaluate Quine using your hardware of choice
 * Make changes to the Quine @link:[configuration](https://docs.quine.io/reference/configuration.html) { open=new } file
@@ -173,7 +173,7 @@ curl -X "POST" "http://127.0.0.1:8080/api/v1/admin/shutdown"
 
 Quine is an open source project and can be built from source code.
 
-Build Quine from source code if …
+Build Quine from source code if ...
 
 * You want to review the code as part of your evaluation
 * You are interested in contributing to the Quine open source project

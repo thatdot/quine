@@ -26,7 +26,7 @@ All supported Gremlin queries begin in one of two ways:
 
 - `idFrom( [values] )`
 - literal value
-- list of values: `[`value`,`value`,`…`]`
+- list of values: `[`value`,`value`,`...`]`
 
 ## Predicates
 

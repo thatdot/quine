@@ -7,7 +7,7 @@ The Cassandra persistor connects Quine to Cassandra and Cassandra compatible sol
 
 ## Quine Configuration
 
-To use Cassandra as the persistence backend for Quine, you’ll need to set the `quine.store` section to `type = cassandra` in the config.
+To use Cassandra as the persistence backend for Quine, you'll need to set the `quine.store` section to `type = cassandra` in the config.
 
 @@snip [reference.conf]($quine$/src/test/resources/documented_cassandra_config.conf)
 
@@ -27,7 +27,7 @@ persistence {
     journal-enabled = true
 
     # one of [on-node-sleep, on-node-update, never]. When to save a
-    # snapshot of a node's current state, including any SingleId Standing
+    # snapshot of a node's current state, including any DistinctId Standing
     # Queries registered on the node
     snapshot-schedule = on-node-sleep
 
@@ -37,7 +37,7 @@ persistence {
     snapshot-singleton = false
 
     # when to save Standing Query partial result (only applies for the
-    # `MultipleValues` mode -- `SingleId` Standing Queries always save when
+    # `MultipleValues` mode -- `DistinctId` Standing Queries always save when
     # a node saves a snapshot, regardless of this setting)
     standing-query-schedule = on-node-sleep
 }
@@ -83,7 +83,7 @@ java -Dconfig.file=quine.conf -jar quine.jar
 
 ## Automatic Creation of Keyspace and Tables
 
-Quine has settings in the Cassandra section of the config, `should-create-keyspace` and `should-create-tables`. When enabled, Quine automatically creates the keyspace and/or tables at startup if they don’t already exist.
+Quine has settings in the Cassandra section of the config, `should-create-keyspace` and `should-create-tables`. When enabled, Quine automatically creates the keyspace and/or tables at startup if they don't already exist.
 
 @@@ note { title=Note }
 Auto creation of the keyspace and tables is included as a development convenience and should never be used in production.

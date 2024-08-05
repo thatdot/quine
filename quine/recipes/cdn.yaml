@@ -14,11 +14,11 @@ description:
 
   Selecting any node allows you to query for the associated ASNs and CDN cache servers
   to identify potential root cause of poor performance. Thresholds are set to create
-  qualitative ‘state’ properties on each node indicating the health of the component
-  as ‘good,’ ‘warn,’ or ‘alarm.’
+  qualitative 'state' properties on each node indicating the health of the component
+  as 'good,' 'warn,' or 'alarm.'
 
   Node appearance properties are set to add icons and colors to represent the type of
-  node and it’s state, respectively, in the exploration UI.
+  node and it's state, respectively, in the exploration UI.
 
   Lastly, a standing query is defined to match consecutive cache misses within a
   configurable fixed period of time for the purpose of alerting.

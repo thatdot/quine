@@ -44,10 +44,10 @@ trait AlgorithmGraph extends BaseGraph {
       * Setting it to a high value (> max(q, 1)) ensures that we are less likely to sample an already visited node
       * in the following two steps (unless the next node in the walk had no other neighbor). This strategy encourages
       * moderate exploration and avoids 2-hop redundancy in sampling. On the other hand, if p is low (< min(q, 1)),
-      * it would lead the walk to backtrack a step (Figure 2) and this would keep the walk “local” close to the
+      * it would lead the walk to backtrack a step (Figure 2) and this would keep the walk "local" close to the
       * starting node u.
       *
-      * *In-out parameter*, q. Parameter q allows the search to differentiate between “inward” and “outward” nodes.
+      * *In-out parameter*, q. Parameter q allows the search to differentiate between "inward" and "outward" nodes.
       * Going back to Figure 2, if q > 1, the random walk is biased towards nodes close to node t. Such walks obtain
       * a local view of the underlying graph with respect to the start node in the walk and approximate BFS behavior
       * in the sense that our samples comprise of nodes within a small locality.

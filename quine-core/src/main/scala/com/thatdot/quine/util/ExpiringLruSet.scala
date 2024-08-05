@@ -126,7 +126,7 @@ private[quine] object ExpiringLruSet {
     *
     * Note that both `maximumSize` and `maximumNanosAfterAccess` can be adjusted
     * at runtime (scaling them down will result in the next call to [[doExpiration]]
-    * potentially triggering a lot of evictions—and calls to shouldRemove.
+    * potentially triggering a lot of evictions — and calls to shouldRemove.
     *
     * @note time-based cleanup still only happens when [[doExpiration]] is called
     * @note this is not threadsafe, and therefore should only be used when managed (eg by a GraphShardActor)

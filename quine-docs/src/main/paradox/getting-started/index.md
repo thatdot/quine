@@ -12,7 +12,7 @@ The tutorials in this section will teach you to install Quine, connect an ingest
 | @ref:[**Ingest Streams**](ingest-streams-tutorial.md)     | After installing Quine, this tutorial walks you through connecting to an event source and forming a streaming graph. |
 | @ref:[**Standing Queries**](standing-queries-tutorial.md) | Now that you have events streaming into Quine, this tutorial teaches you how to put Quine to work in your streaming event pipeline. |
 | @ref:[**Recipes**](recipes-tutorial.md)                   | Quine recipes are a convenient way to package together Quine config, graph logic/structure, and exploration UI customizations. |
-| @ref:[**Exploration UI**](exploration-ui.md)              | Quine’s Exploration UI is an interactive canvas for ad hoc, interactive exploration of your streaming event data. |
+| @ref:[**Exploration UI**](exploration-ui.md)              | Quine's Exploration UI is an interactive canvas for ad hoc, interactive exploration of your streaming event data. |
 
 Have a question, suggestion, or did you get stuck somewhere? 
 

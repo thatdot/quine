@@ -58,7 +58,7 @@ RETURN relation, family[relation] AS name
 
 Stateful operations in a streaming system generally read data (like a property) or write to it. In most cases, this is all that is needed since more complicated operations can be broken down into individual reads and writes.
 
-For example, `SET n.x = n.x + 1` can be broken down into a read operation (retrieving `n.x`) and a write operation (`SET`ing `n.x` to its new value). These stateful operations are _atomic_ -- that is, they lock the node and will either succeed (getting back or setting the value) or fail (getting back an error or a `null`).
+For example, `SET n.x = n.x + 1` can be broken down into a read operation (retrieving `n.x`) and a write operation (`SET`ing `n.x` to its new value). These stateful operations are _atomic_ — that is, they lock the node and will either succeed (getting back or setting the value) or fail (getting back an error or a `null`).
 
 Quine v1.5.2 introduced a family of atomic Cypher procedures for performing more complicated read-operate-write operations that lock the node for the duration of the operation. These atomic procedures are:
 

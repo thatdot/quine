@@ -25,7 +25,7 @@ The provided query will have the following prefix prepended: `MATCH (thisNode) W
 
 ## Point in Time Walks
 
-Most use cases for Quine include continuously running data ingests, which continue to modify the graph. To correctly generate a set of random walks, you need a view of the graph at a specific moment — without the graph changing from under the random walker.
+Most use cases for Quine include continuously running data ingests, which continue to modify the graph. To correctly generate a set of random walks, you need a view of the graph at a specific moment - without the graph changing from under the random walker.
 
 Use Quine's built-in historical query functionality by including a timestamp (milliseconds since the Unix epoch) in the `at-time` parameter in your query request to generate random walks from the graph at any fixed historical moment.
 
@@ -51,7 +51,7 @@ curl --request GET --url "http://localhost:8080/api/v1/algorithm/walk/{node_id}"
 
 ## Full Graph Walks
 
-Node-anchored walks start from one node and return one random walk. But most graph A.I. algorithms require building many walks from every node in the graph. To support this, Quine includes an API that will generate a stream of all random walks into a file for an entire graph—regardless of how large the graph is.
+Node-anchored walks start from one node and return one random walk. But most graph A.I. algorithms require building many walks from every node in the graph. To support this, Quine includes an API that will generate a stream of all random walks into a file for an entire graph — regardless of how large the graph is.
 
 With an API `PUT` to the [`algorithm/walk`](https://docs.quine.io/reference/rest-api.html#/paths/api-v1-algorithm-walk/put) endpoint, you can direct Quine to stream all the random walks from every node in the graph to a file stored locally or in an S3 bucket.
 
@@ -90,5 +90,5 @@ The name of the actual file being written is returned in the API response body.
 
 <!-- TODO
 >Document local and S3 output data forms.
->Describe the nuances of using the s3 bucket … like authentication, or file path…
+>Describe the nuances of using the s3 bucket ... like authentication, or file path...
 -->

@@ -4,7 +4,7 @@ description: Getting Started - Quine Recipes
 
 # Quine Recipes
 
-In this article we will cover Quine recipes -- what are they for, their components, and how to use them to quickly iterate through the design-code-test portion of the development lifecycle.
+In this article we will cover Quine recipes — what are they for, their components, and how to use them to quickly iterate through the design-code-test portion of the development lifecycle.
 
 ## What is a Quine Recipe
 

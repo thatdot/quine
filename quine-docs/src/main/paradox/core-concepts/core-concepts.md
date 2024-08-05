@@ -43,7 +43,7 @@ This mechanism, known as @link:[the Actor Model](https://en.wikipedia.org/wiki/A
 
 ## Selecting Nodes vs Searching for Nodes
 
-With a graph data model, nodes are the primary unit of data — much like a "row" is the primary unit of data in a relational database. However, unlike traditional graph data systems, a Quine user never has to create a node directly. Instead, the system behaves as if all nodes exist but don't yet contain meaningful data.
+With a graph data model, nodes are the primary unit of data - much like a "row" is the primary unit of data in a relational database. However, unlike traditional graph data systems, a Quine user never has to create a node directly. Instead, the system behaves as if all nodes exist but don't yet contain meaningful data.
 
 > As data streams into the system, the node acquires meaningful data, and Quine begins to create a history for the node.
 

@@ -45,9 +45,9 @@ final case class NodeComponents(
     )
     .toSet[QuineId] + qid
 
-  /** NodeComponents is a nested tree structure. flatValues returns “flatValues” from walking and
+  /** NodeComponents is a nested tree structure. flatValues returns "flatValues" from walking and
     * flattening the tree into a list of tuples. After flattening, the first tuple element is a
-    * list corresponding to the path required to reach the associated value—which is the second
+    * list corresponding to the path required to reach the associated value — which is the second
     * tuple element.
     */
   def flatValues(

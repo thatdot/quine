@@ -25,7 +25,7 @@ An *ingest stream* connects a data source to Quine and prepares the emitted data
 
 **Quine Node IDs**
 
-With a graph data model, nodes are the primary unit of data — much like a "row" is the primary unit of data in a relational database. However, unlike traditional graph data systems, a Quine user never has to create a node directly. Instead, using `idFrom`, *the graph functions as if all nodes exist.*
+With a graph data model, nodes are the primary unit of data - much like a "row" is the primary unit of data in a relational database. However, unlike traditional graph data systems, a Quine user never has to create a node directly. Instead, using `idFrom`, *the graph functions as if all nodes exist.*
 
 Quine represents every possible node as an existing "empty node" with no history. As data streams into the system, previously empty nodes accumulate properties and connections to other nodes (edges). As new data arrives and nodes are updated, Quine keeps track of each node's history.
 
@@ -43,7 +43,7 @@ This query creates nodes but does not create any edges, so this is not a very in
 
 ## Syntax and Structure
 
-The first step when defining an ingest stream is to understand the patterns you are trying to find, or put another way, the questions you want the data to answer. This will determine the overall shape of your graph -- which fields are nodes, which are properties of nodes, and how all of these connect.
+The first step when defining an ingest stream is to understand the patterns you are trying to find, or put another way, the questions you want the data to answer. This will determine the overall shape of your graph — which fields are nodes, which are properties of nodes, and how all of these connect.
 
 This is no different than designing a SQL database except that Quine's graph data structure conforms to the familiar *subject-predicate-object* structure found in most human languages. Properly structuring your Quine graph is an important step in making standing queries and quick queries productive and performant.
 

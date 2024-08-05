@@ -3,7 +3,7 @@ description: Quine fits into a streaming event pipeline in between, or consuming
 ---
 # Streaming Systems
 
-A streaming system processes events -- data -- that is **continuously generated**, often in **high volumes** and at **high velocity** in real time. A streaming event source typically consists of a continuous stream of timestamped logs that record events as they happen – such as a user logging in via an identity management system, or a web server logging page requests from an online application.
+A streaming system processes events — data — that is **continuously generated**, often in **high volumes** and at **high velocity** in real time. A streaming event source typically consists of a continuous stream of timestamped logs that record events as they happen – such as a user logging in via an identity management system, or a web server logging page requests from an online application.
 
 ![Event Streaming System](ValueData-Quine-3.svg)
 
@@ -20,7 +20,7 @@ Finding relationships between events with categorical data in real-time has sign
 Properties of a streaming system:
 
 * Performs ETL in real-time
-* Treats stream as infinite -- no beginning or end
+* Treats stream as infinite — no beginning or end
 * Detects interesting patterns
 * Engineered to process high volumes of data and, often, for fault tolerance
 
@@ -28,7 +28,7 @@ Properties of a streaming system:
 
 Quine is designed to be deployed within an event streaming data pipeline.
 
-* A single Quine instance, properly configured, can handle an infinite stream of data. Quine is limited only by how many values are available in the QuineId type that you choose, and it’s possible to choose unbounded types.
+* A single Quine instance, properly configured, can handle an infinite stream of data. Quine is limited only by how many values are available in the QuineId type that you choose, and it's possible to choose unbounded types.
 
 * Quine currently supports RocksDB (default), Cassandra, and MapDB for persisting ingested event data. Of course you need a storage plan with enough capacity to hold the amount of data your application needs. Cassandra allows for one Quine host and many Cassandra systems whereas RocksDB are MapDB persistors are available to use as local storage.
 

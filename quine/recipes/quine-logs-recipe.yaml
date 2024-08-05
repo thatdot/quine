@@ -16,7 +16,7 @@ ingestStreams:
         // 0: whole matched line
         // 1: date time string
         // 2: log level
-        // 3: actor address. Might be inside of `org.apache.pekko.stream.Log(…)`
+        // 3: actor address. Might be inside of `org.apache.pekko.stream.Log(...)`
         // 4: thread name
         // 5: logging class
         // 6: Message

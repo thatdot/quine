@@ -37,7 +37,7 @@ Quine adds an `idFrom` function to Cypher that takes any number of arguments and
 
 This is similar to a consistent-hashing approach where a collection of values are hashed together to produce a unique result that can be used for an ID.
 
-Quine supports many different kinds of IDs (numbers, UUIDs, strings, tuples of values, and more…), `idFrom` produces consistent results appropriate for the dataset regardless of the which ID type is used.
+Quine supports many different kinds of IDs (numbers, UUIDs, strings, tuples of values, and more...), `idFrom` produces consistent results appropriate for the dataset regardless of the which ID type is used.
 @@@
 
 Quine parses JSON data into a graph structure according to the following assumptions:
@@ -46,11 +46,11 @@ Quine parses JSON data into a graph structure according to the following assumpt
 * Nested objects are treated as separate nodes. In this case, the JSON field name is treated as the name of the outgoing edge.
 * The field id is the default field defining the ID of the node. The name of this field is customizable and can be set with the string config setting at quine.json.id-field.
 * The ID computed for each object must be a string that can be parsed by the IdProviderType set in the configuration. IDs fields in JSON which do not have the proper type will result in an error returned from the API.
-* Objects without any ID will be assigned a random ID. Duplicate identical objects with no ID field may result in multiple separate nodes created—depending on the structure of the data provided.
+* Objects without any ID will be assigned a random ID. Duplicate identical objects with no ID field may result in multiple separate nodes created — depending on the structure of the data provided.
 
 ## Ingesting Event-Driven Data
 
-Data enters Quine from streaming data sources like Kafka, Kinesis, or even POSIX named pipes. These data sources are effectively infinite — Quine works with them as if they will never end. Other types of data sources as supported as well, like ordinary files in CSV, JSON, or other formats.
+Data enters Quine from streaming data sources like Kafka, Kinesis, or even POSIX named pipes. These data sources are effectively infinite - Quine works with them as if they will never end. Other types of data sources as supported as well, like ordinary files in CSV, JSON, or other formats.
 
 Each ingest stream performs four primary operations:
 
