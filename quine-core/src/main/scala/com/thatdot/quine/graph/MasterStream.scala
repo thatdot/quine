@@ -3,13 +3,14 @@ package com.thatdot.quine.graph
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-import org.apache.pekko.stream.scaladsl.{MergeHub, Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.stream.{Materializer, UniqueKillSwitch}
 import org.apache.pekko.{Done, NotUsed}
 
 import org.apache.pekko
 
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.PekkoStreams.errorSuppressingMergeHub
 
 class MasterStream(mat: Materializer)(implicit val logConfig: LogConfig) extends LazySafeLogging {
   import MasterStream._
@@ -19,22 +20,14 @@ class MasterStream(mat: Materializer)(implicit val logConfig: LogConfig) extends
   def addNodeSleepSrc(src: NodeSleepSrcType): UniqueKillSwitch = nodeSleepHub.runWith(src)(mat)
   def addPersistorSrc(src: PersistorSrcType): UniqueKillSwitch = persistorHub.runWith(src)(mat)
 
-  private val (ingestHub, ingestSource) = MergeHub
-    .source[IngestSrcExecToken]
-    .mapMaterializedValue(_.named("master-stream-ingest-mergehub"))
-    .preMaterialize()(mat)
-  private val (sqResultsHub, sqResultsSource) = MergeHub
-    .source[SqResultsExecToken]
-    .mapMaterializedValue(_.named("master-stream-sq-results-mergehub"))
-    .preMaterialize()(mat)
-  private val (nodeSleepHub, nodeSleepSource) = MergeHub
-    .source[NodeSleepExecToken]
-    .mapMaterializedValue(_.named("master-stream-node-sleeps-mergehub"))
-    .preMaterialize()(mat)
-  private val (persistorHub, persistorSource) = MergeHub
-    .source[PersistorExecToken]
-    .mapMaterializedValue(_.named("master-stream-persistor-mergehub"))
-    .preMaterialize()(mat)
+  private val (ingestHub, ingestSource) =
+    errorSuppressingMergeHub[IngestSrcExecToken]("master-stream-ingest-mergehub", mat)
+  private val (sqResultsHub, sqResultsSource) =
+    errorSuppressingMergeHub[SqResultsExecToken]("master-stream-sq-results-mergehub", mat)
+  private val (nodeSleepHub, nodeSleepSource) =
+    errorSuppressingMergeHub[NodeSleepExecToken]("master-stream-node-sleeps-mergehub", mat)
+  private val (persistorHub, persistorSource) =
+    errorSuppressingMergeHub[PersistorExecToken]("master-stream-persistor-mergehub", mat)
   private val preferNewHubOverUpstream = false // Pekko docs are misleading. `false` gives the desired merge preference.
 
   val loggingSink: Sink[ExecutionToken, Future[Done]] =
@@ -51,6 +44,7 @@ class MasterStream(mat: Materializer)(implicit val logConfig: LogConfig) extends
 }
 
 case object MasterStream {
+
   sealed trait ExecutionToken { val name: String }
   case object IdleToken extends ExecutionToken { val name: String = this.toString }
   final case class IngestSrcExecToken(name: String) extends ExecutionToken

@@ -3,9 +3,12 @@ package com.thatdot.quine.util
 import scala.concurrent.Future
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.stream.scaladsl.{Flow, Sink}
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Flow, MergeHub, Sink, Source}
 
-object PekkoStreams {
+import com.thatdot.quine.util.Log._
+
+object PekkoStreams extends LazySafeLogging {
 
   def count: Sink[Any, Future[Int]] = Sink.fold[Int, Any](0)((n, _) => n + 1)
 
@@ -47,4 +50,27 @@ object PekkoStreams {
     (ran, element) => (true, if (ran) element else { runOnFirst(element); element }),
     _ => None
   )
+
+  /** Create a MergeHub with the given name that, instead of propagating the pekko-streams error signal,
+    * logs the error. This avoids an extra layer of stacktrace ("Upstream producer failed with exception")
+    * in the logs when exception logging is enabled, and makes stream-killing errors respect the user's log settings.
+    */
+  def errorSuppressingMergeHub[T](mergeHubName: String, materializer: Materializer)(implicit
+    logConfig: LogConfig
+  ): (Sink[T, NotUsed], Source[T, NotUsed]) = {
+    val (sink, source) = MergeHub
+      .source[T]
+      .mapMaterializedValue(_.named(mergeHubName))
+      .preMaterialize()(materializer)
+
+    Flow[T]
+      .recoverWith { err =>
+        logger.error(
+          log"""Detected stream-killing error (${Safe(err.getClass.getName)}) from pekko stream feeding
+               |into MergeHub ${Safe(mergeHubName)}""".cleanLines withException err
+        )
+        Source.empty
+      }
+      .to(sink) -> source
+  }
 }
