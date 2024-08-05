@@ -78,8 +78,6 @@ object QueryPart {
                 () <- CompM.clearColumns
                 () <- recursiveVariableBindings.map(_._1).traverse_(CompM.addColumn)
                 recursiveVariablesBoundColumns <- CompM.getColumns
-                // _ = require(recursiveVariables == initialVariables, "Recursive variables must be the same as the initial variables")
-                recursiveVariableInitializers: Seq[WithQuery[Expr]] = recursiveVariableBindings.map(_._2)
 
                 recursiveSubQuery <- compileClauses(
                   sq.clauses,
@@ -144,34 +142,35 @@ object QueryPart {
                 // Update the columns by appending back originals
                 () <- parentColumns.traverse_(CompM.addColumn)
               } yield {
+                import cypher.Query.RecursiveSubQuery._
                 val initializeAllInitializers =
-                  recursiveVariableInitializers.foldLeft[cypher.Query[Location.Anywhere]](cypher.Query.Unit())(
-                    (acc, init) => cypher.Query.apply(acc, init.query)
-                  )
-                cypher.Query.apply(
-                  // make all initializers valid for evaluation
-                  initializeAllInitializers,
-                  cypher.Query.apply(
-                    // evaluate all initializers
-                    cypher.Query.adjustContext(
-                      dropExisting = true,
-                      toAdd = recursiveVariableBindings.map { case (name, WithQuery(expr, query @ _)) =>
-                        name -> expr
-                      }.toVector,
-                      cypher.Query.Unit()
-                    ),
-                    cypher.Query.RecursiveSubQuery(
-                      cypher.Query.apply(
-                        // run the recursive subquery
-                        recursiveSubQuery,
-                        // make the done condition valid for evaluation
-                        doneCondWithQuery.query
-                      ),
-                      inputNamesToPlain.view.mapValues(Symbol.apply).toMap,
-                      outputNamesToPlain.view.mapValues(Symbol.apply).toMap,
-                      doneCond
+                  recursiveVariableBindings
+                    .map(_._2)
+                    .foldLeft[cypher.Query[Location.Anywhere]](cypher.Query.Unit())((acc, init) =>
+                      cypher.Query.apply(acc, init.query)
                     )
-                  )
+                val variableInitializers = VariableInitializers(
+                  initializeAllInitializers,
+                  recursiveVariableBindings.map { case (name, WithQuery(expr, query @ _)) =>
+                    name -> expr
+                  }.toMap
+                )
+                val variableMappings = VariableMappings(
+                  inputNamesToPlain.view.mapValues(Symbol.apply).toMap,
+                  outputNamesToPlain.view.mapValues(Symbol.apply).toMap
+                )
+                val innerQuery = cypher.Query.apply(
+                  // run the recursive subquery
+                  recursiveSubQuery,
+                  // make the done condition valid for evaluation
+                  doneCondWithQuery.query
+                )
+
+                cypher.Query.RecursiveSubQuery(
+                  innerQuery,
+                  variableInitializers,
+                  variableMappings,
+                  doneCond
                 )
               }
           case Some(SubQuery) =>

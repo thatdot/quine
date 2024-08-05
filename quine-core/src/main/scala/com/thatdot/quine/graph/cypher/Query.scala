@@ -1002,27 +1002,56 @@ object Query {
 
   /** Recurse over a query,
     *
-    * @param subQuery              The query to run repeatedly
+    * @param innerQuery            The query to run repeatedly, plus any setup needed to make `doneExpression` valid
+    *                              for evaluation.
     *                              Invariants:
     *                              - `subquery.isIdempotent`
-    *                              - `subquery.columns` is a (non-strict) superset of `Columns.Specified(variables)`
+    *                              - `subquery.columns` is a (non-strict) superset of initialVariables.initialValues.keys
     *                                (after some amount of processing/demangling, and up to column ordering)
     *                              - `columns` is equivalent to `variables`
-    * @param inputVariableToPlain  A map from the recursive variables to the versions that appear in the query source.
-    *                              After construction, refer to this as `variableMappings.inputToPlain`
-    *                              INV: this relationship is bijective
-    * @param outputVariableToPlain A map from the final (output) variables to the versions that appear in the query
-    *                              source. After construction, refer to this as `variableMappings.outputToPlain`
-    *                              INV: this relationship is bijective
-    * @param doneExpression        The expression to evaluate to determine whether to recurse on the row or return it
+    * @param initialVariables      The initial values for the variables that will be used in the recursive query, and a
+    *                              setup query to ensure those variables are ready for evaluation.
+    *   @see [[RecursiveSubQuery.VariableInitializers]]
+    * @param variableMappings      Mappings between different names for the same conceptual variable.
+    *   @see [[RecursiveSubQuery.VariableMappings]]
+    * @param doneExpression        The expression to evaluate to determine whether to recurse on the row or return it.
     */
   final case class RecursiveSubQuery[+Start <: Location](
-    subQuery: Query[Start],
-    private val inputVariableToPlain: Map[Symbol, Symbol],
-    private val outputVariableToPlain: Map[Symbol, Symbol],
+    innerQuery: Query[Start],
+    initialVariables: RecursiveSubQuery.VariableInitializers[Start],
+    variableMappings: RecursiveSubQuery.VariableMappings,
     doneExpression: Expr,
     columns: Columns = Columns.Omitted
   ) extends Query[Start] {
+    require(
+      initialVariables.initialValues.keySet == variableMappings.inputToPlain.keySet,
+      "All input variables must have initializers"
+    )
+
+    /** The recursive variables used by this query.
+      */
+    val inputVariables: Iterable[Symbol] = variableMappings.inputToPlain.keys
+
+    def isReadOnly: Boolean = innerQuery.isReadOnly
+    def isIdempotent: Boolean = innerQuery.isIdempotent // QU-1843 is particularly important here as a false positive
+    def cannotFail: Boolean = innerQuery.cannotFail
+    def canDirectlyTouchNode: Boolean = innerQuery.canDirectlyTouchNode
+    def canContainAllNodeScan: Boolean = innerQuery.canContainAllNodeScan
+    def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start] =
+      copy(
+        innerQuery = innerQuery.substitute(parameters),
+        doneExpression = doneExpression.substitute(parameters)
+      )
+    def children: Seq[Query[Location]] = Seq(innerQuery)
+  }
+  object RecursiveSubQuery {
+
+    /** @param setup         The query that must be run in order to ensure that the `Exprs` in `initialValues` are
+      *                      ready for evaluation
+      * @param initialValues Keys are the input variables (as defined in VariableMappings), values are the expressions
+      *                      that should be used to initialize the variables for the very first run of the inner query
+      */
+    case class VariableInitializers[+Start <: Location](setup: Query[Start], initialValues: Map[Symbol, Expr])
 
     /** Mappings between different names for the same conceptual variable.
       * By the logic of a vanilla subquery, a subquery that takes a variable `x` and returns a variable `x` is actually
@@ -1031,11 +1060,27 @@ object Query {
       *
       * Similarly, when reporting errors, we want to report the original variable name (that the user wrote in their
       * query), not the one that OpenCypher has rewritten on the user's behalf.
+      *
+      * Throughout this type, the following definitions are used:
+      * "input": the post-rewrite names used by the `WITH` part of the `CALL RECURSIVELY` syntax
+      * "output": the post-rewrite names used by the `RETURN` part of the `CALL RECURSIVELY`'s inner query
+      * "plain": the pre-rewrite names used in the RETURN and possibly the WITH (as not all outputs need to be recursive inputs)
       */
-    object variableMappings {
-
-      val outputToPlain = outputVariableToPlain
-      val inputToPlain = inputVariableToPlain
+    case class VariableMappings(inputToPlain: Map[Symbol, Symbol], outputToPlain: Map[Symbol, Symbol]) {
+      require(
+        inputToPlain.values.toSet.size == inputToPlain.size,
+        "input variable mappings in a recursive subquery must be bijective"
+      )
+      require(
+        outputToPlain.values.toSet.size == outputToPlain.size,
+        "output variable mappings in a recursive subquery must be bijective"
+      )
+      require(
+        inputToPlain.values.toSet.subsetOf(
+          outputToPlain.values.toSet
+        ),
+        "all recursive variables must be returned by the inner query"
+      )
 
       val plainToOutput: Map[Symbol, Symbol] = outputToPlain.map(_.swap)
       val plainToInput: Map[Symbol, Symbol] = inputToPlain.map(_.swap)
@@ -1049,21 +1094,5 @@ object Query {
               outputVar -> plainToInput(demangledVar)
           }
     }
-
-    /** The recursive variables used by this query.
-      */
-    val inputVariables: Iterable[Symbol] = variableMappings.inputToPlain.keys
-
-    def isReadOnly: Boolean = subQuery.isReadOnly
-    def isIdempotent: Boolean = subQuery.isIdempotent // QU-1843 is particularly important here as a false positive
-    def cannotFail: Boolean = subQuery.cannotFail
-    def canDirectlyTouchNode: Boolean = subQuery.canDirectlyTouchNode
-    def canContainAllNodeScan: Boolean = subQuery.canContainAllNodeScan
-    def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start] =
-      copy(
-        subQuery = subQuery.substitute(parameters),
-        doneExpression = doneExpression.substitute(parameters)
-      )
-    def children: Seq[Query[Location]] = Seq(subQuery)
   }
 }

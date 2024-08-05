@@ -1329,18 +1329,22 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
     parameters: Parameters,
     logConfig: LogConfig
   ): Source[QueryContext, _] = {
-    val initialRecursiveContext = context.subcontext(query.inputVariables.toVector)
-    // input name -> type
-    val initializedValueTypes: Map[Symbol, Type] = initialRecursiveContext.environment.view.mapValues(_.typ).toMap
-    // Recursive function that runs the recursive subquery.
+    val initialRecursiveContexts: Source[(QueryContext, Map[Symbol, Type]), _] =
+      interpretRecursive(query.initialVariables.setup, context).map { primedRow =>
+        val initialVariableBindings = query.initialVariables.initialValues.view.mapValues(_.eval(primedRow))
+        val row = QueryContext.empty ++ initialVariableBindings
+        val expectedTypes = initialVariableBindings.mapValues(_.typ).toMap
+        row -> expectedTypes
+      }
+    // Recursive function that runs the recursive subquery. Runs off-thread, so must use `interpret` and not
+    // `interpretRecursive`
     // QU-1947 we should be retaining a cache of the QueryContexts we've seen so far to detect (and error out of)
     //   an infinite loop
-    def run(context: QueryContext): Source[QueryContext, _] = {
-      require(context.environment.keySet == query.inputVariables.toSet)
+    def run(context: QueryContext, expectedTypes: Map[Symbol, Type]): Source[QueryContext, _] = {
       case class PartialResults(wip: Seq[QueryContext], done: Seq[QueryContext])
 
       // First, invoke the subquery given the context we were provided
-      val results = interpret(query.subQuery, context)
+      val results = interpret(query.innerQuery, context)
         .map { resultContext =>
           // NB this row-by-row typecheck is inefficient, but it's the only way to get the error messages right
           // We may want to consider making this toggleable between "errors that cite the place the problem occurred"
@@ -1351,7 +1355,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             (outputVariable, value) <- resultContext.environment.view
             if query.variableMappings.outputToInput.contains(outputVariable) // if this is a recursive variable
             actualType = value.typ
-            expectedType = initializedValueTypes(query.variableMappings.outputToInput(outputVariable))
+            expectedType = expectedTypes(query.variableMappings.outputToInput(outputVariable))
             if !expectedType.assignableFrom(actualType)
             plainVariable = query.variableMappings.outputToPlain(outputVariable)
           } yield CypherException.TypeMismatch(
@@ -1385,11 +1389,16 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             }
             QueryContext(reboundRecursiveVariables)
           }
-          .flatMapConcat(run)
+          .flatMapConcat(row => run(row, expectedTypes))
         doneSource.concat(wipSource)
       }
       doneThenRecursedResults
     }
-    run(initialRecursiveContext)
+
+    initialRecursiveContexts
+      .flatMapConcat { case (initialRow, expectedTypes) =>
+        run(initialRow, expectedTypes)
+      }
+      .map(_ ++ context)
   }
 }

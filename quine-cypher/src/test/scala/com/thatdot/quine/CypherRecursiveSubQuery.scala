@@ -19,14 +19,6 @@ import com.thatdot.quine.graph.cypher.{
 class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries") {
 
   describe("Basic recursive subquery") {
-    val setXToZero: AdjustContext[Location.Anywhere] = AdjustContext( // x = 0
-      dropExisting = true,
-      toAdd = Vector(
-        Symbol("x") -> Expr.Integer(0)
-      ),
-      adjustThis = Query.Unit(Columns.Specified(Vector.empty)),
-      columns = Columns.Specified(Vector(Symbol("x")))
-    )
     val incrementX: AdjustContext[Location.Anywhere] = AdjustContext( // x++
       dropExisting = true,
       toAdd = Vector(
@@ -42,15 +34,17 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           |  RETURN x+1 AS x
           |} RETURN x
           |""".stripMargin.replace('\n', ' ').trim),
-      Apply(
-        setXToZero,
-        RecursiveSubQuery(
-          incrementX,
-          inputVariableToPlain = Map(Symbol("x") -> Symbol("x")),
-          outputVariableToPlain = Map(Symbol("x") -> Symbol("x")),
-          doneExpression = Expr.GreaterEqual(Expr.Variable(Symbol("x")), Expr.Integer(10)), // x >= 10
-          columns = Columns.Specified(Vector(Symbol("x")))
+      RecursiveSubQuery(
+        incrementX,
+        RecursiveSubQuery.VariableInitializers(
+          Query.unit,
+          Map(Symbol("x") -> Expr.Integer(0L))
         ),
+        RecursiveSubQuery.VariableMappings(
+          inputToPlain = Map(Symbol("x") -> Symbol("x")),
+          outputToPlain = Map(Symbol("x") -> Symbol("x"))
+        ),
+        doneExpression = Expr.GreaterEqual(Expr.Variable(Symbol("x")), Expr.Integer(10)), // x >= 10
         columns = Columns.Specified(Vector(Symbol("x")))
       ),
       Seq.empty,
@@ -88,14 +82,6 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
   }
 
   describe("Fan-out recursive subquery") {
-    val setMaxTo1: AdjustContext[Location.Anywhere] = AdjustContext( // max = 1
-      dropExisting = true,
-      toAdd = Vector(
-        Symbol("max") -> Expr.Integer(1)
-      ),
-      adjustThis = Query.Unit(Columns.Specified(Vector.empty)),
-      columns = Columns.Specified(Vector(Symbol("max")))
-    )
     val countXOneToMax: Unwind[Location.Anywhere] = Unwind(
       Expr.Function(Func.Range, Vector(Expr.Integer(1), Expr.Variable(Symbol("max")))), // 1 to max
       Symbol("x"),
@@ -123,22 +109,24 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         toAdd = Vector(
           Symbol("x") -> Expr.Variable(Symbol("x"))
         ),
-        adjustThis = Apply(
-          setMaxTo1,
-          RecursiveSubQuery(
-            Apply(
-              countXOneToMax,
-              incrementMaxNoopX,
-              Columns.Specified(Vector(Symbol("x"), Symbol("max")))
-            ),
-            inputVariableToPlain = Map(Symbol("max") -> Symbol("max")),
-            outputVariableToPlain = Map(Symbol("max") -> Symbol("max")),
-            doneExpression = Expr.Greater(Expr.Variable(Symbol("max")), Expr.Integer(3)), // max >= 3
-            columns = Columns.Specified(Vector(Symbol("x"), Symbol("max")))
+        adjustThis = RecursiveSubQuery(
+          Apply(
+            countXOneToMax,
+            incrementMaxNoopX,
+            Columns.Specified(Vector(Symbol("x"), Symbol("max")))
           ),
-          Columns.Specified(Vector(Symbol("x"), Symbol("max"))) // TODO are these in the right order?
+          RecursiveSubQuery.VariableInitializers(
+            Query.unit,
+            Map(Symbol("max") -> Expr.Integer(1))
+          ),
+          RecursiveSubQuery.VariableMappings(
+            inputToPlain = Map(Symbol("max") -> Symbol("max")),
+            outputToPlain = Map(Symbol("max") -> Symbol("max"))
+          ),
+          doneExpression = Expr.Greater(Expr.Variable(Symbol("max")), Expr.Integer(3)), // max > 3
+          columns = Columns.Specified(Vector(Symbol("x"), Symbol("max")))
         ),
-        columns = Columns.Specified(Vector(Symbol("x")))
+        Columns.Specified(Vector(Symbol("x")))
       ),
       Seq.empty,
       Parameters.empty,
@@ -253,23 +241,81 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
   }
 
   describe("Allow variables to be passed-through unchanged") {
-    // we're looking at `x` here -- `y` just makes sure the other requirements
-    // for a recursive subquery are met (eg no infinite loops)
-    it("Known bug: wrapped query causes incorrect output context") {
-      pendingUntilFixed {
-        val variableReturnedUnchanged =
-          """CALL RECURSIVELY WITH 0 AS x, 1 AS y UNTIL (y > 0) {
-          |  RETURN x, y+1 AS y
-          |} RETURN x, y""".stripMargin.replace('\n', ' ').trim
-        testQuery(
-          variableReturnedUnchanged,
-          Vector("x", "y"),
-          Seq(
-            Vector(Expr.Integer(0), Expr.Integer(2))
-          )
-        )
-      }
-    }
+    // This description covers two cases: passing through the inner query unchanged,
+    // and passing through (or passing "over", if you like) the whole CALL RECURSIVELY
+    // block unchanged.
+
+    // This test is for the "through the inner query" case. We're looking at `x` here,
+    // `y` just makes sure the other requirements for a recursive subquery are met
+    // (eg no infinite loops)
+    val variableReturnedUnchanged =
+      """CALL RECURSIVELY WITH 0 AS x, 1 AS y UNTIL (y > 0) {
+        |  RETURN x, y+1 AS y
+        |} RETURN x, y""".stripMargin.replace('\n', ' ').trim
+    testQuery(
+      variableReturnedUnchanged,
+      Vector("x", "y"),
+      Seq(
+        Vector(Expr.Integer(0), Expr.Integer(2))
+      )
+    )
+
+    // This test is for the "over the subquery" case. We're looking at `two` and `hw` here.
+    val parentScopeMaintainedEasy =
+      """WITH 2 AS two, "hello, world!" AS hw
+        |CALL RECURSIVELY WITH 0 AS x UNTIL (x >= 5) {
+        |  RETURN x + 1 AS x
+        |}
+        |RETURN two, hw, x
+        |""".stripMargin
+    testQuery(
+      parentScopeMaintainedEasy,
+      Vector("two", "hw", "x"),
+      Seq(
+        Vector(Expr.Integer(2), Expr.Str("hello, world!"), Expr.Integer(5))
+      )
+    )
+
+    // This is a slightly harder case that combines recursive subquery output with a
+    // parent-scope variable, as well as asks the interpreter to maintain the parent scope through
+    // an UNWIND. Both of these functionality are tested elsewhere as unit tests, but a redundant test
+    // never hurt anyone.
+    val parentScopeMaintainedHard =
+      """WITH 2 AS two, "hello, world!" AS hw
+        |CALL RECURSIVELY WITH [] AS x UNTIL (size(x) > 1) {
+        | RETURN x + [3] AS x
+        |}
+        |UNWIND x AS three
+        |RETURN two * three, hw
+        |""".stripMargin
+    testQuery(
+      parentScopeMaintainedHard,
+      Vector("two * three", "hw"),
+      Seq(
+        Vector(Expr.Integer(6), Expr.Str("hello, world!")),
+        Vector(Expr.Integer(6), Expr.Str("hello, world!"))
+      )
+    )
+
+    // This case tests the output ordering of the columns (the recursive subquery should _prepend_ columns, to match
+    // the behavior of a normal subquery)
+    // See "subquery scoping" tests in CypherSubQueries
+    val parentScopeMaintainedPrepend =
+      """UNWIND [1] AS one
+            |UNWIND [2] AS two
+            |CALL RECURSIVELY WITH 0 AS x UNTIL (x >= 5) {
+            |  RETURN x + 1 AS x, x+2 AS y
+            |}
+            |RETURN *
+            |""".stripMargin
+    testQuery(
+      parentScopeMaintainedPrepend,
+      Vector("x", "y", "one", "two"),
+      Seq(
+        Vector(Expr.Integer(5), Expr.Integer(6), Expr.Integer(1), Expr.Integer(2))
+      ),
+      skip = true // QU-1947: recursive subquery output columns should be prepended to parent columns
+    )
   }
 
   describe("Malformed subquery boundary") {
@@ -290,14 +336,14 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         )
         val unsupportedAggregationInVariables =
           """WITH 0 AS x
-            |CALL RECURSIVELY WITH sum(x) AS x UNTIL (x > 5) {
-            |  RETURN x + 1 AS x
-            |} RETURN x
+            |CALL RECURSIVELY WITH sum(x) AS y UNTIL (y > 5) {
+            |  RETURN y + 1 AS y
+            |} RETURN y
             |""".stripMargin.replace('\n', ' ').trim
         assertStaticQueryFailure(
           unsupportedAggregationInVariables,
           CypherException.Compile(
-            "Recursive subquery initializers may not use aggregators: [`x`]",
+            "Recursive subquery initializers may not use aggregators: [`y`]",
             Some(Position(1, 46, 45, SourceText(unsupportedAggregationInVariables)))
           )
         )

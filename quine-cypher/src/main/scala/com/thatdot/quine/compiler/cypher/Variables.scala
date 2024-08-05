@@ -444,9 +444,9 @@ trait VariableRewriter[Start <: Location] {
     query: RecursiveSubQuery[Start],
     columnsIn: Columns
   ): RecursiveSubQuery[Start] = {
-    val subQuery = convertQuery(query.subQuery, Columns.Specified(query.inputVariables.toVector))
+    val subQuery = convertQuery(query.innerQuery, Columns.Specified(query.initialVariables.initialValues.keys.toVector))
     query.copy(
-      subQuery = subQuery,
+      innerQuery = subQuery,
       columns = subQuery.columns ++ columnsIn
     )
   }
