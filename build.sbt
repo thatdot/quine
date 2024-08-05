@@ -273,7 +273,7 @@ lazy val `quine`: Project = project
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
-      "io.circe" %% "circe-generic-extras" % "0.14.3",
+      "io.circe" %% "circe-generic-extras" % "0.14.4",
       "io.circe" %% "circe-yaml-v12" % "0.15.3",
       "io.circe" %% "circe-core" % circeV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
