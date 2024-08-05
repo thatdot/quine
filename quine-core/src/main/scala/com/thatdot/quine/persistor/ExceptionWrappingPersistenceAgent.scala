@@ -133,10 +133,17 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
     persistenceAgent.deleteMultipleValuesStandingQueryStates(id)
   )
 
-  // TODO: Can you catch and wrap exceptions thrown by Streams?
-  def enumerateJournalNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateJournalNodeIds()
+  def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
+    persistenceAgent.enumerateJournalNodeIds().recoverWith { case wrapped: Throwable =>
+      logger.warn(log"Intercepted persistor error" withException wrapped)
+      Source.failed(new WrappedPersistorException(EnumerateJournalNodeIds, wrapped))
+    }
 
-  def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = persistenceAgent.enumerateSnapshotNodeIds()
+  def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
+    persistenceAgent.enumerateSnapshotNodeIds().recoverWith { case wrapped: Throwable =>
+      logger.warn(log"Intercepted persistor error" withException wrapped)
+      Source.failed(new WrappedPersistorException(EnumerateSnapshotNodeIds, wrapped))
+    }
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = wrapException(
     PersistSnapshot(id, atTime, state.length),
