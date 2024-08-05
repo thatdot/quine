@@ -153,7 +153,7 @@ trait MultipleValuesStandingQueryBehavior
 
     val idProvider: QuineIdProvider = MultipleValuesStandingQueryBehavior.this.idProvider
 
-    def currentProperties: Map[Symbol, PropertyValue] = properties
+    def currentProperties: Map[Symbol, PropertyValue] = properties - graph.labelsProperty
   }
 
   /** Locally registered & running standing queries
@@ -260,7 +260,7 @@ trait MultipleValuesStandingQueryBehavior
                   }
             }
             // Send existing results
-            val existingResultGroup = sqState.readResults(properties)
+            val existingResultGroup = sqState.readResults(properties - graph.labelsProperty)
             for (resultGroup <- existingResultGroup)
               subscriber match {
                 case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, sqId, upstreamPartId) =>

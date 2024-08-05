@@ -586,7 +586,7 @@ abstract private[graph] class AbstractNodeActor(
                 sqId.toString,
                 globalId.toString,
                 subs.map(_.pretty).toSet,
-                s"${st.toString}{${st.readResults(properties).map(_.toList)}}"
+                s"${st.toString}{${st.readResults(properties - graph.labelsProperty).map(_.toList)}}"
               )
           },
           journal.toSet,

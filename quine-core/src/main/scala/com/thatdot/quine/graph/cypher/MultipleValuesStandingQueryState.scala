@@ -111,7 +111,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     *       this will return results according to the properties that are passed in -- which may differ from the
     *       properties returned by `effectHandler.currentProperties`
     *
-    * @param localProperties current local node properties
+    * @param localProperties current local node properties, as seen by the ad-hoc cypher interpreter
     * @return Accumulated results at this moment.
     *         `None` when the internal state has not yet received/produced a result (e.g. still waiting for subqueries).
     *         `Some(Seq.empty)` when a result was produced but yielded no results
@@ -144,8 +144,9 @@ trait MultipleValuesStandingQueryLookupInfo {
 /** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make */
 trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLookupInfo {
 
-  /** @return a readonly view on the current [[node]] properties, including updates made as a result of the
-    *         event that triggered MVSQ-related work
+  /** @return a readonly view on the current node properties, consistent with the properties seen by the
+    *         ad-hoc cypher interpreter, including updates made as a result of the event that triggered MVSQ-related
+    *         work
     */
   def currentProperties: Map[Symbol, model.PropertyValue]
 
@@ -401,7 +402,7 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
   }
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(
-    (QueryContext.empty + (query.aliasedAs -> Expr.Map(projectProperties(localProperties)))) :: Nil
+    (QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(localProperties))) :: Nil
   )
 }
 
