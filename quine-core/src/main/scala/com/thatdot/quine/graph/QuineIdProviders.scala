@@ -302,7 +302,7 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
     case Failure(exception) =>
       logger.warn(
         log"""Couldn't parse out an explicitly-positioned QuineId from provided id
-            |${Safe(qid.pretty(this, logConfig))}. Falling back to the underlying node
+            |${Safe(qid.pretty(this))}. Falling back to the underlying node
             |location algorithm""".cleanLines
         withException exception
       )

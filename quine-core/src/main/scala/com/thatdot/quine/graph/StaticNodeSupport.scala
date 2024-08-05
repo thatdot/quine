@@ -153,7 +153,7 @@ object StaticNodeSupport extends LazySafeLogging {
       .fold(
         err =>
           throw new NodeWakeupFailedException(
-            s"Snapshot could not be loaded for: ${qidForDebugging.debug}",
+            s"Snapshot could not be loaded for: ${qidForDebugging.pretty}",
             err
           ),
         identity
@@ -198,7 +198,7 @@ object StaticNodeSupport extends LazySafeLogging {
                   //  removeThese.keySet.map(_._1).foreach(persistor.removeStandingQueryStatesForQidAndSqId(qid, _))
                   logger.debug(
                     safe"""During node constructor assembly, found ${Safe(removeThese.size)} no-longer-relevant
-                         |MVSQ states for node: ${Safe(qidAtTime.debug(idProv))}""".cleanLines
+                         |MVSQ states for node: ${Safe(qidAtTime.pretty(idProv))}""".cleanLines
                   )
 
                   // with the still-relevant SQ states, continue to assemble the node's constructor arguments
@@ -208,7 +208,7 @@ object StaticNodeSupport extends LazySafeLogging {
                       .fold(
                         err =>
                           throw new NodeWakeupFailedException(
-                            s"NodeActor state (Standing Query States) for node: ${qidAtTime.debug(idProv)} could not be loaded",
+                            s"NodeActor state (Standing Query States) for node: ${qidAtTime.pretty(idProv)} could not be loaded",
                             err
                           ),
                         identity

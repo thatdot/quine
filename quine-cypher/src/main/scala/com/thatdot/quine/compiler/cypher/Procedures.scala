@@ -166,7 +166,7 @@ object RecentNodeIds extends UserDefinedProcedure {
         .recentNodes(limit, location.namespace, location.atTime)
         .map { (nodes: Set[QuineId]) =>
           Source(nodes)
-            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider, logConfig))))
+            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
         }(location.graph.nodeDispatcherEC)
     }
   }

@@ -434,7 +434,7 @@ final private[quine] class GraphShardActor(
 
     // Actor shut down completely
     case SleepOutcome.SleepSuccess(id, shardPromise) =>
-      log.debug(safe"Sleep succeeded for ${Safe(id.debug)}")
+      log.debug(safe"Sleep succeeded for ${Safe(id.pretty)}")
       namespacedNodes.get(id.namespace).foreach(_.remove(id))
       inMemoryActorList.remove(id)
       nodesSleptSuccessCounter(id.namespace).inc()
@@ -442,10 +442,10 @@ final private[quine] class GraphShardActor(
       if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
         shardPromise.future.value.get match {
           case Success(_) =>
-            log.debug(log"Received redundant notification about successfully slept node: ${id.debug}")
+            log.debug(log"Received redundant notification about successfully slept node: ${id.pretty}")
           case Failure(_) =>
             log.error(
-              safe"""Received notification that node: ${Safe(id.debug)} slept,
+              safe"""Received notification that node: ${Safe(id.pretty)} slept,
                     |but that node already reported a failure for the same sleep request""".cleanLines
             )
         }
@@ -461,11 +461,11 @@ final private[quine] class GraphShardActor(
       */
     case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
       log.error(
-        log"Failed to store: ${Safe(snapshot.length)} bytes on: ${Safe(id.debug)}, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
+        log"Failed to store: ${Safe(snapshot.length)} bytes on: ${Safe(id.pretty)}, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
         withException exception
       )
       log.info(
-        log"Property sizes on failed store: ${Safe(id.debug)}: ${propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")}"
+        log"Property sizes on failed store: ${Safe(id.pretty)}: ${propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")}"
       )
       namespacedNodes.get(id.namespace).foreach(_.remove(id)) // Remove it to be added again by WakeUp below.
       inMemoryActorList.remove(id)
@@ -475,12 +475,12 @@ final private[quine] class GraphShardActor(
         shardPromise.future.value.get match {
           case Success(_) =>
             log.error(
-              safe"""A node failed to sleep: ${Safe(id.debug)}, but that node already
+              safe"""A node failed to sleep: ${Safe(id.pretty)}, but that node already
                     |reported a success for the same sleep request""".cleanLines
             )
           case Failure(e) =>
             log.warn(
-              log"""A node failed to sleep: ${Safe(id.debug)}, and reported that failure
+              log"""A node failed to sleep: ${Safe(id.pretty)}, and reported that failure
                    |multiple times""".cleanLines withException e
             )
         }
@@ -501,7 +501,7 @@ final private[quine] class GraphShardActor(
           unlikelyWakeupFailed(id.namespace).inc()
           val stats = shardStats
           log.error(
-            safe"No more retries waking up: ${Safe(id.debug)} " +
+            safe"No more retries waking up: ${Safe(id.pretty)} " +
             safe"with sleep status: ${Safe(namespacedNodes.get(id.namespace).flatMap(_.get(id)).toString)} " +
             safe"with nodes-on-shard: ${Safe(stats.awake)} awake, ${Safe(stats.goingToSleep)} going to sleep " +
             safe"Outcome: ${Safe(badOutcome.toString)} " +

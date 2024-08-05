@@ -60,7 +60,7 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
     pendingCallbacks.indexWhere(_.id == findId) match {
       case -1 =>
         log.warn(
-          log"Received a result on node: ${Safe(qid.debug)} for unknown callback ID: ${Safe(findId)}. Result was ${if (isResultSafe) Safe(result.toString)
+          log"Received a result on node: ${Safe(qid.pretty)} for unknown callback ID: ${Safe(findId)}. Result was ${if (isResultSafe) Safe(result.toString)
           else result.toString}"
         )
       case i =>
@@ -177,7 +177,7 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
     until.onComplete { (done: Try[_]) =>
       done.toEither.left.foreach(err =>
         log.debug(
-          safe"pauseMessageProcessingUntil: future for: ${Safe(thisFutureId)} failed on node ${Safe(qid.debug)}"
+          safe"pauseMessageProcessingUntil: future for: ${Safe(thisFutureId)} failed on node ${Safe(qid.pretty)}"
         )
       )
       self ! StashedResultDelivery(thisFutureId, done)

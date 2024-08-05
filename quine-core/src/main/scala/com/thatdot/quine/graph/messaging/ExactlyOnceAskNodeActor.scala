@@ -116,7 +116,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
 
     case GiveUpWaiting =>
       val name = recipient.toInternalString
-      val typedName = recipient.debug(idProvider)
+      val typedName = recipient.pretty(idProvider)
       timerContext.stop()
       val neverGotAcked = retryTimeout.cancel()
       val throughShard = remoteShardTarget.fold("")(" through remote shard " + _)

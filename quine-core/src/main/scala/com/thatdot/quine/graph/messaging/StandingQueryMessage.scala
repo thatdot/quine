@@ -94,7 +94,7 @@ object StandingQueryMessage {
         StandingQueryResult(isPositiveMatch = isPositive, data = qvResult)
       }
 
-    def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
+    def pretty(implicit idProvider: QuineIdProvider): String =
       s"${this.getClass.getSimpleName}(${from.pretty}, $queryPartId, $globalId, $resultGroup"
   }
 
@@ -129,7 +129,7 @@ object StandingQueryMessage {
         case _: StandingQueryPattern.QuinePatternQueryPattern =>
           throw new RuntimeException(s"Received branch result $this for QuinePattern query $sq")
       }
-      StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider, logConfig) :: Nil
+      StandingQueryResult(isPositive, from, formatAsString, aliasedAs)(idProvider) :: Nil
     }
   }
 

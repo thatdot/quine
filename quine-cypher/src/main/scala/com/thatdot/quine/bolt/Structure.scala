@@ -104,7 +104,7 @@ object Structured extends LazySafeLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            safe"Serializing node: ${Safe(node.id.debug)} with a non-integer ID may cause Bolt clients to crash"
+            safe"Serializing node: ${Safe(node.id.pretty)} with a non-integer ID may cause Bolt clients to crash"
           )
           other
       },

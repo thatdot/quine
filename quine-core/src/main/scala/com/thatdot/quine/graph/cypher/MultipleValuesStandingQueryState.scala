@@ -120,7 +120,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     */
   def readResults(localProperties: Properties): Option[Seq[QueryContext]]
 
-  def pretty(implicit @unused idProvider: QuineIdProvider, @unused logConfig: LogConfig): String = this.toString
+  def pretty(implicit @unused idProvider: QuineIdProvider): String = this.toString
 }
 
 trait MultipleValuesStandingQueryLookupInfo {
@@ -714,7 +714,7 @@ final case class SubscribeAcrossEdgeState(
     if (results.nonEmpty) Some(results) else None
   }
 
-  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
+  override def pretty(implicit idProvider: QuineIdProvider): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${edgeResults.map { case (he, v) => he.pretty -> v }})"
 }
 
@@ -808,7 +808,7 @@ final case class EdgeSubscriptionReciprocalState(
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
     if (currentlyMatching && cachedResult.isDefined) cachedResult else None
 
-  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
+  override def pretty(implicit idProvider: QuineIdProvider): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${halfEdge.pretty}, $currentlyMatching, ${cachedResult.map(_.mkString("[", ",", "]"))}, $andThenId)"
 }
 
@@ -863,6 +863,6 @@ final case class FilterMapState(
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = keptResults
 
-  override def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
+  override def pretty(implicit idProvider: QuineIdProvider): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${keptResults.mkString("[", ",", "]")})"
 }

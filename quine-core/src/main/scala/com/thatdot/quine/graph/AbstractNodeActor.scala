@@ -567,7 +567,7 @@ abstract private[graph] class AbstractNodeActor(
         includeDomainIndexEvents = false
       )
       .recover { case err =>
-        log.error(log"failed to get journal for node: ${Safe(qidAtTime.debug)}" withException err)
+        log.error(log"failed to get journal for node: ${Safe(qidAtTime.pretty)}" withException err)
         Iterable.empty
       }(context.dispatcher)
       .map { journal =>

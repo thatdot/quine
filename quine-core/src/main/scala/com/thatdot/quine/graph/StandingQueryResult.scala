@@ -160,7 +160,7 @@ object StandingQueryResult {
     id: QuineId,
     formatAsString: Boolean,
     aliasedAs: String
-  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): StandingQueryResult = {
+  )(implicit idProvider: QuineIdProvider): StandingQueryResult = {
     val idValue =
       if (formatAsString) QuineValue.Str(idProvider.qidToPrettyString(id))
       else idProvider.qidToValue(id)

@@ -98,15 +98,8 @@ abstract class QuineIdProvider extends StrictSafeLogging {
     * @param qid ID to pretty-print
     * @return pretty-printed ID
     */
-  def qidToPrettyString(qid: QuineId)(implicit logConfig: LogConfig): String =
-    customIdFromQid(qid).fold(
-      err => {
-        val qidStr = "#" + ByteConversions.formatHexBinary(qid.array)
-        logger.info(log"Failed to serialize QID ${Safe(qidStr)} with the configured ID provider." withException err)
-        qidStr
-      },
-      customIdToString
-    )
+  def qidToPrettyString(qid: QuineId): String =
+    customIdFromQid(qid).map(customIdToString).getOrElse(ByteConversions.formatHexBinary(qid.array))
 
   /** Inverse of [[qidToPrettyString]]
     *

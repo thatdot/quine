@@ -45,7 +45,7 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
       case Seq(Expr.Bytes(bytes, bytesRepresentId), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
         if (bytesRepresentId)
           logger.info(
-            safe"""Received an ID (${Safe(QuineId(bytes).pretty(location.idProvider, logConfig))}) as a source of
+            safe"""Received an ID (${Safe(QuineId(bytes).pretty(location.idProvider))}) as a source of
                  |bytes to parse a protobuf value of type: ${Safe(typeName)}.""".cleanLines
           )
         (bytes, filenameOrUrl(schemaUrl), typeName)
