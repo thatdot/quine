@@ -277,9 +277,13 @@ trait BaseGraph extends StrictSafeLogging {
   )(implicit timeout: Timeout): Future[Set[QuineId]] = {
     val shardAskSizes: List[Int] = {
       val n = shards.size
-      val quot = limit / n
-      val rem = limit % n
-      List.fill(n - rem)(quot) ++ List.fill(rem)(quot + 1)
+      if (n == 0) {
+        List.empty
+      } else {
+        val quot = limit / n
+        val rem = limit % n
+        List.fill(n - rem)(quot) ++ List.fill(rem)(quot + 1)
+      }
     }
 
     Future
