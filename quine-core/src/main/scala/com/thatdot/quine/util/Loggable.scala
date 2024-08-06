@@ -187,6 +187,10 @@ object Log {
   //All of the implicit instances of Loggable for primitives and Quine Values.
   // This is put inside of another object so you aren't given all of the implicits every time you import Loggable._
   object implicits {
+    implicit val LogValue: Loggable[com.thatdot.quine.graph.cypher.Value] =
+      Loggable((a: com.thatdot.quine.graph.cypher.Value, f: String => String) => f(a.pretty))
+    implicit val LogExpr: Loggable[com.thatdot.quine.graph.cypher.Expr] =
+      toStringLoggable[com.thatdot.quine.graph.cypher.Expr]
     implicit val LogInt: Loggable[Int] = toStringLoggable[Int]
     implicit val LogBoolean: Loggable[Boolean] = toStringLoggable[Boolean]
     implicit val LogLong: Loggable[Long] = toStringLoggable[Long]
@@ -229,8 +233,6 @@ object Log {
       Loggable.alwaysSafe[com.thatdot.quine.graph.NamespaceId](_.toString)
     implicit val LogMilliseconds: Loggable[com.thatdot.quine.model.Milliseconds] =
       toStringLoggable[com.thatdot.quine.model.Milliseconds]
-    implicit val LogCypherValue: Loggable[com.thatdot.quine.graph.cypher.Value] =
-      toStringLoggable[com.thatdot.quine.graph.cypher.Value]
     implicit val LogQuineValue: Loggable[com.thatdot.quine.model.QuineValue] =
       toStringLoggable[com.thatdot.quine.model.QuineValue]
     implicit val LogQuineType: Loggable[com.thatdot.quine.model.QuineType] =

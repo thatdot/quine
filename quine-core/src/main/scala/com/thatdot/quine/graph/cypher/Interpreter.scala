@@ -31,6 +31,7 @@ import com.thatdot.quine.model.{
   QuineValue
 }
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 // An interpreter that runs against the graph as a whole, rather than "inside" the graph
 // INV: Thread-safe
@@ -194,7 +195,8 @@ trait OnNodeInterpreter
     with Actor
     with BaseNodeActor
     with QuineIdOps
-    with QuineRefOps {
+    with QuineRefOps
+    with LazySafeLogging {
 
   def node: Option[BaseNodeActor] = Some(this)
 
@@ -297,9 +299,12 @@ trait OnNodeInterpreter
     parameters: Parameters,
     logConfig: LogConfig
   ): Source[QueryContext, _] = {
-    val other: QuineId = getQuineId(query.node.eval(context)) match {
+    val evaled = query.node.eval(context)
+    val other: QuineId = getQuineId(evaled) match {
       case Some(other) => other
-      case None => return Source.empty
+      case None =>
+        logger.error(log"Tried to use expression as QuineId: ${query.node}, but evaluates to ${evaled}")
+        return Source.empty
     }
 
     /** Apply(this, that)
