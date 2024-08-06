@@ -196,10 +196,12 @@ object StaticNodeSupport extends LazySafeLogging {
                   // QU-1921 fire-and-forget removing `removeThese` from the persistor (i.e., define
                   //  `removeStandingQueryStatesForQidAndSqId` so it can be used like:)
                   //  removeThese.keySet.map(_._1).foreach(persistor.removeStandingQueryStatesForQidAndSqId(qid, _))
-                  logger.debug(
-                    safe"""During node constructor assembly, found ${Safe(removeThese.size)} no-longer-relevant
-                         |MVSQ states for node: ${Safe(qidAtTime.pretty(idProv))}""".cleanLines
-                  )
+                  if (removeThese.nonEmpty) {
+                    logger.debug(
+                      safe"""During node constructor assembly, found ${Safe(removeThese.size)} no-longer-relevant
+                            |MVSQ states for node: ${Safe(qidAtTime.pretty(idProv))}""".cleanLines
+                    )
+                  }
 
                   // with the still-relevant SQ states, continue to assemble the node's constructor arguments
                   keepThese.map { case (sqIdAndPartId, bytes) =>

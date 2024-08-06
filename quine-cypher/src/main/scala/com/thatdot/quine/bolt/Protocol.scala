@@ -362,7 +362,7 @@ object Protocol extends LazySafeLogging {
       var queryResults: Source[Record, NotUsed] = Source.empty
 
       (msg: ProtocolMessage) =>
-        logger.debug(log"Received message $msg")
+        logger.trace(log"Received BOLT message $msg")
         val State.HandlerResult(newState, response, resultsQueue) = connectionState
           .handleMessage(graph, timeout, logConfig)
           .applyOrElse[(ProtocolMessage, Source[Record, NotUsed]), State.HandlerResult](
@@ -384,7 +384,7 @@ object Protocol extends LazySafeLogging {
         }
         connectionState = newState
         queryResults = resultsQueue
-        logger.debug(log"Returning messages ${response.toString}")
+        logger.trace(log"Returning BOLT messages ${response.toString}")
         Vector(response)
     }
 

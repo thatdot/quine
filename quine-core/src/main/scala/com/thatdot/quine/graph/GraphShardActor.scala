@@ -217,10 +217,10 @@ final private[quine] class GraphShardActor(
 
         // If the node was not already considering sleep, tell it to
         if (previous == WakefulState.Awake) {
-          log.debug(safe"sleepActor: sent GoToSleep request to: $target")
+          log.trace(safe"sleepActor: sent GoToSleep request to: $target")
           actorRef ! GoToSleep
         } else {
-          log.debug(safe"sleepActor: target is already: $previous")
+          log.trace(safe"sleepActor: target is already: $previous")
         }
 
       case Some(NodeState.WakingNode) =>
@@ -311,7 +311,7 @@ final private[quine] class GraphShardActor(
     qid: SpaceTimeQuineId,
     originalSender: ActorRef
   ): Unit = {
-    log.debug(
+    log.trace(
       log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(originalSender)}"
     )
     getAwakeNode(qid) match {
@@ -434,7 +434,7 @@ final private[quine] class GraphShardActor(
 
     // Actor shut down completely
     case SleepOutcome.SleepSuccess(id, shardPromise) =>
-      log.debug(safe"Sleep succeeded for ${Safe(id.pretty)}")
+      log.trace(safe"Sleep succeeded for ${Safe(id.pretty)}")
       namespacedNodes.get(id.namespace).foreach(_.remove(id))
       inMemoryActorList.remove(id)
       nodesSleptSuccessCounter(id.namespace).inc()

@@ -72,16 +72,16 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
 
   @tailrec
   private def processReadyCallbacks()(implicit logConfig: LogConfig): Unit = {
-    log.debug(
+    log.trace(
       log"""pendingCallbacks on node: ${Safe(qid.pretty)} size: ${Safe(pendingCallbacks.size)} first is:
            |${pendingCallbacks.headOption.toString} Stashed size: ${Safe(messageBuffer.size)}""".cleanLines
     )
     pendingCallbacks.headOption match {
       case Some(_: Pending[_]) =>
         () // wait for this result to complete before more processing to maintain effect order
-        log.debug(safe"Pending item is next on node ${Safe(qid.pretty)}. Size is: ${Safe(pendingCallbacks.size)}")
+        log.trace(safe"Pending item is next on node ${Safe(qid.pretty)}. Size is: ${Safe(pendingCallbacks.size)}")
       case Some(r: Ready[_]) =>
-        log.debug(
+        log.trace(
           safe"Ready item: ${Safe(r.id)} is next on node: ${Safe(qid.pretty)}. Remaining after removal: ${Safe(pendingCallbacks.size - 1)}"
         )
         val _ = pendingCallbacks.remove(0)
@@ -90,12 +90,12 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
       case None =>
         /* Go back to the regular behaviour and enqueue stashed messages back into the actor mailbox. The
          * `StashedMessage` wrapper ensures that re-enqueued messages get processed as if they had arrived first. */
-        log.debug(
+        log.trace(
           safe"Unbecoming on: ${Safe(qid.pretty)} Remaining size: ${Safe(pendingCallbacks.size)} stashed size: ${Safe(messageBuffer.size)}"
         )
         context.unbecome()
         messageBuffer.foreach { e =>
-          log.debug(
+          log.trace(
             log"Unstashing message: ${e.message.toString} on node: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}"
           )
           self.tell(StashedMessage(e.message), e.sender)
@@ -143,13 +143,13 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
 
     // Temporarily change the actor behavior to only buffer messages
     if (pendingCallbacks.size == 1) {
-      log.debug(
+      log.trace(
         log"Becoming PriorityStashingBehavior on: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}"
       )
       context.become(
         {
           case StashedResultDelivery(id, result) =>
-            log.debug(
+            log.trace(
               log"Result delivery for: ${Safe(id)} with payload: ${result.toString} on node: ${Safe(qid.pretty)}"
             )
             addResultToCallback(id, result, isResultSafe)
@@ -159,13 +159,13 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
           /* We are are receiving a message that was un-stashed before. Re-stash it. */
           case StashedMessage(msg) =>
             messageBuffer += Envelope(msg, sender())
-            log.debug(
+            log.trace(
               log"Restashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}"
             )
 
           case msg =>
             messageBuffer += Envelope(msg, sender())
-            log.debug(
+            log.trace(
               log"Stashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}"
             )
         },
