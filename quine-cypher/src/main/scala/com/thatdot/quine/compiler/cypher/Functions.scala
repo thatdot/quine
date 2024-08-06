@@ -13,6 +13,7 @@ import java.time.{
   ZoneOffset,
   ZonedDateTime => JavaZonedDateTime
 }
+import java.util.regex.PatternSyntaxException
 import java.util.{Locale, TimeZone}
 
 import scala.collection.concurrent
@@ -712,9 +713,14 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value =
     args match {
       case Vector(Expr.Str(text), Expr.Str(regex)) =>
+        val firstMatch =
+          try regex.r.findFirstMatchIn(text).toVector
+          catch {
+            case e: PatternSyntaxException => throw new CypherException.ConstraintViolation(e.getMessage(), None)
+          }
         Expr.List(
           for {
-            m <- regex.r.findFirstMatchIn(text).toVector
+            m <- firstMatch
             i <- 0 to m.groupCount
           } yield Expr.Str(m.group(i))
         )
@@ -738,7 +744,10 @@ object CypherTextRegexReplaceAll extends UserDefinedFunction {
   def call(args: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value =
     args match {
       case Vector(Expr.Str(text), Expr.Str(regex), Expr.Str(replacement)) =>
-        Expr.Str(regex.r.replaceAllIn(text, replacement))
+        try Expr.Str(regex.r.replaceAllIn(text, replacement))
+        catch {
+          case e: PatternSyntaxException => throw CypherException.ConstraintViolation(e.getMessage(), None)
+        }
       case other => throw wrongSignature(other)
     }
 }

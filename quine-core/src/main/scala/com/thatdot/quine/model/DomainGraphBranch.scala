@@ -1,9 +1,10 @@
 package com.thatdot.quine.model
 
-import java.util.regex.Pattern
+import java.util.regex.{Pattern, PatternSyntaxException}
 
 import com.google.common.cache.{Cache, CacheBuilder}
 
+import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 
@@ -422,14 +423,21 @@ case object PropertyComparisonFunctions {
     * @param pattern regex to match
     */
   final case class RegexMatch(pattern: String) extends PropertyComparisonFunc {
-
-    val compiled: Pattern = Pattern.compile(pattern)
+    val compiled: Pattern =
+      try Pattern.compile(pattern)
+      catch {
+        case e: PatternSyntaxException => throw CypherException.Compile(e.getMessage(), scala.None)
+      }
 
     /** Returns true if the found property is a string that matches the regex */
     def apply(qp: Option[PropertyValue], fp: Option[PropertyValue]): Boolean =
       fp match {
         case Some(PropertyValue(QuineValue.Str(testing))) =>
-          compiled.matcher(testing).matches
+          try compiled.matcher(testing).matches
+          catch {
+            //This shouldn't happen because compiled should already be compiled
+            case e: PatternSyntaxException => throw CypherException.ConstraintViolation(e.getMessage(), scala.None)
+          }
         case _ =>
           false
       }

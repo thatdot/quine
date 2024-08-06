@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
-import java.util.regex.Pattern
+import java.util.regex.{Pattern, PatternSyntaxException}
 
 import scala.collection.immutable.ArraySeq
 
@@ -147,12 +147,21 @@ object MultipleValuesStandingQuery {
       override def apply(value: Value): Boolean = false
     }
     final case class Regex(pattern: String) extends ValueConstraint {
-      val compiled: Pattern = Pattern.compile(pattern)
+      val compiled: Pattern =
+        try Pattern.compile(pattern)
+        catch {
+          case e: PatternSyntaxException => throw CypherException.Compile(e.getMessage(), scala.None)
+        }
       val satisfiedByNone = false
 
       // The intention is that this matches the semantics of Cypher's `=~` with a constant regex
       override def apply(value: Value): Boolean = value match {
-        case Expr.Str(testStr) => compiled.matcher(testStr).matches
+        case Expr.Str(testStr) =>
+          try compiled.matcher(testStr).matches
+          catch {
+            //This shouldn't happen because compiled should already be compiled
+            case e: PatternSyntaxException => throw CypherException.ConstraintViolation(e.getMessage(), scala.None)
+          }
         case _ => false
       }
     }

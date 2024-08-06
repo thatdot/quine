@@ -386,6 +386,13 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       s"text.regexFirstMatch('foo', 'bar')",
       Expr.List()
     )
+
+    //Make sure we throw the correct error when passing an invalid regest to regexFirstMatch
+    assertQueryExecutionFailure(
+      "RETURN text.regexFirstMatch('hello', '(')",
+      CypherException.ConstraintViolation("Unclosed group near index 1\n(", None)
+    )
+
   }
 
   describe("url decoding") {
