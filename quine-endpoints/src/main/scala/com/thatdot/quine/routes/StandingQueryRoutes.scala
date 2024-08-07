@@ -508,7 +508,7 @@ trait StandingQueryRoutes
     : Endpoint[(String, NamespaceParameter, StandingQueryDefinition), Either[ClientErrors, Option[Unit]]] = {
     val sq: StandingQueryDefinition = StandingQueryDefinition(
       StandingQueryPattern.Cypher(
-        "MATCH (n)-[:has_father]->(m) WHERE exists(n.name) AND exists(m.name) RETURN DISTINCT strId(n) AS kidWithDad"
+        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad"
       ),
       Map(
         "endpoint" -> StandingQueryResultOutputUserDef.PostToEndpoint("http://myendpoint"),
