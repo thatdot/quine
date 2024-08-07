@@ -387,6 +387,16 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Expr.List()
     )
 
+    testExpression(
+      s"text.regexGroups('abc <link xxx1>yyy1</link> def <link xxx2>yyy2</link>', '<link (\\w+)>(\\w+)</link>')",
+      Expr.List(
+        Vector(
+          Expr.List(Vector(Expr.Str("<link xxx1>yyy1</link>"), Expr.Str("xxx1"), Expr.Str("yyy1"))),
+          Expr.List(Vector(Expr.Str("<link xxx2>yyy2</link>"), Expr.Str("xxx2"), Expr.Str("yyy2")))
+        )
+      )
+    )
+
     //Make sure we throw the correct error when passing an invalid regest to regexFirstMatch
     assertQueryExecutionFailure(
       "RETURN text.regexFirstMatch('hello', '(')",

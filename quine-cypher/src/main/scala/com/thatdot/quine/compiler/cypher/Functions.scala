@@ -153,6 +153,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherMapDropNullValues,
     CypherTextSplit,
     CypherTextRegexFirstMatch,
+    CypherTextRegexGroups,
     CypherTextRegexReplaceAll,
     CypherTextUrlEncode,
     CypherTextUrlDecode,
@@ -723,6 +724,40 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
             m <- firstMatch
             i <- 0 to m.groupCount
           } yield Expr.Str(m.group(i))
+        )
+      case other => throw wrongSignature(other)
+    }
+}
+
+object CypherTextRegexGroups extends UserDefinedFunction {
+  val name = "text.regexGroups"
+  val isPure = true
+  val signatures: Vector[UserDefinedFunctionSignature] = Vector(
+    UserDefinedFunctionSignature(
+      arguments = Vector("text" -> Type.Str, "regex" -> Type.Str),
+      output = Type.List(Type.Str),
+      description =
+        "Parses the string `text` using the regular expression `regex` and returns all groups matching the given regular expression in the given text"
+    )
+  )
+  val category = Category.STRING
+
+  def call(args: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value =
+    args match {
+      case Vector(Expr.Str(text), Expr.Str(regex)) =>
+        val allMatches =
+          try regex.r.findAllMatchIn(text).toVector
+          catch {
+            case e: PatternSyntaxException => throw new CypherException.ConstraintViolation(e.getMessage, None)
+          }
+        Expr.List(
+          for {
+            m <- allMatches
+            matched = for {
+              i <- (0 to m.groupCount).toVector
+            } yield m.group(i)
+            matchedCypher = Expr.List(matched.map(Expr.Str))
+          } yield matchedCypher
         )
       case other => throw wrongSignature(other)
     }
