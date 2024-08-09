@@ -1,7 +1,7 @@
 package com.thatdot.quine.app.ingest
 
 import java.nio.charset.{Charset, StandardCharsets}
-import java.nio.file.Paths
+import java.nio.file.{Files, Paths}
 
 import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
@@ -16,7 +16,7 @@ import org.apache.pekko.stream.{KillSwitches, RestartSettings}
 import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
-import cats.data.ValidatedNel
+import cats.data.{NonEmptyList, Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 import org.apache.kafka.common.KafkaException
 
@@ -411,21 +411,24 @@ object IngestSrcDef extends LazySafeLogging {
           maxPerSecond,
           fileIngestMode
         ) =>
-      ContentDelimitedIngestSrcDef
-        .apply(
-          initialSwitchMode,
-          format,
-          NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode),
-          encodingString,
-          parallelism,
-          maximumLineSize,
-          startAtOffset,
-          ingestLimit,
-          maxPerSecond,
-          name,
-          intoNamespace
-        )
-        .valid
+      if (!Files.exists(Paths.get(path)))
+        Validated.Invalid(NonEmptyList.one(s"Could not load ingest file $path"))
+      else
+        ContentDelimitedIngestSrcDef
+          .apply(
+            initialSwitchMode,
+            format,
+            NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode),
+            encodingString,
+            parallelism,
+            maximumLineSize,
+            startAtOffset,
+            ingestLimit,
+            maxPerSecond,
+            name,
+            intoNamespace
+          )
+          .valid
 
     case S3Ingest(
           format,

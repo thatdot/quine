@@ -1,6 +1,6 @@
 package com.thatdot.quine.app
 
-import java.io.File
+import java.io.{File, FileNotFoundException}
 import java.net.HttpURLConnection.{HTTP_MOVED_PERM, HTTP_MOVED_TEMP}
 import java.net.{HttpURLConnection, MalformedURLException, URL, URLEncoder}
 
@@ -429,7 +429,10 @@ object Recipe {
             circe.yaml.v12.Parser.default.parse(new YamlUnicodeReader(inStream)).leftMap(e => Seq(showError.show(e)))
           )
         )
-        .leftMap(e => Seq(e.toString))
+        .leftMap {
+          case _: FileNotFoundException => Seq(s"Cannot find recipe file at ${urlToRecipeContent.getFile}")
+          case e => Seq(e.toString)
+        }
         .flatten
       recipe <- fromJson(json).leftMap(_.toList.map(showError.show))
       _ <- validateRecipeCurrentVersion(recipe)
