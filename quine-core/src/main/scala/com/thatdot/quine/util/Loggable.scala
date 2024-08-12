@@ -21,14 +21,22 @@ import com.thatdot.quine.graph.cypher.{
   AllPropertiesState,
   CrossState,
   EdgeSubscriptionReciprocalState,
+  Expr,
   LocalIdState,
   LocalPropertyState,
-  UnitState
+  UnitState,
+  Value
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.SqResultLike
 import com.thatdot.quine.graph.messaging._
-import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, StandingQueryId, StandingQueryResult}
-import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.graph.{
+  EventTime,
+  MultipleValuesStandingQueryPartId,
+  StandingQueryId,
+  StandingQueryResult,
+  namespaceToString
+}
+import com.thatdot.quine.model.{QuineId, QuineValue}
 
 object Log {
 
@@ -176,21 +184,181 @@ object Log {
       )
     }
 
+  private[Log] trait SafeToStringLoggable[A] extends Loggable[A] {
+    def safe(a: A) = a.toString
+  }
   //Helper function for generating a "Loggable" for primitive types
   // that encoding them is as simple as calling .toString
-  def toStringLoggable[A]: Loggable[A] = new Loggable[A] {
-    def safe(a: A) = a.toString
-    def unsafe(a: A, redactor: String => String) = redactor(a.toString)
-  }
+  def toStringLoggable[A]: SafeToStringLoggable[A] = (a: A, redactor: String => String) => redactor(a.toString)
 
   implicit val LogString: Loggable[String] = toStringLoggable[String]
   //All of the implicit instances of Loggable for primitives and Quine Values.
   // This is put inside of another object so you aren't given all of the implicits every time you import Loggable._
   object implicits {
-    implicit val LogValue: Loggable[com.thatdot.quine.graph.cypher.Value] =
-      Loggable((a: com.thatdot.quine.graph.cypher.Value, f: String => String) => f(a.pretty))
-    implicit val LogExpr: Loggable[com.thatdot.quine.graph.cypher.Expr] =
-      toStringLoggable[com.thatdot.quine.graph.cypher.Expr]
+    implicit val LogExpr: Loggable[com.thatdot.quine.graph.cypher.Expr] = {
+      def logExpr(a: Expr, redactor: String => String): String = {
+        @inline def prefix = a.getClass.getSimpleName
+        @inline def recurse(e: Expr): String = logExpr(e, redactor)
+
+        a match {
+          case Expr.Variable(_) =>
+            // variable names are safe
+            a.toString
+          case Expr.Property(expr, key) =>
+            s"$prefix(${recurse(expr)}, $key)" // static property keys are safe
+          case Expr.Parameter(_) =>
+            // parameter indices are safe
+            a.toString
+          case Expr.ListLiteral(expressions) => s"$prefix(${expressions.map(recurse).mkString(", ")})"
+          case Expr.MapLiteral(entries) =>
+            // static keys in a map literal are safe
+            s"$prefix(${entries.map { case (k, v) => s"$k -> ${recurse(v)}" }.mkString(", ")})"
+          case Expr.MapProjection(original, items, includeAllProps) =>
+            // static keys in a map projection are safe
+            s"$prefix(${recurse(original)}, [${items.map { case (k, v) => s"$k -> ${recurse(v)}" }.mkString(", ")}], includeAllProps=$includeAllProps)"
+          case Expr.Function(function, arguments) =>
+            // function name is safe
+            s"$prefix(${function.name}, Arguments(${arguments.map(recurse).mkString(", ")}))"
+          case Expr.ListComprehension(variable, list, filterPredicate, extract) =>
+            // static variable name is safe
+            s"$prefix($variable, ${recurse(list)}, ${recurse(filterPredicate)}, ${recurse(extract)})"
+          case Expr.AllInList(variable, list, filterPredicate) =>
+            // static variable name is safe
+            s"$prefix($variable, ${recurse(list)}, ${recurse(filterPredicate)})"
+          case Expr.AnyInList(variable, list, filterPredicate) =>
+            // static variable name is safe
+            s"$prefix($variable, ${recurse(list)}, ${recurse(filterPredicate)})"
+          case Expr.SingleInList(variable, list, filterPredicate) =>
+            // static variable name is safe
+            s"$prefix($variable, ${recurse(list)}, ${recurse(filterPredicate)})"
+          case Expr.ReduceList(accumulator, initial, variable, list, reducer) =>
+            // static variable name and function name are safe
+            s"$prefix($accumulator, ${recurse(initial)}, $variable, ${recurse(list)}, ${recurse(reducer)})"
+          case Expr.FreshNodeId =>
+            // singleton value is safe
+            a.toString
+          // For all other cases, the type of the AST node is safe, but the child ASTs may not be
+          case Expr.DynamicProperty(expr, keyExpr) =>
+            s"$prefix(${recurse(expr)}, ${recurse(keyExpr)})"
+          case Expr.ListSlice(list, from, to) =>
+            s"$prefix(${recurse(list)}, ${from.map(recurse)}, ${to.map(recurse)})"
+          case Expr.PathExpression(nodeEdges) =>
+            s"$prefix(${nodeEdges.map(recurse).mkString(", ")})"
+          case Expr.RelationshipStart(relationship) =>
+            s"$prefix(${recurse(relationship)})"
+          case Expr.RelationshipEnd(relationship) =>
+            s"$prefix(${recurse(relationship)})"
+          case Expr.Equal(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Subtract(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Add(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Multiply(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Divide(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Modulo(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Exponentiate(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.UnaryAdd(argument) =>
+            s"$prefix(${recurse(argument)})"
+          case Expr.UnarySubtract(argument) =>
+            s"$prefix(${recurse(argument)})"
+          case Expr.GreaterEqual(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.LessEqual(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Greater(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.Less(lhs, rhs) =>
+            s"$prefix(${recurse(lhs)}, ${recurse(rhs)})"
+          case Expr.InList(element, list) =>
+            s"$prefix(${recurse(element)}, ${recurse(list)})"
+          case Expr.StartsWith(scrutinee, startsWith) =>
+            s"$prefix(${recurse(scrutinee)}, ${recurse(startsWith)})"
+          case Expr.EndsWith(scrutinee, endsWith) =>
+            s"$prefix(${recurse(scrutinee)}, ${recurse(endsWith)})"
+          case Expr.Contains(scrutinee, contained) =>
+            s"$prefix(${recurse(scrutinee)}, ${recurse(contained)})"
+          case Expr.Regex(scrutinee, regex) =>
+            s"$prefix(${recurse(scrutinee)}, ${recurse(regex)})"
+          case Expr.IsNotNull(notNull) =>
+            s"$prefix(${recurse(notNull)})"
+          case Expr.IsNull(isNull) =>
+            s"$prefix(${recurse(isNull)})"
+          case Expr.Not(negated) =>
+            s"$prefix(${recurse(negated)})"
+          case Expr.And(conjuncts) =>
+            s"$prefix(${conjuncts.map(recurse).mkString(", ")})"
+          case Expr.Or(disjuncts) =>
+            s"$prefix(${disjuncts.map(recurse).mkString(", ")})"
+          case Expr.Case(scrutinee, branches, default) =>
+            s"$prefix(${scrutinee.map(recurse)}, {${branches
+              .map { case (cond, action) => s"${recurse(cond)} -> ${recurse(action)}" }
+              .mkString(", ")}}, ${default.map(recurse)})"
+          case value: Value =>
+            value match {
+              case Expr.True | Expr.False =>
+                // In conjunction with variable names and property keys being safe, non-null boolean is UNSAFE.
+                // consider: "is_married": true/false
+                s"Bool(${redactor(a.toString)})"
+              case Expr.Null =>
+                // singleton "Null" is safe
+                a.toString
+              case Expr.Bytes(b, representsId) if representsId =>
+                // ID bytes are delegated to LogQuineId
+                s"IdBytes(${LogQuineId.unsafe(QuineId(b), redactor)})"
+              case Expr.Bytes(b, _) =>
+                // non-ID bytes are unsafe, but in case the redactor is a no-op, format them.
+                s"$prefix(${redactor(ByteConversions.formatHexBinary(b))})"
+              case Expr.List(list) =>
+                // NB this exposes the number of elements in the list, but not their values
+                s"$prefix(${list.map(recurse).mkString(", ")})"
+              case Expr.Map(map) =>
+                // map keys may be dynamic/based on PII, so we redact them
+                // NB this exposes the number of elements in the map
+                s"$prefix(${map.map { case (k, v) => s"${redactor(k)} -> ${recurse(v)}" }.mkString(", ")})"
+              case Expr.Node(id, labels, properties) =>
+                // ID is delegated to LogQuineId, labels are stringified before redaction, properties are redacted
+                s"$prefix(${LogQuineId.unsafe(id, redactor)}, Labels(${redactor(labels.map(_.name).mkString(", "))}), {${properties
+                  .map { case (k, v) => s"${redactor(k.name)} -> ${recurse(v)}" }
+                  .mkString(", ")}})"
+              case Expr.Relationship(start, name, properties, end) =>
+                // IDs are delegated to LogQuineId, label is stringified redacted, properties are redacted
+                s"$prefix(${LogQuineId.unsafe(start, redactor)}, ${redactor(name.name)}, ${properties
+                  .map { case (k, v) => s"${redactor(k.name)} -> ${recurse(v)}" }
+                  .mkString(", ")}, ${LogQuineId.unsafe(end, redactor)})"
+              case Expr.Path(head, tails) =>
+                // flatten the path into an alternating Path(node, edge, node, edge, node...) sequence, redacting all.
+                // NB this exposes the number of nodes and edges in the path
+                s"$prefix(${(recurse(head) +: tails.flatMap { case (edge, node) => Seq(recurse(edge), recurse(node)) }).mkString(", ")})"
+              // For the rest, the type name is safe but the contents are unsafe
+              case Expr.Str(string) =>
+                s"$prefix(${redactor("\"" + string + "\"")})"
+              case Expr.Integer(long) =>
+                s"$prefix(${redactor(long.toString)})"
+              case Expr.Floating(double) =>
+                s"$prefix(${redactor(double.toString)})"
+              case Expr.LocalDateTime(localDateTime) =>
+                s"$prefix(${redactor(localDateTime.toString)})"
+              case Expr.Date(date) =>
+                s"$prefix(${redactor(date.toString)})"
+              case Expr.Time(time) =>
+                s"$prefix(${redactor(time.toString)})"
+              case Expr.LocalTime(localTime) =>
+                s"$prefix(${redactor(localTime.toString)})"
+              case Expr.DateTime(zonedDateTime) =>
+                s"$prefix(${redactor(zonedDateTime.toString)})"
+              case Expr.Duration(duration) =>
+                s"$prefix(${redactor(duration.toString)})"
+            }
+        }
+      }
+      Loggable(logExpr)
+    }
+    implicit val LogValue: Loggable[com.thatdot.quine.graph.cypher.Value] = Loggable(LogExpr.unsafe(_, _))
     implicit val LogInt: Loggable[Int] = toStringLoggable[Int]
     implicit val LogBoolean: Loggable[Boolean] = toStringLoggable[Boolean]
     implicit val LogLong: Loggable[Long] = toStringLoggable[Long]
@@ -200,7 +368,7 @@ object Log {
     implicit val LogUrl: Loggable[java.net.URL] = toStringLoggable[java.net.URL]
     implicit val LogInetSocketAddress: Loggable[InetSocketAddress] = toStringLoggable[InetSocketAddress]
     implicit val LogEventTime: Loggable[EventTime] = toStringLoggable[EventTime]
-    implicit val LogTemporalUnit: Loggable[TemporalUnit] = toStringLoggable[TemporalUnit]
+    implicit val LogTemporalUnit: AlwaysSafeLoggable[TemporalUnit] = Loggable.alwaysSafe[TemporalUnit](_.toString)
     implicit val LogStandingQueryId: AlwaysSafeLoggable[StandingQueryId] =
       Loggable.alwaysSafe[StandingQueryId](_.toString)
     implicit val LogCharset: AlwaysSafeLoggable[Charset] = Loggable.alwaysSafe[Charset](_.toString)
@@ -229,14 +397,54 @@ object Log {
       Loggable.alwaysSafe(_.toString)
     implicit val LogActorSelection: Loggable[org.apache.pekko.actor.ActorSelection] =
       toStringLoggable[org.apache.pekko.actor.ActorSelection]
-    implicit val LogNamespaceId: AlwaysSafeLoggable[com.thatdot.quine.graph.NamespaceId] =
-      Loggable.alwaysSafe[com.thatdot.quine.graph.NamespaceId](_.toString)
+    // Option[Symbol] is too generic a type for which to confidently have an implicit instance
+    val LogNamespaceId: AlwaysSafeLoggable[Option[Symbol]] =
+      Loggable.alwaysSafe[com.thatdot.quine.graph.NamespaceId](namespaceToString)
     implicit val LogMilliseconds: Loggable[com.thatdot.quine.model.Milliseconds] =
       toStringLoggable[com.thatdot.quine.model.Milliseconds]
-    implicit val LogQuineValue: Loggable[com.thatdot.quine.model.QuineValue] =
-      toStringLoggable[com.thatdot.quine.model.QuineValue]
-    implicit val LogQuineType: Loggable[com.thatdot.quine.model.QuineType] =
-      toStringLoggable[com.thatdot.quine.model.QuineType]
+    implicit val LogQuineValue: Loggable[com.thatdot.quine.model.QuineValue] = {
+
+      def logQuineValue(qv: QuineValue, redactor: String => String): String = {
+        @inline def recurse(qv: QuineValue): String = logQuineValue(qv, redactor)
+        val prefix = qv.getClass.getSimpleName
+        qv match {
+          case QuineValue.Str(string) => s"$prefix(${redactor("\"" + string + "\"")})"
+          case QuineValue.Integer(long) => s"$prefix(${redactor(long.toString)})"
+          case QuineValue.Floating(double) => s"$prefix(${redactor(double.toString)})"
+          case QuineValue.True | QuineValue.False =>
+            // In conjunction with variable names and property keys being safe, non-null boolean is UNSAFE.
+            // consider: "is_married": true/false
+            s"Bool(${redactor(prefix)})"
+          case QuineValue.Null =>
+            // singleton "null" is safe
+            qv.toString
+          case QuineValue.Bytes(bytes) => s"$prefix(${redactor(ByteConversions.formatHexBinary(bytes))})"
+          case QuineValue.List(list) =>
+            // NB this exposes the number of elements in the list
+            s"$prefix(${list.map(recurse).mkString(", ")})"
+          case QuineValue.Map(map) =>
+            // NB this exposes the number of elements in the map
+            s"$prefix(${map.map { case (k, v) => s"${redactor(k)} -> ${recurse(v)}" }.mkString(", ")})"
+          case QuineValue.DateTime(instant) =>
+            s"$prefix(${redactor(instant.toString)})"
+          case QuineValue.Duration(duration) =>
+            s"$prefix(${redactor(duration.toString)})"
+          case QuineValue.Date(date) =>
+            s"$prefix(${redactor(date.toString)})"
+          case QuineValue.LocalTime(time) =>
+            s"$prefix(${redactor(time.toString)})"
+          case QuineValue.Time(time) =>
+            s"$prefix(${redactor(time.toString)})"
+          case QuineValue.LocalDateTime(localDateTime) =>
+            s"$prefix(${redactor(localDateTime.toString)})"
+          case QuineValue.Id(id) => s"$prefix(${LogQuineId.unsafe(id, redactor)})"
+        }
+      }
+
+      Loggable(logQuineValue)
+    }
+    implicit val LogQuineType: AlwaysSafeLoggable[com.thatdot.quine.model.QuineType] =
+      Loggable.alwaysSafe[com.thatdot.quine.model.QuineType](_.toString)
     implicit val LogHalfEdge: Loggable[com.thatdot.quine.model.HalfEdge] =
       toStringLoggable[com.thatdot.quine.model.HalfEdge]
     implicit val LogPropertyValue: Loggable[com.thatdot.quine.model.PropertyValue] =
@@ -271,6 +479,7 @@ object Log {
         override def safe(a: Map[K, V]): String = a.map { case (k, v) =>
           (loggableKey.safe(k), loggableVal.safe(v))
         }.toString
+
         override def unsafe(a: Map[K, V], redactor: String => String): String = a.map { case (k, v) =>
           (loggableKey.unsafe(k, redactor), loggableVal.unsafe(v, redactor))
         }.toString

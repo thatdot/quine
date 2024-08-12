@@ -2474,10 +2474,10 @@ sealed abstract class Value extends Expr {
 
   }
 
-  /** Pretty print the value
+  /** Pretty print the value for consumption by the end-user. For debugging these values and presenting to an
+    * operator, use [[com.thatdot.quine.util.Log.implicits.LogValue]] instead
     *
-    * This should endeavour to round-trip parsing literals whenever possible,
-    * although this isn't always possible (example: bytes don't have literals).
+    * This should endeavour to round-trip parsing literals/expressions whenever possible
     */
   def pretty: String = this match {
     case Expr.Str(str) => "\"" + StringEscapeUtils.escapeJson(str) + "\""
@@ -2487,8 +2487,11 @@ sealed abstract class Value extends Expr {
     case Expr.False => "false"
     case Expr.Null => "null"
     case Expr.Bytes(b, representsId) =>
-      val prefix = if (representsId) "#" else "" // #-prefix matches [[qidToPrettyString]]
-      prefix + ByteConversions.formatHexBinary(b)
+      if (representsId) {
+        s"#${ByteConversions.formatHexBinary(b)}" // #-prefix matches [[QuineId.pretty]]
+      } else {
+        s"""bytes("${ByteConversions.formatHexBinary(b)}")"""
+      }
 
     case Expr.Node(id, lbls, props) =>
       val propsStr = props
