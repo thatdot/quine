@@ -351,7 +351,8 @@ lazy val `quine-docs`: Project = {
       // Same as `paradox` itself
       libraryDependencies ++= Seq(
         "org.pegdown" % "pegdown" % pegdownV,
-        "org.parboiled" % "parboiled-java" % parboiledV
+        "org.parboiled" % "parboiled-java" % parboiledV,
+        "org.scalatest" %% "scalatest" % scalaTestV % Test
       ),
       Compile / paradoxProperties ++= Map(
         "snip.github_link" -> "false",

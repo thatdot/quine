@@ -10,7 +10,8 @@ import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.QuineUUIDProvider
 import com.thatdot.quine.util.Log._
 
-class GenerateOpenApi(implicit protected val logConfig: LogConfig) extends App {
+object GenerateOpenApi extends App {
+  val logConfig: LogConfig = LogConfig()
 
   private val (outputPath: Path, isEnterprise: Boolean) = args match {
     case Array(stringPath) => (Paths.get(stringPath), false)
@@ -20,7 +21,7 @@ class GenerateOpenApi(implicit protected val logConfig: LogConfig) extends App {
       sys.exit(1)
   }
 
-  val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider).api
+  val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider)(logConfig).api
   val openApiDocumentationJson: String =
     OpenApiRenderer(isEnterprise).stringEncoder.encode(openApiRoutes)
 
