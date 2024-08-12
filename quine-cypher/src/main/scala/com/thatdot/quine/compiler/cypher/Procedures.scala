@@ -681,20 +681,20 @@ object CypherLogging extends UserDefinedProcedure with StrictSafeLogging {
         val prettied = any.pretty
         val sprettied = Safe(prettied)
         lvl.toLowerCase match {
-          case "error" => logger.error(log"$sprettied")
-          case "warn" | "warning" => logger.warn(log"$sprettied")
-          case "info" => logger.info(log"$sprettied")
-          case "debug" => logger.debug(log"$sprettied")
-          case "trace" => logger.trace(log"$sprettied")
+          case "error" => logger.error(safe"$sprettied")
+          case "warn" | "warning" => logger.warn(safe"$sprettied")
+          case "info" => logger.info(safe"$sprettied")
+          case "debug" => logger.debug(safe"$sprettied")
+          case "trace" => logger.trace(safe"$sprettied")
           case other =>
-            logger.error(log"Unrecognized log level ${Safe(other)}, falling back to `warn`")
-            logger.warn(log"$sprettied")
+            logger.error(safe"Unrecognized log level ${Safe(other)}, falling back to `warn`")
+            logger.warn(safe"$sprettied")
         }
         prettied
 
       case Seq(any) =>
         val prettied = any.pretty
-        logger.warn(log"$prettied")
+        logger.warn(safe"${Safe(prettied)}")
         prettied
 
       case other => throw wrongSignature(other)
