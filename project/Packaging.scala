@@ -30,6 +30,8 @@ object Packaging extends AutoPlugin {
     case PathList("META-INF", "wire-runtime.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "wire-schema.kotlin_module") => MergeStrategy.first
     case PathList("META-INF", "versions", "9", "OSGI-INF", "MANIFEST.MF") => MergeStrategy.first // from bouncycastle
+    case PathList("META-INF", "FastDoubleParser-NOTICE") =>
+      MergeStrategy.first // from fasterxml jackson core (and its awssdk shadow)
     case PathList("META-INF", "native-image", "org.mongodb", "bson", "native-image.properties") => MergeStrategy.discard
     case PathList("codegen-resources", _) => MergeStrategy.discard
     case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard
