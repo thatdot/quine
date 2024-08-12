@@ -1,8 +1,8 @@
 object Dependencies {
-  val pekkoV = "1.0.2"
+  val pekkoV = "1.0.3"
   val pekkoHttpV = "1.0.1"
   val pekkoManagementV = "1.0.0"
-  val pekkoStreamV = "1.0.2"
+  val pekkoStreamV = "1.0.3"
   val pekkoKafkaV = "1.0.0"
   val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.26.2"
