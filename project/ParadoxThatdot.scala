@@ -1,18 +1,19 @@
 import io.github.jonas.paradox.material.theme.ParadoxMaterialThemePlugin
 import com.typesafe.sbt.site.paradox.ParadoxSitePlugin
 import com.lightbend.paradox.sbt.ParadoxPlugin
+import com.typesafe.sbt.site.SitePreviewPlugin
 import com.typesafe.sbt.web.Import.WebKeys
 import com.typesafe.sbt.web.SbtWeb
-import java.util.Calendar
 
-import sbt.Keys._
-import sbt._
+import java.util.Calendar
+import sbt.Keys.*
+import sbt.*
 
 // thatDot-themed paradox site
 object ParadoxThatdot extends AutoPlugin {
 
   override def requires =
-    ParadoxMaterialThemePlugin && ParadoxPlugin && ParadoxSitePlugin
+    ParadoxMaterialThemePlugin && ParadoxPlugin && ParadoxSitePlugin && SitePreviewPlugin
   override def trigger = noTrigger
 
   object autoImport {
