@@ -22,27 +22,45 @@ object ValvePosition {
 sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: ValvePosition)
 
 object IngestStreamStatus {
+  def decideRestoredStatus(
+    statusAtShutdown: IngestStreamStatus,
+    shouldResumeRestoredIngests: Boolean
+  ): IngestStreamStatus =
+    statusAtShutdown match {
+      case status: TerminalStatus =>
+        // A terminated ingest should stay terminated, even if the system restarts
+        status
+      case Paused =>
+        // An ingest that was explicitly paused by the user before restart should come back in a paused state
+        Paused
+      case Running | Restored =>
+        // An ingest that is poised to be started should defer to the user's preference for whether
+        // to start or stay in a soft-paused state
+        if (shouldResumeRestoredIngests) Running else Restored
+    }
+  sealed abstract class TerminalStatus extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
+
   @docs("The stream is currently actively running, and possibly waiting for new records to become available upstream.")
   case object Running extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Open)
 
   @docs("The stream has been paused by a user.")
   case object Paused extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
-  @docs("The stream has processed all records, and the upstream data source will not make more records available.")
-  case object Completed extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
-
-  @docs("The stream has been stopped by a user.")
-  case object Terminated extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
-
   @docs(
-    "The stream has been restored from a saved state, but is not yet running: For example, after restarting Quine."
+    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application."
   )
   case object Restored extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
-  @docs("The stream has been stopped by a failure during processing.")
-  case object Failed extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
+  @docs("The stream has processed all records, and the upstream data source will not make more records available.")
+  case object Completed extends TerminalStatus
 
-  val states: Seq[IngestStreamStatus] = Seq(Running, Paused, Completed, Terminated, Restored, Failed)
+  @docs("The stream has been stopped by a user.")
+  case object Terminated extends TerminalStatus
+
+  @docs("The stream has been stopped by a failure during processing.")
+  case object Failed extends TerminalStatus
+
+  val states: Seq[IngestStreamStatus] = Seq(Running, Paused, Restored, Completed, Terminated, Failed)
 }
 
 /** Formats that have an embedded query member */

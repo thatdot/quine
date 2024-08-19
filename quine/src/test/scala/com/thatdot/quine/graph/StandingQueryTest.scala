@@ -71,7 +71,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .addStandingQuery("next-node", namespace, sqDef)
       .flatMap(_ =>
         Future.fromTry(
-          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+          quineApp
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
         )
       )
     Await.ready(setupFuture, 3 seconds)
@@ -139,7 +140,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .addStandingQuery("next-node", namespace, sqDef)
       .flatMap(_ =>
         Future.fromTry(
-          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+          quineApp
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
         )
       )
     Await.result(setupFuture, 3 seconds)
@@ -271,7 +273,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .addStandingQuery("foo", namespace, sqDef)
       .flatMap(_ =>
         Future.fromTry(
-          quineApp.addIngestStream("numbers", ingestConfig, namespace, None, shouldRestoreIngest = false, timeout)
+          quineApp
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
         )
       )
     Await.result(setupFuture, 3.seconds)

@@ -50,14 +50,17 @@ trait IngestApiMethods {
     quineApp.getIngestStream(name, namespace) match {
       case None => Future.successful(None)
       case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
-        ingest.restoredStatus match {
-          case Some(IngestStreamStatus.Completed) => Future.failed(PauseOperationException.Completed)
-          case Some(IngestStreamStatus.Terminated) => Future.failed(PauseOperationException.Terminated)
-          case Some(IngestStreamStatus.Failed) => Future.failed(PauseOperationException.Failed)
+        ingest.initialStatus match {
+          case IngestStreamStatus.Completed => Future.failed(PauseOperationException.Completed)
+          case IngestStreamStatus.Terminated => Future.failed(PauseOperationException.Terminated)
+          case IngestStreamStatus.Failed => Future.failed(PauseOperationException.Failed)
           case _ =>
             val flippedValve = ingest.valve().flatMap(_.flip(newState))(graph.nodeDispatcherEC)
             val ingestStatus = flippedValve.flatMap { _ =>
-              ingest.restoredStatus = None; // FIXME not threadsafe
+              // HACK: set the ingest's "initial status" to "Paused". `stream2Info` will use this as the stream status
+              // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
+              // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
+              ingest.initialStatus = IngestStreamStatus.Paused
               stream2Info(ingest)
             }(graph.nodeDispatcherEC)
             ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)

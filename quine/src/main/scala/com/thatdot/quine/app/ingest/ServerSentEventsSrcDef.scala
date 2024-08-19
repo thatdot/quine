@@ -36,7 +36,10 @@ final case class ServerSentEventsSrcDef(
 
   override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(s"$name: $url")
 
-  def source(): Source[ServerSentEvent, NotUsed] = EventSource(uri = Uri(url), send = Http().singleRequest(_))
+  def source(): Source[ServerSentEvent, NotUsed] = EventSource(
+    uri = Uri(url),
+    send = Http().singleRequest(_)
+  )
 
   def rawBytes(event: ServerSentEvent): Array[Byte] = event.data.getBytes
 

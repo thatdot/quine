@@ -26,12 +26,31 @@ import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
 trait IngestStreamState {
 
+  /** Add an ingest stream to the running application. The ingest may be new or restored from persistence.
+    *
+    * TODO these two concerns should be separated into two methods, or at least two signatures -- there are too many
+    *   dependencies between parameters.
+    * @param name                         Name of the stream to add
+    * @param settings                     Configuration for the stream
+    * @param intoNamespace                Namespace into which the stream should ingest data
+    * @param previousStatus               Some previous status of the stream, if it was restored from persistence.
+    *                                     None for new ingests
+    * @param shouldResumeRestoredIngests  If restoring an ingest, should the ingest be resumed? When `previousStatus`
+    *                                     is None, this has no effect.
+    * @param timeout                      How long to allow for the attempt to persist the stream to the metadata table
+    *                                     (when shouldSaveMetadata = true). Has no effect if !shouldSaveMetadata
+    * @param shouldSaveMetadata           Whether the application should persist this stream to the metadata table.
+    *                                     This should be false when restoring from persistence (i.e., from the metadata
+    *                                     table) and true otherwise.
+    * @param memberIdx                    The cluster member index on which this ingest is being created
+    * @return Success(true) when the operation was successful, or a Failure otherwise
+    */
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
     intoNamespace: NamespaceId,
-    restoredStatus: Option[IngestStreamStatus],
-    shouldRestoreIngest: Boolean,
+    previousStatus: Option[IngestStreamStatus],
+    shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = None
@@ -58,13 +77,35 @@ trait IngestStreamState {
   *
   * @param optWs (for websocket ingest streams only) a Sink and IngestMeter via which additional records may be injected into this ingest stream
   */
+
+/** Adds to the ingest stream configuration extra information that will be
+  * materialized only once the ingest stream is running and which may be
+  * needed for stopping the stream
+  *
+  * @param settings      the product-specific stream configuration being managed
+  * @param metrics       the metrics handle for this ingest stream
+  * @param valve         asynchronous function to get a handle to the ingest's pause valve. Because of the possibility
+  *                      that stream materialization is attempted multiple times, this function is not idempotent
+  * @param terminated    asynchronous function to get a handle to the ingest's termination signal. Because of the
+  *                      possibility that stream materialization is attempted multiple times, this function is not
+  *                      idempotent
+  * @param initialStatus the status of the ingest stream when it was first created. This is `Running` for newly-created
+  *                      ingests, but may have any value except `Terminated` for ingests restored from persistence.
+  *                      To get the ingest's current status, use `status` instead. This should be a val but it's
+  *                      used to patch in a rendered status in setIngestStreamPauseState
+  * @param close         Callback to request the ingest stream to stop. Once this is called, `terminated`'s inner future
+  *                      will eventually complete. This should be a val but it's constructed out of order by Novelty
+  *                      streams.
+  * @param optWs         HACK: opaque stash of additional information for Novelty websocket streams. This should be
+  *                      refactored out of this class.
+  */
 final case class IngestStreamWithControl[+Conf](
   settings: Conf,
   metrics: IngestMetrics,
   valve: () => Future[ValveSwitch],
   terminated: () => Future[Future[Done]],
-  var close: () => Unit = () => (),
-  var restoredStatus: Option[IngestStreamStatus] = None,
+  var close: () => Unit,
+  var initialStatus: IngestStreamStatus,
   var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None
 )(implicit logConfig: LogConfig)
     extends LazySafeLogging {
@@ -97,7 +138,11 @@ final case class IngestStreamWithControl[+Conf](
         .getMode()
         .map {
           case SwitchMode.Open => IngestStreamStatus.Running
-          case SwitchMode.Close => restoredStatus getOrElse IngestStreamStatus.Paused
+          case SwitchMode.Close =>
+            // NB this may return an incorrect or outdated status due to thread-unsafe updates to initialStatus and
+            // incomplete information about terminal states across restarts. See discussion and linked diagram on
+            // QU-2003.
+            initialStatus
         }(materializer.executionContext)
         .recover { case _: org.apache.pekko.stream.StreamDetachedException =>
           IngestStreamStatus.Terminated
@@ -193,8 +238,8 @@ trait IngestRoutesImpl
         name,
         settings,
         intoNamespace,
-        None,
-        shouldRestoreIngest = false,
+        previousStatus = None, // this ingest is being created, not restored, so it has no previous status
+        shouldResumeRestoredIngests = false,
         timeout,
         memberIdx = None
       ) match {
@@ -238,7 +283,17 @@ trait IngestRoutesImpl
     graph.requiredGraphIsReadyFuture {
       quineApp.removeIngestStream(ingestName, namespaceFromParam(namespaceParam)) match {
         case None => Future.successful(None)
-        case Some(control @ IngestStreamWithControl(settings, metrics, _, terminated, close, _, _)) =>
+        case Some(
+              control @ IngestStreamWithControl(
+                settings,
+                metrics,
+                valve @ _,
+                terminated,
+                close,
+                initialStatus @ _,
+                optWs @ _
+              )
+            ) =>
           val finalStatus = control.status.map { previousStatus =>
             import IngestStreamStatus._
             previousStatus match {

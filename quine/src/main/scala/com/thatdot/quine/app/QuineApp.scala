@@ -414,8 +414,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     name: String,
     settings: IngestStreamConfiguration,
     intoNamespace: NamespaceId,
-    restoredStatus: Option[IngestStreamStatus], // restoredStatus is None if stream was not restored at all
-    shouldRestoreIngest: Boolean,
+    previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
+    shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = Some(thisMemberIdx)
@@ -425,21 +425,24 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         case None => Success(false)
         case Some(ingests) if ingests.contains(name) => Success(false)
         case Some(ingests) =>
-          val valveSwitchMode = restoredStatus match {
-            case Some(restoredStatus) if shouldRestoreIngest =>
-              restoredStatus.position match {
+          val (initialValveSwitchMode, initialStatus) = previousStatus match {
+            case None =>
+              // This is a freshly-created ingest, so there is no status to restore
+              SwitchMode.Open -> IngestStreamStatus.Running
+            case Some(lastKnownStatus) =>
+              val newStatus = IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
+              val switchMode = newStatus.position match {
                 case ValvePosition.Open => SwitchMode.Open
                 case ValvePosition.Closed => SwitchMode.Close
               }
-            case Some(_) => SwitchMode.Close
-            case None => SwitchMode.Open
+              switchMode -> newStatus
           }
           IngestSrcDef
             .createIngestSrcDef(
               name,
               intoNamespace,
               settings,
-              valveSwitchMode
+              initialValveSwitchMode
             )(graph, protobufSchemaCache, logConfig)
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
@@ -459,7 +462,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   ingestSrcDef.getControl.flatMap(c => c.terminate())(ExecutionContext.parasitic)
                   () // Intentional fire and forget
                 },
-                restoredStatus = restoredStatus
+                initialStatus
               )
 
               val newNamespaceIngests = ingests + (name -> streamDefWithControl)
@@ -672,7 +675,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             name,
             ingest.config,
             namespace,
-            restoredStatus = ingest.status,
+            previousStatus = ingest.status,
             shouldResumeIngest,
             timeout,
             shouldSaveMetadata = false, // We're restoring what was saved.

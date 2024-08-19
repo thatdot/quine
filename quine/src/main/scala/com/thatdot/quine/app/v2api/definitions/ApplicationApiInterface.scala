@@ -497,8 +497,8 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
       name,
       settings,
       intoNamespace,
-      None,
-      shouldRestoreIngest = false,
+      previousStatus = None, // this ingest is being created, not restored, so it has no previous status
+      shouldResumeRestoredIngests = false,
       timeout,
       memberIdx = None
     ) match {

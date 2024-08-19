@@ -102,8 +102,8 @@ case class RecipeInterpreter(
         ingestStreamName,
         ingestStream,
         namespace,
-        restoredStatus = None,
-        shouldRestoreIngest = true,
+        previousStatus = None,
+        shouldResumeRestoredIngests = false,
         timeout = 5 seconds,
         memberIdx = Some(memberIdx)
       ) match {

@@ -154,22 +154,39 @@ abstract class IngestSrcDef(
   private var ingestControl: Option[Future[QuineAppIngestControl]] = None
   private val controlPromise: Promise[QuineAppIngestControl] = Promise()
 
+  /** Update the ingest's control handle and register termination hooks. This may be called multiple times if the
+    * initial stream construction fails (up to the `restartSettings` defined above), and will be called from different
+    * threads.
+    */
   private def setControl(
     control: Future[QuineAppIngestControl],
     desiredSwitchMode: SwitchMode,
     registerTerminationHooks: Future[Done] => Unit
   ): Unit = {
 
+    val streamMaterializerEc = graph.materializer.executionContext
+
     // Ensure valve is opened if required and termination hooks are registered
     control.foreach(c =>
       c.valveHandle
         .flip(desiredSwitchMode)
-        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(graph.nodeDispatcherEC)
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(
+          streamMaterializerEc
+        )
     )(graph.nodeDispatcherEC)
-    control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
+    control.map(c => registerTerminationHooks(c.termSignal))(streamMaterializerEc)
 
     // Set the appropriate ref and deferred ingest control
-    controlPromise.completeWith(control)
+    control.onComplete { result =>
+      val controlsSuccessfullyAttached = controlPromise.tryComplete(result)
+      if (!controlsSuccessfullyAttached) {
+        logger.warn(
+          safe"""Ingest stream: ${Safe(name)} was materialized more than once. Control handles for pausing,
+               |resuming, and terminating the stream may be unavailable (usually temporary).""".cleanLines
+        )
+      }
+    }(streamMaterializerEc)
+    // TODO not threadsafe
     ingestControl = Some(control)
   }
 
