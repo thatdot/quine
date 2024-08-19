@@ -14,12 +14,11 @@ import org.apache.pekko.stream.connectors.kinesis.ShardSettings
 import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisSource
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
+import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
-import software.amazon.awssdk.core.retry.RetryPolicy
-import software.amazon.awssdk.core.retry.backoff.BackoffStrategy
-import software.amazon.awssdk.core.retry.conditions.RetryCondition
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
+import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
@@ -152,11 +151,17 @@ object KinesisSrcDef {
 
   def buildAsyncHttpClient: SdkAsyncHttpClient =
     NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+
   def buildAsyncClient(
     credentialsOpt: Option[AwsCredentials],
     regionOpt: Option[AwsRegion],
     numRetries: Int
   ): KinesisAsyncClient = {
+    val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
+      .standardRetryStrategy()
+      .toBuilder
+      .maxAttempts(numRetries)
+      .build();
     val builder = KinesisAsyncClient
       .builder()
       .credentials(credentialsOpt)
@@ -165,15 +170,7 @@ object KinesisSrcDef {
       .overrideConfiguration(
         ClientOverrideConfiguration
           .builder()
-          .retryPolicy(
-            RetryPolicy
-              .builder()
-              .backoffStrategy(BackoffStrategy.defaultStrategy())
-              .throttlingBackoffStrategy(BackoffStrategy.defaultThrottlingStrategy())
-              .numRetries(numRetries)
-              .retryCondition(RetryCondition.defaultRetryCondition())
-              .build()
-          )
+          .retryStrategy(retryStrategy)
           .build()
       )
     builder.build
