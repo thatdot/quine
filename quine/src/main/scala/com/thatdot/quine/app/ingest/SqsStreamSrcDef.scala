@@ -47,7 +47,7 @@ final case class SqsStreamSrcDef(
   deleteReadMessages: Boolean,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder]
-)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
+)(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
       initialSwitchMode,

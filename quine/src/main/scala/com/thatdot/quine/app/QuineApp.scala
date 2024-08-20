@@ -13,12 +13,14 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
+import cats.data.ValidatedNel
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, ProgramPhase, SymbolAnalysisPhase}
-import com.thatdot.quine.app.ingest.IngestSrcDef
+import com.thatdot.cypher.phases._
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
+import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
+import com.thatdot.quine.app.ingest2.source.DecodedSource
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.compiler.cypher
@@ -249,8 +251,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   /** Cancels an existing standing query.
     *
     * @return Future succeeds/fails when the storing of the updated collection of SQs succeeds/fails. The Option is
-    * `None` when the SQ or namespace doesn't exist. The inner `RegisteredStandingQuery` is the definition of the
-    * successfully removed standing query.
+    *         `None` when the SQ or namespace doesn't exist. The inner `RegisteredStandingQuery` is the definition of the
+    *         successfully removed standing query.
     */
   def cancelStandingQuery(
     queryName: String,
@@ -283,8 +285,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   /** Adds a new user-defined output handler to an existing standing query.
     *
     * @return Future succeeds/fails when the storing of SQs succeeds/fails. The Option is None when the SQ or
-    * namespace doesn't exist. The Boolean indicates whether an output with that name was successfully added (false if
-    * the out name is already in use).
+    *         namespace doesn't exist. The Boolean indicates whether an output with that name was successfully added (false if
+    *         the out name is already in use).
     */
   def addStandingQueryOutput(
     queryName: String,
@@ -323,8 +325,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   /** Removes a standing query output handler by name from an existing standing query.
     *
     * @return Future succeeds/fails when the storing of SQs succeeds/fails. The Option is None when the SQ or
-    * namespace doesn't exist, or if the SQ does not have an output with that name. The inner
-    * `StandingQueryResultOutputUserDef` is the output that was successfully removes.
+    *         namespace doesn't exist, or if the SQ does not have an output with that name. The inner
+    *         `StandingQueryResultOutputUserDef` is the output that was successfully removes.
     */
   def removeStandingQueryOutput(
     queryName: String,
@@ -410,6 +412,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   }
 
   private[this] val protobufSchemaCache: ProtobufSchemaCache = new ProtobufSchemaCache.AsyncLoading(graph.dispatchers)
+
   def addIngestStream(
     name: String,
     settings: IngestStreamConfiguration,
@@ -418,7 +421,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
-    memberIdx: Option[MemberIdx] = Some(thisMemberIdx)
+    memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
+    useV2Ingest: Boolean
   ): Try[Boolean] = failIfNoNamespace(intoNamespace) {
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(intoNamespace) match {
@@ -437,13 +441,26 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               }
               switchMode -> newStatus
           }
-          IngestSrcDef
-            .createIngestSrcDef(
-              name,
-              intoNamespace,
-              settings,
-              initialValveSwitchMode
-            )(graph, protobufSchemaCache, logConfig)
+
+          val src: ValidatedNel[IngestName, QuineIngestSource] =
+            if (useV2Ingest) {
+              DecodedSource.quineIngestSource(name, settings, intoNamespace, initialValveSwitchMode)(
+                graph,
+                protobufSchemaCache,
+                logConfig
+              )
+            } else {
+
+              IngestSrcDef
+                .createIngestSrcDef(
+                  name,
+                  intoNamespace,
+                  settings,
+                  initialValveSwitchMode
+                )(graph, protobufSchemaCache, logConfig)
+            }
+
+          src
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
             .map { ingestSrcDef =>
 
@@ -578,9 +595,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     *
     * Not threadsafe. But we we wait for this to complete before serving up the API.
     *
-    * @param timeout used repeatedly for individual calls to get meta data when restoring ingest streams.
+    * @param timeout            used repeatedly for individual calls to get meta data when restoring ingest streams.
     * @param shouldResumeIngest should restored ingest streams be resumed
-    *
     * @return A Future that success/fails indicating whether or not state was successfully restored (if any).
     */
   def loadAppData(timeout: Timeout, shouldResumeIngest: Boolean): Future[Unit] = {

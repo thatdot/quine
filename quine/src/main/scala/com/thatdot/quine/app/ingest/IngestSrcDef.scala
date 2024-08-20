@@ -34,6 +34,83 @@ import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 
+/** This represents the minimum functionality that is used to insert values into a CypherOps graph. */
+trait QuineIngestSource extends LazySafeLogging {
+
+  val name: String
+  implicit val graph: CypherOpsGraph
+
+  private var ingestControl: Option[Future[QuineAppIngestControl]] = None
+  private val controlPromise: Promise[QuineAppIngestControl] = Promise()
+  val meter: IngestMeter
+
+  /** Fully assembled stream with the following operations applied:
+    *
+    * - restart settings
+    * - shutdown switch
+    * - valve
+    * - throttle
+    * - write to graph
+    * - ack
+    */
+  def stream(
+    intoNamespace: NamespaceId,
+    registerTerminationHooks: Future[Done] => Unit
+  ): Source[IngestSrcExecToken, NotUsed]
+
+  /** MaxPerSecond rate limiting. */
+  def throttle[A](graph: CypherOpsGraph, maximumPerSecond: Option[Int]): Flow[A, A, NotUsed] =
+    maximumPerSecond match {
+      case Some(perSec) => Flow[A].throttle(perSec, 1.second).via(graph.ingestThrottleFlow)
+      case None => graph.ingestThrottleFlow
+    }
+
+  val restartSettings: RestartSettings =
+    RestartSettings(minBackoff = 10.seconds, maxBackoff = 10.seconds, 2.0)
+      .withMaxRestarts(3, 31.seconds)
+      .withRestartOn {
+        case _: KafkaException => true
+        case _ => false
+      }
+
+  /** Update the ingest's control handle and register termination hooks. This may be called multiple times if the
+    * initial stream construction fails (up to the `restartSettings` defined above), and will be called from different
+    * threads.
+    */
+  protected def setControl(
+    control: Future[QuineAppIngestControl],
+    desiredSwitchMode: SwitchMode,
+    registerTerminationHooks: Future[Done] => Unit
+  ): Unit = {
+
+    val streamMaterializerEc = graph.materializer.executionContext
+
+    // Ensure valve is opened if required and termination hooks are registered
+    control.foreach(c =>
+      c.valveHandle
+        .flip(desiredSwitchMode)
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(streamMaterializerEc)
+    )(graph.nodeDispatcherEC)
+    control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
+
+    // Set the appropriate ref and deferred ingest control
+    control.onComplete { result =>
+      val controlsSuccessfullyAttached = controlPromise.tryComplete(result)
+      if (!controlsSuccessfullyAttached) {
+        logger.warn(
+          safe"""Ingest stream: ${Safe(name)} was materialized more than once. Control handles for pausing,
+                |resuming, and terminating the stream may be unavailable (usually temporary).""".cleanLines
+        )
+      }
+    }(streamMaterializerEc)
+    // TODO not threadsafe
+    ingestControl = Some(control)
+  }
+
+  def getControl: Future[QuineAppIngestControl] =
+    ingestControl.getOrElse(controlPromise.future)
+}
+
 /** Definition of an ingest that performs the actions
   *    sourceWithShutdown -> throttle -> writeToGraph -> ack
   *    @see [[stream]]
@@ -58,14 +135,12 @@ abstract class IngestSrcDef(
   maxPerSecond: Option[Int],
   val name: String
 )(implicit graph: CypherOpsGraph)
-    extends LazySafeLogging {
-  implicit val system: ActorSystem = graph.system
+    extends QuineIngestSource
+    with LazySafeLogging {
   implicit protected def logConfig: LogConfig
+  implicit val system: ActorSystem = graph.system
   val isSingleHost: Boolean = graph.isSingleHost
   val intoNamespace: NamespaceId
-  // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
-  // to thread a constructor parameter through every level.
-  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name)
 
   /** The type of a single value to be ingested. Data sources will be defined
     * as suppliers of this type.
@@ -79,20 +154,22 @@ abstract class IngestSrcDef(
     */
   type TryDeserialized = (Try[CypherValue], InputType)
 
+  // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
+  // to thread a constructor parameter through every level.
+  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name)
+
   /** A source of deserialized values along with a control. Ingest types
     * that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
     * instead of this class.
     */
   def sourceWithShutdown(): Source[TryDeserialized, ShutdownSwitch]
 
+  /** MaxPerSecond rate limiting. */
+  def throttle[A](): Flow[A, A, NotUsed] = throttle[A](graph, maxPerSecond)
+    .via(graph.ingestThrottleFlow)
+
   /** Default no-op implementation */
   val ack: Flow[TryDeserialized, Done, NotUsed] = Flow[TryDeserialized].map(_ => Done)
-
-  /** MaxPerSecond rate limiting. */
-  def throttle[A](): Flow[A, A, NotUsed] =
-    Flow[A]
-      .via(IngestSrcDef.throttled(maxPerSecond))
-      .via(graph.ingestThrottleFlow)
 
   /** Extend for by-instance naming (e.g. to include url) */
   val ingestToken: IngestSrcExecToken = IngestSrcExecToken(name)
@@ -100,7 +177,7 @@ abstract class IngestSrcDef(
   /** Write successful values to the graph. */
   protected def writeSuccessValues(intoNamespace: NamespaceId)(record: TryDeserialized): Future[TryDeserialized] =
     record match {
-      case (Success(deserializedRecord), sourceRecord @ _) =>
+      case (Success(deserializedRecord), _) =>
         format
           .writeValueToGraph(graph, intoNamespace, deserializedRecord)
           .map(_ => record)(ExecutionContext.parasitic)
@@ -111,7 +188,7 @@ abstract class IngestSrcDef(
         // Future.failed(deserializationError)
         // If stream should log and keep consuming:
         logger.warn(
-          log"""Ingest ${Safe(name)} in namespace ${Safe(intoNamespace)} 
+          log"""Ingest ${Safe(name)} in namespace ${Safe(intoNamespace)}
                |failed to deserialize ingested record: ${sourceRecord.toString}
                |""".cleanLines withException deserializationError
         )
@@ -124,14 +201,6 @@ abstract class IngestSrcDef(
   def writeToGraph(intoNamespace: NamespaceId): Flow[TryDeserialized, TryDeserialized, NotUsed] =
     Flow[TryDeserialized].mapAsyncUnordered(parallelism)(writeSuccessValues(intoNamespace))
 
-  val restartSettings: RestartSettings =
-    RestartSettings(minBackoff = 10.seconds, maxBackoff = 10.seconds, 2.0)
-      .withMaxRestarts(3, 31.seconds)
-      .withRestartOn {
-        case _: KafkaException => true
-        case _ => false
-      }
-
   /** Assembled stream definition. */
   def stream(
     intoNamespace: NamespaceId,
@@ -140,7 +209,7 @@ abstract class IngestSrcDef(
     RestartSource.onFailuresWithBackoff(restartSettings) { () =>
       sourceWithShutdown()
         .viaMat(Valve(initialSwitchMode))(Keep.both)
-        .via(throttle())
+        .via(throttle(graph, maxPerSecond))
         .via(writeToGraph(intoNamespace))
         .via(ack)
         .map(_ => ingestToken)
@@ -150,48 +219,6 @@ abstract class IngestSrcDef(
         .mapMaterializedValue(c => setControl(c, initialSwitchMode, registerTerminationHooks))
         .named(name)
     }
-
-  private var ingestControl: Option[Future[QuineAppIngestControl]] = None
-  private val controlPromise: Promise[QuineAppIngestControl] = Promise()
-
-  /** Update the ingest's control handle and register termination hooks. This may be called multiple times if the
-    * initial stream construction fails (up to the `restartSettings` defined above), and will be called from different
-    * threads.
-    */
-  private def setControl(
-    control: Future[QuineAppIngestControl],
-    desiredSwitchMode: SwitchMode,
-    registerTerminationHooks: Future[Done] => Unit
-  ): Unit = {
-
-    val streamMaterializerEc = graph.materializer.executionContext
-
-    // Ensure valve is opened if required and termination hooks are registered
-    control.foreach(c =>
-      c.valveHandle
-        .flip(desiredSwitchMode)
-        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(
-          streamMaterializerEc
-        )
-    )(graph.nodeDispatcherEC)
-    control.map(c => registerTerminationHooks(c.termSignal))(streamMaterializerEc)
-
-    // Set the appropriate ref and deferred ingest control
-    control.onComplete { result =>
-      val controlsSuccessfullyAttached = controlPromise.tryComplete(result)
-      if (!controlsSuccessfullyAttached) {
-        logger.warn(
-          safe"""Ingest stream: ${Safe(name)} was materialized more than once. Control handles for pausing,
-               |resuming, and terminating the stream may be unavailable (usually temporary).""".cleanLines
-        )
-      }
-    }(streamMaterializerEc)
-    // TODO not threadsafe
-    ingestControl = Some(control)
-  }
-
-  def getControl: Future[QuineAppIngestControl] =
-    ingestControl.getOrElse(controlPromise.future)
 
 }
 
@@ -247,7 +274,7 @@ object IngestSrcDef extends LazySafeLogging {
         // loaded. This was left as blocking because lifting the effect to a broader context would mean either:
         // - making ingest startup async, which would require extensive changes to QuineApp, startup, and potentially
         //   clustering protocols, OR
-        // - making the decode bytes step of ingest async, which violate's the Kafka API's expectation that a
+        // - making the decode bytes step of ingest async, which violates the Kafka API's expectation that a
         //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
         val descriptor = Await.result(
           protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
@@ -282,11 +309,6 @@ object IngestSrcDef extends LazySafeLogging {
         )
         StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
     }
-
-  private def throttled[A](maxPerSecond: Option[Int]): Flow[A, A, NotUsed] = maxPerSecond match {
-    case None => Flow[A]
-    case Some(perSec) => Flow[A].throttle(perSec, 1.second)
-  }
 
   def createIngestSrcDef(
     name: String,

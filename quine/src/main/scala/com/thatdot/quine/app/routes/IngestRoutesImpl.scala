@@ -53,7 +53,11 @@ trait IngestStreamState {
     shouldResumeRestoredIngests: Boolean,
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
-    memberIdx: Option[MemberIdx] = None
+    memberIdx: Option[MemberIdx] = None,
+    // support switching between v1 and v2 ingest. This will only be true when
+    // called from the v2 api when starting quine with the v2 enabled flag set.
+    // This should be removed when v1 api is removed.
+    useV2Ingest: Boolean = false
   ): Try[Boolean]
 
   def getIngestStream(

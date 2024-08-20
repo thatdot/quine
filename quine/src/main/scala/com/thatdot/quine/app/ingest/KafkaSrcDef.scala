@@ -175,7 +175,7 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
+  )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
 
     type InputType = NoOffset
@@ -201,7 +201,7 @@ object KafkaSrcDef {
     maxPerSecond: Option[Int],
     koc: KafkaOffsetCommitting.ExplicitCommit,
     decoders: Seq[ContentDecoder]
-  )(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
+  )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
     type InputType = WithOffset
     override def sourceWithShutdown(): Source[TryDeserialized, KafkaKillSwitch] =

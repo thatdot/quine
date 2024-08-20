@@ -3,7 +3,11 @@ package com.thatdot.quine.app
 import java.io.{InputStream, PipedInputStream, PipedOutputStream}
 
 import scala.concurrent.Await
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt}
+
+import org.apache.pekko.NotUsed
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.{GraphService, QuineIdLongProvider}
@@ -56,4 +60,8 @@ object IngestTestGraph {
     )(LogConfig.testing),
     5.seconds
   )
+
+  def collect[T](src: Source[T, NotUsed])(implicit mat: Materializer): Seq[T] =
+    Await.result(src.runWith(Sink.seq), Duration.Inf)
+
 }

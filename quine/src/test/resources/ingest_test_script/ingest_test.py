@@ -10,7 +10,6 @@ from termcolor import colored
 import logging
 import boto3
 import time
-import pulsar
 
 import gzip
 import zlib
@@ -20,12 +19,14 @@ logging.basicConfig(level=logging.INFO)
 
 ENCODINGS = ["Gzip", "Zlib", "Base64"]
 
-
 class Encoding:
 
     @classmethod
     def parse_csv(cls, encoding_csv: str):
         encoding_strings = encoding_csv and [s.strip() for s in encoding_csv.split(',')] or []
+        diff = (set(encoding_strings)).difference(set(ENCODINGS))
+        if len(diff) > 0:
+            raise Exception(f"The encodings {diff} were not recognized. Only the strings {ENCODINGS} are supported.")
         return list(filter(lambda e: e in ENCODINGS, encoding_strings))
 
     @classmethod
@@ -71,12 +72,11 @@ class TestConfig:
         self.quine_url = quine_url
         self.count = count
         self.encodings = encodings
-
     def recipe(self):
         pass
 
     def generate_values(self):
-        raw_values = [{"test_name": self.name, "counter": i} for i in range(self.count)]
+        raw_values = [{"test_name": self.name, "counter": i, "key": f"{i}_{self.name}"} for i in range(self.count)]
         return list(map(lambda rec: Encoding.encode(self.encodings, json.dumps(rec)), raw_values))
 
     def write_values(self, values: List[Any]) -> None:
@@ -110,7 +110,7 @@ class TestConfig:
         if read:
             returned_values = self.retrieve_values()
             if (len(returned_values) == self.count):
-                print(                colored(f"Correct number of values ({self.count}) received from type {self.recipe()['type']}", "green"))
+                print(colored(f"Correct number of values ({self.count}) received from type {self.recipe()['type']}", "green"))
             else:
                 print(colored(f"Expected {self.count} values, got {len(returned_values)}", "red"))
 
@@ -134,7 +134,6 @@ class TestConfig:
                 pass
         else:
             print(colored(f"Fail: {method} {url} {response.status_code} \n{response._content}", "red"))
-            # logging.warning("Failed on %s: %s", url, response.status_code)
 
         return response
 
@@ -204,15 +203,13 @@ class KafkaConfig(TestConfig):
         self.waitForCommitConfirmation = waitForCommitConfirmation
 
     def recipe(self):
-        commit = {"type":self.commit}
-        if commit == "ExplicitCommit":
-           commit ={"type":self.commit, "waitForCommitConfirmation":self.waitForCommitConfirmation, "maxIntervalMillis": 100000}
+        offset = (self.ending_offset and {"endingOffset": self.ending_offset}) or {}
+        commit = (self.commit == "ExplicitCommit" and { "offsetCommitting": {"type":self.commit, "waitForCommitConfirmation":self.waitForCommitConfirmation, "maxIntervalMillis": 100000}}) or {}
         return {"name": self.name,
                 "type": "KafkaIngest",
                 "format": {"query": "CREATE ($that)", "type": "CypherJson"},
                 "topics": [self.topic],
-                "offsetCommitting": commit,
-                "bootstrapServers": self.kafka_url} | (self.ending_offset and {"endingOffset": self.ending_offset} or {})
+                "bootstrapServers": self.kafka_url} | offset | commit
 
     def write_values(self, values: List[str]):
         print(colored(f"WRITING {len(values)} VALUES", "magenta"))
@@ -225,41 +222,12 @@ class KafkaConfig(TestConfig):
                 producer.produce(value.encode("utf-8"))
 
 
-class PulsarConfig(TestConfig):
-    def __init__(self, name: str,count: int, quine_url: str, topic: str, pulsar_url: str, subscription_name: str,
-                 encodings: List[str]):
-        super().__init__(name, count, quine_url, encodings)
-        self.topic = topic
-        self.pulsar_url = pulsar_url
-        self.subscription_name = subscription_name
-
-    def recipe(self):
-        return {"name": self.name,
-                "type": "PulsarIngest",
-                "format": {"query": "CREATE ($that)", "type": "CypherJson"},
-                "topics": [self.topic],
-                "pulsarUrl": self.pulsar_url,
-                "subscriptionName": self.subscription_name,
-                "subscriptionType": "Shared"}
-
-    def write_values(self, values: List[str]):
-        client = pulsar.Client(self.pulsar_url)
-        producer = client.create_producer(self.topic)
-
-        for value in self.generate_values():
-            print(value)
-            logging.debug(f"writing to {self.topic} [{value}]")
-            producer.send(value.encode("utf-8"))
-
-        client.close()
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="ingest_tester", description="Ingest tests by type"
     )
     parser.add_argument("-q", "--quine_url", default="0.0.0.0:8080", help="quine api url. Default '0.0.0.0:8080'")
-    parser.add_argument("-c", "--count", type=int, default=10, help="number of values to send. Default 10")
+    parser.add_argument("-c", "--count", type=int, default=10, help="number of values to send. D    efault 10")
     parser.add_argument("-e", "--encodings", type=str, help=f"csv list of encodings from {ENCODINGS}")
     parser.add_argument("-W", "--writeonly", action='store_true',  help="if set will only write to service and not start a quine consumer.")
     parser.add_argument("-R", "--readonly", action='store_true',  help="if set will only start a quine consumer and not write to the service.")
@@ -294,13 +262,6 @@ if __name__ == "__main__":
     sqs_parser.add_argument("-r", "--region", help="aws region", default="us-east-1")
     sqs_parser.add_argument("-k", "--key", help="aws key", required=True)
     sqs_parser.add_argument("-s", "--secret", help="aws secret", required=True)
-    #
-    # pulsar args
-    #
-    pulsar_parser = subparsers.add_parser("pulsar")
-    pulsar_parser.add_argument("-t", "--topic", help="pulsar topic(s) to consumer from", default="test_topic")
-    pulsar_parser.add_argument("-u", "--pulsar_url", help="pulsar service url", default="pulsar://localhost:6650")
-    pulsar_parser.add_argument("-n", "--subscription_name", help="subscription name", default="my_subscription")
 
     args = parser.parse_args()
     print(colored(f"ARGS = {args}","blue"))
@@ -315,8 +276,6 @@ if __name__ == "__main__":
     elif args.type == "sqs":
         config = SQSConfig(testname, args.count, args.quine_url, args.queue_url, encodings,
                            {"region": args.region, "key": args.key, "secret": args.secret})
-    elif args.type == "pulsar":
-        config = PulsarConfig(testname, args.count, args.quine_url, args.topic, args.pulsar_url, args.subscription_name,
-                              encodings)
+
     config.run_test(sleep_time_ms=10000,  write=args.writeonly or args.readonly == False, read=args.readonly or args.writeonly == False)
 

@@ -1,17 +1,17 @@
-package com.thatdot.quine.app.ingest
+package com.thatdot.quine.app.ingest2.sources
 
 import java.time.Instant
 
 import scala.collection.Set
-import scala.concurrent.Future
+import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
-import scala.jdk.FutureConverters.CompletionStageOps
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.kinesis.ShardIterator._
 import org.apache.pekko.stream.connectors.kinesis.ShardSettings
-import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisSource
+import org.apache.pekko.stream.connectors.kinesis.scaladsl.{KinesisSource => PekkoKinesisSource}
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
@@ -20,58 +20,62 @@ import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
-import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
+import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model, model => kinesisModel}
 
-import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
+import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
-import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
-import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
+import com.thatdot.quine.app.ingest2.source.FramedSource
+import com.thatdot.quine.app.ingest2.sources.KinesisSource.buildAsyncClient
+import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
-import com.thatdot.quine.util.Log._
-import com.thatdot.quine.util.SwitchMode
 
-/** The definition of a source stream from Amazon Kinesis
-  *
-  * @param name           The unique, human-facing name of the ingest stream
-  * @param streamName     The Kinesis stream name
-  * @param shardIds       The Kinesis shard IDs, or Set.empty to use all shards in the stream. Each probably start "shardId-" Note that this [[KinesisSrcDef]]
-  *                       will be invalidated if the stream rescales
-  * @param format         The [[ImportFormat]] to use to ingest bytes from Kinesis
-  * @param parallelism    How many concurrent writes should be performed on the database
-  * @param credentialsOpt The AWS credentials to access the stream
-  */
-final case class KinesisSrcDef(
-  override val name: String,
-  override val intoNamespace: NamespaceId,
+object KinesisSource {
+
+  def buildAsyncHttpClient: SdkAsyncHttpClient =
+    NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+
+  def buildAsyncClient(
+    credentialsOpt: Option[AwsCredentials],
+    regionOpt: Option[AwsRegion],
+    numRetries: Int
+  ): KinesisAsyncClient = {
+    val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
+      .standardRetryStrategy()
+      .toBuilder
+      .maxAttempts(numRetries)
+      .build()
+    val builder = KinesisAsyncClient
+      .builder()
+      .credentials(credentialsOpt)
+      .region(regionOpt)
+      .httpClient(buildAsyncHttpClient)
+      .overrideConfiguration(
+        ClientOverrideConfiguration
+          .builder()
+          .retryStrategy(retryStrategy)
+          .build()
+      )
+
+    builder.build
+  }
+
+}
+
+case class KinesisSource(
   streamName: String,
   shardIds: Option[Set[String]],
-  format: ImportFormat,
-  initialSwitchMode: SwitchMode,
-  parallelism: Int = 2,
   credentialsOpt: Option[AwsCredentials],
   regionOpt: Option[AwsRegion],
   iteratorType: KinesisIngest.IteratorType,
   numRetries: Int,
-  maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder]
-)(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
-    extends RawValuesIngestSrcDef(
-      format,
-      initialSwitchMode,
-      parallelism,
-      maxPerSecond,
-      decoders,
-      s"$name (Kinesis ingest)"
-    ) {
+  meter: IngestMeter,
+  decoders: Seq[ContentDecoder] = Seq()
+)(implicit val ec: ExecutionContext) {
 
-  type InputType = kinesisModel.Record
+  val kinesisClient: KinesisAsyncClient = buildAsyncClient(credentialsOpt, regionOpt, numRetries)
 
-  override val ingestToken: IngestSrcExecToken = IngestSrcExecToken(format.label)
-
-  def rawBytes(record: kinesisModel.Record): Array[Byte] = record.data().asByteArrayUnsafe()
-
-  def source(): Source[kinesisModel.Record, NotUsed] = {
+  private def kinesisStream: Source[kinesisModel.Record, NotUsed] = {
 
     import KinesisIngest.IteratorType
     val shardIterator = iteratorType match {
@@ -86,10 +90,6 @@ final case class KinesisSrcDef(
       case IteratorType.AfterSequenceNumber(seqNo) => AfterSequenceNumber(seqNo)
     }
 
-    val kinesisClient = KinesisSrcDef.buildAsyncClient(credentialsOpt, regionOpt, numRetries)
-
-    graph.system.registerOnTermination(kinesisClient.close())
-
     // a Future yielding the shard IDs to read from
     val shardSettingsFut: Future[List[ShardSettings]] =
       (shardIds.getOrElse(Set()) match {
@@ -98,7 +98,7 @@ final case class KinesisSrcDef(
             .describeStream(
               DescribeStreamRequest.builder().streamName(streamName).build()
             )
-            .asScala
+            .toScala
             .map(response =>
               response
                 .streamDescription()
@@ -106,14 +106,14 @@ final case class KinesisSrcDef(
                 .asScala
                 .map(_.shardId())
                 .toSet
-            )(graph.materializer.executionContext)
+            )(ec)
         case atLeastOneId => Future.successful(atLeastOneId)
       })
         .map(ids =>
           ids
             .map(shardId => ShardSettings(streamName, shardId).withShardIterator(shardIterator))
             .toList
-        )(graph.materializer.executionContext)
+        )
 
     // A Flow that limits the stream to 2MB * (number of shards) per second
     // TODO This is an imperfect heuristic, as the limit imposed is literally 2MB _per shard_,
@@ -132,48 +132,24 @@ final case class KinesisSrcDef(
                 // asByteArrayUnsafe avoids extra allocations, to get the length we can't use a readonly bytebuffer
                 rec.data().asByteArrayUnsafe().length
             )
-        }(graph.materializer.executionContext)
+            .via(metered[kinesisModel.Record](meter, r => r.data().asByteArrayUnsafe().length))
+        }(ec)
       )
       .mapMaterializedValue(_ => NotUsed)
 
     Source
       .future(shardSettingsFut)
-      .flatMapConcat(shardSettings =>
-        KinesisSource
-          .basicMerge(shardSettings, kinesisClient)
-      )
+      .flatMapConcat(shardSettings => PekkoKinesisSource.basicMerge(shardSettings, kinesisClient))
       .via(kinesisRateLimiter)
-
-  }
-}
-
-object KinesisSrcDef {
-
-  def buildAsyncHttpClient: SdkAsyncHttpClient =
-    NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
-
-  def buildAsyncClient(
-    credentialsOpt: Option[AwsCredentials],
-    regionOpt: Option[AwsRegion],
-    numRetries: Int
-  ): KinesisAsyncClient = {
-    val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
-      .standardRetryStrategy()
-      .toBuilder
-      .maxAttempts(numRetries)
-      .build();
-    val builder = KinesisAsyncClient
-      .builder()
-      .credentials(credentialsOpt)
-      .region(regionOpt)
-      .httpClient(buildAsyncHttpClient)
-      .overrideConfiguration(
-        ClientOverrideConfiguration
-          .builder()
-          .retryStrategy(retryStrategy)
-          .build()
-      )
-    builder.build
   }
 
+  def framedSource: FramedSource[kinesisModel.Record] =
+    new FramedSource[kinesisModel.Record](withKillSwitches(kinesisStream), meter) {
+
+      override def content(input: model.Record): Array[Byte] =
+        ContentDecoder.decode(decoders, input.data().asByteArrayUnsafe())
+
+      override def onTermination(): Unit = kinesisClient.close()
+
+    }
 }

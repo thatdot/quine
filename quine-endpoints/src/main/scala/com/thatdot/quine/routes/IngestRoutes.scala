@@ -66,6 +66,7 @@ object IngestStreamStatus {
 /** Formats that have an embedded query member */
 trait IngestQuery {
   val query: String
+  val parameter: String
 }
 
 /** Information kept at runtime about an active ingest stream
@@ -238,11 +239,13 @@ final case class KinesisCheckpointSettings(
 @docs("A specification of a data source and rules for consuming data from that source.")
 sealed abstract class IngestStreamConfiguration {
   def slug: String
+  def maximumPerSecond: Option[Int]
 }
 object IngestStreamConfiguration {
   case class InvalidStreamConfiguration(errors: NonEmptyList[String])
       extends Exception(s"Encountered errors in provided ingest configuration: ${errors.toList.mkString("; ")}")
       with NoStackTrace
+
 }
 
 /** Type used to persist ingest stream configurations alongside their status for later restoration.
@@ -475,6 +478,7 @@ final case class WebsocketSimpleStartupIngest(
   encoding: String = "UTF-8"
 ) extends IngestStreamConfiguration {
   override def slug: String = "websocket"
+  override val maximumPerSecond = None
 }
 
 @title("Streamed Record Format")
@@ -660,7 +664,10 @@ case class NumberIteratorIngest(
 @unnamed
 @title("File Ingest Format")
 @docs("Format by which a file will be interpreted as a stream of elements for ingest.")
-sealed abstract class FileIngestFormat extends IngestQuery
+sealed abstract class FileIngestFormat extends IngestQuery {
+  val query: String
+  val parameter: String
+}
 object FileIngestFormat {
 
   /** Create using a cypher query, passing each line in as a string */

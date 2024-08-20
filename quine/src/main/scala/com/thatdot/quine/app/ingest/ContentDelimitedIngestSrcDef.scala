@@ -90,7 +90,7 @@ case class CsvIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph, val logConfig: LogConfig)
+)(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
       new CypherRawInputFormat(format.query, format.parameter),
@@ -167,7 +167,7 @@ case class StringIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
+)(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,
@@ -200,7 +200,7 @@ case class JsonLinesIngestSrcDef(
   maxPerSecond: Option[Int],
   override val name: String,
   override val intoNamespace: NamespaceId
-)(implicit graph: CypherOpsGraph, protected val logConfig: LogConfig)
+)(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
       format,

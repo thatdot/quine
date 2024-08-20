@@ -37,8 +37,9 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   /** An ingest class that accepts data from a piped input stream
     * so that bytes can be directly written in tests.
     */
-  case class TestJsonIngest(label: String, maxPerSecond: Option[Int] = None, decoders: Seq[ContentDecoder] = Seq())
-      extends RawValuesIngestSrcDef(
+  case class TestJsonIngest(label: String, maxPerSecond: Option[Int] = None, decoders: Seq[ContentDecoder] = Seq())(
+    implicit val graph: CypherOpsGraph
+  ) extends RawValuesIngestSrcDef(
         new CypherJsonInputFormat(
           s"""MATCH (p) WHERE id(p) = idFrom('test','$label', $$that.$label) SET p.value = $$that RETURN (p)""",
           "that"
