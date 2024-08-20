@@ -32,7 +32,7 @@ object FlatcPlugin extends AutoPlugin {
         val suffixOpt =
           if (Properties.isMac) Some("Mac.flatc.binary.zip")
           else if (Properties.isWin) Some("Windows.flatc.binary.zip")
-          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-12.zip")
+          else if (Properties.isLinux) Some("Linux.flatc.binary.clang++-15.zip")
           else None
 
         suffixOpt.map(suffix => url(prefix + suffix))
