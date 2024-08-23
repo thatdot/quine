@@ -17,13 +17,15 @@ import com.thatdot.quine.webapp.Styles
   * @param name Title of the page (visible when the hamburger is clicked or on hover)
   * @param path URL path associated with this page
   * @param page context of the page
+  * @param mountFunction An optional function to run when a Tab is 'mounted' (unhidden)
   */
 final case class Tab(
   icon: String,
   name: String,
   path: String,
   page: facade.ReactElement,
-  baseURI: String
+  baseURI: String,
+  mountFunction: Option[() => Unit] = None
 )
 
 /** Page which has a (fixed) side bar on the left. The side bar can be used to
@@ -62,6 +64,7 @@ final case class Tab(
     val initialTab = props.children.view.zipWithIndex
       .find(t => t._1.path == window.location.pathname)
       .fold(0)(_._2)
+    props.children.toList.lift(initialTab).foreach(_.mountFunction.foreach(_()))
     val visited = Vector.tabulate(props.children.length)(_ == initialTab)
     State(isOpen = false, initialTab, visited)
   }
@@ -90,6 +93,8 @@ final case class Tab(
             }
             window.history
               .pushState(pageIndexState, "", props.children(idx).baseURI.stripSuffix("/") + props.children(idx).path)
+
+            tab.mountFunction.foreach(_())
             s.switchToTab(idx)
           }
         ),
