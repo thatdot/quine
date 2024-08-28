@@ -9,6 +9,7 @@ LOCAL_SOT = "file:///usr/src/app"
 PROJECT_LEVEL_INCLUDE = [
     "build.properties",
     "Dependencies.scala",
+    "dependencySchemes.sbt",
     "FlatcPlugin.scala",
     "Packaging.scala",
     "GitVersion.scala",
