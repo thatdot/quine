@@ -96,7 +96,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
       timerContext.stop()
       retryTimeout.cancel()
     }
-    context.system.stop(self)
+    context.stop(self)
   }
 
   def receive: Receive = {
@@ -130,7 +130,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
         s"[${timeout.toMillis} ms] waiting for $waitingFor to `$msg`$wasSentBy$throughShard"
       )
       promisedResult.tryFailure(timeoutException)
-      context.system.stop(self)
+      context.stop(self)
 
     case x =>
       val name = recipient.toInternalString

@@ -83,7 +83,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       timerContext.stop()
       retryTimeout.cancel()
     }
-    context.system.stop(self)
+    context.stop(self)
   }
 
   /* Because the local relaying of an ask message might result in a later node telling a remote
@@ -122,7 +122,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
              |to: ${Safe(actorRef)}""".cleanLines
       )
       promisedResult.tryFailure(timeoutException)
-      context.system.stop(self)
+      context.stop(self)
 
     case x =>
       log.error(log"ExactlyOnceAskActor asking: ${Safe(actorRef)} received unknown message: ${x.toString}")
