@@ -1,3 +1,3 @@
 package com.thatdot.quine.graph
 
-class QuineRuntimeFutureException(msg: String, cause: Throwable) extends RuntimeException(msg, cause)
+class QuineRuntimeFutureException(val msg: String, val cause: Throwable) extends RuntimeException(msg, cause)

@@ -99,6 +99,7 @@ object AtLeastOnceCypherQuery {
     * Inspired by [[scala.util.control.NonFatal]]
     */
   object RetriableQueryFailure {
+
     def unapply(e: Throwable): Option[Throwable] = e match {
       // A relayAsk-based protocol timed out, but might succeed when retried
       case _: ExactlyOnceTimeoutException => Some(e)

@@ -5,12 +5,10 @@ import com.thatdot.quine.model.Milliseconds
 /** Exception thrown when a graph operation is attempted but the graph is not
   * ready
   */
-class GraphNotReadyException extends IllegalStateException() {
-
-  val atTime: Milliseconds = Milliseconds.currentTime()
+class GraphNotReadyException(val atTime: Milliseconds = Milliseconds.currentTime()) extends IllegalStateException() {
 
   override def getMessage: String =
     s"Graph not ready at time: ${atTime.millis}"
 }
 
-class ShardNotAvailableException(msg: String) extends NoSuchElementException(msg)
+class ShardNotAvailableException(val msg: String) extends NoSuchElementException(msg)

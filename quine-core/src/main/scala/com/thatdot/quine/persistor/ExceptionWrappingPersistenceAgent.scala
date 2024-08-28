@@ -59,7 +59,7 @@ case class RemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]) ex
 case object GetDomainGraphNodes extends PersistorCall
 case class RemoveDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId) extends PersistorCall
 
-class WrappedPersistorException(val persistorCall: PersistorCall, wrapped: Throwable)
+class WrappedPersistorException(val persistorCall: String, val wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
     with NoStackTrace
 
@@ -69,7 +69,7 @@ trait ExceptionWrapper extends StrictSafeLogging {
     future.transform {
       case s: Success[A] => s
       case Failure(exception) =>
-        val wrapped = new WrappedPersistorException(reifiedCall, exception)
+        val wrapped = new WrappedPersistorException(reifiedCall.toString, exception)
         logger.warn(log"Intercepted persistor error" withException wrapped)
         Failure(wrapped)
     }(ExecutionContext.parasitic)
@@ -136,13 +136,13 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
   def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =
     persistenceAgent.enumerateJournalNodeIds().recoverWith { case wrapped: Throwable =>
       logger.warn(log"Intercepted persistor error" withException wrapped)
-      Source.failed(new WrappedPersistorException(EnumerateJournalNodeIds, wrapped))
+      Source.failed(new WrappedPersistorException(EnumerateJournalNodeIds.toString, wrapped))
     }
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] =
     persistenceAgent.enumerateSnapshotNodeIds().recoverWith { case wrapped: Throwable =>
       logger.warn(log"Intercepted persistor error" withException wrapped)
-      Source.failed(new WrappedPersistorException(EnumerateSnapshotNodeIds, wrapped))
+      Source.failed(new WrappedPersistorException(EnumerateSnapshotNodeIds.toString, wrapped))
     }
 
   def persistSnapshot(id: QuineId, atTime: EventTime, state: Array[Byte]): Future[Unit] = wrapException(
