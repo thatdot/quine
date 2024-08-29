@@ -1,10 +1,13 @@
 package com.thatdot.quine.app.ingest2.core
 
+import scala.collection.{SeqView, View, mutable}
+
 import io.circe.{Json, JsonNumber, JsonObject}
 
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.util.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
 
-trait DataFoldableFrom[A] {
+trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
 }
 
@@ -107,5 +110,107 @@ object DataFoldableFrom {
         builder.finish()
       }
     }
+  import com.google.protobuf.Descriptors.EnumValueDescriptor
+  import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
+  import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
+  import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
+  import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
+
+  import scala.jdk.CollectionConverters._
+  implicit val protobufDataFoldable: DataFoldableFrom[DynamicMessage] = new DataFoldableFrom[DynamicMessage] {
+
+    private def fieldToValue[B](javaType: JavaType, value: AnyRef, folder: DataFolderTo[B]): B =
+      javaType match {
+        case STRING => folder.string(value.asInstanceOf[String])
+        case INT | LONG => folder.integer(value.asInstanceOf[java.lang.Number].longValue)
+        case FLOAT | DOUBLE => folder.floating(value.asInstanceOf[java.lang.Number].doubleValue)
+        case BOOLEAN =>
+          val bool = value.asInstanceOf[java.lang.Boolean]
+          if (bool) folder.trueValue else folder.falseValue
+
+        case BYTE_STRING => folder.bytes(value.asInstanceOf[ByteString].toByteArray)
+        case ENUM => folder.string(value.asInstanceOf[EnumValueDescriptor].getName)
+        case MESSAGE => fold(value.asInstanceOf[DynamicMessage], folder)
+      }
+
+    override def fold[B](message: DynamicMessage, folder: DataFolderTo[B]): B = {
+      val descriptor: Descriptors.Descriptor = message.getDescriptorForType
+      val oneOfs: SeqView[Descriptors.OneofDescriptor] = descriptor.getOneofs.asScala.view
+      // optionals are modeled as (synthetic) oneOfs of a single field.
+      val (optionals, realOneOfs) = oneOfs.partition(LegacyOneofDescriptor.isSynthetic)
+      // synthetic oneOfs (optionals) just have the one field
+      val setOptionals: View[Descriptors.FieldDescriptor] = optionals.map(_.getField(0)).filter(message.hasField)
+      // Find which field in each oneOf is set
+      val oneOfFields: View[Descriptors.FieldDescriptor] =
+        realOneOfs.flatMap(_.getFields.asScala.find(message.hasField))
+      val regularFields = descriptor.getFields.asScala.view diff oneOfs.flatMap(_.getFields.asScala).toVector
+      val mapBuilder: MapBuilder[B] = folder.mapBuilder()
+      (setOptionals ++ oneOfFields ++ regularFields).foreach { field =>
+
+        val b: B = {
+          if (field.isRepeated) {
+            if (field.isMapField) {
+
+              val localMapBuilder = folder.mapBuilder()
+
+              message
+                .getField(field)
+                .asInstanceOf[java.util.List[DynamicMessage]]
+                .asScala
+                .foreach { mapEntry =>
+                  /*
+                      mapEntry.getDescriptorForType is a type described as:
+                      message MapFieldEntry {
+                        key_type key = 1;
+                        value_type value = 2;
+                      }
+                      We already know what fields it contains.
+                   */
+                  val buffer: mutable.Buffer[Descriptors.FieldDescriptor] =
+                    mapEntry.getDescriptorForType.getFields.asScala
+                  assert(buffer.length == 2)
+                  val k = buffer.head
+                  val v = buffer.tail.head
+                  assert(k.getName == "key")
+                  assert(v.getName == "value")
+                  val maybeKey = k.getJavaType match {
+                    // According to Protobuf docs, "the key_type can be any integral or string type"
+                    // https://developers.google.com/protocol-buffers/docs/proto3#maps
+                    case STRING => Some(mapEntry.getField(k).asInstanceOf[String])
+                    case INT | LONG | BOOLEAN => Some(mapEntry.getField(k).toString)
+                    case other =>
+                      logger.warn(
+                        safe"Cannot process the key ${Safe(other.toString)}. Protobuf can only accept keys of type String, Boolean, Integer. This map key will be ignored."
+                      )
+                      None
+                  }
+                  maybeKey.map(key =>
+                    localMapBuilder.add(key, fieldToValue(v.getJavaType, mapEntry.getField(v), folder))
+                  )
+                }
+
+              localMapBuilder.finish()
+
+            } else {
+              val vecBuilder = folder.vectorBuilder()
+              message
+                .getField(field)
+                .asInstanceOf[java.util.List[AnyRef]]
+                .asScala
+                .map(f => fieldToValue(field.getJavaType, f, folder))
+                .foreach(vecBuilder.add)
+              vecBuilder.finish()
+
+            }
+          } else {
+            fieldToValue(field.getJavaType, message.getField(field), folder)
+
+          }
+        }
+        mapBuilder.add(field.getName, b)
+      }
+      mapBuilder.finish()
+    }
+  }
 
 }

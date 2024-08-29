@@ -23,12 +23,14 @@ import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   testAnyZoneCypher,
   testAzerothZone,
   testCataclysmZone1,
+  testPerson,
   testPersonFile,
   testReadablePerson,
   testSchemaCache,
   testWritablePerson,
   warcraftSchemaFile
 }
+import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
   AmbiguousMessageType,
   InvalidProtobufSchema,
@@ -36,7 +38,8 @@ import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
   UnreachableProtobufSchema
 }
 import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
-import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.graph.cypher.Expr.toQuineValue
+import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.QuineValue
 
 // See also [[CypherParseProtobufTest]] for the UDP interface to this functionality
@@ -140,7 +143,8 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       val result = addressBookPersonParser.parseBytes(bytesFromURL(testPersonFile))
 
       testReadablePerson.foreach { case (k, v) =>
-        result.map.get(k) shouldBe Some(Expr.fromQuineValue(v))
+        result shouldBe a[Expr.Map]
+        result.asInstanceOf[Expr.Map].map.get(k) shouldBe Some(Expr.fromQuineValue(v))
       }
     }
 
@@ -168,6 +172,22 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       message.getField(id) shouldBe 10L
       message.getField(email) shouldBe "bob@example.com"
 
+    }
+  }
+
+  describe("Dynamic Message Folding") {
+    it("folding via dynamicMessageFoldable should generate the same values as the protobufParser") {
+      val desc: Descriptors.Descriptor =
+        testSchemaCache.getMessageDescriptor(addressBookSchemaFile, "Person", flushOnFail = true).futureValue
+      val protobufSerializer = new QuineValueToProtobuf(desc)
+      val message = protobufSerializer.toProtobuf(testWritablePerson).value
+      val foldableFrom = DataFoldableFrom.protobufDataFoldable
+      val asCypherValue: Value = foldableFrom.fold(message, DataFolderTo.cypherValueFolder)
+
+      testPerson.foreach { case (k, v) =>
+        val folded: Value = asCypherValue.getField("")(k)
+        toQuineValue(folded) shouldBe v
+      }
     }
   }
 

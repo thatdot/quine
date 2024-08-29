@@ -6,10 +6,9 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import scala.util.{Success, Try}
 
-import com.google.protobuf.Descriptors
+import com.google.protobuf.{Descriptors, DynamicMessage}
 import io.circe.{Json, parser}
 
-import com.thatdot.quine.app.ingest.serialization.ProtobufParser
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher
@@ -55,16 +54,15 @@ object JsonDecoder extends FrameDecoder[Json] {
 
 object DropDecoder extends FrameDecoder[Any] {
   val foldable: DataFoldableFrom[Any] = new DataFoldableFrom[Any] {
-    def fold[B](value: Any, folder: DataFolderTo[B]) = folder.nullValue
+    def fold[B](value: Any, folder: DataFolderTo[B]): B = folder.nullValue
   }
 
   def decode(bytes: Array[Byte]): Success[Any] = Success(())
 }
 
-//TODO
 case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl: String, typeName: String)(implicit
   protobufSchemaCache: ProtobufSchemaCache
-) extends FrameDecoder[cypher.Value] {
+) extends FrameDecoder[DynamicMessage] {
 
   // this is a blocking call, but it should only actually block until the first time a type is successfully
   // loaded.
@@ -72,23 +70,20 @@ case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl:
   // This was left as blocking because lifting the effect to a broader context would mean either:
   // - making ingest startup async, which would require extensive changes to QuineApp, startup, and potentially
   //   clustering protocols, OR
-  // - making the decode bytes step of ingest async, which violate's the Kafka API's expectation that a
+  // - making the decode bytes step of ingest async, which violates the Kafka APIs expectation that a
   //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
-  val descriptor: Descriptors.Descriptor = Await.result(
+  val messageDescriptor: Descriptors.Descriptor = Await.result(
     protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
     Duration.Inf
   )
-  val parser = new ProtobufParser(descriptor)
 
-  val foldable: DataFoldableFrom[cypher.Value] = DataFoldableFrom.cypherValueDataFoldable
+  val foldable: DataFoldableFrom[DynamicMessage] = DataFoldableFrom.protobufDataFoldable
 
-  def decode(bytes: Array[Byte]): Try[cypher.Value] = Try(parser.parseBytes(bytes))
+  def decode(bytes: Array[Byte]): Try[DynamicMessage] = Try(DynamicMessage.parseFrom(messageDescriptor, bytes))
 
 }
 
 object FrameDecoder {
-
-  //TODO remove (implicit protobufSchemaCache:ProtobufSchemaCache)
 
   def apply(format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
     format match {

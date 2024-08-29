@@ -64,4 +64,6 @@ class DataFoldableFromSpec extends AnyFunSpec with Matchers {
       jsonValue2 shouldEqual jsonValue
     }
   }
+
+  //for protobuf dynamic message foldable test see [[ProtobufTest]]
 }
