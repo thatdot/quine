@@ -1,5 +1,7 @@
 package com.thatdot.quine.compiler.cypher
 
+import java.time.Duration
+
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Type}
 
 class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
@@ -190,6 +192,21 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       expectedColumns = Vector("avg(n)"),
       expectedRows = Seq(Vector(Expr.Null))
     )
+
+    assertQueryExecutionFailure(
+      "UNWIND [1, 2, duration('PT1H45S')] AS x RETURN avg(x)",
+      CypherException.TypeMismatch(
+        expected = Seq(Type.Duration),
+        actualValue = Expr.Floating(3.0),
+        context = "average of values"
+      )
+    )
+
+    testQuery(
+      "UNWIND [duration('P2DT3H'), duration('PT1H45S')] AS dur RETURN avg(dur)",
+      expectedColumns = Vector("avg(dur)"),
+      expectedRows = Seq(Vector(Expr.Duration(Duration.parse("PT26H22.5S"))))
+    )
   }
 
   describe("`sum(...)` aggregation") {
@@ -243,6 +260,12 @@ class CypherAggregations extends CypherHarness("cypher-aggregation-tests") {
       "UNWIND [] AS n RETURN sum(n)",
       expectedColumns = Vector("sum(n)"),
       expectedRows = Seq(Vector(Expr.Integer(0L)))
+    )
+
+    testQuery(
+      "UNWIND [duration('P2DT3H'), duration('PT1H45S')] AS dur RETURN sum(dur)",
+      expectedColumns = Vector("sum(dur)"),
+      expectedRows = Seq(Vector(Expr.Duration(Duration.parse("PT52H45S"))))
     )
   }
 

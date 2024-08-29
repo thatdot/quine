@@ -2372,6 +2372,15 @@ sealed abstract class Value extends Expr {
         context
       )
   }
+  def asNumber(context: String): Double = this match {
+    case Expr.Number(num) => num
+    case other =>
+      throw CypherException.TypeMismatch(
+        expected = Seq(Type.Number),
+        actualValue = other,
+        context
+      )
+  }
 
   @throws[CypherException.TypeMismatch]("if the value is not a string")
   def asString(context: String): String = this match {
@@ -2403,6 +2412,16 @@ sealed abstract class Value extends Expr {
         expected = Seq(Type.Map),
         actualValue = other,
         context
+      )
+  }
+
+  def asDuration(str: String): JavaDuration = this match {
+    case Expr.Duration(d) => d
+    case other =>
+      throw CypherException.TypeMismatch(
+        expected = Seq(Type.Duration),
+        actualValue = other,
+        str
       )
   }
 

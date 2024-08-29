@@ -1,5 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
+import java.time.Duration
+
 import scala.collection.mutable.ArrayBuffer
 
 import com.thatdot.quine.model.QuineIdProvider
@@ -113,20 +115,26 @@ object Aggregator {
 
   /** Compute the average of numeric results */
   final case class avg(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[(Long, Double)]](
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[(Long, Value)]](
       initial = None,
       computeOnEveryRow = expr,
       distinct,
-      combine = (prev: Option[(Long, Double)], value: Value) =>
+      combine = (prev: Option[(Long, Value)], value: Value) =>
         value match {
           case Expr.Null => prev
 
-          case Expr.Integer(i) =>
-            val (prevCount, prevTotal) = prev.getOrElse(0L -> 0.0)
-            Some((prevCount + 1, prevTotal + i.toDouble))
-          case Expr.Floating(f) =>
-            val (prevCount, prevTotal) = prev.getOrElse(0L -> 0.0)
-            Some((prevCount + 1, prevTotal + f))
+          case Expr.Number(nextNumber) =>
+            val (prevCount, prevTotalNumber) =
+              prev
+                .map { case (count, total) => count -> total.asNumber("average of values") }
+                .getOrElse(0L -> 0.0)
+            Some((prevCount + 1) -> Expr.Floating(prevTotalNumber + nextNumber))
+
+          case Expr.Duration(nextDuration) =>
+            val (prevCount, prevTotalDuration) = prev
+              .map { case (count, total) => count -> total.asDuration("average of values") }
+              .getOrElse(0L -> Duration.ZERO)
+            Some(prevCount + 1 -> Expr.Duration(prevTotalDuration.plus(nextDuration)))
 
           case other =>
             throw CypherException.TypeMismatch(
@@ -135,10 +143,17 @@ object Aggregator {
               context = "average of values"
             )
         },
-      extractOutput = (acc: Option[(Long, Double)]) =>
+      extractOutput = (acc: Option[(Long, Value)]) =>
         acc match {
           case None => Expr.Null
-          case Some((count, total)) => Expr.Floating(total / count.toDouble)
+          case Some((count, Expr.Number(numericTotal))) => Expr.Floating(numericTotal / count.toDouble)
+          case Some((count, Expr.Duration(durationTotal))) => Expr.Duration(durationTotal.dividedBy(count))
+          case Some((_, wrongTypeValue)) =>
+            throw CypherException.TypeMismatch(
+              expected = Seq(Type.Number, Type.Duration),
+              actualValue = wrongTypeValue,
+              context = "average of values"
+            )
         }
     )
 
@@ -157,15 +172,29 @@ object Aggregator {
     * if this is not the case).
     */
   final case class sum(distinct: Boolean, expr: Expr) extends Aggregator {
-    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Expr.Number](
-      initial = Expr.Integer(0L),
+    def aggregate()(implicit logConfig: LogConfig): AggregateState = aggregateWith[Option[Value]](
+      initial = None,
       computeOnEveryRow = expr,
       distinct,
       combine = (prev, value: Value) =>
         value match {
           case Expr.Null => prev
-          case n: Expr.Number => prev + n
-
+          case n: Expr.Number =>
+            val p = prev match {
+              case Some(i: Expr.Integer) => i
+              case Some(f: Expr.Floating) => f
+              case Some(other) =>
+                throw CypherException.TypeMismatch(
+                  expected = Seq(Type.Number),
+                  actualValue = other,
+                  context = "sum of values"
+                )
+              case None => Expr.Integer(0L)
+            }
+            Some(n + p)
+          case d: Expr.Duration =>
+            val p = prev.map(_.asDuration("sum of values")).getOrElse(Duration.ZERO)
+            Some(Expr.Duration(d.duration.plus(p)))
           case other =>
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number),
@@ -173,7 +202,7 @@ object Aggregator {
               context = "sum of values"
             )
         },
-      extractOutput = acc => acc
+      extractOutput = acc => acc.getOrElse(Expr.Integer(0L))
     )
 
     def isPure: Boolean = expr.isPure
