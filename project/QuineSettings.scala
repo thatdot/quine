@@ -53,9 +53,14 @@ object QuineSettings {
       //Include a report at the end of a test run with details on any failed tests:
       //  use oG for full stack traces, oT for short ones
       Tests.Argument(TestFrameworks.ScalaTest, "-oT")
+    ),
+    excludeDependencies ++= Seq(
+      ExclusionRule("commons-logging", "commons-logging")
+    ),
+    libraryDependencies ++= Seq(
+      "org.slf4j" % "jcl-over-slf4j" % "2.0.16"
     )
   )
-
   /* Settings for building a Scala.js/React webapp using Slinky
    *
    * See the docs at <https://slinky.dev/docs/installation/>
