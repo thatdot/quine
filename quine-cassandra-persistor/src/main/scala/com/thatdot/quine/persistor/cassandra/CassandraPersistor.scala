@@ -17,6 +17,7 @@ import com.datastax.oss.driver.api.core._
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
 import shapeless.poly._
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -67,12 +68,14 @@ abstract class CassandraPersistorDefinition {
     TableDefinition[Snapshots],
     TableDefinition[StandingQueries],
     TableDefinition[StandingQueryStates],
+    //TableDefinition[QuinePatterns],
     TableDefinition[DomainIndexEvents]
   ) = (
     journalsTableDef(namespace),
     snapshotsTableDef(namespace),
     new StandingQueriesDefinition(namespace),
     new StandingQueryStatesDefinition(namespace),
+    //new QuinePatternsDefinition(namespace),
     new DomainIndexEventsDefinition(namespace)
   )
 
@@ -138,6 +141,7 @@ abstract class CassandraPersistor(
   protected def snapshots: Snapshots
   protected val standingQueries: StandingQueries
   protected val standingQueryStates: StandingQueryStates
+  //protected val quinePatterns: QuinePatterns
   protected val domainIndexEvents: DomainIndexEvents
 
   protected def dataTables: List[CassandraTable] =
@@ -215,6 +219,8 @@ abstract class CassandraPersistor(
     standingQueryStates.deleteStandingQueryStates(id)
 
   def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = ???
 
   override def shutdown(): Future[Unit] = session.closeAsync().asScala.void
 

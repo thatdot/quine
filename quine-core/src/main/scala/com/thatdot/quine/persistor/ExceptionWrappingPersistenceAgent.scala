@@ -8,6 +8,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -45,6 +46,7 @@ case object GetStandingQueries extends PersistorCall
 case class GetMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case class DeleteMultipleValuesStandingQueryStates(id: QuineId) extends PersistorCall
 case object ContainsMultipleValuesStates extends PersistorCall
+case class PersistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern) extends PersistorCall
 case class SetStandingQueryState(
   standingQuery: StandingQueryId,
   id: QuineId,
@@ -190,6 +192,11 @@ class ExceptionWrappingPersistenceAgent(persistenceAgent: NamespacedPersistenceA
   def containsMultipleValuesStates(): Future[Boolean] = wrapException(
     ContainsMultipleValuesStates,
     persistenceAgent.containsMultipleValuesStates()
+  )
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = wrapException(
+    PersistQuinePattern(standingQueryId, qp),
+    persistenceAgent.persistQuinePattern(standingQueryId, qp)
   )
 
   override def declareReady(graph: BaseGraph): Unit = persistenceAgent.declareReady(graph)

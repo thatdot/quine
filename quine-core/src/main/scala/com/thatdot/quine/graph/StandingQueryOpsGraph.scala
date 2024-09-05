@@ -21,7 +21,7 @@ import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache}
 
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
-import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
@@ -34,11 +34,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
     requireBehavior[StandingQueryOpsGraph, behavior.MultipleValuesStandingQueryBehavior]
     requireBehavior[StandingQueryOpsGraph, behavior.DomainNodeIndexBehavior]
   }
-
-  private val quinePatterns: concurrent.Map[StandingQueryId, QuinePattern] =
-    new ConcurrentHashMap[StandingQueryId, QuinePattern]().asScala
-
-  def runningQuinePatterns: scala.collection.Map[StandingQueryId, QuinePattern] = quinePatterns.toMap
 
   def standingQueries(namespace: NamespaceId): Option[NamespaceStandingQueries] =
     namespaceStandingQueries.get(namespace)

@@ -7,6 +7,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -92,6 +93,8 @@ class EmptyPersistor(
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future.unit
 
   def containsMultipleValuesStates(): Future[Boolean] = Future.successful(false)
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = Future.unit
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future.successful(None)
 

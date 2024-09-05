@@ -16,6 +16,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.data.NonEmptyList
 import org.rocksdb._
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -32,6 +33,7 @@ import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
   NodeChangeEventCodec,
+//  QuinePatternCodec,
   StandingQueryCodec
 }
 import com.thatdot.quine.util.Log._
@@ -102,6 +104,7 @@ final class RocksDbPersistor(
   private[this] var snapshotsCF: ColumnFamilyHandle = _
   private[this] var standingQueriesCF: ColumnFamilyHandle = _
   private[this] var standingQueryStatesCF: ColumnFamilyHandle = _
+  //private[this] var quinePatternsCF: ColumnFamilyHandle = _
   private[this] var metaDataCF: ColumnFamilyHandle = _
   private[this] var defaultCF: ColumnFamilyHandle = _
   private[this] var domainGraphNodesCF: ColumnFamilyHandle = _
@@ -164,6 +167,7 @@ final class RocksDbPersistor(
     metaDataCF = columnFamilyHandles.get(5)
     defaultCF = columnFamilyHandles.get(6)
     domainGraphNodesCF = columnFamilyHandles.get(7)
+    //quinePatternsCF = columnFamilyHandles.get(8)
   }
 
   /** Close (synchronously) the RocksDB
@@ -181,6 +185,7 @@ final class RocksDbPersistor(
     snapshotsCF.close()
     standingQueriesCF.close()
     standingQueryStatesCF.close()
+//    quinePatternsCF.close()
     metaDataCF.close()
     defaultCF.close()
     db.close()
@@ -194,6 +199,7 @@ final class RocksDbPersistor(
     snapshotsCF = null
     standingQueriesCF = null
     standingQueryStatesCF = null
+//    quinePatternsCF = null
     metaDataCF = null
     defaultCF = null
     db = null
@@ -286,6 +292,7 @@ final class RocksDbPersistor(
         columnFamilyIsEmpty(domainIndexEventsCF) &&
         columnFamilyIsEmpty(standingQueriesCF) &&
         columnFamilyIsEmpty(standingQueryStatesCF) &&
+//        columnFamilyIsEmpty(quinePatternsCF) &&
         columnFamilyIsEmpty(domainGraphNodesCF)
       )
     }(ioDispatcher)
@@ -468,6 +475,12 @@ final class RocksDbPersistor(
         !columnFamilyIsEmpty(standingQueryStatesCF)
       }
     }(ioDispatcher)
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = ???
+//    Future {
+//    val sqBytes = QuinePatternCodec.format.write(qp)
+//    putKeyValue(quinePatternsCF, standingQueryId.toString.getBytes(UTF_8), sqBytes)
+//  }(ioDispatcher)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future {
     getKey(metaDataCF, key.getBytes(UTF_8))

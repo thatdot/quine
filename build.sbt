@@ -27,6 +27,7 @@ lazy val `quine-core`: Project = project
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
       "com.47deg" %% "memeid4s" % memeIdV,
+      "com.github.blemale" %% "scaffeine" % scaffeineV,
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,

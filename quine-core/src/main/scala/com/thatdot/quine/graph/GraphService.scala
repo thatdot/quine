@@ -40,7 +40,8 @@ class GraphService(
     with LiteralOpsGraph
     with AlgorithmGraph
     with CypherOpsGraph
-    with StandingQueryOpsGraph {
+    with StandingQueryOpsGraph
+    with QuinePatternOpsGraph {
 
   initializeNestedObjects()
 

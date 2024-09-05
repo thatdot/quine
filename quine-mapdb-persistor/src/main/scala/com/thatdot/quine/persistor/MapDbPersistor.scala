@@ -20,6 +20,7 @@ import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegis
 import org.mapdb._
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -36,6 +37,7 @@ import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
   NodeChangeEventCodec,
+  QuinePatternCodec,
   StandingQueryCodec
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
@@ -151,6 +153,13 @@ final class MapDbPersistor(
     .hashSet(s"standingQueries")
     .serializer(
       Serializer.BYTE_ARRAY // Standing query
+    )
+    .createOrOpen()
+
+  private val quinePatterns: util.AbstractSet[Array[Byte]] = db
+    .hashSet(s"quinePatterns")
+    .serializer(
+      Serializer.BYTE_ARRAY
     )
     .createOrOpen()
 
@@ -435,6 +444,11 @@ final class MapDbPersistor(
 
   def containsMultipleValuesStates(): Future[Boolean] = Future {
     !multipleValuesStandingQueryStates.isEmpty
+  }(blockingDispatcherEC)
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = Future {
+    val bytes = QuinePatternCodec.format.write(qp)
+    val _ = quinePatterns.add(bytes)
   }(blockingDispatcherEC)
 
   def getMetaData(key: String): Future[Option[Array[Byte]]] = Future(Option(metaData.get(key)))(blockingDispatcherEC)

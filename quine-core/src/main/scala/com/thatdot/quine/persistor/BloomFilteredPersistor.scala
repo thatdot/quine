@@ -10,6 +10,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.data.NonEmptyList
 import com.google.common.hash.{BloomFilter, Funnel, PrimitiveSink}
 
+import com.thatdot.quine.graph.cypher.QuinePattern
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -148,6 +149,9 @@ private class BloomFilteredPersistor(
     bloomFilter.put(id)
     wrappedPersistor.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
   }
+
+  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] =
+    wrappedPersistor.persistQuinePattern(standingQueryId, qp)
 
   override def deleteSnapshots(qid: QuineId): Future[Unit] = wrappedPersistor.deleteSnapshots(qid)
 

@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.cypher
 
 import cats.data.{NonEmptyList, State}
 import cats.implicits._
+import com.google.common.collect.Interners
 
 import com.thatdot.cypher.phases.SymbolAnalysisModule.SymbolTable
 import com.thatdot.language.ast.Identifier.{UnqualifiedIdentifier, toList}
@@ -19,11 +20,23 @@ sealed trait QuinePattern
 sealed trait Output
 
 object QuinePattern {
+  private val interner = Interners.newWeakInterner[QuinePattern]()
+
   case object QuineUnit extends QuinePattern
+
   case class Node(binding: Identifier.UnqualifiedIdentifier) extends QuinePattern
   case class Edge(edgeLabel: Symbol, remotePattern: QuinePattern) extends QuinePattern
 
   case class Fold(init: QuinePattern, over: List[QuinePattern], f: BinOp, output: Output) extends QuinePattern
+
+  def mkNode(binding: Identifier.UnqualifiedIdentifier): QuinePattern =
+    interner.intern(Node(binding))
+
+  def mkEdge(edgeLabel: Symbol, remotePattern: QuinePattern): QuinePattern =
+    interner.intern(Edge(edgeLabel, remotePattern))
+
+  def mkFold(init: QuinePattern, over: List[QuinePattern], f: BinOp, output: Output): QuinePattern =
+    interner.intern(Fold(interner.intern(init), over.map(interner.intern), f, output))
 }
 
 object Compiler {
@@ -222,7 +235,7 @@ object Compiler {
   def instructionToQuinePattern(instruction: Instruction): QuinePattern =
     instruction match {
       case Instruction.Filter(_) => QuinePattern.QuineUnit
-      case Instruction.LocalNode(binding) => QuinePattern.Node(binding)
+      case Instruction.LocalNode(binding) => QuinePattern.mkNode(binding)
       case Instruction.Proj(_, _) => QuinePattern.QuineUnit
       case _ =>
         println(instruction)
@@ -232,14 +245,14 @@ object Compiler {
   def compileFromDependencyGraph(graph: DependencyGraph, symbolTable: SymbolTable): QuinePattern =
     graph match {
       case DependencyGraph.Independent(steps) =>
-        QuinePattern.Fold(
+        QuinePattern.mkFold(
           init = QuinePattern.QuineUnit,
           over = steps.toList.map(step => compileFromDependencyGraph(step, symbolTable)),
           f = BinOp.Merge,
           output = null
         )
       case DependencyGraph.Dependent(first, second) =>
-        QuinePattern.Fold(
+        QuinePattern.mkFold(
           init = compileFromDependencyGraph(first, symbolTable),
           over = List(compileFromDependencyGraph(second, symbolTable)),
           f = BinOp.Merge,

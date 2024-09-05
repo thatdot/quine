@@ -168,7 +168,48 @@ table BranchQuery {
   origin: BranchOrigin (required);
 }
 
-table QuinePatternQueryPattern {}
+table QuineUnit {}
+
+table Node {
+  binding: string;
+}
+
+union QuinePattern {
+  QuineUnit,
+  Node,
+  Edge,
+  Fold
+}
+
+table Edge {
+  binding: string;
+  remote_pattern: QuinePattern;
+}
+
+table Merge {}
+table Append {}
+
+union BinOp {
+  Merge,
+  Append
+}
+
+table Output {}
+
+table Fold {
+  init: QuinePattern;
+  over: [QuinePattern];
+  f: BinOp;
+  output: Output;
+}
+
+table QuinePatternOrigin {}
+
+table QuinePatternQueryPattern {
+  quine_pattern: QuinePattern;
+  include_cancellation: bool;
+  origin: QuinePatternOrigin;
+}
 
 // See [[com.thatdot.quine.graph.StandingQueryPattern.GraphPattern]]
 table GraphPatternStandingQuery {
@@ -200,7 +241,6 @@ table SqV4Query {
 struct NodePatternId {
   id: int;
 }
-
 
 // See [[com.thatdot.quine.graph.GraphQueryPattern.NodePattern]]
 table NodePattern {

@@ -187,6 +187,7 @@ trait CassandraPersistorDefinition extends cassandra.CassandraPersistorDefinitio
 
 }
 object CassandraPersistorDefinition extends CassandraPersistorDefinition
+
 class CassandraPersistor(
   persistenceConfig: PersistenceConfig,
   session: CqlSession,
@@ -215,6 +216,7 @@ class CassandraPersistor(
     snapshots,
     standingQueries,
     standingQueryStates,
+//    quinePatterns,
     domainIndexEvents
   ) = Await.result(
     CassandraPersistorDefinition.tablesForNamespace(namespace).map(prepareStatements).tupled,

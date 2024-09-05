@@ -329,6 +329,7 @@ class KeyspacesPersistor(
     snapshots,
     standingQueries,
     standingQueryStates,
+//    quinePatterns,
     domainIndexEvents
   ) = Await.result(
     KeyspacesPersistorDefinition.tablesForNamespace(namespace).map(prepareStatements).tupled,
