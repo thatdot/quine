@@ -72,7 +72,7 @@ object Dependencies {
 // pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
   // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
   // vulnerabilities.
-  val snappyV = "1.1.10.5"
+  val snappyV = "1.1.10.6"
   val sugarV = "2.0.6"
   val stoplightElementsV = "7.12.0"
   val tapirRecdocV = "1.10.10"
