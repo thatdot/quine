@@ -789,6 +789,12 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedIsReadOnly = false
       )
       testQuery(
+        "UNWIND range(0, 15) AS x CALL util.sleep(0)",
+        expectedColumns = Vector.empty,
+        expectedRows = Vector.empty,
+        expectedIsReadOnly = true
+      )
+      testQuery(
         "CALL debug.sleep(idFrom(8675309))",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,

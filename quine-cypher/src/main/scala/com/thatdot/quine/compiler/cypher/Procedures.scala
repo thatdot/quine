@@ -63,7 +63,7 @@ final case class QuineProcedureCall(
 
   override def clauseSpecificSemanticCheck = unresolvedCall.semanticCheck
 
-  override def yieldAll: Boolean = true
+  override def yieldAll: Boolean = unresolvedCall.yieldAll
 
   override def returnColumns = unresolvedCall.returnColumns
 
