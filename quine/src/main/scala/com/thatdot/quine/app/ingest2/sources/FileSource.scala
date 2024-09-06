@@ -10,44 +10,62 @@ import org.apache.pekko.util.ByteString
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest.NamedPipeSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
+import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, JsonDecoder}
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
 import com.thatdot.quine.routes.{FileIngestFormat, FileIngestMode}
 import com.thatdot.quine.util.Log.LogConfig
 
+/** Build a framed source from a file-like stream of ByteStrings. In practice this
+  * means a finite, non-streaming source: File sources, S3 file sources, and std ingest.
+  *
+  * This framing provides
+  * - ingest bounds
+  * - char encoding
+  * - compression
+  * - record delimit sizing
+  * - metering
+  *
+  * so these capabilities should not be applied to the provided src stream.
+  */
 case class FramedFileSource(
   src: Source[ByteString, NotUsed],
   charset: Charset = DEFAULT_CHARSET,
   delimiterFlow: Flow[ByteString, ByteString, NotUsed],
-  bounds: IngestBounds = IngestBounds(),
+  ingestBounds: IngestBounds = IngestBounds(),
+  decoders: Seq[ContentDecoder] = Seq(),
   ingestMeter: IngestMeter
-) extends BoundedSource {
+) {
 
-  private val framedSource: FramedSource[ByteString] =
-    new FramedSource[ByteString](
-      withKillSwitches(
-        src
-          .via(transcodingFlow(charset))
-          .via(delimiterFlow)
-          //Note: bounding is applied _after_ delimiter.
-          .via(boundingFlow)
-          .via(metered(ingestMeter, _.size))
-      ),
-      ingestMeter
-    ) {
-      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
+  val source: Source[ByteString, NotUsed] =
+    src
+      .via(decompressingFlow(decoders))
+      .via(transcodingFlow(charset))
+      .via(delimiterFlow) // TODO note this will not properly delimit streaming binary formats (e.g. protobuf)
+      //Note: bounding is applied _after_ delimiter.
+      .via(boundingFlow(ingestBounds))
+      .via(metered(ingestMeter, _.size))
+
+  def framedSource: FramedSource =
+    new FramedSource {
+
+      type SrcFrame = ByteString
+      val stream: Source[SrcFrame, ShutdownSwitch] = withKillSwitches(source)
+      val meter: IngestMeter = ingestMeter
+
+      def content(input: SrcFrame): Array[Byte] = input.toArrayUnsafe()
+
     }
-
-  def decodedSource[A](decoder: FrameDecoder[A]): DecodedSource = framedSource.toDecoded(decoder)
 }
 
 object FileSource extends LazyLogging {
 
-  private val jsonDelimitingFlow: Flow[ByteString, ByteString, NotUsed] = EntityStreamingSupport.json().framingDecoder
+  private def jsonDelimitingFlow(maximumLineSize: Int): Flow[ByteString, ByteString, NotUsed] =
+    EntityStreamingSupport.json(maximumLineSize).framingDecoder
 
   private def lineDelimitingFlow(maximumLineSize: Int): Flow[ByteString, ByteString, NotUsed] = Framing
     .delimiter(ByteString("\n"), maximumLineSize, allowTruncation = true)
@@ -66,41 +84,39 @@ object FileSource extends LazyLogging {
     bounds: IngestBounds = IngestBounds(),
     meter: IngestMeter,
     decoders: Seq[ContentDecoder] = Seq()
-  ): DecodedSource = {
-
-    val decompressedSource =
-      fileSource.via(decompressed(decoders))
-
+  ): DecodedSource =
     format match {
       case _: CypherLine =>
         FramedFileSource(
-          decompressedSource,
+          fileSource,
           charset,
           lineDelimitingFlow(maximumLineSize),
           bounds,
+          decoders,
           meter
-        ).decodedSource(CypherStringDecoder)
+        ).framedSource.toDecoded(CypherStringDecoder)
       case _: CypherJson =>
         FramedFileSource(
-          decompressedSource,
+          fileSource,
           charset,
-          jsonDelimitingFlow,
+          jsonDelimitingFlow(maximumLineSize),
           bounds,
+          decoders,
           meter
-        ).decodedSource(JsonDecoder)
+        ).framedSource.toDecoded(JsonDecoder)
       case CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
-          decompressedSource,
-          meter,
+          fileSource,
           bounds,
+          meter,
           headers,
           charset,
           delimiter.byte,
           quoteChar.byte,
           escapeChar.byte,
-          maximumLineSize
+          maximumLineSize,
+          decoders
         ).decodedSource
     }
-  }
 
 }

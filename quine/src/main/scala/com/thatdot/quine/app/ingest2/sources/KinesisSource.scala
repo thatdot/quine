@@ -20,7 +20,7 @@ import software.amazon.awssdk.http.async.SdkAsyncHttpClient
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
-import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model, model => kinesisModel}
+import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
@@ -143,13 +143,11 @@ case class KinesisSource(
       .via(kinesisRateLimiter)
   }
 
-  def framedSource: FramedSource[kinesisModel.Record] =
-    new FramedSource[kinesisModel.Record](withKillSwitches(kinesisStream), meter) {
-
-      override def content(input: model.Record): Array[Byte] =
-        ContentDecoder.decode(decoders, input.data().asByteArrayUnsafe())
-
-      override def onTermination(): Unit = kinesisClient.close()
-
-    }
+  def framedSource: FramedSource =
+    FramedSource[kinesisModel.Record](
+      withKillSwitches(kinesisStream),
+      meter,
+      record => ContentDecoder.decode(decoders, record.data().asByteArrayUnsafe()),
+      terminationHook = () => kinesisClient.close()
+    )
 }

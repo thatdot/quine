@@ -7,7 +7,7 @@ import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestFormat
@@ -25,7 +25,7 @@ case class StandardInputSource(
       .fromInputStream(() => System.in)
       .mapMaterializedValue(_ => NotUsed)
       .via(metered(meter, _.size))
-      .via(decompressed(decoders))
+      .via(decompressingFlow(decoders))
 
   def decodedSource: DecodedSource = decodedSourceFromFileStream(
     meteredDecompressedSource,

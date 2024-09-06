@@ -25,7 +25,7 @@ case class S3Source(
   credentials: Option[AwsCredentials],
   maximumLineSize: Int,
   charset: Charset = DEFAULT_CHARSET,
-  bounds: IngestBounds = IngestBounds(),
+  ingestBounds: IngestBounds = IngestBounds(),
   meter: IngestMeter,
   decoders: Seq[ContentDecoder] = Seq()
 )(implicit system: ActorSystem) {
@@ -33,7 +33,6 @@ case class S3Source(
     case None =>
       S3.getObject(bucket, key)
     case creds @ Some(_) =>
-      // TODO: See example: https://stackoverflow.com/questions/61938052/alpakka-s3-connection-issue
       val settings: S3Settings =
         S3Ext(system).settings.withCredentialsProvider(AwsOps.staticCredentialsProvider(creds))
       val attributes = S3Attributes.settings(settings)
@@ -46,7 +45,7 @@ case class S3Source(
       format,
       charset,
       maximumLineSize,
-      bounds,
+      ingestBounds,
       meter,
       decoders
     )

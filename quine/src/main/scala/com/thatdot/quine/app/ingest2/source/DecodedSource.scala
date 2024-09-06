@@ -29,12 +29,16 @@ import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 /** A decoded source represents a source of interpreted values, that is, values that have
   * been translated from raw formats as supplied by their ingest source.
   */
+// Note: The only reason the meter needs to be included here is to enable the creation of
+// the quineIngestSource for v1 compatibility. If the meter is not used downstream from
+// that it may not be needed here.
 abstract class DecodedSource(val meter: IngestMeter) {
   type Decoded
   type Frame
 
   val foldable: DataFoldableFrom[Decoded]
 
+  /** Stream of decoded values. This stream must already be metered. */
   def stream: Source[(Try[Decoded], Frame), ShutdownSwitch]
 
   def ack: Flow[Frame, Done, NotUsed] = Flow.fromFunction(_ => Done)
@@ -79,8 +83,8 @@ abstract class DecodedSource(val meter: IngestMeter) {
     ): Source[IngestSrcExecToken, NotUsed] = {
 
       val token = IngestSrcExecToken(name)
-      //TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
-      val decodeErrorHandler = LoggingDecodeErrorHandler
+      // TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
+      val decodeErrorHandler = LogOnSingleRecordFailure
       val ingestStream =
         DecodedSource.this.stream
           .wireTap(v => decodeErrorHandler.handleError[Decoded, Frame](v))
@@ -90,7 +94,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
       val src: Source[IngestSrcExecToken, Unit] =
         SourceWithContext
           .fromTuples(ingestStream)
-          //TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
+          // TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
           .mapAsync(parallelism) {
             case Success(t) =>
               ingestQuery.apply {
@@ -180,22 +184,19 @@ object DecodedSource extends LazySafeLogging {
             _,
             recordDecoders
           ) =>
-        KafkaSource
-          .framedSource(
-            name,
-            topics,
-            bootstrapServers,
-            groupId,
-            securityProtocol,
-            maybeExplicitCommit,
-            autoOffsetReset,
-            kafkaProperties,
-            endingOffset,
-            recordDecoders,
-            meter,
-            system
-          )
-          .toDecoded(FrameDecoder(format))
+        KafkaSource(
+          topics,
+          bootstrapServers,
+          groupId.getOrElse(name),
+          securityProtocol,
+          maybeExplicitCommit,
+          autoOffsetReset,
+          kafkaProperties,
+          endingOffset,
+          recordDecoders.map(ContentDecoder(_)),
+          meter,
+          system
+        ).framedSource.toDecoded(FrameDecoder(format))
 
       case FileIngest(
             format,
@@ -215,8 +216,8 @@ object DecodedSource extends LazySafeLogging {
           maximumLineSize,
           IngestBounds(startAtOffset, ingestLimit),
           meter,
-          Seq() //compression not yet supported
-        )
+          Seq()
+        ) //compression not yet supported
 
       case S3Ingest(
             format,
@@ -276,7 +277,7 @@ object DecodedSource extends LazySafeLogging {
           creds,
           region,
           iteratorType,
-          numRetries, //TODO not currently supported
+          numRetries, // TODO not currently supported
           meter,
           recordEncodings.map(ContentDecoder(_))
         )(system.getDispatcher).framedSource.toDecoded(FrameDecoder(streamedRecordFormat))

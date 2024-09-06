@@ -6,6 +6,7 @@ object Dependencies {
   val pekkoKafkaV = "1.0.0"
   val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.27.1"
+  val apacheCommonsCsvV = "1.11.0"
   val antlrV = "4.9.2"
   val amazonKinesisClientV = "2.6.0"
   val awsSdkV = "2.26.31"

@@ -10,6 +10,7 @@ import org.apache.pekko.util.ByteString
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.ingest2.source.IngestBounds
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.app.{PekkoKillSwitch, ShutdownSwitch}
 package object sources extends LazyLogging {
@@ -22,9 +23,8 @@ package object sources extends LazyLogging {
   val DEFAULT_CHARSET: Charset = Charset.forName("UTF-8")
   val DEFAULT_MAXIMUM_LINE_SIZE: Int = 1000
 
-  def decompressed(decoders: Seq[ContentDecoder]): Flow[ByteString, ByteString, NotUsed] =
+  def decompressingFlow(decoders: Seq[ContentDecoder]): Flow[ByteString, ByteString, NotUsed] =
     ContentDecoder.decoderFlow(decoders)
-  //Flow[ByteString].map(bs => ContentDecoder.decode(decoders, bs))
 
   def metered[A](meter: IngestMeter, sizeOf: A => Int): Flow[A, A, NotUsed] =
     Flow[A].wireTap(bs => meter.mark(sizeOf(bs)))
@@ -38,4 +38,9 @@ package object sources extends LazyLogging {
       )
       TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
   }
+
+  def boundingFlow[A](ingestBounds: IngestBounds): Flow[A, A, NotUsed] =
+    ingestBounds.ingestLimit.fold(Flow[A].drop(ingestBounds.startAtOffset))(limit =>
+      Flow[A].drop(ingestBounds.startAtOffset).take(limit)
+    )
 }

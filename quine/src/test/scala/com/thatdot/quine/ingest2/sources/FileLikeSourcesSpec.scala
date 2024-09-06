@@ -17,7 +17,8 @@ import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
-import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE, FileSource}
+import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
+import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{randomString, srcFromString, streamedCypherValues}
@@ -52,7 +53,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     val meter = IngestMetered.ingestMeter(None, randomString())
 
     val src: Source[ByteString, NotUsed] = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
-    val decodedSource = FileSource.decodedSourceFromFileStream(
+    val decodedSource = decodedSourceFromFileStream(
       src,
       format,
       DEFAULT_CHARSET,
@@ -75,7 +76,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     val src = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
     val meter = IngestMetered.ingestMeter(None, randomString())
 
-    val decodedSource: DecodedSource = FileSource.decodedSourceFromFileStream(
+    val decodedSource: DecodedSource = decodedSourceFromFileStream(
       src,
       format,
       Charset.defaultCharset(),
@@ -257,7 +258,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       values.head shouldEqual Expr.List(Vector(Expr.Str("A1"), Expr.Str("B1"), Expr.Str("C1")))
 
       meter.counts.getCount shouldBe 3
-      //byte meter ignores field delimiter
+      // byte meter ignores field delimiter
       meter.bytes.getCount shouldBe calculatedByteLength(csvSample.replace(",", ""))
     }
 
@@ -271,7 +272,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
         SortedMap("A1" -> Expr.Str("A2"), "B1" -> Expr.Str("B2"), "C1" -> Expr.Str("C2"))
       )
       meter.counts.getCount shouldBe 3
-      //byte meter ignores field delimiter
+      // byte meter ignores field delimiter
       meter.bytes.getCount shouldBe calculatedByteLength(csvSample.replace(",", ""))
     }
 
@@ -332,7 +333,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       values.head shouldEqual Expr.List(Vector(Expr.Str("A1"), Expr.Str("B1"), Expr.Str("C1")))
 
       meter.counts.getCount shouldBe 3
-      //byte meter ignores field delimiter
+      // byte meter ignores field delimiter
       meter.bytes.getCount shouldBe calculatedByteLength(csvSample.replace(",", ""))
 
     }

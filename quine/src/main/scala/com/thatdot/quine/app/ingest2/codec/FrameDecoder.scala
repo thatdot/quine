@@ -1,21 +1,24 @@
 package com.thatdot.quine.app.ingest2.codec
 
-import java.nio.charset.StandardCharsets
+import java.io.StringReader
+import java.nio.charset.{Charset, StandardCharsets}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
+import scala.jdk.CollectionConverters._
 import scala.util.{Success, Try}
 
 import com.google.protobuf.{Descriptors, DynamicMessage}
 import io.circe.{Json, parser}
+import org.apache.commons.csv.CSVFormat
 
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
-
 trait FrameDecoder[A] {
   val foldable: DataFoldableFrom[A]
 
@@ -83,6 +86,48 @@ case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl:
 
 }
 
+case class CsvVecDecoder(delimiterChar: Char, quoteChar: Char, escapeChar: Char, charset: Charset = DEFAULT_CHARSET)
+    extends FrameDecoder[Iterable[String]] {
+
+  val csvFormat: CSVFormat =
+    CSVFormat.Builder
+      .create()
+      .setQuote(quoteChar)
+      .setDelimiter(delimiterChar)
+      .setEscape(escapeChar)
+      .setHeader()
+      .build()
+
+  override val foldable: DataFoldableFrom[Iterable[String]] = DataFoldableFrom.stringIterableDataFoldable
+  override def decode(bytes: Array[Byte]): Try[Iterable[String]] =
+    Try(csvFormat.parse(new StringReader(new String(bytes, charset))).getHeaderNames.asScala)
+}
+
+case class CsvMapDecoder(
+  keys: Option[Iterable[String]],
+  delimiterChar: Char,
+  quoteChar: Char,
+  escapeChar: Char,
+  charset: Charset = DEFAULT_CHARSET
+) extends FrameDecoder[Map[String, String]] {
+
+  //if the keys are not passed in the first read values are the keys
+  var headers: Option[Iterable[String]] = keys
+
+  val vecDecoder: CsvVecDecoder = CsvVecDecoder(delimiterChar, quoteChar, escapeChar, charset)
+
+  override val foldable: DataFoldableFrom[Map[String, String]] = DataFoldableFrom.stringMapDataFoldable
+  override def decode(bytes: Array[Byte]): Try[Map[String, String]] =
+    vecDecoder
+      .decode(bytes)
+      .map((csv: Iterable[String]) =>
+        headers match {
+          case Some(value) => value.zip(csv).toMap
+          case None => throw new Exception("Headers are empty")
+        }
+      )
+
+}
 object FrameDecoder {
 
   def apply(format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
@@ -98,11 +143,19 @@ object FrameDecoder {
     format match {
       case FileIngestFormat.CypherLine(_, _) => CypherStringDecoder
       case FileIngestFormat.CypherJson(_, _) => JsonDecoder
-      case FileIngestFormat.CypherCsv(_, _, _, _, _, _) =>
-        throw new UnsupportedOperationException(
-          "Csv is parsed directly from files into cypher. Not supported for other types ATM."
-        )
-
+      case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quote, escape) =>
+        headers match {
+          case Left(false) => CsvVecDecoder(delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // no headers
+          case Left(true) =>
+            CsvMapDecoder(None, delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // first line as header
+          case Right(values) =>
+            CsvMapDecoder(
+              Some(values),
+              delimiter.byte.toChar,
+              quote.byte.toChar,
+              escape.byte.toChar
+            ) // map values provided
+        }
     }
 
 }

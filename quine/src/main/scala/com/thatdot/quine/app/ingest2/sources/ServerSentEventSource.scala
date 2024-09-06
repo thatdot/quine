@@ -9,12 +9,12 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest2.source.{FramedSource, FramedSourceProvider}
+import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 
 case class ServerSentEventSource(url: String, meter: IngestMeter, decoders: Seq[ContentDecoder] = Seq())(implicit
   val system: ActorSystem
-) extends FramedSourceProvider[ServerSentEvent] {
+) {
 
   def stream: Source[ServerSentEvent, ShutdownSwitch] =
     withKillSwitches(
@@ -22,10 +22,7 @@ case class ServerSentEventSource(url: String, meter: IngestMeter, decoders: Seq[
         .via(metered[ServerSentEvent](meter, e => e.data.length))
     )
 
-  def framedSource: FramedSource[ServerSentEvent] = new FramedSource[ServerSentEvent](stream, meter) {
-
-    override def content(input: ServerSentEvent): Array[Byte] = ContentDecoder.decode(decoders, input.data.getBytes())
-
-  }
+  def framedSource: FramedSource =
+    FramedSource[ServerSentEvent](stream, meter, ssEvent => ContentDecoder.decode(decoders, ssEvent.data.getBytes()))
 
 }

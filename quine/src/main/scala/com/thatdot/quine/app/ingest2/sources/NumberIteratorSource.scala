@@ -6,14 +6,14 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
-import com.thatdot.quine.app.ingest2.source.{BoundedSource, DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.cypher.{Expr, Value, Value => CypherValue}
 
 case class NumberIteratorSource(
   bounds: IngestBounds = IngestBounds(),
   ingestMeter: IngestMeter
-) extends BoundedSource {
+) {
 
   def decodedSource: DecodedSource = new DecodedSource(ingestMeter) {
     type Decoded = CypherValue

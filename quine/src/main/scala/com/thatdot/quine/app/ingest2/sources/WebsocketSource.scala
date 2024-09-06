@@ -15,7 +15,7 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
-import com.thatdot.quine.app.ingest2.source.{FramedSource, FramedSourceProvider}
+import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
@@ -26,12 +26,11 @@ case class WebsocketSource(
   keepaliveProtocol: KeepaliveProtocol,
   charset: Charset = DEFAULT_CHARSET,
   meter: IngestMeter
-)(implicit system: ActorSystem)
-    extends FramedSourceProvider[ByteString] {
+)(implicit system: ActorSystem) {
 
   val baseHttpClientSettings: ClientConnectionSettings = ClientConnectionSettings(system)
 
-  override def framedSource: FramedSource[ByteString] = {
+  def framedSource: FramedSource = {
 
     // Copy (and potentially tweak) baseHttpClientSettings for websockets usage
     val httpClientSettings: ClientConnectionSettings = keepaliveProtocol match {
@@ -88,9 +87,11 @@ case class WebsocketSource(
       .mapMaterializedValue(_ => NotUsed) // TBD .mapMaterializedValue(_.flatten)
       .via(metered[ByteString](meter, bs => bs.length))
 
-    new FramedSource[ByteString](withKillSwitches(source.via(transcodingFlow(charset))), meter) {
-      override def content(input: ByteString): Array[Byte] = input.toArrayUnsafe()
-    }
+    FramedSource[ByteString](
+      withKillSwitches(source.via(transcodingFlow(charset))),
+      meter,
+      bs => bs.toArrayUnsafe()
+    )
   }
 
 }

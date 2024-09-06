@@ -10,26 +10,28 @@ import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ShutdownSwitch
+import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom._
-import com.thatdot.quine.app.ingest2.source.{BoundedSource, DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.routes.IngestMeter
 case class CsvFileSource(
   src: Source[ByteString, NotUsed],
-  ingestMeter: IngestMeter,
   ingestBounds: IngestBounds,
+  ingestMeter: IngestMeter,
   headers: Either[Boolean, List[String]],
   charset: Charset,
   delimiterChar: Byte,
   quoteChar: Byte,
   escapeChar: Byte,
-  maximumLineSize: Int
+  maximumLineSize: Int,
+  decoders: Seq[ContentDecoder] = Seq()
 ) {
 
-  val csvLineParser: Flow[ByteString, List[ByteString], NotUsed] =
+  private val csvLineParser: Flow[ByteString, List[ByteString], NotUsed] =
     CsvParsing.lineScanner(delimiterChar, quoteChar, escapeChar, maximumLineSize)
 
-  def decodedSource: DecodedSource with BoundedSource = headers match {
+  def decodedSource: DecodedSource = headers match {
 
     case Right(h) => toDecodedSource(CsvToMap.withHeadersAsStrings(charset, h: _*), stringMapDataFoldable)
 
@@ -44,17 +46,16 @@ case class CsvFileSource(
   }
 
   private def toDecodedSource[T](parsingFlow: Flow[List[ByteString], T, NotUsed], foldableFrom: DataFoldableFrom[T]) =
-    new DecodedSource(ingestMeter) with BoundedSource {
+    new DecodedSource(ingestMeter) {
       type Decoded = T
       type Frame = ByteString
-
-      val bounds = ingestBounds
 
       def stream: Source[(Try[T], Frame), ShutdownSwitch] = {
 
         val csvStream: Source[Success[T], NotUsed] = src
+          .via(decompressingFlow(decoders))
           .via(csvLineParser)
-          .via(boundingFlow)
+          .via(boundingFlow(ingestBounds))
           .wireTap(bs => meter.mark(bs.map(_.length).sum))
           .via(parsingFlow)
           .map(scala.util.Success(_)) //TODO meaningfully extract errors
