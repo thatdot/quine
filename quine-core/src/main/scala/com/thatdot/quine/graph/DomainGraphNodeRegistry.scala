@@ -138,7 +138,7 @@ class DomainGraphNodeRegistry(
   def registerAndPersistDomainGraphNodePackage(
     dgnPackage: DomainGraphNodePackage,
     standingQueryId: StandingQueryId,
-    skipPersistor: Boolean = false
+    skipPersistor: Boolean
   ): Future[Unit] = {
     val newNodes = registerDomainGraphNodePackage(dgnPackage, standingQueryId)
     if (!skipPersistor && newNodes.nonEmpty) persistDomainGraphNodes(newNodes)

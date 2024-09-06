@@ -221,7 +221,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               }
           }
           (dgnPackage match {
-            case Some(p) => graph.dgnRegistry.registerAndPersistDomainGraphNodePackage(p, sqId)
+            case Some(p) => graph.dgnRegistry.registerAndPersistDomainGraphNodePackage(p, sqId, skipPersistor = false)
             case None => Future.unit
           }).flatMap { _ =>
             graph

@@ -25,7 +25,7 @@ class DomainGraphNodeRegistryTest extends AnyFunSuite with ScalaCheckDrivenPrope
     )
     def registerDomainGraphBranch(dgb: DomainGraphBranch, sqId: StandingQueryId): DomainGraphNodeId = {
       val dgnPackage = dgb.toDomainGraphNodePackage
-      Await.result(dgnReg.registerAndPersistDomainGraphNodePackage(dgnPackage, sqId), 1 second)
+      Await.result(dgnReg.registerAndPersistDomainGraphNodePackage(dgnPackage, sqId, skipPersistor = false), 1 second)
       dgnPackage.dgnId
     }
     def unregisterDomainGraphNode(dgnId: DomainGraphNodeId, sqId: StandingQueryId): Unit = {
