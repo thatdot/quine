@@ -132,6 +132,8 @@ class GraphService(
   @volatile private var _isReady = true
   def isReady: Boolean = _isReady
 
+  def isAppLoaded: Boolean = true
+
   override def shutdown(): Future[Unit] = {
     _isReady = false
     implicit val ec = nodeDispatcherEC
