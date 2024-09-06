@@ -19,12 +19,21 @@ import io.circe.Json
 
 import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
-import com.thatdot.quine.graph.{MemberIdx, NamespaceId}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.graph.{MemberIdx, NamespaceId, defaultNamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
 trait IngestStreamState {
+
+  /** Store ingests allowing for either v1 or v2 types. */
+  type UnifiedIngestConfiguration = Either[V2IngestConfiguration, IngestStreamConfiguration]
+
+  type IngestName = String
+  @volatile
+  protected var ingestStreams: Map[NamespaceId, Map[IngestName, IngestStreamWithControl[UnifiedIngestConfiguration]]] =
+    Map(defaultNamespaceId -> Map.empty)
 
   /** Add an ingest stream to the running application. The ingest may be new or restored from persistence.
     *
@@ -63,12 +72,27 @@ trait IngestStreamState {
   def getIngestStream(
     name: String,
     namespace: NamespaceId
-  ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
+  ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = getIngestStreams(namespace).get(name)
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
 
+  protected def getIngestStreamsFromState(
+    namespace: NamespaceId
+  )(implicit logConfig: LogConfig): Map[IngestName, IngestStreamWithControl[IngestStreamConfiguration]] =
+    ingestStreams
+      .getOrElse(namespace, Map.empty)
+      .view
+      .mapValues((isc: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
+        isc.settings match {
+          case Left(v1) => isc.copy(settings = v1.asV1IngestStreamConfiguration)
+          case Right(v2) => isc.copy(settings = v2)
+        }
+      )
+      .toMap
+
   protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[String, IngestStreamWithStatus]]
 
+  //TODO MAP + PERISTENCE
   def removeIngestStream(
     name: String,
     namespace: NamespaceId

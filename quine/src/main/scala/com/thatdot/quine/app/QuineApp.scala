@@ -129,11 +129,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   private[this] var standingQueryOutputTargets: Map[NamespaceId, SQOutputTarget] =
     Map(defaultNamespaceId -> Map.empty)
   final private[this] val standingQueryOutputTargetsLock = new AnyRef
-  type IngestName = String
-  @volatile
-  private[this] var ingestStreams
-    : Map[NamespaceId, Map[IngestName, IngestStreamWithControl[IngestStreamConfiguration]]] =
-    Map(defaultNamespaceId -> Map.empty)
+
   final private[this] val ingestStreamsLock = new AnyRef
 
   // Constant member index 0 for Quine
@@ -471,7 +467,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               )
 
               val streamDefWithControl = IngestStreamWithControl(
-                settings,
+                Right(settings),
                 metrics,
                 () => ingestSrcDef.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
                 () => ingestSrcDef.getControl.map(_.termSignal)(ExecutionContext.parasitic),
@@ -501,23 +497,15 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     })
   }
 
-  def getIngestStream(
-    name: String,
-    namespace: NamespaceId
-  ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = noneIfNoNamespace(namespace)(
-    ingestStreams.get(namespace).flatMap(_.get(name))
-  )
-
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
-    if (getNamespaces.contains(namespace)) ingestStreams.getOrElse(namespace, Map.empty)
+    if (getNamespaces.contains(namespace))
+      getIngestStreamsFromState(namespace)
     else Map.empty
 
   protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[IngestName, IngestStreamWithStatus]] =
     onlyIfNamespaceExists(namespace) {
       implicit val ec: ExecutionContext = graph.nodeDispatcherEC
-      ingestStreams
-        .getOrElse(namespace, Map.empty)
-        .toList
+      getIngestStreamsFromState(namespace).toList
         .traverse { case (name, stream) =>
           for {
             status <- stream.status(graph.materializer)
@@ -559,7 +547,12 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           stream
         }
       })
-    }.toOption.flatten
+    }.toOption.flatten.map { ingestStreamConfiguration =>
+      ingestStreamConfiguration.settings match {
+        case Left(v1) => ingestStreamConfiguration.copy(settings = v1.asV1IngestStreamConfiguration)
+        case Right(v2) => ingestStreamConfiguration.copy(settings = v2)
+      }
+    }
   }
 
   /** == Utilities == */
