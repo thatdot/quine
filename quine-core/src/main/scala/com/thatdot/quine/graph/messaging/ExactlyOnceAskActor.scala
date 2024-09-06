@@ -113,13 +113,15 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       val neverGotAcked = retryTimeout.cancel()
       val waitingFor = if (neverGotAcked && refIsRemote) "`Ack`/reply" else "reply"
       val timeoutException = new ExactlyOnceTimeoutException(
-        s"""$self timed out after $timeout waiting for $waitingFor to `$msg` from originalSender:
-           |$originalSender to: $actorRef""".stripMargin.replace('\n', ' ').trim
+        s"""Ask relayed by graph timed out after $timeout waiting for $waitingFor to message of type:
+           |${msg.getClass.getSimpleName} from originalSender: $originalSender
+           |to: $actorRef. Message: $msg""".stripMargin.replace('\n', ' ').trim
       )
       log.warn(
-        log"""Timed out after ${Safe(timeout)} waiting for ${Safe(waitingFor)} to message of type:
+        log"""Ask relayed by graph timed out after ${Safe(timeout)} waiting for ${Safe(waitingFor)} to message of type:
              |${Safe(msg.getClass.getSimpleName)} from originalSender: ${Safe(originalSender)}
-             |to: ${Safe(actorRef)}""".cleanLines
+             |to: ${Safe(actorRef)}. If this occurred as part of a Cypher query, the query will be retried by default.
+             |Message: ${msg.toString}""".cleanLines
       )
       promisedResult.tryFailure(timeoutException)
       context.stop(self)
