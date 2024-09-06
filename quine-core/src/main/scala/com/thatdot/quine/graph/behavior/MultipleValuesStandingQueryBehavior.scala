@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.behavior
 
 import scala.collection.mutable
 import scala.concurrent.Future
+import scala.util.Try
 
 import org.apache.pekko.actor.Actor
 
@@ -321,13 +322,17 @@ trait MultipleValuesStandingQueryBehavior
       multipleValuesStandingQueries.get(globalId -> queryPartIdForResult) match {
         case None =>
           log.whenWarnEnabled {
-            val relevantSqPart = graph
-              .standingQueries(namespace)
-              .get
-              .getStandingQueryPart(queryPartIdForResult)
+            // Look up the relevant SQ part for logging purposes. If no part can be found for the provided ID,
+            // assume it's been deleted prior to this message being processed.
+            val relevantSqPartStr = Try(
+              graph
+                .standingQueries(namespace)
+                .get
+                .getStandingQueryPart(queryPartIdForResult)
+            ).fold(_ => "deleted SQ part", part => s"$part")
             log.warn(
               log"""Got a result from: ${Safe(fromQid.pretty)} for: ${Safe(queryPartIdForResult)},
-                   |but this node does not track: ${Safe(queryPartIdForResult)} ($relevantSqPart)
+                   |but this node does not track: ${Safe(queryPartIdForResult)} ($relevantSqPartStr)
                    |""".cleanLines
             )
           }
