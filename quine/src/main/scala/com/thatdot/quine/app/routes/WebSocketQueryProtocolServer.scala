@@ -182,7 +182,7 @@ trait WebSocketQueryProtocolServer
       case other =>
         val message = s"Query failed with log ID: ${Random.alphanumeric.take(10).mkString}"
         logger.error(log"$message" withException other)
-        "message"
+        message
     }
 
   /** Process a client message and return the message with which to reply
