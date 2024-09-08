@@ -25,7 +25,7 @@ import com.thatdot.quine.graph.cypher.{
   LocalIdState,
   LocalPropertyState,
   UnitState,
-  Value
+  Value,
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.SqResultLike
 import com.thatdot.quine.graph.messaging._
@@ -34,7 +34,7 @@ import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
   StandingQueryId,
   StandingQueryResult,
-  namespaceToString
+  namespaceToString,
 }
 import com.thatdot.quine.model.{QuineId, QuineValue}
 
@@ -50,16 +50,16 @@ object Log {
   class SafeInterpolator private (
     val safeString: () => String,
     val unsafeString: (String => String) => String,
-    val exception: Option[Throwable] = None
+    val exception: Option[Throwable] = None,
   ) extends SafeString {
     private def copy(
       safeString: () => String = safeString,
       unsafeString: (String => String) => String = unsafeString,
-      exception: Option[Throwable] = exception
+      exception: Option[Throwable] = exception,
     ) = new SafeInterpolator(safeString, unsafeString, exception)
     private def map(f: String => String) = copy(
       safeString = () => f(safeString()),
-      unsafeString = (redactor: String => String) => f(unsafeString(redactor))
+      unsafeString = (redactor: String => String) => f(unsafeString(redactor)),
     )
     def interpolateSafe(): String = safeString()
     def interpolateUnsafe(redactor: String => String): String = unsafeString(redactor)
@@ -67,7 +67,7 @@ object Log {
     def +(other: SafeInterpolator): SafeInterpolator = copy(
       safeString = () => safeString() + other.safeString(),
       unsafeString = (redactor: String => String) => unsafeString(redactor) + unsafeString(redactor),
-      exception = exception.handleErrorWith(_ => (other.exception))
+      exception = exception.handleErrorWith(_ => (other.exception)),
     )
     def stripMargin: SafeInterpolator = map(_.stripMargin)
     def trim: SafeInterpolator = map(_.trim)
@@ -79,21 +79,21 @@ object Log {
     private[Log] def apply(
       ss: Seq[String],
       safeArgs: Seq[() => String],
-      unsafeArgs: Seq[(String => String) => String]
+      unsafeArgs: Seq[(String => String) => String],
     ) = new SafeInterpolator(
       () => StringContext.standardInterpolator(StringContext.processEscapes, safeArgs.map(_()), ss),
       (redactor: String => String) =>
-        StringContext.standardInterpolator(StringContext.processEscapes, unsafeArgs.map(_(redactor)), ss)
+        StringContext.standardInterpolator(StringContext.processEscapes, unsafeArgs.map(_(redactor)), ss),
     )
   }
 
   //This is like SafeInterpolator, but it represents strings that can only be safe
   //This is alos only constructed below, but in the "safe" interpolator function rather than the "log" interpolator
   class OnlySafeStringInterpolator private[Log] (
-    val safeString: () => String
+    val safeString: () => String,
   ) extends SafeString {
     def copy(
-      safeString: () => String = safeString
+      safeString: () => String = safeString,
     ): OnlySafeStringInterpolator = new OnlySafeStringInterpolator(safeString)
     def interpolateSafe(): String = safeString()
     def interpolateUnsafe(redactor: String => String): String = interpolateSafe()
@@ -107,7 +107,7 @@ object Log {
   }
   object OnlySafeStringInterpolator {
     private[Log] def apply(ss: Seq[String], safeArgs: Seq[() => String]) = new OnlySafeStringInterpolator(() =>
-      StringContext.standardInterpolator(StringContext.processEscapes, safeArgs.map(_()), ss)
+      StringContext.standardInterpolator(StringContext.processEscapes, safeArgs.map(_()), ss),
     )
   }
 
@@ -159,7 +159,7 @@ object Log {
     def log(args: LogObj[_]*): SafeInterpolator = SafeInterpolator(
       sc.parts,
       args.map(_.safe),
-      args.map(_.unsafe)
+      args.map(_.unsafe),
     )
 
     //Preforms a string interpolation like the "log" interpolator, but this can only accept variables that are marked as "safe"
@@ -180,7 +180,7 @@ object Log {
         m.m map { case (k, v) =>
           (Safe(k), v)
         },
-        redactor
+        redactor,
       )
     }
 
@@ -465,7 +465,7 @@ object Log {
     implicit val LogJson: Loggable[io.circe.Json] = toStringLoggable[io.circe.Json]
     implicit def LogSource[A, B](implicit
       loggableA: Loggable[A],
-      loggableB: Loggable[B]
+      loggableB: Loggable[B],
     ): Loggable[org.apache.pekko.stream.scaladsl.Source[A, B]] =
       new Loggable[org.apache.pekko.stream.scaladsl.Source[A, B]] {
         override def safe(a: Source[A, B]): String = a.toString
@@ -496,7 +496,7 @@ object Log {
     }
     implicit def LogConcurrentMap[K, V](implicit
       loggableKey: Loggable[K],
-      loggableVal: Loggable[V]
+      loggableVal: Loggable[V],
     ): Loggable[scala.collection.concurrent.Map[K, V]] = new Loggable[scala.collection.concurrent.Map[K, V]] {
       override def safe(a: scala.collection.concurrent.Map[K, V]): String = a.map { case (k, v) =>
         (loggableKey.safe(k), loggableVal.safe(v))
@@ -562,7 +562,7 @@ object Log {
           loggableIterable(loggableElems).unsafe(l.toList, redactor)
       }
     implicit def loggableConcurrentLinkedDeque[A](implicit
-      loggableElems: Loggable[A]
+      loggableElems: Loggable[A],
     ): Loggable[java.util.concurrent.ConcurrentLinkedDeque[A]] =
       new Loggable[java.util.concurrent.ConcurrentLinkedDeque[A]] {
         override def safe(l: java.util.concurrent.ConcurrentLinkedDeque[A]): String =
@@ -598,7 +598,7 @@ object Log {
   case class LogConfig(
     showUnsafe: Boolean = false,
     showExceptions: Boolean = false,
-    redactor: RedactMethod = RedactHide
+    redactor: RedactMethod = RedactHide,
   )
   object LogConfig {
     //The most permissive log config. Useful for testing environments
@@ -610,8 +610,8 @@ object Log {
   class SafeLogger(
     private val logger: Either[
       scalalogging.Logger,
-      org.apache.pekko.event.LoggingAdapter
-    ]
+      org.apache.pekko.event.LoggingAdapter,
+    ],
   ) {
 
     def whenDebugEnabled(body: => Unit): Unit = logger match {
@@ -729,13 +729,13 @@ object Log {
   trait LazySafeLogging {
     @transient
     protected lazy val logger: SafeLogger = new SafeLogger(
-      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName)))
+      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName))),
     )
   }
   //Works Like scalalogging StrictLogging, but StrictLogging creates a scalalogging.Logger while StrictSafeLogging wraps it in a SafeLogger
   trait StrictSafeLogging {
     protected val logger: SafeLogger = new SafeLogger(
-      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName)))
+      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName))),
     )
   }
   //Works Like Pekko ActorLogging, but Pekko ActorLogging creates a pekko logger while ActorSafeLogging wraps it in a SafeLogger

@@ -11,8 +11,8 @@ class EventTimeTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks with
         et.largestEventTimeInThisMillisecond == EventTime(
           et.millis,
           16383, //10 ** 14 -1
-          255 //10 ** 8 -1
-        )
+          255, //10 ** 8 -1
+        ),
       )
     }
   }

@@ -12,7 +12,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   LocallyRegisteredStandingQuery,
   NodeInternalState,
   SqStateResult,
-  SqStateResults
+  SqStateResults,
 }
 import com.thatdot.quine.model
 import com.thatdot.quine.model.{EdgeDirection => _, _}
@@ -85,7 +85,7 @@ trait DebugRoutesImpl
           .map { case (props, edges) =>
             LiteralNode(
               props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider, logConfig) },
-              edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) }
+              edges.toSeq.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) },
             )
           }(graph.nodeDispatcherEC)
       }
@@ -135,7 +135,7 @@ trait DebugRoutesImpl
           .literalOps(namespaceFromParam(namespaceParam))
           .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
           .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
-            graph.nodeDispatcherEC
+            graph.nodeDispatcherEC,
           )
       }
   }
@@ -182,7 +182,7 @@ trait DebugRoutesImpl
           .literalOps(namespaceFromParam(namespaceParam))
           .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
           .map(_.toVector.map { case HalfEdge(t, d, o) => RestHalfEdge(t.name, toEdgeDirection(d), o) })(
-            graph.nodeDispatcherEC
+            graph.nodeDispatcherEC,
           )
       }
   }
@@ -194,9 +194,9 @@ trait DebugRoutesImpl
           .literalOps(namespaceFromParam(namespaceParam))
           .getProps(qid, atTime)
           .map(m =>
-            m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig))
+            m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig)),
           )(
-            graph.nodeDispatcherEC
+            graph.nodeDispatcherEC,
           )
       }
   }

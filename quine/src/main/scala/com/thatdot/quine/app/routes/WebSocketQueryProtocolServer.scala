@@ -28,7 +28,7 @@ import com.thatdot.quine.routes.{
   QueryProtocolMessage,
   QueryProtocolMessageSchema,
   UiEdge,
-  UiNode
+  UiNode,
 }
 import com.thatdot.quine.util.Log._
 
@@ -45,7 +45,7 @@ final case class RunningQuery(
   termination: Future[Done],
   killSwitch: UniqueKillSwitch,
   isReadOnly: Boolean,
-  canContainAllNodeScan: Boolean
+  canContainAllNodeScan: Boolean,
 )
 
 /** Protocol for running queries (streaming results, cancellation, concurrently) over a WebSocket
@@ -66,7 +66,7 @@ trait WebSocketQueryProtocolServer
 
   private case class RunningQueriesAndSink(
     runningQueries: concurrent.Map[Int, RunningQuery],
-    sink: Sink[ServerMessage[Id], NotUsed]
+    sink: Sink[ServerMessage[Id], NotUsed],
   )
 
   /** Protocol flow
@@ -115,8 +115,8 @@ trait WebSocketQueryProtocolServer
           val responseAndResultMerge = builder.add(
             MergePreferred[ServerMessage[Id]](
               secondaryPorts = 1,
-              eagerComplete = false
-            )
+              eagerComplete = false,
+            ),
           )
 
           mergedSource ~> responseAndResultMerge.in(0)
@@ -131,27 +131,27 @@ trait WebSocketQueryProtocolServer
                           try processClientMessage(clientMessage, runningQueries, sink)
                           catch {
                             case NonFatal(err) => MessageError(serverExceptionMessage(err))
-                          }
+                          },
                         )
-                        .merge
+                        .merge,
                     )
                   case (
                         sinkMat: Sink[ServerMessage[Id] @unchecked, NotUsed @unchecked],
-                        runningQueriesMat: concurrent.Map[Int @unchecked, RunningQuery @unchecked]
+                        runningQueriesMat: concurrent.Map[Int @unchecked, RunningQuery @unchecked],
                       ) =>
                     RunningQueriesAndSink(runningQueriesMat, sinkMat) -> None
                   case other => throw new RuntimeException(s"Unexpected value: $other")
                 }
               },
-              _ => None
+              _ => None,
             )
             .collect { case Some(s) => s } ~> responseAndResultMerge.preferred
 
           FlowShape(
             clientMessages.in,
-            responseAndResultMerge.out.map(m => ws.TextMessage(serverMessageEncoder(m).noSpaces)).outlet
+            responseAndResultMerge.out.map(m => ws.TextMessage(serverMessageEncoder(m).noSpaces)).outlet,
           )
-        }
+        },
       )
       .mapMaterializedValue(_._2)
   }
@@ -195,7 +195,7 @@ trait WebSocketQueryProtocolServer
   private[this] def processClientMessage(
     message: ClientMessage,
     queries: concurrent.Map[Int, RunningQuery],
-    sink: Sink[ServerMessage[Id], NotUsed]
+    sink: Sink[ServerMessage[Id], NotUsed],
   ): ServerResponseMessage = {
     graph.requiredGraphIsReady()
     message match {
@@ -217,7 +217,7 @@ trait WebSocketQueryProtocolServer
           Source[ServerMessage[Id], UniqueKillSwitch],
           Boolean,
           Boolean,
-          Option[Seq[String]]
+          Option[Seq[String]],
         ) =
           // TODO canContainAllNodeScan is true for all Gremlin queries?
           run.sort match {
@@ -229,10 +229,10 @@ trait WebSocketQueryProtocolServer
                       queryGremlinNodes(
                         GremlinQuery(run.query, run.parameters),
                         namespace,
-                        atTime
+                        atTime,
                       ),
                       true,
-                      true
+                      true,
                     )
                   case QueryLanguage.Cypher =>
                     queryCypherNodes(CypherQuery(run.query, run.parameters), namespace, atTime)
@@ -248,10 +248,10 @@ trait WebSocketQueryProtocolServer
                       queryGremlinEdges(
                         GremlinQuery(run.query, run.parameters),
                         namespace,
-                        atTime
+                        atTime,
                       ),
                       true,
-                      true
+                      true,
                     )
                   case QueryLanguage.Cypher =>
                     queryCypherEdges(CypherQuery(run.query, run.parameters), namespace, atTime)
@@ -265,7 +265,7 @@ trait WebSocketQueryProtocolServer
                   val results = queryGremlinGeneric(
                     GremlinQuery(run.query, run.parameters),
                     namespace,
-                    atTime
+                    atTime,
                   )
                   val batches = batched(results.viaMat(KillSwitches.single)(Keep.right))
                   (batches.map(NonTabularResults(run.queryId, _)), true, true, None)
@@ -279,7 +279,7 @@ trait WebSocketQueryProtocolServer
                     batches.map(TabularResults(run.queryId, columns, _)),
                     isReadOnly,
                     canContainAllNodeScan,
-                    Some(columns)
+                    Some(columns),
                   )
               }
           }
@@ -288,7 +288,7 @@ trait WebSocketQueryProtocolServer
         // This is where we atomically decide if the provided query ID works
         queries.putIfAbsent(
           run.queryId,
-          RunningQuery(run, termination, killSwitch, isReadOnly, canContainAllNodeScan)
+          RunningQuery(run, termination, killSwitch, isReadOnly, canContainAllNodeScan),
         ) match {
           case None =>
             // Actually start running the query
@@ -305,7 +305,7 @@ trait WebSocketQueryProtocolServer
 
           case Some(existingQuery) =>
             MessageError(
-              s"Query ID ${run.queryId} is already being used to track another query: $existingQuery"
+              s"Query ID ${run.queryId} is already being used to track another query: $existingQuery",
             )
         }
 

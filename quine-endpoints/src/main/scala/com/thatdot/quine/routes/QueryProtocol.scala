@@ -76,7 +76,7 @@ object QueryProtocolMessage {
     language: QueryLanguage,
     atTime: Option[Long],
     maxResultBatch: Option[Int],
-    resultsWithinMillis: Option[Int]
+    resultsWithinMillis: Option[Int],
   ) extends ClientRequestMessage
 
   /** Instruct the server to cancel a running query
@@ -84,7 +84,7 @@ object QueryProtocolMessage {
     * @param id which query to cancel
     */
   final case class CancelQuery(
-    queryId: Int
+    queryId: Int,
   ) extends ClientRequestMessage
 
   /** Indicate that there was some error processing the last client message
@@ -94,7 +94,7 @@ object QueryProtocolMessage {
     * @param message error message associated with the failure
     */
   final case class MessageError(
-    error: String
+    error: String,
   ) extends ServerResponseMessage
 
   /** Indicate that the client message has been processed
@@ -114,7 +114,7 @@ object QueryProtocolMessage {
     queryId: Int,
     isReadOnly: Boolean,
     canContainAllNodeScan: Boolean,
-    columns: Option[Seq[String]]
+    columns: Option[Seq[String]],
   ) extends ServerResponseMessage
 
   /** Batch of tabular results to a query
@@ -126,7 +126,7 @@ object QueryProtocolMessage {
   final case class TabularResults(
     queryId: Int,
     columns: Seq[String],
-    results: Seq[Seq[Json]]
+    results: Seq[Seq[Json]],
   ) extends ServerAsyncNotificationMessage[Nothing]
 
   /** Batch of non-tabular results to a query
@@ -136,7 +136,7 @@ object QueryProtocolMessage {
     */
   final case class NonTabularResults(
     queryId: Int,
-    results: Seq[Json]
+    results: Seq[Json],
   ) extends ServerAsyncNotificationMessage[Nothing]
 
   /** Batch of node results to a query
@@ -146,7 +146,7 @@ object QueryProtocolMessage {
     */
   final case class NodeResults[Id](
     queryId: Int,
-    results: Seq[UiNode[Id]]
+    results: Seq[UiNode[Id]],
   ) extends ServerAsyncNotificationMessage[Id]
 
   /** Batch of edge results to a query
@@ -156,7 +156,7 @@ object QueryProtocolMessage {
     */
   final case class EdgeResults[Id](
     queryId: Int,
-    results: Seq[UiEdge[Id]]
+    results: Seq[UiEdge[Id]],
   ) extends ServerAsyncNotificationMessage[Id]
 
   /** Indicate that a query failed
@@ -168,7 +168,7 @@ object QueryProtocolMessage {
     */
   final case class QueryFailed(
     queryId: Int,
-    message: String
+    message: String,
   ) extends ServerAsyncNotificationMessage[Nothing]
 
   /** Indicate that a query finished
@@ -176,7 +176,7 @@ object QueryProtocolMessage {
     * @param queryId which query is done
     */
   final case class QueryFinished(
-    queryId: Int
+    queryId: Int,
   ) extends ServerAsyncNotificationMessage[Nothing]
 
 }

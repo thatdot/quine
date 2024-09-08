@@ -16,7 +16,7 @@ sealed abstract class QuineRef
   * @param ref Pekko reference to the actor
   */
 final case class WrappedActorRef(
-  ref: ActorRef
+  ref: ActorRef,
 ) extends QuineRef
 
 /** A fully qualified QuineId, allowing a specific actors to be addressed anywhere in the (name)space/(at)time universe.
@@ -31,7 +31,7 @@ final case class WrappedActorRef(
 final case class SpaceTimeQuineId(
   id: QuineId,
   namespace: NamespaceId,
-  atTime: Option[Milliseconds]
+  atTime: Option[Milliseconds],
 ) extends QuineRef {
 
   def pretty(implicit idProvider: QuineIdProvider): String = atTime match {
@@ -77,7 +77,7 @@ object SpaceTimeQuineId {
         SpaceTimeQuineId(qid, namespace, atTime)
       case other =>
         throw new IllegalArgumentException(
-          s"Unexpected ID string: $str structure from internal string: ${other.toList}"
+          s"Unexpected ID string: $str structure from internal string: ${other.toList}",
         )
     }
 }

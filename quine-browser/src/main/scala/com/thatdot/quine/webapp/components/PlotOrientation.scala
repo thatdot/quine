@@ -7,7 +7,7 @@ object PlotOrientation {
 sealed abstract class PlotOrientation(
   val orientationVal: String,
   val primaryAxis: String,
-  val secondaryAxis: String
+  val secondaryAxis: String,
 ) {
   val primaryAxisName: String = primaryAxis + "axis"
   val secondaryAxisName: String = secondaryAxis + "axis"

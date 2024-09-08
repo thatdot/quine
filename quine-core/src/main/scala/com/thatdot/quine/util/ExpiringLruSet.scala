@@ -138,7 +138,7 @@ private[quine] object ExpiringLruSet {
     initialCapacity: Int,
     initialMaximumSize: Int,
     initialNanosExpiry: Long,
-    nanoTimeSource: NanoTimeSource = SystemNanoTime
+    nanoTimeSource: NanoTimeSource = SystemNanoTime,
   ) extends ExpiringLruSet[A]
       with LazySafeLogging {
     private[this] var _maximumSize: Int = initialMaximumSize
@@ -156,7 +156,7 @@ private[quine] object ExpiringLruSet {
       new JavaLinkedHashMap[A, Long](
         initialCapacity,
         0.75F, // default from other `JavaLinkedHashMap` constructors
-        true // use access order, not insertion order
+        true, // use access order, not insertion order
       )
 
     final def maximumSize: Int = _maximumSize
@@ -219,7 +219,7 @@ private[quine] object ExpiringLruSet {
                 oversizedBy -= 1
                 expiryListener(
                   if (oversizedBy > 0) RemovalCause.Oversized else RemovalCause.Expired,
-                  entry.getKey
+                  entry.getKey,
                 )
                 progressMadeThisIteration = true
               case ExpiryDecision.RejectRemoval(progress) =>
@@ -241,7 +241,7 @@ private[quine] object ExpiringLruSet {
           progressMadeThisIteration = false
         } else {
           logger.warn(
-            safe"doExpiration: halting due to lack of progress, but LRU cache is still oversized by: ${Safe(oversizedBy)}"
+            safe"doExpiration: halting due to lack of progress, but LRU cache is still oversized by: ${Safe(oversizedBy)}",
           )
           return
         }

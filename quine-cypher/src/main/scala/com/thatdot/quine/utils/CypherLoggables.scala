@@ -10,7 +10,7 @@ import com.thatdot.quine.bolt.Protocol.{
   Record,
   Reset,
   Run,
-  Success
+  Success,
 }
 import com.thatdot.quine.util.Log._
 

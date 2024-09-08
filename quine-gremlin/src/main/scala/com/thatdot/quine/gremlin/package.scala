@@ -46,7 +46,7 @@ package object gremlin {
         java.lang.Integer.TYPE -> classTag[java.lang.Integer].runtimeClass,
         java.lang.Long.TYPE -> classTag[java.lang.Long].runtimeClass,
         java.lang.Float.TYPE -> classTag[java.lang.Float].runtimeClass,
-        java.lang.Double.TYPE -> classTag[java.lang.Double].runtimeClass
+        java.lang.Double.TYPE -> classTag[java.lang.Double].runtimeClass,
       )
       def boxClass(cls: Class[_]): Class[_] = boxClassMapping.getOrElse(cls, cls)
 
@@ -63,8 +63,8 @@ package object gremlin {
               actual = act,
               offender = any,
               explanation = expectation,
-              position = pos
-            )
+              position = pos,
+            ),
           )
       }
     }

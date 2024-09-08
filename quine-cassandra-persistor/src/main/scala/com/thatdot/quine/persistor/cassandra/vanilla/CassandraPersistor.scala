@@ -35,8 +35,8 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     Boolean,
     Int,
     Materializer,
-    LogConfig
-  ) => C
+    LogConfig,
+  ) => C,
 ) extends LazySafeLogging {
 
   /** @param endpoints           address(s) (host and port) of the Cassandra cluster to connect to.
@@ -59,7 +59,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     snapshotPartMaxSizeBytes: Int,
-    metricRegistry: Option[MetricRegistry]
+    metricRegistry: Option[MetricRegistry],
   )(implicit materializer: Materializer, logConfig: LogConfig): Future[PrimeCassandraPersistor] = {
 
     // This is mutable, so needs to be a def to get a new one w/out prior settings.
@@ -84,7 +84,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
         clazz <- keyspaceReplicationConfig.get("class") if clazz == "org.apache.cassandra.locator.SimpleStrategy"
         factor <- keyspaceReplicationConfig.get("replication_factor") if factor.toInt != replicationFactor
       } logger.info(
-        safe"Unexpected replication factor: ${Safe(factor)} (expected: ${Safe(replicationFactor)}) for Cassandra keyspace: ${Safe(keyspace)}"
+        safe"Unexpected replication factor: ${Safe(factor)} (expected: ${Safe(replicationFactor)}) for Cassandra keyspace: ${Safe(keyspace)}",
       )
     }
 
@@ -115,7 +115,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
         shouldCreateTables,
         snapshotPartMaxSizeBytes,
         materializer,
-        logConfig
+        logConfig,
       )
     }(ExecutionContext.parasitic)
   }
@@ -123,7 +123,7 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
 }
 object PrimeCassandraPersistor
     extends AbstractGlobalCassandraPersistor[PrimeCassandraPersistor](
-      new PrimeCassandraPersistor(_, _, _, _, _, _, _, _)(_)
+      new PrimeCassandraPersistor(_, _, _, _, _, _, _, _)(_),
     )
 
 /** A "factory" object to create per-namespace instances of CassandraPersistor.
@@ -137,7 +137,7 @@ class PrimeCassandraPersistor(
   writeSettings: CassandraStatementSettings,
   shouldCreateTables: Boolean,
   snapshotPartMaxSizeBytes: Int,
-  materializer: Materializer
+  materializer: Materializer,
 )(implicit val logConfig: LogConfig)
     extends cassandra.PrimeCassandraPersistor(
       persistenceConfig,
@@ -146,7 +146,7 @@ class PrimeCassandraPersistor(
       readSettings,
       writeSettings,
       shouldCreateTables,
-      _ => _ => Future.unit
+      _ => _ => Future.unit,
     )(materializer) {
 
   protected val chunker: Chunker = NoOpChunker
@@ -155,7 +155,7 @@ class PrimeCassandraPersistor(
     if (shouldCreateTables || namespace.nonEmpty) {
       CassandraPersistorDefinition.createTables(namespace, session, _ => _ => Future.unit)(
         materializer.executionContext,
-        logConfig
+        logConfig,
       )
     } else {
       Future.unit
@@ -175,7 +175,7 @@ class PrimeCassandraPersistor(
       namespace,
       readSettings,
       writeSettings,
-      snapshotPartMaxSizeBytes
+      snapshotPartMaxSizeBytes,
     )(materializer, logConfig)
 
 }
@@ -194,15 +194,15 @@ class CassandraPersistor(
   val namespace: NamespaceId,
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings,
-  snapshotPartMaxSizeBytes: Int
+  snapshotPartMaxSizeBytes: Int,
 )(implicit
   materializer: Materializer,
-  val logConfig: LogConfig
+  val logConfig: LogConfig,
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
       session,
       namespace,
-      snapshotPartMaxSizeBytes
+      snapshotPartMaxSizeBytes,
     ) {
 
   protected val chunker: Chunker = NoOpChunker
@@ -217,10 +217,10 @@ class CassandraPersistor(
     standingQueries,
     standingQueryStates,
 //    quinePatterns,
-    domainIndexEvents
+    domainIndexEvents,
   ) = Await.result(
     CassandraPersistorDefinition.tablesForNamespace(namespace).map(prepareStatements).tupled,
-    35.seconds
+    35.seconds,
   )
 
 }

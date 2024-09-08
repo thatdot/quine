@@ -9,6 +9,6 @@ object CompatBuildFrom {
     * @example Future.sequence(myFutures)(implicitlyBF, ExecutionContext.global)
     */
   def implicitlyBF[A, B, M[X] <: IterableOnce[X]](implicit
-    bf: BuildFrom[M[A], B, M[B]]
+    bf: BuildFrom[M[A], B, M[B]],
   ): BuildFrom[M[A], B, M[B]] = bf
 }

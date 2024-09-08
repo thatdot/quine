@@ -18,7 +18,7 @@ final case class CompiledQuery[+Start <: Location](
   query: Query[Start],
   unfixedParameters: Seq[String],
   fixedParameters: Parameters,
-  initialColumns: Seq[String]
+  initialColumns: Seq[String],
 ) {
 
   /** Is the query read-only? */
@@ -32,7 +32,7 @@ final case class CompiledQuery[+Start <: Location](
     case Columns.Specified(cols) => cols
     case Columns.Omitted =>
       throw new IllegalArgumentException(
-        "Missing column information for query"
+        "Missing column information for query",
       )
   }
 
@@ -49,7 +49,7 @@ final case class CompiledQuery[+Start <: Location](
   private[graph] def run(
     parameters: Map[String, Value],
     initialColumnValues: Map[String, Value],
-    initialInterpreter: CypherInterpreter[Start]
+    initialInterpreter: CypherInterpreter[Start],
   )(implicit logConfig: LogConfig): RunningCypherQuery = {
 
     /* Construct the runtime vector of parameters by combining the ones that
@@ -60,7 +60,7 @@ final case class CompiledQuery[+Start <: Location](
     } else {
       Parameters(
         unfixedParameters.view.map(parameters.getOrElse(_, Expr.Null)).toIndexedSeq ++
-        fixedParameters.params
+        fixedParameters.params,
       )
     }
 
@@ -71,7 +71,7 @@ final case class CompiledQuery[+Start <: Location](
       QueryContext(
         initialColumns
           .map(colName => Symbol(colName) -> initialColumnValues.getOrElse(colName, Expr.Null))
-          .toMap
+          .toMap,
       )
     }
 
@@ -80,8 +80,8 @@ final case class CompiledQuery[+Start <: Location](
       .mapMaterializedValue(_ => NotUsed)
       .named(
         "cypher-query-namespace-" + namespaceToString(
-          initialInterpreter.namespace
-        ) + "-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString)
+          initialInterpreter.namespace,
+        ) + "-atTime-" + initialInterpreter.atTime.fold("none")(_.millis.toString),
       )
 
     RunningCypherQuery(this, resultSource = results)

@@ -49,11 +49,11 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
     verifyTable: CqlIdentifier => Future[Unit],
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    shouldCreateTables: Boolean,
   )(implicit
     mat: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[MetaData] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
@@ -62,14 +62,14 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
       session
         .executeAsync(createTableStatement)
         .asScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic)
+        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic),
     )
 
     createdSchema.flatMap(_ =>
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple ++
         T2(selectAllStatement, selectSingleStatement).map(prepare(session, readSettings)).toTuple
-      ).mapN(new MetaData(session, firstRowStatement, dropTableStatement, _, _, _, _))
+      ).mapN(new MetaData(session, firstRowStatement, dropTableStatement, _, _, _, _)),
     )(ExecutionContext.parasitic)
   }
 
@@ -77,7 +77,7 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[MetaData] =
     ???
 }
@@ -89,7 +89,7 @@ class MetaData(
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
   selectAllStatement: PreparedStatement,
-  selectSingleStatement: PreparedStatement
+  selectSingleStatement: PreparedStatement,
 )(implicit mat: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with MetaDataColumnName {
@@ -99,7 +99,7 @@ class MetaData(
   def getMetaData(key: String): Future[Option[Array[Byte]]] =
     queryOne(
       selectSingleStatement.bindColumns(keyColumn.set(key)),
-      valueColumn
+      valueColumn,
     )
 
   def getAllMetaData(): Future[Map[String, Array[Byte]]] =
@@ -110,7 +110,7 @@ class MetaData(
       newValue match {
         case None => deleteStatement.bindColumns(keyColumn.set(key))
         case Some(value) => insertStatement.bindColumns(keyColumn.set(key), valueColumn.set(value))
-      }
+      },
     )
 
 }

@@ -34,7 +34,7 @@ class CmdArgsTest extends AnyFunSuite with EitherValues {
                     |  --force-config           disable recipe configuration defaults
                     |  --no-delete              disable deleting data file when process exits
                     |  -h, --help
-                    |  -v, --version            print Quine program version""".stripMargin)
+                    |  -v, --version            print Quine program version""".stripMargin),
     )
   }
 
@@ -52,7 +52,7 @@ class CmdArgsTest extends AnyFunSuite with EitherValues {
     val cmdArgs = CmdArgs(Array("-W", "-p", "1234"))
     assert(
       contentOf("""Error: use only one: --disable-web-service, or --port
-                  |Try --help for more information.""".stripMargin) == contentOf(cmdArgs.left.value)
+                  |Try --help for more information.""".stripMargin) == contentOf(cmdArgs.left.value),
     )
   }
 
@@ -62,8 +62,8 @@ class CmdArgsTest extends AnyFunSuite with EitherValues {
       new CmdArgs(
         disableWebservice = false,
         recipe = Some("http://example.com"),
-        recipeValues = Map("a" -> "b", "c" -> "d")
-      ) == cmdArgs.value
+        recipeValues = Map("a" -> "b", "c" -> "d"),
+      ) == cmdArgs.value,
     )
   }
 }

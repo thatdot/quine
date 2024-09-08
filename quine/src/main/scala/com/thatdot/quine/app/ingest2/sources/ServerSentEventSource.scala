@@ -13,13 +13,13 @@ import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 
 case class ServerSentEventSource(url: String, meter: IngestMeter, decoders: Seq[ContentDecoder] = Seq())(implicit
-  val system: ActorSystem
+  val system: ActorSystem,
 ) {
 
   def stream: Source[ServerSentEvent, ShutdownSwitch] =
     withKillSwitches(
       EventSource(uri = Uri(url), send = Http().singleRequest(_))
-        .via(metered[ServerSentEvent](meter, e => e.data.length))
+        .via(metered[ServerSentEvent](meter, e => e.data.length)),
     )
 
   def framedSource: FramedSource =

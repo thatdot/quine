@@ -60,7 +60,7 @@ object MetricsReporter {
   }
   final case class Slf4j(period: FiniteDuration, loggerName: String = "metrics") extends PeriodicReporter {
     def register(registry: MetricRegistry, namespace: String): ReporterWrapper = wrapReporter(
-      Slf4jReporter.forRegistry(registry).outputTo(LoggerFactory.getLogger(loggerName)).build()
+      Slf4jReporter.forRegistry(registry).outputTo(LoggerFactory.getLogger(loggerName)).build(),
     )
   }
   final case class Influxdb(
@@ -70,17 +70,17 @@ object MetricsReporter {
     host: String = "localhost",
     port: Int = 8086,
     user: Option[String] = None,
-    password: Option[String] = None
+    password: Option[String] = None,
   ) extends PeriodicReporter {
     def register(registry: MetricRegistry, namespace: String): ReporterWrapper = wrapReporter(
       InfluxdbReporter
         .forRegistry(registry)
         .protocol(
-          new HttpInfluxdbProtocol(scheme, host, port, user.orNull, password.orNull, database)
+          new HttpInfluxdbProtocol(scheme, host, port, user.orNull, password.orNull, database),
         )
         .withAutoCreateDB(true)
         .transformer(new TagInfluxMetrics(Map("member_id" -> namespace)))
-        .build()
+        .build(),
     )
   }
 }

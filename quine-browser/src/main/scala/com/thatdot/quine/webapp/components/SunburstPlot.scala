@@ -28,7 +28,7 @@ import slinky.core.annotations.react
     id: String,
     parentId: Option[String],
     value: Double,
-    label: String
+    label: String,
   )
 
   /** @param branchValues how to subdivide a parent among children
@@ -44,7 +44,7 @@ import slinky.core.annotations.react
     onSunburstClick: Option[ClickEvent => Unit] = None,
     level: Option[String] = None,
     style: js.Object = js.Dynamic.literal(),
-    layout: js.Object = js.Dynamic.literal()
+    layout: js.Object = js.Dynamic.literal(),
   )
 
   trait ClickEvent extends js.Object {
@@ -68,7 +68,7 @@ import slinky.core.annotations.react
       parents = props.points.view.map(_.parentId.getOrElse("")).toJSArray,
       values = props.points.view.map(_.value).toJSArray,
       outsidetextfont = js.Dynamic.literal(size = 20, color = "#377eb8"),
-      marker = js.Dynamic.literal(line = js.Dynamic.literal(width = 2))
+      marker = js.Dynamic.literal(line = js.Dynamic.literal(width = 2)),
     )
     for (lvl <- props.level)
       data.level = lvl
@@ -82,7 +82,7 @@ import slinky.core.annotations.react
       layout = props.layout,
       useResizeHandler = true,
       style = props.style,
-      onSunburstClick = onClick.orUndefined
+      onSunburstClick = onClick.orUndefined,
     )
   }
 }

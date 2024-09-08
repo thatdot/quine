@@ -35,7 +35,7 @@ object SvgSnapshot {
     graphData: VisData,
     positions: js.Dictionary[vis.Position],
     edgeColor: String = "#2b7ce9",
-    svgFont: String = "ionicons.svg"
+    svgFont: String = "ionicons.svg",
   ): Future[ReactElement] = {
     val promise = Promise[ReactElement]()
 
@@ -62,7 +62,7 @@ object SvgSnapshot {
     name: String,
     d: String,
     width: Double,
-    height: Double
+    height: Double,
   )
 
   /** Pull out a mapping of unicode character to SVG glyph */
@@ -78,7 +78,7 @@ object SvgSnapshot {
           glyph.getAttribute("glyph-name"),
           glyph.getAttribute("d"),
           Option(glyph.getAttribute("horiz-adv-x")).getOrElse(charAdvanceX).toDouble,
-          charAscent.toDouble
+          charAscent.toDouble,
         )
         glyph.getAttribute("unicode") -> parsed
       }
@@ -93,7 +93,7 @@ object SvgSnapshot {
     graphData: VisData,
     positions: js.Dictionary[vis.Position],
     edgeColor: String,
-    iconGlyphs: Map[String, Glyph]
+    iconGlyphs: Map[String, Glyph],
   ): ReactElement = {
     val elements = Seq.newBuilder[ReactElement]
 
@@ -108,12 +108,12 @@ object SvgSnapshot {
       markerHeight := "10",
       refX := "40",
       refY := "5",
-      orient := "auto"
+      orient := "auto",
     )(
       polygon(
         fill := edgeColor,
-        points := "0 0, 14 5, 0 10, 2 5"
-      )
+        points := "0 0, 14 5, 0 10, 2 5",
+      ),
     )
 
     // Define outline for text
@@ -121,7 +121,7 @@ object SvgSnapshot {
       feMorphology(in := "SourceAlpha", result := "DILATED", operator := "dilate", radius := "1"),
       feFlood(floodColor := "white", floodOpacity := "1", result := "FLOODED"),
       feComposite(in := "FLOODED", in2 := "DILATED", operator := "in", result := "OUTLINE"),
-      feMerge()(feMergeNode(in := "OUTLINE"), feMergeNode(in := "SourceGraphic"))
+      feMerge()(feMergeNode(in := "OUTLINE"), feMergeNode(in := "SourceGraphic")),
     )
 
     /* Construct a text label where the text is centered and has a whiet outline */
@@ -143,7 +143,7 @@ object SvgSnapshot {
       nodeSize: Option[Double],
       nodeGlyph: Option[Glyph],
       nodeColor: Option[String],
-      tooltip: String
+      tooltip: String,
     ): ReactElement = {
       val color = nodeColor.getOrElse("#97c2fc")
       val size = nodeSize.getOrElse(30.0)
@@ -158,8 +158,8 @@ object SvgSnapshot {
               path(
                 d := dPath,
                 fill := color,
-                transform := s"scale($scale -$scale) translate(-${width / 2} -${height / 2})"
-              )
+                transform := s"scale($scale -$scale) translate(-${width / 2} -${height / 2})",
+              ),
             )
             "#" + defId
 
@@ -170,15 +170,15 @@ object SvgSnapshot {
               fill := "rgba(0,0,0,0)", // unlike `none`, this still brings up the tooltip
               strokeWidth := (size / 10),
               stroke := color,
-              r := (size / 2.6)
+              r := (size / 2.6),
             )()
             "#" + defId
-        }
+        },
       )
 
       g(transform := s"translate($cx $cy)")(
         use(href := refSvgId),
-        title(tooltip)
+        title(tooltip),
       )
     }
 
@@ -194,7 +194,7 @@ object SvgSnapshot {
         x2 := to.x,
         y2 := to.y,
         markerEnd := "url(#arrowhead)",
-        stroke := edgeColor
+        stroke := edgeColor,
       )
       for (lbl <- edge.label)
         elements += makeLabel((from.x + to.x) / 2, (from.y + to.y) / 2, lbl)
@@ -216,7 +216,7 @@ object SvgSnapshot {
         node.icon.toOption.flatMap(_.size.toOption),
         node.icon.toOption.flatMap(_.code.toOption).flatMap(iconGlyphs.get(_)),
         node.icon.toOption.flatMap(_.color.toOption),
-        properties
+        properties,
       )
       for (lbl <- node.label)
         elements += makeLabel(pos.x, pos.y + 30, lbl)
@@ -238,9 +238,9 @@ object SvgSnapshot {
       viewBox := s"$minX $minY $svgWidth $svgHeight",
       version := "1.1",
       fontFamily := "Arial",
-      xmlns := "http://www.w3.org/2000/svg"
+      xmlns := "http://www.w3.org/2000/svg",
     )(
-      (definitionElement +: elements.result()): _*
+      (definitionElement +: elements.result()): _*,
     )
   }
 }

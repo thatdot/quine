@@ -12,7 +12,7 @@ final case class PersistenceConfig(
   effectOrder: EventEffectOrder = EventEffectOrder.PersistorFirst,
   snapshotSchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep,
   snapshotSingleton: Boolean = false,
-  standingQuerySchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep
+  standingQuerySchedule: PersistenceSchedule = PersistenceSchedule.OnNodeSleep,
 ) {
   def snapshotEnabled: Boolean = snapshotSchedule != PersistenceSchedule.Never
   def snapshotOnSleep: Boolean = snapshotSchedule == PersistenceSchedule.OnNodeSleep

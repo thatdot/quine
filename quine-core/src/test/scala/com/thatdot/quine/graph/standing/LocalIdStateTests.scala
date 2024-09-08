@@ -13,7 +13,7 @@ class LocalIdStateTests extends AnyFunSuite {
 
     val query = MultipleValuesStandingQuery.LocalId(
       aliasedAs = Symbol("idValue"),
-      formatAsString = false
+      formatAsString = false,
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -32,7 +32,7 @@ class LocalIdStateTests extends AnyFunSuite {
 
     val query = MultipleValuesStandingQuery.LocalId(
       aliasedAs = Symbol("idValue"),
-      formatAsString = true
+      formatAsString = true,
     )
 
     val state = new StandingQueryStateWrapper(query)

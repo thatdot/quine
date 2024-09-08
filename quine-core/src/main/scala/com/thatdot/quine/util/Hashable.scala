@@ -130,7 +130,7 @@ trait CompositeHashables {
     }
   def iterable[A, I[X] <: Iterable[X]](implicit
     hashableA: Hashable[A],
-    classTagIA: ClassTag[I[A]]
+    classTagIA: ClassTag[I[A]],
   ): Hashable[I[A]] = {
     val iaSeed = classTagIA.runtimeClass.getName.hashCode
     (hasher: Hasher, value: I[A]) => {
@@ -170,7 +170,7 @@ object Hashable extends TypeClassCompanion[Hashable] with BasicHashables with Co
       (hasher: Hasher, leftRight: L :+: R) => {
         leftRight.eliminate(
           hashLeft.addToHasher(hasher, _),
-          hashRight.addToHasher(hasher, _)
+          hashRight.addToHasher(hasher, _),
         )
       }
 

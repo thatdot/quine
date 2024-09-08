@@ -18,7 +18,7 @@ import com.thatdot.quine.graph.cypher.{
   Type,
   UserDefinedProcedure,
   UserDefinedProcedureSignature,
-  Value
+  Value,
 }
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.util.Log._
@@ -39,14 +39,14 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val (bytes, schemaUrl, typeName): (Array[Byte], URL, String) = arguments match {
       case Seq(Expr.Bytes(bytes, bytesRepresentId), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
         if (bytesRepresentId)
           logger.info(
             safe"""Received an ID (${Safe(QuineId(bytes).pretty(location.idProvider))}) as a source of
-                 |bytes to parse a protobuf value of type: ${Safe(typeName)}.""".cleanLines
+                 |bytes to parse a protobuf value of type: ${Safe(typeName)}.""".cleanLines,
           )
         (bytes, filenameOrUrl(schemaUrl), typeName)
       case _ =>
@@ -64,7 +64,7 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
           .recover {
             case e if e.isInstanceOf[ClassCastException] || e.isInstanceOf[InvalidProtocolBufferException] =>
               logger.warn(
-                log"${Safe(name)} procedure received corrupted protobuf record -- returning null" withException e
+                log"${Safe(name)} procedure received corrupted protobuf record -- returning null" withException e,
               )
               Expr.Null
           }.get
@@ -76,6 +76,6 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
     arguments = Seq("bytes" -> Type.Bytes, "schemaUrl" -> Type.Str, "typeName" -> Type.Str),
     outputs = Seq("value" -> Type.Map),
     description =
-      "Parses a protobuf message into a Cypher map value, or null if the bytes are not parseable as the requested type"
+      "Parses a protobuf message into a Cypher map value, or null if the bytes are not parseable as the requested type",
   )
 }

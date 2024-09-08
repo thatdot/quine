@@ -11,7 +11,7 @@ import cats.implicits._
   */
 final case class WithFreeVariables[V, A] private (
   private val variables: Set[V],
-  private val openAlong: Map[V, List[(List[V], A)]]
+  private val openAlong: Map[V, List[(List[V], A)]],
 ) {
   /* Invariant (not in Scaladoc because it is about private fields):
    *
@@ -78,7 +78,7 @@ object WithFreeVariables {
   def apply[V, A](
     elems: Seq[A],
     alreadyInScope: V => Boolean,
-    getFreeVars: A => Set[V]
+    getFreeVars: A => Set[V],
   ): (List[A], WithFreeVariables[V, A]) = {
 
     val closed = List.newBuilder[A]

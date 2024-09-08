@@ -46,7 +46,7 @@ object QueryUiConfigurationState {
       case Some(codepointRegex(codepointHex)) =>
         Try(Integer.parseInt(codepointHex, 16).toChar.toString).toOption
       case other => other
-    }
+    },
   )
 }
 

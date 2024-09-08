@@ -62,7 +62,7 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
       .where(
         quineIdColumn.is.eq,
         standingQueryIdColumn.is.eq,
-        multipleValuesStandingQueryPartIdColumn.is.eq
+        multipleValuesStandingQueryPartIdColumn.is.eq,
       )
       .build()
       .setIdempotent(true)
@@ -78,7 +78,7 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
     delete
       .where(
         quineIdColumn.is.eq,
-        standingQueryIdColumn.is.eq
+        standingQueryIdColumn.is.eq,
       )
       .build()
       .setIdempotent(true)
@@ -87,11 +87,11 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[StandingQueryStates] = {
     import shapeless.syntax.std.tuple._
     logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
@@ -114,8 +114,8 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
         _,
         getStandingQueryStatesCount,
         _,
-        _
-      )
+        _,
+      ),
     )
   }
 
@@ -130,7 +130,7 @@ class StandingQueryStates(
   deleteStandingQueryStatesByQid: PreparedStatement,
   getStandingQueryStatesCount: SimpleStatement,
   getMultipleValuesStandingQueryStatesStatement: PreparedStatement,
-  getIdsForStandingQueryStatement: PreparedStatement
+  getIdsForStandingQueryStatement: PreparedStatement,
 )(implicit mat: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with StandingQueryStatesColumnNames {
@@ -138,20 +138,20 @@ class StandingQueryStates(
   import syntax._
 
   def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     executeSelect[((StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]), Map[
       (StandingQueryId, MultipleValuesStandingQueryPartId),
-      Array[Byte]
+      Array[Byte],
     ]](getMultipleValuesStandingQueryStatesStatement.bindColumns(quineIdColumn.set(id)))(row =>
-      (standingQueryIdColumn.get(row) -> multipleValuesStandingQueryPartIdColumn.get(row)) -> dataColumn.get(row)
+      (standingQueryIdColumn.get(row) -> multipleValuesStandingQueryPartIdColumn.get(row)) -> dataColumn.get(row),
     )
 
   def setStandingQueryState(
     standingQuery: StandingQueryId,
     qid: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] =
     executeFuture(
       state match {
@@ -159,7 +159,7 @@ class StandingQueryStates(
           removeStandingQueryStateStatement.bindColumns(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
-            multipleValuesStandingQueryPartIdColumn.set(standingQueryId)
+            multipleValuesStandingQueryPartIdColumn.set(standingQueryId),
           )
 
         case Some(bytes) =>
@@ -167,13 +167,13 @@ class StandingQueryStates(
             quineIdColumn.set(qid),
             standingQueryIdColumn.set(standingQuery),
             multipleValuesStandingQueryPartIdColumn.set(standingQueryId),
-            dataColumn.set(bytes)
+            dataColumn.set(bytes),
           )
-      }
+      },
     )
 
   def deleteStandingQueryStates(id: QuineId): Future[Unit] = executeFuture(
-    deleteStandingQueryStatesByQid.bindColumns(quineIdColumn.set(id))
+    deleteStandingQueryStatesByQid.bindColumns(quineIdColumn.set(id)),
   )
 
   def containsMultipleValuesStates(): Future[Boolean] =
@@ -187,11 +187,11 @@ class StandingQueryStates(
           .foreachAsync[ReactiveRow](16) { row =>
             val deleteStatement = removeStandingQueryStatement.bindColumns(
               quineIdColumn.set(quineIdColumn.get(row)),
-              standingQueryIdColumn.set(standingQuery)
+              standingQueryIdColumn.set(standingQuery),
             )
             executeFuture(deleteStatement)
           }
-          .named("cassandra-remove-standing-queries")
+          .named("cassandra-remove-standing-queries"),
       )
       .map(_ => ())(ExecutionContext.parasitic)
 }

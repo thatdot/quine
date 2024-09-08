@@ -35,10 +35,10 @@ class CassandraPersistorSpec()(implicit val logConfig: LogConfig) extends Persis
           readSettings = statementSettings,
           writeSettings = statementSettings,
           snapshotPartMaxSizeBytes = 1000,
-          metricRegistry = None
+          metricRegistry = None,
         ),
-        12.seconds
-      )
+        12.seconds,
+      ),
     )
 
   override def afterAll(): Unit = {
@@ -61,7 +61,7 @@ class CassandraPersistorSpec()(implicit val logConfig: LogConfig) extends Persis
 class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFromAddress: InetSocketAddress => T)(
   implicit
   val system: ActorSystem,
-  protected val logConfig: LogConfig
+  protected val logConfig: LogConfig,
 ) extends LazySafeLogging {
 
   private var embeddedCassandra: Cassandra = _
@@ -81,7 +81,7 @@ class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFrom
     "java.util.concurrent.atomic",
     "java.nio",
     "java.lang",
-    "sun.nio.ch"
+    "sun.nio.ch",
   )
 
   private def addOpensArg(pkg: String): String = s"--add-opens=java.base/$pkg=ALL-UNNAMED"

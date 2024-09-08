@@ -14,7 +14,7 @@ import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFilterSize: Option[Long])(implicit
-  materializer: Materializer
+  materializer: Materializer,
 ) extends ExceptionWrapper {
 
   type PersistenceAgentType <: NamespacedPersistenceAgent
@@ -24,7 +24,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType
 
   private def bloomFilter(persistor: NamespacedPersistenceAgent)(implicit
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): NamespacedPersistenceAgent =
     BloomFilteredPersistor.maybeBloomFilter(bloomFilterSize, persistor, persistenceConfig)
 
@@ -115,12 +115,12 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     context: String,
     versionMetaDataKey: String,
     currentVersion: Version,
-    isDataEmpty: () => Future[Boolean]
+    isDataEmpty: () => Future[Boolean],
   ): Future[Unit] =
     getMetaData(versionMetaDataKey).flatMap {
       case None =>
         logger.info(
-          safe"No version was set in the persistence backend for: ${Safe(context)}, initializing to: $currentVersion"
+          safe"No version was set in the persistence backend for: ${Safe(context)}, initializing to: $currentVersion",
         )
         setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
 
@@ -132,12 +132,12 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
           case Some(compatibleV) if currentVersion.canReadFrom(compatibleV) =>
             if (currentVersion <= compatibleV) {
               logger.info(
-                safe"Persistence backend for: ${Safe(context)} is at: $compatibleV, this is usable as-is by: $currentVersion"
+                safe"Persistence backend for: ${Safe(context)} is at: $compatibleV, this is usable as-is by: $currentVersion",
               )
               Future.unit
             } else {
               logger.info(
-                safe"Persistence backend for: ${Safe(context)} was at: $compatibleV, upgrading to compatible: $currentVersion"
+                safe"Persistence backend for: ${Safe(context)} was at: $compatibleV, upgrading to compatible: $currentVersion",
               )
               setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
             }
@@ -145,7 +145,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
             isDataEmpty().flatMap {
               case true =>
                 logger.warn(
-                  safe"Persistor reported that the last run used an incompatible: $incompatibleV for: ${Safe(context)}, but no data was saved, so setting version to: $currentVersion and continuing"
+                  safe"Persistor reported that the last run used an incompatible: $incompatibleV for: ${Safe(context)}, but no data was saved, so setting version to: $currentVersion and continuing",
                 )
                 setMetaData(versionMetaDataKey, Some(currentVersion.toBytes))
               case false =>
@@ -169,7 +169,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
       "core quine data",
       PersistenceAgent.VersionMetadataKey,
       CurrentVersion,
-      () => emptyOfQuineData()
+      () => emptyOfQuineData(),
     )
 
   /** Fetch a metadata value with a known name
@@ -179,7 +179,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def getMetaData(key: String): Future[Option[Array[Byte]]] = wrapException(
     GetMetaData(key),
-    internalGetMetaData(key)
+    internalGetMetaData(key),
   )
 
   protected def internalGetMetaData(key: String): Future[Option[Array[Byte]]]
@@ -200,7 +200,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def getAllMetaData(): Future[Map[String, Array[Byte]]] = wrapException(
     GetAllMetaData,
-    internalGetAllMetaData()
+    internalGetAllMetaData(),
   )
 
   protected def internalGetAllMetaData(): Future[Map[String, Array[Byte]]]
@@ -212,7 +212,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def setMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit] = wrapException(
     SetMetaData(key, newValue.map(_.length)),
-    internalSetMetaData(key, newValue)
+    internalSetMetaData(key, newValue),
   )
 
   protected def internalSetMetaData(key: String, newValue: Option[Array[Byte]]): Future[Unit]
@@ -238,7 +238,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] = wrapException(
     PersistDomainGraphNodes(domainGraphNodes),
-    internalPersistDomainGraphNodes(domainGraphNodes)
+    internalPersistDomainGraphNodes(domainGraphNodes),
   )
 
   protected def internalPersistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit]
@@ -250,7 +250,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def removeDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit] = wrapException(
     RemoveDomainGraphNodes(domainGraphNodeIds),
-    internalRemoveDomainGraphNodes(domainGraphNodeIds)
+    internalRemoveDomainGraphNodes(domainGraphNodeIds),
   )
 
   protected def internalRemoveDomainGraphNodes(domainGraphNodeIds: Set[DomainGraphNodeId]): Future[Unit]
@@ -259,7 +259,7 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
     */
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = wrapException(
     GetDomainGraphNodes,
-    internalGetDomainGraphNodes()
+    internalGetDomainGraphNodes(),
   )
 
   protected def internalGetDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]]

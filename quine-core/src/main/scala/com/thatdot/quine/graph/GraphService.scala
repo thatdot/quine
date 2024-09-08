@@ -34,7 +34,7 @@ class GraphService(
   val maxCatchUpSleepMillis: Long,
   val labelsProperty: Symbol,
   val edgeCollectionFactory: QuineId => SyncEdgeCollection,
-  val metrics: HostQuineMetrics
+  val metrics: HostQuineMetrics,
 )(implicit val logConfig: LogConfig)
     extends StaticShardGraph
     with LiteralOpsGraph
@@ -75,7 +75,7 @@ class GraphService(
                     case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
                       dgnRegistry.registerDomainGraphNodePackage(
                         DomainGraphNodePackage(dgnPattern.dgnId, domainGraphNodes.get(_)),
-                        sq.id
+                        sq.id,
                       )
                     // in the case of an SQv4 query, do a final verification that the pattern origin is sane
                     case StandingQueryPattern.MultipleValuesQueryPattern(_, _, PatternOrigin.DirectSqV4) =>
@@ -92,7 +92,7 @@ class GraphService(
                             log"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '${cypherQuery}'"
                           case None =>
                             log"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: ${pattern.toString}"
-                        }
+                        },
                       )
                     case StandingQueryPattern
                           .MultipleValuesQueryPattern(_, _, PatternOrigin.GraphPattern(_, _)) =>
@@ -109,7 +109,7 @@ class GraphService(
                     outputs = Map.empty,
                     queueBackpressureThreshold = sq.queueBackpressureThreshold,
                     queueMaxSize = sq.queueMaxSize,
-                    shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode
+                    shouldCalculateResultHashCode = sq.shouldCalculateResultHashCode,
                   )
                 }
               }
@@ -120,7 +120,7 @@ class GraphService(
             }
           }(shardDispatcherEC)
       }(shardDispatcherEC),
-    10.seconds
+    10.seconds,
   )
 
   // Provide the [[PersistenceAgent]] with the ready-to-use graph
@@ -139,7 +139,7 @@ class GraphService(
     implicit val ec = nodeDispatcherEC
     Future
       .sequence(
-        getNamespaces.map(ns => standingQueries(ns).fold(Future.unit)(_.shutdownStandingQueries()))
+        getNamespaces.map(ns => standingQueries(ns).fold(Future.unit)(_.shutdownStandingQueries())),
       )
       .flatMap { _ =>
         super.shutdown()
@@ -199,7 +199,7 @@ object GraphService {
     labelsProperty: Symbol = Symbol("__LABEL"),
     edgeCollectionFactory: QuineId => SyncEdgeCollection = new ReverseOrderedEdgeCollection(_),
     metricRegistry: MetricRegistry = new MetricRegistry,
-    enableDebugMetrics: Boolean = false
+    enableDebugMetrics: Boolean = false,
   )(implicit logConfig: LogConfig): Future[GraphService] =
     try {
       // Must happen before instantiating the actor system extensions
@@ -209,11 +209,11 @@ object GraphService {
         .load()
         .withValue(
           "pekko.actor.provider",
-          ConfigValueFactory.fromAnyRef("local")
+          ConfigValueFactory.fromAnyRef("local"),
         )
         .withValue(
           "pekko.extensions",
-          ConfigValueFactory.fromIterable(List("com.thatdot.quine.graph.messaging.NodeActorMailboxExtension").asJava)
+          ConfigValueFactory.fromIterable(List("com.thatdot.quine.graph.messaging.NodeActorMailboxExtension").asJava),
         )
       val system = ActorSystem(name, baseConfig)
       val namespacePersistor = persistorMaker(system)
@@ -234,7 +234,7 @@ object GraphService {
         maxCatchUpSleepMillis,
         labelsProperty,
         edgeCollectionFactory,
-        HostQuineMetrics(enableDebugMetrics, metricRegistry)
+        HostQuineMetrics(enableDebugMetrics, metricRegistry),
       )
     } catch {
       case NonFatal(e) => Future.failed(e)

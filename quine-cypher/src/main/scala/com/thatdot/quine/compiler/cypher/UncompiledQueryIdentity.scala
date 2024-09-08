@@ -12,5 +12,5 @@ import org.opencypher.v9_0.util.symbols
 final private[cypher] case class UncompiledQueryIdentity(
   queryText: String,
   unfixedParameters: Seq[String] = Seq.empty,
-  initialColumns: Seq[(String, symbols.CypherType)] = Seq.empty
+  initialColumns: Seq[(String, symbols.CypherType)] = Seq.empty,
 )

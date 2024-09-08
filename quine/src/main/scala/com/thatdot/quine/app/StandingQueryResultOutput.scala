@@ -66,10 +66,10 @@ object StandingQueryResultOutput extends LazySafeLogging {
     name: String,
     inNamespace: NamespaceId,
     output: StandingQueryResultOutputUserDef,
-    graph: CypherOpsGraph
+    graph: CypherOpsGraph,
   )(implicit
     protobufSchemaCache: ProtobufSchemaCache,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
     val execToken = SqResultsExecToken(s"SQ: $name in: $inNamespace")
     output match {
@@ -99,8 +99,8 @@ object StandingQueryResultOutput extends LazySafeLogging {
               entity = HttpEntity(
                 contentType = `application/json`,
                 if (onlyPositiveMatchData) QuineValue.toJson(QuineValue.Map(result.data)).noSpaces
-                else result.toJson.noSpaces
-              )
+                else result.toJson.noSpaces,
+              ),
             )
 
             val posted =
@@ -119,16 +119,16 @@ object StandingQueryResultOutput extends LazySafeLogging {
                           logger.error(
                             log"""Failed to deserialize error response from POST $result to ${Safe(url)}.
                                  |Response status was ${Safe(response.status.value)}""".cleanLines
-                            withException err
+                            withException err,
                           )
                         case Success(responseBody) =>
                           logger.error(
                             log"""Failed to POST $result to ${Safe(url)}.
                                  |Response was ${Safe(response.status.value)}
-                                 |""".cleanLines + log": ${Safe(responseBody)}"
+                                 |""".cleanLines + log": ${Safe(responseBody)}",
                           )
                       }(system.dispatcher)
-                  }
+                  },
                 )(system.dispatcher)
                 .map(_ => execToken)(system.dispatcher)
 
@@ -143,7 +143,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
         val settings = ProducerSettings(
           graph.system,
           new ByteArraySerializer,
-          new ByteArraySerializer
+          new ByteArraySerializer,
         ).withBootstrapServers(bootstrapServers)
           .withProperties(properties)
         logger.info(log"Writing to kafka with properties ${properties}")
@@ -160,7 +160,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
             kinesisParallelism,
             kinesisMaxBatchSize,
             kinesisMaxRecordsPerSecond,
-            kinesisMaxBytesPerSecond
+            kinesisMaxBytesPerSecond,
           ) =>
         val builder = KinesisAsyncClient
           .builder()
@@ -192,8 +192,8 @@ object StandingQueryResultOutput extends LazySafeLogging {
           .via(
             KinesisFlow(
               streamName,
-              settings
-            )(kinesisAsyncClient).named(s"sq-output-kinesis-producer-for-$name")
+              settings,
+            )(kinesisAsyncClient).named(s"sq-output-kinesis-producer-for-$name"),
           )
           .map(_ => execToken)
 
@@ -203,7 +203,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
           .credentials(credentialsOpt)
           .region(regionOpt)
           .httpClient(
-            NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+            NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build(),
           )
           .build()
 
@@ -248,9 +248,9 @@ object StandingQueryResultOutput extends LazySafeLogging {
             FileIO
               .toPath(
                 Paths.get(path),
-                Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+                Set(StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND),
               )
-              .named(s"sq-output-file-writer-for-$name")
+              .named(s"sq-output-file-writer-for-$name"),
           )
           .map(_ => execToken)
 
@@ -271,7 +271,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
             val request = HttpRequest(
               method = HttpMethods.POST,
               uri = hookUrl,
-              entity = HttpEntity.apply(contentType = `application/json`, result.slackJson)
+              entity = HttpEntity.apply(contentType = `application/json`, result.slackJson),
             )
             val posted = http
               .singleRequest(request)
@@ -289,13 +289,13 @@ object StandingQueryResultOutput extends LazySafeLogging {
                           log"""Failed to deserialize error response from POST ${result.slackJson} to slack webhook.
                                |Response status was ${Safe(response.status.value)}
                                |""".cleanLines
-                          withException err
+                          withException err,
                         )
                       case Success(responseBody) =>
                         logger.error(
                           log"Failed to POST ${result.slackJson} to slack webhook. " +
                           log"Response status was ${Safe(response.status.value)}: " +
-                          log"${Safe(responseBody)}"
+                          log"${Safe(responseBody)}",
                         )
                     }(system.dispatcher)
                 }
@@ -312,21 +312,21 @@ object StandingQueryResultOutput extends LazySafeLogging {
       case CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
         val compiledQuery @ cypher.CompiledQuery(_, queryAst, _, _, _) = compiler.cypher.compile(
           query,
-          unfixedParameters = Seq(parameter)
+          unfixedParameters = Seq(parameter),
         )
 
         // TODO: When in the initial set of SQ outputs, these should be tested before the SQ is registered!
         if (queryAst.canContainAllNodeScan && !allowAllNodeScan) {
           throw new RuntimeException(
             "Cypher query may contain full node scan; re-write without possible full node scan, or pass allowAllNodeScan true. " +
-            s"The provided query was: $query"
+            s"The provided query was: $query",
           )
         }
         if (!queryAst.isIdempotent && shouldRetry) {
           logger.warn(
             log"""Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
                  |occur, query execution may be retried and duplicate data may be created. To avoid this
-                 |set shouldRetry = false in the Standing Query output""".cleanLines
+                 |set shouldRetry = false in the Standing Query output""".cleanLines,
           )
         }
 
@@ -337,8 +337,8 @@ object StandingQueryResultOutput extends LazySafeLogging {
                 logger.warn(
                   safe"""Unused Cypher Standing Query output for Standing Query output:
                         |${Safe(name)} with: ${Safe(tup._2.environment.size)} columns.
-                        |Did you mean to specify `andThen`?""".cleanLines
-                )
+                        |Did you mean to specify `andThen`?""".cleanLines,
+                ),
               ).map(_ => execToken)
 
             case Some(thenOutput) =>
@@ -348,7 +348,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
                     keySym.name -> Try(cypher.Expr.toQuineValue(cypherVal)).getOrElse {
                       logger.warn(
                         log"""Cypher Value: ${cypherVal.toString} could not be represented as a Quine value in Standing
-                             |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines
+                             |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
                       )
                       QuineValue.Null
                     }
@@ -375,7 +375,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
                       compiledQuery,
                       namespace = inNamespace,
                       atTime = None,
-                      parameters = Map(parameter -> value)
+                      parameters = Map(parameter -> value),
                     )
                     .results
 
@@ -384,7 +384,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
                   QueryContext(compiledQuery.columns.zip(resultRow).toMap)
                 }
                 .map(data => (result.meta, data))
-            }
+            },
           )
           .via(andThenFlow)
     }
@@ -393,10 +393,10 @@ object StandingQueryResultOutput extends LazySafeLogging {
   private def serialized(
     name: String,
     format: OutputFormat,
-    graph: BaseGraph
+    graph: BaseGraph,
   )(implicit
     protobufSchemaCache: ProtobufSchemaCache,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Flow[StandingQueryResult, Array[Byte], NotUsed] =
     format match {
       case OutputFormat.JSON =>
@@ -406,11 +406,11 @@ object StandingQueryResultOutput extends LazySafeLogging {
           protobufSchemaCache
             .getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true)
             .map(new QuineValueToProtobuf(_))(
-              graph.materializer.executionContext // this is effectively part of stream materialization
+              graph.materializer.executionContext, // this is effectively part of stream materialization
             )
         val serializerRepeated: Source[QuineValueToProtobuf, Future[NotUsed]] = Source.futureSource(
           serializer
-            .map(Source.repeat[QuineValueToProtobuf])(graph.materializer.executionContext)
+            .map(Source.repeat[QuineValueToProtobuf])(graph.materializer.executionContext),
         )
         Flow[StandingQueryResult]
           .filter(_.meta.isPositiveMatch)
@@ -422,7 +422,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
                 logger.warn(
                   log"""On Standing Query output: ${Safe(name)}, can't serialize provided datum: $result
                        |to protobuf type: ${Safe(typeName)}. Skipping datum. Error: ${err.toString}
-                       |""".cleanLines
+                       |""".cleanLines,
                 )
               }
           }
@@ -438,7 +438,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
   object SlackSerializable {
     def apply(positiveOnly: Boolean, results: Seq[StandingQueryResult])(implicit
       idProvider: QuineIdProvider,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Option[SlackSerializable] = results match {
       case Seq() => None // no new results or cancellations
       case cancellations if positiveOnly && !cancellations.exists(_.meta.isPositiveMatch) =>
@@ -478,15 +478,15 @@ object StandingQueryResultOutput extends LazySafeLogging {
         "text" -> "New Standing Query Result",
         "blocks" -> Json.arr(
           Json
-            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result"))
-        )
+            .obj("type" -> "header", "text" -> Json.obj("type" -> "plain_text", "text" -> "New Standing Query Result")),
+        ),
       )
       .noSpaces
   }
 
   final case class CancelledResult(data: Map[String, QuineValue])(implicit
     idProvider: QuineIdProvider,
-    protected val logConfig: LogConfig
+    protected val logConfig: LogConfig,
   ) extends SlackSerializable {
     // pretty-printed JSON representing `data`. Note that since this is used as a value in another JSON object, it
     // may not be perfectly escaped (for example, if the data contains a triple-backquote)
@@ -506,11 +506,11 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "Standing Query Result Cancelled"
-            )
+              "text" -> "Standing Query Result Cancelled",
+            ),
           ),
-          slackBlock
-        )
+          slackBlock,
+        ),
       )
       .noSpaces
   }
@@ -518,7 +518,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
   final case class MultipleUpdates(newResults: Seq[StandingQueryResult], newCancellations: Seq[StandingQueryResult])(
     implicit
     idProvider: QuineIdProvider,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ) extends SlackSerializable {
     val newResultsBlocks: Vector[Json] = newResults match {
       case Seq() => Vector.empty
@@ -528,10 +528,10 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "New Standing Query Result"
-            )
+              "text" -> "New Standing Query Result",
+            ),
           ),
-          NewResult(result.data).slackBlock
+          NewResult(result.data).slackBlock,
         )
       case result +: remainingResults =>
         val excessMetaData = remainingResults.map(_.meta.toString) // TODO: what here since no result ID?
@@ -544,33 +544,33 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "New Standing Query Results"
-            )
+              "text" -> "New Standing Query Results",
+            ),
           ),
           Json.obj(
             "type" -> "section",
             "text" -> Json.obj(
               "type" -> "mrkdwn",
-              "text" -> "Latest result:"
-            )
-          )
+              "text" -> "Latest result:",
+            ),
+          ),
         ) ++ (NewResult(result.data).slackBlock +: Vector(
           Json.obj(
             "type" -> "section",
             "text" -> Json.obj(
               "type" -> "mrkdwn",
-              "text" -> "*Other New Result Meta Data:*"
-            )
+              "text" -> "*Other New Result Meta Data:*",
+            ),
           ),
           Json.obj(
             "type" -> "section",
             "fields" -> Json.fromValues(excessResultItems.map { str =>
               Json.obj(
                 "type" -> "mrkdwn",
-                "text" -> str
+                "text" -> str,
               )
-            })
-          )
+            }),
+          ),
         ))
       case _ => throw new Exception(s"Unexpected value $newResults")
     }
@@ -583,10 +583,10 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "Standing Query Result Cancelled"
-            )
+              "text" -> "Standing Query Result Cancelled",
+            ),
           ),
-          CancelledResult(cancellation.data).slackBlock
+          CancelledResult(cancellation.data).slackBlock,
         )
       case cancellations =>
         val cancelledMetaData = cancellations.map(_.meta.toString)
@@ -599,24 +599,24 @@ object StandingQueryResultOutput extends LazySafeLogging {
             "type" -> "header",
             "text" -> Json.obj(
               "type" -> "plain_text",
-              "text" -> "Standing Query Results Cancelled"
-            )
+              "text" -> "Standing Query Results Cancelled",
+            ),
           ),
           Json.obj(
             "type" -> "section",
             "fields" -> Json.fromValues(itemsCancelled.map { str =>
               Json.obj(
                 "type" -> "mrkdwn",
-                "text" -> str
+                "text" -> str,
               )
-            })
-          )
+            }),
+          ),
         )
     }
     override def slackJson: String = Json
       .obj(
         "text" -> "New Standing Query Updates",
-        "blocks" -> Json.fromValues(newResultsBlocks ++ cancellationBlocks)
+        "blocks" -> Json.fromValues(newResultsBlocks ++ cancellationBlocks),
       )
       .noSpaces
   }

@@ -34,7 +34,7 @@ trait QuinePatternQueryBehavior
   case class Effects(
     selfEffect: Map[StandingQueryId, () => Unit],
     edgeEffect: Map[StandingQueryId, HalfEdge => Unit],
-    resultEffect: Map[StandingQueryId, List[QueryContext] => Unit]
+    resultEffect: Map[StandingQueryId, List[QueryContext] => Unit],
   )
 
   def publishResults(id: StandingQueryId, results: List[QueryContext]): Unit =
@@ -46,7 +46,7 @@ trait QuinePatternQueryBehavior
         Effects(
           selfEffect = Map(id -> (() => publishResults(id, List.empty[QueryContext]))),
           edgeEffect = Map(),
-          resultEffect = Map()
+          resultEffect = Map(),
         )
       case QuinePattern.Node(name) =>
         Effects(
@@ -58,7 +58,7 @@ trait QuinePatternQueryBehavior
             publishResults(id, result)
           })),
           edgeEffect = Map(),
-          resultEffect = Map()
+          resultEffect = Map(),
         )
       case QuinePattern.Edge(edge, pattern) =>
         Effects(
@@ -73,7 +73,7 @@ trait QuinePatternQueryBehavior
               case EdgeDirection.Undirected => ()
             }
           })),
-          resultEffect = Map()
+          resultEffect = Map(),
         )
       case QuinePattern.Fold(init, over, f, _) =>
         val binOpEffect = (results: List[QueryContext]) => {
@@ -150,21 +150,21 @@ trait QuinePatternQueryBehavior
           Effects(
             selfEffect = effect.selfEffect,
             edgeEffect = effect.edgeEffect,
-            resultEffect = effect.resultEffect + (effectId -> finalResultEffect)
+            resultEffect = effect.resultEffect + (effectId -> finalResultEffect),
           )
         }
         val combinedOverEffects = overEffects.foldLeft(Effects(Map(), Map(), Map())) { (b, a) =>
           Effects(
             selfEffect = b.selfEffect ++ a.selfEffect,
             edgeEffect = b.edgeEffect ++ a.edgeEffect,
-            resultEffect = b.resultEffect ++ a.resultEffect
+            resultEffect = b.resultEffect ++ a.resultEffect,
           )
         }
         Effects(
           selfEffect = initEffect.selfEffect ++ combinedOverEffects.selfEffect,
           edgeEffect = initEffect.edgeEffect ++ combinedOverEffects.edgeEffect,
           resultEffect =
-            ((initEffect.resultEffect ++ combinedOverEffects.resultEffect) + (initId -> initResultsEffect)) + (id -> binOpEffect)
+            ((initEffect.resultEffect ++ combinedOverEffects.resultEffect) + (initId -> initResultsEffect)) + (id -> binOpEffect),
         )
     }
   }

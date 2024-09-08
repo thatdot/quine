@@ -41,18 +41,18 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |SET thisNode.id = i,
           |    nextNode.id = i+1
           |CREATE (thisNode)-[:next]->(nextNode)
-          |""".stripMargin
+          |""".stripMargin,
       ),
       startAtOffset = 9223372036854775707L,
       ingestLimit = Some(100L),
-      maximumPerSecond = None
+      maximumPerSecond = None,
     )
 
     val sqPattern = SqPattern.Cypher(
       """MATCH (a)-[:next]->(b)
         |WHERE a.id IS NOT NULL AND b.id IS NOT NULL
         |RETURN DISTINCT id(a) as id
-        |""".stripMargin
+        |""".stripMargin,
     )
 
     val sqOutputPattern =
@@ -72,8 +72,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .flatMap(_ =>
         Future.fromTry(
           quineApp
-            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
-        )
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout),
+        ),
       )
     Await.ready(setupFuture, 3 seconds)
 
@@ -85,7 +85,7 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
      */
     val testMap = Map(
       "a.id" -> QuineValue(9223372036854775806L),
-      "b.id" -> QuineValue(9223372036854775807L)
+      "b.id" -> QuineValue(9223372036854775807L),
     )
 
     eventually(Eventually.timeout(10.seconds), interval(500.millis)) {
@@ -115,10 +115,10 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |SET thisNode.id = i
           |SET nextNode.id = i + 1
           |CREATE (thisNode)-[:next]->(nextNode)
-          |""".stripMargin
+          |""".stripMargin,
       ),
       ingestLimit = Some(size.toLong),
-      maximumPerSecond = None
+      maximumPerSecond = None,
     )
 
     val sqResultsRef = new AtomicReference[Vector[StandingQueryResult]](Vector.empty)
@@ -131,9 +131,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
            |  AND b.id IS NOT NULL
            |  AND a.id % """ + mod.toString + """ = 0
            |RETURN a.id, b.id, b.id-a.id""").stripMargin,
-        StandingQueryMode.MultipleValues
+        StandingQueryMode.MultipleValues,
       ),
-      Map("internal-queue" -> sqOutput)
+      Map("internal-queue" -> sqOutput),
     )
 
     val setupFuture = quineApp
@@ -141,8 +141,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .flatMap(_ =>
         Future.fromTry(
           quineApp
-            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
-        )
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout),
+        ),
       )
     Await.result(setupFuture, 3 seconds)
 
@@ -243,10 +243,10 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
         """WITH toInteger($that) AS n
           |MATCH (a)
           |WHERE id(a) = idFrom("a")
-          |SET a.foo = n""".stripMargin
+          |SET a.foo = n""".stripMargin,
       ),
       ingestLimit = Some(size.toLong),
-      maximumPerSecond = None //Some(2)
+      maximumPerSecond = None, //Some(2)
     )
 
     val sqResultsRef = new AtomicReference[Vector[StandingQueryResult]](Vector.empty)
@@ -264,9 +264,9 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
           |  AND a.foo IN [0, 1, 2, 3]
           |RETURN a.foo AS foo
           |""".stripMargin,
-        StandingQueryMode.MultipleValues
+        StandingQueryMode.MultipleValues,
       ),
-      Map("internal-queue" -> sqOutput)
+      Map("internal-queue" -> sqOutput),
     )
 
     val setupFuture = quineApp
@@ -274,8 +274,8 @@ class StandingQueryTest extends AnyFunSuite with Matchers {
       .flatMap(_ =>
         Future.fromTry(
           quineApp
-            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout)
-        )
+            .addIngestStream("numbers", ingestConfig, namespace, None, shouldResumeRestoredIngests = false, timeout),
+        ),
       )
     Await.result(setupFuture, 3.seconds)
 

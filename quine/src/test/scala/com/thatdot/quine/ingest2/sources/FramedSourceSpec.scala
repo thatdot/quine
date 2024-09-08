@@ -30,7 +30,7 @@ case class TestSource(values: Iterable[TestFrame]) {
   def framedSource: FramedSource = FramedSource[TestFrame](
     source,
     meter,
-    _.value.getBytes //source extracts bytes from the value member of TestFrame
+    _.value.getBytes, //source extracts bytes from the value member of TestFrame
   )
 
 }
@@ -47,7 +47,7 @@ class FramedSourceSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll {
       streamedCypherValues(decodedSource) shouldBe List(
         Expr.Str("A"),
         Expr.Str("B"),
-        Expr.Str("C")
+        Expr.Str("C"),
       )
     }
   }

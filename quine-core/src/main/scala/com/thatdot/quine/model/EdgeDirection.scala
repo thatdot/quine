@@ -19,6 +19,6 @@ object EdgeDirection {
   val values: IndexedSeq[EdgeDirection] = Vector(Outgoing, Incoming, Undirected)
   assert(
     values.zipWithIndex.forall { case (d, i) => d.index == i },
-    "Edge indices must match their position in values list"
+    "Edge indices must match their position in values list",
   )
 }

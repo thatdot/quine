@@ -26,7 +26,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[A]
 
   /** The name of the table defined by this class.
@@ -41,7 +41,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
   protected def dataColumns: List[CassandraColumn[_]]
 
   protected def prepare(session: AsyncCqlSession, settings: CassandraStatementSettings)(
-    statement: SimpleStatement
+    statement: SimpleStatement,
   )(implicit logConfig: LogConfig): Future[PreparedStatement] = {
     // NB the PII these statements use is not yet bound, so the statement itself is safe (using placeholder
     // variables where the PII *will* go)
@@ -56,7 +56,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     */
   final protected def makeCreateTableStatement: CreateTable = {
     val createKeys: CreateTable = clusterKeys.foldLeft(
-      createTable(tableName).ifNotExists.withPartitionKey(partitionKey.name, partitionKey.cqlType)
+      createTable(tableName).ifNotExists.withPartitionKey(partitionKey.name, partitionKey.cqlType),
     )((t, c) => t.withClusteringColumn(c.name, c.cqlType))
     dataColumns.foldLeft(createKeys)((t, c) => t.withColumn(c.name, c.cqlType))
   }
@@ -65,7 +65,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
 
   protected val createTableStatement: SimpleStatement
   def executeCreateTable(session: AsyncCqlSession, verifyCreated: CqlIdentifier => Future[Unit])(implicit
-    ec: ExecutionContext
+    ec: ExecutionContext,
   ): Future[Unit] =
     session.executeAsync(createTableStatement).asScala.flatMap(_ => verifyCreated(tableName))(ec)
 
@@ -84,7 +84,7 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
     */
   protected def insertStatement: SimpleStatement = (clusterKeys ++ dataColumns)
     .foldLeft(
-      insertInto(tableName).value(partitionKey.name, bindMarker(partitionKey.name))
+      insertInto(tableName).value(partitionKey.name, bindMarker(partitionKey.name)),
     )((s, c) => s.value(c.name, bindMarker(c.name)))
     .build
     .setIdempotent(true)

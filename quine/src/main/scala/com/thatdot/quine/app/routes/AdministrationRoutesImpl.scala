@@ -47,7 +47,7 @@ object GenerateMetrics {
         `99` = snap.get99thPercentile() / NANOS_IN_MILLI,
         `80` = snap.getValue(0.80) / NANOS_IN_MILLI,
         `20` = snap.getValue(0.20) / NANOS_IN_MILLI,
-        `10` = snap.getValue(0.10) / NANOS_IN_MILLI
+        `10` = snap.getValue(0.10) / NANOS_IN_MILLI,
       )
     }
 
@@ -77,7 +77,7 @@ object GenerateMetrics {
       Instant.now(),
       counters.toSeq,
       timers.toSeq,
-      gauges
+      gauges,
     )
 
   }
@@ -114,7 +114,7 @@ trait AdministrationRoutesImpl
       gitCommit,
       QuineBuildInfo.gitHeadCommitDate,
       QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
-      PersistenceAgent.CurrentVersion.shortString
+      PersistenceAgent.CurrentVersion.shortString,
     )
   }
 
@@ -149,7 +149,7 @@ trait AdministrationRoutesImpl
 
   private val requestSleepNodeRoute = requestNodeSleep.implementedByAsync { case (quineId, namespaceParam) =>
     graph.requiredGraphIsReadyFuture(
-      graph.requestNodeSleep(namespaceFromParam(namespaceParam), quineId)
+      graph.requestNodeSleep(namespaceFromParam(namespaceParam), quineId),
     )
   }
 

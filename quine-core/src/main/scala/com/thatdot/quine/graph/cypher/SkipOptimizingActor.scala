@@ -35,7 +35,7 @@ class SkipOptimizingActor(
   graph: CypherOpsGraph,
   QueryFamily: Query[Location.External],
   namespace: NamespaceId,
-  atTime: Option[Milliseconds]
+  atTime: Option[Milliseconds],
 )(implicit protected val logConfig: LogConfig)
     extends Actor
     with ActorSafeLogging {
@@ -52,7 +52,7 @@ class SkipOptimizingActor(
 
   private def startQuery() = {
     log.debug(
-      log"SkipOptimizingActor is beginning execution of query. AtTime: ${Safe(atTime)}; query: ${QueryFamily.toString}"
+      log"SkipOptimizingActor is beginning execution of query. AtTime: ${Safe(atTime)}; query: ${QueryFamily.toString}",
     )
     graph.cypherOps
       .continueQuery(QueryFamily, parameters = Parameters.empty, namespace = namespace, atTime = atTime)
@@ -71,14 +71,14 @@ class SkipOptimizingActor(
           */
         completesWithStream.onComplete { status =>
           log.debug(
-            log"SkipOptimizingActor finished execution of query (cleanly: ${Safe(status.isSuccess)}) and will terminate: ${QueryFamily.toString}"
+            log"SkipOptimizingActor finished execution of query (cleanly: ${Safe(status.isSuccess)}) and will terminate: ${QueryFamily.toString}",
           )
           decommission()
         }(ExecutionContext.parasitic)
         mat
       }
       .runWith(BroadcastHub.sink(bufferSize = 1))(
-        graph.materializer
+        graph.materializer,
       )
       .named("skip-optimizing-query-hub")
   }
@@ -100,7 +100,7 @@ class SkipOptimizingActor(
   private def extractSkipAndLimit(
     query: Return[_],
     context: QueryContext,
-    parameters: Parameters
+    parameters: Parameters,
   ): Either[SkipOptimizationError.InvalidSkipLimit, (Long, Option[Long])] = {
     val skipVal = query.drop.map(_.eval(context)(graph.idProvider, parameters, logConfig))
     val limitVal = query.take.map(_.eval(context)(graph.idProvider, parameters, logConfig))
@@ -111,8 +111,8 @@ class SkipOptimizingActor(
         case Some(expr) =>
           Left(
             SkipOptimizationError.InvalidSkipLimit(
-              s"The query's SKIP clause had type ${expr.typ.pretty}, required ${Type.Integer.pretty}"
-            )
+              s"The query's SKIP clause had type ${expr.typ.pretty}, required ${Type.Integer.pretty}",
+            ),
           )
       }
       limit <- limitVal match {
@@ -121,8 +121,8 @@ class SkipOptimizingActor(
         case Some(expr) =>
           Left(
             SkipOptimizationError.InvalidSkipLimit(
-              s"The query's LIMIT clause had type ${expr.typ.pretty}, required ${Type.Integer.pretty}"
-            )
+              s"The query's LIMIT clause had type ${expr.typ.pretty}, required ${Type.Integer.pretty}",
+            ),
           )
       }
     } yield skip -> limit
@@ -134,7 +134,7 @@ class SkipOptimizingActor(
           context,
           parameters,
           restartIfAppropriate,
-          replyTo
+          replyTo,
         ) if dropRule.isDefined || takeRule.isDefined =>
       val responseMessage: Either[SkipOptimizationError, Source[QueryContext, NotUsed]] =
         extractSkipAndLimit(query, context, parameters).flatMap { case (skip, limit) =>
@@ -145,7 +145,7 @@ class SkipOptimizingActor(
           if (!isCurrentlyStreaming && (skipOffset >= 0 || restartIfAppropriate)) {
             isCurrentlyStreaming = true
             log.debug(
-              safe"SkipOptimizingActor received query eligible for pagination for atTime: ${Safe(atTime)}. computed SKIP: ${Safe(skip)}"
+              safe"SkipOptimizingActor received query eligible for pagination for atTime: ${Safe(atTime)}. computed SKIP: ${Safe(skip)}",
             )
             // apply the SKIP rule (resetting the queryHub if appropriate)
             val skippedStream: Source[QueryContext, NotUsed] =
@@ -160,7 +160,7 @@ class SkipOptimizingActor(
                   log"""Processing a ResumeQuery that requires resetting the
                        |SkipOptimizingActor's state. As restartIfAppropriate = true, the query will be restarted,
                        |replaying and dropping results up to the SKIP value provided in the latest query: ${query.toString}
-                       |""".cleanLines
+                       |""".cleanLines,
                 )
                 queryHub = startQuery()
                 queryHub.drop(skip)
@@ -184,7 +184,7 @@ class SkipOptimizingActor(
                   skippedStream
               }
             Right(
-              skippedAndLimitedStream
+              skippedAndLimitedStream,
             )
           } else if (isCurrentlyStreaming) {
             Left(SkipOptimizationError.ReplayInProgress)
@@ -241,7 +241,7 @@ object SkipOptimizingActor {
     context: QueryContext,
     parameters: Parameters,
     restartIfAppropriate: Boolean,
-    replyTo: ActorRef
+    replyTo: ActorRef,
   )
 
   /** Message instructing the [[SkipOptimizingActor]] to unlock streaming, allowing new [[ResumeQuery]] requests.
@@ -263,25 +263,25 @@ object SkipOptimizingActor {
     case object ReplayInProgress
         extends SkipOptimizationError(
           "Requested query is currently streaming results to another, try again later.",
-          retriable = true
+          retriable = true,
         )
 
     case object SkipLimitMismatch
         extends SkipOptimizationError(
           "Requested query's SKIP and/or LIMIT does not match the current state of this SkipOptimizingActor",
-          retriable = true
+          retriable = true,
         )
 
     case object QueryMismatch
         extends SkipOptimizationError(
           "Requested query does not match the query this SkipOptimizingActor tracks",
-          retriable = false
+          retriable = false,
         )
 
     case class UnsupportedProjection(invalidRuleDescription: String)
         extends SkipOptimizationError(
           s"Requested query specifies a projection not supported by a SkipOptimizingActor: ${invalidRuleDescription}",
-          retriable = false
+          retriable = false,
         )
 
     case class InvalidSkipLimit(override val msg: String) extends SkipOptimizationError(msg, retriable = false)

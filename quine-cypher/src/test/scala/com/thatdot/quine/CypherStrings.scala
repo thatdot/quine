@@ -19,11 +19,11 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.Null),
         Vector(Expr.Null),
         Vector(Expr.Null),
-        Vector(Expr.True)
+        Vector(Expr.True),
       ),
       expectedIsIdempotent = true,
       expectedIsReadOnly = true,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -42,11 +42,11 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.Null),
         Vector(Expr.Null),
         Vector(Expr.Null),
-        Vector(Expr.True)
+        Vector(Expr.True),
       ),
       expectedIsIdempotent = true,
       expectedIsReadOnly = true,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -65,11 +65,11 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.Null),
         Vector(Expr.Null),
         Vector(Expr.Null),
-        Vector(Expr.True)
+        Vector(Expr.True),
       ),
       expectedIsIdempotent = true,
       expectedIsReadOnly = true,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -88,10 +88,10 @@ class CypherStrings extends CypherHarness("cypher-string-tests") {
         Vector(Expr.Null),
         Vector(Expr.Null),
         Vector(Expr.Null),
-        Vector(Expr.True)
+        Vector(Expr.True),
       ),
       expectedIsIdempotent = true,
-      expectedIsReadOnly = true
+      expectedIsReadOnly = true,
     )
   }
 }

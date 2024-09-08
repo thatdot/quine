@@ -25,13 +25,13 @@ trait ServerEntitiesWithExamples
 
   /** Helper function for turning an HTTP request body => A function into a Pekko Unmarshaller / Directive */
   protected def unmarshallerFor[A](
-    contentType: ContentTypeRange
+    contentType: ContentTypeRange,
   )(
-    f: (Materializer, HttpEntity) => Future[A]
+    f: (Materializer, HttpEntity) => Future[A],
   ): Directive1[A] = Directives.entity[A](
     Unmarshaller.messageUnmarshallerFromEntityUnmarshaller(
-      Unmarshaller.withMaterializer[HttpEntity, A](_ => mat => entity => f(mat, entity)).forContentTypes(contentType)
-    )
+      Unmarshaller.withMaterializer[HttpEntity, A](_ => mat => entity => f(mat, entity)).forContentTypes(contentType),
+    ),
   )
   lazy val csvRequest: RequestEntity[List[List[String]]] =
     unmarshallerFor(MediaTypes.`text/csv`) { (mat, entity) =>
@@ -55,7 +55,7 @@ trait ServerEntitiesWithExamples
         // "the users of the materialized value, InputStream, [...] will block" - akka/akka#30831
         val requestInputStream = requestEntityAsInputStream(entity)(mat)
         Parser.default.decodeAccumulating(new YamlUnicodeReader(requestInputStream))(schema.decoder)
-      }(new QuineDispatchers(mat.system).blockingDispatcherEC)
+      }(new QuineDispatchers(mat.system).blockingDispatcherEC),
     ).flatMap(circeDecodeResultToEndpointsDirective)
 
   val ServiceUnavailable = StatusCodes.ServiceUnavailable

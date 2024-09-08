@@ -7,7 +7,7 @@ import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QueryContext
 class UnitSqStateTests extends AnyFunSuite {
 
   def freshState() = new StandingQueryStateWrapper(
-    MultipleValuesStandingQuery.UnitSq.instance
+    MultipleValuesStandingQuery.UnitSq.instance,
   )
 
   test("Unit state") {

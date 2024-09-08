@@ -58,7 +58,7 @@ import com.thatdot.{visnetwork => vis}
     edgeQueryLanguage: QueryLanguage = QueryLanguage.Cypher,
     queryMethod: QueryMethod = QueryMethod.WebSocket,
     initialNamespace: NamespaceParameter = NamespaceParameter.defaultNamespaceParameter,
-    isQuineOSS: Boolean
+    isQuineOSS: Boolean,
   )
 
   /** @param query input in the query bar
@@ -92,7 +92,7 @@ import com.thatdot.{visnetwork => vis}
     uiNodeAppearances: Vector[UiNodeAppearance],
     atTime: Option[Long],
     namespace: NamespaceParameter,
-    areSampleQueriesVisible: Boolean
+    areSampleQueriesVisible: Boolean,
   )
 
   def initialState: com.thatdot.quine.webapp.queryui.QueryUi.State = State(
@@ -111,7 +111,7 @@ import com.thatdot.{visnetwork => vis}
     uiNodeAppearances = Vector.empty,
     atTime = props.initialAtTime,
     namespace = props.initialNamespace,
-    areSampleQueriesVisible = false
+    areSampleQueriesVisible = false,
   )
 
   private[this] var network: Option[vis.Network] = None
@@ -144,12 +144,12 @@ import com.thatdot.{visnetwork => vis}
         webSocket.addEventListener[dom.MessageEvent]("open", (_: dom.MessageEvent) => clientReady.trySuccess(client))
         webSocket.addEventListener[dom.Event](
           "error",
-          (_: dom.Event) => clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` failed"))
+          (_: dom.Event) => clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` failed")),
         )
         webSocket.addEventListener[dom.CloseEvent](
           "close",
           (_: dom.CloseEvent) =>
-            clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` was closed"))
+            clientReady.tryFailure(new Exception(s"WebSocket connection to `${webSocket.url}` was closed")),
         )
 
         webSocketClientFut = clientReady.future
@@ -241,7 +241,7 @@ import com.thatdot.{visnetwork => vis}
     */
   def nodeUi2Vis(
     node: UiNode[String],
-    startingPosition: Option[(Double, Double)]
+    startingPosition: Option[(Double, Double)],
   ): vis.Node = {
     val (uiLabel, iconStyle) = appearanceFor(node)
 
@@ -289,7 +289,7 @@ import com.thatdot.{visnetwork => vis}
     */
   def edgeUi2Vis(
     edge: UiEdge[String],
-    isSynEdge: Boolean
+    isSynEdge: Boolean,
   ): vis.Edge = new QueryUiVisEdgeExt {
     override val id = edgeId(edge)
     override val from = edge.from
@@ -350,7 +350,7 @@ import com.thatdot.{visnetwork => vis}
         window.setTimeout(() => animateNetwork(), 0)
         network.get.cluster(new vis.ClusterOptions {
           override val joinCondition = Some[js.Function1[js.Any, Boolean]]((n: js.Any) =>
-            nodeIds.contains(n.asInstanceOf[vis.Node].id)
+            nodeIds.contains(n.asInstanceOf[vis.Node].id),
           ).orUndefined
 
           override val processProperties = Some[js.Function3[js.Any, js.Any, js.Any, js.Any]] {
@@ -404,18 +404,18 @@ import com.thatdot.{visnetwork => vis}
     */
   def updateHistory(
     update: History[QueryUiEvent] => Option[History[QueryUiEvent]],
-    callback: () => Unit = () => ()
+    callback: () => Unit = () => (),
   ): Unit =
     setState(
       s => update(s.history).fold(s)(h => s.copy(history = h)),
-      callback
+      callback,
     )
 
   /** Download a history file */
   def downloadHistory(history: History[QueryUiEvent], fileName: String): Unit = {
     val blob = new dom.Blob(
       js.Array(HistoryJsonSchema.encode(history)),
-      new dom.BlobPropertyBag { `type` = "application/json" }
+      new dom.BlobPropertyBag { `type` = "application/json" },
     )
 
     val a = document.createElement("a").asInstanceOf[dom.HTMLAnchorElement]
@@ -455,7 +455,7 @@ import com.thatdot.{visnetwork => vis}
           if (window.confirm(msg)) {
             setState(
               _.copy(history = hist),
-              () => hist.past.reverse.foreach(queryUiEvent.applyEvent(_))
+              () => hist.past.reverse.foreach(queryUiEvent.applyEvent(_)),
             )
           }
 
@@ -476,7 +476,7 @@ import com.thatdot.{visnetwork => vis}
 
       val blob = new dom.Blob(
         js.Array(tempElement.innerHTML),
-        new dom.BlobPropertyBag { `type` = "image/svg" }
+        new dom.BlobPropertyBag { `type` = "image/svg" },
       )
 
       val a = document.createElement("a").asInstanceOf[dom.HTMLAnchorElement]
@@ -503,13 +503,13 @@ import com.thatdot.{visnetwork => vis}
 
     History(
       past = List(QueryUiEvent.Add(nodes, edges.map(_.uiEdge), Seq.empty, syntheticEdges.map(_.uiEdge), None)),
-      future = List()
+      future = List(),
     )
   }
 
   private val cypherQueryRegex = js.RegExp(
     raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain)[^a-z]",
-    flags = "i"
+    flags = "i",
   )
 
   /** Try to guess the query language based on a query string */
@@ -544,7 +544,7 @@ import com.thatdot.{visnetwork => vis}
     namespace: NamespaceParameter,
     atTime: Option[Long],
     language: QueryLanguage,
-    parameters: Map[String, Json]
+    parameters: Map[String, Json],
   ): Future[Option[Seq[UiNode[String]]]] =
     props.queryMethod match {
       case QueryMethod.Restful =>
@@ -575,7 +575,7 @@ import com.thatdot.{visnetwork => vis}
     atTime: Option[Long],
     namespace: NamespaceParameter,
     language: QueryLanguage,
-    parameters: Map[String, Json]
+    parameters: Map[String, Json],
   ): Future[Option[Seq[UiEdge[String]]]] =
     props.queryMethod match {
       case QueryMethod.Restful =>
@@ -608,7 +608,7 @@ import com.thatdot.{visnetwork => vis}
     namespace: NamespaceParameter,
     language: QueryLanguage,
     parameters: Map[String, Json],
-    updateResults: Either[Seq[Json], CypherQueryResult] => Unit
+    updateResults: Either[Seq[Json], CypherQueryResult] => Unit,
   ): Future[Option[Unit]] =
     (props.queryMethod, language) match {
       case (QueryMethod.Restful, QueryLanguage.Gremlin) =>
@@ -650,7 +650,7 @@ import com.thatdot.{visnetwork => vis}
               def onQueryStart(
                 isReadOnly: Boolean,
                 canContainAllNodeScan: Boolean,
-                columns: Option[Seq[String]]
+                columns: Option[Seq[String]],
               ): Unit = ()
 
               def onQueryCancelOk(): Unit = cancelled = true
@@ -678,7 +678,7 @@ import com.thatdot.{visnetwork => vis}
               def onQueryStart(
                 isReadOnly: Boolean,
                 canContainAllNodeScan: Boolean,
-                columns: Option[Seq[String]]
+                columns: Option[Seq[String]],
               ): Unit =
                 for (cols <- columns)
                   updateResults(Right(CypherQueryResult(cols, buffered)))
@@ -722,7 +722,7 @@ import com.thatdot.{visnetwork => vis}
       window.alert(
         """You have a pending text query. You must cancel it before issuing another query.
           |Pending queries can be cancelled by clicking on the spinning loader in the top right.
-          |""".stripMargin
+          |""".stripMargin,
       )
       return
     }
@@ -733,8 +733,8 @@ import com.thatdot.{visnetwork => vis}
         foundEdgesCount = None,
         bottomBar = None,
         queryBarColor = None,
-        runningQueryCount = s.runningQueryCount + 1
-      )
+        runningQueryCount = s.runningQueryCount + 1,
+      ),
     )
 
     if (uiQueryType == UiQueryType.Text) {
@@ -757,12 +757,12 @@ import com.thatdot.{visnetwork => vis}
                 case MessageBarContent(res, "lightgreen") => MessageBarContent(res, outcomeColor)
                 case other => other
               },
-              runningQueryCount = s.runningQueryCount - 1
-            )
+              runningQueryCount = s.runningQueryCount - 1,
+            ),
           )
           window.setTimeout(
             () => setState(_.copy(queryBarColor = None)),
-            750
+            750,
           )
           ()
 
@@ -772,8 +772,8 @@ import com.thatdot.{visnetwork => vis}
             s.copy(
               queryBarColor = Some("pink"),
               bottomBar = Some(failureBar),
-              runningQueryCount = s.runningQueryCount - 1
-            )
+              runningQueryCount = s.runningQueryCount - 1,
+            ),
           )
       }
 
@@ -793,8 +793,8 @@ import com.thatdot.{visnetwork => vis}
             val limitedCount: Option[Int] = Option(
               window.prompt(
                 s"You are about to render ${dedupedNodes.length} nodes.\nHow many do you want to render?",
-                dedupedNodes.length.toString
-              )
+                dedupedNodes.length.toString,
+              ),
             ).map(_.toInt)
             setState(s => s.copy(foundNodesCount = limitedCount))
             limitedCount.fold(Seq.empty[UiNode[String]])(dedupedNodes.take(_))
@@ -828,7 +828,7 @@ import com.thatdot.{visnetwork => vis}
             val existingNodes = props.graphData.nodeSet.getIds().map(_.toString).toVector
             val queryParameters = Map(
               "new" -> Json.fromValues(newNodes.map(Json.fromString)),
-              "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString))
+              "all" -> Json.fromValues((existingNodes ++ newNodes).map(Json.fromString)),
             )
             edgeQuery(query, state.atTime, state.namespace, props.edgeQueryLanguage, queryParameters)
           }
@@ -866,7 +866,7 @@ import com.thatdot.{visnetwork => vis}
             edges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
             nodesToUpdate,
             syntheticEdges.filter(e => props.graphData.edgeSet.get(edgeId(e)) == null),
-            explodeFromIdOpt
+            explodeFromIdOpt,
           )
 
           // Update the history
@@ -886,11 +886,11 @@ import com.thatdot.{visnetwork => vis}
               onClick := { _ =>
                 setState(
                   _.copy(
-                    query = failedQuery
-                  )
+                    query = failedQuery,
+                  ),
                 )
                 submitQuery(UiQueryType.Text)
-              }
+              },
             )("Run again as text query")
           }
           setState(s =>
@@ -899,13 +899,13 @@ import com.thatdot.{visnetwork => vis}
               bottomBar = Some(
                 MessageBarContent(
                   div(
-                    contents.result()
+                    contents.result(),
                   ),
-                  "pink"
-                )
+                  "pink",
+                ),
               ),
-              runningQueryCount = s.runningQueryCount - 1
-            )
+              runningQueryCount = s.runningQueryCount - 1,
+            ),
           )
       }
     }
@@ -962,10 +962,10 @@ import com.thatdot.{visnetwork => vis}
               override val hierarchical = jsObj(
                 enabled = true,
                 sortMethod = "directed",
-                shakeTowards = "roots"
+                shakeTowards = "roots",
               )
             }
-          }
+          },
         )
 
       case NetworkLayout.Tree =>
@@ -975,7 +975,7 @@ import com.thatdot.{visnetwork => vis}
             override val layout = new vis.Network.Options.Layout {
               override val hierarchical = false: js.Any
             }
-          }
+          },
         )
 
         /* Yes, this looks completely redundant with the above, but for some
@@ -1007,7 +1007,7 @@ import com.thatdot.{visnetwork => vis}
             val duration = 2000d
             val easingFunction = "easeInOutCubic"
           }
-        }
+        },
       )
 
   /** Animate the network for some milliseconds */
@@ -1017,7 +1017,7 @@ import com.thatdot.{visnetwork => vis}
       () => {
         window.setTimeout(() => setState(_.copy(animating = false)), millis)
         ()
-      }
+      },
     )
 
   def networkHold(event: vis.ClickEvent): Unit = {
@@ -1058,7 +1058,7 @@ import com.thatdot.{visnetwork => vis}
             override val icon = new vis.NodeOptions.Icon {
               override val color = "black"
             }
-          }
+          },
         )
         unfixNodesUpdate -> fixedNodes
       } else {
@@ -1070,7 +1070,7 @@ import com.thatdot.{visnetwork => vis}
             override val icon = new vis.NodeOptions.Icon {
               override val color = "black"
             }
-          }
+          },
         )
         fixNodesUpdate -> unfixedNodes
       }
@@ -1080,7 +1080,7 @@ import com.thatdot.{visnetwork => vis}
         new vis.Node {
           override val id = flashedNode.id
           override val icon = flashedNode.icon
-        }
+        },
       )
 
       // Update the graph!
@@ -1142,8 +1142,8 @@ import com.thatdot.{visnetwork => vis}
           action = () =>
             setState(
               _.copy(contextMenuOpt = None),
-              () => updateHistory(hist => Some(hist.observe(expand)))
-            )
+              () => updateHistory(hist => Some(hist.observe(expand))),
+            ),
         )
       }
     } else {
@@ -1180,9 +1180,9 @@ import com.thatdot.{visnetwork => vis}
             action = () => {
               setState(
                 _.copy(query = qq.fullQuery(startingNodes), contextMenuOpt = None),
-                () => submitQuery(queryType)
+                () => submitQuery(queryType),
               )
-            }
+            },
           )
         }
     }
@@ -1203,8 +1203,8 @@ import com.thatdot.{visnetwork => vis}
                   val clusterEvent = QueryUiEvent.Collapse(selectedIds, clusterId, name)
                   Some(hist.observe(clusterEvent))
                 }
-              }
-          )
+              },
+          ),
       )
     }
 
@@ -1221,7 +1221,7 @@ import com.thatdot.{visnetwork => vis}
 
     val contextMenuItems = getContextMenuItems(
       rightClickedId,
-      event.nodes.toSeq.asInstanceOf[Seq[String]]
+      event.nodes.toSeq.asInstanceOf[Seq[String]],
     )
 
     setState(
@@ -1230,10 +1230,10 @@ import com.thatdot.{visnetwork => vis}
           ContextMenu.Props(
             x = event.pointer.DOM.x,
             y = event.pointer.DOM.y,
-            items = contextMenuItems
-          )
-        )
-      )
+            items = contextMenuItems,
+          ),
+        ),
+      ),
     )
   }
 
@@ -1373,8 +1373,8 @@ import com.thatdot.{visnetwork => vis}
           foundEdgesCount = None,
           bottomBar = None,
           contextMenuOpt = None,
-          atTime = atTime
-        )
+          atTime = atTime,
+        ),
       )
     }
 
@@ -1449,17 +1449,17 @@ import com.thatdot.{visnetwork => vis}
           atTime = state.atTime,
           setTime = if (state.runningQueryCount != 0) None else Some(setAtTime(_)),
           toggleLayout = toggleNetworkLayout,
-          recenterViewport = recenterNetworkViewport
+          recenterViewport = recenterNetworkViewport,
         ),
         downloadSvg = () => downloadSvgSnapshot(),
-        props.isQuineOSS
+        props.isQuineOSS,
       )
     }
 
     elements += Loader(
       keyName = "loader",
       pendingCount = state.runningQueryCount,
-      onClick = if (props.queryMethod == QueryMethod.WebSocket) Some(() => cancelQueries()) else None
+      onClick = if (props.queryMethod == QueryMethod.WebSocket) Some(() => cancelQueries()) else None,
     )
 
     elements += VisNetwork(
@@ -1468,7 +1468,7 @@ import com.thatdot.{visnetwork => vis}
       onContextMenu = _.preventDefault(),
       onClick = _ => setState(_.copy(contextMenuOpt = None)),
       onKeyDown = networkKeyDown(_),
-      options = networkOptions
+      options = networkOptions,
     )
 
     // Update whether the graph should be animating
@@ -1481,19 +1481,19 @@ import com.thatdot.{visnetwork => vis}
     for (messageContent <- state.bottomBar)
       elements += MessageBar(
         message = messageContent,
-        closeMessageBox = () => setState(_.copy(bottomBar = None))
+        closeMessageBox = () => setState(_.copy(bottomBar = None)),
       )
 
     state.contextMenuOpt.foreach { contextMenu =>
       elements += ContextMenu(
         x = contextMenu.x,
         y = contextMenu.y,
-        items = contextMenu.items
+        items = contextMenu.items,
       )
     }
 
     div(
-      style := jsObj(height = "100%", width = "100%", overflow = "hidden", position = "relative")
+      style := jsObj(height = "100%", width = "100%", overflow = "hidden", position = "relative"),
     )(elements.result(): _*)
   }
 }

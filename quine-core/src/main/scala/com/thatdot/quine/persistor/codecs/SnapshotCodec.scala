@@ -28,18 +28,18 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
     edges: Iterable[HalfEdge],
     subscribersToThisNode: MutableMap[
       DomainGraphNodeId,
-      DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+      DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription,
     ],
     domainNodeIndex: MutableMap[
       QuineId,
-      MutableMap[DomainGraphNodeId, Option[Boolean]]
+      MutableMap[DomainGraphNodeId, Option[Boolean]],
     ],
-    reserved: Boolean
+    reserved: Boolean,
   ): SnapshotT
 
   private[codecs] def writeNodeSnapshot(
     builder: FlatBufferBuilder,
-    snapshot: SnapshotT
+    snapshot: SnapshotT,
   ): Offset = {
 
     val time = snapshot.time.eventTime
@@ -49,7 +49,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
         propertiesOffs(i) = persistence.Property.createProperty(
           builder,
           builder.createString(propKey.name),
-          persistence.Property.createValueVector(builder, propVal.serialized)
+          persistence.Property.createValueVector(builder, propVal.serialized),
         )
       persistence.NodeSnapshot.createPropertiesVector(builder, propertiesOffs)
     }
@@ -70,10 +70,10 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
               DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
                 notifiables,
                 lastNotification,
-                relatedQueries
-              )
+                relatedQueries,
+              ),
             ),
-            i
+            i,
           ) <- snapshot.subscribersToThisNode.zipWithIndex
         ) {
           val notifiableTypes: Array[Byte] = new Array[Byte](notifiables.size)
@@ -108,7 +108,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
             notifiableType,
             notifiableOffset,
             lastNotificationEnum,
-            relatedQueriesOffset
+            relatedQueriesOffset,
           )
         }
         persistence.NodeSnapshot.createSubscribersVector(builder, subscribersOffs)
@@ -132,7 +132,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
               queriesOffs(i) = persistence.NodeIndexQuery.createNodeIndexQuery(
                 builder,
                 branch,
-                lastNotificationEnum
+                lastNotificationEnum,
               )
             }
             persistence.NodeIndex.createQueriesVector(builder, queriesOffs)
@@ -141,7 +141,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
           domainNodeIndexOffs(i) = persistence.NodeIndex.createNodeIndex(
             builder,
             subscriberOff,
-            queries
+            queries,
           )
         }
         persistence.NodeSnapshot.createDomainNodeIndexVector(builder, domainNodeIndexOffs)
@@ -156,7 +156,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
       edges,
       subscribers,
       domainNodeIndex,
-      reserved
+      reserved,
     )
   }
 
@@ -181,7 +181,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
     val subscribersToThisNode = {
       val builder = mutable.Map.empty[
         DomainGraphNodeId,
-        DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+        DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription,
       ]
       var i: Int = 0
       val subscribersLength = snapshot.subscribersLength
@@ -196,15 +196,15 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
             case persistence.Notifiable.QuineId =>
               Left(
                 readQuineId(
-                  subscriber.notifiable(new persistence.QuineId(), j).asInstanceOf[persistence.QuineId]
-                )
+                  subscriber.notifiable(new persistence.QuineId(), j).asInstanceOf[persistence.QuineId],
+                ),
               )
 
             case persistence.Notifiable.StandingQueryId =>
               Right(
                 readStandingQueryId(
-                  subscriber.notifiable(new persistence.StandingQueryId(), j).asInstanceOf[persistence.StandingQueryId]
-                )
+                  subscriber.notifiable(new persistence.StandingQueryId(), j).asInstanceOf[persistence.StandingQueryId],
+                ),
               )
 
             case other =>
@@ -231,7 +231,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
         builder += dgnId -> DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription(
           notifiables.toSet,
           lastNotification,
-          relatedQueries.toSet
+          relatedQueries.toSet,
         )
         i += 1
       }
@@ -241,7 +241,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
     val domainNodeIndex = {
       val builder = mutable.Map.empty[
         QuineId,
-        mutable.Map[DomainGraphNodeId, Option[Boolean]]
+        mutable.Map[DomainGraphNodeId, Option[Boolean]],
       ]
 
       var i: Int = 0
@@ -278,7 +278,7 @@ abstract class AbstractSnapshotCodec[SnapshotT <: AbstractNodeSnapshot] extends 
       edges,
       subscribersToThisNode,
       domainNodeIndex,
-      reserved
+      reserved,
     )
   }
 

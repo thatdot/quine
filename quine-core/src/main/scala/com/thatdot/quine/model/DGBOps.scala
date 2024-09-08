@@ -3,7 +3,7 @@ package com.thatdot.quine.model
 object DGBOps {
 
   implicit final class DNMapOps(
-    private val map: Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])]
+    private val map: Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])],
   ) extends AnyVal {
     def containsByLeftConditions(other: Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])]): Boolean =
       other.forall { case (key, (_, v1)) =>

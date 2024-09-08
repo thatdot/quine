@@ -27,8 +27,8 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
   def stringCodec[A](implicit codec: JsonCodec[A]): Codec[String, A] =
     Codec.fromEncoderAndDecoder[String, A](a => codec.encoder(a).noSpaces)(s =>
       endpoints4s.Validated.fromEither(
-        circe.parser.decodeAccumulating(s)(codec.decoder).leftMap(_.toList.map(circe.Error.showError.show)).toEither
-      )
+        circe.parser.decodeAccumulating(s)(codec.decoder).leftMap(_.toList.map(circe.Error.showError.show)).toEither,
+      ),
     )
 
   protected val baseUrlOpt: Option[String] = baseUrl.toOption

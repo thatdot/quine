@@ -38,7 +38,7 @@ object Ecr extends AutoPlugin {
         case Some(ecrRegistry) if publishToEcr.value => images.map(_.copy(registry = Some(ecrRegistry.getHost)))
         case _ => images
       }
-    }
+    },
   )
   // Used to pipe the password to the `docker login` process
   private def stringToStdIn(s: String): ProcessIO = BasicIO.standard { os =>

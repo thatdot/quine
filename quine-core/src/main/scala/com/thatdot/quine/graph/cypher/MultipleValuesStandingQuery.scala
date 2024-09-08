@@ -32,7 +32,7 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
     *       also desirable that `q1 == q2 implies `q1.queryPartId == q2.queryPartId` whenever possible.
     */
   final val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
-    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this)
+    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this),
   )
 
   /** Direct children of this query
@@ -87,7 +87,7 @@ object MultipleValuesStandingQuery {
   final case class Cross(
     queries: ArraySeq[MultipleValuesStandingQuery],
     emitSubscriptionsLazily: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = CrossState
@@ -184,7 +184,7 @@ object MultipleValuesStandingQuery {
     */
   final case class AllProperties(
     aliasedAs: Symbol,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
     type State = AllPropertiesState
     def createState(): AllPropertiesState = AllPropertiesState(queryPartId)
@@ -201,7 +201,7 @@ object MultipleValuesStandingQuery {
     propKey: Symbol,
     propConstraint: LocalProperty.ValueConstraint,
     aliasedAs: Option[Symbol],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = LocalPropertyState
@@ -219,7 +219,7 @@ object MultipleValuesStandingQuery {
   final case class LocalId(
     aliasedAs: Symbol,
     formatAsString: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = LocalIdState
@@ -243,7 +243,7 @@ object MultipleValuesStandingQuery {
     edgeName: Option[Symbol],
     edgeDirection: Option[EdgeDirection],
     andThen: MultipleValuesStandingQuery,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = SubscribeAcrossEdgeState
@@ -263,7 +263,7 @@ object MultipleValuesStandingQuery {
   final case class EdgeSubscriptionReciprocal(
     halfEdge: HalfEdge,
     andThenId: MultipleValuesStandingQueryPartId,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = EdgeSubscriptionReciprocalState
@@ -287,7 +287,7 @@ object MultipleValuesStandingQuery {
     toFilter: MultipleValuesStandingQuery,
     dropExisting: Boolean,
     toAdd: List[(Symbol, Expr)],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
 
     type State = FilterMapState
@@ -308,7 +308,7 @@ object MultipleValuesStandingQuery {
     */
   def indexableSubqueries(
     sq: MultipleValuesStandingQuery,
-    acc: Set[MultipleValuesStandingQuery] = Set.empty
+    acc: Set[MultipleValuesStandingQuery] = Set.empty,
   ): Set[MultipleValuesStandingQuery] =
     // EdgeSubscriptionReciprocal are not useful to index -- they're ephemeral, fully owned/created/used by 1 node
     if (sq.isInstanceOf[EdgeSubscriptionReciprocal]) acc

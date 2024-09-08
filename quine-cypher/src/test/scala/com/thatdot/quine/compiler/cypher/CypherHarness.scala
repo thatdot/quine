@@ -39,9 +39,9 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
-      idProvider = idProv
+      idProvider = idProv,
     ),
-    timeout.duration
+    timeout.duration,
   )
   val cypherHarnessNamespace: NamespaceId = None // Use default namespace
   implicit def materializer: Materializer = graph.materializer
@@ -89,10 +89,10 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedCanContainAllNodeScan: Boolean = false,
     parameters: Map[String, cypher.Value] = Map.empty,
     ordered: Boolean = true,
-    skip: Boolean = false
+    skip: Boolean = false,
   )(implicit
     queryHandler: RunnableCypher[T],
-    pos: Position
+    pos: Position,
   ): Unit = {
     def theTest(): Future[Assertion] = {
       val queryResults = queryHandler.run(query, parameters)
@@ -105,7 +105,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
       // Schedule cancellation for the query if it takes too long
       materializer.scheduleOnce(
         timeout.duration,
-        () => killSwitch.abort(new java.util.concurrent.TimeoutException())
+        () => killSwitch.abort(new java.util.concurrent.TimeoutException()),
       )
 
       rowsFut map { actualRows =>
@@ -120,7 +120,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
         assert(queryResults.compiled.query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
         assert(
           queryResults.compiled.query.canContainAllNodeScan == expectedCanContainAllNodeScan,
-          "canContainAllNodeScan must match"
+          "canContainAllNodeScan must match",
         )
       }
     }
@@ -151,9 +151,9 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedIsIdempotent: Boolean = true,
     expectedCanContainAllNodeScan: Boolean = false,
     skip: Boolean = false,
-    queryPreamble: String = "RETURN "
+    queryPreamble: String = "RETURN ",
   )(implicit
-    pos: Position
+    pos: Position,
   ): Unit =
     testQuery(
       query = queryPreamble + expressionText,
@@ -163,7 +163,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
       expectedCannotFail = expectedCannotFail,
       expectedIsIdempotent = expectedIsIdempotent,
       expectedCanContainAllNodeScan = expectedCanContainAllNodeScan,
-      skip = skip
+      skip = skip,
     )
 
   /** Check that a given query fails to be constructed with the given error.
@@ -173,7 +173,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     * @param pos source position of the call to `interceptQuery`
     */
   final def assertStaticQueryFailure[E <: Throwable: ClassTag](queryText: String, expectedError: E)(implicit
-    pos: Position
+    pos: Position,
   ): Unit = {
     def theTest(): Assertion = {
       val actual = intercept[E](queryCypherValues(queryText, cypherHarnessNamespace, cacheCompilation = false)(graph))
@@ -190,14 +190,14 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     */
   final def assertQueryExecutionFailure[E <: Throwable: ClassTag](
     queryText: String,
-    expected: E
+    expected: E,
   )(implicit
-    pos: Position
+    pos: Position,
   ): Unit = {
     def theTest(): Future[Assertion] = recoverToExceptionIf[E](
-      queryCypherValues(queryText, cypherHarnessNamespace)(graph).results.runWith(Sink.ignore)
+      queryCypherValues(queryText, cypherHarnessNamespace)(graph).results.runWith(Sink.ignore),
     ) map (actual =>
-      assert(actual.getMessage == expected.getMessage, "Query execution did not fail with expected error")
+      assert(actual.getMessage == expected.getMessage, "Query execution did not fail with expected error"),
     )
 
     it(queryText)(theTest())(pos)
@@ -217,9 +217,9 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
     expectedCannotFail: Boolean,
     expectedIsIdempotent: Boolean,
     expectedCanContainAllNodeScan: Boolean,
-    skip: Boolean = false
+    skip: Boolean = false,
   )(implicit
-    pos: Position
+    pos: Position,
   ): Unit = {
     def theTest(): Future[Assertion] = {
       val CompiledQuery(_, query, _, _, _) = compile(queryText)
@@ -228,7 +228,7 @@ class CypherHarness(val graphName: String) extends AsyncFunSpec with BeforeAndAf
       assert(query.isIdempotent == expectedIsIdempotent, "isIdempotent must match")
       assert(
         query.canContainAllNodeScan == expectedCanContainAllNodeScan,
-        "canContainAllNodeScan must match"
+        "canContainAllNodeScan must match",
       )
     }
 

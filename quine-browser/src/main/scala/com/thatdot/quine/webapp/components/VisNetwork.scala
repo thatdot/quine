@@ -31,7 +31,7 @@ final case class Edge(id: String, from: Int, to: Int) { self =>
 final case class VisData(
   raw: vis.Data,
   nodeSet: vis.DataSet[vis.Node],
-  edgeSet: vis.DataSet[vis.Edge]
+  edgeSet: vis.DataSet[vis.Edge],
 )
 object VisData {
   def apply(nodes: Seq[Node], edges: Seq[Edge]): VisData = {
@@ -62,7 +62,7 @@ object VisData {
     onContextMenu: SyntheticMouseEvent[dom.HTMLDivElement] => Unit = _ => (),
     onMouseMove: SyntheticMouseEvent[dom.HTMLDivElement] => Unit = _ => (),
     onKeyDown: SyntheticKeyboardEvent[dom.HTMLDivElement] => Unit = _ => (),
-    options: vis.Network.Options = new vis.Network.Options {}
+    options: vis.Network.Options = new vis.Network.Options {},
   )
 
   // Prepare a reference (to which the vis.js network will be attached)
@@ -91,7 +91,7 @@ object VisData {
     height = "100%",
     width = "100%",
     position = "absolute",
-    top = "0"
+    top = "0",
   )
   def render(): ReactElement = div(
     style := divStyle,
@@ -99,7 +99,7 @@ object VisData {
     onClick := (e => props.onClick(e)),
     onMouseMove := (e => props.onMouseMove(e)),
     onContextMenu := (e => props.onContextMenu(e)),
-    onKeyDown := (e => props.onKeyDown(e))
+    onKeyDown := (e => props.onKeyDown(e)),
   )
 }
 

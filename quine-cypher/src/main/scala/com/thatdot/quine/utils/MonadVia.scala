@@ -19,7 +19,7 @@ import cats.{Monad, MonadError}
 class MonadVia[F[_], G[_]](
   instance: Monad[F],
   fToG: FunctionK[F, G],
-  gToF: FunctionK[G, F]
+  gToF: FunctionK[G, F],
 ) extends Monad[G] {
 
   def flatMap[A, B](ga: G[A])(f: A => G[B]): G[B] =
@@ -42,7 +42,7 @@ class MonadVia[F[_], G[_]](
 class MonadErrorVia[F[_], G[_], E](
   instance: MonadError[F, E],
   fToG: FunctionK[F, G],
-  gToF: FunctionK[G, F]
+  gToF: FunctionK[G, F],
 ) extends MonadVia[F, G](instance, fToG, gToF)
     with MonadError[G, E] {
 

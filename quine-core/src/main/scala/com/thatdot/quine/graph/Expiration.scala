@@ -47,7 +47,7 @@ sealed abstract class Expiration {
     case remoteDuration =>
       require(
         false,
-        s"fromLocalNanos only expects 'LocalNanoSeconds', but received a $remoteDuration"
+        s"fromLocalNanos only expects 'LocalNanoSeconds', but received a $remoteDuration",
       )
       remoteDuration
   }
@@ -58,14 +58,14 @@ sealed abstract class Expiration {
       val now = System.nanoTime()
       val safeEndDuration = Math.max(
         failByNanoTime - now - Expiration.localTimeoutSafetyMarginNanos,
-        Expiration.minimumTimeoutNanos
+        Expiration.minimumTimeoutNanos,
       )
       Timeout(safeEndDuration, NANOSECONDS) -> Expiration.LocalNanoSeconds(now + safeEndDuration)
 
     case remoteDuration =>
       require(
         false,
-        s"nestedTimeout only expects 'LocalNanoSeconds', but received a $remoteDuration"
+        s"nestedTimeout only expects 'LocalNanoSeconds', but received a $remoteDuration",
       )
       this.toLocalNanos.nestedTimeout
 

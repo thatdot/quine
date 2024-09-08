@@ -26,22 +26,22 @@ object ReifyTime extends UserDefinedProcedure {
     UserDefinedProcedureSignature(
       arguments = Seq(
         "timestamp" -> Type.DateTime,
-        "periods" -> Type.List(Type.Str)
+        "periods" -> Type.List(Type.Str),
       ),
       outputs = Vector("node" -> Type.Node),
       description = """Reifies the timestamp into a [sub]graph of time nodes, where each node represents one
                       |period (at the granularity of the period specifiers provided). Yields the reified nodes
-                      |with the finest granularity.""".stripMargin.replace('\n', ' ')
+                      |with the finest granularity.""".stripMargin.replace('\n', ' '),
     )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
 
     // Read call arguments and default values
@@ -68,7 +68,7 @@ object ReifyTime extends UserDefinedProcedure {
         val allPeriodKeys = allPeriods.map(_._1)
         if (!pks.forall(allPeriodKeys.contains))
           throw ConstraintViolation(
-            "Argument 'periods' must contain only valid period specifiers (eg, 'year', 'minute', etc.)"
+            "Argument 'periods' must contain only valid period specifiers (eg, 'year', 'minute', etc.)",
           )
         // Filter allPeriods in order to preserve order
         allPeriods.filter(p => pks.contains(p._1))
@@ -91,7 +91,7 @@ object ReifyTime extends UserDefinedProcedure {
     // Generate a QuineId from a values that define a time node key (time and period)
     def timeNodeId(
       sourceTime: ZonedDateTime,
-      period: Period
+      period: Period,
     ): QuineId = {
       val periodTruncatedDate = period.truncate(sourceTime)
       val periodTruncatedDateStr = periodTruncatedDate.format(ISO_OFFSET_DATE_TIME)
@@ -104,7 +104,7 @@ object ReifyTime extends UserDefinedProcedure {
     def generateTimeNode(
       sourceTime: ZonedDateTime,
       period: Period,
-      parentPeriod: Option[Period]
+      parentPeriod: Option[Period],
     ): (QuineId, Future[Unit]) = {
       val periodTruncatedDate = period.truncate(sourceTime)
       val previousPeriodSourceTime = period.truncate(period.previous(sourceTime))
@@ -142,13 +142,13 @@ object ReifyTime extends UserDefinedProcedure {
               .setProp(nextNodeId, "start", QuineValue.DateTime(nextPeriodSourceTime.toOffsetDateTime)),
             // edges (prev)->(this)->(next)
             graph.literalOps(location.namespace).addEdge(nodeId, nextNodeId, "NEXT"),
-            graph.literalOps(location.namespace).addEdge(previousNodeId, nodeId, "NEXT")
+            graph.literalOps(location.namespace).addEdge(previousNodeId, nodeId, "NEXT"),
           ) ::: (parentNodeId match {
             case Some(pid) =>
               val periodEdgeName = period.name.toUpperCase
               List(graph.literalOps(location.namespace).addEdge(pid, nodeId, periodEdgeName))
             case None => List.empty
-          })
+          }),
         ) //(implicitly, location.graph.nodeDispatcherEC)
         .map(_ => ())(location.graph.nodeDispatcherEC)
       (nodeId, effects)
@@ -238,6 +238,6 @@ object ReifyTime extends UserDefinedProcedure {
       def previous(z: ZonedDateTime): ZonedDateTime = z.minusSeconds(1)
       def next(z: ZonedDateTime): ZonedDateTime = z.plusSeconds(1)
       val labelFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("ss")
-    }
+    },
   )
 }

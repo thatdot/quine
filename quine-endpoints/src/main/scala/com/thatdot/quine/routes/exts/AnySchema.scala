@@ -19,12 +19,12 @@ trait AnySchema extends endpoints4s.algebra.JsonSchemas {
 trait CirceJsonAnySchema extends AnySchema with endpoints4s.circe.JsonSchemas {
   def anySchema(format: Option[String]): JsonSchema[Json] = JsonSchema(
     Encoder.instance(identity),
-    Decoder.instance(c => Right(c.value))
+    Decoder.instance(c => Right(c.value)),
   )
 
   def optionalSchema[A](implicit schema: JsonSchema[A]): JsonSchema[Option[A]] = JsonSchema(
     _.fold(Json.Null)(schema.encoder.apply),
-    json => if (json.value.isNull) Right(None) else schema.decoder(json).map(Some(_))
+    json => if (json.value.isNull) Right(None) else schema.decoder(json).map(Some(_)),
   )
 }
 
@@ -36,7 +36,7 @@ trait OpenApiAnySchema extends AnySchema with endpoints4s.openapi.JsonSchemas {
     val docs = DocumentedJsonSchema.Primitive(
       name = "", // TODO: really we want to just omit this, but =.=
       format,
-      example = None
+      example = None,
     )
 
     val schema = new ujsonSchemas.JsonSchema[Json] {

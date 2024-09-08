@@ -23,7 +23,7 @@ import com.thatdot.quine.persistor.cassandra.support.{
   CassandraStatementSettings,
   CassandraTable,
   TableDefinition,
-  syntax
+  syntax,
 }
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T9}
@@ -69,7 +69,7 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
     selectByQuineIdQuery
       .where(
         timestampColumn.is.gte,
-        timestampColumn.is.lte
+        timestampColumn.is.lte,
       )
       .build()
 
@@ -91,7 +91,7 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
     selectWithTimeByQuineIdQuery
       .where(
         timestampColumn.is.gte,
-        timestampColumn.is.lte
+        timestampColumn.is.lte,
       )
       .build()
 
@@ -99,11 +99,11 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[Journals] = {
     import shapeless.syntax.std.tuple._ // to concatenate tuples
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
@@ -118,7 +118,7 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
         selectWithTimeByQuineIdQuery.build,
         selectWithTimeByQuineIdSinceTimestampQuery,
         selectWithTimeByQuineIdUntilTimestampQuery,
-        selectWithTimeByQuineIdSinceUntilTimestampQuery
+        selectWithTimeByQuineIdSinceUntilTimestampQuery,
       ).map(prepare(session, readSettings)).toTuple ++
       T2(insertStatement, deleteAllByPartitionKeyStatement)
         .map(prepare(session, writeSettings))
@@ -140,8 +140,8 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
         _,
         _,
         _,
-        _
-      )
+        _,
+      ),
     )
 
   }
@@ -163,7 +163,7 @@ class Journals(
   selectWithTimeByQuineIdUntilTimestamp: PreparedStatement,
   selectWithTimeByQuineIdSinceUntilTimestamp: PreparedStatement,
   insert: PreparedStatement,
-  deleteByQuineId: PreparedStatement
+  deleteByQuineId: PreparedStatement,
 )(implicit materializer: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with JournalColumnNames {
@@ -183,22 +183,22 @@ class Journals(
                 insert.bindColumns(
                   quineIdColumn.set(id),
                   timestampColumn.set(atTime),
-                  dataColumn.set(event)
+                  dataColumn.set(event),
                 )
-              }.toList: _*
-            )
-        )
+              }.toList: _*,
+            ),
+        ),
       )
     }
 
   def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(
-    deleteByQuineId.bindColumns(quineIdColumn.set(qid))
+    deleteByQuineId.bindColumns(quineIdColumn.set(qid)),
   )
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = executeSelect(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
@@ -207,28 +207,28 @@ class Journals(
       case (EventTime.MinValue, _) =>
         selectWithTimeByQuineIdUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
 
       case (_, EventTime.MaxValue) =>
         selectWithTimeByQuineIdSinceTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setGt(startingAt)
+          timestampColumn.setGt(startingAt),
         )
 
       case _ =>
         selectWithTimeByQuineIdSinceUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
           timestampColumn.setGt(startingAt),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
-    }
+    },
   )(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
 
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent]] = selectColumn(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
@@ -237,22 +237,22 @@ class Journals(
       case (EventTime.MinValue, _) =>
         selectByQuineIdUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
 
       case (_, EventTime.MaxValue) =>
         selectByQuineIdSinceTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setGt(startingAt)
+          timestampColumn.setGt(startingAt),
         )
 
       case _ =>
         selectByQuineIdSinceUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
           timestampColumn.setGt(startingAt),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
     },
-    dataColumn
+    dataColumn,
   )
 }

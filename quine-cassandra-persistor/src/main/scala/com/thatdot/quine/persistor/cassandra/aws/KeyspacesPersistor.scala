@@ -20,7 +20,7 @@ import com.datastax.oss.driver.api.core.{
   CqlIdentifier,
   CqlSession,
   CqlSessionBuilder,
-  InvalidKeyspaceException
+  InvalidKeyspaceException,
 }
 import com.datastax.oss.driver.api.querybuilder.QueryBuilder.{literal, selectFrom}
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
@@ -42,7 +42,7 @@ import com.thatdot.quine.persistor.cassandra.{
   Chunker,
   JournalsTableDefinition,
   SizeBoundedChunker,
-  SnapshotsTableDefinition
+  SnapshotsTableDefinition,
 }
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.Log._
@@ -62,13 +62,13 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     (CqlSession => CqlIdentifier => Future[Unit]),
     Int,
     Materializer,
-    LogConfig
-  ) => C
+    LogConfig,
+  ) => C,
 ) extends LazySafeLogging {
 
   def writeSettings(writeTimeout: FiniteDuration): CassandraStatementSettings = CassandraStatementSettings(
     ConsistencyLevel.LOCAL_QUORUM, // Write consistency fixed by AWS Keyspaces
-    writeTimeout
+    writeTimeout,
   )
 
   def create(
@@ -82,7 +82,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
     shouldCreateKeyspace: Boolean,
     shouldCreateTables: Boolean,
     metricRegistry: Option[MetricRegistry],
-    snapshotPartMaxSizeBytes: Int
+    snapshotPartMaxSizeBytes: Int,
   )(implicit materializer: Materializer, logConfig: LogConfig): Future[PrimeKeyspacesPersistor] = {
     val region: Region = awsRegion getOrElse new DefaultAwsRegionProviderChain().getRegion
 
@@ -109,7 +109,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
       US_GOV_EAST_1 -> "cassandra.us-gov-east-1.amazonaws.com",
       US_GOV_WEST_1 -> "cassandra.us-gov-west-1.amazonaws.com",
       CN_NORTH_1 -> "cassandra.cn-north-1.amazonaws.com.cn",
-      CN_NORTHWEST_1 -> "cassandra.cn-northwest-1.amazonaws.com.cn"
+      CN_NORTHWEST_1 -> "cassandra.cn-northwest-1.amazonaws.com.cn",
     )
 
     val endpoint = new InetSocketAddress(
@@ -117,10 +117,10 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         region,
         sys.error(
           s"AWS Keyspaces is not available in $region. " +
-          "See https://docs.aws.amazon.com/keyspaces/latest/devguide/programmatic.endpoints.html"
-        )
+          "See https://docs.aws.amazon.com/keyspaces/latest/devguide/programmatic.endpoints.html",
+        ),
       ),
-      9142
+      9142,
     )
 
     val credsProvider: AwsCredentialsProvider with SdkAutoCloseable = awsRoleArn match {
@@ -197,7 +197,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           },
         15,
         4.seconds,
-        materializer.system.scheduler
+        materializer.system.scheduler,
       )(materializer.executionContext)
       .map(_ => ())(ExecutionContext.parasitic)
 
@@ -213,8 +213,8 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
         verifyTable,
         snapshotPartMaxSizeBytes,
         materializer,
-        logConfig
-      )
+        logConfig,
+      ),
     )
   }
 
@@ -222,7 +222,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
 
 object PrimeKeyspacesPersistor
     extends AbstractGlobalKeyspacesPersistor[PrimeKeyspacesPersistor](
-      new PrimeKeyspacesPersistor(_, _, _, _, _, _, _, _, _, _)(_)
+      new PrimeKeyspacesPersistor(_, _, _, _, _, _, _, _, _, _)(_),
     )
 
 class PrimeKeyspacesPersistor(
@@ -235,7 +235,7 @@ class PrimeKeyspacesPersistor(
   shouldCreateTables: Boolean,
   verifyTable: CqlSession => CqlIdentifier => Future[Unit],
   snapshotPartMaxSizeBytes: Int,
-  materializer: Materializer
+  materializer: Materializer,
 )(implicit val logConfig: LogConfig)
     extends cassandra.PrimeCassandraPersistor(
       persistenceConfig,
@@ -244,7 +244,7 @@ class PrimeKeyspacesPersistor(
       readSettings,
       PrimeKeyspacesPersistor.writeSettings(writeTimeout),
       shouldCreateTables,
-      verifyTable
+      verifyTable,
     )(materializer) {
 
   override def shutdown(): Future[Unit] = super.shutdown() as credsProvider.close()
@@ -255,7 +255,7 @@ class PrimeKeyspacesPersistor(
     if (shouldCreateTables || namespace.nonEmpty) {
       KeyspacesPersistorDefinition.createTables(namespace, session, verifyTable)(
         materializer.executionContext,
-        logConfig
+        logConfig,
       )
     } else {
       Future.unit
@@ -263,7 +263,7 @@ class PrimeKeyspacesPersistor(
 
   override def agentCreator(
     persistenceConfig: PersistenceConfig,
-    namespace: NamespaceId
+    namespace: NamespaceId,
   ): cassandra.CassandraPersistor = new KeyspacesPersistor(
     persistenceConfig,
     session,
@@ -271,7 +271,7 @@ class PrimeKeyspacesPersistor(
     readSettings,
     writeTimeout,
     chunker,
-    snapshotPartMaxSizeBytes
+    snapshotPartMaxSizeBytes,
   )(materializer, logConfig)
 }
 
@@ -280,10 +280,10 @@ class PrimeKeyspacesPersistor(
 // I.e. the schema part of this could be extracted and shared between Keyspaces and Cassandra
 trait KeyspacesPersistorDefinition extends cassandra.CassandraPersistorDefinition {
   protected def journalsTableDef(namespace: NamespaceId): JournalsTableDefinition = new KeyspacesJournalsDefinition(
-    namespace
+    namespace,
   )
   protected def snapshotsTableDef(namespace: NamespaceId): SnapshotsTableDefinition = new KeyspacesSnapshotsDefinition(
-    namespace
+    namespace,
   )
 
 }
@@ -305,15 +305,15 @@ class KeyspacesPersistor(
   readSettings: CassandraStatementSettings,
   writeTimeout: FiniteDuration,
   protected val chunker: Chunker,
-  snapshotPartMaxSizeBytes: Int
+  snapshotPartMaxSizeBytes: Int,
 )(implicit
   materializer: Materializer,
-  val logConfig: LogConfig
+  val logConfig: LogConfig,
 ) extends cassandra.CassandraPersistor(
       persistenceConfig,
       session,
       namespace,
-      snapshotPartMaxSizeBytes
+      snapshotPartMaxSizeBytes,
     ) {
 
   private object prepareStatements
@@ -321,7 +321,7 @@ class KeyspacesPersistor(
         session,
         chunker,
         readSettings,
-        PrimeKeyspacesPersistor.writeSettings(writeTimeout)
+        PrimeKeyspacesPersistor.writeSettings(writeTimeout),
       )
 
   protected lazy val (
@@ -330,10 +330,10 @@ class KeyspacesPersistor(
     standingQueries,
     standingQueryStates,
 //    quinePatterns,
-    domainIndexEvents
+    domainIndexEvents,
   ) = Await.result(
     KeyspacesPersistorDefinition.tablesForNamespace(namespace).map(prepareStatements).tupled,
-    35.seconds
+    35.seconds,
   )
 
   override def enumerateJournalNodeIds(): Source[QuineId, NotUsed] =

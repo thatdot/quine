@@ -26,7 +26,7 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
     cancelButton: () => Unit,
     navButtons: HistoryNavigationButtons.Props,
     downloadSvg: () => Unit,
-    isQuineOSS: Boolean
+    isQuineOSS: Boolean,
   )
 
   val component: FunctionalComponent[TopBar.Props] = FunctionalComponent[Props] { props =>
@@ -44,7 +44,7 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
       img(
         src := (if (props.isQuineOSS) QuineLogo.toString else ThatDotLogo.toString),
         className := Styles.navBarLogo,
-        onClick := (e => if (e.shiftKey) props.downloadSvg())
+        onClick := (e => if (e.shiftKey) props.downloadSvg()),
       ),
       div(className := Styles.queryInput)(
         input(
@@ -56,16 +56,16 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
           value := props.query,
           onChange := (e => props.updateQuery(e.target.value)),
           onKeyUp := (e => if (e.key == "Enter") props.submitButton(e.shiftKey)),
-          disabled := props.runningTextQuery
+          disabled := props.runningTextQuery,
         ),
         datalist(id := "starting-queries")(
-          props.sampleQueries.map(q => option(value := q.query)(q.name)): _*
+          props.sampleQueries.map(q => option(value := q.query)(q.name)): _*,
         ),
         button(
           className := s"${Styles.grayClickable} ${Styles.queryInputButton}",
           onClick := (e => if (props.runningTextQuery) props.cancelButton() else props.submitButton(e.shiftKey)),
-          title := buttonTitle
-        )(if (props.runningTextQuery) "Cancel" else "Query")
+          title := buttonTitle,
+        )(if (props.runningTextQuery) "Cancel" else "Query"),
       ),
       HistoryNavigationButtons(
         props.navButtons.undoMany,
@@ -81,9 +81,9 @@ import com.thatdot.quine.webapp.{QuineLogo, Styles, ThatDotLogo}
         props.navButtons.atTime,
         props.navButtons.setTime,
         props.navButtons.toggleLayout,
-        props.navButtons.recenterViewport
+        props.navButtons.recenterViewport,
       ),
-      Counters.nodeEdgeCounters(props.foundNodesCount -> props.foundEdgesCount)
+      Counters.nodeEdgeCounters(props.foundNodesCount -> props.foundEdgesCount),
     )
   }
 }

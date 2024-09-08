@@ -12,7 +12,7 @@ package com.thatdot.quine.webapp
   */
 final case class History[E](
   past: List[E],
-  future: List[E]
+  future: List[E],
 ) {
   import History.Event
 

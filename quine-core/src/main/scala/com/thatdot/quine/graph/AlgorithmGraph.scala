@@ -67,9 +67,9 @@ trait AlgorithmGraph extends BaseGraph {
       walkSeqNum: Option[Int], // If none, you can manually prepend an integer to `seedOpt` to generate the same seed
       seedOpt: Option[String],
       namespace: NamespaceId,
-      atTime: Option[Milliseconds]
+      atTime: Option[Milliseconds],
     )(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[RandomWalkResult] = relayAsk(
       SpaceTimeQuineId(startingNode, namespace, atTime),
       GetRandomWalk(
@@ -78,8 +78,8 @@ trait AlgorithmGraph extends BaseGraph {
         returnParam,
         inOutParam,
         walkSeqNum.fold(seedOpt)(num => seedOpt.map(s => s"$num$s")),
-        _
-      )
+        _,
+      ),
     )
 
     /** @param saveSink      An output sink which will handle receiving and writing each of the final walk results.
@@ -107,9 +107,9 @@ trait AlgorithmGraph extends BaseGraph {
       randomSeedOpt: Option[String] = None,
       namespace: NamespaceId,
       atTime: Option[Milliseconds] = None,
-      parallelism: Int = 16
+      parallelism: Int = 16,
     )(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[SinkMat] = {
       requireCompatibleNodeType()
       enumerateAllNodeIds(namespace)
@@ -119,7 +119,7 @@ trait AlgorithmGraph extends BaseGraph {
             .map(walk =>
               // Prepending the QuineId as the first row value in the final output to indicate where each walk began.
               // Note that if a user provides a query, it could be that the node ID never shows up; this mitigates that.
-              ByteString(s"${(qid.pretty(idProvider) :: walk.acc).mkString(",")}\n")
+              ByteString(s"${(qid.pretty(idProvider) :: walk.acc).mkString(",")}\n"),
             )(nodeDispatcherEC)
         }
         .runWith(saveSink)

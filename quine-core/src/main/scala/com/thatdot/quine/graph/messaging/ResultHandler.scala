@@ -26,9 +26,9 @@ trait ResultHandler[Response] {
     to: QuineRef,
     response: Response,
     graph: BaseGraph,
-    responseStaysWithinJvm: Boolean
+    responseStaysWithinJvm: Boolean,
   )(implicit
-    mat: Materializer
+    mat: Materializer,
   ): Unit
 
   /** Receive a response to an ask
@@ -38,7 +38,7 @@ trait ResultHandler[Response] {
     * @param system
     */
   def receiveResponse(response: QuineResponse, promise: Promise[Response])(implicit
-    system: ActorSystem
+    system: ActorSystem,
   ): Unit
 }
 
@@ -48,14 +48,14 @@ object ResultHandler {
       to: QuineRef,
       response: A,
       graph: BaseGraph,
-      responseStaysWithinJvm: Boolean
+      responseStaysWithinJvm: Boolean,
     )(implicit
-      mat: Materializer
+      mat: Materializer,
     ): Unit =
       graph.relayTell(to, BaseMessage.Response(QuineResponse.Success(response)))
 
     def receiveResponse(qr: QuineResponse, promise: Promise[A])(implicit
-      system: ActorSystem
+      system: ActorSystem,
     ): Unit = qr match {
       case QuineResponse.Success(a: A) => promise.success(a)
       case other =>
@@ -70,9 +70,9 @@ object ResultHandler {
         to: QuineRef,
         response: Future[A],
         graph: BaseGraph,
-        responseStaysWithinJvm: Boolean
+        responseStaysWithinJvm: Boolean,
       )(implicit
-        mat: Materializer
+        mat: Materializer,
       ): Unit =
         if (responseStaysWithinJvm) {
           graph.relayTell(to, BaseMessage.Response(QuineResponse.LocalFuture(response)))
@@ -87,7 +87,7 @@ object ResultHandler {
         }
 
       def receiveResponse(qr: QuineResponse, promise: Promise[Future[A]])(implicit
-        system: ActorSystem
+        system: ActorSystem,
       ): Unit = qr match {
         case QuineResponse.LocalFuture(future) => promise.success(future.mapTo[A])
         case QuineResponse.Success(a: A) => promise.success(Future.successful(a))
@@ -104,9 +104,9 @@ object ResultHandler {
         to: QuineRef,
         response: Source[A, NotUsed],
         graph: BaseGraph,
-        responseStaysWithinJvm: Boolean
+        responseStaysWithinJvm: Boolean,
       )(implicit
-        mat: Materializer
+        mat: Materializer,
       ): Unit =
         if (responseStaysWithinJvm) {
           graph.relayTell(to, BaseMessage.Response(QuineResponse.LocalSource(response)))
@@ -117,7 +117,7 @@ object ResultHandler {
               .recover { case NonFatal(e) =>
                 BaseMessage.Response(QuineResponse.Failure(e))
               }
-              .named(s"result-handler-source-of-${classTag[A].runtimeClass.getSimpleName}")
+              .named(s"result-handler-source-of-${classTag[A].runtimeClass.getSimpleName}"),
           )
           val ref = mapped.runWith(StreamRefs.sourceRef())
           val serialized = StreamRefResolver.get(graph.system).toSerializationFormat(ref)
@@ -125,7 +125,7 @@ object ResultHandler {
         }
 
       def receiveResponse(qr: QuineResponse, promise: Promise[Source[A, NotUsed]])(implicit
-        system: ActorSystem
+        system: ActorSystem,
       ): Unit = qr match {
         case QuineResponse.LocalSource(source) => promise.success(source.collectType[A])
         case QuineResponse.StreamRef(s) =>

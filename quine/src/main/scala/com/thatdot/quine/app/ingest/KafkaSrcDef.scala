@@ -10,7 +10,7 @@ import org.apache.pekko.kafka.{
   ConsumerMessage,
   ConsumerSettings,
   Subscription,
-  Subscriptions => KafkaSubscriptions
+  Subscriptions => KafkaSubscriptions,
 }
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.{Done, NotUsed}
@@ -48,7 +48,7 @@ object KafkaSrcDef {
     autoOffsetReset: KafkaAutoOffsetReset,
     kafkaProperties: KafkaIngest.KafkaProperties,
     securityProtocol: KafkaSecurityProtocol,
-    decoders: Seq[ContentDecoder]
+    decoders: Seq[ContentDecoder],
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
     val deserializer: Deserializer[Try[Value]] =
@@ -64,7 +64,7 @@ object KafkaSrcDef {
     // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
     val properties = kafkaProperties ++ Map(
       AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-      SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+      SECURITY_PROTOCOL_CONFIG -> securityProtocol.name,
     )
 
     ConsumerSettings(graph.system, keyDeserializer, deserializer)
@@ -93,10 +93,10 @@ object KafkaSrcDef {
     kafkaProperties: KafkaIngest.KafkaProperties,
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
-    decoders: Seq[ContentDecoder]
+    decoders: Seq[ContentDecoder],
   )(implicit
     graph: CypherOpsGraph,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): ValidatedNel[KafkaSettingsValidator.ErrorString, IngestSrcDef] = {
     val isSingleHost: Boolean = graph.isSingleHost
     val subscription: Subscription = topics.fold(
@@ -108,8 +108,8 @@ object KafkaSrcDef {
               (topic, partitions) <- assignments
               partition <- partitions
             } yield new TopicPartition(topic, partition)
-          ).toSet
-        )
+          ).toSet,
+        ),
     )
 
     val consumerSettings: ConsumerSettings[Array[Byte], Try[Value]] =
@@ -121,7 +121,7 @@ object KafkaSrcDef {
         autoOffsetReset,
         kafkaProperties,
         securityProtocol,
-        decoders
+        decoders,
       )
 
     val complaintsFromValidator: ValidatedNel[String, Unit] =
@@ -142,7 +142,7 @@ object KafkaSrcDef {
             consumer,
             endingOffset,
             maxPerSecond,
-            decoders
+            decoders,
           )
         case Some(koc @ KafkaOffsetCommitting.ExplicitCommit(_, _, _, _)) =>
           val consumer: Source[WithOffset, Consumer.Control] =
@@ -158,7 +158,7 @@ object KafkaSrcDef {
             endingOffset,
             maxPerSecond,
             koc,
-            decoders
+            decoders,
           )
       }
     }
@@ -174,7 +174,7 @@ object KafkaSrcDef {
     kafkaConsumer: Source[NoOffset, Consumer.Control],
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
-    decoders: Seq[ContentDecoder]
+    decoders: Seq[ContentDecoder],
   )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
 
@@ -200,7 +200,7 @@ object KafkaSrcDef {
     endingOffset: Option[Long],
     maxPerSecond: Option[Int],
     koc: KafkaOffsetCommitting.ExplicitCommit,
-    decoders: Seq[ContentDecoder]
+    decoders: Seq[ContentDecoder],
   )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
       extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, s"$name (Kafka ingest)") {
     type InputType = WithOffset
@@ -225,8 +225,8 @@ object KafkaSrcDef {
               .withMaxInterval(FiniteDuration(koc.maxIntervalMillis.toLong, MILLISECONDS))
               .withParallelism(koc.parallelism)
               .withDelivery(
-                if (koc.waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget
-              )
+                if (koc.waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget,
+              ),
           )
 
       // Note - In cases where we are in ExplicitCommit mode with CommitDelivery.WaitForAck _and_ there is an

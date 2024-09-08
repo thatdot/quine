@@ -14,11 +14,11 @@ abstract class AbstractNodeSnapshot {
   def edges: Iterable[HalfEdge]
   def subscribersToThisNode: MutableMap[
     DomainGraphNodeId,
-    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription,
   ]
   def domainNodeIndex: MutableMap[
     QuineId,
-    MutableMap[DomainGraphNodeId, Option[Boolean]]
+    MutableMap[DomainGraphNodeId, Option[Boolean]],
   ]
 }
 // Convenience class to define which NodeActor fields to close over (sometimes mutable!) for the sake of immediately serializing it.
@@ -29,12 +29,12 @@ final case class NodeSnapshot(
   edges: Iterable[HalfEdge],
   subscribersToThisNode: MutableMap[
     DomainGraphNodeId,
-    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
+    DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription,
   ],
   domainNodeIndex: MutableMap[
     QuineId,
-    MutableMap[DomainGraphNodeId, Option[Boolean]]
-  ]
+    MutableMap[DomainGraphNodeId, Option[Boolean]],
+  ],
 ) extends AbstractNodeSnapshot
 
 object NodeSnapshot {
@@ -47,12 +47,12 @@ object NodeSnapshot {
       edges: Iterable[HalfEdge],
       subscribersToThisNode: MutableMap[DomainGraphNodeId, SubscribersToThisNodeUtil.DistinctIdSubscription],
       domainNodeIndex: MutableMap[QuineId, MutableMap[DomainGraphNodeId, Option[Boolean]]],
-      reserved: Boolean
+      reserved: Boolean,
     ): NodeSnapshot = {
       if (reserved) { // must be false in Quine
         throw new UnsupportedExtension(
           """Node snapshot indicates that restoring this node requires a Quine system
-          |extension not available in the running application.""".stripMargin.replace('\n', ' ')
+          |extension not available in the running application.""".stripMargin.replace('\n', ' '),
         )
       }
 
@@ -61,7 +61,7 @@ object NodeSnapshot {
         properties,
         edges,
         subscribersToThisNode,
-        domainNodeIndex
+        domainNodeIndex,
       )
     }
   }

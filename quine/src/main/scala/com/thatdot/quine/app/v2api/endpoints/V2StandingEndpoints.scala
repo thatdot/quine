@@ -33,11 +33,11 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
   private def standingQueryEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ) = baseEndpoint[T]("query", "standing").tag("Standing Queries")
 
   private val listStandingQueriesEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], Option[String]), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[List[RegisteredStandingQuery]], Any, Future] =
     standingQueryEndpoint[List[RegisteredStandingQuery]]
       .name("List Standing Queries")
@@ -58,13 +58,13 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           ListSQsApiCmd,
           memberIdx,
           namespaceFromParam(namespace),
-          ns => app.listStandingQueries(ns)
+          ns => app.listStandingQueries(ns),
         )
       }
 
   private val propagateStandingQueryEndpoint
     : Full[Unit, Unit, (Option[Int], Option[Boolean], Option[String], Option[Int]), ErrorEnvelope[
-      _ <: CustomError
+      _ <: CustomError,
     ], ObjectEnvelope[Unit], Any, Future] =
     standingQueryEndpoint[Unit]
       .name("Propagate Standing Queries")
@@ -90,17 +90,17 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           PropagateSQsApiCmd,
           memberIdx,
           (includeSleeping, namespaceFromParam(namespace), wakeUpParallelism.getOrElse(4)),
-          t => app.propagateStandingQuery(t._1, t._2, t._3)
+          t => app.propagateStandingQuery(t._1, t._2, t._3),
         )
       }
 
   private val addSQOutputEndpoint
     : Full[Unit, Unit, (Option[Int], String, String, Option[String], StandingQueryResultOutputUserDef), ErrorEnvelope[
-      _ <: CustomError
+      _ <: CustomError,
     ], ObjectEnvelope[Unit], Any, Future] = standingQueryEndpoint[Unit]
     .name("Create Standing Query Output")
     .description(
-      "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed."
+      "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
     )
     .in(sqName)
     .in("output")
@@ -114,13 +114,13 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
         CreateSQOutputApiCmd,
         memberIdx,
         (sqName, sqOutputName, namespaceFromParam(namespace), outputDef),
-        t => app.addSQOutput(t._1, t._2, t._3, t._4)
+        t => app.addSQOutput(t._1, t._2, t._3, t._4),
       )
     }
 
   private val createSQEndpoint
     : Full[Unit, Unit, (Option[Int], String, Option[String], StandingQueryDefinition), ErrorEnvelope[
-      _ <: CustomError
+      _ <: CustomError,
     ], ObjectEnvelope[Option[Unit]], Any, Future] = standingQueryEndpoint[Option[Unit]]
     .name("Create Standing Query")
     .description("""|Individual standing queries are issued into the graph one time;
@@ -143,12 +143,12 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
         CreateSQApiCmd,
         memberIdx,
         (sqName, namespaceFromParam(namespace), definition),
-        t => app.createSQ(t._1, t._2, t._3)
+        t => app.createSQ(t._1, t._2, t._3),
       )
     }
 
   private val deleteSQEndpoint: Full[Unit, Unit, (Option[Int], String, Option[String]), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[Option[RegisteredStandingQuery]], Any, Future] =
     standingQueryEndpoint[Option[RegisteredStandingQuery]]
       .name("Delete Standing Query")
@@ -161,12 +161,12 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           DeleteSQOutputApiCmd,
           memberIdx,
           (standingQueryName, namespaceFromParam(namespace)),
-          t => app.deleteSQ(t._1, t._2)
+          t => app.deleteSQ(t._1, t._2),
         )
       }
 
   private val deleteSQOutputEndpoint: Full[Unit, Unit, (Option[Int], String, String, Option[String]), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[Option[StandingQueryResultOutputUserDef]], Any, Future] =
     standingQueryEndpoint[Option[StandingQueryResultOutputUserDef]]
       .name("Delete Standing Query Output")
@@ -181,12 +181,12 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           DeleteSQOutputApiCmd,
           memberIdx,
           (sqName, sqOutputName, namespaceFromParam(namespace)),
-          t => app.deleteSQOutput(t._1, t._2, t._3)
+          t => app.deleteSQOutput(t._1, t._2, t._3),
         )
       }
 
   private val getSqEndpoint: Full[Unit, Unit, (Option[Int], String, Option[String]), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[Option[RegisteredStandingQuery]], Any, Future] =
     standingQueryEndpoint[Option[RegisteredStandingQuery]]
       .name("Standing Query Status")
@@ -199,7 +199,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           GetSQApiCmd,
           memberIdx,
           (sqName, namespaceFromParam(namespace)),
-          t => app.getSQ(t._1, t._2)
+          t => app.getSQ(t._1, t._2),
         )
       }
 
@@ -210,7 +210,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
     deleteSQOutputEndpoint,
     getSqEndpoint,
     listStandingQueriesEndpoint,
-    propagateStandingQueryEndpoint
+    propagateStandingQueryEndpoint,
   )
 
 }

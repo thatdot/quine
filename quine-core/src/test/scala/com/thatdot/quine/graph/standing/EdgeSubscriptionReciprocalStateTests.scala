@@ -18,7 +18,7 @@ class EdgeSubscriptionReciprocalStateTests extends AnyFunSuite {
   val query: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal =
     MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
       halfEdge = HalfEdge(Symbol("an_edge"), EdgeDirection.Outgoing, QuineId(Array(7.toByte))),
-      andThenId = andThen.queryPartId
+      andThenId = andThen.queryPartId,
     )
   val globalId: StandingQueryId = StandingQueryId(new UUID(12L, 34L))
 
@@ -49,7 +49,7 @@ class EdgeSubscriptionReciprocalStateTests extends AnyFunSuite {
         query.andThenId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(2L))))
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(2L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()
@@ -64,7 +64,7 @@ class EdgeSubscriptionReciprocalStateTests extends AnyFunSuite {
         query.andThenId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(4L))))
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(4L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()
@@ -91,7 +91,7 @@ class EdgeSubscriptionReciprocalStateTests extends AnyFunSuite {
         query.andThenId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(5L))))
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(5L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         assert(!state.sqState.currentlyMatching)

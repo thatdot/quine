@@ -22,11 +22,11 @@ case class NodeConstructorArgs(
   edges: Iterable[HalfEdge],
   distinctIdSubscribers: mutable.Map[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.DistinctIdSubscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription,
   ],
   domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
   multipleValuesStandingQueryStates: NodeActor.MultipleValuesStandingQueries,
-  initialJournal: NodeActor.Journal
+  initialJournal: NodeActor.Journal,
 )
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
@@ -53,12 +53,12 @@ private[graph] class NodeActor(
   initialEdges: Iterable[HalfEdge],
   distinctIdSubscribers: mutable.Map[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.DistinctIdSubscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription,
   ],
   domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
   multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries,
   initialJournal: NodeActor.Journal,
-  logConfig: LogConfig
+  logConfig: LogConfig,
 ) extends AbstractNodeActor(
       qidAtTime,
       graph,
@@ -69,7 +69,7 @@ private[graph] class NodeActor(
       initialEdges,
       distinctIdSubscribers,
       domainNodeIndex,
-      multipleValuesStandingQueries
+      multipleValuesStandingQueries,
     )(logConfig) {
   implicit def logConfig_ : LogConfig = logConfig
   def receive: Receive = actorClockBehavior {
@@ -112,7 +112,7 @@ private[graph] class NodeActor(
     val (watchableEventIndexRestored, locallyWatchedDgnsToRemove) = StandingQueryWatchableEventIndex.from(
       dgnRegistry,
       domainGraphSubscribers.subscribersToThisNode.keysIterator,
-      multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state }
+      multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state },
     )
     this.watchableEventIndex = watchableEventIndexRestored
 
@@ -156,7 +156,7 @@ private[graph] class NodeActor(
       log.debug(
         safe"""Detected Standing Query changes while asleep. Removed DGN IDs:
               |${Safe((propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
-              |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines
+              |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines,
       )
     }
 
@@ -202,6 +202,6 @@ object NodeActor {
   type Journal = Iterable[NodeEvent]
   type MultipleValuesStandingQueries = mutable.Map[
     (StandingQueryId, MultipleValuesStandingQueryPartId),
-    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
+    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState),
   ]
 }

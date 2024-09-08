@@ -30,7 +30,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
       logger.error(
         safe"""Expected Kafka settings validator to be available at ${Safe(c.getName)}.CONFIG --
               |did you override your classpath with a custom kafka JAR? Kafka config validation
-              |will now fail.""".cleanLines
+              |will now fail.""".cleanLines,
       )
       throw e
     case Success(validator) => validator
@@ -45,7 +45,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
     properties: KafkaProperties,
     explicitGroupId: Option[String] = None,
     explicitOffsetCommitting: Option[KafkaOffsetCommitting] = None,
-    assumeConfigIsFinal: Boolean = false
+    assumeConfigIsFinal: Boolean = false,
   ): Option[NonEmptyList[String]] = {
     val v = new KafkaSettingsValidator(underlyingValidator(classOf[ConsumerConfig]), properties)
 
@@ -76,28 +76,28 @@ object KafkaSettingsValidator extends LazySafeLogging {
           v.findConflict(Set(CommonClientConfigs.GROUP_ID_CONFIG), explicitGroupId),
           v.findConflict(
             Set(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG),
-            Some(explicitOffsetCommitting)
+            Some(explicitOffsetCommitting),
           ),
           //boostrap servers is mandatory on ingest. If it is set in properties that's a conflict
           v.disallowField(
             CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
-            "Please use the Kafka ingest `bootstrapServers` field."
+            "Please use the Kafka ingest `bootstrapServers` field.",
           ),
           v.disallowField(
             ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
+            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers.",
           ),
           v.disallowField(
             ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
+            "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers.",
           ),
           v.disallowField(
             CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
-            "Please use the Kafka ingest `securityProtocol` field."
+            "Please use the Kafka ingest `securityProtocol` field.",
           ),
           v.disallowField(
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-            "Please use the Kafka ingest `autoOffsetReset` field."
+            "Please use the Kafka ingest `autoOffsetReset` field.",
           ),
           //
           // --- if any of these keys points to something containing "com.sun.security.auth.module.JndiLoginModule"
@@ -109,7 +109,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
           // invalid by `unrecognizedProperties`, but better safe than sorry.
           v.disallowJaasSubstring(s"producer.override.$SASL_JAAS_CONFIG"),
           v.disallowJaasSubstring(s"consumer.override.$SASL_JAAS_CONFIG"),
-          v.disallowJaasSubstring(s"admin.override.$SASL_JAAS_CONFIG")
+          v.disallowJaasSubstring(s"admin.override.$SASL_JAAS_CONFIG"),
         ).flatten
       }
 
@@ -123,11 +123,11 @@ object KafkaSettingsValidator extends LazySafeLogging {
       //boostrap servers is mandatory. If it is set in properties that's a conflict
       v.disallowField(
         CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
-        "Please use the result output `bootstrapServers` field."
+        "Please use the result output `bootstrapServers` field.",
       ),
       v.disallowField(
         ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-        "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers."
+        "Please use one of the `format` field cypher options, which rely on their hard-coded deserializers.",
       ),
       //
       // --- if any of these keys points to something containing "com.sun.security.auth.module.JndiLoginModule"
@@ -139,7 +139,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
       // invalid by `unrecognizedProperties`, but better safe than sorry.
       v.disallowJaasSubstring(s"producer.override.$SASL_JAAS_CONFIG"),
       v.disallowJaasSubstring(s"consumer.override.$SASL_JAAS_CONFIG"),
-      v.disallowJaasSubstring(s"admin.override.$SASL_JAAS_CONFIG")
+      v.disallowJaasSubstring(s"admin.override.$SASL_JAAS_CONFIG"),
     ).flatten
 
     v.withUnrecognizedErrors(errors)
@@ -148,7 +148,7 @@ object KafkaSettingsValidator extends LazySafeLogging {
 
 class KafkaSettingsValidator(
   validator: ConfigDef,
-  properties: KafkaProperties
+  properties: KafkaProperties,
 ) extends LazySafeLogging {
 
   private val underlyingKnownKeys: Set[String] = validator.configKeys.values.asScala.map(_.name).toSet
@@ -161,7 +161,7 @@ class KafkaSettingsValidator(
     */
   protected def findConflict(
     keys: Set[String],
-    ingestField: Option[_]
+    ingestField: Option[_],
   ): Option[ErrorString] = ingestField match {
     case Some(_) =>
       val usedKeys: Set[ErrorString] = properties.keySet.intersect(keys)

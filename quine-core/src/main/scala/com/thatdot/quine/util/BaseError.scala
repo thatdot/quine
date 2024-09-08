@@ -24,14 +24,14 @@ object AnyError {
   def fromThrowable(e: Throwable): AnyError = BaseError
     .fromThrowable(e)
     .getOrElse(
-      GenericError(e.getClass.getName, e.getMessage, e.getStackTrace, Option(e.getCause).map(fromThrowable))
+      GenericError(e.getClass.getName, e.getMessage, e.getStackTrace, Option(e.getCause).map(fromThrowable)),
     )
 
   final case class GenericError(
     exceptionType: String,
     message: String,
     stack: Array[StackTraceElement],
-    cause: Option[AnyError]
+    cause: Option[AnyError],
   ) extends AnyError {
     def toThrowable: Throwable = {
       val e = new Throwable(message, cause.map(_.toThrowable).orNull)
@@ -57,10 +57,10 @@ object ExternalError {
   }
 
   final case class RemoteStreamRefActorTerminatedError(
-    toThrowable: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException
+    toThrowable: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException,
   ) extends ExternalError
   final case class StreamRefSubscriptionTimeoutError(
-    toThrowable: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException
+    toThrowable: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException,
   ) extends ExternalError
   final case class InvalidSequenceNumberError(toThrowable: org.apache.pekko.stream.InvalidSequenceNumberException)
       extends ExternalError

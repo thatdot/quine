@@ -47,7 +47,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
         path = tempFile.getAbsolutePath,
         ingestLimit = None,
         maximumPerSecond = None,
-        fileIngestMode = None
+        fileIngestMode = None,
       )
 
       val decodedSource = DecodedSource.apply("test", fileIngest, IngestMetered.ingestMeter(None, "test"), graph.system)

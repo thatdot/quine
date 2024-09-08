@@ -12,7 +12,7 @@ import com.thatdot.quine.graph.cypher.{Expr, Value, Value => CypherValue}
 
 case class NumberIteratorSource(
   bounds: IngestBounds = IngestBounds(),
-  ingestMeter: IngestMeter
+  ingestMeter: IngestMeter,
 ) {
 
   def decodedSource: DecodedSource = new DecodedSource(ingestMeter) {
@@ -29,7 +29,7 @@ case class NumberIteratorSource(
       withKillSwitches(
         bounded
           .via(metered[Value](meter, _ => 1)) //TODO this counts values not bytes
-          .map(sum => (Success(sum), sum))
+          .map(sum => (Success(sum), sum)),
       )
     }
   }

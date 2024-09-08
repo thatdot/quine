@@ -18,7 +18,7 @@ import com.thatdot.quine.model.{
   FetchConstraint,
   GenericEdge,
   HalfEdge,
-  QuineId
+  QuineId,
 }
 
 trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyChecks with Matchers with LoneElement {
@@ -77,7 +77,7 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
       Inspectors.forAll(byOther) { case (other, otherSet) =>
         assertEdgeCollection(
           edgeCollection.edgesByQid(other),
-          otherSet.map(e => GenericEdge(e.edgeType, e.direction)) toSeq
+          otherSet.map(e => GenericEdge(e.edgeType, e.direction)) toSeq,
         )
       }
 
@@ -87,7 +87,7 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
           assertEdgeCollection(
             edgeCollection
               .qidsByTypeAndDirection(edgeType, direction),
-            (typeSet intersect directionSet).map(_.other).toSeq
+            (typeSet intersect directionSet).map(_.other).toSeq,
           )
         }
       }
@@ -98,7 +98,7 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
           assertEdgeCollection(
             edgeCollection
               .typesByDirectionAndQid(direction, other),
-            (directionSet intersect otherSet).map(_.edgeType).toSeq
+            (directionSet intersect otherSet).map(_.edgeType).toSeq,
           )
         }
       }
@@ -109,7 +109,7 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
           assertEdgeCollection(
             edgeCollection
               .directionsByTypeAndQid(edgeType, other),
-            (typeSet intersect otherSet).map(_.direction).toSeq
+            (typeSet intersect otherSet).map(_.direction).toSeq,
           )
         }
       }
@@ -124,16 +124,16 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
       assertEmpty(edgeCollection.edgesByQid(intToQuineId(-1)))
       assertEmpty(edgeCollection.directionsByTypeAndQid(Symbol("someNewType"), intToQuineId(-1)))
       valueOf(
-        edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, intToQuineId(-1)))
+        edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, intToQuineId(-1))),
       ) shouldBe false
       assertEmpty(edgeCollection.directionsByTypeAndQid(Symbol("someNewType"), edges.head.other))
       assertEmpty(edgeCollection.qidsByTypeAndDirection(Symbol("someNewType"), edges.head.direction))
       valueOf(
-        edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, edges.head.other))
+        edgeCollection.contains(HalfEdge(Symbol("someNewType"), edges.head.direction, edges.head.other)),
       ) shouldBe false
       assertEmpty(edgeCollection.directionsByTypeAndQid(edges.head.edgeType, intToQuineId(-1)))
       valueOf(
-        edgeCollection.contains(HalfEdge(edges.head.edgeType, edges.head.direction, intToQuineId(-1)))
+        edgeCollection.contains(HalfEdge(edges.head.edgeType, edges.head.direction, intToQuineId(-1))),
       ) shouldBe false
 
     }
@@ -156,22 +156,22 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
         DependsUpon,
         DomainGraphBranch.empty,
         circularMatchAllowed,
-        FetchConstraint(constraintMin, None)
+        FetchConstraint(constraintMin, None),
       )
 
     assert(
       checkContains(
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
-          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
         ),
-        thisQid
+        thisQid,
       ),
-      "Base case - matching edges, circularMatchAllowed = false"
+      "Base case - matching edges, circularMatchAllowed = false",
     )
 
     //addition of 1 more input edge fails
@@ -179,16 +179,16 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
       !checkContains(
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
-          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 3)
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 3),
         ),
-        thisQid
+        thisQid,
       ),
-      "domain edges > collection size"
+      "domain edges > collection size",
     )
 
     //different direction is not matched
@@ -196,30 +196,30 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
       !checkContains(
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 1),
-          domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 2)
+          domainEdge(Symbol("A"), EdgeDirection.Incoming, circularMatchAllowed = false, 2),
         ),
-        thisQid
+        thisQid,
       ),
-      "Different direction is not matched"
+      "Different direction is not matched",
     )
 
     assert(
       !checkContains(
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, thisQid)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, thisQid),
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
-          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2)
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
         ),
-        thisQid
+        thisQid,
       ),
-      "Qid match added totals"
+      "Qid match added totals",
     )
 
     //with matching circular edges
@@ -228,17 +228,17 @@ trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyC
         Seq(
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid1),
           HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid2),
-          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid3)
+          HalfEdge(Symbol("A"), EdgeDirection.Outgoing, qid3),
         ),
         Seq(
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 1),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = false, 2),
           domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 3),
-          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 4)
+          domainEdge(Symbol("A"), EdgeDirection.Outgoing, circularMatchAllowed = true, 4),
         ),
-        thisQid
+        thisQid,
       ),
-      "Matching circAllowed and non-circAllowed edges"
+      "Matching circAllowed and non-circAllowed edges",
     )
 
     /* With only circular edge requirements as input, the behavior is undefined:

@@ -35,7 +35,7 @@ import com.thatdot.quine.graph.cypher.{
   UserDefinedFunctionSignature,
   UserDefinedProcedure,
   UserDefinedProcedureSignature,
-  Value
+  Value,
 }
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.{
@@ -44,7 +44,7 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   StandingQueryId,
   StandingQueryOpsGraph,
-  StandingQueryResult
+  StandingQueryResult,
 }
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
@@ -58,7 +58,7 @@ import com.thatdot.quine.util.Log._
   */
 final case class QuineProcedureCall(
   resolvedProcedure: UserDefinedProcedure,
-  unresolvedCall: ast.UnresolvedCall
+  unresolvedCall: ast.UnresolvedCall,
 ) extends ast.CallClause {
 
   override def clauseSpecificSemanticCheck = unresolvedCall.semanticCheck
@@ -110,7 +110,7 @@ case object resolveCalls extends StatementRewriter {
     PurgeNode,
     CypherDebugSleep,
     ReifyTime,
-    RandomWalk
+    RandomWalk,
   )
 
   /** This map is only meant to maintain backward compatibility for a short time. */
@@ -143,17 +143,17 @@ object RecentNodeIds extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("count" -> Type.Integer),
     outputs = Vector("nodeId" -> Type.Anything),
-    description = "Fetch the specified number of IDs of nodes from the in-memory cache"
+    description = "Fetch the specified number of IDs of nodes from the in-memory cache",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val limit: Int = arguments match {
       case Seq() => 10
@@ -181,17 +181,17 @@ object RecentNodes extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("count" -> Type.Integer),
     outputs = Vector("node" -> Type.Node),
-    description = "Fetch the specified number of nodes from the in-memory cache"
+    description = "Fetch the specified number of nodes from the in-memory cache",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val limit: Int = arguments match {
       case Seq() => 10
@@ -222,18 +222,18 @@ final case class CypherGetRoutingTable(addresses: Seq[String]) extends UserDefin
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("context" -> Type.Map, "database" -> Type.Str),
     outputs = Vector("ttl" -> Type.Integer, "servers" -> Type.List(Type.Str)),
-    description = ""
+    description = "",
   )
 
   // TODO: use the argument(s)
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] =
     Source.single(
       Vector(
@@ -242,11 +242,11 @@ final case class CypherGetRoutingTable(addresses: Seq[String]) extends UserDefin
           Expr.Map(
             Map(
               "addresses" -> Expr.List(addresses.map(Expr.Str(_)).toVector),
-              "role" -> Expr.Str(role)
-            )
+              "role" -> Expr.Str(role),
+            ),
           )
-        })
-      )
+        }),
+      ),
     )
 }
 
@@ -258,17 +258,17 @@ object JsonLoad extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("url" -> Type.Str),
     outputs = Vector("value" -> Type.Anything),
-    description = "Load a line-base JSON file, emitting one record per line"
+    description = "Load a line-base JSON file, emitting one record per line",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val urlOrPath = arguments match {
       case Seq(Expr.Str(s)) => s
@@ -279,7 +279,7 @@ object JsonLoad extends UserDefinedProcedure {
       scala.io.Source
         .fromURL(urlOrPath)
         .getLines()
-        .map((line: String) => Vector(Value.fromJson(parse(line).valueOr(throw _))))
+        .map((line: String) => Vector(Value.fromJson(parse(line).valueOr(throw _)))),
     )
   }
 }
@@ -289,7 +289,7 @@ object JsonLoad extends UserDefinedProcedure {
   */
 abstract class StubbedUserDefinedProcedure(
   override val name: String,
-  outputColumnNames: Vector[String]
+  outputColumnNames: Vector[String],
 ) extends UserDefinedProcedure {
   // Stubbed procedures are used for compatibility with other systems, therefore we avoid any Quine-specific semantic analysis
   val canContainUpdates = false
@@ -298,17 +298,17 @@ abstract class StubbedUserDefinedProcedure(
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector.empty,
     outputs = outputColumnNames.map(_ -> Type.Anything),
-    description = ""
+    description = "",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = Source.empty
 }
 
@@ -325,26 +325,26 @@ object CypherIndexes
         "progress",
         "provider",
         "id",
-        "failureMessage"
-      )
+        "failureMessage",
+      ),
     )
 
 object CypherRelationshipTypes
     extends StubbedUserDefinedProcedure(
       name = "db.relationshipTypes",
-      outputColumnNames = Vector("relationshipType")
+      outputColumnNames = Vector("relationshipType"),
     )
 
 object CypherPropertyKeys
     extends StubbedUserDefinedProcedure(
       name = "db.propertyKeys",
-      outputColumnNames = Vector("propertyKey")
+      outputColumnNames = Vector("propertyKey"),
     )
 
 object CypherLabels
     extends StubbedUserDefinedProcedure(
       name = "dbms.labels",
-      outputColumnNames = Vector("label")
+      outputColumnNames = Vector("label"),
     )
 
 /** Increment an integer property on a node atomically (doing the get and the
@@ -361,17 +361,17 @@ object IncrementCounter extends UserDefinedProcedure {
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "amount" -> Type.Integer),
     outputs = Vector("count" -> Type.Integer),
     description =
-      "Atomically increment an integer property on a node by a certain amount, returning the resultant value"
+      "Atomically increment an integer property on a node by a certain amount, returning the resultant value",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -391,7 +391,7 @@ object IncrementCounter extends UserDefinedProcedure {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Integer),
               actualValue = Expr.fromQuineValue(valueFound),
-              context = "`incrementCounter` procedure"
+              context = "`incrementCounter` procedure",
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -410,17 +410,17 @@ object AddToInt extends UserDefinedProcedure with LazySafeLogging {
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Integer),
     outputs = Vector("result" -> Type.Integer),
     description = """Atomically add to an integer property on a node by a certain amount (defaults to 1),
-                    |returning the resultant value""".stripMargin.replace('\n', ' ')
+                    |returning the resultant value""".stripMargin.replace('\n', ' '),
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -443,19 +443,19 @@ object AddToInt extends UserDefinedProcedure with LazySafeLogging {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Integer),
               actualValue = Expr.fromQuineValue(valueFound),
-              context = s"Property accessed by $name procedure"
+              context = s"Property accessed by $name procedure",
             )
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
               log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)}
                    |reports a current value of ${successOfDifferentType.valueFound.toString} but reports
-                   |successfully being updated as an integer by: ${Safe(name)}.""".cleanLines
+                   |successfully being updated as an integer by: ${Safe(name)}.""".cleanLines,
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Integer),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
-              context = s"Property accessed by $name procedure."
+              context = s"Property accessed by $name procedure.",
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -474,17 +474,17 @@ object AddToFloat extends UserDefinedProcedure with LazySafeLogging {
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "add" -> Type.Floating),
     outputs = Vector("result" -> Type.Floating),
     description = """Atomically add to a floating-point property on a node by a certain amount (defaults to 1.0),
-                    |returning the resultant value""".stripMargin.replace('\n', ' ')
+                    |returning the resultant value""".stripMargin.replace('\n', ' '),
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -507,19 +507,19 @@ object AddToFloat extends UserDefinedProcedure with LazySafeLogging {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Floating),
               actualValue = Expr.fromQuineValue(valueFound),
-              context = s"Property accessed by $name procedure"
+              context = s"Property accessed by $name procedure",
             )
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
               log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)} reports a current value
                    |of ${successOfDifferentType.valueFound.toString} but reports successfully being updated as a float
-                   |by: ${Safe(name)}.""".cleanLines
+                   |by: ${Safe(name)}.""".cleanLines,
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Floating),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
-              context = s"Property accessed by $name procedure."
+              context = s"Property accessed by $name procedure.",
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -539,17 +539,17 @@ object InsertToSet extends UserDefinedProcedure with LazySafeLogging {
     outputs = Vector("result" -> Type.ListOfAnything),
     description =
       """Atomically add an element to a list property treated as a set. If one or more instances of `add` are
-        |already present in the list at node[key], this procedure has no effect.""".stripMargin.replace('\n', ' ')
+        |already present in the list at node[key], this procedure has no effect.""".stripMargin.replace('\n', ' '),
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -571,19 +571,19 @@ object InsertToSet extends UserDefinedProcedure with LazySafeLogging {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
               actualValue = Expr.fromQuineValue(valueFound),
-              context = s"Property accessed by $name procedure"
+              context = s"Property accessed by $name procedure",
             )
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
               log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)}
                    |reports a current value of ${successOfDifferentType.valueFound.toString} but reports
-                   |successfully being updated as a list (used as set) by: ${Safe(name)}.""".cleanLines
+                   |successfully being updated as a list (used as set) by: ${Safe(name)}.""".cleanLines,
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
-              context = s"Property accessed by $name procedure."
+              context = s"Property accessed by $name procedure.",
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -604,17 +604,17 @@ object UnionToSet extends UserDefinedProcedure with LazySafeLogging {
     description =
       """Atomically add set of elements to a list property treated as a set. The elements in `add` will be deduplicated
         |and, for any that are not yet present at node[key], will be stored. If the list at node[key] already contains
-        |all elements of `add`, this procedure has no effect.""".stripMargin.replace('\n', ' ')
+        |all elements of `add`, this procedure has no effect.""".stripMargin.replace('\n', ' '),
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -636,19 +636,19 @@ object UnionToSet extends UserDefinedProcedure with LazySafeLogging {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
               actualValue = Expr.fromQuineValue(valueFound),
-              context = s"Property accessed by $name procedure"
+              context = s"Property accessed by $name procedure",
             )
           case successOfDifferentType: AddToAtomicResult =>
             // by the type invariant on [[AddToAtomic]], this case is unreachable.
             logger.warn(
               log"""Verify data integrity on node: ${Safe(nodeId.pretty)}. Property: ${Safe(propertyKey)} reports a
                    |current value of ${successOfDifferentType.valueFound.toString} but reports successfully being
-                   |updated as a list (used as set) by: ${Safe(name)}.""".cleanLines
+                   |updated as a list (used as set) by: ${Safe(name)}.""".cleanLines,
             )
             throw CypherException.TypeMismatch(
               expected = Seq(Type.ListOfAnything),
               actualValue = Expr.fromQuineValue(successOfDifferentType.valueFound),
-              context = s"Property accessed by $name procedure."
+              context = s"Property accessed by $name procedure.",
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -663,17 +663,17 @@ object CypherLogging extends UserDefinedProcedure with StrictSafeLogging {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("level" -> Type.Str, "value" -> Type.Anything),
     outputs = Vector("log" -> Type.Str),
-    description = "Log the input argument to console"
+    description = "Log the input argument to console",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val prettyStr: String = arguments match {
@@ -720,9 +720,9 @@ object CypherDebugNode extends UserDefinedProcedure {
       "subscriptions" -> Type.Str,
       "multipleValuesStandingQueryStates" -> Type.ListOfAnything,
       "journal" -> Type.ListOfAnything,
-      "graphNodeHashCode" -> Type.Integer
+      "graphNodeHashCode" -> Type.Integer,
     ),
-    description = "Log the internal state of a node"
+    description = "Log the internal state of a node",
   )
 
   private[this] def halfEdge2Value(edge: HalfEdge)(implicit idProvider: QuineIdProvider): Value =
@@ -730,8 +730,8 @@ object CypherDebugNode extends UserDefinedProcedure {
       Map(
         "edgeType" -> Expr.Str(edge.edgeType.name),
         "direction" -> Expr.Str(edge.direction.toString),
-        "other" -> Expr.fromQuineValue(idProvider.qidToValue(edge.other))
-      )
+        "other" -> Expr.fromQuineValue(idProvider.qidToValue(edge.other)),
+      ),
     )
 
   private[this] def locallyRegisteredStandingQuery2Value(q: LocallyRegisteredStandingQuery): Value =
@@ -740,18 +740,18 @@ object CypherDebugNode extends UserDefinedProcedure {
         "id" -> Expr.Str(q.id),
         "globalId" -> Expr.Str(q.globalId),
         "subscribers" -> Expr.List(q.subscribers.view.map(Expr.Str).toVector),
-        "state" -> Expr.Str(q.state)
-      )
+        "state" -> Expr.Str(q.state),
+      ),
     )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
@@ -760,7 +760,7 @@ object CypherDebugNode extends UserDefinedProcedure {
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
         UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
-          s"`$name` expects a node or node ID argument, but got $nodeLike"
+          s"`$name` expects a node or node ID argument, but got $nodeLike",
         ))
       case other =>
         throw wrongSignature(other)
@@ -782,12 +782,12 @@ object CypherDebugNode extends UserDefinedProcedure {
                 _,
                 multipleValuesStandingQueryStates,
                 journal,
-                graphNodeHashCode
+                graphNodeHashCode,
               ) =>
             Vector(
               atTime
                 .map(t =>
-                  Expr.DateTime(ZonedDateTime.ofInstant(Instant.ofEpochMilli(t.millis), ZoneId.systemDefault()))
+                  Expr.DateTime(ZonedDateTime.ofInstant(Instant.ofEpochMilli(t.millis), ZoneId.systemDefault())),
                 )
                 .getOrElse(Expr.Null),
               Expr.Map(properties.map(kv => kv._1.name -> Expr.Str(kv._2))),
@@ -800,7 +800,7 @@ object CypherDebugNode extends UserDefinedProcedure {
               Expr.Str(subscriptions.mkString(",")),
               Expr.List(multipleValuesStandingQueryStates.map(locallyRegisteredStandingQuery2Value)),
               Expr.List(journal.map(e => Expr.Str(e.toString)).toVector),
-              Expr.Integer(graphNodeHashCode)
+              Expr.Integer(graphNodeHashCode),
             )
         }(location.graph.nodeDispatcherEC)
     }
@@ -819,15 +819,15 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
       "queryId" -> Type.Integer,
       "queryDepth" -> Type.Integer,
       "receiverId" -> Type.Str,
-      "lastResult" -> Type.Anything
+      "lastResult" -> Type.Anything,
     ),
-    description = "Return the current state of the standing query subscribers."
+    description = "Return the current state of the standing query subscribers.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
     implicit val idProv: QuineIdProvider = location.graph.idProvider
@@ -835,7 +835,7 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
         UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
-          s"`$name` expects a node or node ID argument, but got $nodeLike"
+          s"`$name` expects a node or node ID argument, but got $nodeLike",
         ))
       case other =>
         throw wrongSignature(other)
@@ -851,10 +851,10 @@ object CypherGetDistinctIDSqSubscriberResults extends UserDefinedProcedure {
               Vector(
                 Expr.Integer(s.dgnId),
                 Expr.Str(s.qid.pretty),
-                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
+                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r)),
               )
             }.iterator
-          }
+          },
         )(location.graph.nodeDispatcherEC)
     }
   }
@@ -872,15 +872,15 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
       "queryId" -> Type.Integer,
       "queryDepth" -> Type.Integer,
       "receiverId" -> Type.Str,
-      "lastResult" -> Type.Anything
+      "lastResult" -> Type.Anything,
     ),
-    description = "Return the current state of the standing query subscriptions."
+    description = "Return the current state of the standing query subscriptions.",
   )
 
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val graph: LiteralOpsGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
     implicit val idProv: QuineIdProvider = location.graph.idProvider
@@ -888,7 +888,7 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
         UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
-          s"`$name` expects a node or node ID argument, but got $nodeLike"
+          s"`$name` expects a node or node ID argument, but got $nodeLike",
         ))
       case other =>
         throw wrongSignature(other)
@@ -904,10 +904,10 @@ object CypherGetDistinctIdSqSubscriptionResults extends UserDefinedProcedure {
               Vector(
                 Expr.Integer(s.dgnId.toLong),
                 Expr.Str(s.qid.pretty),
-                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r))
+                s.lastResult.fold[Value](Expr.Null)(r => Expr.Bool(r)),
               )
             }.iterator
-          }
+          },
         )(location.graph.nodeDispatcherEC)
     }
   }
@@ -921,17 +921,17 @@ object PurgeNode extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Anything),
     outputs = Vector.empty,
-    description = "Purge a node from history"
+    description = "Purge a node from history",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = LiteralOpsGraph.getOrThrow(s"$name Cypher procedure", location.graph)
@@ -940,7 +940,7 @@ object PurgeNode extends UserDefinedProcedure {
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
         UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
-          s"`$name` expects a node or node ID argument, but got $nodeLike"
+          s"`$name` expects a node or node ID argument, but got $nodeLike",
         ))
       case other =>
         throw wrongSignature(other)
@@ -959,17 +959,17 @@ object CypherDebugSleep extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Anything),
     outputs = Vector.empty,
-    description = "Request a node sleep"
+    description = "Request a node sleep",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = location.graph
@@ -978,7 +978,7 @@ object CypherDebugSleep extends UserDefinedProcedure {
     val node: QuineId = arguments match {
       case Seq(nodeLike) =>
         UserDefinedProcedure.extractQuineId(nodeLike) getOrElse (throw CypherException.Runtime(
-          s"`$name` expects a node or node ID argument, but got $nodeLike"
+          s"`$name` expects a node or node ID argument, but got $nodeLike",
         ))
       case other =>
         throw wrongSignature(other)
@@ -998,17 +998,17 @@ object CypherBuiltinFunctions extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector.empty,
     outputs = Vector("name" -> Type.Str, "signature" -> Type.Str, "description" -> Type.Str),
-    description = "List built-in cypher functions"
+    description = "List built-in cypher functions",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1030,17 +1030,17 @@ object CypherFunctions extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector.empty,
     outputs = Vector("name" -> Type.Str, "signature" -> Type.Str, "description" -> Type.Str),
-    description = "List registered functions"
+    description = "List registered functions",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1078,19 +1078,19 @@ object CypherProcedures extends UserDefinedProcedure {
       "name" -> Type.Str,
       "signature" -> Type.Str,
       "description" -> Type.Str,
-      "mode" -> Type.Str
+      "mode" -> Type.Str,
     ),
-    description = "List registered procedures"
+    description = "List registered procedures",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     arguments match {
@@ -1120,20 +1120,20 @@ object CypherDoWhen extends UserDefinedProcedure {
       "condition" -> Type.Bool,
       "ifQuery" -> Type.Str,
       "elseQuery" -> Type.Str,
-      "params" -> Type.Map
+      "params" -> Type.Map,
     ),
     outputs = Vector("value" -> Type.Map),
-    description = "Depending on the condition execute ifQuery or elseQuery"
+    description = "Depending on the condition execute ifQuery or elseQuery",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     // This helper function is to work around an (possibly compiler) error for the subsequent
@@ -1158,9 +1158,9 @@ object CypherDoWhen extends UserDefinedProcedure {
         location.namespace,
         parameters = params,
         initialColumns = params,
-        atTime = location.atTime
+        atTime = location.atTime,
       )(
-        location.graph
+        location.graph,
       )
 
       subQueryResults.results.map { (row: Vector[Value]) =>
@@ -1178,17 +1178,17 @@ object CypherDoIt extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("cypher" -> Type.Str, "params" -> Type.Map),
     outputs = Vector("value" -> Type.Map),
-    description = "Executes a Cypher query with the given parameters"
+    description = "Executes a Cypher query with the given parameters",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     def extractSeq(values: Seq[Value]): (String, Map[String, Value]) = arguments match {
@@ -1204,9 +1204,9 @@ object CypherDoIt extends UserDefinedProcedure {
       location.namespace,
       parameters = parameters,
       initialColumns = parameters,
-      atTime = location.atTime
+      atTime = location.atTime,
     )(
-      location.graph
+      location.graph,
     )
 
     subQueryResults.results.map { (row: Vector[Value]) =>
@@ -1223,17 +1223,17 @@ object CypherDoCase extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("conditionals" -> Type.ListOfAnything, "elseQuery" -> Type.Str, "params" -> Type.Map),
     outputs = Vector("value" -> Type.Map),
-    description = "Given a list of conditional/query pairs, execute the first query with a true conditional"
+    description = "Given a list of conditional/query pairs, execute the first query with a true conditional",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     def extractSeq(values: Seq[Value]): (Vector[Value], String, Map[String, Value]) = arguments match {
@@ -1257,7 +1257,7 @@ object CypherDoCase extends UserDefinedProcedure {
         case _ =>
           throw CypherException.Runtime(
             s"`$name` expects each condition to be followed by a query, " +
-            s"but the list of conditions and queries has odd length ${conditionals.length}"
+            s"but the list of conditions and queries has odd length ${conditionals.length}",
           )
       }
       .collectFirst { case (true, query) => query }
@@ -1272,9 +1272,9 @@ object CypherDoCase extends UserDefinedProcedure {
           location.namespace,
           parameters = parameters,
           initialColumns = parameters,
-          atTime = location.atTime
+          atTime = location.atTime,
         )(
-          location.graph
+          location.graph,
         )
 
         subQueryResults.results.map { (row: Vector[Value]) =>
@@ -1292,17 +1292,17 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("cypher" -> Type.Str, "params" -> Type.Map, "timeout" -> Type.Integer),
     outputs = Vector("value" -> Type.Map),
-    description = "Executes a Cypher query with the given parameters but abort after a certain number of milliseconds"
+    description = "Executes a Cypher query with the given parameters but abort after a certain number of milliseconds",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val (query: String, parameters: Map[String, Value], t: Long) = arguments match {
@@ -1315,9 +1315,9 @@ object CypherRunTimeboxed extends UserDefinedProcedure {
       location.namespace,
       parameters = parameters,
       initialColumns = parameters,
-      atTime = location.atTime
+      atTime = location.atTime,
     )(
-      location.graph
+      location.graph,
     )
 
     subQueryResults.results
@@ -1337,17 +1337,17 @@ object CypherSleep extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("duration" -> Type.Integer),
     outputs = Vector.empty,
-    description = "Sleep for a certain number of milliseconds"
+    description = "Sleep for a certain number of milliseconds",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val sleepMillis: Long = arguments match {
@@ -1369,17 +1369,17 @@ object CypherCreateRelationship extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("from" -> Type.Node, "relType" -> Type.Str, "props" -> Type.Map, "to" -> Type.Node),
     outputs = Vector("rel" -> Type.Relationship),
-    description = "Create a relationship with a potentially dynamic name"
+    description = "Create a relationship with a potentially dynamic name",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1407,17 +1407,17 @@ object CypherCreateSetProperty extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Node, "key" -> Type.Str, "value" -> Type.Anything),
     outputs = Vector.empty,
-    description = "Set the property with the provided key on the specified input node"
+    description = "Set the property with the provided key on the specified input node",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1442,17 +1442,17 @@ object CypherCreateSetLabels extends UserDefinedProcedure {
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("node" -> Type.Node, "labels" -> Type.List(Type.Str)),
     outputs = Vector.empty,
-    description = "Set the labels on the specified input node, overriding any previously set labels"
+    description = "Set the labels on the specified input node, overriding any previously set labels",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
     import location._
 
@@ -1489,17 +1489,17 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
   val signature: UserDefinedProcedureSignature = UserDefinedProcedureSignature(
     arguments = Vector("options" -> Type.Map),
     outputs = Vector("data" -> Type.Map, "meta" -> Type.Map),
-    description = "Wire-tap the results of a standing query"
+    description = "Wire-tap the results of a standing query",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val standingQueryId: StandingQueryId = arguments match {
@@ -1513,7 +1513,7 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
             throw CypherException.TypeMismatch(
               Seq(Type.Str),
               other,
-              "`name` field in options map"
+              "`name` field in options map",
             )
         }
 
@@ -1524,14 +1524,14 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
             throw CypherException.TypeMismatch(
               Seq(Type.Str),
               other,
-              "`id` field in options map"
+              "`id` field in options map",
             )
         }
 
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1565,7 +1565,7 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
     graph
       .standingQueries(location.namespace)
       .flatMap(
-        _.wireTapStandingQuery(standingQueryId)
+        _.wireTapStandingQuery(standingQueryId),
       )
       .getOrElse(throw CypherException.Runtime(s"Cannot find standing query with id `$standingQueryId`"))
       .map { case StandingQueryResult(meta, data) =>
@@ -1587,28 +1587,28 @@ object RandomWalk extends UserDefinedProcedure {
       "depth" -> Type.Integer,
       "return" -> Type.Floating,
       "in-out" -> Type.Floating,
-      "seed" -> Type.Str
+      "seed" -> Type.Str,
     ),
     outputs = Vector("walk" -> Type.List(Type.Str)),
     description = "Randomly walk edges from a starting node for a chosen depth. " +
-      "Returns a list of node IDs in the order they were encountered."
+      "Returns a list of node IDs in the order they were encountered.",
   )
 
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], NotUsed] = {
 
     val graph = AlgorithmGraph.getOrThrow(s"`$name` procedure", location.graph)
 
     def toQid(nodeLike: Value): QuineId = UserDefinedProcedure
       .extractQuineId(nodeLike)(graph.idProvider) getOrElse (throw CypherException.Runtime(
-      s"`$name` expects a node or node ID as the first argument, but got: $nodeLike"
+      s"`$name` expects a node or node ID as the first argument, but got: $nodeLike",
     ))
 
     val compiledQuery = cypher.compile(AlgorithmGraph.defaults.walkQuery, unfixedParameters = List("n"))
@@ -1635,11 +1635,11 @@ object RandomWalk extends UserDefinedProcedure {
           None,
           randSeedOpt,
           location.namespace,
-          location.atTime
+          location.atTime,
         )
         .map { l =>
           Vector(Expr.List(l.acc.toVector.map(q => Expr.Str(q))))
-        }(graph.nodeDispatcherEC)
+        }(graph.nodeDispatcherEC),
     )
   }
 }

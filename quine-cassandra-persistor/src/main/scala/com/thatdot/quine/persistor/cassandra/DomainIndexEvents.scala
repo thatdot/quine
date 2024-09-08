@@ -47,7 +47,7 @@ class DomainIndexEvents(
   selectByDgnId: PreparedStatement,
   insert: PreparedStatement,
   deleteByQuineIdTimestamp: PreparedStatement,
-  deleteByQuineId: PreparedStatement
+  deleteByQuineId: PreparedStatement,
 )(implicit materializer: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with DomainIndexEventColumnNames
@@ -67,18 +67,18 @@ class DomainIndexEvents(
                   quineIdColumn.set(id),
                   timestampColumn.set(atTime),
                   dgnIdColumn.set(event.dgnId),
-                  dataColumn.set(event)
+                  dataColumn.set(event),
                 )
-              }.toList: _*
-            )
-        )
+              }.toList: _*,
+            ),
+        ),
       )
     }
 
   def getJournalWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = executeSelect(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
@@ -87,28 +87,28 @@ class DomainIndexEvents(
       case (EventTime.MinValue, _) =>
         selectWithTimeByQuineIdUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
 
       case (_, EventTime.MaxValue) =>
         selectWithTimeByQuineIdSinceTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setGt(startingAt)
+          timestampColumn.setGt(startingAt),
         )
 
       case _ =>
         selectWithTimeByQuineIdSinceUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
           timestampColumn.setGt(startingAt),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
-    }
+    },
   )(row => NodeEvent.WithTime(dataColumn.get(row), timestampColumn.get(row)))
 
   def getJournal(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[DomainIndexEvent]] = selectColumn(
     (startingAt, endingAt) match {
       case (EventTime.MinValue, EventTime.MaxValue) =>
@@ -117,23 +117,23 @@ class DomainIndexEvents(
       case (EventTime.MinValue, _) =>
         selectByQuineIdUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
 
       case (_, EventTime.MaxValue) =>
         selectByQuineIdSinceTimestamp.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setGt(startingAt)
+          timestampColumn.setGt(startingAt),
         )
 
       case _ =>
         selectByQuineIdSinceUntilTimestamp.bindColumns(
           quineIdColumn.set(id),
           timestampColumn.setGt(startingAt),
-          timestampColumn.setLt(endingAt)
+          timestampColumn.setLt(endingAt),
         )
     },
-    dataColumn
+    dataColumn,
   )
 
   def deleteByDgnId(id: DomainGraphNodeId): Future[Unit] = {
@@ -149,7 +149,7 @@ class DomainIndexEvents(
   }
 
   def deleteEvents(qid: QuineId): Future[Unit] = executeFuture(
-    deleteByQuineId.bindColumns(quineIdColumn.set(qid))
+    deleteByQuineId.bindColumns(quineIdColumn.set(qid)),
   )
 
 }
@@ -187,7 +187,7 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
     selectByQuineIdQuery
       .where(
         timestampColumn.is.gte,
-        timestampColumn.is.lte
+        timestampColumn.is.lte,
       )
       .build()
 
@@ -209,7 +209,7 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
     selectWithTimeByQuineIdQuery
       .where(
         timestampColumn.is.gte,
-        timestampColumn.is.lte
+        timestampColumn.is.lte,
       )
       .build()
 
@@ -225,11 +225,11 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[DomainIndexEvents] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
@@ -243,12 +243,12 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
       selectWithTimeByQuineIdSinceTimestampQuery,
       selectWithTimeByQuineIdUntilTimestampQuery,
       selectWithTimeByQuineIdSinceUntilTimestampQuery,
-      selectByDgnId
+      selectByDgnId,
     ).map(prepare(session, readSettings))
     val updates = T3(
       insertStatement,
       deleteStatement,
-      deleteAllByPartitionKeyStatement
+      deleteAllByPartitionKeyStatement,
     ).map(prepare(session, writeSettings))
     (selects ++ updates).mapN(
       new DomainIndexEvents(
@@ -269,8 +269,8 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
         _,
         _,
         _,
-        _
-      )
+        _,
+      ),
     )
 
   }

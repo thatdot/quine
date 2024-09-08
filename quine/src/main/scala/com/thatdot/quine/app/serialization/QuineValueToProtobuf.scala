@@ -94,20 +94,20 @@ class QuineValueToProtobuf(messageType: Descriptor) {
       Either.cond(
         field.getJavaType == JavaType.BOOLEAN,
         java.lang.Boolean.TRUE,
-        TypeMismatch(QuineType.Boolean, field.getJavaType)
+        TypeMismatch(QuineType.Boolean, field.getJavaType),
       )
     case QuineValue.False =>
       Either.cond(
         field.getJavaType == JavaType.BOOLEAN,
         java.lang.Boolean.FALSE,
-        TypeMismatch(QuineType.Boolean, field.getJavaType)
+        TypeMismatch(QuineType.Boolean, field.getJavaType),
       )
     case QuineValue.Null => Left(UnexpectedNull(field.getName))
     case QuineValue.Bytes(bytes) =>
       Either.cond(
         field.getJavaType == JavaType.BYTE_STRING,
         ByteString.copyFrom(bytes),
-        TypeMismatch(QuineType.Bytes, field.getJavaType)
+        TypeMismatch(QuineType.Bytes, field.getJavaType),
       )
     case QuineValue.List(list) =>
       if (field.isRepeated)
@@ -136,7 +136,7 @@ class QuineValueToProtobuf(messageType: Descriptor) {
             Right(
               dateTimeToProtobuf(datetime.toLocalDateTime)
                 .setUtcOffset(Duration.newBuilder.setSeconds(datetime.getOffset.getTotalSeconds.toLong))
-                .build
+                .build,
             )
             // TODO: Give a more specific error message that says:
             // "Yes, it's a message, but not the right type of message."
@@ -210,7 +210,7 @@ class QuineValueToProtobuf(messageType: Descriptor) {
         // TODO: Move this `if the message type matches the Timestamp schema out of the pattern-match
         case JavaType.MESSAGE if field.getMessageType == DateTime.getDescriptor =>
           Right(
-            dateTimeToProtobuf(ldt).build
+            dateTimeToProtobuf(ldt).build,
           )
         case other => Left(TypeMismatch(qv.quineType, other))
       }
@@ -220,7 +220,7 @@ class QuineValueToProtobuf(messageType: Descriptor) {
       Either.cond(
         field.getJavaType == JavaType.BYTE_STRING,
         ByteString.copyFrom(id.array),
-        TypeMismatch(QuineType.Id, field.getJavaType)
+        TypeMismatch(QuineType.Id, field.getJavaType),
       )
   }
 

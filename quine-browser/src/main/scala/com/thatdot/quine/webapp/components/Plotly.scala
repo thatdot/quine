@@ -34,7 +34,7 @@ import js.annotation._
     useResizeHandler: js.UndefOr[Boolean] = js.undefined,
     onClick: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined,
     onAfterPlot: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined,
-    onSunburstClick: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined
+    onSunburstClick: js.UndefOr[js.Function1[js.Any, Unit]] = js.undefined,
   )
 
   @js.native

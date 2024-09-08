@@ -14,7 +14,7 @@ import com.thatdot.quine.graph.HostQuineMetrics.{
   DefaultRelayTellMetrics,
   NoOpMessageMetric,
   RelayAskMetric,
-  RelayTellMetric
+  RelayTellMetric,
 }
 import com.thatdot.quine.util.SharedValve
 
@@ -27,7 +27,7 @@ import com.thatdot.quine.util.SharedValve
 final case class HostQuineMetrics(
   enableDebugMetrics: Boolean,
   metricRegistry: MetricRegistry,
-  isEnterprise: Boolean = false
+  isEnterprise: Boolean = false,
 ) {
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
@@ -67,7 +67,7 @@ final case class HostQuineMetrics(
 
   def shardNodeEvictionsMeter(namespaceId: NamespaceId, shardName: String): Meter =
     (if (enableDebugMetrics) metricRegistry else noOpRegistry).meter(
-      metricName(namespaceId, List("shard", shardName, "nodes-evicted"))
+      metricName(namespaceId, List("shard", shardName, "nodes-evicted")),
     )
 
   def shardMessagesDeduplicatedCounter(shardName: String): Counter =
@@ -246,7 +246,7 @@ class BinaryHistogramCounter(
   bucket8to128: Counter,
   bucket128to2048: Counter,
   bucket2048to16384: Counter,
-  bucket16384toInfinity: Counter
+  bucket16384toInfinity: Counter,
 ) {
 
   def increment(previousCount: Int): Unit =
@@ -302,13 +302,13 @@ object BinaryHistogramCounter {
 
   def apply(
     registry: MetricRegistry,
-    name: String
+    name: String,
   ): BinaryHistogramCounter =
     new BinaryHistogramCounter(
       registry.counter(MetricRegistry.name(name, "1-7")),
       registry.counter(MetricRegistry.name(name, "8-127")),
       registry.counter(MetricRegistry.name(name, "128-2047")),
       registry.counter(MetricRegistry.name(name, "2048-16383")),
-      registry.counter(MetricRegistry.name(name, "16384-infinity"))
+      registry.counter(MetricRegistry.name(name, "16384-infinity")),
     )
 }

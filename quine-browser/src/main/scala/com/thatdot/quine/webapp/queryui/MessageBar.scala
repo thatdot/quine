@@ -18,7 +18,7 @@ import com.thatdot.quine.webapp.Styles
   */
 final case class MessageBarContent(
   content: ReactElement,
-  color: String
+  color: String,
 )
 
 /** Message bar that pops up from the bottom of the screen
@@ -29,7 +29,7 @@ final case class MessageBarContent(
 
   case class Props(
     message: MessageBarContent,
-    closeMessageBox: () => Unit
+    closeMessageBox: () => Unit,
   )
 
   /** @param draggingYCoord is user is in the process of expanding the bar, this is the Y-coord of the bottom of the bar
@@ -39,7 +39,7 @@ final case class MessageBarContent(
   case class State(
     draggingYCoord: Option[Double],
     draggedHeight: Option[Double],
-    autoScrollToBottom: Boolean
+    autoScrollToBottom: Boolean,
   )
 
   def initialState: State = State(draggingYCoord = None, draggedHeight = None, autoScrollToBottom = false)
@@ -47,7 +47,7 @@ final case class MessageBarContent(
   def onMouseDown_(e: dom.MouseEvent, elem: ReactRef[html.Div]): Unit =
     if (e.button == 0) { // only if it was a "left" mouse button down event
       setState(
-        _.copy(draggingYCoord = Some(elem.current.getBoundingClientRect().bottom + window.pageYOffset))
+        _.copy(draggingYCoord = Some(elem.current.getBoundingClientRect().bottom + window.pageYOffset)),
       )
       e.stopPropagation()
       e.preventDefault()
@@ -102,7 +102,7 @@ final case class MessageBarContent(
 
     val barStyle = jsObj(
       height = state.draggedHeight.fold("20%")(x => s"${x}px"),
-      backgroundColor = props.message.color
+      backgroundColor = props.message.color,
     )
 
     div(style := barStyle, className := Styles.messageBar, ref := fullBarRef)(
@@ -114,11 +114,11 @@ final case class MessageBarContent(
           height = "100%",
           width = "calc(100% - 0.8em)",
           padding = "0.4em",
-          position = "absolute"
+          position = "absolute",
         ),
-        onScroll := (_ => onContentScroll())
+        onScroll := (_ => onContentScroll()),
       )(
-        props.message.content
+        props.message.content,
       ),
       div(
         key := "message-bar-resize-handle",
@@ -127,14 +127,14 @@ final case class MessageBarContent(
           width = "100%",
           height = "3px",
           backgroundColor = "black",
-          cursor = "ns-resize"
+          cursor = "ns-resize",
         ),
-        onMouseDown := (e => onMouseDown_(e.nativeEvent, fullBarRef))
+        onMouseDown := (e => onMouseDown_(e.nativeEvent, fullBarRef)),
       ),
       div(
         key := "message-bar-close",
         className := Styles.messageBarButton,
-        style := jsObj(display = "block")
+        style := jsObj(display = "block"),
       )(
         if (state.autoScrollToBottom) {
           i(
@@ -144,7 +144,7 @@ final case class MessageBarContent(
             onClick := { _ =>
               contentRef.current.scrollTop = 0
               setState(_.copy(autoScrollToBottom = false))
-            }
+            },
           )
         } else {
           i(
@@ -154,7 +154,7 @@ final case class MessageBarContent(
             onClick := { _ =>
               scrollToBottom()
               setState(_.copy(autoScrollToBottom = true))
-            }
+            },
           )
         },
         i(
@@ -162,9 +162,9 @@ final case class MessageBarContent(
           className := "ion-ios-close-outline",
           title := "Close message box",
           style := jsObj(marginLeft = "0.2em"),
-          onClick := (_ => props.closeMessageBox())
-        )
-      )
+          onClick := (_ => props.closeMessageBox()),
+        ),
+      ),
     )
   }
 }

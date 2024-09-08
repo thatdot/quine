@@ -24,7 +24,7 @@ case class FoldableTestData(
   zonedDateTimeValue: ZonedDateTime = ZonedDateTime.now(),
   durationValue: JavaDuration = JavaDuration.ofNanos(Random.between(0L, Long.MaxValue)),
   mapValue: Map[String, Any] = Map.empty[String, Any],
-  vectorValue: Vector[Any] = Vector.empty[Any]
+  vectorValue: Vector[Any] = Vector.empty[Any],
 ) {
 
   def asMap: Map[String, Any] =

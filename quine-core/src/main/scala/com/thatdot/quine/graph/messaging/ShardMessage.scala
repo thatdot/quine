@@ -63,7 +63,7 @@ object ShardMessage {
     namespace: NamespaceId,
     limit: Option[Int],
     atTime: Option[Milliseconds],
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends ShardMessage
       with AskableQuineMessage[Source[AwakeNode, NotUsed]]
 
@@ -78,7 +78,7 @@ object ShardMessage {
   final case class ShardStats(
     awake: Int,
     askedToSleep: Int,
-    sleeping: Int
+    sleeping: Int,
   ) extends ShardMessage {
     def goingToSleep: Int = askedToSleep + sleeping
     def total: Int = awake + goingToSleep
@@ -103,7 +103,7 @@ object ShardMessage {
     */
   final case class UpdateInMemoryLimits(
     newLimits: InMemoryNodeLimit,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends ShardMessage
       with AskableQuineMessage[CurrentInMemoryLimits]
 

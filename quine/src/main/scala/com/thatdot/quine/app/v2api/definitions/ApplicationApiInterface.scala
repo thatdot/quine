@@ -37,7 +37,7 @@ import com.thatdot.quine.graph.{
   LiteralOpsGraph,
   NamespaceId,
   StandingQueryOpsGraph,
-  namespaceToString
+  namespaceToString,
 }
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineId, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
@@ -99,7 +99,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
       gitCommit,
       QuineBuildInfo.gitHeadCommitDate,
       QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
-      PersistenceAgent.CurrentVersion.shortString
+      PersistenceAgent.CurrentVersion.shortString,
     )
   }
 
@@ -129,7 +129,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
 
   def requestNodeSleep(quineId: QuineId, namespaceId: NamespaceId): Future[Unit] =
     graph.requiredGraphIsReadyFuture(
-      graph.requestNodeSleep(namespaceId, quineId)
+      graph.requestNodeSleep(namespaceId, quineId),
     )
 
   // --------------------- Standing Query Endpoints ------------------------
@@ -142,7 +142,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
   def propagateStandingQuery(
     includeSleeping: Option[Boolean],
     namespaceId: NamespaceId,
-    wakeUpParallelism: Int
+    wakeUpParallelism: Int,
   ): Future[Unit] =
     graph
       .standingQueries(namespaceId)
@@ -161,7 +161,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     name: String,
     outputName: String,
     namespaceId: NamespaceId,
-    sqResultOutput: StandingQueryResultOutputUserDef
+    sqResultOutput: StandingQueryResultOutputUserDef,
   ): Future[Either[CustomError, Unit]] = graph.requiredGraphIsReadyFuture {
     validateOutputDef(sqResultOutput) match {
       case Some(errors) =>
@@ -180,7 +180,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
   def deleteSQOutput(
     name: String,
     outputName: String,
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Option[StandingQueryResultOutputUserDef]] = graph.requiredGraphIsReadyFuture {
     quineApp.removeStandingQueryOutput(name, outputName, namespaceId)
   }
@@ -188,7 +188,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
   def createSQ(
     name: String,
     namespaceId: NamespaceId,
-    sq: StandingQueryDefinition
+    sq: StandingQueryDefinition,
   ): Future[Either[CustomError, Option[Unit]]] =
     graph.requiredGraphIsReadyFuture {
       try quineApp
@@ -233,7 +233,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
-    query: CypherQuery
+    query: CypherQuery,
   ): Future[Either[CustomError, CypherQueryResult]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
@@ -252,7 +252,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
-    query: CypherQuery
+    query: CypherQuery,
   ): Future[Either[CustomError, Seq[UiNode[QuineId]]]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
@@ -269,7 +269,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     atTime: Option[Milliseconds],
     timeout: FiniteDuration,
     namespaceId: NamespaceId,
-    query: CypherQuery
+    query: CypherQuery,
   ): Future[Either[CustomError, Seq[UiEdge[QuineId]]]] =
     graph.requiredGraphIsReadyFuture {
       catchCypherException {
@@ -295,7 +295,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     namespaceId: NamespaceId,
     atTime: Option[Milliseconds],
     parallelism: Int,
-    saveLocation: TSaveLocation
+    saveLocation: TSaveLocation,
   ): Either[CustomError, Option[String]] = {
 
     graph.requiredGraphIsReady()
@@ -324,7 +324,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
             seedOpt,
             namespaceId,
             atTime,
-            parallelism
+            parallelism,
           )
         Some(fileName)
       }.toEither
@@ -350,7 +350,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     inOutParamOpt: Option[Double],
     seedOpt: Option[String],
     namespaceId: NamespaceId,
-    atTime: Option[Milliseconds]
+    atTime: Option[Milliseconds],
   ): Future[Either[CustomError, Option[List[String]]]] = {
 
     val errors: Either[CustomError, Option[List[String]]] = Try {
@@ -380,7 +380,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
           None,
           seedOpt,
           namespaceId,
-          atTime
+          atTime,
         )
         .map(w => Right(Some(w.acc)))(ExecutionContext.parasitic)
 
@@ -405,16 +405,16 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     qid: QuineId,
     propKey: String,
     atTime: Option[Milliseconds],
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Option[Json]] =
     graph.requiredGraphIsReadyFuture {
       graph
         .literalOps(namespaceId)
         .getProps(qid, atTime)
         .map(m =>
-          m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig))
+          m.get(Symbol(propKey)).map(_.deserialized.get).map(qv => QuineValue.toJson(qv)(graph.idProvider, logConfig)),
         )(
-          graph.nodeDispatcherEC
+          graph.nodeDispatcherEC,
         )
     }
 
@@ -427,7 +427,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
         .map { case (props, edges) =>
           TLiteralNode(
             props.map { case (k, v) => k.name -> QuineValue.toJson(v.deserialized.get)(graph.idProvider, logConfig) },
-            edges.toSeq.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) }
+            edges.toSeq.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) },
           )
         }(graph.nodeDispatcherEC)
     }
@@ -448,7 +448,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     edgeDirOpt: Option[TEdgeDirection],
     otherOpt: Option[QuineId],
     edgeTypeOpt: Option[String],
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Vector[TRestHalfEdge[QuineId]]] =
     graph.requiredGraphIsReadyFuture {
       val edgeDirOpt2 = edgeDirOpt.map(toModelEdgeDirection)
@@ -456,7 +456,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
         .literalOps(namespaceId)
         .getEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
         .map(_.toVector.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) })(
-          graph.nodeDispatcherEC
+          graph.nodeDispatcherEC,
         )
 
     }
@@ -468,7 +468,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     edgeDirOpt: Option[TEdgeDirection],
     otherOpt: Option[QuineId],
     edgeTypeOpt: Option[String],
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Vector[TRestHalfEdge[QuineId]]] =
     graph.requiredGraphIsReadyFuture {
       val edgeDirOpt2 = edgeDirOpt.map(toModelEdgeDirection)
@@ -476,7 +476,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
         .literalOps(namespaceId)
         .getHalfEdges(qid, edgeTypeOpt.map(Symbol.apply), edgeDirOpt2, otherOpt, limit, atTime)
         .map(_.toVector.map { case HalfEdge(t, d, o) => TRestHalfEdge(t.name, toApiEdgeDirection(d), o) })(
-          graph.nodeDispatcherEC
+          graph.nodeDispatcherEC,
         )
     }
 
@@ -485,14 +485,14 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
   def createIngestStream(
     ingestName: String,
     namespaceId: NamespaceId,
-    ingestConfig: IngestStreamConfiguration
+    ingestConfig: IngestStreamConfiguration,
   ): Either[CustomError, Unit] = {
 
     // return an error on failure. None on success.
     def addSettings(
       name: String,
       intoNamespace: NamespaceId,
-      settings: IngestStreamConfiguration
+      settings: IngestStreamConfiguration,
     ): Either[CustomError, Unit] = quineApp.addIngestStream(
       name,
       settings,
@@ -500,14 +500,14 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
       previousStatus = None, // this ingest is being created, not restored, so it has no previous status
       shouldResumeRestoredIngests = false,
       timeout,
-      memberIdx = None
+      memberIdx = None,
     ) match {
       case Success(true) => Right(())
       case Success(false) =>
         Left(
           BadRequest(
-            s"Cannot create ingest stream `$name` (a stream with this name already exists)"
-          )
+            s"Cannot create ingest stream `$name` (a stream with this name already exists)",
+          ),
         )
       case Failure(_: NamespaceNotFoundException) => Left(NotFound(""))
       case Failure(err) => Left(BadRequest(s"Failed to create ingest stream `$name`: ${err.getMessage}"))
@@ -521,7 +521,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
         KafkaSettingsValidator.validateInput(
           kafkaSettings.kafkaProperties,
           kafkaSettings.groupId,
-          kafkaSettings.offsetCommitting
+          kafkaSettings.offsetCommitting,
         ) match {
           case Some(errors) =>
             Left(BadRequest(s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}"))
@@ -559,7 +559,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
                   .map({ case Done => None })(graph.shardDispatcherEC)
                   .recover({ case e =>
                     Some(e.toString)
-                  })(graph.shardDispatcherEC)
+                  })(graph.shardDispatcherEC),
               )(graph.shardDispatcherEC)
           }
 
@@ -572,8 +572,8 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
                   newStatus,
                   message,
                   settings,
-                  metrics.toEndpointResponse
-                )
+                  metrics.toEndpointResponse,
+                ),
               )
             }(graph.shardDispatcherEC)
       }
@@ -581,7 +581,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
 
   def pauseIngestStream(
     ingestName: String,
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Either[CustomError, Option[IngestStreamInfoWithName]]] =
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Close)
@@ -591,7 +591,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
 
   def unpauseIngestStream(
     ingestName: String,
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   ): Future[Either[CustomError, Option[IngestStreamInfoWithName]]] =
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Open)
@@ -611,7 +611,7 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
     graph.requiredGraphIsReadyFuture {
       Future
         .traverse(
-          quineApp.getIngestStreams(namespaceId).toList
+          quineApp.getIngestStreams(namespaceId).toList,
         ) { case (name, ingest) =>
           stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
         }(implicitly, graph.shardDispatcherEC)

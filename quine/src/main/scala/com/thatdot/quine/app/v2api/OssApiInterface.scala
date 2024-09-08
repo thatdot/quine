@@ -11,7 +11,7 @@ class OssApiInterface(
   val graph: GraphService,
   val quineApp: QuineApp,
   val config: BaseConfig,
-  val timeout: Timeout
+  val timeout: Timeout,
 ) extends ApplicationApiInterface
     with LazySafeLogging {
   val thisMemberIdx: Int = 0

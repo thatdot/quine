@@ -38,21 +38,21 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
   protected def multipleValuesStandingQueries: collection.Map[
     (StandingQueryId, MultipleValuesStandingQueryPartId),
-    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
+    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState),
   ]
 
   protected def lastWriteMillis: Long
 
   // TODO: retry in persistors
   private def retryPersistence[T](timer: Timer, op: => Future[T], ec: ExecutionContext)(implicit
-    scheduler: Scheduler
+    scheduler: Scheduler,
   ): Future[T] =
     pekko.pattern.retry(
       () => timer.time(op),
       attempts = 5,
       minBackoff = 100.millis,
       maxBackoff = 5.seconds,
-      randomFactor = 0.5
+      randomFactor = 0.5,
     )(ec, scheduler)
 
   /* NB: all of the messages being sent/received in `goToSleep` are to/from the
@@ -103,7 +103,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           // Log something if this (bad) case occurs
           if (latestUpdateAfterSnapshot.isDefined && atTime.nonEmpty) {
             log.error(
-              safe"Update occurred on a historical node with timestamp: ${Safe(atTime)} (but it won't be persisted)"
+              safe"Update occurred on a historical node with timestamp: ${Safe(atTime)} (but it won't be persisted)",
             )
           }
 
@@ -121,9 +121,9 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                   qid,
                   if (persistenceConfig.snapshotSingleton) EventTime.MaxValue
                   else latestUpdateTime,
-                  snapshot
+                  snapshot,
                 ),
-                context.dispatcher
+                context.dispatcher,
               )
               val multipleValuesStatesSaved = Future.traverse(pendingMultipleValuesWrites) {
                 case key @ (globalId, localId) =>
@@ -133,7 +133,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                   retryPersistence(
                     metrics.persistorSetStandingQueryStateTimer,
                     persistor.setMultipleValuesStandingQueryState(globalId, qid, localId, serialized),
-                    context.dispatcher
+                    context.dispatcher,
                   )
               }(implicitly, context.dispatcher)
 
@@ -149,7 +149,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
                     edges.size,
                     properties.transform((_, v) => v.serialized.length), // this eagerly serializes; can be expensive
                     err,
-                    shardPromise
+                    shardPromise,
                   )
               }(context.dispatcher)
 

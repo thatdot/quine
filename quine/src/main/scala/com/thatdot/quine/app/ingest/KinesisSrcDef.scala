@@ -54,7 +54,7 @@ final case class KinesisSrcDef(
   iteratorType: KinesisIngest.IteratorType,
   numRetries: Int,
   maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder]
+  decoders: Seq[ContentDecoder],
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
@@ -62,7 +62,7 @@ final case class KinesisSrcDef(
       parallelism,
       maxPerSecond,
       decoders,
-      s"$name (Kinesis ingest)"
+      s"$name (Kinesis ingest)",
     ) {
 
   type InputType = kinesisModel.Record
@@ -80,7 +80,7 @@ final case class KinesisSrcDef(
       case IteratorType.AtTimestamp(ms) => AtTimestamp(Instant.ofEpochMilli(ms))
       case IteratorType.AtSequenceNumber(_) | IteratorType.AfterSequenceNumber(_) if shardIds.fold(true)(_.size != 1) =>
         throw new IllegalArgumentException(
-          "To use AtSequenceNumber or AfterSequenceNumber, exactly 1 shard must be specified"
+          "To use AtSequenceNumber or AfterSequenceNumber, exactly 1 shard must be specified",
         ) // will be caught as an "Invalid" (400) below
       case IteratorType.AtSequenceNumber(seqNo) => AtSequenceNumber(seqNo)
       case IteratorType.AfterSequenceNumber(seqNo) => AfterSequenceNumber(seqNo)
@@ -96,7 +96,7 @@ final case class KinesisSrcDef(
         case noIds if noIds.isEmpty =>
           kinesisClient
             .describeStream(
-              DescribeStreamRequest.builder().streamName(streamName).build()
+              DescribeStreamRequest.builder().streamName(streamName).build(),
             )
             .asScala
             .map(response =>
@@ -105,14 +105,14 @@ final case class KinesisSrcDef(
                 .shards()
                 .asScala
                 .map(_.shardId())
-                .toSet
+                .toSet,
             )(graph.materializer.executionContext)
         case atLeastOneId => Future.successful(atLeastOneId)
       })
         .map(ids =>
           ids
             .map(shardId => ShardSettings(streamName, shardId).withShardIterator(shardIterator))
-            .toList
+            .toList,
         )(graph.materializer.executionContext)
 
     // A Flow that limits the stream to 2MB * (number of shards) per second
@@ -130,9 +130,9 @@ final case class KinesisSrcDef(
               1.second,
               rec =>
                 // asByteArrayUnsafe avoids extra allocations, to get the length we can't use a readonly bytebuffer
-                rec.data().asByteArrayUnsafe().length
+                rec.data().asByteArrayUnsafe().length,
             )
-        }(graph.materializer.executionContext)
+        }(graph.materializer.executionContext),
       )
       .mapMaterializedValue(_ => NotUsed)
 
@@ -140,7 +140,7 @@ final case class KinesisSrcDef(
       .future(shardSettingsFut)
       .flatMapConcat(shardSettings =>
         KinesisSource
-          .basicMerge(shardSettings, kinesisClient)
+          .basicMerge(shardSettings, kinesisClient),
       )
       .via(kinesisRateLimiter)
 
@@ -155,7 +155,7 @@ object KinesisSrcDef {
   def buildAsyncClient(
     credentialsOpt: Option[AwsCredentials],
     regionOpt: Option[AwsRegion],
-    numRetries: Int
+    numRetries: Int,
   ): KinesisAsyncClient = {
     val retryStrategy: StandardRetryStrategy = AwsRetryStrategy
       .standardRetryStrategy()
@@ -171,7 +171,7 @@ object KinesisSrcDef {
         ClientOverrideConfiguration
           .builder()
           .retryStrategy(retryStrategy)
-          .build()
+          .build(),
       )
     builder.build
   }

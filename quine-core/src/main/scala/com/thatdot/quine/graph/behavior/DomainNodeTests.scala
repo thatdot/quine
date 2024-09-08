@@ -18,7 +18,7 @@ trait DomainNodeTests extends BaseNodeActorView {
         edges.contains(HalfEdge(circTest._1, Incoming, qid))
       } else {
         edges.contains(HalfEdge(circTest._1, Undirected, qid))
-      }
+      },
     )
 
   private[this] def hasGenericEdges(requiredEdges: Set[DomainEdge]): Boolean =
@@ -35,7 +35,7 @@ trait DomainNodeTests extends BaseNodeActorView {
     val idMatchesDgn = testBranch.identification.forall(_ == qid)
     lazy val propsMatchDgn = localPropsMatch(testBranch.domainNodeEquiv)
     lazy val circularEdgesMatchDgn = hasCircularEdges(
-      testBranch.domainNodeEquiv
+      testBranch.domainNodeEquiv,
     )
     lazy val nonCircularHalfEdgesMatchDgn = hasGenericEdges(testBranch.nextBranches.toSet[DomainEdge])
     idMatchesDgn && propsMatchDgn && circularEdgesMatchDgn && nonCircularHalfEdgesMatchDgn

@@ -25,7 +25,7 @@ object CypherMessage {
     query: cypher.Query[cypher.Location.OnNode],
     parameters: cypher.Parameters,
     context: cypher.QueryContext,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends CypherQueryInstruction
       with AskableQuineMessage[Source[QueryContextResult, NotUsed]]
 
@@ -43,7 +43,7 @@ object CypherMessage {
     query: cypher.Query[cypher.Location.OnNode],
     parameters: cypher.Parameters,
     context: cypher.QueryContext,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends CypherQueryInstruction
       with AskableQuineMessage[Source[QueryContextResult, NotUsed]] {
 
@@ -51,6 +51,6 @@ object CypherMessage {
   }
 
   final case class QueryContextResult(
-    result: cypher.QueryContext
+    result: cypher.QueryContext,
   ) extends CypherMessage
 }

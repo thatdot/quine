@@ -8,7 +8,7 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
     testExpression(
       "[0, 1, 2, 2 + 1, 4, 5, 6, 7, 8, 9]",
       Expr.List(Vector.tabulate(10)(i => Expr.Integer(i.toLong))),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testExpression("[]", Expr.List(Vector.empty), expectedCannotFail = true)
@@ -21,29 +21,29 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
 
     testExpression(
       "range(0, 10)[0..3]",
-      Expr.List((0 until 3).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((0 until 3).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression(
       "range(0, 10)[0..-5]",
-      Expr.List((0 to 5).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((0 to 5).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression(
       "range(0, 10)[-5..]",
-      Expr.List((6 to 10).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((6 to 10).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression(
       "range(0, 10)[..4]",
-      Expr.List((0 until 4).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((0 until 4).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression("range(0, 10)[15]", Expr.Null)
 
     testExpression(
       "range(0, 10)[5..15]",
-      Expr.List((5 to 10).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((5 to 10).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression("size(range(0, 10)[0..3])", Expr.Integer(3L))
@@ -59,9 +59,9 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
           Expr.Floating(64.0),
           Expr.Floating(216.0),
           Expr.Floating(512.0),
-          Expr.Floating(1000.0)
-        )
-      )
+          Expr.Floating(1000.0),
+        ),
+      ),
     )
 
     testExpression(
@@ -73,9 +73,9 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
           Expr.Integer(4),
           Expr.Integer(6),
           Expr.Integer(8),
-          Expr.Integer(10)
-        )
-      )
+          Expr.Integer(10),
+        ),
+      ),
     )
 
     testExpression(
@@ -92,9 +92,9 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
           Expr.Floating(343.0),
           Expr.Floating(512.0),
           Expr.Floating(729.0),
-          Expr.Floating(1000.0)
-        )
-      )
+          Expr.Floating(1000.0),
+        ),
+      ),
     )
 
     testExpression(
@@ -107,9 +107,9 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
           Expr.Integer(7),
           Expr.Integer(8),
           Expr.Integer(9),
-          Expr.Integer(10)
-        )
-      )
+          Expr.Integer(10),
+        ),
+      ),
     )
 
     testExpression(
@@ -126,9 +126,9 @@ class CypherLists extends CypherHarness("cypher-list-tests") {
           Expr.Floating(49.0),
           Expr.Floating(64.0),
           Expr.Floating(81.0),
-          Expr.Floating(100.0)
-        )
-      )
+          Expr.Floating(100.0),
+        ),
+      ),
     )
   }
 

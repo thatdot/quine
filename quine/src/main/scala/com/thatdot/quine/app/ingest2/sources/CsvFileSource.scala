@@ -25,7 +25,7 @@ case class CsvFileSource(
   quoteChar: Byte,
   escapeChar: Byte,
   maximumLineSize: Int,
-  decoders: Seq[ContentDecoder] = Seq()
+  decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
   private val csvLineParser: Flow[ByteString, List[ByteString], NotUsed] =
@@ -41,7 +41,7 @@ case class CsvFileSource(
       toDecodedSource(
         Flow[List[ByteString]]
           .map(l => l.map(bs => bs.decodeString(charset))),
-        stringIterableDataFoldable
+        stringIterableDataFoldable,
       )
   }
 

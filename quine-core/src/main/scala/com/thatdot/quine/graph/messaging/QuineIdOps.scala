@@ -37,7 +37,7 @@ trait QuineIdOps {
     def ?[A](unattributedMessage: QuineRef => QuineMessage with AskableQuineMessage[A])(implicit
       timeout: Timeout,
       originalSender: ActorRef,
-      resultHandler: ResultHandler[A]
+      resultHandler: ResultHandler[A],
     ): Future[A] =
       graph.relayAsk[A](SpaceTimeQuineId(quineId, namespace, atTime), unattributedMessage, originalSender)
   }

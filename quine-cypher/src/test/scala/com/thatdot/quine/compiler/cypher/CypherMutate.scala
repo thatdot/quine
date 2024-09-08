@@ -12,17 +12,17 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("count(*)"),
       expectedRows = Seq(Vector(Expr.Integer(0L))),
       expectedCannotFail = true,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
       "CREATE (a:Person {name: 'Andrea'}) RETURN a",
       expectedColumns = Vector("a"),
       expectedRows = Seq(
-        Vector(Expr.Node(0L, Set(Symbol("Person")), Map(Symbol("name") -> Expr.Str("Andrea"))))
+        Vector(Expr.Node(0L, Set(Symbol("Person")), Map(Symbol("name") -> Expr.Str("Andrea")))),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testQuery(
@@ -33,12 +33,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
           Expr.Node(
             1L,
             Set(),
-            Map(Symbol("name") -> Expr.Str("Bob"), Symbol("age") -> Expr.Str("43"))
-          )
-        )
+            Map(Symbol("name") -> Expr.Str("Bob"), Symbol("age") -> Expr.Str("43")),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testQuery(
@@ -46,10 +46,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("n.name", "n.age", "labels(n)"),
       expectedRows = Seq(
         Vector(Expr.Str("Andrea"), Expr.Null, Expr.List(Vector(Expr.Str("Person")))),
-        Vector(Expr.Str("Bob"), Expr.Str("43"), Expr.List(Vector.empty))
+        Vector(Expr.Str("Bob"), Expr.Str("43"), Expr.List(Vector.empty)),
       ),
       expectedCanContainAllNodeScan = true,
-      ordered = false
+      ordered = false,
     )
 
     testQuery(
@@ -57,17 +57,17 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("n.name"),
       expectedRows = Seq(Vector(Expr.Str("Andrea"))),
       ordered = false,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
       "MATCH (a {name: 'Bob'}) SET a:Person RETURN labels(a), a.name",
       expectedColumns = Vector("labels(a)", "a.name"),
       expectedRows = Seq(
-        Vector(Expr.List(Vector(Expr.Str("Person"))), Expr.Str("Bob"))
+        Vector(Expr.List(Vector(Expr.Str("Person"))), Expr.Str("Bob")),
       ),
       expectedIsReadOnly = false,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -75,7 +75,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("a.name"),
       expectedRows = Seq(Vector(Expr.Str("Andrea")), Vector(Expr.Str("Bob"))),
       ordered = false,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -83,7 +83,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("count(*)"),
       expectedRows = Seq(Vector(Expr.Integer(1L))),
       expectedIsReadOnly = false,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -91,7 +91,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 
@@ -102,14 +102,14 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
       expectedIsReadOnly = false,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
 
     testQuery(
       "match (n), (m) where id(n) = m.foo and id(m) = 33 return n.bar",
       expectedColumns = Vector("n.bar"),
       expectedRows = Seq(Vector(Expr.Str("hello"))),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -120,7 +120,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // Destructively set properties (this causes all previous properties to be removed)
@@ -129,7 +129,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // Label should not have been affected
@@ -138,7 +138,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("labels(n)"),
       expectedRows = Seq(Vector(Expr.List(Vector(Expr.Str("Person"))))),
       expectedIsReadOnly = true,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -152,11 +152,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("n.p1"),
       expectedRows = Seq(
         Vector(
-          Expr.Str("p1")
-        )
+          Expr.Str("p1"),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // add a label
@@ -168,11 +168,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("labels(n)"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Expr.Str("Address"))
-        )
+          Expr.List(Expr.Str("Address")),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET multiple properties (no history)
@@ -187,11 +187,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         Vector(
           Expr.Str("p1"),
           Expr.Str("p2"),
-          Expr.Str("p3")
-        )
+          Expr.Str("p3"),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET += property map (with history)
@@ -213,11 +213,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
           Expr.Str("p3"),
           Expr.Str("p4"),
           Expr.Str("p5"),
-          Expr.Str("p6")
-        )
+          Expr.Str("p6"),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET to null (delete property)
@@ -234,12 +234,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
             "p3" -> Expr.Str("p3"),
             "p4" -> Expr.Str("p4"),
             "p5" -> Expr.Str("p5"),
-            "p6" -> Expr.Str("p6")
-          )
-        )
+            "p6" -> Expr.Str("p6"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET multiple to null (delete properties)
@@ -255,12 +255,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
           Expr.Map(
             "p4" -> Expr.Str("p4"),
             "p5" -> Expr.Str("p5"),
-            "p6" -> Expr.Str("p6")
-          )
-        )
+            "p6" -> Expr.Str("p6"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET += to delete multiple properties
@@ -276,12 +276,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(
         Vector(
           Expr.Map(
-            "p6" -> Expr.Str("p6")
-          )
-        )
+            "p6" -> Expr.Str("p6"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // SET = property map (with history)
@@ -300,13 +300,13 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
           Expr.Map(
             "a1" -> Expr.Str("p1"),
             "a2" -> Expr.Str("p2"),
-            "a3" -> Expr.Str("p3")
+            "a3" -> Expr.Str("p3"),
           ),
-          Expr.List(Expr.Str("Address"))
-        )
+          Expr.List(Expr.Str("Address")),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
     // REMOVE a property
     testQuery(
@@ -319,13 +319,13 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         Vector(
           Expr.Map(
             "a1" -> Expr.Str("p1"),
-            "a2" -> Expr.Str("p2")
+            "a2" -> Expr.Str("p2"),
           ),
-          Expr.List(Expr.Str("Address"))
-        )
+          Expr.List(Expr.Str("Address")),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // remove and update in one SET +=
@@ -341,12 +341,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(
         Vector(
           Expr.Map(
-            "a1" -> Expr.Str("p1 prime")
-          )
-        )
+            "a1" -> Expr.Str("p1 prime"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
     // SET += for no-op
     testQuery(
@@ -358,12 +358,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(
         Vector(
           Expr.Map(
-            "a1" -> Expr.Str("p1 prime")
-          )
-        )
+            "a1" -> Expr.Str("p1 prime"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
     // SET += a map parameter
     testQuery(
@@ -377,12 +377,12 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         Vector(
           Expr.Map(
             "a1" -> Expr.Str("p1 prime"),
-            "a3" -> Expr.Str("p3")
-          )
-        )
+            "a3" -> Expr.Str("p3"),
+          ),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
     // REMOVE a label, add another
     testQuery(
@@ -394,11 +394,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("labels(n)"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Expr.Str("Address2"))
-        )
+          Expr.List(Expr.Str("Address2")),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     // remove all properties with SET = {}
@@ -411,11 +411,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(
         Vector(
           Expr.Map.empty,
-          Expr.List(Expr.Str("Address2"))
-        )
+          Expr.List(Expr.Str("Address2")),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     testQueryStaticAnalysis(
@@ -424,7 +424,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedCannotFail = false,
       expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
       expectedCanContainAllNodeScan = false,
-      skip = true
+      skip = true,
     )
 
     testQueryStaticAnalysis(
@@ -433,7 +433,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedCannotFail = false,
       expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
       expectedCanContainAllNodeScan = false,
-      skip = true
+      skip = true,
     )
 
     testQueryStaticAnalysis(
@@ -442,7 +442,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedCannotFail = false,
       expectedIsIdempotent = false, // QU-1843, should be flagged as non-idempotent
       expectedCanContainAllNodeScan = false,
-      skip = true
+      skip = true,
     )
     /* Broken because we assume `set` always returns no rows. That's not true
      * though - it only returns 0 rows when it is the last clause
@@ -451,7 +451,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       "match (n:Person) set n.is_bob = (n.name = 'bob') return 1",
       expectedColumns = Vector("1"),
       expectedRows = Seq(Vector(Expr.Integer(1L))),
-      skip = true
+      skip = true,
     )
 
     /* Broken because `set` doesn't actually mutate the context, only the data.
@@ -461,7 +461,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       "match (n:Person) set n.is_sherry = (n.name = 'sherry') return n.is_sherry",
       expectedColumns = Vector("n.is_sherry"),
       expectedRows = Seq(Vector(Expr.True), Vector(Expr.False)),
-      skip = true
+      skip = true,
     )
 
     /* Broken for a subtly different reason that above: the standard Cypher
@@ -475,7 +475,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       |return n.prop""".stripMargin,
       expectedColumns = Vector("n.prop"),
       expectedRows = Seq(Vector(Expr.Str("sherry")), Vector(Expr.Str("sherry"))),
-      skip = true
+      skip = true,
     )
 
     // SET n.x = 0, n.x = n.x + 1 interprets as `SET n.x = 0, n.x = null + 1`,
@@ -486,7 +486,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(Vector(Expr.Integer(1L))),
       expectedIsReadOnly = false,
       expectedIsIdempotent = false,
-      skip = true // currently null
+      skip = true, // currently null
     )
 
     // By using WITH, we can force the RHS `n.x` to be evaluated after the first SET
@@ -496,7 +496,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("n.x"),
       expectedRows = Seq(Vector(Expr.Integer(1L))),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     // SET b.x should update both a and b, but we don't yet do that level of analysis
@@ -508,7 +508,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(Vector(Expr.Integer(1), Expr.Integer(1))), // currently -1, 1
       expectedIsReadOnly = false,
       expectedIsIdempotent = false,
-      skip = true
+      skip = true,
     )
 
     // a.x should ideally reflect the update to the node from the setProperty call,
@@ -521,7 +521,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedRows = Seq(Vector(Expr.Integer(2))), // currently 1
       expectedIsReadOnly = false,
       expectedIsIdempotent = false,
-      skip = true
+      skip = true,
     )
 
     testQuery(
@@ -532,7 +532,7 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("notStaticProp"),
       expectedRows = Seq(Vector(Expr.Integer(200))),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 
@@ -543,11 +543,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("count"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(20L)
-        )
+          Expr.Integer(20L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // incrementCounter (with history)
     testQuery(
@@ -555,11 +555,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("count"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(35L)
-        )
+          Expr.Integer(35L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // 2-ary incrementCounter
     testQuery(
@@ -567,11 +567,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("count"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(36L)
-        )
+          Expr.Integer(36L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     // int.add (no history)
@@ -580,11 +580,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(15L)
-        )
+          Expr.Integer(15L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // int.add (with history)
     testQuery(
@@ -592,11 +592,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(45L)
-        )
+          Expr.Integer(45L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // 2-ary int.add
     testQuery(
@@ -604,11 +604,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Integer(46L)
-        )
+          Expr.Integer(46L),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     // float.add (no history)
@@ -617,11 +617,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Floating(1.5)
-        )
+          Expr.Floating(1.5),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // float.add (with history)
     testQuery(
@@ -629,11 +629,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Floating(4.5)
-        )
+          Expr.Floating(4.5),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     // 2-ary float.add
     testQuery(
@@ -641,11 +641,11 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.Floating(5.5)
-        )
+          Expr.Floating(5.5),
+        ),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     // set.insert (no history)
@@ -654,10 +654,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Floating(1.5)))
-        )
+          Expr.List(Vector(Expr.Floating(1.5))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, homogeneous)
     testQuery(
@@ -665,10 +665,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
-        )
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, homogeneous, deduplicated)
     testQuery(
@@ -676,10 +676,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0)))
-        )
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, heterogenous)
     testQuery(
@@ -687,10 +687,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0), Expr.Str("foo")))
-        )
+          Expr.List(Vector(Expr.Floating(1.5), Expr.Floating(2.0), Expr.Str("foo"))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
 
     // set.insert (no history)
@@ -699,10 +699,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2)))
-        )
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, homogeneous)
     testQuery(
@@ -710,10 +710,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1)))
-        )
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, homogeneous, partially-deduplicated)
     testQuery(
@@ -721,10 +721,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
-        )
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.insert (with history, homogeneous, fully-deduplicated)
     testQuery(
@@ -732,10 +732,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7)))
-        )
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // set.union (with history, heterogenous, partially-deduplicated)
     testQuery(
@@ -743,10 +743,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
       expectedColumns = Vector("result"),
       expectedRows = Seq(
         Vector(
-          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7), Expr.Str("jason")))
-        )
+          Expr.List(Vector(Expr.Integer(3), Expr.Integer(2), Expr.Integer(1), Expr.Integer(7), Expr.Str("jason"))),
+        ),
       ),
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
 
   }
@@ -764,10 +764,10 @@ class CypherMutate extends CypherHarness("cypher-mutate-tests") {
         |""".stripMargin,
       Vector("n.test"),
       Vector(
-        Vector(Expr.List(Expr.Integer(1), Expr.Str("2"), Expr.False))
+        Vector(Expr.List(Expr.Integer(1), Expr.Str("2"), Expr.False)),
       ),
       expectedIsReadOnly = false,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 }

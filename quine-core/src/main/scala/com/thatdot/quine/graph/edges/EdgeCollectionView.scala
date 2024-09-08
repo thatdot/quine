@@ -33,12 +33,12 @@ abstract class EdgeCollectionView {
 
   def matching(
     domainEdges: List[DomainEdge],
-    thisQid: QuineId
+    thisQid: QuineId,
   ): Map[DomainEdge, Set[HalfEdge]] = domainEdges
     .map(de =>
       de -> matching(de.edge.edgeType, de.edge.direction)
         .filter(he => de.circularMatchAllowed || he.other != thisQid)
-        .toSet
+        .toSet,
     )
     .toMap
 

@@ -10,7 +10,7 @@ import org.apache.pekko.kafka.{
   ConsumerMessage,
   ConsumerSettings,
   Subscription,
-  Subscriptions => KafkaSubscriptions
+  Subscriptions => KafkaSubscriptions,
 }
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.{Done, NotUsed}
@@ -49,7 +49,7 @@ object KafkaSource {
     kafkaProperties: KafkaIngest.KafkaProperties,
     securityProtocol: KafkaSecurityProtocol,
     decoders: Seq[ContentDecoder],
-    system: ActorSystem
+    system: ActorSystem,
   ): ConsumerSettings[Array[Byte], Array[Byte]] = {
 
     val deserializer: Deserializer[Array[Byte]] = (_: String, data: Array[Byte]) =>
@@ -63,7 +63,7 @@ object KafkaSource {
     // in favor of `KafkaIngest.KafkaProperties`. Additionally, the current "template" properties override those in kafkaProperties
     val properties = kafkaProperties ++ Map(
       AUTO_OFFSET_RESET_CONFIG -> autoOffsetReset.name,
-      SECURITY_PROTOCOL_CONFIG -> securityProtocol.name
+      SECURITY_PROTOCOL_CONFIG -> securityProtocol.name,
     )
 
     ConsumerSettings(system, keyDeserializer, deserializer)
@@ -87,13 +87,13 @@ object KafkaSource {
               (topic, partitions) <- assignments
               partition <- partitions
             } yield new TopicPartition(topic, partition)
-          ).toSet
-        )
+          ).toSet,
+        ),
     )
 
   def ackFlow(
     koc: KafkaOffsetCommitting.ExplicitCommit,
-    system: ActorSystem
+    system: ActorSystem,
   ): Flow[WithOffset, Done, NotUsed] = {
     val committer: Flow[ConsumerMessage.Committable, ConsumerMessage.CommittableOffsetBatch, NotUsed] =
       Committer
@@ -103,8 +103,8 @@ object KafkaSource {
             .withMaxInterval(FiniteDuration(koc.maxIntervalMillis.toLong, MILLISECONDS))
             .withParallelism(koc.parallelism)
             .withDelivery(
-              if (koc.waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget
-            )
+              if (koc.waitForCommitConfirmation) CommitDelivery.WaitForAck else CommitDelivery.SendAndForget,
+            ),
         )
 
     // Note - In cases where we are in ExplicitCommit mode with CommitDelivery.WaitForAck _and_ there is an
@@ -131,7 +131,7 @@ case class KafkaSource(
   endingOffset: Option[Long],
   decoders: Seq[ContentDecoder],
   meter: IngestMeter,
-  system: ActorSystem
+  system: ActorSystem,
 ) {
 
   def framedSource: FramedSource = {
@@ -144,7 +144,7 @@ case class KafkaSource(
         kafkaProperties,
         securityProtocol,
         decoders,
-        system
+        system,
       )
 
     val complaintsFromValidator: ValidatedNel[String, Unit] =
@@ -167,7 +167,7 @@ case class KafkaSource(
             source,
             meter,
             input => input.record.value(),
-            ackFlow(explicitCommit, system)
+            ackFlow(explicitCommit, system),
           )
         }
 

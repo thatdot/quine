@@ -43,7 +43,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
   promisedResult: Promise[Resp],
   timeout: FiniteDuration,
   resultHandler: ResultHandler[Resp],
-  metrics: RelayAskMetric
+  metrics: RelayAskMetric,
 )(implicit logConfig: LogConfig)
     extends Actor
     with ActorSafeLogging
@@ -52,7 +52,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
   timers.startSingleTimer(
     key = GiveUpWaiting,
     msg = GiveUpWaiting,
-    timeout
+    timeout,
   )
 
   private lazy val msg = unattributedMessage(WrappedActorRef(self))
@@ -70,7 +70,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       initialDelay = Duration.Zero,
       interval = retryInterval,
       receiver = actorRef,
-      message = toSend
+      message = toSend,
     )(context.dispatcher, self)
   } else {
     timerContext.stop()
@@ -102,7 +102,7 @@ final private[quine] class ExactlyOnceAskActor[Resp](
     case BaseMessage.DeliveryRelay(
           BaseMessage.Response(r),
           _,
-          needsAck
+          needsAck,
         ) => // Message is not a `T` if `FutureResult` is used.
       if (needsAck) sender() ! BaseMessage.Ack
       // deliberately ignore deduplication step - this actor is only ever waiting for one message.
@@ -115,13 +115,13 @@ final private[quine] class ExactlyOnceAskActor[Resp](
       val timeoutException = new ExactlyOnceTimeoutException(
         s"""Ask relayed by graph timed out after $timeout waiting for $waitingFor to message of type:
            |${msg.getClass.getSimpleName} from originalSender: $originalSender
-           |to: $actorRef. Message: $msg""".stripMargin.replace('\n', ' ').trim
+           |to: $actorRef. Message: $msg""".stripMargin.replace('\n', ' ').trim,
       )
       log.warn(
         log"""Ask relayed by graph timed out after ${Safe(timeout)} waiting for ${Safe(waitingFor)} to message of type:
              |${Safe(msg.getClass.getSimpleName)} from originalSender: ${Safe(originalSender)}
              |to: ${Safe(actorRef)}. If this occurred as part of a Cypher query, the query will be retried by default.
-             |Message: ${msg.toString}""".cleanLines
+             |Message: ${msg.toString}""".cleanLines,
       )
       promisedResult.tryFailure(timeoutException)
       context.stop(self)

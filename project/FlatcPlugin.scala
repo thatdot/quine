@@ -18,7 +18,7 @@ object FlatcPlugin extends AutoPlugin {
 
     val flatcExecutable = TaskKey[File](
       "flatc-executable",
-      "Path to a flatc executable. Default downloads flatcDependency from Github."
+      "Path to a flatc executable. Default downloads flatcDependency from Github.",
     )
   }
 
@@ -44,7 +44,7 @@ object FlatcPlugin extends AutoPlugin {
           val os = Properties.osName
           val suggestion = "set flatcExecutable := file(path-to-flatc)"
           throw new sbt.internal.util.MessageOnlyException(
-            s"Could not identify flatc binary for $os (try manually setting `$suggestion`)"
+            s"Could not identify flatc binary for $os (try manually setting `$suggestion`)",
           )
 
         }
@@ -70,7 +70,7 @@ object FlatcPlugin extends AutoPlugin {
 
         getFlatc(outputDirectory, url)
 
-      }
+      },
     )
 
   override def projectSettings: Seq[Def.Setting[_]] =
@@ -100,7 +100,7 @@ object FlatcPlugin extends AutoPlugin {
         cachedGen(flatcSources.value.toSet).toSeq
       },
       Compile / managedSourceDirectories += flatcOutput.value,
-      libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % flatbuffersV
+      libraryDependencies += "com.google.flatbuffers" % "flatbuffers-java" % flatbuffersV,
     )
 
 }

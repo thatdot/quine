@@ -17,13 +17,13 @@ trait AlgorithmRoutes
   private[this] val algorithmTag = Tag("Graph Algorithms")
     .withDescription(
       Some(
-        "High-level operations on the graph to support graph AI, ML, and other algorithms."
-      )
+        "High-level operations on the graph to support graph AI, ML, and other algorithms.",
+      ),
     )
 
   val walkLength: QueryString[Option[Int]] = qs[Option[Int]](
     "length",
-    docs = Some("Maximum length of a walk. Default: `10`")
+    docs = Some("Maximum length of a walk. Default: `10`"),
   )
 
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
@@ -44,29 +44,29 @@ trait AlgorithmRoutes
          |
          |The provided query will have the following prefix prepended: `$queryPrefix` where `${"$n"}` evaluates
          |to the ID of the node on which the query is executed. The default value of this parameter is:
-         |`$querySuffix`""".stripMargin
-    )
+         |`$querySuffix`""".stripMargin,
+    ),
   )
 
   val numberOfWalks: QueryString[Option[Int]] = qs[Option[Int]](
     "count",
-    docs = Some("An optional integer for how many random walks from each node to generate. Default: `5`")
+    docs = Some("An optional integer for how many random walks from each node to generate. Default: `5`"),
   )
 
   val returnParameter: QueryString[Option[Double]] = qs[Option[Double]](
     "return",
     docs = Some(
       "the `p` parameter to determine likelihood of returning to the node just visited: `1/p`  Lower is " +
-      "more likely; but if `0`, never return to previous node. Default: `1`"
-    )
+      "more likely; but if `0`, never return to previous node. Default: `1`",
+    ),
   )
 
   val inOutParameter: QueryString[Option[Double]] = qs[Option[Double]](
     "in-out",
     docs = Some(
       "the `q` parameter to determine likelihood of visiting a node outside the neighborhood of the" +
-      " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`"
-    )
+      " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`",
+    ),
   )
 
   val randomSeedOpt: QueryString[Option[String]] = qs[Option[String]](
@@ -74,8 +74,8 @@ trait AlgorithmRoutes
     docs = Some(
       "Optionally specify any string as a random seed for generating walks. This is used to determine all " +
       "randomness, so providing the same seed will always produce the same random walk. If unset, a new seed is " +
-      "used each time a random choice is needed."
-    )
+      "used each time a random choice is needed.",
+    ),
   )
 
   @unnamed
@@ -84,14 +84,14 @@ trait AlgorithmRoutes
   @unnamed
   @title("Local File")
   case class LocalFile(
-    @docs("Optional name of the file to save in the working directory") fileName: Option[String]
+    @docs("Optional name of the file to save in the working directory") fileName: Option[String],
   ) extends SaveLocation
 
   @unnamed
   @title("S3 Bucket")
   case class S3Bucket(
     @docs("S3 bucket name") bucketName: String,
-    @docs("Optional name of the file in the S3 bucket") key: Option[String]
+    @docs("Optional name of the file in the S3 bucket") key: Option[String],
   ) extends SaveLocation
 
   implicit lazy val localFileSchema: Record[LocalFile] = genericRecord[LocalFile]
@@ -109,16 +109,16 @@ trait AlgorithmRoutes
       NamespaceParameter,
       AtTime,
       Int,
-      SaveLocation
+      SaveLocation,
     ),
-    Either[ClientErrors, Option[String]]
+    Either[ClientErrors, Option[String]],
   ] =
     endpoint(
       request = put(
         url = algorithmsPrefix / "walk" /?
           (walkLength & numberOfWalks & onNodeQuery & returnParameter &
           inOutParameter & randomSeedOpt & namespace & atTime & parallelism),
-        entity = jsonRequestWithExample[SaveLocation](example = S3Bucket("your-s3-bucket-name", None))
+        entity = jsonRequestWithExample[SaveLocation](example = S3Bucket("your-s3-bucket-name", None)),
       ),
       response = customBadRequest("Invalid file")
         .orElse(wheneverFound(accepted(textResponse))),
@@ -157,29 +157,29 @@ trait AlgorithmRoutes
               |
               | Example file name: `graph-walk-1675122348011_T-10x5-q0-1.0x1.0-_.csv`
               |
-              | The name of the actual file being written is returned in the API response body.""".stripMargin
-          )
+              | The name of the actual file being written is returned in the API response body.""".stripMargin,
+          ),
         )
-        .withTags(List(algorithmTag))
+        .withTags(List(algorithmTag)),
     )
 
   final val algorithmRandomWalk: Endpoint[
     (Id, (Option[Int], Option[String], Option[Double], Option[Double], Option[String], AtTime, NamespaceParameter)),
-    Either[ClientErrors, Option[List[String]]]
+    Either[ClientErrors, Option[List[String]]],
   ] =
     endpoint(
       request = get(
         algorithmsPrefix / "walk" / nodeIdSegment /?
-        (walkLength & onNodeQuery & returnParameter & inOutParameter & randomSeedOpt & atTime & namespace)
+        (walkLength & onNodeQuery & returnParameter & inOutParameter & randomSeedOpt & atTime & namespace),
       ),
       response = badRequest().orElse(wheneverFound(ok(jsonResponse[List[String]]))),
       docs = EndpointDocs()
         .withSummary(Some("Generate Random Walk"))
         .withDescription(
           Some(
-            "Generate a random walk from a node in the graph and return the results."
-          )
+            "Generate a random walk from a node in the graph and return the results.",
+          ),
         )
-        .withTags(List(algorithmTag))
+        .withTags(List(algorithmTag)),
     )
 }

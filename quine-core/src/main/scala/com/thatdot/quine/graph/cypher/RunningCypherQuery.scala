@@ -11,7 +11,7 @@ import org.apache.pekko.stream.scaladsl.Source
   */
 final case class RunningCypherQuery(
   compiled: CompiledQuery[Location],
-  private val resultSource: Source[QueryContext, NotUsed]
+  private val resultSource: Source[QueryContext, NotUsed],
 ) {
 
   /** Ordered variables returned by the query */
@@ -19,7 +19,7 @@ final case class RunningCypherQuery(
     case Columns.Specified(cols) => cols
     case Columns.Omitted =>
       throw new IllegalArgumentException(
-        "Missing column information for query"
+        "Missing column information for query",
       )
   }
 

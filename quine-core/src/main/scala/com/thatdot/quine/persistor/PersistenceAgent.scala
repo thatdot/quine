@@ -19,7 +19,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -86,10 +86,10 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    includeDomainIndexEvents: Boolean,
   ): Future[Iterable[NodeEvent]] =
     getJournalWithTime(id, startingAt, endingAt, includeDomainIndexEvents).map(_.map(_.event))(
-      ExecutionContext.parasitic
+      ExecutionContext.parasitic,
     )
 
   /** Fetch a time-ordered list of events with timestamps affecting a node's state,
@@ -105,12 +105,12 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     id: QuineId,
     startingAt: EventTime,
     endingAt: EventTime,
-    includeDomainIndexEvents: Boolean
+    includeDomainIndexEvents: Boolean,
   ): Future[Iterable[NodeEvent.WithTime[NodeEvent]]] = {
 
     def mergeEvents(
       i1: Iterable[NodeEvent.WithTime[NodeChangeEvent]],
-      i2: Iterable[NodeEvent.WithTime[DomainIndexEvent]]
+      i2: Iterable[NodeEvent.WithTime[DomainIndexEvent]],
     ): Iterable[NodeEvent.WithTime[NodeEvent]] = (i1 ++ i2).toVector.sortBy(e => e.atTime.millis)
 
     val nceEvents = getNodeChangeEventsWithTime(id, startingAt, endingAt)
@@ -119,20 +119,20 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
       nceEvents
     else
       nceEvents.zipWith(
-        getDomainIndexEventsWithTime(id, startingAt, endingAt)
+        getDomainIndexEventsWithTime(id, startingAt, endingAt),
       )(mergeEvents)(ExecutionContext.parasitic)
   }
 
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]]
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]]
 
   /** Get a source of every node in the graph which has been written to the
@@ -172,7 +172,7 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     */
   def getLatestSnapshot(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[Array[Byte]]]
 
   def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit]
@@ -193,7 +193,7 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     * @return standing query states, keyed by the top-level standing query and sub-query
     */
   def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]]
 
   /** Set the intermediate standing query state associated with a node
@@ -217,7 +217,7 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit]
 
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit]
@@ -279,7 +279,7 @@ trait MultipartSnapshotPersistenceAgent {
 
   def getLatestSnapshot(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[Array[Byte]]] =
     getLatestMultipartSnapshot(id, upToTime).flatMap {
       case Some(MultipartSnapshot(time, parts)) =>
@@ -287,7 +287,7 @@ trait MultipartSnapshotPersistenceAgent {
           Future.successful(Some(parts.flatMap(_.partBytes).toArray))
         else {
           logger.warn(
-            safe"Failed reading multipart snapshot for id: ${Safe(id)} upToTime: ${Safe(upToTime)}; retrying with time: ${Safe(time)}"
+            safe"Failed reading multipart snapshot for id: ${Safe(id)} upToTime: ${Safe(upToTime)}; retrying with time: ${Safe(time)}",
           )
           getLatestSnapshot(id, time)
         }
@@ -315,7 +315,7 @@ trait MultipartSnapshotPersistenceAgent {
 
   def getLatestMultipartSnapshot(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[MultipartSnapshot]]
 }
 

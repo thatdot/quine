@@ -12,7 +12,7 @@ import com.thatdot.quine.app.v2api.endpoints.{
   V2CypherEndpoints,
   V2DebugEndpoints,
   V2IngestEndpoints,
-  V2StandingEndpoints
+  V2StandingEndpoints,
 }
 import com.thatdot.quine.util.Log._
 

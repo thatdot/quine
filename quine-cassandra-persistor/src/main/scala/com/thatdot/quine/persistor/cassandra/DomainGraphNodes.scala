@@ -48,25 +48,25 @@ object DomainGraphNodesDefinition
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean
+    shouldCreateTables: Boolean,
   )(implicit mat: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[DomainGraphNodes] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     val createdSchema = futureInstance.whenA(
-      shouldCreateTables
+      shouldCreateTables,
     )(
       session
         .executeAsync(createTableStatement)
         .asScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic)
+        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic),
     )
 
     createdSchema.flatMap(_ =>
       (
         T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
         prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, firstRowStatement, dropTableStatement, _, _, _))
+      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, firstRowStatement, dropTableStatement, _, _, _)),
     )(ExecutionContext.parasitic)
   }
 
@@ -74,11 +74,11 @@ object DomainGraphNodesDefinition
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[DomainGraphNodes] = ???
 }
 
@@ -90,7 +90,7 @@ class DomainGraphNodes(
   dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
-  selectAllStatement: PreparedStatement
+  selectAllStatement: PreparedStatement,
 )(implicit mat: Materializer)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with DomainGraphNodeColumnNames {
@@ -106,11 +106,11 @@ class DomainGraphNodes(
             dgns.map { case (domainGraphNodeId, domainGraphNode) =>
               insertStatement.bindColumns(
                 domainGraphNodeIdColumn.set(domainGraphNodeId),
-                dataColumn.set(domainGraphNode)
+                dataColumn.set(domainGraphNode),
               )
-            }: _*
-          )
-        )
+            }: _*,
+          ),
+        ),
       )
     }
 
@@ -120,9 +120,9 @@ class DomainGraphNodes(
         writeSettings(
           BatchStatement.newInstance(
             BatchType.UNLOGGED,
-            dgnIds.map(id => deleteStatement.bindColumns(domainGraphNodeIdColumn.set(id))): _*
-          )
-        )
+            dgnIds.map(id => deleteStatement.bindColumns(domainGraphNodeIdColumn.set(id))): _*,
+          ),
+        ),
       )
     }
 

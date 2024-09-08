@@ -13,5 +13,5 @@ class ShardActorMailbox(settings: ActorSystem.Settings, config: Config)
         case _: SleepOutcome => 0
         case BaseMessage.DeliveryRelay(_, _, true) => 1 // needsAck == true
         case _ => 2
-      }
+      },
     )

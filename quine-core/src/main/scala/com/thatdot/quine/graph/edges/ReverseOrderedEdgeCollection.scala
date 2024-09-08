@@ -21,7 +21,7 @@ final class ReverseOrderedEdgeCollection(val thisQid: QuineId) extends SyncEdgeC
   private val typeIndex: EdgeIndex[Symbol] = new EdgeIndex(_.edgeType)
   private val otherIndex: EdgeIndex[QuineId] = new EdgeIndex(_.other)
   private val typeDirectionIndex: EdgeIndex[GenericEdge] = new EdgeIndex(edge =>
-    GenericEdge(edge.edgeType, edge.direction)
+    GenericEdge(edge.edgeType, edge.direction),
   )
 
   override def toString: String = s"ReverseOrderedEdgeCollection(${edges.mkString(", ")})"

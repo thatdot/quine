@@ -21,7 +21,7 @@ class DomainGraphNodeRegistryTest extends AnyFunSuite with ScalaCheckDrivenPrope
     val dgnReg: DomainGraphNodeRegistry = new DomainGraphNodeRegistry(
       registerGaugeDomainGraphNodeCount = _ => (),
       persistDomainGraphNodes = p => Future.successful(persistDomainGraphNodesCalls ++= p.keys),
-      removeDomainGraphNodes = r => Future.successful(deleteDomainGraphNodesCalls ++= r)
+      removeDomainGraphNodes = r => Future.successful(deleteDomainGraphNodesCalls ++= r),
     )
     def registerDomainGraphBranch(dgb: DomainGraphBranch, sqId: StandingQueryId): DomainGraphNodeId = {
       val dgnPackage = dgb.toDomainGraphNodePackage

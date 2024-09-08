@@ -26,9 +26,9 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
-      idProvider = idProv
+      idProvider = idProv,
     )(logConfig),
-    timeout.duration
+    timeout.duration,
   )
   implicit val materializer: Materializer = graph.materializer
   val gremlinHarnessNamespace: NamespaceId = None // Use default namespace
@@ -50,10 +50,10 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     queryText: String,
     expected: Seq[Any],
     parameters: Map[Symbol, QuineValue] = Map.empty,
-    ordered: Boolean = true
+    ordered: Boolean = true,
   )(implicit
     pos: Position,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[Assertion] = {
     val queryResults = gremlin.query(queryText, parameters)
     val (killSwitch, resultsFut) = queryResults
@@ -64,7 +64,7 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     // Schedule cancellation for the query if it takes too long
     materializer.scheduleOnce(
       timeout.duration,
-      () => killSwitch.abort(new java.util.concurrent.TimeoutException())
+      () => killSwitch.abort(new java.util.concurrent.TimeoutException()),
     )
 
     resultsFut.map { actualResults =>
@@ -83,9 +83,9 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     */
   def interceptQuery(
     queryText: String,
-    expectedMessage: String
+    expectedMessage: String,
   )(implicit
-    pos: Position
+    pos: Position,
   ): Future[Assertion] = {
     val actualFut = recoverToExceptionIf[QuineGremlinException] {
       Future(gremlin.query(queryText).runWith(Sink.ignore)).flatten

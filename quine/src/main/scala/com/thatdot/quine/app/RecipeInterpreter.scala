@@ -38,7 +38,7 @@ case class RecipeInterpreter(
   recipe: Recipe,
   appState: RecipeState,
   graphService: CypherOpsGraph,
-  quineWebserverUri: Option[Uri]
+  quineWebserverUri: Option[Uri],
 )(implicit idProvider: QuineIdProvider)
     extends Cancellable {
 
@@ -76,7 +76,7 @@ case class RecipeInterpreter(
       val addStandingQueryResult: Future[Boolean] = appState.addStandingQuery(
         standingQueryName,
         namespace,
-        standingQueryDefinition
+        standingQueryDefinition,
       )
       try if (!Await.result(addStandingQueryResult, 5 seconds)) {
         statusLines.error(log"Standing Query ${Safe(standingQueryName)} already exists")
@@ -87,7 +87,7 @@ case class RecipeInterpreter(
         case NonFatal(ex) =>
           statusLines.error(
             log"Failed creating Standing Query ${Safe(standingQueryName)}: ${standingQueryDefinition.toString}",
-            ex
+            ex,
           )
       }
       ()
@@ -105,12 +105,12 @@ case class RecipeInterpreter(
         previousStatus = None,
         shouldResumeRestoredIngests = false,
         timeout = 5 seconds,
-        memberIdx = Some(memberIdx)
+        memberIdx = Some(memberIdx),
       ) match {
         case Failure(ex) =>
           statusLines.error(
             log"Failed creating Ingest Stream ${Safe(ingestStreamName)}\n${ingestStream.toString}",
-            ex
+            ex,
           )
         case Success(false) =>
           statusLines.error(log"Ingest Stream ${Safe(ingestStreamName)} already exists")
@@ -137,13 +137,13 @@ case class RecipeInterpreter(
     appState: RecipeState,
     graphService: BaseGraph,
     ingestStreamName: String,
-    interval: FiniteDuration = 1 second
+    interval: FiniteDuration = 1 second,
   )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
       initialDelay = interval,
-      interval = interval
+      interval = interval,
     ) { () =>
       appState.getIngestStream(ingestStreamName, namespace) match {
         case None =>
@@ -165,7 +165,7 @@ case class RecipeInterpreter(
               } else {
                 statusLines.update(
                   statusLine,
-                  message
+                  message,
                 )
               }
             }(graphService.system.dispatcher)
@@ -179,13 +179,13 @@ case class RecipeInterpreter(
     appState: RecipeState,
     graph: BaseGraph,
     standingQueryName: String,
-    interval: FiniteDuration = 1 second
+    interval: FiniteDuration = 1 second,
   )(implicit logConfig: LogConfig): Cancellable = {
     val actorSystem = graph.system
     val statusLine = statusLines.create()
     lazy val task: Cancellable = actorSystem.scheduler.scheduleAtFixedRate(
       initialDelay = interval,
-      interval = interval
+      interval = interval,
     ) { () =>
       appState
         .getStandingQuery(standingQueryName, namespace)
@@ -215,17 +215,17 @@ case class RecipeInterpreter(
     statusLines: StatusLines,
     graphService: CypherOpsGraph,
     statusQuery: StatusQuery,
-    interval: FiniteDuration = 5 second
+    interval: FiniteDuration = 5 second,
   )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Cancellable = {
     val actorSystem = graphService.system
     val changed = new OnChanged[String]
     lazy val task: Cancellable = actorSystem.scheduler.scheduleWithFixedDelay(
       initialDelay = interval,
-      delay = interval
+      delay = interval,
     ) { () =>
       val queryResults: RunningCypherQuery = com.thatdot.quine.compiler.cypher.queryCypherValues(
         queryText = statusQuery.cypherQuery,
-        namespace = namespace
+        namespace = namespace,
       )(graphService)
       try {
         val resultContent: Seq[Seq[Value]] =
@@ -235,7 +235,7 @@ case class RecipeInterpreter(
               .toMat(Sink.seq)(Keep.right)
               .named("recipe-status-query")
               .run()(graphService.materializer),
-            5 seconds
+            5 seconds,
           )
         changed(queryResultToString(queryResults, resultContent))(s => statusLines.info(log"$s"))
       } catch {
@@ -248,7 +248,7 @@ case class RecipeInterpreter(
   /** Formats query results into a multi-line string designed to be easily human-readable. */
   private def queryResultToString(queryResults: RunningCypherQuery, resultContent: Seq[Seq[Value]])(implicit
     idProvider: QuineIdProvider,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): String = {
 
     /** Builds a repeated string by concatenation. */
@@ -270,7 +270,7 @@ case class RecipeInterpreter(
       val columnNameFixedWidth =
         Math.min(
           queryResults.columns.map(_.name.length).max,
-          columnNameFixedWidthMax
+          columnNameFixedWidthMax,
         )
       val valueStrings = resultRecord.map(Value.toJson(_).noSpaces)
       val valueStringMaxLength = valueStrings.map(_.length).max
@@ -282,9 +282,9 @@ case class RecipeInterpreter(
           s"---[ Status Query result ${resultRecordIndex + 1} ]",
           Math.max(
             headerLengthMin,
-            Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax)
+            Math.min(columnNameFixedWidth + valueStringMaxLength + separator.length, headerLengthMax),
           ),
-          '-'
+          '-',
         )
       val footer =
         repeated("-", columnNameFixedWidth + 1) + "+" + repeated("-", header.length - columnNameFixedWidth - 2)

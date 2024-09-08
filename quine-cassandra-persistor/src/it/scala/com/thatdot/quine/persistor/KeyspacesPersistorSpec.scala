@@ -31,9 +31,9 @@ class KeyspacesPersistorSpec(implicit protected val logConfig: LogConfig) extend
       shouldCreateKeyspace = true,
       shouldCreateTables = true,
       metricRegistry = None,
-      snapshotPartMaxSizeBytes = 1000
+      snapshotPartMaxSizeBytes = 1000,
     ),
-    38.seconds
+    38.seconds,
   )
 
   override val runnable: Boolean = true

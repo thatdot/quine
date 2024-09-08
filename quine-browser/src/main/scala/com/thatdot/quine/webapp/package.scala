@@ -54,7 +54,7 @@ package object webapp {
         case "graph" | _ => NetworkLayout.Graph
       },
       queryMethod = if (useWs) QueryMethod.WebSocket else QueryMethod.Restful,
-      isQuineOSS = options.isQuineOSS
+      isQuineOSS = options.isQuineOSS,
     )
   }
 
@@ -77,11 +77,11 @@ package object webapp {
           "/docs",
           StoplightElements(
             options.documentationUrl,
-            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico")
+            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
           ),
-          options.baseURI
+          options.baseURI,
         ),
-        Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI)
+        Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI),
         // Tab(ExplorerIcon, "Interactive Client - TS", "/client-ts", InteractiveClient(), options.baseURI)
       )
     }

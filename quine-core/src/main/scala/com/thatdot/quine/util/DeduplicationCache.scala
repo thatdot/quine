@@ -67,7 +67,7 @@ class InMemoryDeduplicationCache[E](size: Long) extends DeduplicationCache[E] {
     * @return true when the element is present, false otherwise
     */
   def contains(elem: E): Future[Boolean] = Future.successful(
-    Option(cache.getIfPresent(elem)).isDefined
+    Option(cache.getIfPresent(elem)).isDefined,
   )
 
   /** Insert an element into the cache. If the cache already contains at least `size` elements, and this element is not

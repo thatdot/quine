@@ -17,7 +17,7 @@ trait BaseConfig {
 
   /** @return HOCON representation of the current config */
   def loadedConfigHocon: String = configVal.root render (
-    ConfigRenderOptions.defaults.setOriginComments(false).setJson(false)
+    ConfigRenderOptions.defaults.setOriginComments(false).setJson(false),
   )
 
   /** Write the config out to a file

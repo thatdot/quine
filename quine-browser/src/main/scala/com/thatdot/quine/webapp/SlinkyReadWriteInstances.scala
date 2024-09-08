@@ -25,7 +25,7 @@ object SlinkyReadWriteInstances extends CoreReaders {
   implicit val namespaceWriter: Writer[NamespaceParameter] = _.namespaceId.asInstanceOf[js.Object]
   implicit val namespaceReader: Reader[NamespaceParameter] = js =>
     NamespaceParameter(stringReader.read(js)) getOrElse (throw new IllegalArgumentException(
-      s"$js is not a valid namespace name"
+      s"$js is not a valid namespace name",
     ))
 
   implicit val instantWriter: Writer[Instant] = instant => Json.fromString(instant.toString).asInstanceOf[js.Object]
@@ -41,7 +41,7 @@ object SlinkyReadWriteInstances extends CoreReaders {
         "id" -> Json.fromString(node.id.toString),
         "hostIndex" -> Json.fromInt(node.hostIndex),
         "label" -> Json.fromString(node.label),
-        "properties" -> Json.obj(node.properties.toSeq.map { case (k, v) => k -> v }: _*)
+        "properties" -> Json.obj(node.properties.toSeq.map { case (k, v) => k -> v }: _*),
       )
       .asInstanceOf[js.Object]
 
@@ -63,7 +63,7 @@ object SlinkyReadWriteInstances extends CoreReaders {
         "from" -> Json.fromString(edge.from.toString),
         "edgeType" -> Json.fromString(edge.edgeType),
         "to" -> Json.fromString(edge.to.toString),
-        "isDirected" -> Json.fromBoolean(edge.isDirected)
+        "isDirected" -> Json.fromBoolean(edge.isDirected),
       )
       .asInstanceOf[js.Object]
 
@@ -90,7 +90,7 @@ object SlinkyReadWriteInstances extends CoreReaders {
       "from" -> Json.fromString(edge.from.toString),
       "edgeType" -> Json.fromString(edge.edgeType),
       "to" -> Json.fromString(edge.to.toString),
-      "isDirected" -> Json.fromBoolean(edge.isDirected)
+      "isDirected" -> Json.fromBoolean(edge.isDirected),
     )
 
   implicit val uiNodeJsonWriter: io.circe.Encoder[UiNode[String]] = node =>
@@ -98,7 +98,7 @@ object SlinkyReadWriteInstances extends CoreReaders {
       "id" -> Json.fromString(node.id.toString),
       "hostIndex" -> Json.fromInt(node.hostIndex),
       "label" -> Json.fromString(node.label),
-      "properties" -> Json.obj(node.properties.toSeq.map { case (k, v) => k -> v }: _*)
+      "properties" -> Json.obj(node.properties.toSeq.map { case (k, v) => k -> v }: _*),
     )
 
   // Explicit Writers and Readers for Seq[UiNode[String]] and Seq[UiEdge[String]]

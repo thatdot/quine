@@ -24,20 +24,20 @@ object LiteralMessage {
     withDirection: Option[EdgeDirection],
     withId: Option[QuineId],
     withLimit: Option[Int],
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Source[HalfEdgeMessage, NotUsed]]
   final case class HalfEdgeMessage(halfEdge: HalfEdge) extends LiteralMessage
 
   final case class AddHalfEdgeCommand(
     halfEdge: HalfEdge,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
   final case class RemoveHalfEdgeCommand(
     halfEdge: HalfEdge,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
@@ -51,19 +51,19 @@ object LiteralMessage {
       with AskableQuineMessage[Source[PropertyOrEdgeMessage, NotUsed]]
 
   final case class PropertyOrEdgeMessage(
-    value: Either[(Symbol, PropertyValue), HalfEdge]
+    value: Either[(Symbol, PropertyValue), HalfEdge],
   ) extends LiteralMessage
 
   final case class SetPropertyCommand(
     key: Symbol,
     value: PropertyValue,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
   final case class RemovePropertyCommand(
     key: Symbol,
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends LiteralCommand
       with AskableQuineMessage[Future[BaseMessage.Done.type]]
 
@@ -172,7 +172,7 @@ object LiteralMessage {
   final case class DgnWatchableEventIndexSummary(
     propIdx: Map[String, List[DomainGraphNodeId]],
     edgeIdx: Map[String, List[DomainGraphNodeId]],
-    anyEdgeIdx: List[DomainGraphNodeId]
+    anyEdgeIdx: List[DomainGraphNodeId],
   ) extends QuineMessage
 
   /** Relays a complete, non-authoritative snapshot of node-internal state, eg, for logging.
@@ -189,13 +189,13 @@ object LiteralMessage {
     dgnWatchableEventIndex: DgnWatchableEventIndexSummary,
     multipleValuesStandingQueryStates: Vector[LocallyRegisteredStandingQuery],
     journal: Set[NodeEvent.WithTime[NodeEvent]],
-    graphNodeHashCode: Long
+    graphNodeHashCode: Long,
   ) extends LiteralMessage
 
   final case class LocallyRegisteredStandingQuery(
     id: String,
     globalId: String,
     subscribers: Set[String],
-    state: String
+    state: String,
   )
 }

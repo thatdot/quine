@@ -37,7 +37,7 @@ object QuineSettings {
       "-Wnumeric-widen",
       "-Wvalue-discard",
       "-Wunused:imports",
-      "-Wunused:privates,locals,patvars"
+      "-Wunused:privates,locals,patvars",
     ) ++ Option.when(insideCI.value)("-Werror"),
     javacOptions ++= Seq("--release", "11"),
     // Circe is binary compatible between 0.13 and 0.14
@@ -47,19 +47,19 @@ object QuineSettings {
     // "found version conflict(s) in library dependencies; some are suspected to be binary incompatible"
     libraryDependencySchemes ++= Seq(
       "io.circe" %% "circe-core" % VersionScheme.Always,
-      "io.circe" %% "circe-parser" % VersionScheme.Always
+      "io.circe" %% "circe-parser" % VersionScheme.Always,
     ),
     Test / testOptions ++= Seq(
       //Include a report at the end of a test run with details on any failed tests:
       //  use oG for full stack traces, oT for short ones
-      Tests.Argument(TestFrameworks.ScalaTest, "-oT")
+      Tests.Argument(TestFrameworks.ScalaTest, "-oT"),
     ),
     excludeDependencies ++= Seq(
-      ExclusionRule("commons-logging", "commons-logging")
+      ExclusionRule("commons-logging", "commons-logging"),
     ),
     libraryDependencies ++= Seq(
-      "org.slf4j" % "jcl-over-slf4j" % "2.0.16"
-    )
+      "org.slf4j" % "jcl-over-slf4j" % "2.0.16",
+    ),
   )
   /* Settings for building a Scala.js/React webapp using Slinky
    *
@@ -68,7 +68,7 @@ object QuineSettings {
   val slinkySettings: Seq[Setting[_]] = Seq(
     libraryDependencies ++= Seq(
       "me.shadaj" %%% "slinky-core" % Dependencies.slinkyV,
-      "me.shadaj" %%% "slinky-web" % Dependencies.slinkyV
+      "me.shadaj" %%% "slinky-web" % Dependencies.slinkyV,
     ),
     /* This is disabled by default because it slows down the build. However, it
      * can be very useful to re-enable when debugging a JS error (stack traces
@@ -84,15 +84,15 @@ object QuineSettings {
       "process" -> "0.11.10",
       "css-loader" -> "6.5.1",
       "style-loader" -> "3.3.1",
-      "webpack-merge" -> "5.8.0"
+      "webpack-merge" -> "5.8.0",
     ),
     Compile / npmDependencies ++= Seq(
       "react" -> Dependencies.reactV,
-      "react-dom" -> Dependencies.reactV
+      "react-dom" -> Dependencies.reactV,
     ),
     scalacOptions ++= Seq("-Ymacro-annotations"),
     doc := file("phony-no-doc-file"), // Avoid <https://github.com/shadaj/slinky/issues/380>
-    packageDoc / publishArtifact := false // Avoid <https://github.com/shadaj/slinky/issues/380>
+    packageDoc / publishArtifact := false, // Avoid <https://github.com/shadaj/slinky/issues/380>
   )
 
   val startupMessage = settingKey[String]("If non-empty, print this message on startup")

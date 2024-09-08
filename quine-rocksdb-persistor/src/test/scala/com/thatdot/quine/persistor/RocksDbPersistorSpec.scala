@@ -29,7 +29,7 @@ class RocksDbPersistorSpec(implicit protected val logConfig: LogConfig) extends 
         syncWrites = false,
         dbOptionProperties = new Properties(),
         PersistenceConfig(),
-        ioDispatcher = ExecutionContext.parasitic
+        ioDispatcher = ExecutionContext.parasitic,
       )
     } else {
       new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))

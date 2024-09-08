@@ -39,9 +39,9 @@ import com.thatdot.quine.util.Log._
 final case class GremlinQueryRunner(
   graph: LiteralOpsGraph,
   customIdRegex: Regex = """#?[-a-zA-Z0-9]+""".r,
-  customLiteralsParser: Option[(Regex, String => Option[QuineValue])] = None
+  customLiteralsParser: Option[(Regex, String => Option[QuineValue])] = None,
 )(implicit
-  protected val timeout: Timeout
+  protected val timeout: Timeout,
 ) extends GremlinTypes
     with GremlinParser {
 
@@ -50,7 +50,7 @@ final case class GremlinQueryRunner(
   private val lexer = new GremlinLexer(
     graph.idProvider,
     customIdRegex,
-    customLiteralsParser
+    customLiteralsParser,
   )
 
   /** Execute a Gremlin query on the graph and collect the results
@@ -65,7 +65,7 @@ final case class GremlinQueryRunner(
     queryString: String,
     parameters: Map[Symbol, QuineValue] = Map.empty,
     namespace: NamespaceId = None,
-    atTime: Option[Milliseconds] = None
+    atTime: Option[Milliseconds] = None,
   )(implicit logConfig: LogConfig): Source[Any, NotUsed] = {
     val query: Query = parseQuery(new lexer.Scanner(queryString))
     val store =
@@ -83,7 +83,7 @@ final case class GremlinQueryRunner(
     queryString: String,
     parameters: Map[Symbol, QuineValue] = Map.empty,
     namespace: NamespaceId = None,
-    atTime: Option[Milliseconds] = None
+    atTime: Option[Milliseconds] = None,
   )(implicit logConfig: LogConfig): Source[T, NotUsed] = {
     val msg = "Top level query was required by the user to have a different type"
     query(queryString, parameters, namespace, atTime)

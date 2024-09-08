@@ -23,7 +23,7 @@ final case class PlanRoot(
   children: Vector[Plan],
   isReadOnly: Boolean,
   isIdempotent: Boolean,
-  canContainAllNodeScan: Boolean
+  canContainAllNodeScan: Boolean,
 ) extends Plan {
 
   /** Convert the plan into a Bolt-compatible value */
@@ -35,8 +35,8 @@ final case class PlanRoot(
       "children" -> Expr.List(children.map(_.toValue)),
       "isReadOnly" -> Expr.Bool(isReadOnly),
       "canContainAllNodeScan" -> Expr.Bool(canContainAllNodeScan),
-      "isIdempotent" -> Expr.Bool(isIdempotent)
-    )
+      "isIdempotent" -> Expr.Bool(isIdempotent),
+    ),
   )
 }
 
@@ -44,7 +44,7 @@ final case class PlanChild(
   operatorType: String,
   args: Map[String, Value],
   identifiers: Vector[String],
-  children: Vector[Plan]
+  children: Vector[Plan],
 ) extends Plan {
 
   /** Convert the plan into a Bolt-compatible value */
@@ -53,8 +53,8 @@ final case class PlanChild(
       "operatorType" -> Expr.Str(operatorType),
       "args" -> Expr.Map(args),
       "identifiers" -> Expr.List(identifiers.map(Expr.Str(_))),
-      "children" -> Expr.List(children.map(_.toValue))
-    )
+      "children" -> Expr.List(children.map(_.toValue)),
+    ),
   )
 
 }
@@ -110,7 +110,7 @@ object Plan {
         children = childrenQueries.result(),
         isReadOnly = query.isReadOnly,
         isIdempotent = query.isIdempotent,
-        canContainAllNodeScan = query.canContainAllNodeScan
+        canContainAllNodeScan = query.canContainAllNodeScan,
       )
     } else {
       PlanChild(
@@ -120,7 +120,7 @@ object Plan {
           case Columns.Omitted => Vector.empty
           case Columns.Specified(cols) => cols.map(_.name)
         },
-        children = childrenQueries.result()
+        children = childrenQueries.result(),
       )
     }
   }

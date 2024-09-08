@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryInfo,
   StandingQueryPattern,
-  cypher
+  cypher,
 }
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistence
@@ -25,7 +25,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeReturnColumn(
     builder: FlatBufferBuilder,
-    returnCol: GraphQueryPattern.ReturnColumn
+    returnCol: GraphQueryPattern.ReturnColumn,
   ): TypeAndOffset =
     returnCol match {
       case GraphQueryPattern.ReturnColumn.Id(node, formatAsStr, aliasedAs) =>
@@ -61,7 +61,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def readReturnColumn(
     typ: Byte,
-    makeReturnCol: Table => Table
+    makeReturnCol: Table => Table,
   ): GraphQueryPattern.ReturnColumn =
     typ match {
       case persistence.ReturnColumn.ReturnColumnId =>
@@ -69,7 +69,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         GraphQueryPattern.ReturnColumn.Id(
           GraphQueryPattern.NodePatternId(col.node.id),
           col.formatAsString,
-          Symbol(col.aliasedAs)
+          Symbol(col.aliasedAs),
         )
 
       case persistence.ReturnColumn.ReturnColumnProperty =>
@@ -77,14 +77,14 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         GraphQueryPattern.ReturnColumn.Property(
           GraphQueryPattern.NodePatternId(col.node.id),
           Symbol(col.propertyKey),
-          Symbol(col.aliasedAs)
+          Symbol(col.aliasedAs),
         )
 
       case persistence.ReturnColumn.ReturnColumnAllProperties =>
         val col = makeReturnCol(new ReturnColumnAllProperties()).asInstanceOf[persistence.ReturnColumnAllProperties]
         GraphQueryPattern.ReturnColumn.AllProperties(
           GraphQueryPattern.NodePatternId(col.node.id),
-          Symbol(col.aliasedAs)
+          Symbol(col.aliasedAs),
         )
 
       case other =>
@@ -93,14 +93,14 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeNodePatternPropertyValuePattern(
     builder: FlatBufferBuilder,
-    pattern: GraphQueryPattern.PropertyValuePattern
+    pattern: GraphQueryPattern.PropertyValuePattern,
   ): TypeAndOffset =
     pattern match {
       case GraphQueryPattern.PropertyValuePattern.Value(value) =>
         val compareToOff = writeQuineValue(builder, value)
         val off = persistence.NodePatternPropertyValue.createNodePatternPropertyValue(
           builder,
-          compareToOff
+          compareToOff,
         )
         TypeAndOffset(persistence.NodePatternPropertyValuePattern.NodePatternPropertyValue, off)
 
@@ -108,7 +108,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         val compareToOff = writeQuineValue(builder, value)
         val off = persistence.NodePatternPropertyAnyValueExcept.createNodePatternPropertyAnyValueExcept(
           builder,
-          compareToOff
+          compareToOff,
         )
         TypeAndOffset(persistence.NodePatternPropertyValuePattern.NodePatternPropertyAnyValueExcept, off)
 
@@ -122,14 +122,14 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         val patternOff = builder.createString(pattern.pattern)
         val off = persistence.NodePatternPropertyRegexMatch.createNodePatternPropertyRegexMatch(
           builder,
-          patternOff
+          patternOff,
         )
         TypeAndOffset(persistence.NodePatternPropertyValuePattern.NodePatternPropertyRegexMatch, off)
     }
 
   private[this] def readNodePatternPropertyValuePattern(
     typ: Byte,
-    makeValueConstraint: Table => Table
+    makeValueConstraint: Table => Table,
   ): GraphQueryPattern.PropertyValuePattern =
     typ match {
       case persistence.NodePatternPropertyValuePattern.NodePatternPropertyValue =>
@@ -162,7 +162,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeNodePattern(
     builder: FlatBufferBuilder,
-    nodePattern: GraphQueryPattern.NodePattern
+    nodePattern: GraphQueryPattern.NodePattern,
   ): Offset = {
     val labelsOff: Offset = {
       val labelOffs: Array[Offset] = new Array[Offset](nodePattern.labels.size)
@@ -186,7 +186,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
     persistence.NodePattern.startNodePattern(builder)
     val patternIdOff: Offset = persistence.NodePatternId.createNodePatternId(
       builder,
-      nodePattern.id.id
+      nodePattern.id.id,
     )
     persistence.NodePattern.addPatternId(builder, patternIdOff)
     persistence.NodePattern.addLabels(builder, labelsOff)
@@ -196,7 +196,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
   }
 
   private[this] def readNodePattern(
-    nodePattern: persistence.NodePattern
+    nodePattern: persistence.NodePattern,
   ): GraphQueryPattern.NodePattern = {
     val labels: Set[Symbol] = {
       val builder = Set.newBuilder[Symbol]
@@ -225,24 +225,24 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       GraphQueryPattern.NodePatternId(nodePattern.patternId.id),
       labels,
       quineIdOpt,
-      properties
+      properties,
     )
   }
 
   private[this] def writeEdgePattern(
     builder: FlatBufferBuilder,
-    edgePattern: GraphQueryPattern.EdgePattern
+    edgePattern: GraphQueryPattern.EdgePattern,
   ): Offset = {
     val labelOff = builder.createString(edgePattern.label.name)
     persistence.EdgePattern.startEdgePattern(builder)
     val fromIdOff: Offset = persistence.NodePatternId.createNodePatternId(
       builder,
-      edgePattern.from.id
+      edgePattern.from.id,
     )
     persistence.EdgePattern.addFrom(builder, fromIdOff)
     val toIdOff: Offset = persistence.NodePatternId.createNodePatternId(
       builder,
-      edgePattern.to.id
+      edgePattern.to.id,
     )
     persistence.EdgePattern.addTo(builder, toIdOff)
     persistence.EdgePattern.addIsDirected(builder, edgePattern.isDirected)
@@ -251,18 +251,18 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
   }
 
   private[this] def readEdgePattern(
-    edgePattern: persistence.EdgePattern
+    edgePattern: persistence.EdgePattern,
   ): GraphQueryPattern.EdgePattern =
     GraphQueryPattern.EdgePattern(
       GraphQueryPattern.NodePatternId(edgePattern.from.id),
       GraphQueryPattern.NodePatternId(edgePattern.to.id),
       edgePattern.isDirected,
-      Symbol(edgePattern.label)
+      Symbol(edgePattern.label),
     )
 
   private[this] def writeGraphQueryPattern(
     builder: FlatBufferBuilder,
-    pattern: GraphQueryPattern
+    pattern: GraphQueryPattern,
   ): Offset = {
     val nodesOff: Offset = {
       val nodeOffs: Array[Offset] = new Array(pattern.nodes.length)
@@ -301,7 +301,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
           builder,
           keyOff,
           valueTyp,
-          valueOff
+          valueOff,
         )
       }
       persistence.GraphQueryPattern.createToReturnVector(builder, toReturnOffs)
@@ -322,7 +322,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
   }
 
   private[this] def readGraphQueryPattern(
-    pattern: persistence.GraphQueryPattern
+    pattern: persistence.GraphQueryPattern,
   ): GraphQueryPattern = {
     val nodes: NonEmptyList[GraphQueryPattern.NodePattern] =
       // Throwing an exception here if nodes is empty - which would indicate a serialization error
@@ -352,7 +352,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeGraphPatternOrigin(
     builder: FlatBufferBuilder,
-    graphPat: PatternOrigin.GraphPattern
+    graphPat: PatternOrigin.GraphPattern,
   ): Offset = {
     val graphOff: Offset = writeGraphQueryPattern(builder, graphPat.pattern)
     val cypherOrigOff: Offset = graphPat.cypherOriginal match {
@@ -362,12 +362,12 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
     persistence.GraphPatternOrigin.createGraphPatternOrigin(
       builder,
       graphOff,
-      cypherOrigOff
+      cypherOrigOff,
     )
   }
 
   private[this] def readGraphPatternOrigin(
-    graphPatOrigin: persistence.GraphPatternOrigin
+    graphPatOrigin: persistence.GraphPatternOrigin,
   ): PatternOrigin.GraphPattern = {
     val graphPat = readGraphQueryPattern(graphPatOrigin.pattern)
     val originalCypher: Option[String] = Option(graphPatOrigin.cypherOriginal)
@@ -376,7 +376,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeBranchOrigin(
     builder: FlatBufferBuilder,
-    origin: PatternOrigin.DgbOrigin
+    origin: PatternOrigin.DgbOrigin,
   ): TypeAndOffset =
     origin match {
       case PatternOrigin.DirectDgb =>
@@ -389,7 +389,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def readBranchOrigin(
     branchOriginTyp: Byte,
-    makeBranchOrigin: Table => Table
+    makeBranchOrigin: Table => Table,
   ): PatternOrigin.DgbOrigin =
     branchOriginTyp match {
       case persistence.BranchOrigin.DirectDgb =>
@@ -404,7 +404,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
         if (!readOrigin.pattern.distinct) {
           throw new InvalidPersistedQuineData(
             s"Detected an invalid DistinctId query pattern during deserialization. DistinctId queries must return a single `DISTINCT` value. Detected pattern was: `${readOrigin.cypherOriginal
-              .getOrElse(readOrigin)}`"
+              .getOrElse(readOrigin)}`",
           )
         }
         readOrigin
@@ -415,7 +415,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeSqV4Origin(
     builder: FlatBufferBuilder,
-    origin: PatternOrigin.SqV4Origin
+    origin: PatternOrigin.SqV4Origin,
   ): TypeAndOffset =
     origin match {
       case PatternOrigin.DirectSqV4 =>
@@ -428,7 +428,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def readSqV4Origin(
     branchOriginTyp: Byte,
-    makeBranchOrigin: Table => Table
+    makeBranchOrigin: Table => Table,
   ): PatternOrigin.SqV4Origin =
     branchOriginTyp match {
       case persistence.SqV4Origin.DirectSqV4 =>
@@ -446,7 +446,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeSqV4StandingQuery(
     builder: FlatBufferBuilder,
-    cypherQuery: StandingQueryPattern.MultipleValuesQueryPattern
+    cypherQuery: StandingQueryPattern.MultipleValuesQueryPattern,
   ): Offset = {
     val TypeAndOffset(queryTyp, queryOff) = writeMultipleValuesStandingQuery(builder, cypherQuery.compiledQuery)
     val TypeAndOffset(originTyp, originOff) = writeSqV4Origin(builder, cypherQuery.origin)
@@ -456,12 +456,12 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       queryOff,
       cypherQuery.includeCancellation,
       originTyp,
-      originOff
+      originOff,
     )
   }
 
   private[this] def readSqV4StandingQuery(
-    cypherQuery: persistence.SqV4Query
+    cypherQuery: persistence.SqV4Query,
   ): StandingQueryPattern.MultipleValuesQueryPattern = {
     val query: MultipleValuesStandingQuery = readMultipleValuesStandingQuery(cypherQuery.queryType, cypherQuery.query)
     val origin: PatternOrigin.SqV4Origin = readSqV4Origin(cypherQuery.originType, cypherQuery.origin)
@@ -470,7 +470,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeDomainGraphNodeStandingQueryPattern(
     builder: FlatBufferBuilder,
-    dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern
+    dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern,
   ): Offset = {
     val aliasReturnAsOff: Offset = builder.createString(dgnPattern.aliasReturnAs.name)
     val TypeAndOffset(originTyp, originOff) = writeBranchOrigin(builder, dgnPattern.origin)
@@ -481,12 +481,12 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       aliasReturnAsOff,
       dgnPattern.includeCancellation,
       originTyp,
-      originOff
+      originOff,
     )
   }
 
   private[this] def readDomainGraphNodeStandingQueryPattern(
-    branchQuery: persistence.BranchQuery
+    branchQuery: persistence.BranchQuery,
   ): StandingQueryPattern.DomainGraphNodeStandingQueryPattern = {
     val origin = readBranchOrigin(branchQuery.originType, branchQuery.origin)
     StandingQueryPattern.DomainGraphNodeStandingQueryPattern(
@@ -494,13 +494,13 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       branchQuery.formatReturnAsString,
       Symbol(branchQuery.aliasReturnAs),
       branchQuery.includeCancellation,
-      origin
+      origin,
     )
   }
 
   private[this] def writeStandingQueryPattern(
     builder: FlatBufferBuilder,
-    sqPat: StandingQueryPattern
+    sqPat: StandingQueryPattern,
   ): TypeAndOffset =
     sqPat match {
       case dgnPattern: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
@@ -521,7 +521,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def readStandingQueryPattern(
     typ: Byte,
-    makeSQP: Table => Table
+    makeSQP: Table => Table,
   ): StandingQueryPattern =
     typ match {
       case persistence.StandingQueryPattern.BranchQuery =>
@@ -538,7 +538,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
 
   private[this] def writeStandingQuery(
     builder: FlatBufferBuilder,
-    standingQuery: StandingQueryInfo
+    standingQuery: StandingQueryInfo,
   ): Offset = {
     val nameOff: Offset = builder.createString(standingQuery.name)
     val idOff: Offset = writeStandingQueryId(builder, standingQuery.id)
@@ -550,12 +550,12 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       queryTyp,
       queryOff,
       standingQuery.queueBackpressureThreshold,
-      standingQuery.queueMaxSize
+      standingQuery.queueMaxSize,
     )
   }
 
   private[this] def readStandingQuery(
-    standingQuery: persistence.StandingQuery
+    standingQuery: persistence.StandingQuery,
   ): StandingQueryInfo = {
     val id: StandingQueryId = readStandingQueryId(standingQuery.id)
     val query: StandingQueryPattern = readStandingQueryPattern(standingQuery.queryType, standingQuery.query)
@@ -567,7 +567,7 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       standingQuery.queueMaxSize,
       // do not support hash code on restored standing query,
       // because the hash code is calculated per-host and is not stored
-      shouldCalculateResultHashCode = false
+      shouldCalculateResultHashCode = false,
     )
   }
 

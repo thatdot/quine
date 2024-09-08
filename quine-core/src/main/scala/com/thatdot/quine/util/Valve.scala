@@ -75,7 +75,7 @@ final class Valve[A](mode: SwitchMode) extends GraphStageWithMaterializedValue[F
   override val shape: FlowShape[A, A] = FlowShape(in, out)
 
   override def createLogicAndMaterializedValue(
-    inheritedAttributes: Attributes
+    inheritedAttributes: Attributes,
   ): (GraphStageLogic, Future[ValveSwitch]) = {
     val logic = new ValveGraphStageLogic(shape, mode)
     (logic, logic.promise.future)

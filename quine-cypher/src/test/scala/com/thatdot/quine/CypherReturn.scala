@@ -24,14 +24,14 @@ import com.thatdot.quine.graph.cypher.{
   Type,
   UserDefinedFunction,
   UserDefinedFunctionSignature,
-  Value
+  Value,
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
 
 // disable warnings raised by giving names to parts of pattern matches to make the large pattern matches more readable
 @nowarn(
-  "msg=pattern var .+ in method .+ is never used"
+  "msg=pattern var .+ in method .+ is never used",
 )
 class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers with AppendedClues {
   val XSym: Symbol = Symbol("x")
@@ -42,12 +42,12 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       Func.Range,
       Vector(
         Expr.Integer(0),
-        Expr.Integer(3)
-      )
+        Expr.Integer(3),
+      ),
     ),
     XSym,
     Query.Unit(Columns.Omitted),
-    Columns.Specified(Vector(XSym))
+    Columns.Specified(Vector(XSym)),
   )
 
   // utility to normalize a CompiledQuery by removing as many [[Expr.Parameters]] as possible -- ie, the fixed parameters
@@ -62,7 +62,7 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
     compiledQuery
       .copy(
         query = compiledQuery.query.substitute(fixedParamsToSubstitute),
-        fixedParameters = Parameters.empty
+        fixedParameters = Parameters.empty,
       )
   }
 
@@ -79,10 +79,10 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
             None,
             None,
             None,
-            Columns.Specified(Vector(XSym))
+            Columns.Specified(Vector(XSym)),
           ),
-          Columns.Specified(Vector(XSym))
-        )
+          Columns.Specified(Vector(XSym)),
+        ),
       )
     }
     testQuery(
@@ -92,8 +92,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         Vector(Expr.Integer(0)),
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
     it("compiles a paginated return") {
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN x SKIP 2 LIMIT 2", cache = false))
@@ -107,10 +107,10 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
             None,
             drop = Some(Expr.Integer(2)),
             take = Some(Expr.Integer(2)),
-            Columns.Specified(Vector(XSym))
+            Columns.Specified(Vector(XSym)),
           ),
-          Columns.Specified(Vector(XSym))
-        )
+          Columns.Specified(Vector(XSym)),
+        ),
       )
     }
     testQuery(
@@ -118,13 +118,13 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       expectedColumns = Vector("x"),
       expectedRows = Seq(
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
     it("compiles a SKIP with a parameter") {
       val compiled = normalize(
         compiler.cypher
-          .compile(queryPrefix + "RETURN x SKIP $skipThisMany", cache = false, unfixedParameters = Seq("skipThisMany"))
+          .compile(queryPrefix + "RETURN x SKIP $skipThisMany", cache = false, unfixedParameters = Seq("skipThisMany")),
       )
 
       compiled.query should matchPattern {
@@ -137,9 +137,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 None,
                 drop @ Some(Expr.Parameter(_)),
                 None,
-                Columns.Specified(Vector(XSym))
+                Columns.Specified(Vector(XSym)),
               ),
-              Columns.Specified(Vector(XSym))
+              Columns.Specified(Vector(XSym)),
             ) =>
       }
     }
@@ -149,14 +149,14 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       expectedRows = Seq(
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
+        Vector(Expr.Integer(3)),
       ),
-      parameters = Map("skipThisMany" -> Expr.Integer(1))
+      parameters = Map("skipThisMany" -> Expr.Integer(1)),
     )
     it("compiles a nontrivial SKIP with a parameter") {
       val compiled = normalize(
         compiler.cypher
-          .compile(queryPrefix + "RETURN x SKIP $lastSkip + 10", cache = false, unfixedParameters = Seq("lastSkip"))
+          .compile(queryPrefix + "RETURN x SKIP $lastSkip + 10", cache = false, unfixedParameters = Seq("lastSkip")),
       )
 
       compiled.query should matchPattern {
@@ -169,9 +169,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 None,
                 drop @ Some(Expr.Add(Expr.Parameter(_), Expr.Integer(10))),
                 None,
-                Columns.Specified(Vector(XSym))
+                Columns.Specified(Vector(XSym)),
               ),
-              Columns.Specified(Vector(XSym))
+              Columns.Specified(Vector(XSym)),
             ) =>
       }
     }
@@ -181,9 +181,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       expectedRows = Seq(
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
+        Vector(Expr.Integer(3)),
       ),
-      parameters = Map("lastSkip" -> Expr.Integer(-9))
+      parameters = Map("lastSkip" -> Expr.Integer(-9)),
     )
     it("compiles a LIMIT with a parameter") {
       val compiled = normalize(
@@ -191,8 +191,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
           .compile(
             queryPrefix + "RETURN x LIMIT $yieldThisMany",
             cache = false,
-            unfixedParameters = Seq("yieldThisMany")
-          )
+            unfixedParameters = Seq("yieldThisMany"),
+          ),
       )
 
       compiled.query should matchPattern {
@@ -205,9 +205,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 None,
                 None,
                 take @ Some(Expr.Parameter(_)),
-                Columns.Specified(Vector(XSym))
+                Columns.Specified(Vector(XSym)),
               ),
-              Columns.Specified(Vector(XSym))
+              Columns.Specified(Vector(XSym)),
             ) =>
       }
     }
@@ -217,9 +217,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       expectedRows = Seq(
         Vector(Expr.Integer(0)),
         Vector(Expr.Integer(1)),
-        Vector(Expr.Integer(2))
+        Vector(Expr.Integer(2)),
       ),
-      parameters = Map("yieldThisMany" -> Expr.Integer(3))
+      parameters = Map("yieldThisMany" -> Expr.Integer(3)),
     )
     it("compiles a DISTINCT return") {
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x", cache = false))
@@ -233,10 +233,10 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
             distinctBy = Some(Seq(Expr.Variable(XSym))),
             drop = None,
             take = None,
-            Columns.Specified(Vector(XSym))
+            Columns.Specified(Vector(XSym)),
           ),
-          Columns.Specified(Vector(XSym))
-        )
+          Columns.Specified(Vector(XSym)),
+        ),
       )
     }
     testQuery(
@@ -246,8 +246,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         Vector(Expr.Integer(0)),
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
     it("compiles an ORDERed return") {
       val compiled = normalize(compiler.cypher.compile(queryPrefix + "RETURN x ORDER BY x DESC", cache = false))
@@ -261,10 +261,10 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
             distinctBy = None,
             drop = None,
             take = None,
-            Columns.Specified(Vector(XSym))
+            Columns.Specified(Vector(XSym)),
           ),
-          Columns.Specified(Vector(XSym))
-        )
+          Columns.Specified(Vector(XSym)),
+        ),
       )
     }
     testQuery(
@@ -274,8 +274,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         Vector(Expr.Integer(3)),
         Vector(Expr.Integer(2)),
         Vector(Expr.Integer(1)),
-        Vector(Expr.Integer(0))
-      )
+        Vector(Expr.Integer(0)),
+      ),
     )
     it("compiles an ORDERed DISTINCT return") {
       pending
@@ -294,10 +294,10 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
             distinctBy = Some(Seq(Expr.Variable(XSym))),
             drop = None,
             take = None,
-            Columns.Specified(Vector(XSym))
+            Columns.Specified(Vector(XSym)),
           ),
-          Columns.Specified(Vector(XSym))
-        )
+          Columns.Specified(Vector(XSym)),
+        ),
       )
     }
     testQuery(
@@ -307,8 +307,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         Vector(Expr.Integer(0)),
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
     it("rejects queries using incorrect scopes for SKIP or LIMIT") {
       pending
@@ -316,63 +316,63 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x SKIP x",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue("should not allow using variables from the main query in the SKIP/LIMIT")
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x SKIP sum(x)",
-            cache = false
-          )
+            cache = false,
+          ),
       )
         .withClue(
-          "should not allow using aggregated variables from the main query in the SKIP/LIMIT"
+          "should not allow using aggregated variables from the main query in the SKIP/LIMIT",
         )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x LIMIT x+1",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using variable from the main query in the SKIP/LIMIT, even in complex expressions"
+        "should not allow using variable from the main query in the SKIP/LIMIT, even in complex expressions",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x SKIP count(*) - 1",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using non-variable aggregations from the main query in the SKIP/LIMIT"
+        "should not allow using non-variable aggregations from the main query in the SKIP/LIMIT",
       )
     }
     it("does not leak DISTINCT/ORDER BY-scoped variables into SKIP/LIMIT scope") {
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP x", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP x", cache = false),
       ).withClue(
-        "variables used in DISTINCT/ORDER BY should not be usable by SKIP"
+        "variables used in DISTINCT/ORDER BY should not be usable by SKIP",
       )
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC LIMIT x", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC LIMIT x", cache = false),
       ).withClue(
-        "variables used in DISTINCT/ORDER BY should not be usable by LIMIT"
+        "variables used in DISTINCT/ORDER BY should not be usable by LIMIT",
       )
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP sum(x)", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP sum(x)", cache = false),
       ).withClue(
-        "variables used in DISTINCT/ORDER BY should not be usable in aggregate by SKIP"
+        "variables used in DISTINCT/ORDER BY should not be usable in aggregate by SKIP",
       )
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC LIMIT sum(x)", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC LIMIT sum(x)", cache = false),
       ).withClue(
-        "variables used in DISTINCT/ORDER BY should not be usable in aggregate by LIMIT"
+        "variables used in DISTINCT/ORDER BY should not be usable in aggregate by LIMIT",
       )
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP x+1", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN DISTINCT x ORDER BY x ASC SKIP x+1", cache = false),
       ).withClue(
-        "variables used in DISTINCT/ORDER BY should not be usable in nontrivial expressions by SKIP"
+        "variables used in DISTINCT/ORDER BY should not be usable in nontrivial expressions by SKIP",
       )
     }
   }
@@ -391,24 +391,24 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 Vector(SumXSym -> Aggregator.sum(distinct = false, Expr.Variable(XSym))),
                 QueryPrefixCompiled,
                 keepExisting = false,
-                Columns.Specified(Vector(SumXSym))
+                Columns.Specified(Vector(SumXSym)),
               ),
-              Columns.Specified(Vector(SumXSym))
+              Columns.Specified(Vector(SumXSym)),
             ),
             None,
             None,
             None,
             None,
-            Columns.Specified(Vector(SumXSym))
-          )
+            Columns.Specified(Vector(SumXSym)),
+          ),
       )
     }
     testQuery(
       queryPrefix + "RETURN sum(x)",
       expectedColumns = Vector("sum(x)"),
       expectedRows = Seq(
-        Vector(Expr.Integer(6))
-      )
+        Vector(Expr.Integer(6)),
+      ),
     )
     it("compiles a paginated return") {
       // yes, this query is semantically nonsense... but it should still compile, so that's good enough
@@ -424,22 +424,22 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 Vector(SumXSym -> Aggregator.sum(distinct = false, Expr.Variable(XSym))),
                 QueryPrefixCompiled,
                 keepExisting = false,
-                Columns.Specified(Vector(SumXSym))
+                Columns.Specified(Vector(SumXSym)),
               ),
-              Columns.Specified(Vector(SumXSym))
+              Columns.Specified(Vector(SumXSym)),
             ),
             None,
             None,
             drop = Some(Expr.Integer(5)),
             take = Some(Expr.Integer(1)),
-            Columns.Specified(Vector(SumXSym))
-          )
+            Columns.Specified(Vector(SumXSym)),
+          ),
       )
     }
     testQuery(
       queryPrefix + "RETURN sum(x) SKIP 5 LIMIT 1",
       expectedColumns = Vector("sum(x)"),
-      expectedRows = Seq()
+      expectedRows = Seq(),
     )
     it("compiles a nontrivial SKIP with a parameter") {
       val compiled = normalize(
@@ -447,8 +447,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
           .compile(
             queryPrefix + "RETURN sum(x) SKIP $lastSkip + 12",
             cache = false,
-            unfixedParameters = Seq("lastSkip")
-          )
+            unfixedParameters = Seq("lastSkip"),
+          ),
       )
 
       compiled.query should matchPattern {
@@ -461,15 +461,15 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                   Vector((SumXSym, Aggregator.sum(distinct @ false, Expr.Variable(XSym)))),
                   QueryPrefixCompiled,
                   keepExisting @ false,
-                  Columns.Specified(Vector(SumXSym))
+                  Columns.Specified(Vector(SumXSym)),
                 ),
-                Columns.Specified(Vector(SumXSym))
+                Columns.Specified(Vector(SumXSym)),
               ),
               None,
               None,
               drop @ Some(Expr.Add(Expr.Parameter(_), Expr.Integer(12))),
               None,
-              Columns.Specified(Vector(SumXSym))
+              Columns.Specified(Vector(SumXSym)),
             ) =>
       }
     }
@@ -477,9 +477,9 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       queryPrefix + "RETURN sum(x) SKIP $lastSkip + 12",
       expectedColumns = Vector("sum(x)"),
       expectedRows = Seq(
-        Vector(Expr.Integer(6))
+        Vector(Expr.Integer(6)),
       ),
-      parameters = Map("lastSkip" -> Expr.Integer(-12))
+      parameters = Map("lastSkip" -> Expr.Integer(-12)),
     )
     it("compiles an ORDERed return that operates over both aggregated and non-aggregated data") {
       // These queries are reaching Lewis Carroll levels of ludicrousness
@@ -500,13 +500,13 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
               dropExisting @ true,
               toAdd @ Vector((XSym, Expr.Variable(generatedXSymbol)), (SumXSym, Expr.Variable(SumXSym))),
               adjustThis,
-              columns
+              columns,
             ) =>
           // extract the name openCypher chose to give the "x" symbol during compilation
           val IntermediateXSym = generatedXSymbol
           assert(
             columns === Columns.Specified(Vector(XSym, SumXSym)),
-            "the outermost query should return 2 columns: x and sum(x)"
+            "the outermost query should return 2 columns: x and sum(x)",
           )
           inside(adjustThis) {
             case Query.Return(
@@ -516,18 +516,18 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                       dropExisting @ true,
                       toAdd @ Vector(
                         (IntermediateXSym, Expr.Variable(IntermediateXSym)),
-                        (SumXSym, Expr.Variable(SumXSym))
+                        (SumXSym, Expr.Variable(SumXSym)),
                       ),
                       toAdjust,
-                      adjustedColumns
+                      adjustedColumns,
                     ),
-                    sortColumns
+                    sortColumns,
                   ),
                   None,
                   None,
                   None,
                   None,
-                  returnColumns
+                  returnColumns,
                 ) =>
               assert(sortColumns === Columns.Specified(Vector(IntermediateXSym, SumXSym)))
               assert(returnColumns === Columns.Specified(Vector(IntermediateXSym, SumXSym)))
@@ -536,11 +536,11 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                 case Query.EagerAggregation(
                       aggregateAlong @ Vector((IntermediateXSym, Expr.Variable(generatedMappedX))),
                       aggregateWith @ Vector(
-                        (SumXSym, Aggregator.sum(distinct @ false, Expr.Variable(generatedAggregatedX)))
+                        (SumXSym, Aggregator.sum(distinct @ false, Expr.Variable(generatedAggregatedX))),
                       ),
                       toAggregate,
                       keepExisting @ false,
-                      aggregatedColumns
+                      aggregatedColumns,
                     ) =>
                   /** generatedMappedX is the column OC is renaming to IntermediateXSym
                     * generatedAggregatedX is the column OC is passing to the "sum" aggregator
@@ -561,13 +561,13 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                         Func.Range,
                         Vector(
                           Expr.Integer(0),
-                          Expr.Integer(3)
-                        )
+                          Expr.Integer(3),
+                        ),
                       ),
                       UnprojectedXSym,
                       Query.Unit(Columns.Omitted),
-                      Columns.Specified(Vector(UnprojectedXSym))
-                    )
+                      Columns.Specified(Vector(UnprojectedXSym)),
+                    ),
                   )
               }
           }
@@ -580,8 +580,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         Vector(Expr.Integer(3), Expr.Integer(3)),
         Vector(Expr.Integer(2), Expr.Integer(2)),
         Vector(Expr.Integer(1), Expr.Integer(1)),
-        Vector(Expr.Integer(0), Expr.Integer(0))
-      )
+        Vector(Expr.Integer(0), Expr.Integer(0)),
+      ),
     )
     it("compiles an ORDERed DISTINCT return") {
       val compiled =
@@ -599,30 +599,30 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
                   Vector(SumXSym -> Aggregator.sum(distinct = false, Expr.Variable(XSym))),
                   QueryPrefixCompiled,
                   keepExisting = false,
-                  Columns.Specified(Vector(SumXSym))
+                  Columns.Specified(Vector(SumXSym)),
                 ),
-                Columns.Specified(Vector(SumXSym))
+                Columns.Specified(Vector(SumXSym)),
               ),
-              Columns.Specified(Vector(SumXSym))
+              Columns.Specified(Vector(SumXSym)),
             ),
             orderBy = None, // handled in the above Sort
             distinctBy = Some(Seq(Expr.Variable(SumXSym))),
             None,
             None,
-            Columns.Specified(Vector(SumXSym))
-          )
+            Columns.Specified(Vector(SumXSym)),
+          ),
       )
     }
     testQuery(
       queryPrefix + "RETURN DISTINCT sum(x) ORDER BY sum(x) ASC",
       expectedColumns = Vector("sum(x)"),
       expectedRows = Seq(
-        Vector(Expr.Integer(6))
-      )
+        Vector(Expr.Integer(6)),
+      ),
     )
     it("rejects an ORDERing over unprojected columns") {
       assertThrows[CypherException.Compile](
-        compiler.cypher.compile(queryPrefix + "RETURN sum(x) ORDER BY x ASC", cache = false)
+        compiler.cypher.compile(queryPrefix + "RETURN sum(x) ORDER BY x ASC", cache = false),
       )
     }
     it("rejects queries using incorrect scopes for SKIP or LIMIT") {
@@ -631,64 +631,64 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) SKIP x",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using variables from the main query in the SKIP/LIMIT"
+        "should not allow using variables from the main query in the SKIP/LIMIT",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x SKIP sum(x)",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using aggregated variables from the main query in the SKIP/LIMIT"
+        "should not allow using aggregated variables from the main query in the SKIP/LIMIT",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) LIMIT x+1",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using variable from the main query in the SKIP/LIMIT, even in complex expressions"
+        "should not allow using variable from the main query in the SKIP/LIMIT, even in complex expressions",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) SKIP count(*) - 1",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using non-variable aggregations from the main query in the SKIP/LIMIT"
+        "should not allow using non-variable aggregations from the main query in the SKIP/LIMIT",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) SKIP sum(x) - 1",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "should not allow using variable aggregations from the main query in the SKIP/LIMIT"
+        "should not allow using variable aggregations from the main query in the SKIP/LIMIT",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) ORDER BY x SKIP x",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "ORDER BY should not leak variables to non-ORDER BY clauses from the main query (SKIP)"
+        "ORDER BY should not leak variables to non-ORDER BY clauses from the main query (SKIP)",
       )
       assertThrows[CypherException.Compile](
         compiler.cypher
           .compile(
             queryPrefix + "RETURN x, sum(x) ORDER BY x LIMIT x",
-            cache = false
-          )
+            cache = false,
+          ),
       ).withClue(
-        "ORDER BY should not leak variables to non-ORDER BY clauses from the main query (LIMIT)"
+        "ORDER BY should not leak variables to non-ORDER BY clauses from the main query (LIMIT)",
       )
     }
   }
@@ -705,8 +705,8 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       compiler.cypher.compile(
         kitchenSink,
         cache = false,
-        unfixedParameters = Seq("skipThisMany", "limitMoreThanThis", "returnThisStatically")
-      )
+        unfixedParameters = Seq("skipThisMany", "limitMoreThanThis", "returnThisStatically"),
+      ),
     )
     it("should compile") {
       assert(attemptedCompilation.isSuccess)
@@ -717,13 +717,13 @@ class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers wi
       expectedColumns = Vector("x", "sum(x)", "r"),
       expectedRows = Seq(
         Vector(Expr.Integer(2), Expr.Integer(2), Expr.List(Expr.Str("hello"))),
-        Vector(Expr.Integer(1), Expr.Integer(1), Expr.List(Expr.Str("hello")))
+        Vector(Expr.Integer(1), Expr.Integer(1), Expr.List(Expr.Str("hello"))),
       ),
       parameters = Map(
         "skipThisMany" -> Expr.Integer(1),
         "limitMoreThanThis" -> Expr.Integer(0),
-        "returnThisStatically" -> Expr.Str("hello")
-      )
+        "returnThisStatically" -> Expr.Str("hello"),
+      ),
     )
   }
 
@@ -759,8 +759,8 @@ object SnitchFunction extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Anything),
       output = Type.Anything,
-      description = "Returns the value provided after snitching it"
-    )
+      description = "Returns the value provided after snitching it",
+    ),
   )
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =

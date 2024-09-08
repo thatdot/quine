@@ -42,10 +42,10 @@ class BoltSerialization extends AnyFunSuite {
     assert(read("C9 04 D2") == Expr.Integer(1234))
 
     assert(
-      read("CB 80 00 00  00 00 00 00  00") == Expr.Integer(-9223372036854775808L)
+      read("CB 80 00 00  00 00 00 00  00") == Expr.Integer(-9223372036854775808L),
     ) // Min integer
     assert(
-      read("CB 7F FF FF  FF FF FF FF  FF") == Expr.Integer(9223372036854775807L)
+      read("CB 7F FF FF  FF FF FF FF  FF") == Expr.Integer(9223372036854775807L),
     ) // Max integer
   }
 
@@ -62,20 +62,20 @@ class BoltSerialization extends AnyFunSuite {
     assert(
       read(
         "D0 12 47 72  C3 B6 C3 9F  65 6E 6D 61  C3 9F 73 74" +
-        "C3 A4 62 65"
-      ) == Expr.Str("Größenmaßstäbe")
+        "C3 A4 62 65",
+      ) == Expr.Str("Größenmaßstäbe"),
     )
     assert(
       read(
         "D0 1A 61 62  63 64 65 66  67 68 69 6A  6B 6C 6D 6E" +
-        "6F 70 71 72  73 74 75 76  77 78 79 7A"
-      ) == Expr.Str("abcdefghijklmnopqrstuvwxyz")
+        "6F 70 71 72  73 74 75 76  77 78 79 7A",
+      ) == Expr.Str("abcdefghijklmnopqrstuvwxyz"),
     )
     assert(
       read(
         "D0 18 45 6E  20 C3 A5 20  66 6C C3 B6  74 20 C3 B6" +
-        "76 65 72 20  C3 A4 6E 67  65 6E"
-      ) == Expr.Str("En å flöt över ängen")
+        "76 65 72 20  C3 A4 6E 67  65 6E",
+      ) == Expr.Str("En å flöt över ängen"),
     )
     assert(read("D0 81 " + ("61" * 129)) == Expr.Str("a" * 129))
   }
@@ -84,24 +84,24 @@ class BoltSerialization extends AnyFunSuite {
     assert(read("90") == Expr.List(Vector.empty))
     assert(
       read("93 01 02 03") ==
-        Expr.List(Vector(1L, 2L, 3L).map(Expr.Integer(_)))
+        Expr.List(Vector(1L, 2L, 3L).map(Expr.Integer(_))),
     )
     assert(
       read(
         "D4 14 01 02  03 04 05 06  07 08 09 00  01 02 03 04" +
-        "05 06 07 08  09 00"
+        "05 06 07 08  09 00",
       ) == Expr.List(
         Vector(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L).map(
-          Expr.Integer(_)
-        )
-      )
+          Expr.Integer(_),
+        ),
+      ),
     )
     assert(
       read(
         "D4 28 01 02  03 04 05 06  07 08 09 0A  0B 0C 0D 0E" +
         "0F 10 11 12  13 14 15 16  17 18 19 1A  1B 1C 1D 1E" +
-        "1F 20 21 22  23 24 25 26  27 28"
-      ) == Expr.List((1L to 40L).map(Expr.Integer(_)).toVector)
+        "1F 20 21 22  23 24 25 26  27 28",
+      ) == Expr.List((1L to 40L).map(Expr.Integer(_)).toVector),
     )
   }
 
@@ -110,23 +110,23 @@ class BoltSerialization extends AnyFunSuite {
     assert(
       read("A1 81 61 01") == Expr.Map(
         Map(
-          "a" -> Expr.Integer(1)
-        )
-      )
+          "a" -> Expr.Integer(1),
+        ),
+      ),
     )
     assert(
       read("A1 83 6F 6E  65 84 65 69  6E 73") == Expr.Map(
         Map(
-          "one" -> Expr.Str("eins")
-        )
-      )
+          "one" -> Expr.Str("eins"),
+        ),
+      ),
     )
     assert(
       read(
         "D8 10 81 61  01 81 62 01  81 63 03 81  64 04 81 65" +
         "05 81 66 06  81 67 07 81  68 08 81 69  09 81 6A 00" +
         "81 6B 01 81  6C 02 81 6D  03 81 6E 04  81 6F 05 81" +
-        "70 06"
+        "70 06",
       ) == Expr.Map(
         Map(
           "a" -> Expr.Integer(1L),
@@ -144,9 +144,9 @@ class BoltSerialization extends AnyFunSuite {
           "m" -> Expr.Integer(3L),
           "n" -> Expr.Integer(4L),
           "o" -> Expr.Integer(5L),
-          "p" -> Expr.Integer(6L)
-        )
-      )
+          "p" -> Expr.Integer(6L),
+        ),
+      ),
     )
   }
 
@@ -170,11 +170,11 @@ class BoltSerialization extends AnyFunSuite {
     // Max & min integer
     assert(
       toHex("CB 80 00 00  00 00 00 00  00") ==
-        write(Expr.Integer(-9223372036854775808L))
+        write(Expr.Integer(-9223372036854775808L)),
     )
     assert(
       toHex("CB 7F FF FF  FF FF FF FF  FF") ==
-        write(Expr.Integer(9223372036854775807L))
+        write(Expr.Integer(9223372036854775807L)),
     )
   }
 
@@ -191,20 +191,20 @@ class BoltSerialization extends AnyFunSuite {
     assert(
       toHex(
         "D0 12 47 72  C3 B6 C3 9F  65 6E 6D 61  C3 9F 73 74" +
-        "C3 A4 62 65"
-      ) == write(Expr.Str("Größenmaßstäbe"))
+        "C3 A4 62 65",
+      ) == write(Expr.Str("Größenmaßstäbe")),
     )
     assert(
       toHex(
         "D0 1A 61 62  63 64 65 66  67 68 69 6A  6B 6C 6D 6E" +
-        "6F 70 71 72  73 74 75 76  77 78 79 7A"
-      ) == write(Expr.Str("abcdefghijklmnopqrstuvwxyz"))
+        "6F 70 71 72  73 74 75 76  77 78 79 7A",
+      ) == write(Expr.Str("abcdefghijklmnopqrstuvwxyz")),
     )
     assert(
       toHex(
         "D0 18 45 6E  20 C3 A5 20  66 6C C3 B6  74 20 C3 B6" +
-        "76 65 72 20  C3 A4 6E 67  65 6E"
-      ) == write(Expr.Str("En å flöt över ängen"))
+        "76 65 72 20  C3 A4 6E 67  65 6E",
+      ) == write(Expr.Str("En å flöt över ängen")),
     )
     assert(toHex("D0 81 " + ("61" * 129)) == write(Expr.Str("a" * 129)))
   }
@@ -213,28 +213,28 @@ class BoltSerialization extends AnyFunSuite {
     assert(toHex("90") == write(Expr.List(Vector.empty)))
     assert(
       toHex("93 01 02 03") ==
-        write(Expr.List(Vector(1L, 2L, 3L).map(Expr.Integer(_))))
+        write(Expr.List(Vector(1L, 2L, 3L).map(Expr.Integer(_)))),
     )
     assert(
       toHex(
         "D4 14 01 02  03 04 05 06  07 08 09 00  01 02 03 04" +
-        "05 06 07 08  09 00"
+        "05 06 07 08  09 00",
       ) ==
         write(
           Expr.List(
             Vector(
-              1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L
-            ).map(Expr.Integer(_))
-          )
-        )
+              1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L, 1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 0L,
+            ).map(Expr.Integer(_)),
+          ),
+        ),
     )
     assert(
       toHex(
         "D4 28 01 02  03 04 05 06  07 08 09 0A  0B 0C 0D 0E" +
         "0F 10 11 12  13 14 15 16  17 18 19 1A  1B 1C 1D 1E" +
-        "1F 20 21 22  23 24 25 26  27 28"
+        "1F 20 21 22  23 24 25 26  27 28",
       ) ==
-        write(Expr.List((1L to 40L).map(Expr.Integer(_)).toVector))
+        write(Expr.List((1L to 40L).map(Expr.Integer(_)).toVector)),
     )
   }
 
@@ -244,21 +244,21 @@ class BoltSerialization extends AnyFunSuite {
       toHex("A1 81 61 01") == write(
         Expr.Map(
           Map(
-            "a" -> Expr.Integer(1)
-          )
-        )
-      )
+            "a" -> Expr.Integer(1),
+          ),
+        ),
+      ),
     )
     assert(
       toHex("A1 83 6F 6E  65 84 65 69  6E 73") ==
-        write(Expr.Map(Map("one" -> Expr.Str("eins"))))
+        write(Expr.Map(Map("one" -> Expr.Str("eins")))),
     )
     assert(
       toHex(
         "D8 10 81 61  01 81 62 01  81 63 03 81  64 04 81 65" +
         "05 81 66 06  81 67 07 81  68 08 81 69  09 81 6A 00" +
         "81 6B 01 81  6C 02 81 6D  03 81 6E 04  81 6F 05 81" +
-        "70 06"
+        "70 06",
       ) == write(
         Expr.Map(
           collection.immutable.ListMap(
@@ -277,10 +277,10 @@ class BoltSerialization extends AnyFunSuite {
             "m" -> Expr.Integer(3L),
             "n" -> Expr.Integer(4L),
             "o" -> Expr.Integer(5L),
-            "p" -> Expr.Integer(6L)
-          )
-        )
-      )
+            "p" -> Expr.Integer(6L),
+          ),
+        ),
+      ),
     )
   }
 }

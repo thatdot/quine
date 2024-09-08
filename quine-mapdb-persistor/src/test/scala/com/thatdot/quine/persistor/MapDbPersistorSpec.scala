@@ -18,6 +18,6 @@ class MapDbPersistorSpec(implicit protected val logConfig: LogConfig) extends Pe
       metricRegistry = new NoopMetricRegistry(),
       persistenceConfig = PersistenceConfig(),
       bloomFilterSize = None,
-      ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic)
+      ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic),
     )
 }

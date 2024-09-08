@@ -20,7 +20,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
@@ -39,10 +39,10 @@ object BloomFilteredPersistor {
   def maybeBloomFilter(
     maybeSize: Option[Long],
     persistor: NamespacedPersistenceAgent,
-    persistenceConfig: PersistenceConfig
+    persistenceConfig: PersistenceConfig,
   )(implicit
     materializer: Materializer,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): NamespacedPersistenceAgent =
     maybeSize.fold(persistor)(new BloomFilteredPersistor(persistor, _, persistenceConfig))
 }
@@ -59,7 +59,7 @@ private class BloomFilteredPersistor(
   wrappedPersistor: NamespacedPersistenceAgent,
   bloomFilterSize: Long,
   val persistenceConfig: PersistenceConfig,
-  falsePositiveRate: Double = 0.1
+  falsePositiveRate: Double = 0.1,
 )(implicit materializer: Materializer, logConfig: LogConfig)
     extends WrappedPersistenceAgent(wrappedPersistor) {
 
@@ -83,7 +83,7 @@ private class BloomFilteredPersistor(
 
   def persistDomainIndexEvents(
     id: QuineId,
-    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]],
   ): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.persistDomainIndexEvents(id, events)
@@ -92,7 +92,7 @@ private class BloomFilteredPersistor(
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     if (mightContain(id))
       wrappedPersistor.getNodeChangeEventsWithTime(id, startingAt, endingAt)
@@ -102,7 +102,7 @@ private class BloomFilteredPersistor(
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     if (mightContain(id))
       wrappedPersistor.getDomainIndexEventsWithTime(id, startingAt, endingAt)
@@ -133,7 +133,7 @@ private class BloomFilteredPersistor(
   override def getStandingQueries: Future[List[StandingQueryInfo]] = wrappedPersistor.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     if (mightContain(id))
       wrappedPersistor.getMultipleValuesStandingQueryStates(id)
@@ -144,7 +144,7 @@ private class BloomFilteredPersistor(
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = {
     bloomFilter.put(id)
     wrappedPersistor.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)

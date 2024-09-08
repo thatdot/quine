@@ -27,7 +27,7 @@ import com.thatdot.quine.app.ImproveQuine.{
   InstanceStarted,
   TelemetryRequest,
   sinksFromStandingQueries,
-  sourcesFromIngestStreams
+  sourcesFromIngestStreams,
 }
 import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
 import com.thatdot.quine.graph.defaultNamespaceId
@@ -58,7 +58,7 @@ object ImproveQuine {
     sinks: Option[List[String]],
     recipe: Boolean,
     recipe_canonical_name: Option[String],
-    apiKey: Option[String]
+    apiKey: Option[String],
   )
 
   val eventUri: Uri = Uri("https://improve.quine.io/event")
@@ -74,7 +74,7 @@ object ImproveQuine {
     sinks: Option[List[String]],
     recipeUsed: Boolean,
     recipeCanonicalName: Option[String],
-    apiKey: Option[String]
+    apiKey: Option[String],
   )(implicit system: ActorSystem)
       extends StrictSafeLogging {
     implicit private val executionContext: ExecutionContext = system.dispatcher
@@ -96,7 +96,7 @@ object ImproveQuine {
         sinks,
         recipeUsed,
         recipeCanonicalName,
-        apiKey
+        apiKey,
       )
 
       val body = telemetryData.asJson.noSpaces
@@ -107,8 +107,8 @@ object ImproveQuine {
             HttpRequest(
               method = HttpMethods.POST,
               uri = eventUri,
-              entity = HttpEntity(body)
-            )
+              entity = HttpEntity(body),
+            ),
           )
 
       logger.info(log"Sending anonymous usage data: ${Safe(body)}")
@@ -118,7 +118,7 @@ object ImproveQuine {
   }
 
   def sourcesFromIngestStreams(
-    ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
+    ingestStreams: Map[String, IngestStreamWithControl[IngestStreamConfiguration]],
   ): List[String] =
     ingestStreams.values
       .map(_.settings.slug)
@@ -151,13 +151,13 @@ class ImproveQuine(
   app: Option[StandingQueryStore with IngestStreamState],
   recipeUsed: Boolean = false,
   recipeCanonicalName: Option[String] = None,
-  apiKey: Option[String] = None
+  apiKey: Option[String] = None,
 )(implicit system: ActorSystem, logConfig: LogConfig)
     extends LazySafeLogging {
 
   private val invalidMacAddresses = Set(
     Array.fill[Byte](6)(0x00),
-    Array.fill[Byte](6)(0xFF.toByte)
+    Array.fill[Byte](6)(0xFF.toByte),
   ).map(ByteBuffer.wrap)
 
   private def hostMac(): Array[Byte] =
@@ -205,14 +205,14 @@ class ImproveQuine(
     1.hours,
     3.hours,
     6.hours,
-    12.hours
+    12.hours,
   )
   private val regularHeartbeatInterval: FiniteDuration = 1.day
 
   private def send(
     event: ImproveQuine.Event,
     sources: Option[List[String]],
-    sinks: Option[List[String]]
+    sinks: Option[List[String]],
   )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = {
     val uptime: Long = startTime.until(Instant.now(), ChronoUnit.SECONDS)
     TelemetryRequest(
@@ -227,7 +227,7 @@ class ImproveQuine(
       sinks,
       recipeUsed,
       recipeCanonicalName,
-      apiKey
+      apiKey,
     )
       .run()
   }
@@ -246,7 +246,7 @@ class ImproveQuine(
         sinks <- getSinks
         res <- heartbeat(
           sources = sources,
-          sinks = sinks
+          sinks = sinks,
         )
       } yield res // Fire and forget heartbeat Future
       ()

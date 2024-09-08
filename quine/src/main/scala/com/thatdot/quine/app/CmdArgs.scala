@@ -21,7 +21,7 @@ final case class CmdArgs(
   recipeValues: Map[String, String] = Map.empty[String, String],
   printVersion: Boolean = false,
   forceConfig: Boolean = false,
-  deleteDataFile: Boolean = true
+  deleteDataFile: Boolean = true,
 )
 
 object CmdArgs {
@@ -67,7 +67,7 @@ object CmdArgs {
           } else {
             Right(())
           }
-        }
+        },
       )
     }
 

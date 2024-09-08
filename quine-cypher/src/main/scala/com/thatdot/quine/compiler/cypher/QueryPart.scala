@@ -7,7 +7,7 @@ import org.opencypher.v9_0.expressions.{
   LogicalVariable,
   Pattern,
   Variable => OCVariable,
-  functions
+  functions,
 }
 import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 import org.opencypher.v9_0.util.helpers.NameDeduplicator
@@ -34,7 +34,7 @@ object QueryPart {
     queryPart: ast.QueryPart,
     avng: AnonymousVariableNameGenerator,
     isEntireQuery: Boolean = true,
-    subQueryType: Option[SubQueryType] = None
+    subQueryType: Option[SubQueryType] = None,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     queryPart match {
       case sq: ast.SingleQuery =>
@@ -60,7 +60,7 @@ object QueryPart {
             if (sq.importColumns.nonEmpty)
               CompM.raiseCompileError(
                 "Recursive subqueries cannot use import-`WITH` subquery syntax. Use `CALL RECURSIVELY WITH` syntax instead",
-                queryPart
+                queryPart,
               )
             else
               for {
@@ -82,7 +82,7 @@ object QueryPart {
                 recursiveSubQuery <- compileClauses(
                   sq.clauses,
                   avng,
-                  isEntireQuery
+                  isEntireQuery,
                 ) // NB this will register the appropriate columns for the subquery
 
                 subqueryBoundColumns <- CompM.getColumns
@@ -104,7 +104,7 @@ object QueryPart {
                     .zip(
                       subqueryBoundColumns
                         .map(_.name)
-                        .map(NameDeduplicator.removeGeneratedNamesAndParams)
+                        .map(NameDeduplicator.removeGeneratedNamesAndParams),
                     )
                     .toMap
                 inputNamesToPlain: Map[Symbol, String] =
@@ -112,14 +112,14 @@ object QueryPart {
                     .zip(
                       recursiveVariablesBoundColumns
                         .map(_.name)
-                        .map(NameDeduplicator.removeGeneratedNamesAndParams)
+                        .map(NameDeduplicator.removeGeneratedNamesAndParams),
                     )
                     .toMap
 
                 // ensure the inner query returns all the recursive variables. Put another way,
                 // the inner query must return all the variables that the outer query imports
                 missingRecursiveVariables: Seq[String] = inputNamesToPlain.values.toVector.diff(
-                  outputNamesToPlain.values.toVector
+                  outputNamesToPlain.values.toVector,
                 )
                 _ <-
                   if (missingRecursiveVariables.nonEmpty) {
@@ -131,7 +131,7 @@ object QueryPart {
                       s"""Recursive subquery declares recursive variable(s): $recursiveVariablesAsString
                          |but does not return all of them. Missing variable(s): $missingVariablesAsString
                          |""".stripMargin.replace('\n', ' ').trim,
-                      queryPart
+                      queryPart,
                     )
                   } else CompM.pure(())
 
@@ -147,30 +147,30 @@ object QueryPart {
                   recursiveVariableBindings
                     .map(_._2)
                     .foldLeft[cypher.Query[Location.Anywhere]](cypher.Query.Unit())((acc, init) =>
-                      cypher.Query.apply(acc, init.query)
+                      cypher.Query.apply(acc, init.query),
                     )
                 val variableInitializers = VariableInitializers(
                   initializeAllInitializers,
                   recursiveVariableBindings.map { case (name, WithQuery(expr, query @ _)) =>
                     name -> expr
-                  }.toMap
+                  }.toMap,
                 )
                 val variableMappings = VariableMappings(
                   inputNamesToPlain.view.mapValues(Symbol.apply).toMap,
-                  outputNamesToPlain.view.mapValues(Symbol.apply).toMap
+                  outputNamesToPlain.view.mapValues(Symbol.apply).toMap,
                 )
                 val innerQuery = cypher.Query.apply(
                   // run the recursive subquery
                   recursiveSubQuery,
                   // make the done condition valid for evaluation
-                  doneCondWithQuery.query
+                  doneCondWithQuery.query,
                 )
 
                 cypher.Query.RecursiveSubQuery(
                   innerQuery,
                   variableInitializers,
                   variableMappings,
-                  doneCond
+                  doneCond,
                 )
               }
           case Some(SubQuery) =>
@@ -238,7 +238,7 @@ object QueryPart {
   private def compileUnionMapping(
     isPart: Boolean,
     unionMappings: List[ast.Union.UnionMapping],
-    astNode: util.ASTNode
+    astNode: util.ASTNode,
   ): CompM[Vector[(Symbol, cypher.Expr)]] = {
     def getInVariable(v: ast.Union.UnionMapping): expressions.LogicalVariable =
       if (isPart) v.variableInPart else v.variableInQuery
@@ -252,7 +252,7 @@ object QueryPart {
 
   private def compileMatchClause(
     matchClause: ast.Match,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
 
     // TODO: use `hints`
@@ -274,11 +274,11 @@ object QueryPart {
           cols <- CompM.getColumns.map(_.toSet)
           (filters, constraints) = WithFreeVariables[
             expressions.LogicalVariable,
-            expressions.Expression
+            expressions.Expression,
           ](
             other.toList,
             (lv: expressions.LogicalVariable) => cols.contains(logicalVariable2Symbol(lv)),
-            (exp: expressions.Expression) => exp.dependencies
+            (exp: expressions.Expression) => exp.dependencies,
           )
 
           // Filter expressions that can be applied before the match even runs :O
@@ -302,7 +302,7 @@ object QueryPart {
 
   private def compileLoadCSV(
     l: ast.LoadCSV,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.LoadCSV(withHeaders, urlString, variable, fieldTerm) = l
     val fieldTermChar: Char = fieldTerm match {
@@ -320,7 +320,7 @@ object QueryPart {
 
   private def compileSetClause(
     setClause: ast.SetClause,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     setClause.items.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] {
@@ -333,7 +333,7 @@ object QueryPart {
           } yield nodeWc.toQuery { (nodeExpr: cypher.Expr) =>
             require(
               expMap.isInstanceOf[LogicalVariable],
-              s"Expected a property SET clause to use a node variable, but found ${expMap}"
+              s"Expected a property SET clause to use a node variable, but found ${expMap}",
             )
             val nodeVar = expMap.asInstanceOf[LogicalVariable]
 
@@ -347,9 +347,9 @@ object QueryPart {
                   cypher.Query.SetProperties(
                     nodeVar = Symbol(nodeVar.name),
                     properties = cypher.Expr.MapLiteral(props.toMap),
-                    includeExisting = true
+                    includeExisting = true,
                   )
-                }
+                },
             )
           }
         case ast.SetPropertyItem(prop, expression) =>
@@ -359,7 +359,7 @@ object QueryPart {
           } yield nodeWC.toQuery { (nodeExpr: cypher.Expr) =>
             require(
               prop.map.isInstanceOf[LogicalVariable],
-              s"Expected a property SET clause to use a node variable, but found ${prop.map}"
+              s"Expected a property SET clause to use a node variable, but found ${prop.map}",
             )
             val nodeVar = prop.map.asInstanceOf[LogicalVariable]
 
@@ -369,9 +369,9 @@ object QueryPart {
                 cypher.Query.SetProperty(
                   nodeVar = Symbol(nodeVar.name),
                   key = Symbol(prop.propertyKey.name),
-                  newValue = Some(value)
+                  newValue = Some(value),
                 )
-              }
+              },
             )
           }
 
@@ -388,9 +388,9 @@ object QueryPart {
                 cypher.Query.SetProperties(
                   nodeVar = Symbol(nodeVar.name),
                   properties = props,
-                  includeExisting = false
+                  includeExisting = false,
                 )
-              }
+              },
             )
           }
 
@@ -407,9 +407,9 @@ object QueryPart {
                 cypher.Query.SetProperties(
                   nodeVar = Symbol(nodeVar.name),
                   properties = props,
-                  includeExisting = true
+                  includeExisting = true,
                 )
-              }
+              },
             )
           }
 
@@ -424,20 +424,20 @@ object QueryPart {
               andThen = cypher.Query.SetLabels(
                 nodeVar = Symbol(nodeVar.name),
                 labels.map(lbl => Symbol(lbl.name)).toVector,
-                add = true
-              )
+                add = true,
+              ),
             )
           }
       }
       .map(
         _.foldLeft[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit()) { (queryAcc, setQuery) =>
           cypher.Query.apply(queryAcc, cypher.Query.Optional(setQuery))
-        }
+        },
       )
 
   private def compileRemoveClause(
     removeClause: ast.Remove,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     removeClause.items.toVector
       .traverse[CompM, cypher.Query[cypher.Location.Anywhere]] {
@@ -447,7 +447,7 @@ object QueryPart {
             .map(_.toQuery { (nodeExpr: cypher.Expr) =>
               require(
                 prop.map.isInstanceOf[LogicalVariable],
-                s"Expected a property REMOVE clause to use a node variable, but found ${prop.map}"
+                s"Expected a property REMOVE clause to use a node variable, but found ${prop.map}",
               )
               val nodeVar = prop.map.asInstanceOf[LogicalVariable]
               cypher.Query.ArgumentEntry(
@@ -455,8 +455,8 @@ object QueryPart {
                 andThen = cypher.Query.SetProperty(
                   nodeVar = Symbol(nodeVar.name),
                   key = Symbol(prop.propertyKey.name),
-                  newValue = None
-                )
+                  newValue = None,
+                ),
               )
             })
 
@@ -470,21 +470,21 @@ object QueryPart {
                 andThen = cypher.Query.SetLabels(
                   nodeVar = Symbol(nodeVar.name),
                   labels.map(lbl => Symbol(lbl.name)).toVector,
-                  add = false
-                )
+                  add = false,
+                ),
               )
             })
       }
       .map(
         _.foldLeft[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit()) { (queryAcc, remQuery) =>
           cypher.Query.apply(queryAcc, cypher.Query.Optional(remQuery))
-        }
+        },
       )
 
   // TODO: this won't delete paths (and it should)
   private def compileDeleteClause(
     deleteClause: ast.Delete,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.Delete(exprs, forced) = deleteClause
     exprs.toVector
@@ -498,19 +498,19 @@ object QueryPart {
       .map(
         _.foldLeft[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit()) { (queryAcc, delQuery) =>
           cypher.Query.apply(queryAcc, cypher.Query.Optional(delQuery))
-        }
+        },
       )
   }
 
   private def compileCreateClause(
     createClause: ast.Create,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] =
     Graph.fromPattern(createClause.pattern).flatMap(_.synthesizeCreate(avng))
 
   private def compileMergeClause(
     mergeClause: ast.Merge,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     // TODO: is a non-empty where clause here ever possible?
     val ast.Merge(pattern, mergeAction, whereCls @ _) = mergeClause
@@ -524,7 +524,7 @@ object QueryPart {
         .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](sc => compileSetClause(sc, avng))
         .map {
           _.foldRight[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit())(
-            cypher.Query.apply(_, _)
+            cypher.Query.apply(_, _),
           )
         }
     } yield cypher.Query.apply(findQuery, matchActionsQuery)
@@ -538,7 +538,7 @@ object QueryPart {
         .traverse[CompM, cypher.Query[cypher.Location.Anywhere]](sc => compileSetClause(sc, avng))
         .map {
           _.foldRight[cypher.Query[cypher.Location.Anywhere]](cypher.Query.Unit())(
-            cypher.Query.apply(_, _)
+            cypher.Query.apply(_, _),
           )
         }
     } yield cypher.Query.apply(createQuery, createActionsQuery)
@@ -564,14 +564,14 @@ object QueryPart {
       tryFirstPrunedQuery = cypher.Query.adjustContext(
         dropExisting = true,
         toAdd = secondCols.map(v => v -> cypher.Expr.Variable(v)),
-        adjustThis = tryFirstQuery
+        adjustThis = tryFirstQuery,
       )
     } yield cypher.Query.Or(tryFirstPrunedQuery, trySecondQuery)
   }
 
   private def compileUnwind(
     unwindClause: ast.Unwind,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     val ast.Unwind(expr, asVar) = unwindClause
     for {
@@ -584,7 +584,7 @@ object QueryPart {
 
   private def compileForeach(
     foreachClause: ast.Foreach,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = {
     // TODO: can we get away with this?
     val ast.Foreach(asVar, expr, updates) = foreachClause
@@ -601,7 +601,7 @@ object QueryPart {
         aggregateAlong = Vector.empty,
         aggregateWith = Vector.empty,
         toAggregate = cypher.Query.Unwind(list, asVarExpr.id, foreachBody),
-        keepExisting = true
+        keepExisting = true,
       )
     }
   }
@@ -618,7 +618,7 @@ object QueryPart {
     returnItems: ast.ReturnItems,
     orderByOpt: Option[ast.OrderBy],
     whereOpt: Option[ast.Where],
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[Query[Location.Anywhere]] = {
     for {
       compiledReturnItems <- compileReturnItems(returnItems, avng)
@@ -636,7 +636,7 @@ object QueryPart {
             adjusted = cypher.Query.adjustContext(
               dropExisting = false,
               groupers,
-              cypher.Query.apply(querySoFar, setupQuery)
+              cypher.Query.apply(querySoFar, setupQuery),
             )
 
             // WHERE
@@ -678,7 +678,7 @@ object QueryPart {
                 } yield cypher.Query.adjustContext(
                   dropExisting = true,
                   toAdd = boundGroupers,
-                  adjustThis = ordered
+                  adjustThis = ordered,
                 )
               } else {
                 CompM.pure(ordered)
@@ -702,8 +702,8 @@ object QueryPart {
                 groupers,
                 aggregators,
                 cypher.Query.apply(querySoFar, setupQuery),
-                keepExisting = false
-              )
+                keepExisting = false,
+              ),
             )
 
             // Where
@@ -736,7 +736,7 @@ object QueryPart {
     */
   private def compileReturnItems(
     items: ast.ReturnItems,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[WithQuery[(Vector[(Symbol, cypher.Expr)], Vector[(Symbol, cypher.Aggregator)])]] =
     items.items.toVector
       .traverse[WithQueryT[CompM, *], Either[(Symbol, cypher.Expr), (Symbol, cypher.Aggregator)]] {
@@ -751,7 +751,7 @@ object QueryPart {
           ret.expression match {
             case expressions.CountStar() =>
               WithQueryT.pure[CompM, Either[(Symbol, cypher.Expr), (Symbol, cypher.Aggregator)]](
-                Right(retSym -> cypher.Aggregator.countStar)
+                Right(retSym -> cypher.Aggregator.countStar),
               )
 
             case expressions.IsAggregate(fi: expressions.FunctionInvocation) =>
@@ -807,8 +807,8 @@ object QueryPart {
                   WithQueryT.lift(
                     CompM.raiseCompileError(
                       s"Compiler internal error: unknown aggregating function `${func.name}`",
-                      fi
-                    )
+                      fi,
+                    ),
                   )
               }
 
@@ -830,7 +830,7 @@ object QueryPart {
   private def compileClauses(
     clauses: Seq[ast.Clause],
     avng: AnonymousVariableNameGenerator,
-    isEntireQuery: Boolean
+    isEntireQuery: Boolean,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = clauses.toVector
     .foldLeftM[CompM, cypher.Query[cypher.Location.Anywhere]](cypher.Query.unit) {
       case (accQuery, m: ast.Match) =>
@@ -862,14 +862,14 @@ object QueryPart {
 
       case (
             accQuery,
-            ast.SubqueryCall(part, recursiveInitializations, recursiveDoneCondition, _)
+            ast.SubqueryCall(part, recursiveInitializations, recursiveDoneCondition, _),
           ) if recursiveInitializations.nonEmpty =>
         for {
           recursiveSubQuery <- compile(
             part,
             avng,
             isEntireQuery = false,
-            subQueryType = Some(RecursiveSubQuery(recursiveInitializations, recursiveDoneCondition))
+            subQueryType = Some(RecursiveSubQuery(recursiveInitializations, recursiveDoneCondition)),
           )
         } yield cypher.Query.apply(accQuery, recursiveSubQuery)
       case (accQuery, ast.SubqueryCall(part, _, _, _)) =>
@@ -911,7 +911,7 @@ object QueryPart {
                 CompM.raiseCompileError(
                   s"""Procedure does not have output(s): ${invalidYields.mkString(",")}.
                      |Valid outputs are: ${outputs.mkString(",")}""".stripMargin.replace('\n', ' '),
-                  unresolvedCall
+                  unresolvedCall,
                 )
               }
             case None if callIsWholeQuery || proc.outputColumns.variables.isEmpty =>
@@ -919,7 +919,7 @@ object QueryPart {
             case None =>
               CompM.raiseCompileError(
                 "Procedure call inside a query does not support naming results implicitly (name explicitly using `YIELD` instead)",
-                unresolvedCall
+                unresolvedCall,
               )
           }
 
@@ -943,7 +943,7 @@ object QueryPart {
             case None =>
               CompM.raiseCompileError(
                 "Procedure call inside a query does not support passing arguments implicitly (pass explicitly after procedure name instead)",
-                unresolvedCall
+                unresolvedCall,
               )
           }
 
@@ -953,7 +953,7 @@ object QueryPart {
             args.toQuery { (args: Seq[cypher.Expr]) =>
               val udp = cypher.Proc.UserDefined(proc.name)
               cypher.Query.ProcedureCall(udp, args, returnsOpt)
-            }
+            },
           )
 
           // WHERE
@@ -970,7 +970,7 @@ object QueryPart {
         val ucName = (uc.procedureNamespace.parts :+ uc.procedureName.name).mkString(".")
         CompM.raiseCompileError(
           message = s"Failed to resolve procedure `$ucName`",
-          astNode = uc.procedureName
+          astNode = uc.procedureName,
         )
 
       // TODO: Return items have `excludedNames: Set[String]` and I'm not sure what that is
@@ -982,8 +982,8 @@ object QueryPart {
               orderByOpt,
               skipOpt,
               limitOpt,
-              whereOpt
-            )
+              whereOpt,
+            ),
           ) if !clause.isReturn =>
         for {
           // Handle aggregations, ORDER BY, and grouping, if any
@@ -992,7 +992,7 @@ object QueryPart {
             items,
             orderByOpt,
             whereOpt,
-            avng
+            avng,
           )
 
           // DISTINCT
@@ -1027,8 +1027,8 @@ object QueryPart {
               skipOpt,
               limitOpt,
               excludedNames @ _,
-              _
-            )
+              _,
+            ),
           ) =>
         compileReturnItems(items, avng).flatMap {
           case WithQuery((groupers, aggregators), setupQuery) if aggregators.isEmpty =>
@@ -1045,7 +1045,7 @@ object QueryPart {
               adjusted = cypher.Query.adjustContext(
                 dropExisting = false,
                 groupers,
-                cypher.Query.apply(accQuery, setupQuery)
+                cypher.Query.apply(accQuery, setupQuery),
               )
               // compile the ORDER BY rule and any query necessary to set up an environment to run the sorting
               orderedWQ: WithQuery[Option[cypher.Query.Sort.SortBy]] <- orderByOpt match {
@@ -1092,7 +1092,7 @@ object QueryPart {
                 orderBy = orderingRule,
                 distinctBy = dedupeRule,
                 drop = dropRule,
-                take = takeRule
+                take = takeRule,
               )
               // We need to adjust the context both before
               // and after the context because ORDER BY might be using one of the
@@ -1111,7 +1111,7 @@ object QueryPart {
                   } yield cypher.Query.adjustContext(
                     dropExisting = true,
                     toAdd = boundGroupers,
-                    adjustThis = returnQueryWithDedupe
+                    adjustThis = returnQueryWithDedupe,
                   )
                 } else {
                   CompM.pure(returnQueryWithDedupe)
@@ -1132,7 +1132,7 @@ object QueryPart {
                 items,
                 orderByOpt,
                 whereOpt = None,
-                avng
+                avng,
               )
               dedupeRule: Option[cypher.Query.Distinct.DistinctBy] <- isDistinct match {
                 case false => CompM.pure(None)
@@ -1161,7 +1161,7 @@ object QueryPart {
                 orderBy = None, // `grouped` is already ordered
                 distinctBy = dedupeRule,
                 drop = dropRule,
-                take = takeRule
+                take = takeRule,
               )
               returnQueryWithDrop = Query.apply(returnQueryWithDedupe, dropQueryPart)
               returnQueryWithTake = Query.apply(returnQueryWithDrop, takeQueryPart)
@@ -1197,14 +1197,14 @@ object QueryPart {
           cypher.Query.adjustContext(
             dropExisting = true,
             Vector.empty,
-            cypher.Query.apply(query, cypher.Query.Empty())
+            cypher.Query.apply(query, cypher.Query.Empty()),
           )
         // When the final clause is a CALL clause on a VOID procedure, return no rows
         case Some(cc: QuineProcedureCall) if cc.resolvedProcedure.signature.outputs.isEmpty =>
           cypher.Query.adjustContext(
             dropExisting = true,
             Vector.empty,
-            cypher.Query.apply(query, cypher.Query.Empty())
+            cypher.Query.apply(query, cypher.Query.Empty()),
           )
         case _ => query
       }
@@ -1222,11 +1222,11 @@ object QueryPart {
     */
   private def partitionWhereConstraints(
     whereExpr: expressions.Expression,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   )(implicit
     scopeInfo: QueryScopeInfo,
     paramIdx: ParametersIndex,
-    source: cypher.SourceText
+    source: cypher.SourceText,
   ): (Map[Symbol, cypher.Expr], Vector[expressions.Expression]) = {
 
     val constraints = Map.newBuilder[Symbol, cypher.Expr]
@@ -1242,7 +1242,7 @@ object QueryPart {
       v: LogicalVariable,
       arg: expressions.Expression,
       fullExpr: expressions.Expression,
-      avng: AnonymousVariableNameGenerator
+      avng: AnonymousVariableNameGenerator,
     ): Unit =
       Expression.compileM(arg, avng).run(paramIdx, source, scopeInfo) match {
         case Right(WithQuery(expr, cypher.Query.Unit(_))) => constraints += (logicalVariable2Symbol(v) -> expr)
@@ -1287,7 +1287,7 @@ object QueryPart {
             _,
             _,
             _,
-            Vector(variable: expressions.LogicalVariable)
+            Vector(variable: expressions.LogicalVariable),
           ) if fi.function == functions.Id =>
         Some(variable)
 
@@ -1296,7 +1296,7 @@ object QueryPart {
             _,
             expressions.FunctionName("strId"),
             false,
-            Vector(variable: expressions.LogicalVariable)
+            Vector(variable: expressions.LogicalVariable),
           ) =>
         Some(variable)
 

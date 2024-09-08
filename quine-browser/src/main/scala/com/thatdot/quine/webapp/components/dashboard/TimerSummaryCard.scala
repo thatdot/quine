@@ -26,17 +26,17 @@ import com.thatdot.quine.webapp.components.BoxPlot
         props.`80` -> "80%",
         props.`99` -> "99%",
         props.min -> "min",
-        props.max -> "max"
+        props.max -> "max",
       ),
       layout = js.Dynamic.literal(
         height = 200,
         margin = js.Dynamic.literal(
           t = 32,
           b = 32,
-          l = 32
-        )
+          l = 32,
+        ),
       ),
-      units = Some("milliseconds")
-    )
+      units = Some("milliseconds"),
+    ),
   )
 }

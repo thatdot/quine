@@ -38,17 +38,17 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     * so that bytes can be directly written in tests.
     */
   case class TestJsonIngest(label: String, maxPerSecond: Option[Int] = None, decoders: Seq[ContentDecoder] = Seq())(
-    implicit val graph: CypherOpsGraph
+    implicit val graph: CypherOpsGraph,
   ) extends RawValuesIngestSrcDef(
         new CypherJsonInputFormat(
           s"""MATCH (p) WHERE id(p) = idFrom('test','$label', $$that.$label) SET p.value = $$that RETURN (p)""",
-          "that"
+          "that",
         )(LogConfig.testing),
         SwitchMode.Open,
         10,
         maxPerSecond,
         decoders,
-        label
+        label,
       ) {
 
     implicit protected val logConfig: LogConfig = LogConfig.testing
@@ -81,7 +81,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
   case class IngestTestContext[T, Mat](
     ingest: TestJsonIngest,
-    buildFrom: TestJsonIngest => Source[T, Mat]
+    buildFrom: TestJsonIngest => Source[T, Mat],
   )(implicit val system: ActorSystem, implicit val graph: CypherOpsGraph) {
     val src: Source[T, Mat] = buildFrom(ingest)
     implicit val materializer: Materializer = graph.materializer
@@ -112,7 +112,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
     val ctx = IngestTestContext(
       TestJsonIngest("deserialize", None, Seq(ContentDecoder.Base64Decoder, ContentDecoder.GzipDecoder)),
-      i => i.undelimitedSource().via(i.deserializeAndMeter)
+      i => i.undelimitedSource().via(i.deserializeAndMeter),
     )
 
     //  Values are properly deserialized from json objects.
@@ -143,7 +143,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
     val ctx = IngestTestContext(
       TestJsonIngest("deserialize", None, Seq(ContentDecoder.Base64Decoder, ContentDecoder.ZlibDecoder)),
-      i => i.undelimitedSource().via(i.deserializeAndMeter)
+      i => i.undelimitedSource().via(i.deserializeAndMeter),
     )
 
     //  Values are properly deserialized from json objects.
@@ -187,7 +187,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val ctx =
       IngestTestContext(
         TestJsonIngest("throttle", Some(3)),
-        i => i.source().via(i.deserializeAndMeter).via(i.throttle())
+        i => i.source().via(i.deserializeAndMeter).via(i.throttle()),
       )
     val st: TestSubscriber.Probe[(Try[Value], ByteString)] = ctx.probe.request(10)
     ctx.writeValues(10)
@@ -203,7 +203,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         TestJsonIngest("switches", Some(1)),
         i =>
           i.sourceWithShutdown()
-            .viaMat(Valve(SwitchMode.Open))(Keep.both)
+            .viaMat(Valve(SwitchMode.Open))(Keep.both),
       )
 
     val (_: ShutdownSwitch, valveFut: Future[ValveSwitch]) = ctx.mat

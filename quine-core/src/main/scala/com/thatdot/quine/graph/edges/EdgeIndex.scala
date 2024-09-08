@@ -29,7 +29,7 @@ abstract class AbstractEdgeIndex[K] {
 
 final class EdgeIndex[K](
   keyFn: HalfEdge => K,
-  index: mutable.Map[K, ReversibleLinkedHashSet[HalfEdge]] = mutable.Map.empty[K, ReversibleLinkedHashSet[HalfEdge]]
+  index: mutable.Map[K, ReversibleLinkedHashSet[HalfEdge]] = mutable.Map.empty[K, ReversibleLinkedHashSet[HalfEdge]],
 ) extends AbstractEdgeIndex[K] {
 
   override def toString: String = s"EdgeIndex($index)"

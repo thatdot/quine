@@ -18,7 +18,7 @@ class RocksDbPrimePersistor(
   dbOptionProperties: java.util.Properties = new java.util.Properties(),
   persistenceConfig: PersistenceConfig = PersistenceConfig(),
   bloomFilterSize: Option[Long] = None,
-  ioDispatcher: ExecutionContext
+  ioDispatcher: ExecutionContext,
 )(implicit materializer: Materializer, val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
@@ -40,14 +40,14 @@ class RocksDbPrimePersistor(
       syncWrites,
       dbOptionProperties,
       persistenceConfig,
-      ioDispatcher
+      ioDispatcher,
     )
     catch {
       case err: UnsatisfiedLinkError =>
         logger.error(
           log"""RocksDB native library could not be loaded. You may be using an incompatible architecture.
                |Consider using MapDB instead by specifying `quine.store.type=map-db`
-               |""".cleanLines withException err
+               |""".cleanLines withException err,
         )
         sys.exit(1)
     }

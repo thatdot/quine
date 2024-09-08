@@ -13,7 +13,7 @@ import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, DomainGraphN
 class DomainGraphNodeRegistry(
   registerGaugeDomainGraphNodeCount: (() => Int) => Unit,
   persistDomainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode] => Future[Unit],
-  removeDomainGraphNodes: Set[DomainGraphNodeId] => Future[Unit]
+  removeDomainGraphNodes: Set[DomainGraphNodeId] => Future[Unit],
 ) {
 
   private case class DGNWithRef(dgn: DomainGraphNode, standingQueries: Set[StandingQueryId])
@@ -88,7 +88,7 @@ class DomainGraphNodeRegistry(
           case (_, null) => DGNWithRef(dgn, Set(standingQueryId))
           case (_, DGNWithRef(existingDgn, standingQueries)) =>
             DGNWithRef(existingDgn, standingQueries + standingQueryId)
-        }
+        },
       )
       .standingQueries
       .size == 1
@@ -114,7 +114,7 @@ class DomainGraphNodeRegistry(
           } else {
             DGNWithRef(dgn, updatedStandingQueries)
           }
-      }
+      },
     )
     removedLast
   }
@@ -125,7 +125,7 @@ class DomainGraphNodeRegistry(
     */
   def registerDomainGraphNodePackage(
     dgnPackage: DomainGraphNodePackage,
-    standingQueryId: StandingQueryId
+    standingQueryId: StandingQueryId,
   ): Map[DomainGraphNodeId, DomainGraphNode] =
     dgnPackage.population.filter { case (dgnId, dgn) =>
       put(dgnId, dgn, standingQueryId)
@@ -138,7 +138,7 @@ class DomainGraphNodeRegistry(
   def registerAndPersistDomainGraphNodePackage(
     dgnPackage: DomainGraphNodePackage,
     standingQueryId: StandingQueryId,
-    skipPersistor: Boolean
+    skipPersistor: Boolean,
   ): Future[Unit] = {
     val newNodes = registerDomainGraphNodePackage(dgnPackage, standingQueryId)
     if (!skipPersistor && newNodes.nonEmpty) persistDomainGraphNodes(newNodes)
@@ -152,7 +152,7 @@ class DomainGraphNodeRegistry(
   def unregisterDomainGraphNodePackage(
     dgnPackage: DomainGraphNodePackage,
     standingQueryId: StandingQueryId,
-    skipPersistor: Boolean = false
+    skipPersistor: Boolean = false,
   ): Future[Unit] = {
     val decrementedToZeroDomainGraphNodeIds = for {
       decrementDomainGraphNodeId <- dgnPackage.population.keySet

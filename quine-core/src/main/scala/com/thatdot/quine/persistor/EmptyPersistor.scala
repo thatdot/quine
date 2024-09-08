@@ -16,7 +16,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -30,7 +30,7 @@ import com.thatdot.quine.util.Log._
   */
 class EmptyPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
-  val namespace: NamespaceId = None
+  val namespace: NamespaceId = None,
 ) extends PersistenceAgent {
 
   override def emptyOfQuineData(): Future[Boolean] =
@@ -38,7 +38,7 @@ class EmptyPersistor(
 
   def enumerateSnapshotNodeIds(): Source[QuineId, NotUsed] = {
     logger.warn(
-      safe"Attempted to enumerate all node IDs on an empty persistor which never returns anything."
+      safe"Attempted to enumerate all node IDs on an empty persistor which never returns anything.",
     )
     Source.empty[QuineId]
   }
@@ -48,13 +48,13 @@ class EmptyPersistor(
   override def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Vector[NodeEvent.WithTime[NodeChangeEvent]]] = Future.successful(Vector.empty)
 
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Vector[NodeEvent.WithTime[DomainIndexEvent]]] = Future.successful(Vector.empty)
 
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] =
@@ -79,7 +79,7 @@ class EmptyPersistor(
   def getStandingQueries: Future[List[StandingQueryInfo]] = Future.successful(List.empty)
 
   def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     Future.successful(Map.empty)
 
@@ -87,7 +87,7 @@ class EmptyPersistor(
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = Future.unit
 
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] = Future.unit

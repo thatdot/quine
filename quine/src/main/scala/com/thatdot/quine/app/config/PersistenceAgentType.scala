@@ -42,7 +42,7 @@ object PersistenceAgentType extends PureconfigInstances {
     writeAheadLog: Boolean = true,
     syncAllWrites: Boolean = false,
     createParentDir: Boolean = false,
-    bloomFilterSize: Option[Long] = None
+    bloomFilterSize: Option[Long] = None,
   ) extends PersistenceAgentType(isLocal = true, "rocksdb") {}
 
   final case class MapDb(
@@ -51,7 +51,7 @@ object PersistenceAgentType extends PureconfigInstances {
     writeAheadLog: Boolean = false,
     commitInterval: FiniteDuration = 10.seconds,
     createParentDir: Boolean = false,
-    bloomFilterSize: Option[Long] = None
+    bloomFilterSize: Option[Long] = None,
   ) extends PersistenceAgentType(isLocal = true, "mapdb") {
     assert(numberPartitions > 0, "Must have a positive number of partitions")
   }
@@ -76,7 +76,7 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateTables: Boolean = true,
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
-    snapshotPartMaxSizeBytes: Int = 1000000
+    snapshotPartMaxSizeBytes: Int = 1000000,
   ) extends PersistenceAgentType(isLocal = false, "cassandra") {
     assert(endpoints.nonEmpty, "Must specify at least one Cassandra endpoint")
   }
@@ -91,13 +91,13 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateTables: Boolean = true,
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
-    snapshotPartMaxSizeBytes: Int = 1000000
+    snapshotPartMaxSizeBytes: Int = 1000000,
   ) extends PersistenceAgentType(isLocal = false, "keyspaces") {
     private val supportedReadConsistencies: Set[ConsistencyLevel] =
       Set(ConsistencyLevel.ONE, ConsistencyLevel.LOCAL_ONE, ConsistencyLevel.LOCAL_QUORUM)
     assert(
       supportedReadConsistencies.contains(readConsistency),
-      "AWS Keyspaces only supports read constencies levels: " + supportedReadConsistencies.mkString(", ")
+      "AWS Keyspaces only supports read constencies levels: " + supportedReadConsistencies.mkString(", "),
     )
   }
 
@@ -106,7 +106,7 @@ object PersistenceAgentType extends PureconfigInstances {
     database: String = sys.env.getOrElse("CLICKHOUSE_DATABASE", "quine"),
     username: String = sys.env.getOrElse("CLICKHOUSE_USER", "quine"),
     password: String = sys.env.getOrElse("CLICKHOUSE_PASSWORD", "quine"),
-    bloomFilterSize: Option[Long] = None
+    bloomFilterSize: Option[Long] = None,
   ) extends PersistenceAgentType(isLocal = false, "clickhouse")
       with LazySafeLogging {
 
@@ -122,7 +122,7 @@ object PersistenceAgentType extends PureconfigInstances {
         logger.warn(
           safe"""Using certificate at: ${Safe(x)} to authenticate ClickHouse server. For better security, we
                 |recommend using a password-protected Java truststore instead (this can be configured with the
-                |`javax.net.ssl.trustStore` and `javax.net.ssl.trustStorePassword` properties)""".cleanLines
+                |`javax.net.ssl.trustStore` and `javax.net.ssl.trustStorePassword` properties)""".cleanLines,
         )
         x
       }
@@ -143,7 +143,7 @@ object PersistenceAgentType extends PureconfigInstances {
     implicit val inetSocketAddressConvert: ConfigConvert[InetSocketAddress] =
       ConfigConvert.viaNonEmptyString[InetSocketAddress](
         s => Right(Address.parseHostAndPort(s, PersistenceAgentType.defaultCassandraPort)),
-        addr => addr.getHostString + ':' + addr.getPort
+        addr => addr.getHostString + ':' + addr.getPort,
       )
 
     deriveConvert[PersistenceAgentType]

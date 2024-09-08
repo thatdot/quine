@@ -21,14 +21,14 @@ class FilterMapStateTests extends AnyFunSuite {
     val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = Some(upstreamAlias)
+      aliasedAs = Some(upstreamAlias),
     )
     val mappedAlias = Symbol("fooMapped")
     val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(Expr.True),
       dropExisting = false,
-      toAdd = List(mappedAlias -> Variable(upstreamAlias))
+      toAdd = List(mappedAlias -> Variable(upstreamAlias)),
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -51,12 +51,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(1)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(1),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.nonEmpty)
         val result = effects.resultsReported.dequeue().head
@@ -76,12 +76,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(5)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(5),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.nonEmpty)
         val result = effects.resultsReported.dequeue().head
@@ -97,13 +97,13 @@ class FilterMapStateTests extends AnyFunSuite {
     val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = Some(Symbol("fooValue"))
+      aliasedAs = Some(Symbol("fooValue")),
     )
     val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
       condition = Some(Expr.False),
       dropExisting = false,
-      toAdd = Nil
+      toAdd = Nil,
     )
     val state = new StandingQueryStateWrapper(query)
 
@@ -125,12 +125,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(1)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(1),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.nonEmpty)
         val results = effects.resultsReported.dequeue()
@@ -144,7 +144,7 @@ class FilterMapStateTests extends AnyFunSuite {
     val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = Some(Symbol("fooValue"))
+      aliasedAs = Some(Symbol("fooValue")),
     )
     val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
@@ -153,9 +153,9 @@ class FilterMapStateTests extends AnyFunSuite {
       toAdd = List(
         Symbol("fooValueDoubled") -> Expr.Multiply(
           Expr.Integer(2),
-          Expr.Variable(upstreamQuery.aliasedAs.get)
-        )
-      )
+          Expr.Variable(upstreamQuery.aliasedAs.get),
+        ),
+      ),
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -178,12 +178,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(1)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(1),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.size == 1)
         val result = effects.resultsReported.dequeue().head
@@ -203,12 +203,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(5)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(5),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.size == 1)
         val result = effects.resultsReported.dequeue().head
@@ -225,7 +225,7 @@ class FilterMapStateTests extends AnyFunSuite {
     val upstreamQuery = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("foo"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = Some(upstreamAlias)
+      aliasedAs = Some(upstreamAlias),
     )
     val query = MultipleValuesStandingQuery.FilterMap(
       toFilter = upstreamQuery,
@@ -234,17 +234,17 @@ class FilterMapStateTests extends AnyFunSuite {
           Expr.Integer(1), // == 1
           Expr.Modulo( // fooValue % 2
             Expr.Variable(upstreamAlias),
-            Expr.Integer(2)
-          )
-        )
+            Expr.Integer(2),
+          ),
+        ),
       ),
       dropExisting = true,
       toAdd = List(
         outputAlias -> Expr.Multiply(
           Expr.Integer(3),
-          Expr.Variable(upstreamAlias)
-        )
-      )
+          Expr.Variable(upstreamAlias),
+        ),
+      ),
     )
     val state = new StandingQueryStateWrapper(query)
 
@@ -267,12 +267,12 @@ class FilterMapStateTests extends AnyFunSuite {
             QueryContext(
               Map(
                 upstreamAlias -> Expr.Integer(1),
-                Symbol("secondAlias") -> Expr.Integer(2)
-              )
-            )
-          )
+                Symbol("secondAlias") -> Expr.Integer(2),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.size == 1)
         val result = effects.resultsReported.dequeue().head
@@ -292,12 +292,12 @@ class FilterMapStateTests extends AnyFunSuite {
           Seq(
             QueryContext(
               Map(
-                upstreamQuery.aliasedAs.get -> Expr.Integer(5)
-              )
-            )
-          )
+                upstreamQuery.aliasedAs.get -> Expr.Integer(5),
+              ),
+            ),
+          ),
         ),
-        shouldHaveEffects = true
+        shouldHaveEffects = true,
       ) { effects =>
         assert(effects.resultsReported.size == 1)
         val result = effects.resultsReported.dequeue().head

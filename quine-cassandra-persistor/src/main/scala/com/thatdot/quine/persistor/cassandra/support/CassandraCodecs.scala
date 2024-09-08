@@ -11,7 +11,7 @@ import com.thatdot.quine.graph.{
   EventTime,
   MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
-  StandingQueryId
+  StandingQueryId,
 }
 import com.thatdot.quine.model.{DomainGraphNode, EdgeDirection, QuineId}
 import com.thatdot.quine.persistor.BinaryFormat

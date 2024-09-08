@@ -14,7 +14,7 @@ object YamlCodec {
   def createCodec[T]()(implicit
     tSchema: Schema[T],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Codec[String, T, YamlCodecFormat] =
     new Codec[String, T, YamlCodecFormat] {
       override def rawDecode(s: String): DecodeResult[T] =

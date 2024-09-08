@@ -10,7 +10,7 @@ import com.thatdot.quine.graph.{
   RunningStandingQuery,
   StandingQueryId,
   StandingQueryOpsGraph,
-  StandingQueryResult
+  StandingQueryResult,
 }
 import com.thatdot.quine.model.Properties
 import com.thatdot.quine.util.Log.LogConfig
@@ -23,7 +23,7 @@ import com.thatdot.quine.util.Log.LogConfig
   */
 class MultipleValuesResultsReporter(
   val sq: RunningStandingQuery,
-  initialResultsSnapshot: Seq[QueryContext]
+  initialResultsSnapshot: Seq[QueryContext],
 )(implicit protected val logConfig: LogConfig) {
 
   /** This can be thought of as a table, with all the same columns as each QueryContext, plus an additional column
@@ -55,7 +55,7 @@ object MultipleValuesResultsReporter {
   def generateResultReports(
     trackedResults: Seq[QueryContext],
     newResults: Seq[QueryContext],
-    includeCancellations: Boolean
+    includeCancellations: Boolean,
   ): View[StandingQueryResult] = {
     val removedRows = trackedResults.diff(newResults)
     val addedRows = newResults.diff(trackedResults)
@@ -69,7 +69,7 @@ object MultipleValuesResultsReporter {
           isPositiveMatch,
           values.environment.map { case (k, v) =>
             k.name -> Expr.toQuineValue(v)
-          }
+          },
         )
     }
   }
@@ -81,7 +81,7 @@ object MultipleValuesResultsReporter {
     statesAndSubscribers: Iterable[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)],
     nodeProperties: Properties,
     graph: StandingQueryOpsGraph,
-    namespace: NamespaceId
+    namespace: NamespaceId,
   )(implicit logConfig: LogConfig): Map[StandingQueryId, MultipleValuesResultsReporter] = {
     val cypherProperties = nodeProperties - graph.labelsProperty
     def containsGlobalSubscriber(subscribers: Iterable[MultipleValuesStandingQuerySubscriber]): Boolean =
@@ -93,7 +93,7 @@ object MultipleValuesResultsReporter {
     case class ActiveQueryRootedOnThisNode(
       id: StandingQueryId,
       runningInstance: RunningStandingQuery,
-      topLevelState: MultipleValuesStandingQueryState
+      topLevelState: MultipleValuesStandingQueryState,
     )
 
     val topLevelSqStates: Seq[ActiveQueryRootedOnThisNode] =

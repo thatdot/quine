@@ -18,7 +18,7 @@ import com.thatdot.quine.util.Log.implicits._
 final case class SkipOptimizerKey(
   location: Query[Location.External],
   namespace: NamespaceId,
-  atTime: Option[Milliseconds]
+  atTime: Option[Milliseconds],
 )
 
 /** Functionality for querying the graph using Cypher. */
@@ -53,7 +53,7 @@ trait CypherOpsGraph extends BaseGraph {
       new CacheLoader[SkipOptimizerKey, ActorRef] {
         def load(key: SkipOptimizerKey): ActorRef =
           system.actorOf(
-            pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key.location, key.namespace, key.atTime))
+            pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key.location, key.namespace, key.atTime)),
           )
       }
 
@@ -72,7 +72,7 @@ trait CypherOpsGraph extends BaseGraph {
               logger.info(
                 log"""SkipOptimizingActor at ${Safe(notification.getValue)} is being replaced in the Cypher
                      |skipOptimizerCache without removing. This is expected in tests, but not in production. Shutdown
-                     |protocol will not be initiated on the actor.""".cleanLines
+                     |protocol will not be initiated on the actor.""".cleanLines,
               )
         }
         .build(loader)
@@ -104,7 +104,7 @@ trait CypherOpsGraph extends BaseGraph {
       namespace: NamespaceId,
       atTime: Option[Milliseconds] = None,
       context: QueryContext = QueryContext.empty,
-      bypassSkipOptimization: Boolean = false
+      bypassSkipOptimization: Boolean = false,
     ): Source[QueryContext, NotUsed] = {
       requireCompatibleNodeType()
       val interpreter =
@@ -115,12 +115,12 @@ trait CypherOpsGraph extends BaseGraph {
 
       require(
         interpreter.namespace == namespace,
-        "Refusing to execute a query in a different namespace than requested by the caller"
+        "Refusing to execute a query in a different namespace than requested by the caller",
       )
 
       require(
         interpreter.atTime == atTime,
-        "Refusing to execute a query at a different timestamp than requested by the caller"
+        "Refusing to execute a query at a different timestamp than requested by the caller",
       )
 
       interpreter
@@ -146,7 +146,7 @@ trait CypherOpsGraph extends BaseGraph {
       namespace: NamespaceId,
       atTime: Option[Milliseconds],
       parameters: Map[String, cypher.Value],
-      bypassSkipOptimization: Boolean = false
+      bypassSkipOptimization: Boolean = false,
     ): RunningCypherQuery = {
       requireCompatibleNodeType()
       val interpreter: CypherInterpreter[Location.External] = atTime match {

@@ -19,7 +19,7 @@ abstract class AbstractMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long] = None,
-  ExecutionContext: ComputeAndBlockingExecutionContext
+  ExecutionContext: ComputeAndBlockingExecutionContext,
 )(implicit materializer: Materializer, val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
@@ -34,7 +34,7 @@ abstract class AbstractMapDbPrimePersistor(
       persistenceConfig,
       metricRegistry,
       ExecutionContext,
-      materializer.system.scheduler
+      materializer.system.scheduler,
     )
 
 }
@@ -45,7 +45,7 @@ class TempMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
-  ExecutionContext: ComputeAndBlockingExecutionContext
+  ExecutionContext: ComputeAndBlockingExecutionContext,
 )(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
@@ -53,7 +53,7 @@ class TempMapDbPrimePersistor(
       metricRegistry,
       persistenceConfig,
       bloomFilterSize,
-      ExecutionContext
+      ExecutionContext,
     ) {
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
@@ -72,7 +72,7 @@ class PersistedMapDbPrimePersistor(
   metricRegistry: MetricRegistry,
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
-  ExecutionContext: ComputeAndBlockingExecutionContext
+  ExecutionContext: ComputeAndBlockingExecutionContext,
 )(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends AbstractMapDbPrimePersistor(
       writeAheadLog,
@@ -80,7 +80,7 @@ class PersistedMapDbPrimePersistor(
       metricRegistry,
       persistenceConfig,
       bloomFilterSize,
-      ExecutionContext
+      ExecutionContext,
     ) {
 
   private val parentDir = basePath.getAbsoluteFile.getParentFile
@@ -100,7 +100,7 @@ class PersistedMapDbPrimePersistor(
       val fileName = path.getName
       new ShardedPersistor(
         Vector.tabulate(n)(i => dbForPath(MapDbPersistor.PersistedDb(new File(parent, s"part$i.$fileName")))),
-        persistenceConfig
+        persistenceConfig,
       )
   }
 
@@ -110,7 +110,7 @@ class PersistedMapDbPrimePersistor(
         val dir = new File(namespacesDir, name.name)
         dir.mkdirs() // the parent dir "namespaces" will be created if it doesn't exist already
         possiblyShardedDb(
-          new File(dir, basePath.getName) // Use whatever name was set in config as the name of our mapdb file.
+          new File(dir, basePath.getName), // Use whatever name was set in config as the name of our mapdb file.
         )
       case None => possiblyShardedDb(basePath)
     }

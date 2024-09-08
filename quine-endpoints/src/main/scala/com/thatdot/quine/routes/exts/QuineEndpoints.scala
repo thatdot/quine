@@ -155,7 +155,7 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
       endpoints4s.Codec.parseStringCatchingExceptions(
         `type` = "base64 string",
         parse = dec.decode,
-        print = enc.encodeToString
+        print = enc.encodeToString,
       )
 
     stringJsonSchema(format = Some("base64"))
@@ -171,27 +171,27 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
     docs = Some("""Namespace. If no namespace is provided, the default namespace will be used.
         |
         |Namespaces must be between 1-16 characters, consist of only letters or digits,
-        |and must start with a letter.""".stripMargin)
+        |and must start with a letter.""".stripMargin),
   )
 
   final val atTime: QueryString[AtTime] = qs[AtTime](
     "at-time",
-    docs = Some("An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query")
+    docs = Some("An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query"),
   )
 
   final val reqTimeout: QueryString[Option[FiniteDuration]] = qs[Option[FiniteDuration]](
     "timeout",
-    docs = Some("Milliseconds to wait before the HTTP request times out")
+    docs = Some("Milliseconds to wait before the HTTP request times out"),
   )(
-    optionalQueryStringParam(longQueryString.xmap(_.millis)(_.toMillis))
+    optionalQueryStringParam(longQueryString.xmap(_.millis)(_.toMillis)),
   )
 
   // NB this should be used for _write_ parallelism
   final val parallelism: QueryString[Int] = qs[Option[Int]](
     name = "parallelism",
     docs = Some(
-      s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`"
-    )
+      s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`",
+    ),
   ).xmap(_.getOrElse(IngestRoutes.defaultWriteParallelism))(Some(_))
 
   /** Schema for sets */
@@ -201,27 +201,27 @@ trait QuineEndpoints extends EntitiesWithExamples with IdSchema with AtTimeQuery
   final def accepted[A, B, R](
     entity: ResponseEntity[A] = emptyResponse,
     docs: Documentation = None,
-    headers: ResponseHeaders[B] = emptyResponseHeaders
+    headers: ResponseHeaders[B] = emptyResponseHeaders,
   )(implicit tupler: Tupler.Aux[A, B, R]): Response[R] =
     response(Accepted, entity, docs, headers)
 
   final def noContent[B](
     docs: Documentation = None,
-    headers: ResponseHeaders[B] = emptyResponseHeaders
+    headers: ResponseHeaders[B] = emptyResponseHeaders,
   ): Response[B] =
     response(NoContent, emptyResponse, docs, headers)
 
   final def created[A, B, R](
     entity: ResponseEntity[A] = emptyResponse,
     docs: Documentation = None,
-    headers: ResponseHeaders[B] = emptyResponseHeaders
+    headers: ResponseHeaders[B] = emptyResponseHeaders,
   )(implicit tupler: Tupler.Aux[A, B, R]): Response[R] =
     response(Created, entity, docs, headers)
 
   final def serviceUnavailable[A, B, R](
     entity: ResponseEntity[A] = emptyResponse,
     docs: Documentation = None,
-    headers: ResponseHeaders[B] = emptyResponseHeaders
+    headers: ResponseHeaders[B] = emptyResponseHeaders,
   )(implicit tupler: Tupler.Aux[A, B, R]): Response[R] =
     response(ServiceUnavailable, entity, docs, headers)
 

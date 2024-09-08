@@ -26,7 +26,7 @@ object CounterSummaryCard {
       "fullHistogramName",
       "histogramName",
       "x",
-      "y"
+      "y",
     )
 
   val bucketLabelOrdering: Ordering[String] = Ordering.by[String, Option[Int]] {
@@ -39,7 +39,7 @@ object CounterSummaryCard {
 @react class CounterSummaryCard extends StatelessComponent {
   case class Props(
     name: String,
-    counters: Seq[Counter]
+    counters: Seq[Counter],
   )
 
   private def countersMap: Map[String, Double] =
@@ -57,10 +57,10 @@ object CounterSummaryCard {
           t = 32,
           b = 32,
           l = 32,
-          r = 64
-        )
+          r = 64,
+        ),
       ),
-      sortBucketsBy = bucketLabelOrdering
-    )
+      sortBucketsBy = bucketLabelOrdering,
+    ),
   )
 }

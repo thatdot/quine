@@ -32,7 +32,7 @@ object GremlinToken {
 final class GremlinLexer(
   idProvider: QuineIdProvider,
   customIdRegex: Regex,
-  customLiteralsParser: Option[(Regex, String => Option[QuineValue])]
+  customLiteralsParser: Option[(Regex, String => Option[QuineValue])],
 ) extends JavaTokenParsers
     with Scanners {
 

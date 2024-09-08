@@ -24,7 +24,7 @@ object DomainGraphNode {
     domainNodeEquiv: DomainNodeEquiv,
     identification: Option[QuineId] = None,
     nextNodes: Seq[DomainGraphEdge],
-    comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset
+    comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset,
   ) extends DomainGraphNode(nextNodes.map(_.dgnId))
 
   final case class Or(disjuncts: Seq[DomainGraphNodeId]) extends DomainGraphNode(disjuncts)
@@ -35,7 +35,7 @@ object DomainGraphNode {
 
   final case class Mu(
     variable: MuVariableName,
-    dgnId: DomainGraphNodeId // scope of the variable
+    dgnId: DomainGraphNodeId, // scope of the variable
   ) extends DomainGraphNode(Seq(dgnId))
 
   final case class MuVar(variable: MuVariableName) extends DomainGraphNode(Seq.empty)
@@ -45,7 +45,7 @@ object DomainGraphNode {
     depDirection: DependencyDirection,
     dgnId: DomainGraphNodeId,
     circularMatchAllowed: Boolean,
-    constraints: EdgeMatchConstraints
+    constraints: EdgeMatchConstraints,
   )
 
   /** Computes a [[DomainGraphNodeId]] from a [[DomainGraphNode]]
@@ -114,14 +114,14 @@ object DGNHash {
         putOrdered[QuineValue](
           list,
           into,
-          putQuineValue(_, newHasher).hash
+          putQuineValue(_, newHasher).hash,
         )
       case QuineValue.Map(map) =>
         into.putByte(8)
         putUnordered[(String, QuineValue)](
           map,
           into,
-          putQuineValueMapKeyValue(_, newHasher).hash
+          putQuineValueMapKeyValue(_, newHasher).hash,
         )
       case QuineValue.DateTime(datetime) =>
         into.putByte(9)
@@ -170,13 +170,13 @@ object DGNHash {
         putUnordered[QuineValue](
           mustContain,
           h,
-          putQuineValue(_, newHasher).hash
+          putQuineValue(_, newHasher).hash,
         )
     }
     putOption[Array[Byte]](
       v map (_.serialized),
       h,
-      newHasher.putBytes(_).hash
+      newHasher.putBytes(_).hash,
     )
   }
 
@@ -185,14 +185,14 @@ object DGNHash {
     putOption[String](
       className,
       into,
-      newHasher.putUnencodedChars(_).hash
+      newHasher.putUnencodedChars(_).hash,
     )
     putUnordered[(Symbol, (PropertyComparisonFunc, Option[PropertyValue]))](
       localProps,
       into,
       { case (key, (fn, v)) =>
         putLocalProp(key, fn, v, newHasher).hash
-      }
+      },
     )
     putUnordered[(Symbol, IsDirected)](
       circularEdges,
@@ -202,7 +202,7 @@ object DGNHash {
           .putUnencodedChars(symbol.name)
           .putBoolean(directed)
           .hash
-      }
+      },
     )
   }
 
@@ -212,7 +212,7 @@ object DGNHash {
       depDirection,
       dgnId,
       circularMatchAllowed,
-      constraints
+      constraints,
     ) = edge
     into
       .putUnencodedChars(edgeType.name)
@@ -250,12 +250,12 @@ object DGNHash {
         putOption[Array[Byte]](
           identification.map(_.array),
           into,
-          newHasher.putBytes(_).hash
+          newHasher.putBytes(_).hash,
         )
         putOrdered[DomainGraphEdge](
           nextNodes,
           into,
-          putDomainGraphNodeEdge(_, newHasher).hash
+          putDomainGraphNodeEdge(_, newHasher).hash,
         )
         comparisonFunc match {
           case NodeLocalComparisonFunctions.Identicality =>
@@ -270,14 +270,14 @@ object DGNHash {
         putOrdered[Long](
           disjuncts,
           into,
-          newHasher.putLong(_).hash
+          newHasher.putLong(_).hash,
         )
       case And(conjuncts) =>
         into.putByte(2)
         putOrdered[Long](
           conjuncts,
           into,
-          newHasher.putLong(_).hash
+          newHasher.putLong(_).hash,
         )
       case Not(negated) =>
         into.putByte(3)
@@ -310,7 +310,7 @@ object DomainGraphNodePackage {
     */
   def apply(
     dgnId: DomainGraphNodeId,
-    getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
+    getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode],
   ): DomainGraphNodePackage = {
     def f(dgnId: DomainGraphNodeId): Map[DomainGraphNodeId, DomainGraphNode] = getDomainGraphNode(dgnId) match {
       case Some(dgn) =>

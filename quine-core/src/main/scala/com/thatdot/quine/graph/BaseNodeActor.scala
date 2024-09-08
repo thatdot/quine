@@ -48,21 +48,21 @@ trait BaseNodeActor extends BaseNodeActorView {
 
   protected def processPropertyEvent(
     event: PropertyEvent,
-    atTimeOverride: Option[EventTime] = None
+    atTimeOverride: Option[EventTime] = None,
   ): Future[Done.type]
 
   protected def processPropertyEvents(
-    events: List[PropertyEvent]
+    events: List[PropertyEvent],
   ): Future[Done.type]
 
   protected def processEdgeEvent(
     event: EdgeEvent,
-    atTimeOverride: Option[EventTime] = None
+    atTimeOverride: Option[EventTime] = None,
   ): Future[Done.type]
 
   // The only place this is called with a collection is when deleting a node.
   protected def processEdgeEvents(
-    events: List[EdgeEvent]
+    events: List[EdgeEvent],
   ): Future[Done.type]
 
   /** Set the labels on the node

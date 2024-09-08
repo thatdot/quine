@@ -23,7 +23,7 @@ import com.thatdot.quine.graph.messaging.{
   ResultHandler,
   ShardRef,
   SpaceTimeQuineId,
-  WrappedActorRef
+  WrappedActorRef,
 }
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.util.Log._
@@ -65,7 +65,7 @@ trait StaticShardGraph extends BaseGraph {
         Props(new GraphShardActor(this, shardId, nodeMap, initialShardInMemoryLimit))
           .withMailbox("pekko.quine.shard-mailbox")
           .withDispatcher(QuineDispatchers.shardDispatcherName),
-        name = GraphShardActor.name(shardId)
+        name = GraphShardActor.name(shardId),
       )
 
       new LocalShardRef(localRef, shardId, nodeMap)
@@ -74,7 +74,7 @@ trait StaticShardGraph extends BaseGraph {
   def relayTell(
     quineRef: QuineRef,
     message: QuineMessage,
-    originalSender: ActorRef = ActorRef.noSender
+    originalSender: ActorRef = ActorRef.noSender,
   ): Unit = {
     metrics.relayTellMetrics.markLocal()
     quineRef match {
@@ -99,10 +99,10 @@ trait StaticShardGraph extends BaseGraph {
   def relayAsk[Resp](
     quineRef: QuineRef,
     unattributedMessage: QuineRef => QuineMessage with AskableQuineMessage[Resp],
-    originalSender: ActorRef = ActorRef.noSender
+    originalSender: ActorRef = ActorRef.noSender,
   )(implicit
     timeout: Timeout,
-    resultHandler: ResultHandler[Resp]
+    resultHandler: ResultHandler[Resp],
   ): Future[Resp] = {
     require(timeout.duration.length >= 0)
     val promise = Promise[Resp]()
@@ -122,9 +122,9 @@ trait StaticShardGraph extends BaseGraph {
               promise,
               timeout.duration,
               resultHandler,
-              metrics.relayAskMetrics
-            )
-          ).withDispatcher(QuineDispatchers.nodeDispatcherName)
+              metrics.relayAskMetrics,
+            ),
+          ).withDispatcher(QuineDispatchers.nodeDispatcherName),
         )
         val askQuineRef = WrappedActorRef(askActorRef)
         val message = unattributedMessage(askQuineRef)
@@ -150,9 +150,9 @@ trait StaticShardGraph extends BaseGraph {
               promise,
               timeout.duration,
               resultHandler,
-              metrics.relayAskMetrics
-            )
-          ).withDispatcher(QuineDispatchers.nodeDispatcherName)
+              metrics.relayAskMetrics,
+            ),
+          ).withDispatcher(QuineDispatchers.nodeDispatcherName),
         )
 
         // Send the message directly
@@ -186,7 +186,7 @@ trait StaticShardGraph extends BaseGraph {
         _ == 0,
         maxPollAttempts,
         delayBetweenPollAttempts,
-        system.scheduler
+        system.scheduler,
       )(ec)
       .flatMap(_ => namespacePersistor.syncVersion())
       .flatMap(_ => namespacePersistor.shutdown())

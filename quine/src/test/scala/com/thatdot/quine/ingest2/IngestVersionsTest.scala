@@ -26,34 +26,34 @@ class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks
       Gen.resultOf(StreamedRecordFormat.CypherJson),
       Gen.resultOf(CypherRaw),
       Gen.resultOf(CypherProtobuf),
-      Gen.const(Drop)
-    )
+      Gen.const(Drop),
+    ),
   )
   implicit val arbV1FileFormat: Arbitrary[FileIngestFormat] = Arbitrary(
     Gen.oneOf[FileIngestFormat](
       Gen.resultOf(FileIngestFormat.CypherLine),
       Gen.resultOf(FileIngestFormat.CypherJson),
-      Gen.const(CypherCsv(randomString(), randomString(), Left(true)))
-    )
+      Gen.const(CypherCsv(randomString(), randomString(), Left(true))),
+    ),
   )
 
   implicit val arbF: Arbitrary[FileIngestMode] = Arbitrary(Gen.oneOf(Regular, NamedPipe))
   implicit val arbAWS: Arbitrary[Option[AwsCredentials]] = Arbitrary(
-    Gen.option(Gen.const(AwsCredentials(randomString(), randomString())))
+    Gen.option(Gen.const(AwsCredentials(randomString(), randomString()))),
   )
   implicit val arbReg: Arbitrary[Option[AwsRegion]] = Arbitrary(
-    Gen.option(Gen.oneOf("us-west-1", "us-east-1").map(AwsRegion.apply))
+    Gen.option(Gen.oneOf("us-west-1", "us-east-1").map(AwsRegion.apply)),
   )
   implicit val arbRec: Arbitrary[Seq[RecordDecodingType]] = Arbitrary(
     Gen.containerOf[Seq, RecordDecodingType](
-      Gen.oneOf(RecordDecodingType.Gzip, RecordDecodingType.Base64, RecordDecodingType.Zlib)
-    )
+      Gen.oneOf(RecordDecodingType.Gzip, RecordDecodingType.Base64, RecordDecodingType.Zlib),
+    ),
   )
   implicit val optionSet: Gen[Option[Set[String]]] = Gen.option(Gen.containerOf[Set, String](Gen.asciiStr))
   implicit val optionPosInt: Gen[Option[Int]] = Gen.option(Gen.posNum[Int])
 
   implicit val iterType: Arbitrary[KinesisIngest.IteratorType] = Arbitrary(
-    Gen.oneOf(KinesisIngest.IteratorType.Latest, KinesisIngest.IteratorType.TrimHorizon)
+    Gen.oneOf(KinesisIngest.IteratorType.Latest, KinesisIngest.IteratorType.TrimHorizon),
   )
   implicit val genOffset: Gen[KafkaOffsetCommitting] = Gen.resultOf(ExplicitCommit)
 
@@ -76,7 +76,7 @@ class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks
     Random.nextInt(1000),
     maxPerSec,
     decoders,
-    checkpointSettings = None
+    checkpointSettings = None,
   )
 
   implicit def v1KafkaGen: Gen[v1.KafkaIngest] = for {
@@ -89,7 +89,7 @@ class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks
     offsetReset: KafkaAutoOffsetReset <- Gen.oneOf(
       KafkaAutoOffsetReset.Latest,
       KafkaAutoOffsetReset.Earliest,
-      KafkaAutoOffsetReset.None
+      KafkaAutoOffsetReset.None,
     )
     endingOffset <- optionPosInt.map(i => i.map(_.toLong))
     maxPerSec <- optionPosInt
@@ -105,7 +105,7 @@ class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks
     Map(randomString() -> randomString()),
     endingOffset,
     maxPerSec,
-    decoders
+    decoders,
   )
 
   def legalEncoding: String = Gen.oneOf[String](Charset.availableCharsets().keySet().asScala).sample.getOrElse("UTF-8")

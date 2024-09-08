@@ -47,11 +47,11 @@ class StandingQueriesDefinition(namespace: NamespaceId)(implicit val logConfig: 
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     mat: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[StandingQueries] = {
     import shapeless.syntax.std.tuple._
     logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
@@ -69,7 +69,7 @@ class StandingQueries(
   dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
-  selectAllStatement: PreparedStatement
+  selectAllStatement: PreparedStatement,
 )(implicit mat: Materializer, val logConfig: LogConfig)
     extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with StandingQueriesColumnNames {

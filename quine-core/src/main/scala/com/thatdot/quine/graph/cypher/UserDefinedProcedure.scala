@@ -43,18 +43,18 @@ trait UserDefinedProcedure {
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _]
 
   /** Signature of the procedure */
   def signature: UserDefinedProcedureSignature
 
   final lazy val outputColumns: Columns.Specified = Columns.Specified(
-    signature.outputs.view.map { case (outputName, _) => Symbol(outputName) }.toVector
+    signature.outputs.view.map { case (outputName, _) => Symbol(outputName) }.toVector,
   )
 
   /** Construct a wrong signature error based on [[signatures]]
@@ -75,7 +75,7 @@ object UserDefinedProcedure {
     * @return Cypher-compatible representation of the node
     */
   def getAsCypherNode(qid: QuineId, namespace: NamespaceId, atTime: Option[Milliseconds], graph: LiteralOpsGraph)(
-    implicit timeout: Timeout
+    implicit timeout: Timeout,
   ): Future[Expr.Node] =
     graph
       .literalOps(namespace)
@@ -84,7 +84,7 @@ object UserDefinedProcedure {
         Expr.Node(
           qid,
           labels.getOrElse(Set.empty),
-          props.fmap(pv => Expr.fromQuineValue(pv.deserialized.get))
+          props.fmap(pv => Expr.fromQuineValue(pv.deserialized.get)),
         )
       }(graph.nodeDispatcherEC)
 
@@ -128,7 +128,7 @@ object UserDefinedProcedure {
 final case class UserDefinedProcedureSignature(
   arguments: Seq[(String, Type)],
   outputs: Seq[(String, Type)],
-  description: String
+  description: String,
 ) {
 
   /** Pretty-print the signature

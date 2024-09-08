@@ -35,7 +35,7 @@ object BaseMessage {
       if (remaining >= beginDelayingThreshold) None
       else
         Some(
-          singleLocalDeliveryMaxDelay * ((beginDelayingThreshold - remaining).toDouble / beginDelayingThreshold)
+          singleLocalDeliveryMaxDelay * ((beginDelayingThreshold - remaining).toDouble / beginDelayingThreshold),
         ).map(d => d.toMillis.millis)
   }
 
@@ -44,7 +44,7 @@ object BaseMessage {
   final case class LocalMessageDelivery(
     msg: QuineMessage,
     targetQid: SpaceTimeQuineId,
-    originalSender: ActorRef
+    originalSender: ActorRef,
   ) extends BaseMessage
 
 }

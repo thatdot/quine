@@ -26,7 +26,7 @@ object NamedPipeSource extends LazySafeLogging {
   def fromPath(
     path: Path,
     chunkSize: Int = 8192,
-    pollInterval: FiniteDuration = 1.second
+    pollInterval: FiniteDuration = 1.second,
   ): Source[ByteString, NotUsed] =
     Source
       .fromGraph(new NamedPipeSource(path, chunkSize, pollInterval))
@@ -38,7 +38,7 @@ object NamedPipeSource extends LazySafeLogging {
     */
   def fileOrNamedPipeSource(
     path: Path,
-    fileIngestMode: Option[FileIngestMode]
+    fileIngestMode: Option[FileIngestMode],
   )(implicit logConfig: LogConfig): Source[ByteString, NotUsed] = {
     val isNamedPipe = fileIngestMode map (_ == NamedPipe) getOrElse {
       try POSIXFactory.getPOSIX.stat(path.toString).isFifo

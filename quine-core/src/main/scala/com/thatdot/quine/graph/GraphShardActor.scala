@@ -32,14 +32,14 @@ import com.thatdot.quine.graph.messaging.ShardMessage.{
   SampleAwakeNodes,
   ShardShutdownProgress,
   ShardStats,
-  UpdateInMemoryLimits
+  UpdateInMemoryLimits,
 }
 import com.thatdot.quine.graph.messaging.{
   NodeActorMailboxExtension,
   NodeActorMailboxExtensionImpl,
   QuineMessage,
   QuineRefOps,
-  SpaceTimeQuineId
+  SpaceTimeQuineId,
 }
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
@@ -67,7 +67,7 @@ final private[quine] class GraphShardActor(
   val graph: BaseGraph,
   shardId: Int,
   namespacedNodes: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]],
-  private var inMemoryLimit: Option[InMemoryNodeLimit]
+  private var inMemoryLimit: Option[InMemoryNodeLimit],
 )(implicit val logConfig: LogConfig)
     extends Actor
     with ActorSafeLogging
@@ -176,7 +176,7 @@ final private[quine] class GraphShardActor(
       new ExpiringLruSet.SizeAndTimeBounded[SpaceTimeQuineId](
         initialCapacity = softLimit + 1,
         initialMaximumSize = softLimit,
-        initialNanosExpiry = Long.MaxValue
+        initialNanosExpiry = Long.MaxValue,
       ) {
         def shouldExpire(qid: SpaceTimeQuineId): ExpiringLruSet.ExpiryDecision =
           namespacedNodes.get(qid.namespace).flatMap(_.get(qid)) match {
@@ -309,10 +309,10 @@ final private[quine] class GraphShardActor(
   def deliverLocalMessage(
     message: QuineMessage,
     qid: SpaceTimeQuineId,
-    originalSender: ActorRef
+    originalSender: ActorRef,
   ): Unit = {
     log.trace(
-      log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(originalSender)}"
+      log"Shard: ${Safe(shardId)} is delivering local message: ${message.toString} to: $qid, from: ${Safe(originalSender)}",
     )
     getAwakeNode(qid) match {
       case LivenessStatus.AlreadyAwake(nodeActor) => nodeActor.tell(message, originalSender)
@@ -346,7 +346,7 @@ final private[quine] class GraphShardActor(
               _.keys.iterator
                 .collect { case SpaceTimeQuineId(qid, _, t) if t == atTime => AwakeNode(qid) }
                 .take(toTake)
-                .toList
+                .toList,
             )
         else
           inMemoryActorList.iterator
@@ -378,7 +378,7 @@ final private[quine] class GraphShardActor(
             nodeArgs.productIterator.toList ++ List(logConfig)
           val props = Props(
             graph.nodeStaticSupport.nodeClass.runtimeClass,
-            finalNodeArgs: _*
+            finalNodeArgs: _*,
           ).withMailbox("pekko.quine.node-mailbox")
             .withDispatcher(QuineDispatchers.nodeDispatcherName)
           try {
@@ -446,7 +446,7 @@ final private[quine] class GraphShardActor(
           case Failure(_) =>
             log.error(
               safe"""Received notification that node: ${Safe(id.pretty)} slept,
-                    |but that node already reported a failure for the same sleep request""".cleanLines
+                    |but that node already reported a failure for the same sleep request""".cleanLines,
             )
         }
       }
@@ -462,10 +462,10 @@ final private[quine] class GraphShardActor(
     case SleepOutcome.SleepFailed(id, snapshot, numEdges, propertySizes, exception, shardPromise) =>
       log.error(
         log"Failed to store: ${Safe(snapshot.length)} bytes on: ${Safe(id.pretty)}, composed of: ${Safe(numEdges)} edges and: ${Safe(propertySizes.size)} properties. Restoring the node."
-        withException exception
+        withException exception,
       )
       log.info(
-        log"Property sizes on failed store: ${Safe(id.pretty)}: ${propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")}"
+        log"Property sizes on failed store: ${Safe(id.pretty)}: ${propertySizes.map { case (k, v) => k.name + ":" + v }.mkString("{", ", ", "}")}",
       )
       namespacedNodes.get(id.namespace).foreach(_.remove(id)) // Remove it to be added again by WakeUp below.
       inMemoryActorList.remove(id)
@@ -476,12 +476,12 @@ final private[quine] class GraphShardActor(
           case Success(_) =>
             log.error(
               safe"""A node failed to sleep: ${Safe(id.pretty)}, but that node already
-                    |reported a success for the same sleep request""".cleanLines
+                    |reported a success for the same sleep request""".cleanLines,
             )
           case Failure(e) =>
             log.warn(
               log"""A node failed to sleep: ${Safe(id.pretty)}, and reported that failure
-                   |multiple times""".cleanLines withException e
+                   |multiple times""".cleanLines withException e,
             )
         }
       }
@@ -490,7 +490,7 @@ final private[quine] class GraphShardActor(
       self ! WakeUp(
         id,
         Some(snapshot),
-        errorCount = Map(WakeUpErrorStates.SleepOutcomeSleepFailed -> 1)
+        errorCount = Map(WakeUpErrorStates.SleepOutcomeSleepFailed -> 1),
       )
 
     case WakeUp(id, snapshotOpt, remaining, errorCount) =>
@@ -505,7 +505,7 @@ final private[quine] class GraphShardActor(
             safe"with sleep status: ${Safe(namespacedNodes.get(id.namespace).flatMap(_.get(id)).toString)} " +
             safe"with nodes-on-shard: ${Safe(stats.awake)} awake, ${Safe(stats.goingToSleep)} going to sleep " +
             safe"Outcome: ${Safe(badOutcome.toString)} " +
-            safe"Errors:  + ${Safe(errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", "))}"
+            safe"Errors:  + ${Safe(errorCount.toList.map { case (k, v) => s"$k: $v" }.mkString(", "))}",
           )
         case LivenessStatus.IncompleteActorShutdown(nodeRemovedFromMaps) =>
           nodeRemovedFromMaps.onComplete { _ =>
@@ -520,7 +520,7 @@ final private[quine] class GraphShardActor(
             namespacedNodes.get(id.namespace) match {
               case None => // This is not an error but a no-op because the namespace could have just been deleted.
                 log.info(
-                  safe"Tried to wake a node at: ${Safe(id)} but its namespace was absent from: ${Safe(namespacedNodes.keySet)}"
+                  safe"Tried to wake a node at: ${Safe(id)} but its namespace was absent from: ${Safe(namespacedNodes.keySet)}",
                 )
               case Some(nodeMap) =>
                 nodeMap(id) = NodeState.WakingNode
@@ -537,7 +537,7 @@ final private[quine] class GraphShardActor(
                       else
                         log.info(
                           log"${Safe(remaining)} retries remaining waking up ${Safe(id.pretty)}. Retrying."
-                          withException error
+                          withException error,
                         )
                       val eKey = WakeUpErrorStates.UnexpectedWakeUpError
                       val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
@@ -557,7 +557,7 @@ final private[quine] class GraphShardActor(
             val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
             // TODO: don't hardcode the time until retry
             log.warn(
-              safe"Failed to wake up ${Safe(id)} due to hard in-memory limit: ${Safe(inMemoryLimit.toString)} (retrying)"
+              safe"Failed to wake up ${Safe(id)} due to hard in-memory limit: ${Safe(inMemoryLimit.toString)} (retrying)",
             )
             context.system.scheduler.scheduleOnce(0.01.second)(self ! msgToDeliver)(context.dispatcher)
             // TODO: This will cause _more_ memory usage because the mailbox will fill up with all these undelivered messages.
@@ -584,7 +584,7 @@ final private[quine] class GraphShardActor(
               persistor.deleteSnapshots,
               persistor.deleteNodeChangeEvents,
               persistor.deleteDomainIndexEvents,
-              persistor.deleteMultipleValuesStandingQueryStates
+              persistor.deleteMultipleValuesStandingQueryStates,
             )
             val persistorDeletions = Future.traverse(deleteFunctions)(f => f(qid))(implicitly, context.dispatcher)
             msg ?! persistorDeletions.map(_ => Done)(ExecutionContext.parasitic)
@@ -603,7 +603,7 @@ final private[quine] class GraphShardActor(
       if (remaining.remainingNodeActorCount > 0)
         log.info(
           safe"""Shard #${Safe(shardId)} has ${Safe(remaining.remainingNodeActorCount)} node(s) awake.
-                |Sample of awake nodes: ${Safe(namespacedNodes.take(5).mkString(", "))}""".cleanLines
+                |Sample of awake nodes: ${Safe(namespacedNodes.take(5).mkString(", "))}""".cleanLines,
         )
       msg ?! remaining
 
@@ -696,7 +696,7 @@ object GraphShardActor {
       costToSleep: AtomicLong,
       actorRef: ActorRef,
       actorRefLock: StampedLock,
-      wakefulState: AtomicReference[WakefulState]
+      wakefulState: AtomicReference[WakefulState],
     ) extends NodeState
   }
 }
@@ -805,7 +805,7 @@ object SleepOutcome {
     */
   final private[quine] case class SleepSuccess(
     id: SpaceTimeQuineId,
-    nodeMapUpdatedPromise: Promise[Unit]
+    nodeMapUpdatedPromise: Promise[Unit],
   ) extends SleepOutcome
 
   /** Node is stopped, but the saving of data failed
@@ -828,7 +828,7 @@ object SleepOutcome {
     numEdges: Int,
     propertySizes: Map[Symbol, Int],
     error: Throwable,
-    nodeMapUpdatedPromise: Promise[Unit]
+    nodeMapUpdatedPromise: Promise[Unit],
   ) extends SleepOutcome
 }
 
@@ -850,7 +850,7 @@ final private[quine] case class WakeUp(
   id: SpaceTimeQuineId,
   snapshotOpt: Option[Array[Byte]] = None,
   remainingRetries: Int = LocalMessageDelivery.remainingRetriesMax,
-  errorCount: Map[WakeUpErrorStates, Int] = Map.empty
+  errorCount: Map[WakeUpErrorStates, Int] = Map.empty,
 ) extends ShardControlMessage
 
 /** Sent to a shard to tell it the state for a waking Node has been read from persistence */
@@ -858,7 +858,7 @@ final private[quine] case class NodeStateRehydrated[NodeConstructorRecord <: Pro
   id: SpaceTimeQuineId,
   nodeArgs: NodeConstructorRecord,
   remainingRetries: Int,
-  errorCount: Map[WakeUpErrorStates, Int]
+  errorCount: Map[WakeUpErrorStates, Int],
 ) extends ShardControlMessage
 
 /** Possible failures encountered when waking up nodes. Tracking how often these errors occur can aid understanding

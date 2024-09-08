@@ -26,12 +26,12 @@ import com.thatdot.quine.webapp.Styles
       val title_ = onClick_.map(_ => "Cancel all queries")
       List(if (n == 1) {
         div(key := keyName, className := classes, onClick := onClick_, title := title_)(
-          div(key := "spinner", className := Styles.loaderSpinner)()
+          div(key := "spinner", className := Styles.loaderSpinner)(),
         )
       } else {
         div(key := s"$keyName-$n", className := classes, onClick := onClick_, title := title_)(
           div(key := "spinner", className := Styles.loaderSpinner)(),
-          div(key := n.toString, className := Styles.loaderCounter)(n.toString)
+          div(key := n.toString, className := Styles.loaderCounter)(n.toString),
         )
       })
   }

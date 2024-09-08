@@ -16,10 +16,10 @@ import com.thatdot.quine.util.Log.implicits._
 abstract class StaticNodeSupport[
   Node <: AbstractNodeActor,
   Snapshot <: AbstractNodeSnapshot,
-  ConstructorRecord <: Product
+  ConstructorRecord <: Product,
 ](implicit
   val nodeClass: ClassTag[Node],
-  val snapshotCodec: AbstractSnapshotCodec[Snapshot]
+  val snapshotCodec: AbstractSnapshotCodec[Snapshot],
 ) {
 
   /** nodeClass is the class of nodes in the graph
@@ -30,20 +30,20 @@ abstract class StaticNodeSupport[
   def createNodeArgs(
     snapshot: Option[Snapshot],
     initialJournal: Journal = Iterable.empty,
-    multipleValuesStandingQueryStates: MultipleValuesStandingQueries = mutable.Map.empty
+    multipleValuesStandingQueryStates: MultipleValuesStandingQueries = mutable.Map.empty,
   ): ConstructorRecord
 
   def readConstructorRecord(
     quineIdAtTime: SpaceTimeQuineId,
     recoverySnapshotBytes: Option[Array[Byte]],
-    graph: BaseGraph
+    graph: BaseGraph,
   )(implicit logConfig: LogConfig): Future[ConstructorRecord] =
     recoverySnapshotBytes match {
       case Some(recoverySnapshotBytes) =>
         val snapshot =
           deserializeSnapshotBytes(recoverySnapshotBytes, quineIdAtTime)(
             graph.idProvider,
-            snapshotCodec
+            snapshotCodec,
           )
         val multipleValuesStandingQueryStatesFut: Future[MultipleValuesStandingQueries] =
           getMultipleValuesStandingQueryStates(quineIdAtTime, graph)
@@ -52,8 +52,8 @@ abstract class StaticNodeSupport[
           createNodeArgs(
             Some(snapshot),
             initialJournal = Iterable.empty,
-            multipleValuesStandingQueryStates = multipleValuesStandingQueryStates
-          )
+            multipleValuesStandingQueryStates = multipleValuesStandingQueryStates,
+          ),
         )(graph.nodeDispatcherEC)
 
       case None => restoreFromSnapshotAndJournal(quineIdAtTime, graph)
@@ -67,7 +67,7 @@ abstract class StaticNodeSupport[
     */
   def restoreFromSnapshotAndJournal(
     quineIdAtTime: SpaceTimeQuineId,
-    graph: BaseGraph
+    graph: BaseGraph,
   )(implicit logConfig: LogConfig): Future[ConstructorRecord] = graph
     .namespacePersistor(quineIdAtTime.namespace)
     .fold {
@@ -91,7 +91,7 @@ abstract class StaticNodeSupport[
             }
             .map { maybeBytes =>
               maybeBytes.map(
-                deserializeSnapshotBytes(_, quineIdAtTime)(graph.idProvider, snapshotCodec)
+                deserializeSnapshotBytes(_, quineIdAtTime)(graph.idProvider, snapshotCodec),
               )
             }(graph.nodeDispatcherEC)
         }
@@ -119,7 +119,7 @@ abstract class StaticNodeSupport[
               Future.successful(Vector.empty)
 
             journalAfterSnapshot.map(journalAfterSnapshot => (latestSnapshotOpt, journalAfterSnapshot))(
-              ExecutionContext.parasitic
+              ExecutionContext.parasitic,
             )
           }(graph.nodeDispatcherEC)
 
@@ -143,10 +143,10 @@ object StaticNodeSupport extends LazySafeLogging {
   @throws[NodeWakeupFailedException]("When snapshot could not be deserialized")
   private def deserializeSnapshotBytes[Snapshot <: AbstractNodeSnapshot](
     snapshotBytes: Array[Byte],
-    qidForDebugging: SpaceTimeQuineId
+    qidForDebugging: SpaceTimeQuineId,
   )(implicit
     idProvider: QuineIdProvider,
-    snapshotCodec: AbstractSnapshotCodec[Snapshot]
+    snapshotCodec: AbstractSnapshotCodec[Snapshot],
   ): Snapshot =
     snapshotCodec.format
       .read(snapshotBytes)
@@ -154,14 +154,14 @@ object StaticNodeSupport extends LazySafeLogging {
         err =>
           throw new NodeWakeupFailedException(
             s"Snapshot could not be loaded for: ${qidForDebugging.pretty}",
-            err
+            err,
           ),
-        identity
+        identity,
       )
 
   private def getMultipleValuesStandingQueryStates(
     qidAtTime: SpaceTimeQuineId,
-    graph: BaseGraph
+    graph: BaseGraph,
   )(implicit logConfig: LogConfig): Future[MultipleValuesStandingQueries] = (graph -> qidAtTime) match {
     case (sqGraph: StandingQueryOpsGraph, SpaceTimeQuineId(qid, namespace, None)) =>
       sqGraph
@@ -199,7 +199,7 @@ object StaticNodeSupport extends LazySafeLogging {
                   if (removeThese.nonEmpty) {
                     logger.debug(
                       safe"""During node constructor assembly, found ${Safe(removeThese.size)} no-longer-relevant
-                            |MVSQ states for node: ${Safe(qidAtTime.pretty(idProv))}""".cleanLines
+                            |MVSQ states for node: ${Safe(qidAtTime.pretty(idProv))}""".cleanLines,
                     )
                   }
 
@@ -211,9 +211,9 @@ object StaticNodeSupport extends LazySafeLogging {
                         err =>
                           throw new NodeWakeupFailedException(
                             s"NodeActor state (Standing Query States) for node: ${qidAtTime.pretty(idProv)} could not be loaded",
-                            err
+                            err,
                           ),
-                        identity
+                        identity,
                       )
                     sqState._2.rehydrate(lookupInfo)
                     sqIdAndPartId -> sqState

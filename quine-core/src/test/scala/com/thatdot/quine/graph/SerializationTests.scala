@@ -72,7 +72,7 @@ class SerializationTests
       assert(
         MultipleValuesStandingQueryStateCodec.format
           .read(MultipleValuesStandingQueryStateCodec.format.write(subs -> sq))
-          .get == subs -> sq
+          .get == subs -> sq,
       )
     }
 

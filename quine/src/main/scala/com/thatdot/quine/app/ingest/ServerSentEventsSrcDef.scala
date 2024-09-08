@@ -21,7 +21,7 @@ final case class ServerSentEventsSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int,
   maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder]
+  decoders: Seq[ContentDecoder],
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
@@ -29,7 +29,7 @@ final case class ServerSentEventsSrcDef(
       parallelism,
       maxPerSecond,
       decoders,
-      s"$name (SSE ingest)"
+      s"$name (SSE ingest)",
     ) {
 
   type InputType = ServerSentEvent
@@ -38,7 +38,7 @@ final case class ServerSentEventsSrcDef(
 
   def source(): Source[ServerSentEvent, NotUsed] = EventSource(
     uri = Uri(url),
-    send = Http().singleRequest(_)
+    send = Http().singleRequest(_),
   )
 
   def rawBytes(event: ServerSentEvent): Array[Byte] = event.data.getBytes

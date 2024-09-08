@@ -16,7 +16,7 @@ final case class CompiledExpr(
   expr: Expr,
   unfixedParameters: Seq[String],
   fixedParameters: Parameters,
-  initialColumns: Seq[String]
+  initialColumns: Seq[String],
 ) {
 
   /** Evaluate this expression
@@ -28,10 +28,10 @@ final case class CompiledExpr(
     */
   def evaluate(
     parameters: Map[String, Value] = Map.empty,
-    initialColumnValues: Map[String, Value] = Map.empty
+    initialColumnValues: Map[String, Value] = Map.empty,
   )(implicit
     idProvider: QuineIdProvider,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Value = {
 
     /* Construct the runtime vector of parameters by combining the ones that
@@ -42,7 +42,7 @@ final case class CompiledExpr(
     } else {
       Parameters(
         unfixedParameters.view.map(parameters.getOrElse(_, Expr.Null)).toIndexedSeq ++
-        fixedParameters.params
+        fixedParameters.params,
       )
     }
 
@@ -53,7 +53,7 @@ final case class CompiledExpr(
       QueryContext(
         initialColumns
           .map(colName => Symbol(colName) -> initialColumnValues.getOrElse(colName, Expr.Null))
-          .toMap
+          .toMap,
       )
     }
 

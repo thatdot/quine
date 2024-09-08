@@ -29,10 +29,10 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       queries = ArraySeq(
         List(
           MultipleValuesStandingQuery.UnitSq.instance,
-          MultipleValuesStandingQuery.UnitSq.instance
-        ): _*
+          MultipleValuesStandingQuery.UnitSq.instance,
+        ): _*,
       ),
-      emitSubscriptionsLazily = true
+      emitSubscriptionsLazily = true,
     )
 
     val result = Pretty.treePrint(exampleCross)
@@ -56,7 +56,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val exampleLocalProp = MultipleValuesStandingQuery.LocalProperty(
       propKey = name,
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = pname
+      aliasedAs = pname,
     )
 
     val result = Pretty.treePrint(exampleLocalProp)
@@ -76,7 +76,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
 
     val exampleLocalId = MultipleValuesStandingQuery.LocalId(
       aliasedAs = unknown,
-      formatAsString = true
+      formatAsString = true,
     )
 
     val result = Pretty.treePrint(exampleLocalId)
@@ -96,7 +96,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val exampleEdgeSub = MultipleValuesStandingQuery.SubscribeAcrossEdge(
       edgeName = parent,
       edgeDirection = Some(EdgeDirection.Outgoing),
-      andThen = MultipleValuesStandingQuery.UnitSq.instance
+      andThen = MultipleValuesStandingQuery.UnitSq.instance,
     )
 
     val result = Pretty.treePrint(exampleEdgeSub)
@@ -119,7 +119,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
 
     val exampleEdgeRecip = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
       halfEdge = HalfEdge(unknown, EdgeDirection.Incoming, QuineId("hello, world".getBytes("ASCII"))),
-      andThenId = MultipleValuesStandingQueryPartId(id)
+      andThenId = MultipleValuesStandingQueryPartId(id),
     )
 
     val result = Pretty.treePrint(exampleEdgeRecip)
@@ -140,7 +140,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       condition = Some(Expr.Equal(Expr.Variable(a), Expr.Str("hello"))),
       toFilter = MultipleValuesStandingQuery.UnitSq.instance,
       dropExisting = true,
-      toAdd = Nil
+      toAdd = Nil,
     )
 
     val result = Pretty.treePrint(exampleFilterMap)

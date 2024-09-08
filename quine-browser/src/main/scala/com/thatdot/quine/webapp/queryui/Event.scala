@@ -32,7 +32,7 @@ object QueryUiEvent {
     edges: Seq[Edge],
     updatedNodes: Seq[Node],
     syntheticEdges: Seq[Edge],
-    explodeFromId: Option[String]
+    explodeFromId: Option[String],
   ) extends QueryUiEvent {
     def invert: Remove = Remove(nodes, edges, updatedNodes, syntheticEdges, explodeFromId)
 
@@ -45,7 +45,7 @@ object QueryUiEvent {
     edges: Seq[Edge],
     updatedNodes: Seq[Node],
     syntheticEdges: Seq[Edge],
-    explodeFromId: Option[String]
+    explodeFromId: Option[String],
   ) extends QueryUiEvent {
     def invert: Add = Add(nodes, edges, updatedNodes, syntheticEdges, explodeFromId)
   }
@@ -54,7 +54,7 @@ object QueryUiEvent {
   final case class Collapse(
     nodeIds: Seq[String],
     clusterId: String,
-    name: String
+    name: String,
   ) extends QueryUiEvent {
     def invert: Expand = Expand(nodeIds, clusterId, name)
   }
@@ -63,7 +63,7 @@ object QueryUiEvent {
   final case class Expand(
     nodeIds: Seq[String],
     clusterId: String,
-    name: String
+    name: String,
   ) extends QueryUiEvent {
     def invert: Collapse = Collapse(nodeIds, clusterId, name)
   }

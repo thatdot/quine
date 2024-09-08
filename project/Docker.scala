@@ -22,7 +22,7 @@ object Docker extends AutoPlugin {
     dockerVolume := file("/var/quine"),
     dockerTags := sys.props.get("docker.tag").fold(Seq(version.value, "latest"))(Seq(_)),
     docker / imageNames := dockerTags.value.map(t =>
-      ImageName(namespace = Some("thatdot"), repository = name.value, tag = Some(t))
+      ImageName(namespace = Some("thatdot"), repository = name.value, tag = Some(t)),
     ),
     docker / dockerfile := {
       val jar: sbt.File = assembly.value
@@ -31,15 +31,15 @@ object Docker extends AutoPlugin {
         from(
           ImageName(
             repository = "eclipse-temurin",
-            tag = Some("21_35-jre-jammy")
-          )
+            tag = Some("21_35-jre-jammy"),
+          ),
         )
         expose(8080, 7626)
         healthCheckShell(
           "curl --silent --fail http://localhost:8080/api/v1/admin/liveness || exit 1".split(' '),
           interval = Some(10.seconds),
           timeout = Some(2.seconds),
-          startPeriod = Some(5.seconds)
+          startPeriod = Some(5.seconds),
         )
         env("QUINE_DATA", dockerVolume.value.getPath)
         volume("$QUINE_DATA")
@@ -50,10 +50,10 @@ object Docker extends AutoPlugin {
           "-XX:InitialRAMPercentage=40.0",
           "-XX:MaxRAMPercentage=80.0",
           "-jar",
-          jarPath
+          jarPath,
         )
         copy(jar, jarPath)
       }
-    }
+    },
   )
 }

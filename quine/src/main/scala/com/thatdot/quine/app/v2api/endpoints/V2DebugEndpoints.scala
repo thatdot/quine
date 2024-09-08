@@ -45,10 +45,10 @@ object V2DebugEndpointEntities {
       """Properties on the node; note that values are represented as closely as possible
                                         |to how they would be emitted by
                                         |[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post)
-                                        |""".stripMargin.replace('\n', ' ').trim
+                                        |""".stripMargin.replace('\n', ' ').trim,
     )
     properties: Map[String, Json],
-    edges: Seq[TRestHalfEdge[ID]]
+    edges: Seq[TRestHalfEdge[ID]],
   )
 
   @title("Half Edge")
@@ -66,7 +66,7 @@ the two nodes at the edge's endpoints contain half edges that:
   final case class TRestHalfEdge[ID](
     @description("Label of the edge") edgeType: String,
     direction: TEdgeDirection,
-    @description("Id of node at the other end of the edge") other: ID
+    @description("Id of node at the other end of the edge") other: ID,
   )
 
 }
@@ -75,17 +75,17 @@ trait V2DebugEndpoints extends V2EndpointDefinitions {
   val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node id")
   val propKeyParameter: EndpointInput.Query[String] =
     query[String]("key").description(
-      "Name of a property"
+      "Name of a property",
     )
 
   val edgeTypeOptParameter: EndpointInput.Query[Option[String]] =
     query[Option[String]]("type").description(
-      "Edge type"
+      "Edge type",
     )
 
   val otherOptParameter: EndpointInput.Query[Option[QuineId]] =
     query[Option[QuineId]]("other").description(
-      "Other edge endpoint"
+      "Other edge endpoint",
     )
 
   val limitParameter: EndpointInput.Query[Option[Int]] =
@@ -103,7 +103,7 @@ trait V2DebugEndpoints extends V2EndpointDefinitions {
   private def debugEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     baseEndpoint[T]("debug").tag("Debug Node Operations")
 
@@ -124,13 +124,13 @@ closely as possible to how they would be emitted by
           DebugOpsPropertygetApiCmd,
           memberIdx,
           (id, propKey, atime, namespaceFromParam(ns)),
-          t => app.debugOpsPropertyGet(t._1, t._2, t._3, t._4)
+          t => app.debugOpsPropertyGet(t._1, t._2, t._3, t._4),
         )
       }
 
   private val debugOpsGetEndpoint
     : Full[Unit, Unit, (Option[Int], QuineId, Option[AtTime], Option[String]), ErrorEnvelope[
-      _ <: CustomError
+      _ <: CustomError,
     ], ObjectEnvelope[TLiteralNode[QuineId]], Any, Future] =
     debugEndpoint[TLiteralNode[QuineId]]
       .name("List Properties/Edges")
@@ -144,7 +144,7 @@ closely as possible to how they would be emitted by
           DebugOpsGetApiCmd,
           memberIdx,
           (id, atime, namespaceFromParam(ns)),
-          t => app.debugOpsGet(t._1, t._2, t._3)
+          t => app.debugOpsGet(t._1, t._2, t._3),
         )
       }
 
@@ -162,7 +162,7 @@ closely as possible to how they would be emitted by
         DebugVerboseApiCmd,
         memberIdx,
         (id, atime, namespaceFromParam(ns)),
-        t => app.debugOpsVerbose(t._1, t._2, t._3)
+        t => app.debugOpsVerbose(t._1, t._2, t._3),
       )
     }
 
@@ -183,12 +183,12 @@ closely as possible to how they would be emitted by
       .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, ns) =>
         runServerLogic[
           (QuineId, Option[AtTime], Option[Int], Option[TEdgeDirection], Option[QuineId], Option[String], NamespaceId),
-          Vector[TRestHalfEdge[QuineId]]
+          Vector[TRestHalfEdge[QuineId]],
         ](
           DebugEdgesGetApiCmd,
           memberIdx,
           (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
+          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
         )
       }
 
@@ -209,12 +209,12 @@ closely as possible to how they would be emitted by
       .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, ns) =>
         runServerLogic[
           (QuineId, Option[AtTime], Option[Int], Option[TEdgeDirection], Option[QuineId], Option[String], NamespaceId),
-          Vector[TRestHalfEdge[QuineId]]
+          Vector[TRestHalfEdge[QuineId]],
         ](
           DebugHalfEdgesGetApiCmd,
           memberIdx,
           (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
+          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
         )
       }
 
@@ -223,7 +223,7 @@ closely as possible to how they would be emitted by
     debugOpsGetEndpoint,
     debugOpsVerboseEndpoint,
     debugOpsEdgesGetEndpoint,
-    debugOpsHalfEdgesGetEndpoint
+    debugOpsHalfEdgesGetEndpoint,
   )
 
 }

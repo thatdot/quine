@@ -14,7 +14,7 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CreateDomainNodeSubscription,
   DomainNodeSubscriptionCommand,
   DomainNodeSubscriptionResult,
-  SqResultLike
+  SqResultLike,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{
@@ -28,7 +28,7 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryOpsGraph,
   StandingQueryPattern,
-  WatchableEventType
+  WatchableEventType,
 }
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
 import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, QuineId, SingleBranch}
@@ -60,14 +60,14 @@ object DomainNodeIndexBehavior {
   class DomainNodeIndex(
     val index: mutable.Map[
       QuineId,
-      mutable.Map[DomainGraphNodeId, LastNotification]
-    ] = mutable.Map.empty
+      mutable.Map[DomainGraphNodeId, LastNotification],
+    ] = mutable.Map.empty,
   ) {
 
     def contains(id: QuineId): Boolean = index.contains(id)
     def contains(
       id: QuineId,
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Boolean = index.get(id).exists(_.contains(dgnId))
 
     /** Ensure an index into the state of a downstream node at the provided node is tracked
@@ -82,7 +82,7 @@ object DomainNodeIndexBehavior {
       */
     def newIndex(
       downstreamQid: QuineId,
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Boolean =
       if (
         !contains(downstreamQid, dgnId) // don't duplicate subscriptions
@@ -107,7 +107,7 @@ object DomainNodeIndexBehavior {
       */
     def removeIndex(
       id: QuineId,
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Option[(QuineId, LastNotification)] =
       if (contains(id, dgnId)) {
         val removedIndexEntry = index(id).remove(dgnId).map(id -> _)
@@ -126,7 +126,7 @@ object DomainNodeIndexBehavior {
       * @return the last known state for each downstream subscription
       */
     def removeAllIndicesInefficiently(
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Iterable[(QuineId, LastNotification)] = index.keys
       .flatMap { id =>
         removeIndex(id, dgnId)
@@ -145,7 +145,7 @@ object DomainNodeIndexBehavior {
       dgnId: DomainGraphNodeId,
       result: Boolean,
       relatedQueries: Set[StandingQueryId],
-      inNamespace: NamespaceId
+      inNamespace: NamespaceId,
     )(implicit graph: StandingQueryOpsGraph, log: SafeLogger): Unit =
       if (index contains fromOther) index(fromOther)(dgnId) = Some(result)
       else {
@@ -158,14 +158,14 @@ object DomainNodeIndexBehavior {
         } else {
           // intentionally ignore because this update is about [a] SQ[s] we know to be deleted
           log.info(
-            safe"Declining to create a DomainNodeIndex entry tracking node: $fromOther for a deleted Standing Query"
+            safe"Declining to create a DomainNodeIndex entry tracking node: $fromOther for a deleted Standing Query",
           )
         }
       }
 
     def lookup(
       id: QuineId,
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Option[Boolean] =
       index.get(id).flatMap(_.get(dgnId).flatten)
   }
@@ -199,7 +199,7 @@ object DomainNodeIndexBehavior {
     private[graph] def reconstruct(
       domainNodeIndex: DomainNodeIndex,
       nodesRootedHere: Iterable[DomainGraphNodeId],
-      dgnRegistry: DomainGraphNodeRegistry
+      dgnRegistry: DomainGraphNodeRegistry,
     ): (NodeParentIndex, Iterable[DomainGraphNodeId]) = {
       var idx = NodeParentIndex()
       val removed = Iterable.newBuilder[DomainGraphNodeId]
@@ -237,21 +237,21 @@ object DomainNodeIndexBehavior {
     */
   final case class NodeParentIndex(
     knownParents: Map[DomainGraphNodeId, Set[
-      DomainGraphNodeId
-    ]] = Map.empty
+      DomainGraphNodeId,
+    ]] = Map.empty,
   ) {
 
     // All known parent nodes of [[dgnId]], according to [[knownParents]]
     def parentNodesOf(
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Set[DomainGraphNodeId] =
       knownParents.getOrElse(dgnId, Set.empty)
 
     def +(
       childParentTuple: (
         DomainGraphNodeId,
-        DomainGraphNodeId
-      )
+        DomainGraphNodeId,
+      ),
     ): NodeParentIndex = {
       val (child, parent) = childParentTuple
       copy(knownParents = knownParents.updatedWith(child) {
@@ -263,7 +263,7 @@ object DomainNodeIndexBehavior {
     /** Create a copy of this with no parents registered for `child`
       */
     def --(
-      child: DomainGraphNodeId
+      child: DomainGraphNodeId,
     ): NodeParentIndex = copy(knownParents = knownParents - child)
 
     /** Create a copy of this with all but the specified parent registered for `child`
@@ -271,8 +271,8 @@ object DomainNodeIndexBehavior {
     def -(
       childParentTuple: (
         DomainGraphNodeId,
-        DomainGraphNodeId
-      )
+        DomainGraphNodeId,
+      ),
     ): NodeParentIndex = {
       val (child, parent) = childParentTuple
       val newParents = parentNodesOf(child) - parent
@@ -296,7 +296,7 @@ object DomainNodeIndexBehavior {
     final case class DistinctIdSubscription(
       subscribers: Set[Notifiable] = Set.empty,
       lastNotification: LastNotification = None,
-      relatedQueries: Set[StandingQueryId] = Set.empty
+      relatedQueries: Set[StandingQueryId] = Set.empty,
     ) {
       def addSubscriber(subscriber: Notifiable): DistinctIdSubscription =
         copy(subscribers = subscribers + subscriber)
@@ -349,7 +349,7 @@ trait DomainNodeIndexBehavior
   protected var domainGraphNodeParentIndex: NodeParentIndex
 
   protected def processDomainIndexEvent(
-    event: DomainIndexEvent
+    event: DomainIndexEvent,
   ): Future[Done.type]
 
   def namespace: NamespaceId
@@ -404,7 +404,7 @@ trait DomainNodeIndexBehavior
     * query paired with a set of edges that match in the graph
     */
   private[this] def resolveDomainEdgesWithIndex(
-    testDgn: DomainGraphNode.Single
+    testDgn: DomainGraphNode.Single,
   ): Seq[(DomainGraphEdge, Set[(HalfEdge, Option[Boolean])])] =
     testDgn.nextNodes.flatMap { domainEdge =>
       val edgeResults: Set[(HalfEdge, Option[Boolean])] = edges
@@ -419,7 +419,7 @@ trait DomainNodeIndexBehavior
     }
 
   protected[this] def edgesSatisfiedByIndex(
-    testBranch: DomainGraphNode.Single
+    testBranch: DomainGraphNode.Single,
   ): Option[Boolean] = {
     var missingInformation = false
     // Keys are domain edges, values are all node IDs reachable via Quine [half-]edges satisfying the domain edges
@@ -476,7 +476,7 @@ trait DomainNodeIndexBehavior
     from: Notifiable,
     dgnId: DomainGraphNodeId,
     relatedQueries: Set[StandingQueryId],
-    shouldSendReplies: Boolean
+    shouldSendReplies: Boolean,
   )(implicit logConfig: LogConfig): Unit = {
     domainGraphSubscribers.add(from, dgnId, relatedQueries)
     val existingAnswerOpt = domainGraphSubscribers.getAnswer(dgnId)
@@ -485,12 +485,12 @@ trait DomainNodeIndexBehavior
         conditionallyReplyToAll(
           Set(from),
           DomainNodeSubscriptionResult(qid, dgnId, result),
-          shouldSendReplies
+          shouldSendReplies,
         )
         ()
       case None =>
         dgnRegistry.withIdentifiedDomainGraphNode(dgnId)(
-          domainGraphSubscribers.updateAnswerAndNotifySubscribers(_, shouldSendReplies)
+          domainGraphSubscribers.updateAnswerAndNotifySubscribers(_, shouldSendReplies),
         )
         ()
     }
@@ -502,7 +502,7 @@ trait DomainNodeIndexBehavior
   protected def ensureSubscriptionToDomainEdges(
     dgn: IdentifiedDomainGraphNode,
     relatedQueries: Set[StandingQueryId],
-    shouldSendReplies: Boolean
+    shouldSendReplies: Boolean,
   ): Unit = {
     val childNodes = dgn.domainGraphNode.children
     // register subscriptions in DomainNodeIndex, tracking which QIDs' entries were updated
@@ -516,13 +516,13 @@ trait DomainNodeIndexBehavior
           idxUpdated = domainNodeIndex
             .newIndex(
               downstreamQid,
-              downstreamDgnId
+              downstreamDgnId,
             )
           if idxUpdated && shouldSendReplies
           _ = downstreamQid ! CreateDomainNodeSubscription(
             downstreamDgnId,
             Left(qid),
-            relatedQueries
+            relatedQueries,
           )
         } yield downstreamQid
       // these combinators all index other local nodes
@@ -549,7 +549,7 @@ trait DomainNodeIndexBehavior
     fromOther: QuineId,
     otherDgnId: DomainGraphNodeId,
     result: Boolean,
-    shouldSendReplies: Boolean
+    shouldSendReplies: Boolean,
   )(implicit logConfig: LogConfig): Unit = {
     val relatedQueries =
       domainGraphNodeParentIndex.parentNodesOf(otherDgnId) flatMap { dgnId =>
@@ -573,7 +573,7 @@ trait DomainNodeIndexBehavior
   protected[this] def cancelSubscription(
     dgnId: DomainGraphNodeId,
     subscriber: Option[Notifiable], // TODO just move this to the caller only
-    shouldSendReplies: Boolean
+    shouldSendReplies: Boolean,
   )(implicit logConfig: LogConfig): Unit = {
     // update [[subscribers]]
     val abandoned = subscriber.map(s => domainGraphSubscribers.removeSubscriber(s, dgnId)).getOrElse(Map.empty)
@@ -592,13 +592,13 @@ trait DomainNodeIndexBehavior
           log.info(
             log"""Expected to clear a specific DGN from this node, instead started deleting multiple. Re-subscribing the
                |inadvertently removed DGNs. Expected: ${dgn.toString} but found: ${Safe(wrongNodesRemoved.size)} node[s]:
-               |${wrongNodesRemoved.toList.toString}""".cleanLines
+               |${wrongNodesRemoved.toList.toString}""".cleanLines,
           )
           // re-subscribe any extra nodes removed
           (wrongNodesRemoved - dgnId).foreach {
             case (
                   resubNode,
-                  SubscribersToThisNodeUtil.DistinctIdSubscription(resubSubscribers, _, relatedQueries)
+                  SubscribersToThisNodeUtil.DistinctIdSubscription(resubSubscribers, _, relatedQueries),
                 ) =>
               for {
                 resubSubscriber <- resubSubscribers
@@ -648,7 +648,7 @@ trait DomainNodeIndexBehavior
   private[this] def conditionallyReplyToAll(
     notifiables: immutable.Iterable[Notifiable],
     msg: SqResultLike,
-    shouldSendReplies: Boolean
+    shouldSendReplies: Boolean,
   ): Future[Unit] = // TODO: this doesn't need to return a `Future`
     if (!shouldSendReplies) Future.unit
     else {
@@ -681,14 +681,14 @@ trait DomainNodeIndexBehavior
   case class SubscribersToThisNode(
     subscribersToThisNode: mutable.Map[
       DomainGraphNodeId,
-      SubscribersToThisNodeUtil.DistinctIdSubscription
-    ] = mutable.Map.empty
+      SubscribersToThisNodeUtil.DistinctIdSubscription,
+    ] = mutable.Map.empty,
   ) {
     import SubscribersToThisNodeUtil.DistinctIdSubscription
     def containsSubscriber(
       dgnId: DomainGraphNodeId,
       subscriber: Notifiable,
-      forQuery: StandingQueryId
+      forQuery: StandingQueryId,
     ): Boolean =
       subscribersToThisNode
         .get(dgnId)
@@ -702,14 +702,14 @@ trait DomainNodeIndexBehavior
       subscribersToThisNode.get(dgnId).flatMap(_.lastNotification)
 
     def getRelatedQueries(
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Set[StandingQueryId] =
       subscribersToThisNode.get(dgnId).toSeq.flatMap(_.relatedQueries).toSet
 
     def add(
       from: Notifiable,
       dgnId: DomainGraphNodeId,
-      relatedQueries: Set[StandingQueryId]
+      relatedQueries: Set[StandingQueryId],
     ): Unit =
       if (tracksNode(dgnId)) {
         val subscription = subscribersToThisNode(dgnId)
@@ -736,7 +736,7 @@ trait DomainNodeIndexBehavior
     // Returns: the subscriptions removed from if and only if there are no other Notifiables in those subscriptions.
     private[DomainNodeIndexBehavior] def removeSubscriber(
       subscriber: Notifiable,
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): Map[DomainGraphNodeId, DistinctIdSubscription] =
       subscribersToThisNode
         .get(dgnId)
@@ -752,15 +752,15 @@ trait DomainNodeIndexBehavior
         .getOrElse(Map.empty)
 
     def removeSubscribersOf(
-      dgnIds: Iterable[DomainGraphNodeId]
+      dgnIds: Iterable[DomainGraphNodeId],
     ): Unit = subscribersToThisNode --= dgnIds
 
     @deprecated(
       "Use updateAnswerAndPropagateToRelevantSubscribers for the propagation case, and the identity of the DGB for the wake-up/initial registration case",
-      "Nov 2021"
+      "Nov 2021",
     )
     private[this] def updateAnswerAndNotifySubscribersInefficiently(
-      shouldSendReplies: Boolean
+      shouldSendReplies: Boolean,
     )(implicit logConfig: LogConfig): Unit =
       subscribersToThisNode.keys.foreach { dgnId =>
         dgnRegistry.getIdentifiedDomainGraphNode(dgnId) match {
@@ -771,7 +771,7 @@ trait DomainNodeIndexBehavior
 
     def updateAnswerAndPropagateToRelevantSubscribers(
       downstreamNode: DomainGraphNodeId,
-      shouldSendReplies: Boolean
+      shouldSendReplies: Boolean,
     )(implicit logConfig: LogConfig): Unit = {
       val parentNodes = domainGraphNodeParentIndex.parentNodesOf(downstreamNode)
       // this should always be the case: we shouldn't be getting subscription results for DGBs that we don't track
@@ -792,7 +792,7 @@ trait DomainNodeIndexBehavior
           NodeParentIndex.reconstruct(
             domainNodeIndex,
             domainGraphSubscribers.subscribersToThisNode.keys,
-            dgnRegistry
+            dgnRegistry,
           )
         domainGraphSubscribers.subscribersToThisNode --= removed
         val parentsAfterRecovery = recoveredIndex.parentNodesOf(downstreamNode)
@@ -803,7 +803,7 @@ trait DomainNodeIndexBehavior
             safe"""Found out-of-sync nodeParentIndex while propagating a DGN result. Previously-untracked DGN ID was:
                   |${Safe(downstreamNode)}. Previously only tracking children:
                   |${Safe(domainGraphNodeParentIndex.knownChildren.toList)}.
-                  |""".cleanLines
+                  |""".cleanLines,
           )
           domainGraphNodeParentIndex = recoveredIndex
         } else {
@@ -815,7 +815,7 @@ trait DomainNodeIndexBehavior
                  |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
                  |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
                  |${Safe(downstreamNode)}
-                 |""".trim.stripMargin.replaceNewline(' ')
+                 |""".trim.stripMargin.replaceNewline(' '),
             )
           else {
             // if shouldSendReplies == false, we're probably restoring a node from sleep via journals. In this case,
@@ -826,7 +826,7 @@ trait DomainNodeIndexBehavior
                  |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
                  |${Safe(downstreamNode)}.
                  |However, this is expected during initial journal replay on a node after wake when snapshots are
-                 |disabled or otherwise missing.""".stripMargin.replaceNewline(' ')
+                 |disabled or otherwise missing.""".stripMargin.replaceNewline(' '),
             )
           }
           updateAnswerAndNotifySubscribersInefficiently(shouldSendReplies): @nowarn
@@ -836,7 +836,7 @@ trait DomainNodeIndexBehavior
 
     def updateAnswerAndNotifySubscribers(
       identifiedDomainGraphNode: IdentifiedDomainGraphNode,
-      shouldSendReplies: Boolean
+      shouldSendReplies: Boolean,
     )(implicit logConfig: LogConfig): Unit = {
       val IdentifiedDomainGraphNode(dgnId, testDgn) = identifiedDomainGraphNode
       testDgn match {
@@ -862,7 +862,7 @@ trait DomainNodeIndexBehavior
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result = false),
-                    shouldSendReplies
+                    shouldSendReplies,
                   )
                   subscribersToThisNode(dgnId) = subscription.notified(notification = false)
                   updateRelevantToSnapshotOccurred()
@@ -872,7 +872,7 @@ trait DomainNodeIndexBehavior
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result),
-                    shouldSendReplies
+                    shouldSendReplies,
                   )
                   subscribersToThisNode(dgnId) = subscription.notified(result)
                   updateRelevantToSnapshotOccurred()
@@ -897,8 +897,8 @@ trait DomainNodeIndexBehavior
                     ensureSubscriptionToDomainEdges(
                       _,
                       subscribersToThisNode.get(dgnId).toSeq.flatMap(_.relatedQueries).toSet,
-                      shouldSendReplies
-                    )
+                      shouldSendReplies,
+                    ),
                   )
 
               // Kleene AND
@@ -917,7 +917,7 @@ trait DomainNodeIndexBehavior
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result),
-                    shouldSendReplies
+                    shouldSendReplies,
                   )
                   subscribersToThisNode(dgnId) = subscription.notified(result)
                   updateRelevantToSnapshotOccurred()
@@ -939,8 +939,8 @@ trait DomainNodeIndexBehavior
                     ensureSubscriptionToDomainEdges(
                       _,
                       subscribersToThisNode.get(dgnId).toSeq.flatMap(_.relatedQueries).toSet,
-                      shouldSendReplies
-                    )
+                      shouldSendReplies,
+                    ),
                   )
 
               // Kleene OR
@@ -959,7 +959,7 @@ trait DomainNodeIndexBehavior
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result),
-                    shouldSendReplies
+                    shouldSendReplies,
                   )
                   subscribersToThisNode(dgnId) = subscription.notified(result)
                   updateRelevantToSnapshotOccurred()
@@ -981,8 +981,8 @@ trait DomainNodeIndexBehavior
                 ensureSubscriptionToDomainEdges(
                   _,
                   subscribersToThisNode.get(dgnId).toSeq.flatMap(_.relatedQueries).toSet,
-                  shouldSendReplies
-                )
+                  shouldSendReplies,
+                ),
               )
 
           subscribersToThisNode.get(dgnId).foreach {
@@ -992,7 +992,7 @@ trait DomainNodeIndexBehavior
                   conditionallyReplyToAll(
                     notifiables,
                     DomainNodeSubscriptionResult(qid, dgnId, result),
-                    shouldSendReplies
+                    shouldSendReplies,
                   )
                   subscribersToThisNode(dgnId) = subscription.notified(result)
                   updateRelevantToSnapshotOccurred()

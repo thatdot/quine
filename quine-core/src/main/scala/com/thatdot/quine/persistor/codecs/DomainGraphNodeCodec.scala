@@ -24,7 +24,7 @@ import com.thatdot.quine.model.{
   PropertyComparisonFunc,
   PropertyComparisonFunctions,
   PropertyValue,
-  QuineValue
+  QuineValue,
 }
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
@@ -36,24 +36,24 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
     persistence.GenericEdge.createGenericEdge(
       builder,
       builder.createString(edge.edgeType.name),
-      edgeDirection2Byte(edge.direction)
+      edgeDirection2Byte(edge.direction),
     )
 
   private[this] def readGenericEdge(edge: persistence.GenericEdge): GenericEdge =
     GenericEdge(
       Symbol(edge.edgeType),
-      byte2EdgeDirection(edge.direction)
+      byte2EdgeDirection(edge.direction),
     )
 
   private[this] def writePropertyComparisonFunction(
     builder: FlatBufferBuilder,
-    func: PropertyComparisonFunc
+    func: PropertyComparisonFunc,
   ): TypeAndOffset =
     func match {
       case PropertyComparisonFunctions.Identicality =>
         TypeAndOffset(
           persistence.PropertyComparisonFunction.PropertyComparisonFunctionIdenticality,
-          emptyTable(builder)
+          emptyTable(builder),
         )
       case PropertyComparisonFunctions.Wildcard =>
         TypeAndOffset(persistence.PropertyComparisonFunction.PropertyComparisonFunctionWildcard, emptyTable(builder))
@@ -62,14 +62,14 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
       case PropertyComparisonFunctions.NonIdenticality =>
         TypeAndOffset(
           persistence.PropertyComparisonFunction.PropertyComparisonFunctionNonIdenticality,
-          emptyTable(builder)
+          emptyTable(builder),
         )
       case PropertyComparisonFunctions.RegexMatch(pattern) =>
         val patternOff: Offset = builder.createString(pattern)
         val offset: Offset =
           persistence.PropertyComparisonFunctionRegexMatch.createPropertyComparisonFunctionRegexMatch(
             builder,
-            patternOff
+            patternOff,
           )
         TypeAndOffset(persistence.PropertyComparisonFunction.PropertyComparisonFunctionRegexMatch, offset)
       case PropertyComparisonFunctions.ListContains(values) =>
@@ -78,14 +78,14 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
           valuesOffs(i) = writeQuineValue(builder, value)
         val off = persistence.PropertyComparisonFunctionListContains.createPropertyComparisonFunctionListContains(
           builder,
-          persistence.PropertyComparisonFunctionListContains.createValuesVector(builder, valuesOffs)
+          persistence.PropertyComparisonFunctionListContains.createValuesVector(builder, valuesOffs),
         )
         TypeAndOffset(persistence.PropertyComparisonFunction.PropertyComparisonFunctionListContains, off)
     }
 
   private[this] def readPropertyComparisonFunction(
     typ: Byte,
-    makeFunc: Table => Table
+    makeFunc: Table => Table,
   ): PropertyComparisonFunc =
     typ match {
       case persistence.PropertyComparisonFunction.PropertyComparisonFunctionIdenticality =>
@@ -135,7 +135,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
           propValueOpt match {
             case None => Array.emptyByteArray
             case Some(propVal) => propVal.serialized
-          }
+          },
         )
         val localProp =
           persistence.LocalProperty.createLocalProperty(builder, propKeyOff, compFuncTyp, compFuncOff, propValueOff)
@@ -150,7 +150,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
         circularEdgesOffs(i) = persistence.CircularEdge.createCircularEdge(
           builder,
           builder.createString(edgeType.name),
-          isDirected
+          isDirected,
         )
       persistence.DomainNodeEquiv.createCircularEdgesVector(builder, circularEdgesOffs)
     }
@@ -159,7 +159,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
       builder,
       classNameOff,
       localPropsOff,
-      circularEdgesOff
+      circularEdgesOff,
     )
   }
 
@@ -175,7 +175,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
         val propertyKey: Symbol = Symbol(localProperty.propertyKey)
         val compFunc: PropertyComparisonFunc = readPropertyComparisonFunction(
           localProperty.comparisonFunctionType,
-          localProperty.comparisonFunction(_)
+          localProperty.comparisonFunction(_),
         )
         val propertyValueBytes: Option[PropertyValue] = {
           val bytes = localProperty.valueAsByteBuffer.remainingBytes
@@ -205,7 +205,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
 
   private[this] def writeDomainEdge(
     builder: FlatBufferBuilder,
-    de: DomainGraphEdge
+    de: DomainGraphEdge,
   ): Offset = {
 
     val depDirection: Byte = de.depDirection match {
@@ -221,7 +221,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
       case FetchConstraint(min, max) =>
         TypeAndOffset(
           persistence.EdgeMatchConstraints.FetchConstraint,
-          persistence.FetchConstraint.createFetchConstraint(builder, min, max.isDefined, max.getOrElse(0))
+          persistence.FetchConstraint.createFetchConstraint(builder, min, max.isDefined, max.getOrElse(0)),
         )
     }
 
@@ -232,7 +232,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
       de.dgnId,
       de.circularMatchAllowed,
       constraints.typ,
-      constraints.offset
+      constraints.offset,
     )
   }
 
@@ -260,13 +260,13 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
       depDirection,
       de.dgnId,
       de.circularMatchAllowed,
-      constraints
+      constraints,
     )
   }
 
   private[this] def writeDomainGraphNode(
     builder: FlatBufferBuilder,
-    dgn: DomainGraphNode
+    dgn: DomainGraphNode,
   ): TypeAndOffset =
     dgn match {
       case DomainGraphNode.Single(dne, identification, nextNodes, compFunc) =>
@@ -275,7 +275,7 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
           case Some(id) =>
             persistence.Identification.createIdentification(
               builder,
-              writeQuineId(builder, id)
+              writeQuineId(builder, id),
             )
         }
 
@@ -303,48 +303,48 @@ object DomainGraphNodeCodec extends PersistenceCodec[DomainGraphNode] {
           writeDomainNodeEquiv(builder, dne),
           identificationOff,
           nextNodesOff,
-          comparisonFunction
+          comparisonFunction,
         )
         TypeAndOffset(persistence.DomainGraphNode.SingleNode, offset)
 
       case DomainGraphNode.Or(disjuncts) =>
         val offset: Offset = persistence.OrNode.createOrNode(
           builder,
-          persistence.OrNode.createDisjunctsDgnIdsVector(builder, disjuncts.toArray)
+          persistence.OrNode.createDisjunctsDgnIdsVector(builder, disjuncts.toArray),
         )
         TypeAndOffset(persistence.DomainGraphNode.OrNode, offset)
 
       case DomainGraphNode.And(conjuncts) =>
         val offset = persistence.AndNode.createAndNode(
           builder,
-          persistence.AndNode.createConjunctsDgnIdsVector(builder, conjuncts.toArray)
+          persistence.AndNode.createConjunctsDgnIdsVector(builder, conjuncts.toArray),
         )
         TypeAndOffset(persistence.DomainGraphNode.AndNode, offset)
 
       case DomainGraphNode.Not(negated) =>
         TypeAndOffset(
           persistence.DomainGraphNode.NotNode,
-          persistence.NotNode.createNotNode(builder, negated)
+          persistence.NotNode.createNotNode(builder, negated),
         )
 
       case DomainGraphNode.Mu(muVar, dgnId) =>
         val offset: Offset = persistence.MuNode.createMuNode(
           builder,
           builder.createString(muVar.str),
-          dgnId
+          dgnId,
         )
         TypeAndOffset(persistence.DomainGraphNode.MuNode, offset)
 
       case DomainGraphNode.MuVar(muVar) =>
         TypeAndOffset(
           persistence.DomainGraphNode.MuVarNode,
-          persistence.MuVarNode.createMuVarNode(builder, builder.createString(muVar.str))
+          persistence.MuVarNode.createMuVarNode(builder, builder.createString(muVar.str)),
         )
     }
 
   private[this] def readDomainGraphNode(
     typ: Byte,
-    makeNode: Table => Table
+    makeNode: Table => Table,
   ): DomainGraphNode =
     typ match {
       case persistence.DomainGraphNode.SingleNode =>

@@ -31,7 +31,7 @@ object Packing {
   def pack(unpackedData: Array[Byte]): Array[Byte] = {
     if (unpackedData.length % 8 != 0)
       throw new IllegalArgumentException(
-        s"Data cannot be packed (length must be a multiple of 8, but is ${unpackedData.length}"
+        s"Data cannot be packed (length must be a multiple of 8, but is ${unpackedData.length}",
       )
 
     /* Reserve 10/8 times the output, so that we _know_ we always have enough space

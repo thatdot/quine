@@ -29,7 +29,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -38,7 +38,7 @@ import com.thatdot.quine.persistor.codecs.{
   DomainIndexEventCodec,
   NodeChangeEventCodec,
   QuinePatternCodec,
-  StandingQueryCodec
+  StandingQueryCodec,
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 import com.thatdot.quine.util.Log._
@@ -80,7 +80,7 @@ final class MapDbPersistor(
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
   metricRegistry: MetricRegistry = new NoopMetricRegistry(),
   ExecutionContext: ComputeAndBlockingExecutionContext,
-  scheduler: Scheduler
+  scheduler: Scheduler,
 )(implicit val logConfig: LogConfig)
     extends PersistenceAgent {
 
@@ -108,7 +108,7 @@ final class MapDbPersistor(
     case None => Cancellable.alreadyCancelled
     case Some(dur) =>
       scheduler.scheduleWithFixedDelay(dur, dur)(() => db.commit())(
-        blockingDispatcherEC
+        blockingDispatcherEC,
       )
   }
 
@@ -121,8 +121,8 @@ final class MapDbPersistor(
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.BYTE_ARRAY, // QuineId
-        MapDbPersistor.SerializerUnsignedLong // Node event timestamp
-      )
+        MapDbPersistor.SerializerUnsignedLong, // Node event timestamp
+      ),
     )
     .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
@@ -132,8 +132,8 @@ final class MapDbPersistor(
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.BYTE_ARRAY, // QuineId
-        MapDbPersistor.SerializerUnsignedLong // Node event timestamp
-      )
+        MapDbPersistor.SerializerUnsignedLong, // Node event timestamp
+      ),
     )
     .valueSerializer(Serializer.BYTE_ARRAY) // NodeEvent
     .createOrOpen()
@@ -143,8 +143,8 @@ final class MapDbPersistor(
     .keySerializer(
       new SerializerArrayTuple(
         Serializer.BYTE_ARRAY, // QuineId
-        MapDbPersistor.SerializerUnsignedLong // Node event timestamp
-      )
+        MapDbPersistor.SerializerUnsignedLong, // Node event timestamp
+      ),
     )
     .valueSerializer(new SerializerCompressionWrapper(Serializer.BYTE_ARRAY)) // SerializedNodeSnapshot
     .createOrOpen()
@@ -152,14 +152,14 @@ final class MapDbPersistor(
   private val standingQueries: util.AbstractSet[Array[Byte]] = db
     .hashSet(s"standingQueries")
     .serializer(
-      Serializer.BYTE_ARRAY // Standing query
+      Serializer.BYTE_ARRAY, // Standing query
     )
     .createOrOpen()
 
   private val quinePatterns: util.AbstractSet[Array[Byte]] = db
     .hashSet(s"quinePatterns")
     .serializer(
-      Serializer.BYTE_ARRAY
+      Serializer.BYTE_ARRAY,
     )
     .createOrOpen()
 
@@ -169,8 +169,8 @@ final class MapDbPersistor(
       new SerializerArrayTuple(
         Serializer.UUID, // Top-level standing query ID
         Serializer.BYTE_ARRAY, // QuineId
-        Serializer.UUID // Standing sub-query ID
-      )
+        Serializer.UUID, // Standing sub-query ID
+      ),
     )
     .valueSerializer(new SerializerCompressionWrapper(Serializer.BYTE_ARRAY)) // standing query state
     .createOrOpen()
@@ -182,7 +182,7 @@ final class MapDbPersistor(
   private val domainGraphNodes: ConcurrentNavigableMap[java.lang.Long, Array[Byte]] = db
     .treeMap("domainGraphNodes")
     .keySerializer(
-      Serializer.LONG // Domain graph node ID
+      Serializer.LONG, // Domain graph node ID
     )
     .valueSerializer(new SerializerCompressionWrapper(Serializer.BYTE_ARRAY)) // Domain graph node
     .createOrOpen()
@@ -190,14 +190,14 @@ final class MapDbPersistor(
   override def emptyOfQuineData(): Future[Boolean] =
     // on the io dispatcher: check that each column family is empty
     Future(
-      nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty
+      nodeChangeEvents.isEmpty && domainIndexEvents.isEmpty && snapshots.isEmpty && standingQueries.isEmpty && multipleValuesStandingQueryStates.isEmpty && domainGraphNodes.isEmpty,
     )(blockingDispatcherEC)
 
   private def quineIdTimeRangeEntries(
     map: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]],
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Iterator[java.util.Map.Entry[QuineIdTimestampTuple, Array[Byte]]] = {
     // missing values in array key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = startingAt match {
@@ -221,7 +221,7 @@ final class MapDbPersistor(
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = Future {
     quineIdTimeRangeEntries(nodeChangeEvents, id, startingAt, endingAt).map { entry =>
       val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
@@ -237,7 +237,7 @@ final class MapDbPersistor(
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = Future {
     quineIdTimeRangeEntries(domainIndexEvents, id, startingAt, endingAt).map { entry =>
       val eventTime = EventTime.fromRaw(Long.unbox(entry.getKey()(1)))
@@ -267,7 +267,7 @@ final class MapDbPersistor(
   private def deleteQuineIdEntries(
     map: ConcurrentNavigableMap[QuineIdTimestampTuple, Array[Byte]],
     qid: QuineId,
-    methodName: String
+    methodName: String,
   ): Future[Unit] = Future {
     quineIdTimeRangeEntries(map, qid, EventTime.MinValue, EventTime.MaxValue)
       .foreach(entry => map.remove(entry.getKey))
@@ -328,7 +328,7 @@ final class MapDbPersistor(
   private[this] def tryGetLatestSnapshot(
     startingKey: Array[AnyRef],
     endingKey: Array[AnyRef],
-    remainingAttempts: Int
+    remainingAttempts: Int,
   ): Future[Option[JavaMap.Entry[Array[AnyRef], Array[Byte]]]] =
     Future(Option(snapshots.subMap(startingKey, true, endingKey, true).lastEntry()))(blockingDispatcherEC)
       .recoverWith {
@@ -336,14 +336,14 @@ final class MapDbPersistor(
           // This is a known MapDB issue, see <https://github.com/jankotek/mapdb/issues/966>
           logger.info(
             log"tryGetLatestSnapshot failed. Remaining attempts: ${Safe(remainingAttempts)}"
-            withException e
+            withException e,
           )
           tryGetLatestSnapshot(startingKey, endingKey, remainingAttempts - 1)
       }(nodeDispatcherEC)
 
   def getLatestSnapshot(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[Array[Byte]]] = {
     // missing values in key = -infinity, `null` = +infinity
     val startingKey: Array[AnyRef] = Array[AnyRef](id.array)
@@ -385,7 +385,7 @@ final class MapDbPersistor(
       }(nodeDispatcherEC)
 
   override def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] = Future {
     val toReturn = Map.newBuilder[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]
 
@@ -396,7 +396,7 @@ final class MapDbPersistor(
       remainingStates
         .subMap(
           Array[AnyRef](topLevelId, id.array),
-          Array[AnyRef](topLevelId, id.array, null)
+          Array[AnyRef](topLevelId, id.array, null),
         )
         .forEach { (key: Array[AnyRef], value: Array[Byte]) =>
           val subQueryId = key(2).asInstanceOf[UUID]
@@ -414,7 +414,7 @@ final class MapDbPersistor(
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = Future {
     state match {
       case None =>
@@ -423,7 +423,7 @@ final class MapDbPersistor(
       case Some(newValue) =>
         val _ = multipleValuesStandingQueryStates.put(
           Array[AnyRef](standingQuery.uuid, id.array, standingQueryId.uuid),
-          newValue
+          newValue,
         )
     }
   }(blockingDispatcherEC)
@@ -547,7 +547,7 @@ object MapDbPersistor {
       if (createParentDir)
         if (parentDir.mkdirs())
           logger.warn(
-            safe"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created."
+            safe"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created.",
           )
         else if (!parentDir.isDirectory) sys.error(s"$parentDir is not a directory")
       PersistedDb(path)
@@ -586,7 +586,7 @@ object MapDbPersistor {
       keyBoxed: java.lang.Long,
       input: DataInput2,
       len: Int,
-      comparator: Comparator[_]
+      comparator: Comparator[_],
     ): Int =
       if (comparator != this) {
         super.valueArrayBinarySearch(keyBoxed, input, len, comparator)

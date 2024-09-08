@@ -77,7 +77,7 @@ trait LiteralCommandBehavior extends BaseNodeActor with QuineIdOps with QuineRef
         val allEdges = edges.all
         val edgeRemovalEvents = allEdges.map(EdgeRemoved).toList
         val otherSidesRemoved = Future.traverse(allEdges)(edge =>
-          edge.other.?(RemoveHalfEdgeCommand(edge.reflect(qid), _)).flatten
+          edge.other.?(RemoveHalfEdgeCommand(edge.reflect(qid), _)).flatten,
         )(implicitlyBF, context.dispatcher)
 
         // Confirmation future completes when every bit of the removal is done

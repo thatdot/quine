@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.cypher.{
   Position,
   Query,
   SourceText,
-  Type
+  Type,
 }
 
 class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries") {
@@ -22,10 +22,10 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
     val incrementX: AdjustContext[Location.Anywhere] = AdjustContext( // x++
       dropExisting = true,
       toAdd = Vector(
-        Symbol("x") -> Expr.Add(Expr.Variable(Symbol("x")), Expr.Integer(1))
+        Symbol("x") -> Expr.Add(Expr.Variable(Symbol("x")), Expr.Integer(1)),
       ),
       adjustThis = Query.Unit(Columns.Specified(Vector.empty)),
-      columns = Columns.Specified(Vector(Symbol("x")))
+      columns = Columns.Specified(Vector(Symbol("x"))),
     )
 
     val countToTenQuery = CompiledQuery[Location.External](
@@ -38,34 +38,34 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         incrementX,
         RecursiveSubQuery.VariableInitializers(
           Query.unit,
-          Map(Symbol("x") -> Expr.Integer(0L))
+          Map(Symbol("x") -> Expr.Integer(0L)),
         ),
         RecursiveSubQuery.VariableMappings(
           inputToPlain = Map(Symbol("x") -> Symbol("x")),
-          outputToPlain = Map(Symbol("x") -> Symbol("x"))
+          outputToPlain = Map(Symbol("x") -> Symbol("x")),
         ),
         doneExpression = Expr.GreaterEqual(Expr.Variable(Symbol("x")), Expr.Integer(10)), // x >= 10
-        columns = Columns.Specified(Vector(Symbol("x")))
+        columns = Columns.Specified(Vector(Symbol("x"))),
       ),
       Seq.empty,
       Parameters.empty,
-      Seq.empty
+      Seq.empty,
     )
 
     testQuery(
       countToTenQuery,
       Vector("x"),
       Seq(
-        Vector(Expr.Integer(10))
-      )
+        Vector(Expr.Integer(10)),
+      ),
     )
 
     testQuery(
       countToTenQuery.queryText.get,
       Vector("x"),
       Seq(
-        Vector(Expr.Integer(10))
-      )
+        Vector(Expr.Integer(10)),
+      ),
     )
 
     testQuery(
@@ -75,8 +75,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         |""".stripMargin.replace('\n', ' ').trim,
       Vector("x", "y"),
       Seq(
-        Vector(Expr.Integer(7), Expr.Integer(6))
-      )
+        Vector(Expr.Integer(7), Expr.Integer(6)),
+      ),
     )
 
   }
@@ -86,16 +86,16 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       Expr.Function(Func.Range, Vector(Expr.Integer(1), Expr.Variable(Symbol("max")))), // 1 to max
       Symbol("x"),
       Query.Unit(Columns.Specified(Vector.empty)),
-      Columns.Specified(Vector(Symbol("x"), Symbol("max")))
+      Columns.Specified(Vector(Symbol("x"), Symbol("max"))),
     )
     val incrementMaxNoopX: AdjustContext[Location.Anywhere] = AdjustContext(
       dropExisting = true,
       toAdd = Vector(
         Symbol("x") -> Expr.Variable(Symbol("x")),
-        Symbol("max") -> Expr.Add(Expr.Variable(Symbol("max")), Expr.Integer(1))
+        Symbol("max") -> Expr.Add(Expr.Variable(Symbol("max")), Expr.Integer(1)),
       ),
       adjustThis = Query.Unit(Columns.Specified(Vector.empty)),
-      columns = Columns.Specified(Vector(Symbol("x"), Symbol("max")))
+      columns = Columns.Specified(Vector(Symbol("x"), Symbol("max"))),
     )
 
     val nonlinearRecursiveQuery = CompiledQuery[Location.External](
@@ -107,30 +107,30 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       AdjustContext(
         dropExisting = true,
         toAdd = Vector(
-          Symbol("x") -> Expr.Variable(Symbol("x"))
+          Symbol("x") -> Expr.Variable(Symbol("x")),
         ),
         adjustThis = RecursiveSubQuery(
           Apply(
             countXOneToMax,
             incrementMaxNoopX,
-            Columns.Specified(Vector(Symbol("x"), Symbol("max")))
+            Columns.Specified(Vector(Symbol("x"), Symbol("max"))),
           ),
           RecursiveSubQuery.VariableInitializers(
             Query.unit,
-            Map(Symbol("max") -> Expr.Integer(1))
+            Map(Symbol("max") -> Expr.Integer(1)),
           ),
           RecursiveSubQuery.VariableMappings(
             inputToPlain = Map(Symbol("max") -> Symbol("max")),
-            outputToPlain = Map(Symbol("max") -> Symbol("max"))
+            outputToPlain = Map(Symbol("max") -> Symbol("max")),
           ),
           doneExpression = Expr.Greater(Expr.Variable(Symbol("max")), Expr.Integer(3)), // max > 3
-          columns = Columns.Specified(Vector(Symbol("x"), Symbol("max")))
+          columns = Columns.Specified(Vector(Symbol("x"), Symbol("max"))),
         ),
-        Columns.Specified(Vector(Symbol("x")))
+        Columns.Specified(Vector(Symbol("x"))),
       ),
       Seq.empty,
       Parameters.empty,
-      Seq.empty
+      Seq.empty,
     )
 
     // Evaluation looks like the following (square brackets are unreturned rows, parentheses are returned rows):
@@ -147,8 +147,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         Vector(Expr.Integer(3)),
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
 
     testQuery(
@@ -160,8 +160,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         Vector(Expr.Integer(3)),
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
   }
 
@@ -171,8 +171,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       columnNotImported,
       CypherException.Compile(
         "Variable `foo` not defined",
-        Some(Position(1, 67, 66, SourceText(columnNotImported)))
-      )
+        Some(Position(1, 67, 66, SourceText(columnNotImported))),
+      ),
     )
 
     val illegalVanillaImport =
@@ -181,8 +181,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       illegalVanillaImport,
       CypherException.Compile(
         "Recursive subqueries cannot use import-`WITH` subquery syntax. Use `CALL RECURSIVELY WITH` syntax instead",
-        Some(Position(1, 60, 59, SourceText(illegalVanillaImport)))
-      )
+        Some(Position(1, 60, 59, SourceText(illegalVanillaImport))),
+      ),
     )
 
     val missingRecursiveColumns = "CALL RECURSIVELY WITH 0 AS x UNTIL (x > 0) { RETURN x AS y } RETURN y"
@@ -190,8 +190,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       missingRecursiveColumns,
       CypherException.Compile(
         "Recursive subquery declares recursive variable(s): [`x`] but does not return all of them. Missing variable(s): [`x`]",
-        Some(Position(1, 46, 45, SourceText(missingRecursiveColumns)))
-      )
+        Some(Position(1, 46, 45, SourceText(missingRecursiveColumns))),
+      ),
     )
 
     // TODO it'd be much better if we could do this typechecking at compile time
@@ -202,8 +202,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
         Seq(Type.Integer),
         Expr.Str("foo"),
         "recursive subquery return value (variable `x`)",
-        Some(Position(1, 46, 45, SourceText(typeChangingRecursiveVariable)))
-      )
+        Some(Position(1, 46, 45, SourceText(typeChangingRecursiveVariable))),
+      ),
     )
 
     it("QU-1947: unhelpful error messages / missing errors") {
@@ -213,8 +213,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           nonIdempotentSubquery,
           CypherException.Compile(
             "Recursive subquery must be idempotent",
-            Some(Position(1, 46, 45, SourceText(nonIdempotentSubquery)))
-          )
+            Some(Position(1, 46, 45, SourceText(nonIdempotentSubquery))),
+          ),
         )
 
         val doneConditionNotBoolean = "CALL RECURSIVELY WITH 0 AS x UNTIL (x) { RETURN x+1 AS x } RETURN x"
@@ -224,8 +224,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
             Seq(Type.Bool),
             Expr.Integer(1),
             "recursive subquery done condition",
-            Some(Position(1, 46, 45, SourceText(doneConditionNotBoolean)))
-          )
+            Some(Position(1, 46, 45, SourceText(doneConditionNotBoolean))),
+          ),
         )
 
         val doneConditionDoesNotUseReturnValues = "CALL RECURSIVELY WITH 0 AS x UNTIL (true) { RETURN x } RETURN x"
@@ -233,8 +233,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           doneConditionDoesNotUseReturnValues,
           CypherException.Compile(
             "Recursive subquery done condition must use at least one of the columns returned by the subquery: [`x`]",
-            Some(Position(1, 46, 45, SourceText(doneConditionDoesNotUseReturnValues)))
-          )
+            Some(Position(1, 46, 45, SourceText(doneConditionDoesNotUseReturnValues))),
+          ),
         )
       }
     }
@@ -256,8 +256,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       variableReturnedUnchanged,
       Vector("x", "y"),
       Seq(
-        Vector(Expr.Integer(0), Expr.Integer(2))
-      )
+        Vector(Expr.Integer(0), Expr.Integer(2)),
+      ),
     )
 
     // This test is for the "over the subquery" case. We're looking at `two` and `hw` here.
@@ -272,8 +272,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       parentScopeMaintainedEasy,
       Vector("two", "hw", "x"),
       Seq(
-        Vector(Expr.Integer(2), Expr.Str("hello, world!"), Expr.Integer(5))
-      )
+        Vector(Expr.Integer(2), Expr.Str("hello, world!"), Expr.Integer(5)),
+      ),
     )
 
     // This is a slightly harder case that combines recursive subquery output with a
@@ -293,8 +293,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       Vector("two * three", "hw"),
       Seq(
         Vector(Expr.Integer(6), Expr.Str("hello, world!")),
-        Vector(Expr.Integer(6), Expr.Str("hello, world!"))
-      )
+        Vector(Expr.Integer(6), Expr.Str("hello, world!")),
+      ),
     )
 
     // This case tests the output ordering of the columns (the recursive subquery should _prepend_ columns, to match
@@ -312,9 +312,9 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       parentScopeMaintainedPrepend,
       Vector("x", "y", "one", "two"),
       Seq(
-        Vector(Expr.Integer(5), Expr.Integer(6), Expr.Integer(1), Expr.Integer(2))
+        Vector(Expr.Integer(5), Expr.Integer(6), Expr.Integer(1), Expr.Integer(2)),
       ),
-      skip = true // QU-1947: recursive subquery output columns should be prepended to parent columns
+      skip = true, // QU-1947: recursive subquery output columns should be prepended to parent columns
     )
   }
 
@@ -331,8 +331,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           subqueryReturnsConflictingColumn,
           CypherException.Compile(
             "Recursive subquery binds column[s] already bound in the parent query: [`x`]",
-            Some(Position(1, 46, 45, SourceText(subqueryReturnsConflictingColumn)))
-          )
+            Some(Position(1, 46, 45, SourceText(subqueryReturnsConflictingColumn))),
+          ),
         )
         val unsupportedAggregationInVariables =
           """WITH 0 AS x
@@ -344,8 +344,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           unsupportedAggregationInVariables,
           CypherException.Compile(
             "Recursive subquery initializers may not use aggregators: [`y`]",
-            Some(Position(1, 46, 45, SourceText(unsupportedAggregationInVariables)))
-          )
+            Some(Position(1, 46, 45, SourceText(unsupportedAggregationInVariables))),
+          ),
         )
       }
     }
@@ -363,9 +363,9 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       variableBoundBeforeAfterAndUsedDuring,
       Vector("openCypherAmbiguous"),
       Seq(
-        Vector(Expr.Integer(3))
+        Vector(Expr.Integer(3)),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -381,8 +381,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
           query,
           CypherException.Runtime(
             "Infinite recursion detected in recursive subquery",
-            Some(Position(1, 46, 45, SourceText(query)))
-          )
+            Some(Position(1, 46, 45, SourceText(query))),
+          ),
         )
       }
     }
@@ -400,9 +400,9 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       query,
       Vector("  x @ 0"),
       Seq(
-        Vector(Expr.Integer(1))
+        Vector(Expr.Integer(1)),
       ),
-      skip = true // QU-1947: demangles incorrectly
+      skip = true, // QU-1947: demangles incorrectly
     )
   }
 
@@ -421,9 +421,9 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       nestedQuery,
       Vector("i", "j", "x"),
       Seq(
-        Vector(Expr.Integer(10), Expr.Integer(10), Expr.Integer(55))
+        Vector(Expr.Integer(10), Expr.Integer(10), Expr.Integer(55)),
       ),
-      skip = true // QU-1947: fails to parse in openCypher
+      skip = true, // QU-1947: fails to parse in openCypher
     )
   }
 
@@ -439,8 +439,8 @@ class CypherRecursiveSubQuery extends CypherHarness("cypher-recursive-subqueries
       midQueryCallRecursively,
       Vector("y"),
       Seq(
-        Vector(Expr.Integer(6))
-      )
+        Vector(Expr.Integer(6)),
+      ),
     )
   }
 }

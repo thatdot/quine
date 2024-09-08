@@ -14,7 +14,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
 
   private[this] def writeDomainIndexEventUnion(
     builder: FlatBufferBuilder,
-    event: DomainIndexEvent
+    event: DomainIndexEvent,
   ): TypeAndOffset =
     event match {
 
@@ -29,7 +29,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
           builder,
           dgnId,
           builder.createByteVector(replyToNode.array),
-          rltd
+          rltd,
         )
         TypeAndOffset(persistence.DomainIndexEventUnion.CreateDomainNodeSubscription, event)
 
@@ -46,7 +46,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
           builder,
           testBranch,
           writeStandingQueryId(builder, sqId),
-          rltd
+          rltd,
         )
         TypeAndOffset(persistence.DomainIndexEventUnion.CreateDomainStandingQuerySubscription, event)
 
@@ -55,7 +55,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
           builder,
           builder.createByteVector(from.array),
           testBranch,
-          result
+          result,
         )
         TypeAndOffset(persistence.DomainIndexEventUnion.DomainNodeSubscriptionResult, event)
 
@@ -63,14 +63,14 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
         val event = persistence.CancelDomainNodeSubscription.createCancelDomainNodeSubscription(
           builder,
           testBranch,
-          builder.createByteVector(alreadyCancelledSubscriber.array)
+          builder.createByteVector(alreadyCancelledSubscriber.array),
         )
         TypeAndOffset(persistence.DomainIndexEventUnion.CancelDomainNodeSubscription, event)
     }
 
   private[this] def readDomainIndexEventUnion(
     typ: Byte,
-    makeEvent: Table => Table
+    makeEvent: Table => Table,
   ): DomainIndexEvent =
     typ match {
       case persistence.DomainIndexEventUnion.CreateDomainNodeSubscription =>
@@ -122,7 +122,7 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
 
   private[this] def writeDomainIndexEventWithTime(
     builder: FlatBufferBuilder,
-    eventWithTime: NodeEvent.WithTime[DomainIndexEvent]
+    eventWithTime: NodeEvent.WithTime[DomainIndexEvent],
   ): Offset = {
     val TypeAndOffset(eventTyp, eventOff) =
       writeDomainIndexEventUnion(builder, eventWithTime.event)
@@ -130,12 +130,12 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
       builder,
       eventWithTime.atTime.eventTime,
       eventTyp,
-      eventOff
+      eventOff,
     )
   }
 
   private[this] def readDomainIndexEventWithTime(
-    eventWithTime: persistence.DomainIndexEventWithTime
+    eventWithTime: persistence.DomainIndexEventWithTime,
   ): NodeEvent.WithTime[DomainIndexEvent] = {
     val event = readDomainIndexEventUnion(eventWithTime.eventType, eventWithTime.event)
     val atTime = EventTime.fromRaw(eventWithTime.eventTime)
@@ -144,14 +144,14 @@ object DomainIndexEventCodec extends PersistenceCodec[DomainIndexEvent] {
 
   private[this] def writeDomainIndexEvent(
     builder: FlatBufferBuilder,
-    event: DomainIndexEvent
+    event: DomainIndexEvent,
   ): Offset = {
     val TypeAndOffset(eventTyp, eventOff) = writeDomainIndexEventUnion(builder, event)
     persistence.DomainIndexEvent.createDomainIndexEvent(builder, eventTyp, eventOff)
   }
 
   private[this] def readDomainIndexEvent(
-    event: persistence.DomainIndexEvent
+    event: persistence.DomainIndexEvent,
   ): DomainIndexEvent =
     readDomainIndexEventUnion(event.eventType, event.event)
 

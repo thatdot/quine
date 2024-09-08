@@ -90,7 +90,7 @@ object FramedSource {
     ingestMeter: IngestMeter,
     decodeFrame: Frame => Array[Byte],
     ackFlow: Flow[Frame, Done, NotUsed] = Flow.fromFunction[Frame, Done](_ => Done),
-    terminationHook: () => Unit = () => ()
+    terminationHook: () => Unit = () => (),
   ): FramedSource =
     new FramedSource {
       type SrcFrame = Frame
@@ -113,7 +113,7 @@ trait IngestBoundsSupportA {
 
   def boundingFlow[A]: Flow[A, A, NotUsed] =
     ingestBounds.ingestLimit.fold(Flow[A].drop(ingestBounds.startAtOffset))(limit =>
-      Flow[A].drop(ingestBounds.startAtOffset).take(limit)
+      Flow[A].drop(ingestBounds.startAtOffset).take(limit),
     )
 
 }
@@ -129,7 +129,7 @@ trait CharEncodingSupportA extends LazySafeLogging {
       Flow[ByteString]
     case otherCharset =>
       logger.warn(
-        safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset.toString)} - transcoding through UTF-8 first"
+        safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset.toString)} - transcoding through UTF-8 first",
       )
       TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
   }

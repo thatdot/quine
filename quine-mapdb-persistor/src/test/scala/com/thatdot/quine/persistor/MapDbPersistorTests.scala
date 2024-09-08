@@ -20,8 +20,8 @@ class MapDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
         ns,
         persistenceConfig = pc,
         ExecutionContext = new FromSingleExecutionContext(ExecutionContext.parasitic),
-        scheduler = system.scheduler
-      )
+        scheduler = system.scheduler,
+      ),
   )(Materializer.matFromSystem(system), logConfig)
 
 }

@@ -59,7 +59,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
     cypherGraph: CypherOpsGraph,
     initialSwitchMode: SwitchMode = SwitchMode.Open,
     parallelism: Int = 1,
-    maxPerSecond: Option[Int] = None
+    maxPerSecond: Option[Int] = None,
   ): QuineIngestSource = new QuineIngestSource {
 
     val name: String = ingestName
@@ -79,7 +79,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
       */
     override def stream(
       intoNamespace: NamespaceId,
-      registerTerminationHooks: Future[Done] => Unit
+      registerTerminationHooks: Future[Done] => Unit,
     ): Source[IngestSrcExecToken, NotUsed] = {
 
       val token = IngestSrcExecToken(name)
@@ -140,11 +140,11 @@ object DecodedSource extends LazySafeLogging {
     name: String,
     settings: IngestStreamConfiguration,
     intoNamespace: NamespaceId,
-    valveSwitchMode: SwitchMode
+    valveSwitchMode: SwitchMode,
   )(implicit
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): ValidatedNel[String, QuineIngestSource] = {
     logger.info(safe"using v2 ingest to create ingest ${Safe(name)}")
     val meter = IngestMetered.ingestMeter(intoNamespace, name)
@@ -157,7 +157,7 @@ object DecodedSource extends LazySafeLogging {
         graph,
         valveSwitchMode,
         DecodedSource.parallelism(settings),
-        settings.maximumPerSecond
+        settings.maximumPerSecond,
       )
       .valid
   }
@@ -166,7 +166,7 @@ object DecodedSource extends LazySafeLogging {
     name: String,
     config: IngestStreamConfiguration,
     meter: IngestMeter,
-    system: ActorSystem
+    system: ActorSystem,
   )(implicit protobufCache: ProtobufSchemaCache, logConfig: LogConfig): DecodedSource = {
 
     config match {
@@ -182,7 +182,7 @@ object DecodedSource extends LazySafeLogging {
             kafkaProperties,
             endingOffset,
             _,
-            recordDecoders
+            recordDecoders,
           ) =>
         KafkaSource(
           topics,
@@ -195,7 +195,7 @@ object DecodedSource extends LazySafeLogging {
           endingOffset,
           recordDecoders.map(ContentDecoder(_)),
           meter,
-          system
+          system,
         ).framedSource.toDecoded(FrameDecoder(format))
 
       case FileIngest(
@@ -207,7 +207,7 @@ object DecodedSource extends LazySafeLogging {
             startAtOffset,
             ingestLimit,
             _,
-            fileIngestMode
+            fileIngestMode,
           ) =>
         FileSource.decodedSourceFromFileStream(
           FileSource.srcFromIngest(path, fileIngestMode),
@@ -216,7 +216,7 @@ object DecodedSource extends LazySafeLogging {
           maximumLineSize,
           IngestBounds(startAtOffset, ingestLimit),
           meter,
-          Seq()
+          Seq(),
         ) //compression not yet supported
 
       case S3Ingest(
@@ -229,7 +229,7 @@ object DecodedSource extends LazySafeLogging {
             maxLineSize,
             startAtOffset,
             ingestLimit,
-            _
+            _,
           ) =>
         S3Source(
           format,
@@ -240,7 +240,7 @@ object DecodedSource extends LazySafeLogging {
           Charset.forName(encoding),
           IngestBounds(startAtOffset, ingestLimit),
           meter,
-          Seq() // There is no compression support in the v1 configuration object.
+          Seq(), // There is no compression support in the v1 configuration object.
         )(system).decodedSource
 
       case StandardInputIngest(
@@ -248,14 +248,14 @@ object DecodedSource extends LazySafeLogging {
             encoding,
             _,
             maximumLineSize,
-            _
+            _,
           ) =>
         StandardInputSource(
           format,
           maximumLineSize,
           Charset.forName(encoding),
           meter,
-          Seq()
+          Seq(),
         ).decodedSource
 
       case KinesisIngest(
@@ -269,7 +269,7 @@ object DecodedSource extends LazySafeLogging {
             numRetries,
             _,
             recordEncodings,
-            _
+            _,
           ) =>
         KinesisSource(
           streamName,
@@ -279,7 +279,7 @@ object DecodedSource extends LazySafeLogging {
           iteratorType,
           numRetries, // TODO not currently supported
           meter,
-          recordEncodings.map(ContentDecoder(_))
+          recordEncodings.map(ContentDecoder(_)),
         )(system.getDispatcher).framedSource.toDecoded(FrameDecoder(streamedRecordFormat))
       case NumberIteratorIngest(_, startAtOffset, ingestLimit, _, _) =>
         NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource
@@ -293,7 +293,7 @@ object DecodedSource extends LazySafeLogging {
             regionOpt,
             deleteReadMessages,
             _,
-            recordEncodings
+            recordEncodings,
           ) =>
         SqsSource(
           queueURL,
@@ -302,7 +302,7 @@ object DecodedSource extends LazySafeLogging {
           regionOpt,
           deleteReadMessages,
           meter,
-          recordEncodings.map(ContentDecoder(_))
+          recordEncodings.map(ContentDecoder(_)),
         ).framedSource.toDecoded(FrameDecoder(format))
 
       case ServerSentEventsIngest(
@@ -310,7 +310,7 @@ object DecodedSource extends LazySafeLogging {
             url,
             _,
             _,
-            recordEncodings
+            recordEncodings,
           ) =>
         ServerSentEventSource(url, meter, recordEncodings.map(ContentDecoder(_)))(system).framedSource
           .toDecoded(FrameDecoder(format))
@@ -321,7 +321,7 @@ object DecodedSource extends LazySafeLogging {
             initMessages,
             keepAliveProtocol,
             _,
-            encoding
+            encoding,
           ) =>
         WebsocketSource(wsUrl, initMessages, keepAliveProtocol, Charset.forName(encoding), meter)(system).framedSource
           .toDecoded(FrameDecoder(format))

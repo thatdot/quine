@@ -78,7 +78,7 @@ object Compiler {
   case class DependencyGraphState(
     graph: DependencyGraph,
     deferred: List[(Set[UnqualifiedIdentifier], Instruction)],
-    symbolTable: SymbolTable
+    symbolTable: SymbolTable,
   )
 
   type DependencyGraphProgram[A] = State[DependencyGraphState, A]
@@ -138,7 +138,7 @@ object Compiler {
     steps: List[DependencyGraph],
     unused: List[DependencyGraph],
     used: List[DependencyGraph],
-    deps: Set[UnqualifiedIdentifier]
+    deps: Set[UnqualifiedIdentifier],
   ): (Set[UnqualifiedIdentifier], DependencyGraph) =
     steps match {
       case Nil =>
@@ -164,7 +164,7 @@ object Compiler {
   def depthFirstInsertPure(
     instruction: Instruction,
     graph: DependencyGraph,
-    deps: Set[UnqualifiedIdentifier]
+    deps: Set[UnqualifiedIdentifier],
   ): (Set[UnqualifiedIdentifier], DependencyGraph) =
     graph match {
       case ind: DependencyGraph.Independent =>
@@ -181,7 +181,7 @@ object Compiler {
           if (tryInsertFirst._1.isEmpty) {
             Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
               dep.first,
-              DependencyGraph.Independent(NonEmptyList.of(dep.second, tryInsertFirst._2))
+              DependencyGraph.Independent(NonEmptyList.of(dep.second, tryInsertFirst._2)),
             )
           } else {
             val unmet = tryInsertFirst._1
@@ -189,7 +189,7 @@ object Compiler {
             if (tryInsertSecond._1.isEmpty) {
               Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
                 dep.first,
-                DependencyGraph.Dependent(dep.second, tryInsertSecond._2)
+                DependencyGraph.Dependent(dep.second, tryInsertSecond._2),
               )
             } else {
               val remaining = tryInsertSecond._1
@@ -214,7 +214,7 @@ object Compiler {
 
   def depthFirstInsert(
     instruction: Instruction,
-    deps: Set[UnqualifiedIdentifier]
+    deps: Set[UnqualifiedIdentifier],
   ): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
     for {
       graph <- inspect(_.graph)
@@ -249,14 +249,14 @@ object Compiler {
           init = QuinePattern.QuineUnit,
           over = steps.toList.map(step => compileFromDependencyGraph(step, symbolTable)),
           f = BinOp.Merge,
-          output = null
+          output = null,
         )
       case DependencyGraph.Dependent(first, second) =>
         QuinePattern.mkFold(
           init = compileFromDependencyGraph(first, symbolTable),
           over = List(compileFromDependencyGraph(second, symbolTable)),
           f = BinOp.Merge,
-          output = null
+          output = null,
         )
       case DependencyGraph.Step(instruction) => instructionToQuinePattern(instruction)
       case DependencyGraph.Empty => QuinePattern.QuineUnit

@@ -37,7 +37,7 @@ object ParadoxThatdot extends AutoPlugin {
           .withGoogleAnalytics("UA-148518730-1")
       },
       paradoxProperties ++= Map(
-        "project.name" -> projectName.value
+        "project.name" -> projectName.value,
       ),
       templateDirectory := overlayDirectory.value / "_template",
       paradoxOverlayDirectories := Seq(overlayDirectory.value),
@@ -47,7 +47,7 @@ object ParadoxThatdot extends AutoPlugin {
       Compile / paradoxMarkdownToHtml / excludeFilter := {
         (Compile / paradoxMarkdownToHtml / excludeFilter).value ||
         ParadoxPlugin.InDirectoryFilter((Compile / paradox / sourceDirectory).value / "includes")
-      }
-    )
+      },
+    ),
   )
 }

@@ -25,7 +25,7 @@ case class WebsocketSource(
   initMessages: Seq[String],
   keepaliveProtocol: KeepaliveProtocol,
   charset: Charset = DEFAULT_CHARSET,
-  meter: IngestMeter
+  meter: IngestMeter,
 )(implicit system: ActorSystem) {
 
   val baseHttpClientSettings: ClientConnectionSettings = ClientConnectionSettings(system)
@@ -36,13 +36,13 @@ case class WebsocketSource(
     val httpClientSettings: ClientConnectionSettings = keepaliveProtocol match {
       case WebsocketSimpleStartupIngest.PingPongInterval(intervalMillis) =>
         baseHttpClientSettings.withWebsocketSettings(
-          baseHttpClientSettings.websocketSettings.withPeriodicKeepAliveMaxIdle(intervalMillis.millis)
+          baseHttpClientSettings.websocketSettings.withPeriodicKeepAliveMaxIdle(intervalMillis.millis),
         )
       case WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis) =>
         baseHttpClientSettings.withWebsocketSettings(
           baseHttpClientSettings.websocketSettings
             .withPeriodicKeepAliveMaxIdle(intervalMillis.millis)
-            .withPeriodicKeepAliveData(() => ByteString(message, charset))
+            .withPeriodicKeepAliveData(() => ByteString(message, charset)),
         )
       case WebsocketSimpleStartupIngest.NoKeepalive => baseHttpClientSettings
     }
@@ -59,7 +59,7 @@ case class WebsocketSource(
     val wsFlow: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http()
       .webSocketClientFlow(
         WebSocketRequest(wsUrl),
-        settings = httpClientSettings
+        settings = httpClientSettings,
       )
       .named("websocket-ingest-client")
 
@@ -90,7 +90,7 @@ case class WebsocketSource(
     FramedSource[ByteString](
       withKillSwitches(source.via(transcodingFlow(charset))),
       meter,
-      bs => bs.toArrayUnsafe()
+      bs => bs.toArrayUnsafe(),
     )
   }
 

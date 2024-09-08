@@ -29,9 +29,9 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
       "bolt-protocol-test-system",
       effectOrder = EventEffectOrder.MemoryFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
-      idProvider = QuineIdLongProvider()
+      idProvider = QuineIdLongProvider(),
     ),
-    timeout.duration
+    timeout.duration,
   )
   implicit val system: ActorSystem = graph.system
 
@@ -50,7 +50,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
 
     negotiatedVersion shouldEqual toHex("00 00 00 01")
     assertThrows[AssertionError](
-      sub.expectComplete()
+      sub.expectComplete(),
     )
   }
   test("Handshake version negotiation should fail when client does not offer v1") {

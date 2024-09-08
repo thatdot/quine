@@ -28,19 +28,19 @@ final case class Recipe(
   @docs("Schema version (only supported value is 1)") version: Int = Recipe.currentVersion,
   @docs("Identifies the Recipe but is not necessarily unique") title: String = "RECIPE",
   @docs(
-    "URL to social profile of the person or organization responsible for this Recipe"
+    "URL to social profile of the person or organization responsible for this Recipe",
   ) contributor: Option[String],
   @docs("Brief copy about this Recipe") summary: Option[String],
   @docs("Longer form copy about this Recipe") description: Option[String],
   @docs("URL to image asset for this Recipe") iconImage: Option[String],
   @docs("Ingest Streams that load data into the graph") ingestStreams: List[IngestStreamConfiguration] = List(),
   @docs(
-    "Standing Queries that respond to graph updates by computing aggregates and trigger actions"
+    "Standing Queries that respond to graph updates by computing aggregates and trigger actions",
   ) standingQueries: List[StandingQueryDefinition] = List(),
   @docs("For web UI customization") nodeAppearances: List[UiNodeAppearance] = List(),
   @docs("For web UI customization") quickQueries: List[UiNodeQuickQuery] = List(),
   @docs("For web UI customization") sampleQueries: List[SampleQuery] = List(),
-  @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery]
+  @docs("Cypher query to be run periodically while Recipe is running") statusQuery: Option[StatusQuery],
 ) {
   def isVersion(testVersion: Int): Boolean = version == testVersion
 }
@@ -106,7 +106,7 @@ object Recipe {
       def subs: ValidatedNel[UnboundVariableError, AwsCredentials] =
         (
           c.accessKeyId.subs,
-          c.secretAccessKey.subs
+          c.secretAccessKey.subs,
         ).mapN(AwsCredentials(_, _))
     }
     implicit class SubRegion(r: AwsRegion) {
@@ -125,13 +125,13 @@ object Recipe {
         case WriteToKafka(topic, bootstrapServers, format, properties) =>
           (
             topic.subs,
-            bootstrapServers.subs
+            bootstrapServers.subs,
           ).mapN(WriteToKafka(_, _, format, properties))
         case WriteToSNS(credentialsOpt, regionOpt, topic) =>
           (
             credentialsOpt.traverse(_.subs),
             regionOpt.traverse(_.subs),
-            topic.subs
+            topic.subs,
           ).mapN(WriteToSNS(_, _, _))
         case PrintToStandardOut(logLevel, logMode) =>
           Validated.valid(PrintToStandardOut(logLevel, logMode))
@@ -147,7 +147,7 @@ object Recipe {
               .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
           (
             query.subs,
-            andThen.traverse(_.subs)
+            andThen.traverse(_.subs),
           ).mapN(
             StandingQueryResultOutputUserDef.CypherQuery(
               _,
@@ -155,8 +155,8 @@ object Recipe {
               parallelism,
               _,
               allowAllNodeScan,
-              shouldRetry
-            )
+              shouldRetry,
+            ),
           )
         case WriteToKinesis(
               credentialsOpt,
@@ -166,12 +166,12 @@ object Recipe {
               kinesisParallelism,
               kinesisMaxBatchSize,
               kinesisMaxRecordsPerSecond,
-              kinesisMaxBytesPerSecond
+              kinesisMaxBytesPerSecond,
             ) =>
           (
             credentialsOpt.traverse(_.subs),
             regionOpt.traverse(_.subs),
-            streamName.subs
+            streamName.subs,
           ).mapN(
             WriteToKinesis(
               _,
@@ -181,8 +181,8 @@ object Recipe {
               kinesisParallelism,
               kinesisMaxBatchSize,
               kinesisMaxRecordsPerSecond,
-              kinesisMaxBytesPerSecond
-            )
+              kinesisMaxBytesPerSecond,
+            ),
           )
       }
     }
@@ -200,7 +200,7 @@ object Recipe {
               kafkaProperties,
               endingOffset,
               maximumPerSecond,
-              recordEncodingTypes
+              recordEncodingTypes,
             ) =>
           (
             bootstrapServers.subs
@@ -217,8 +217,8 @@ object Recipe {
               kafkaProperties,
               endingOffset,
               maximumPerSecond,
-              recordEncodingTypes
-            )
+              recordEncodingTypes,
+            ),
           )
         case KinesisIngest(
               format,
@@ -231,12 +231,12 @@ object Recipe {
               numRetries,
               maximumPerSecond,
               recordEncodingTypes,
-              _
+              _,
             ) =>
           (
             streamName.subs,
             credentials.traverse(_.subs),
-            region.traverse(_.subs)
+            region.traverse(_.subs),
           ).mapN(
             KinesisIngest(
               format,
@@ -249,8 +249,8 @@ object Recipe {
               numRetries,
               maximumPerSecond,
               recordEncodingTypes,
-              None
-            )
+              None,
+            ),
           )
 
         case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond, recordEncodingTypes) =>
@@ -266,12 +266,12 @@ object Recipe {
               regionOpt,
               deleteReadMessages,
               maximumPerSecond,
-              recordEncodingTypes
+              recordEncodingTypes,
             ) =>
           (
             queueUrl.subs,
             credentialsOpt.traverse(_.subs),
-            regionOpt.traverse(_.subs)
+            regionOpt.traverse(_.subs),
           ).mapN(
             SQSIngest(
               format,
@@ -282,8 +282,8 @@ object Recipe {
               _,
               deleteReadMessages,
               maximumPerSecond,
-              recordEncodingTypes
-            )
+              recordEncodingTypes,
+            ),
           )
         case WebsocketSimpleStartupIngest(
               format,
@@ -291,11 +291,11 @@ object Recipe {
               initMessages,
               keepAliveProtocol,
               parallelism,
-              encoding
+              encoding,
             ) =>
           (
             wsUrl.subs,
-            initMessages.toList.traverse(_.subs)
+            initMessages.toList.traverse(_.subs),
           ).mapN(
             WebsocketSimpleStartupIngest(
               format,
@@ -303,8 +303,8 @@ object Recipe {
               _,
               keepAliveProtocol,
               parallelism,
-              encoding
-            )
+              encoding,
+            ),
           )
         case FileIngest(
               format,
@@ -315,7 +315,7 @@ object Recipe {
               startAtOffset,
               ingestLimit,
               maximumPerSecond,
-              fileIngestMode
+              fileIngestMode,
             ) =>
           (
             path.subs
@@ -329,8 +329,8 @@ object Recipe {
               startAtOffset,
               ingestLimit,
               maximumPerSecond,
-              fileIngestMode
-            )
+              fileIngestMode,
+            ),
           )
         case i: S3Ingest => Validated.valid(i)
         case i: StandardInputIngest => Validated.valid(i)
@@ -347,8 +347,8 @@ object Recipe {
           outputsS <- sq.outputs.toList
             .traverse { case (k, v) => v.subs.map(k -> _) }
             .map(_.toMap)
-        } yield sq.copy(outputs = outputsS)
-      )
+        } yield sq.copy(outputs = outputsS),
+      ),
     ).mapN((iss, sqs) => recipe.copy(ingestStreams = iss, standingQueries = sqs))
   }
 
@@ -426,8 +426,8 @@ object Recipe {
       json <- Either
         .catchNonFatal(
           Using.resource(urlToRecipeContent.openStream)(inStream =>
-            circe.yaml.v12.Parser.default.parse(new YamlUnicodeReader(inStream)).leftMap(e => Seq(showError.show(e)))
-          )
+            circe.yaml.v12.Parser.default.parse(new YamlUnicodeReader(inStream)).leftMap(e => Seq(showError.show(e))),
+          ),
         )
         .leftMap {
           case _: FileNotFoundException => Seq(s"Cannot find recipe file at ${urlToRecipeContent.getFile}")
@@ -453,12 +453,12 @@ object Recipe {
   def validateRecipeCurrentVersion(recipe: Recipe): Either[Seq[String], Recipe] = Either.cond(
     recipe.isVersion(currentVersion),
     recipe,
-    Seq(s"The only supported Recipe version number is $currentVersion")
+    Seq(s"The only supported Recipe version number is $currentVersion"),
   )
 
   def validatedNelToEitherStrings[A, E](
     validatedNel: ValidatedNel[E, A],
-    showErrors: E => String
+    showErrors: E => String,
   ): Either[List[String], A] = validatedNel.leftMap(_.toList.map(showErrors)).toEither
 
   /** Fetch the recipe using the identifying string and then apply substitutions
@@ -472,7 +472,7 @@ object Recipe {
       recipe <- get(recipeIdentifyingString)
       substitutedRecipe <- validatedNelToEitherStrings[Recipe, UnboundVariableError](
         applySubstitutions(recipe, values),
-        e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}="
+        e => s"Missing required parameter ${e.name}; use --recipe-value ${e.name}=",
       )
     } yield substitutedRecipe
 

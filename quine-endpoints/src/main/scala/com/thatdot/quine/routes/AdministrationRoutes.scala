@@ -17,7 +17,7 @@ final case class QuineInfo(
   @docs("Current build git commit") gitCommit: Option[String],
   @docs("Current build commit date") gitCommitDate: Option[String],
   @docs("Java compilation version") javaVersion: String,
-  @docs("Persistence data format version") persistenceWriteVersion: String
+  @docs("Persistence data format version") persistenceWriteVersion: String,
 )
 
 @title("Metrics Counter")
@@ -25,7 +25,7 @@ final case class QuineInfo(
 @unnamed
 final case class Counter(
   @docs("Name of the metric being reported") name: String,
-  @docs("The value tracked by this counter") count: Long
+  @docs("The value tracked by this counter") count: Long,
 )
 
 @title("Metrics Numeric Gauge")
@@ -33,7 +33,7 @@ final case class Counter(
 @unnamed
 final case class NumericGauge(
   @docs("Name of the metric being reported") name: String,
-  @docs("The latest measurement recorded by this gauge") value: Double
+  @docs("The latest measurement recorded by this gauge") value: Double,
 )
 
 @title("Metrics Timer Summary")
@@ -50,14 +50,14 @@ final case class TimerSummary(
   @docs("First-quartile time") q1: Double,
   @docs("Third-quartile time") q3: Double,
   @docs(
-    "Average per-second rate of new events over the last one minute"
+    "Average per-second rate of new events over the last one minute",
   ) oneMinuteRate: Double,
   @docs("90th percentile time") `90`: Double,
   @docs("99th percentile time") `99`: Double,
   // pareto principle thresholds
   @docs("80th percentile time") `80`: Double,
   @docs("20th percentile time") `20`: Double,
-  @docs("10th percentile time") `10`: Double
+  @docs("10th percentile time") `10`: Double,
 )
 
 object MetricsReport {
@@ -75,25 +75,25 @@ final case class MetricsReport(
   @docs(
     "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds. " +
     "These are measured with wall time, and hence may be skewed by other system events outside our control like " +
-    "GC pauses or system load."
+    "GC pauses or system load.",
   ) timers: Seq[
-    TimerSummary
+    TimerSummary,
   ],
-  @docs("Gauges which report an instantaneously-sampled reading of a particular metric") gauges: Seq[NumericGauge]
+  @docs("Gauges which report an instantaneously-sampled reading of a particular metric") gauges: Seq[NumericGauge],
 )
 
 @title("Shard In-Memory Limits")
 @unnamed
 final case class ShardInMemoryLimit(
   @docs("Number of in-memory nodes past which shards will try to shut down nodes") softLimit: Int,
-  @docs("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int
+  @docs("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int,
 )
 
 @title("Graph hash code")
 @unnamed
 final case class GraphHashCode(
   @docs("Hash value derived from the state of the graph (nodes, properties, and edges)") value: Long,
-  @docs("Time value used to derive the graph hash code") atTime: Long
+  @docs("Time value used to derive the graph hash code") atTime: Long,
 )
 
 trait AdministrationRoutes
@@ -111,8 +111,8 @@ trait AdministrationRoutes
           gitCommit = Some("b416b354bd4d5d2a9fe39bc55153afd312260f29"),
           gitCommitDate = Some("2022-12-29T15:09:32-0500"),
           javaVersion = "OpenJDK 64-Bit Server VM 1.8.0_312 (Azul Systems, Inc.)",
-          persistenceWriteVersion = "10.1.0"
-        )
+          persistenceWriteVersion = "10.1.0",
+        ),
       )
 
   implicit final lazy val counterSchema: Record[Counter] = genericRecord[Counter]
@@ -141,7 +141,7 @@ trait AdministrationRoutes
       docs = EndpointDocs()
         .withSummary(Some("Build Information"))
         .withDescription(Some("""Returns a JSON object containing information about how Quine was built"""))
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final def config(configExample: Json): Endpoint[Unit, Json] =
@@ -160,10 +160,10 @@ trait AdministrationRoutes
               |Pekko HTTP option `org.apache.pekko.http.server.request-timeout` can be used to adjust the web
               |server request timeout of this REST API, but it won't show up in the response of this
               |endpoint.
-              |""".stripMargin
-          )
+              |""".stripMargin,
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val livenessProbe: Endpoint[Unit, Unit] =
@@ -177,10 +177,10 @@ trait AdministrationRoutes
             """This is a basic no-op endpoint for use when checking if the system is hung or responsive.
               | The intended use is for a process manager to restart the process if the app is hung (non-responsive).
               | It does not otherwise indicate readiness to handle data requests or system health.
-              | Returns a 204 response.""".stripMargin
-          )
+              | Returns a 204 response.""".stripMargin,
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val readinessProbe: Endpoint[Unit, Boolean] =
@@ -196,10 +196,10 @@ trait AdministrationRoutes
             """This indicates whether the system is fully up and ready to service user requests.
               |The intended use is for a load balancer to use this to know when the instance is
               |up ready and start routing user requests to it.
-              |""".stripMargin
-          )
+              |""".stripMargin,
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val metrics: Endpoint[Unit, MetricsReport] =
@@ -234,10 +234,10 @@ trait AdministrationRoutes
                 | - `memory.total`: JVM combined memory usage
                 | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
                 | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
-                |""".stripMargin
-          )
+                |""".stripMargin,
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val shutdown: Endpoint[Unit, Unit] =
@@ -246,14 +246,14 @@ trait AdministrationRoutes
       response = accepted(docs = Some("Shutdown initiated")),
       docs = EndpointDocs()
         .withSummary(
-          Some("Graceful Shutdown")
+          Some("Graceful Shutdown"),
         )
         .withDescription(
           Some(
-            "Initiate a graceful graph shutdown. Final shutdown may take a little longer."
-          )
+            "Initiate a graceful graph shutdown. Final shutdown may take a little longer.",
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val metaData: Endpoint[Unit, Map[String, BStr]] =
@@ -262,9 +262,9 @@ trait AdministrationRoutes
       response = ok(jsonResponse[Map[String, BStr]]),
       docs = EndpointDocs()
         .withSummary(
-          Some("fetch the persisted meta-data")
+          Some("fetch the persisted meta-data"),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val shardSizes: Endpoint[Map[Int, ShardInMemoryLimit], Map[Int, ShardInMemoryLimit]] = {
@@ -289,7 +289,7 @@ trait AdministrationRoutes
       request =
         post(admin / "shard-sizes", jsonOrYamlRequestWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)),
       response = ok(
-        jsonResponseWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap)
+        jsonResponseWithExample[Map[Int, ShardInMemoryLimit]](exampleShardMap),
       ),
       docs = EndpointDocs()
         .withSummary(Some("Shard Sizes"))
@@ -301,10 +301,10 @@ trait AdministrationRoutes
               |
               |To apply different values, apply your edits to the returned document and sent those values in
               |a new POST request.
-              |""".stripMargin
-          )
+              |""".stripMargin,
+          ),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
   }
 
@@ -317,7 +317,7 @@ trait AdministrationRoutes
         .withDescription(Some("""Attempt to put the specified node to sleep.
             |
             |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin))
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 
   final val graphHashCode: Endpoint[(AtTime, NamespaceParameter), GraphHashCode] =
@@ -335,8 +335,8 @@ trait AdministrationRoutes
                  |The timestamp defaults to the server's current clock time if not provided.
                  |
                  |Because this relies on historical nodes, results may be inconsistent if running on a configuration with
-                 |journals disabled.""".stripMargin)
+                 |journals disabled.""".stripMargin),
         )
-        .withTags(List(adminTag))
+        .withTags(List(adminTag)),
     )
 }

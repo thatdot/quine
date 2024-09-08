@@ -39,7 +39,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 
   abstract class LocalIngestTestContext[Q <: QuineValue](name: String, fileIngestFormat: FileIngestFormat)(implicit
-    val graph: CypherOpsGraph
+    val graph: CypherOpsGraph,
   ) {
 
     def source: Source[ByteString, NotUsed] =
@@ -59,7 +59,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         None,
         None,
         "local test",
-        None
+        None,
       )
 
     val probe: TestSubscriber.Probe[MasterStream.IngestSrcExecToken] =
@@ -107,8 +107,8 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val ctx = new LocalIngestTestContext[QuineValue.Map](
       "json",
       FileIngestFormat.CypherJson(
-        s"""MATCH (p) WHERE id(p) = idFrom('test','json', $$that.json) SET p.value = $$that RETURN (p)"""
-      )
+        s"""MATCH (p) WHERE id(p) = idFrom('test','json', $$that.json) SET p.value = $$that RETURN (p)""",
+      ),
     ) {
       override def writeValue(i: Int): Unit = writeBytes(s"${ujson.Obj("json" -> i.toString)}\n".getBytes())
 
@@ -124,8 +124,8 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
     val ctx = new LocalIngestTestContext[QuineValue.Str](
       "bytes",
       FileIngestFormat.CypherLine(
-        s"""MATCH (p) WHERE id(p) = idFrom('test','line', $$that) SET p.value = $$that RETURN (p)"""
-      )
+        s"""MATCH (p) WHERE id(p) = idFrom('test','line', $$that) SET p.value = $$that RETURN (p)""",
+      ),
     ) {
       override def writeValue(i: Int): Unit = writeBytes(s"===$i\n".getBytes())
 
@@ -145,8 +145,8 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       CypherCsv(
         s"""MATCH (p) WHERE id(p) = idFrom('test','csv', $$that.h2) SET p.value = $$that RETURN (p)""",
         "that",
-        Right(List("h1", "h2"))
-      )
+        Right(List("h1", "h2")),
+      ),
     ) {
       override def writeValue(i: Int): Unit = writeBytes(s"""A,$i\n""".getBytes)
 
@@ -167,14 +167,14 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         None,
         NumberIteratorIngest(
           FileIngestFormat.CypherLine(
-            s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)"""
+            s"""MATCH (x) WHERE id(x) = idFrom(toInteger($$that)) SET x.value = toInteger($$that)""",
           ),
           0,
           Some(11L),
           None,
-          10
+          10,
         ),
-        SwitchMode.Open
+        SwitchMode.Open,
       )
       .valueOr(_ => ???)
     val g = graph.asInstanceOf[LiteralOpsGraph]
@@ -189,13 +189,13 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
               Await.result(g.literalOps(namespace).getProps(idFrom(Expr.Integer(i.toLong))(graph.idProvider)), 1.second)
             assert(
               prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
-                QuineValue.Integer(i.toLong)
-              )
+                QuineValue.Integer(i.toLong),
+              ),
             )
           }
 
         },
-      10.seconds
+      10.seconds,
     )
   }
 
@@ -212,9 +212,9 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
           "UTF-8",
           10,
           1000,
-          None
+          None,
         ),
-        SwitchMode.Open
+        SwitchMode.Open,
       )
       .valueOr(_ => ???)
     val done = d.stream(namespace, _ => ()).toMat(Sink.ignore)(Keep.right).run()
@@ -232,12 +232,12 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         val prop: Map[Symbol, PropertyValue] = Await
           .result(
             g.literalOps(namespace).getProps(idFrom(Expr.Str("stdin"), Expr.Str(i.toString))(graph.idProvider)),
-            1.second
+            1.second,
           )
         assert(
           prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized == Success(
-            QuineValue.Str(i.toString)
-          )
+            QuineValue.Str(i.toString),
+          ),
         )
       }
     }

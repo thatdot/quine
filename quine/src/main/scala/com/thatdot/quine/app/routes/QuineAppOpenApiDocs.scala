@@ -81,7 +81,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protec
     standingCancel,
     standingGet,
     standingList,
-    standingPropagate
+    standingPropagate,
   )
 
   val api: OpenApi =
@@ -92,11 +92,11 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protec
             |and is included in Quine as fully interactive documentation. When running 
             |Quine, you can issue API calls directly from the embedded documentation pages.
             | 
-            |For docs, guides, and tutorials, please visit <https://quine.io>""".stripMargin
-        )
-      )
+            |For docs, guides, and tutorials, please visit <https://quine.io>""".stripMargin,
+        ),
+      ),
     )(
-      endpoints: _*
+      endpoints: _*,
     )
 
 }
@@ -118,14 +118,14 @@ final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: Uri)(implicit 
       get(
         path / "docs" / "openapi.json" /? qs[Option[Boolean]](
           "relative",
-          Some("Whether to use relative paths in the rendered API spec. Defaults to false.")
-        )
+          Some("Whether to use relative paths in the rendered API spec. Defaults to false."),
+        ),
       ),
       ok(
         jsonResponse[endpoints4s.openapi.model.OpenApi](
-          OpenApiRenderer(isEnterprise = false).stringEncoder
-        )
-      )
+          OpenApiRenderer(isEnterprise = false).stringEncoder,
+        ),
+      ),
     )
 
     docEndpoint.implementedBy { //noinspection MatchToPartialFunction

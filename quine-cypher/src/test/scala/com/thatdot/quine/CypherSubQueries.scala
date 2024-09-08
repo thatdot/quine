@@ -11,8 +11,8 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
       expectedRows = Seq(
         Vector(Expr.Integer(0L), Expr.Integer(0L)),
         Vector(Expr.Integer(1L), Expr.Integer(10L)),
-        Vector(Expr.Integer(2L), Expr.Integer(20L))
-      )
+        Vector(Expr.Integer(2L), Expr.Integer(20L)),
+      ),
     )
 
     testQuery(
@@ -39,8 +39,8 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
         Vector(Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(1L)),
         Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(0L)),
         Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
-        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L))
-      )
+        Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L)),
+      ),
     )
   }
 
@@ -64,8 +64,8 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
         Vector(Expr.Integer(28L), Expr.Integer(7L)),
         Vector(Expr.Integer(36L), Expr.Integer(8L)),
         Vector(Expr.Integer(45L), Expr.Integer(9L)),
-        Vector(Expr.Integer(55L), Expr.Integer(10L))
-      )
+        Vector(Expr.Integer(55L), Expr.Integer(10L)),
+      ),
     )
   }
 
@@ -74,7 +74,7 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
       "WITH 2 AS y CALL { RETURN 1 AS x } RETURN y",
       expectedColumns = Vector("y"),
       expectedRows = Seq(Vector(Expr.Integer(2L))),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -83,9 +83,9 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
       expectedRows = Seq(
         Vector(Expr.Integer(1L), Expr.Integer(2L)),
         Vector(Expr.Integer(2L), Expr.Integer(2L)),
-        Vector(Expr.Integer(3L), Expr.Integer(2L))
+        Vector(Expr.Integer(3L), Expr.Integer(2L)),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -107,8 +107,8 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
         Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(1L)),
         Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L)),
         Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
-        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L))
-      )
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L)),
+      ),
     )
 
     testQuery(
@@ -136,8 +136,8 @@ class CypherSubQueries extends CypherHarness("cypher-subqueries-tests") {
         Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(1L), Expr.Integer(2L)),
         Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
         Vector(Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(1L)),
-        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L))
-      )
+        Vector(Expr.Integer(4L), Expr.Integer(2L), Expr.Integer(2L), Expr.Integer(2L)),
+      ),
     )
   }
 }

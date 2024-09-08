@@ -8,7 +8,7 @@ import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
   * @param visited first part of key is lexicographically smaller endpoint, value is index
   */
 final case class VisitedVariableEdgeMatches private (
-  visited: Map[(QuineId, HalfEdge), Int]
+  visited: Map[(QuineId, HalfEdge), Int],
 ) {
 
   /** Number of edges in the set */

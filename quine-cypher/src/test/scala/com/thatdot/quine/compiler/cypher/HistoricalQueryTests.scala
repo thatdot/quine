@@ -37,7 +37,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
           attempts = 100,
           delay = 200.millis,
           graph.system.scheduler,
-          graph.system.dispatcher
+          graph.system.dispatcher,
         )
         _ = (t0 = Milliseconds.currentTime())
         _ <- pause()
@@ -61,7 +61,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
-      timeout.duration
+      timeout.duration,
     )
   }
 
@@ -69,7 +69,7 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     val queryResults = queryCypherValues(
       getNodeCypherQuery,
       namespace = cypherHarnessNamespace,
-      atTime = Some(time)
+      atTime = Some(time),
     )(graph)
     queryResults.results
       .toMat(Sink.seq)(Keep.right)
@@ -85,8 +85,8 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
     assertPropertiesAtTime(
       t1,
       Map(
-        Symbol("prop1") -> Expr.Integer(1L)
-      )
+        Symbol("prop1") -> Expr.Integer(1L),
+      ),
     )
   }
 
@@ -95,8 +95,8 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
       t2,
       Map(
         Symbol("prop1") -> Expr.Integer(1L),
-        Symbol("prop2") -> Expr.Integer(2L)
-      )
+        Symbol("prop2") -> Expr.Integer(2L),
+      ),
     )
   }
 
@@ -105,8 +105,8 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
       t3,
       Map(
         Symbol("prop1") -> Expr.Integer(1L),
-        Symbol("prop2") -> Expr.Integer(2L)
-      )
+        Symbol("prop2") -> Expr.Integer(2L),
+      ),
     )
   }
 
@@ -116,8 +116,8 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
       Map(
         Symbol("prop1") -> Expr.Integer(1L),
         Symbol("prop2") -> Expr.Integer(2L),
-        Symbol("prop3") -> Expr.Integer(3L)
-      )
+        Symbol("prop3") -> Expr.Integer(3L),
+      ),
     )
   }
 
@@ -127,8 +127,8 @@ class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
       Map(
         Symbol("prop1") -> Expr.Integer(1L),
         Symbol("prop2") -> Expr.Integer(2L),
-        Symbol("prop3") -> Expr.Integer(3L)
-      )
+        Symbol("prop3") -> Expr.Integer(3L),
+      ),
     )
   }
 }

@@ -14,7 +14,7 @@ import com.thatdot.quine.util.Log._
 class ShardedPersistor(
   shards: Vector[PersistenceAgent],
   val persistenceConfig: PersistenceConfig,
-  partitionFunction: QuineId => Int = _.hashCode
+  partitionFunction: QuineId => Int = _.hashCode,
 )(implicit val logConfig: LogConfig)
     extends PartitionedPersistenceAgent {
 
@@ -23,7 +23,7 @@ class ShardedPersistor(
   }
   require(
     allShardsAreInSameNamespace,
-    "Cannot instantiate ShardedPersistor with constituent PersistenceAgents from different namespaces."
+    "Cannot instantiate ShardedPersistor with constituent PersistenceAgents from different namespaces.",
   )
   require(shards.nonEmpty, "Cannot instantiate ShardedPersistor with no PersistenceAgents")
   val namespace: NamespaceId = shards.head.namespace

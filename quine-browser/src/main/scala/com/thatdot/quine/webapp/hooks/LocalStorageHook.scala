@@ -6,7 +6,7 @@ import slinky.core.facade.Hooks._
 object LocalStorageHook {
   def useLocalStorage(key: String, initialValue: String): (String, String => Unit) = {
     val (storedValue, setStoredValue) = useState(
-      window.localStorage.getItem(key)
+      window.localStorage.getItem(key),
     )
 
     val setValue = (value: String) => {

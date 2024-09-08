@@ -37,8 +37,8 @@ class CypherErrors extends CypherHarness("cypher-errors") {
             |  "UNWIND"
             |  "USE"
             |  "USING"
-            |  "WITH" (line 1, column 1 (offset: 0))""".stripMargin
-      )
+            |  "WITH" (line 1, column 1 (offset: 0))""".stripMargin,
+      ),
     )
   }
 
@@ -47,16 +47,16 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       "UNWIND [6, 0] AS p RETURN p / 0",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
-        operands = Seq(Expr.Integer(6L), Expr.Integer(0L))
-      )
+        operands = Seq(Expr.Integer(6L), Expr.Integer(0L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [-34, 1949] AS p WITH p + 9223372036854775800 AS N RETURN 1",
       CypherException.Arithmetic(
         wrapping = "long overflow",
-        operands = Seq(Expr.Integer(1949L), Expr.Integer(9223372036854775800L))
-      )
+        operands = Seq(Expr.Integer(1949L), Expr.Integer(9223372036854775800L)),
+      ),
     )
   }
 
@@ -67,9 +67,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       CypherException.Compile(
         wrapping = "Invalid use of UNWIND inside FOREACH",
         position = Some(
-          Position(1, 25, 24, SourceText(query1))
-        )
-      )
+          Position(1, 25, 24, SourceText(query1)),
+        ),
+      ),
     )
 
     val query2 = "CREATE (n)-[*]-(m)"
@@ -78,9 +78,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
       CypherException.Compile(
         wrapping = "Variable length relationships cannot be used in CREATE",
         position = Some(
-          Position(1, 11, 10, SourceText(query2))
-        )
-      )
+          Position(1, 11, 10, SourceText(query2)),
+        ),
+      ),
     )
   }
 
@@ -92,9 +92,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
         CypherException.Compile(
           wrapping = "Unsupported path expression",
           position = Some(
-            Position(1, 7, 6, SourceText(query1))
-          )
-        )
+            Position(1, 7, 6, SourceText(query1)),
+          ),
+        ),
       )
 
       val query2 = "MATCH p = (bob {name: 'Bob'})-[e:KNOWS*1..3]-(guy:Person) RETURN p"
@@ -103,9 +103,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
         CypherException.Compile(
           wrapping = "Unsupported path expression",
           position = Some(
-            Position(1, 7, 6, SourceText(query2))
-          )
-        )
+            Position(1, 7, 6, SourceText(query2)),
+          ),
+        ),
       )
     }
 
@@ -116,9 +116,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
         CypherException.Compile(
           wrapping = "Properties on edges are not yet supported",
           position = Some(
-            Position(1, 31, 30, SourceText(query))
-          )
-        )
+            Position(1, 31, 30, SourceText(query)),
+          ),
+        ),
       )
     }
 
@@ -130,9 +130,9 @@ class CypherErrors extends CypherHarness("cypher-errors") {
         CypherException.Compile(
           wrapping = "`shortestPath` planning in graph patterns is not supported",
           position = Some(
-            Position(1, 67, 66, SourceText(query))
-          )
-        )
+            Position(1, 67, 66, SourceText(query)),
+          ),
+        ),
       )
     }
   }

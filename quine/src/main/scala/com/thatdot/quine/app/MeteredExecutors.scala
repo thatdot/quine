@@ -8,7 +8,7 @@ import org.apache.pekko.dispatch.{
   ExecutorServiceConfigurator,
   ExecutorServiceFactory,
   ForkJoinExecutorConfigurator,
-  ThreadPoolExecutorConfigurator
+  ThreadPoolExecutorConfigurator,
 }
 
 import com.codahale.metrics.InstrumentedExecutorService
@@ -32,7 +32,7 @@ object MeteredExecutors extends LazySafeLogging {
     config: TypesafeConfig,
     prerequisites: DispatcherPrerequisites,
     underlying: ExecutorServiceConfigurator,
-    registry: HostQuineMetrics
+    registry: HostQuineMetrics,
   ) extends ExecutorServiceConfigurator(config, prerequisites)
       with LazySafeLogging {
     implicit protected def logConfig: LogConfig
@@ -47,9 +47,9 @@ object MeteredExecutors extends LazySafeLogging {
           ConfigWriter[TypesafeConfig]
             .to(config)
             .render(
-              ConfigRenderOptions.defaults().setComments(verbose).setOriginComments(false).setJson(false)
-            )
-        )}"
+              ConfigRenderOptions.defaults().setComments(verbose).setOriginComments(false).setJson(false),
+            ),
+        )}",
       )
     }
 
@@ -64,8 +64,8 @@ object MeteredExecutors extends LazySafeLogging {
               new InstrumentedExecutorService(
                 underlying.createExecutorServiceFactory(id, threadFactory).createExecutorService,
                 registry.metricRegistry,
-                id
-              )
+                id,
+              ),
           )
       }
   }
@@ -94,7 +94,7 @@ object MeteredExecutors extends LazySafeLogging {
 
     HostQuineMetrics(
       useEnhancedMetrics,
-      Metrics
+      Metrics,
     ) // INV the metrics instance here matches the one used by the app's Main
   }
 
@@ -107,12 +107,12 @@ object MeteredExecutors extends LazySafeLogging {
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L60-L75>
     */
   final class MeteredThreadPoolConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
-    protected val logConfig: LogConfig
+    protected val logConfig: LogConfig,
   ) extends Configurator(
         mergeConfigWithUnderlying(config, "thread-pool-executor"),
         prerequisites,
         new ThreadPoolExecutorConfigurator(mergeConfigWithUnderlying(config, "thread-pool-executor"), prerequisites),
-        quineMetrics(config)
+        quineMetrics(config),
       )
 
   /** An Executor that delegates execution to a Pekko [[ForkJoinExecutorConfigurator]], wrapped in an
@@ -124,15 +124,15 @@ object MeteredExecutors extends LazySafeLogging {
     * @see for metrics reported: <https://github.com/dropwizard/metrics/blob/00d1ca1a953be63c1490ddf052f65f2f0c3c45d3/metrics-core/src/main/java/com/codahale/metrics/InstrumentedExecutorService.java#L77-L85>
     */
   final class MeteredForkJoinConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
-    protected val logConfig: LogConfig
+    protected val logConfig: LogConfig,
   ) extends Configurator(
         mergeConfigWithUnderlying(config, "fork-join-executor"),
         prerequisites,
         new ForkJoinExecutorConfigurator(
           mergeConfigWithUnderlying(config, "fork-join-executor"),
-          prerequisites
+          prerequisites,
         ),
-        quineMetrics(config)
+        quineMetrics(config),
       )
 
   /** An Executor that delegates execution to a Pekko [[DefaultExecutorServiceConfigurator]], wrapped in an
@@ -144,25 +144,25 @@ object MeteredExecutors extends LazySafeLogging {
     *       default-executor.fallback is ignored in favor of MeteredForkJoin (chosen because the default value as of pekko 1.0.0 was fork-join-executor)
     */
   final class MeteredDefaultConfigurator(config: TypesafeConfig, prerequisites: DispatcherPrerequisites)(implicit
-    protected val logConfig: LogConfig
+    protected val logConfig: LogConfig,
   ) extends Configurator(
         mergeConfigWithUnderlying(config, "default-executor"),
         prerequisites, {
           if (prerequisites.defaultExecutionContext.isEmpty)
             logger.warn(
               safe"The default pekko executor should only be metered in conjunction with an explicit default executor" +
-              safe" (this may be set at pekko.actor.default-dispatcher.default-executor). Defaulting to fork-join"
+              safe" (this may be set at pekko.actor.default-dispatcher.default-executor). Defaulting to fork-join",
             )
           new DefaultExecutorServiceConfigurator(
             mergeConfigWithUnderlying(config, "default-executor"),
             prerequisites,
             new MeteredForkJoinConfigurator(
               config,
-              prerequisites
-            )
+              prerequisites,
+            ),
           )
         },
-        quineMetrics(config)
+        quineMetrics(config),
       )
 
   // AffinityPoolConfigurator is private and @ApiMayChange as of 2.6.16, so there is no MeteredAffinityPoolConfigurator

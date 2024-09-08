@@ -43,7 +43,7 @@ object NodeActorMailbox {
     StashedMessage.priority { // Lower priority is handled first
       case GoToSleep => 1
       case _ => 0
-    }
+    },
   )
 
   /** Which messages should be discarded if the node is sleeping or going to
@@ -128,7 +128,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
   /** Histogram of the mailbox sizes */
   val mailboxSizes: BinaryHistogramCounter = BinaryHistogramCounter(
     SharedMetricRegistries.getOrCreate(HostQuineMetrics.MetricsRegistryName),
-    MetricRegistry.name("node", "mailbox-sizes")
+    MetricRegistry.name("node", "mailbox-sizes"),
   )
 
   /** Find the message queue for a node. If that queue doesn't exist, create a
@@ -140,7 +140,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
   def getOrCreateMessageQueue(qid: SpaceTimeQuineId): NodeActorMailbox.NodeMessageQueue =
     messageQueues.computeIfAbsent(
       qid,
-      (_: SpaceTimeQuineId) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes)
+      (_: SpaceTimeQuineId) => new NodeActorMailbox.NodeMessageQueue(mailboxSizes),
     )
 
   /** Removes the message queue for a node if that queue is empty
@@ -154,7 +154,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
     val updatedQueue = messageQueues.compute(
       qid,
       (_: SpaceTimeQuineId, queue: NodeActorMailbox.NodeMessageQueue) =>
-        if ((queue eq null) || queue.hasMessages) queue else null
+        if ((queue eq null) || queue.hasMessages) queue else null,
     )
     updatedQueue eq null
   }
@@ -197,7 +197,7 @@ final class NodeActorMailboxExtensionImpl extends Extension {
           }
           newQueue.enqueue(null, envelope)
           newQueue
-        }
+        },
       )
       true
     }

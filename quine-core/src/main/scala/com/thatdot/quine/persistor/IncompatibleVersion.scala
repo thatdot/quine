@@ -10,7 +10,7 @@ package com.thatdot.quine.persistor
 class IncompatibleVersion(
   context: String,
   found: Version,
-  latest: Version
+  latest: Version,
 ) extends Exception(
-      s"Running application uses serialization format $latest for $context, which is incompatible with the currently-persisted $found"
+      s"Running application uses serialization format $latest for $context, which is incompatible with the currently-persisted $found",
     )

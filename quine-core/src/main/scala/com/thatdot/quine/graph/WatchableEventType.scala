@@ -37,7 +37,7 @@ object WatchableEventType {
     *            the branch provided
     */
   def extractWatchableEvents(
-    branch: DomainGraphBranch
+    branch: DomainGraphBranch,
   ): Set[WatchableEventType] = {
 
     /** Recursive helper to extract the StandingQueryLocalEvents as described.
@@ -48,13 +48,13 @@ object WatchableEventType {
       */
     def extractWatchables(
       branch: DomainGraphBranch,
-      acc: Seq[WatchableEventType] = Nil
+      acc: Seq[WatchableEventType] = Nil,
     ): Seq[WatchableEventType] = branch match {
       case SingleBranch(
             model.DomainNodeEquiv(_, localProps, circularEdges),
             id @ _,
             nextBranches,
-            _
+            _,
           ) =>
         (
           localProps.keys.view.map(WatchableEventType.PropertyChange) ++
@@ -99,7 +99,7 @@ final case class StandingQueryWatchableEventIndex(
   watchingForProperty: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForEdge: mutable.Map[Symbol, mutable.Set[EventSubscriber]],
   watchingForAnyEdge: mutable.Set[EventSubscriber],
-  watchingForAnyProperty: mutable.Set[EventSubscriber]
+  watchingForAnyProperty: mutable.Set[EventSubscriber],
 ) {
 
   /** Register a new SQ as being interested in a given event type and return an event to represent the  initial
@@ -117,7 +117,7 @@ final case class StandingQueryWatchableEventIndex(
     subscriber: EventSubscriber,
     eventType: WatchableEventType,
     properties: Map[Symbol, PropertyValue],
-    edges: EdgeCollectionView
+    edges: EdgeCollectionView,
   ): Seq[NodeChangeEvent] =
     eventType match {
       case WatchableEventType.PropertyChange(key) =>
@@ -173,7 +173,7 @@ final case class StandingQueryWatchableEventIndex(
     */
   def standingQueriesWatchingNodeEvent(
     event: NodeChangeEvent,
-    removeSubscriberPredicate: EventSubscriber => Boolean
+    removeSubscriberPredicate: EventSubscriber => Boolean,
   ): Unit = event match {
     case EdgeAdded(halfEdge) =>
       watchingForEdge
@@ -204,7 +204,7 @@ object StandingQueryWatchableEventIndex {
     def apply(sqIdTuple: (StandingQueryId, MultipleValuesStandingQueryPartId)): StandingQueryWithId =
       StandingQueryWithId(sqIdTuple._1, sqIdTuple._2)
     def apply(
-      dgnId: DomainGraphNodeId
+      dgnId: DomainGraphNodeId,
     ): DomainNodeIndexSubscription =
       DomainNodeIndexSubscription(dgnId)
   }
@@ -230,7 +230,7 @@ object StandingQueryWatchableEventIndex {
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
     mutable.Map.empty[Symbol, mutable.Set[EventSubscriber]],
     mutable.Set.empty[EventSubscriber],
-    mutable.Set.empty[EventSubscriber]
+    mutable.Set.empty[EventSubscriber],
   )
 
   /** Rebuild the part of the event index based on the provided query states and subscribers
@@ -243,8 +243,8 @@ object StandingQueryWatchableEventIndex {
     dgnRegistry: DomainGraphNodeRegistry,
     dgnSubscribers: Iterator[DomainGraphNodeId],
     multipleValuesStandingQueryStates: Iterator[
-      ((StandingQueryId, MultipleValuesStandingQueryPartId), MultipleValuesStandingQueryState)
-    ]
+      ((StandingQueryId, MultipleValuesStandingQueryPartId), MultipleValuesStandingQueryState),
+    ],
   ): (StandingQueryWatchableEventIndex, Iterable[DomainGraphNodeId]) = {
     val toReturn = StandingQueryWatchableEventIndex.empty
     val removed = Iterable.newBuilder[DomainGraphNodeId]

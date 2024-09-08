@@ -23,7 +23,7 @@ import com.thatdot.quine.graph.messaging.{
   ResultHandler,
   ShardMessage,
   ShardRef,
-  SpaceTimeQuineId
+  SpaceTimeQuineId,
 }
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
@@ -129,7 +129,7 @@ trait BaseGraph extends StrictSafeLogging {
   def relayTell(
     quineRef: QuineRef,
     message: QuineMessage,
-    originalSender: ActorRef = ActorRef.noSender
+    originalSender: ActorRef = ActorRef.noSender,
   ): Unit
 
   /** Route a message to some location in the Quine graph and return the answer
@@ -148,10 +148,10 @@ trait BaseGraph extends StrictSafeLogging {
   def relayAsk[Resp](
     quineRef: QuineRef,
     unattributedMessage: QuineRef => QuineMessage with AskableQuineMessage[Resp],
-    originalSender: ActorRef = ActorRef.noSender
+    originalSender: ActorRef = ActorRef.noSender,
   )(implicit
     timeout: Timeout,
-    resultHandler: ResultHandler[Resp]
+    resultHandler: ResultHandler[Resp],
   ): Future[Resp]
 
   /** @return whether the graph is in an operational state and ready to receive input like ingest, API calls, queries */
@@ -212,7 +212,7 @@ trait BaseGraph extends StrictSafeLogging {
   def requireBehavior[C: ClassTag, T: ClassTag]: Unit =
     if (!classTag[T].runtimeClass.isAssignableFrom(nodeStaticSupport.nodeClass.runtimeClass)) {
       throw new IllegalArgumentException(
-        s"${classTag[C].runtimeClass.getSimpleName} requires the type of nodes extend ${classTag[T].runtimeClass.getSimpleName}"
+        s"${classTag[C].runtimeClass.getSimpleName} requires the type of nodes extend ${classTag[T].runtimeClass.getSimpleName}",
       )
     }
 
@@ -244,7 +244,7 @@ trait BaseGraph extends StrictSafeLogging {
       val combinedSource = Source.futureSource {
         inMemoryNodesFut.map { (inMemoryNodes: Set[QuineId]) =>
           val persistorNodes = namespacePersistor(namespace).fold(Source.empty[QuineId])(
-            _.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains)
+            _.enumerateSnapshotNodeIds().filterNot(inMemoryNodes.contains),
           )
           Source(inMemoryNodes) ++ persistorNodes
         }(shardDispatcherEC)
@@ -273,7 +273,7 @@ trait BaseGraph extends StrictSafeLogging {
   def recentNodes(
     limit: Int,
     namespace: NamespaceId,
-    atTime: Option[Milliseconds] = None
+    atTime: Option[Milliseconds] = None,
   )(implicit timeout: Timeout): Future[Set[QuineId]] = {
     val shardAskSizes: List[Int] = {
       val n = shards.size
@@ -306,9 +306,9 @@ trait BaseGraph extends StrictSafeLogging {
     * @return mapping from every shard in the graph to their (possibly updated) in-memory limits
     */
   def shardInMemoryLimits(
-    updates: Map[Int, InMemoryNodeLimit]
+    updates: Map[Int, InMemoryNodeLimit],
   )(implicit
-    timeout: Timeout
+    timeout: Timeout,
   ): Future[Map[Int, Option[InMemoryNodeLimit]]] = {
 
     // Build up a list of messages to send (but wait to send them, in case we find `updates` was invalid)
@@ -332,7 +332,7 @@ trait BaseGraph extends StrictSafeLogging {
       Future
         .traverse(messages) { case (shardId, sendMessageToShard) =>
           sendMessageToShard().map { case ShardMessage.CurrentInMemoryLimits(limits) => shardId -> limits }(
-            shardDispatcherEC
+            shardDispatcherEC,
           )
         }(implicitly, shardDispatcherEC)
         .map(_.toMap)(shardDispatcherEC)
@@ -369,19 +369,19 @@ trait BaseGraph extends StrictSafeLogging {
     shards.foreach(shard => relayTell(shard.quineRef, message))
 
   def askAllShards[Resp](
-    message: QuineRef => QuineMessage with AskableQuineMessage[Resp]
+    message: QuineRef => QuineMessage with AskableQuineMessage[Resp],
   )(implicit
     timeout: Timeout,
-    resultHandler: ResultHandler[Resp]
+    resultHandler: ResultHandler[Resp],
   ): Future[Vector[Resp]] = Future.traverse(shards.toVector) { shard =>
     relayAsk(shard.quineRef, message)
   }(implicitly, shardDispatcherEC)
 
   def askLocalShards[Resp](
-    message: QuineRef => QuineMessage with AskableQuineMessage[Resp]
+    message: QuineRef => QuineMessage with AskableQuineMessage[Resp],
   )(implicit
     timeout: Timeout,
-    resultHandler: ResultHandler[Resp]
+    resultHandler: ResultHandler[Resp],
   ): Future[Vector[Resp]] = Future
     .sequence(shards.collect { case shard: LocalShardRef =>
       relayAsk(shard.quineRef, message)

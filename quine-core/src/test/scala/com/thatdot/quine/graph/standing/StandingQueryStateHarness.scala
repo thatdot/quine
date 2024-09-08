@@ -14,7 +14,7 @@ import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
   NodeChangeEvent,
   PropertyEvent,
-  QuineIdLongProvider
+  QuineIdLongProvider,
 }
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
@@ -34,7 +34,7 @@ final case class MultipleValuesStandingQueryEffectsTester(
   resultsReported: mutable.Queue[Seq[QueryContext]],
   executingNodeId: QuineId,
   idProvider: QuineIdProvider,
-  knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]
+  knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery],
 ) extends MultipleValuesStandingQueryEffects {
 
   var currentProperties: Map[Symbol, PropertyValue] = Map.empty
@@ -60,7 +60,7 @@ final case class MultipleValuesStandingQueryEffectsTester(
     resultsReported.isEmpty
 
   def lookupQuery(queryPartId: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = knownQueries(
-    queryPartId
+    queryPartId,
   )
 }
 object MultipleValuesStandingQueryEffectsTester {
@@ -73,7 +73,7 @@ object MultipleValuesStandingQueryEffectsTester {
   def empty(
     query: MultipleValuesStandingQuery,
     initiallyKnownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty,
-    idProvider: QuineIdProvider = QuineIdLongProvider()
+    idProvider: QuineIdProvider = QuineIdLongProvider(),
   ): MultipleValuesStandingQueryEffectsTester =
     new MultipleValuesStandingQueryEffectsTester(
       mutable.Queue.empty,
@@ -82,7 +82,7 @@ object MultipleValuesStandingQueryEffectsTester {
       idProvider.newQid(),
       idProvider,
       knownQueries =
-        mutable.Map(query.queryPartId -> query) ++= initiallyKnownQueries.map(sq => sq.queryPartId -> sq).toMap
+        mutable.Map(query.queryPartId -> query) ++= initiallyKnownQueries.map(sq => sq.queryPartId -> sq).toMap,
     )
 }
 
@@ -94,7 +94,7 @@ object MultipleValuesStandingQueryEffectsTester {
   */
 class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   final val query: S,
-  final val knownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty
+  final val knownQueries: Seq[MultipleValuesStandingQuery] = Seq.empty,
 ) extends Assertions {
   final val sqState: query.State = query.createState()
   final val effects: MultipleValuesStandingQueryEffectsTester =
@@ -105,7 +105,7 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   def testInvariants()(implicit pos: Position): Unit = ()
 
   def initialize[A](
-    initialProperties: Map[Symbol, PropertyValue] = Map.empty
+    initialProperties: Map[Symbol, PropertyValue] = Map.empty,
   )(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
     val initialPropertyEvents: Seq[NodeChangeEvent] = initialProperties.map { case (k, v) => PropertySet(k, v) }.toSeq
     effects.trackPropertyEffects(initialPropertyEvents)
@@ -124,13 +124,13 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     * @return output of the check
     */
   def reportNodeEvents[A](events: Seq[NodeChangeEvent], shouldHaveEffects: Boolean)(
-    thenCheck: MultipleValuesStandingQueryEffectsTester => A
+    thenCheck: MultipleValuesStandingQueryEffectsTester => A,
   )(implicit pos: Position): A = {
     // emulate deduplication behavior of nodes w.r.t propertyevents
     val finalEvents =
       if (events.forall(_.isInstanceOf[PropertyEvent]))
         AbstractNodeActor.internallyDeduplicatePropertyEvents(
-          events.collect { case pe: PropertyEvent => pe }.toList
+          events.collect { case pe: PropertyEvent => pe }.toList,
         )
       else events
     // emulate property processing
@@ -138,7 +138,7 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     val hadEffects = sqState.onNodeEvents(finalEvents, effects)
     assert(
       shouldHaveEffects == hadEffects,
-      "New node events did not have the expected effects analysis"
+      "New node events did not have the expected effects analysis",
     )
     testInvariants()
     thenCheck(effects)
@@ -152,12 +152,12 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     * @return output of the check
     */
   def reportNewSubscriptionResult[A](result: NewMultipleValuesStateResult, shouldHaveEffects: Boolean)(
-    thenCheck: MultipleValuesStandingQueryEffectsTester => A
+    thenCheck: MultipleValuesStandingQueryEffectsTester => A,
   )(implicit pos: Position): A = {
     val hadEffects = sqState.onNewSubscriptionResult(result, effects)
     assert(
       shouldHaveEffects == hadEffects,
-      "New node events did not have the expected effects analysis"
+      "New node events did not have the expected effects analysis",
     )
     testInvariants()
     thenCheck(effects)

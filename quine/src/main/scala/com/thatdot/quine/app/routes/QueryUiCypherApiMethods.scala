@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.cypher.{
   Expr => CypherExpr,
   RunningCypherQuery => CypherRunningQuery,
   Type => CypherType,
-  Value => CypherValue
+  Value => CypherValue,
 }
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model._
@@ -50,13 +50,13 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   final def queryCypherNodes(
     query: CypherQuery,
     namespace: NamespaceId,
-    atTime: Option[Milliseconds]
+    atTime: Option[Milliseconds],
   ): (Source[UiNode[QuineId], NotUsed], Boolean, Boolean) = {
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,
-      atTime = atTime
+      atTime = atTime,
     )
 
     val results = res.results
@@ -73,14 +73,14 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
             id = qid,
             hostIndex = hostIndex(qid),
             label = nodeLabel,
-            properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) }
+            properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) },
           )
 
         case other =>
           throw CypherException.TypeMismatch(
             expected = Seq(CypherType.Node),
             actualValue = other,
-            context = "node query return value"
+            context = "node query return value",
           )
       }
       .map(transformUiNode)
@@ -102,13 +102,13 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
-    requestTimeout: Duration = Duration.Inf
+    requestTimeout: Duration = Duration.Inf,
   ): (Source[UiEdge[QuineId], NotUsed], Boolean, Boolean) = {
     val res: CypherRunningQuery = cypher.queryCypherValues(
       query.text,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,
-      atTime = atTime
+      atTime = atTime,
     )
 
     val results = res.results
@@ -121,7 +121,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
           throw CypherException.TypeMismatch(
             expected = Seq(CypherType.Relationship),
             actualValue = other,
-            context = "edge query return value"
+            context = "edge query return value",
           )
       }
 
@@ -142,7 +142,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
   def queryCypherGeneric(
     query: CypherQuery,
     namespace: NamespaceId,
-    atTime: Option[Milliseconds]
+    atTime: Option[Milliseconds],
   ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
 
     // TODO: remove `PROFILE` here too
@@ -156,7 +156,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
       queryText,
       parameters = guessCypherParameters(query.parameters),
       namespace = namespace,
-      atTime = atTime
+      atTime = atTime,
     )
 
     if (!explainQuery) {
@@ -173,7 +173,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
 }
 
 class OSSQueryUiCypherMethods(quineGraph: LiteralOpsGraph with CypherOpsGraph)(implicit
-  protected val logConfig: LogConfig
+  protected val logConfig: LogConfig,
 ) extends QueryUiCypherApiMethods() {
   def hostIndex(qid: com.thatdot.quine.model.QuineId): Int = 0
   override def idProvider: QuineIdProvider = graph.idProvider

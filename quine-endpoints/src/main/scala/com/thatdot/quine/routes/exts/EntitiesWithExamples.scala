@@ -76,10 +76,10 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
             format = None,
             description = None,
             example = Some(ujson.Str(example)),
-            title = None
-          )
-        )
-      )
+            title = None,
+          ),
+        ),
+      ),
     )
 
   def textRequestWithExample(example: String): Map[String, MediaType] =
@@ -91,14 +91,14 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
             format = None,
             description = None,
             example = Some(ujson.Str(example)),
-            title = None
-          )
-        )
-      )
+            title = None,
+          ),
+        ),
+      ),
     )
 
   def yamlRequest[A](implicit codec: JsonSchema[A]): Map[String, MediaType] = Map(
-    "application/yaml" -> MediaType(Some(toSchema(codec.docs)))
+    "application/yaml" -> MediaType(Some(toSchema(codec.docs))),
   )
 
   def csvRequest: Map[String, MediaType] =
@@ -110,10 +110,10 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
             format = None,
             description = None,
             example = None,
-            title = None
-          )
-        )
-      )
+            title = None,
+          ),
+        ),
+      ),
     )
 
   def csvRequestWithExample(example: List[List[String]]): Map[String, MediaType] =
@@ -125,10 +125,10 @@ trait OpenApiEntitiesWithExamples extends EntitiesWithExamples with endpoints4s.
             format = None,
             description = None,
             example = Some(ujson.Str(renderCsv(example))),
-            title = None
-          )
-        )
-      )
+            title = None,
+          ),
+        ),
+      ),
     )
 
   def ServiceUnavailable = 503

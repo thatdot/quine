@@ -13,7 +13,7 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
   val testPersonBytes: Expr.Bytes = Expr.Bytes(bytesFromURL(testPersonFile))
   val testReadablePersonCypher: Expr.Map = Expr.Map(
     testReadablePerson
-      .fmap(Expr.fromQuineValue)
+      .fmap(Expr.fromQuineValue),
   )
   val testAnyZoneBytes: Expr.Bytes = Expr.Bytes(bytesFromURL(testAnyZone))
 
@@ -36,7 +36,7 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
       expectedIsReadOnly = false,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
   }
 
@@ -50,7 +50,7 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
     // from a property
     testQuery(
@@ -63,21 +63,21 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
     // from an invalid value
     testQuery(
       """CALL parseProtobuf($invalidBytes, $schemaUrl, "Person") YIELD value RETURN value AS personDeserialized""",
       parameters = Map(
         "invalidBytes" -> testPersonBytes.copy(b = testPersonBytes.b.updated(2, 0xFF.toByte)),
-        "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString)
+        "schemaUrl" -> Expr.Str(addressBookSchemaFile.toString),
       ),
       expectedColumns = Vector("personDeserialized"),
       expectedRows = Seq(Vector(Expr.Null)),
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
   }
   describe("toProtobuf procedure") {
@@ -94,7 +94,7 @@ class CypherProtobufConversionsTest extends CypherHarness("procedure-parse-proto
       expectedIsReadOnly = true,
       expectedCannotFail = false,
       expectedIsIdempotent = true,
-      expectedCanContainAllNodeScan = false
+      expectedCanContainAllNodeScan = false,
     )
   }
 }

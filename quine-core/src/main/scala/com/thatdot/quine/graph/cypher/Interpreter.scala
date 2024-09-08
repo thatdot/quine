@@ -28,7 +28,7 @@ import com.thatdot.quine.model.{
   PropertyValue,
   QuineId,
   QuineIdProvider,
-  QuineValue
+  QuineValue,
 }
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
@@ -42,10 +42,10 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
   implicit val self: ActorRef = ActorRef.noSender
   final def interpret(
     query: Query[Location.External],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     try query match {
       case query: Empty => interpretEmpty(query, context)
@@ -78,7 +78,7 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
 
   override private[quine] def interpretReturn(query: Return[Location.External], context: QueryContext)(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     query match {
       /** This query is potentially suitable for drop-based optimizations: It has either:
@@ -109,7 +109,7 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
             context,
             parameters,
             restartIfAppropriate = true,
-            _
+            _,
           ))).mapTo[Either[SkipOptimizationError, Source[QueryContext, NotUsed]]]
 
         Source.futureSource(requestedSource.map(_.left.map { err =>
@@ -118,7 +118,7 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
             log"QueryManagerActor refused to process query. Falling back to naive interpreter. " +
             log"Re-running the same query " +
             (if (err.retriable) log"may not " else log"will ") +
-            log"have the same result. Cause: ${err.msg}"
+            log"have the same result. Cause: ${err.msg}",
           )
           interpretRecursive(query.delegates.naiveStack, context)(parameters, logConfig)
         }.merge)(cypherEc))
@@ -128,9 +128,9 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
 
   final private[cypher] def interpretAnchoredEntry(
     query: AnchoredEntry,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
-    parameters: Parameters
+    parameters: Parameters,
   ): Source[QueryContext, _] = {
 
     val qids: Source[QuineId, Any] = query.entry match {
@@ -149,10 +149,10 @@ trait GraphExternalInterpreter extends CypherInterpreter[Location.External] with
 
   final private[cypher] def interpretArgumentEntry(
     query: ArgumentEntry,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val other: QuineId = getQuineId(query.node.eval(context)) match {
       case Some(other) => other
@@ -171,7 +171,7 @@ class AtTimeInterpreter(
   val graph: CypherOpsGraph,
   val namespace: NamespaceId,
   val atTime: Option[Milliseconds],
-  val bypassSkipOptimization: Boolean
+  val bypassSkipOptimization: Boolean,
 ) extends GraphExternalInterpreter {
 
   protected val cypherEc: ExecutionContext = graph.nodeDispatcherEC
@@ -219,10 +219,10 @@ trait OnNodeInterpreter
     */
   final def interpret(
     query: Query[Location.OnNode],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     try query match {
       case query: Empty => interpretEmpty(query, context)
@@ -271,10 +271,10 @@ trait OnNodeInterpreter
    */
   override private[quine] def interpretRecursive(
     query: Query[Location.OnNode],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     // TODO: This can be optimized by calling `interpret` here directly `if (!query.canDirectlyTouchNode)`, except
     //       that it must be guaranteed to be run single-threaded on an actor while a message is being processed.
@@ -286,18 +286,18 @@ trait OnNodeInterpreter
 
   final private[cypher] def interpretAnchoredEntry(
     query: AnchoredEntry,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
-    parameters: Parameters
+    parameters: Parameters,
   ): Source[QueryContext, _] =
     graph.cypherOps.continueQuery(query, parameters, namespace, atTime, context)
 
   final private[cypher] def interpretArgumentEntry(
     query: ArgumentEntry,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val evaled = query.node.eval(context)
     val other: QuineId = getQuineId(evaled) match {
@@ -332,10 +332,10 @@ trait OnNodeInterpreter
 
   final private[cypher] def interpretExpand(
     expand: Expand,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
 
     val myQid = qid
@@ -343,7 +343,7 @@ trait OnNodeInterpreter
 
     if (visited.size > graph.maxCypherExpandVisitedCount) {
       throw CypherException.Runtime(
-        s"Variable length relationship pattern exceeded maximum traversal length ${graph.maxCypherExpandVisitedCount} (update upper bound of length in relationship pattern)"
+        s"Variable length relationship pattern exceeded maximum traversal length ${graph.maxCypherExpandVisitedCount} (update upper bound of length in relationship pattern)",
       )
     }
 
@@ -362,7 +362,7 @@ trait OnNodeInterpreter
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Node),
           actualValue = otherVal,
-          context = "one extremity of an edge we are expanding to"
+          context = "one extremity of an edge we are expanding to",
         )
       }
     }
@@ -431,8 +431,8 @@ trait OnNodeInterpreter
                 query = andThen,
                 parameters = parameters,
                 context = newContext,
-                replyTo = ref
-              )
+                replyTo = ref,
+              ),
             )
           }
           .map(_.result)
@@ -445,12 +445,12 @@ trait OnNodeInterpreter
                 halfEdge = halfEdge.reflect(myQid),
                 action = None,
                 query = expand.copy(
-                  visited = visited.addEdge(myQid, halfEdge)
+                  visited = visited.addEdge(myQid, halfEdge),
                 ),
                 parameters = parameters,
                 context = context,
-                replyTo = ref
-              )
+                replyTo = ref,
+              ),
             )
           }
           .map(_.result)
@@ -487,10 +487,10 @@ trait OnNodeInterpreter
 
   final private[cypher] def interpretLocalNode(
     query: LocalNode,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val requiredPropsOpt: Option[Map[String, Value]] = query.propertiesOpt.map { expr =>
       expr.eval(context) match {
@@ -499,7 +499,7 @@ trait OnNodeInterpreter
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Map),
             actualValue = other,
-            context = "property map to check on a node"
+            context = "property map to check on a node",
           )
       }
     }
@@ -541,7 +541,7 @@ trait OnNodeInterpreter
   // TODO: check the other end of half edges?
   final private[cypher] def interpretGetDegree(
     query: GetDegree,
-    context: QueryContext
+    context: QueryContext,
   ): Source[QueryContext, _] = {
     val degree: Int = query.edgeName match {
       case None => edges.matching(query.direction).size
@@ -554,10 +554,10 @@ trait OnNodeInterpreter
 
   final private[cypher] def interpretSetProperty(
     query: SetProperty,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val newValue = query.newValue.map(_.eval(context)).filterNot(_ == Expr.Null)
     val event = newValue match {
@@ -590,10 +590,10 @@ trait OnNodeInterpreter
 
   final private[cypher] def interpretSetProperties(
     query: SetProperties,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val map: Map[Symbol, Value] = query.properties.eval(context) match {
       case Expr.Map(map) => map.map { case (k, v) => Symbol(k) -> v } // set n = {...} / n += {...}
@@ -603,7 +603,7 @@ trait OnNodeInterpreter
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Map, Type.Node, Type.Relationship),
           actualValue = otherVal,
-          context = "properties set on node"
+          context = "properties set on node",
         )
     }
 
@@ -662,10 +662,10 @@ trait OnNodeInterpreter
 
   final private[quine] def interpretSetEdge(
     query: SetEdge,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     // Figure out what the other end of the edge is
     val otherVal = query.target.eval(context)
@@ -673,7 +673,7 @@ trait OnNodeInterpreter
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Node),
         actualValue = otherVal,
-        context = "one extremity of an edge we are modifying"
+        context = "one extremity of an edge we are modifying",
       )
     }
 
@@ -699,7 +699,7 @@ trait OnNodeInterpreter
       query = query.andThen,
       parameters,
       newContext,
-      _
+      _,
     ))
 
     Source
@@ -765,10 +765,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
     */
   def interpret(
     query: Query[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _]
 
   /** When calling [[interpret]] recursively, if the call is not being done
@@ -784,10 +784,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
     */
   private[quine] def interpretRecursive(
     query: Query[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = interpret(query, context)
 
   private object ValueQid {
@@ -820,20 +820,20 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretEmpty(
     query: Empty,
-    context: QueryContext
+    context: QueryContext,
   ): Source[QueryContext, _] = Source.empty
 
   final private[quine] def interpretUnit(
     query: Unit,
-    context: QueryContext
+    context: QueryContext,
   ): Source[QueryContext, _] = Source.single(context)
 
   final private[quine] def interpretLoadCSV(
     query: LoadCSV,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     def splitCols(line: String): Array[String] = {
       val rowBuilder = Array.newBuilder[String]
@@ -893,7 +893,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
               .toMap
           }
           context + (query.variable -> lineMap)
-        }
+        },
       )
     } else {
       Source.fromIterator(() =>
@@ -902,7 +902,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             splitCols(line).toVector.map(Expr.Str)
           }
           context + (query.variable -> lineList)
-        }
+        },
       )
     }
 
@@ -911,10 +911,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretUnion(
     query: Union[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val lhsResult = interpret(query.unionLhs, context)
     val rhsResult = interpret(query.unionRhs, context)
@@ -923,10 +923,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretOr(
     query: Or[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val lhsResult = interpret(query.tryFirst, context)
     val rhsResult = interpret(query.trySecond, context)
@@ -935,10 +935,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretSemiApply[NextLocation <: Start](
     query: SemiApply[NextLocation],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val results = interpret(query.acceptIfThisSucceeds, context)
     val keepFut = query.inverted match {
@@ -953,20 +953,20 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[cypher] def interpretApply(
     query: Apply[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     interpret(query.startWithThis, context)
       .flatMapConcat(interpretRecursive(query.thenCrossWithThis, _))
 
   final private[quine] def interpretValueHashJoin(
     query: ValueHashJoin[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val lhsResults = interpret(query.joinLhs, context)
     val rhsResults = interpret(query.joinRhs, context)
@@ -988,10 +988,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretOptional[NextLocation <: Start](
     query: Optional[NextLocation],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val result = interpret(query.query, context)
     result.orElse(Source.single(context))
@@ -999,10 +999,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretFilter(
     query: Filter[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     interpret(query.toFilter, context).filter { (qc: QueryContext) =>
       /* This includes boolean expressions that are used as predicates in the
@@ -1018,10 +1018,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretSkip(
     query: Skip[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     // TODO: type error if number is not positive
     val skip = query.drop.eval(context).asLong("SKIP clause")
@@ -1030,10 +1030,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretLimit(
     query: Limit[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     // TODO: type error if number is not positive
     val limit = query.take.eval(context).asLong("LIMIT clause")
@@ -1042,10 +1042,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretSort(
     query: Sort[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val sourceToSort = interpret(query.toSort, context)
 
@@ -1061,7 +1061,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             new Iterator[QueryContext] {
               def hasNext = priorityQueue.nonEmpty
               def next() = priorityQueue.dequeue()
-            }
+            },
           )
         }
     }
@@ -1069,10 +1069,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   private[quine] def interpretReturn(
     query: Return[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     query match {
       case Return(toReturn, Some(orderBy), None, None, Some(take), columns @ _) =>
@@ -1097,7 +1097,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
                   new Iterator[QueryContext] {
                     def hasNext = !queue.isEmpty
                     def next() = queue.removeFirst()
-                  }
+                  },
                 )
                 .take(capacity)
             }
@@ -1108,10 +1108,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretDistinct(
     query: Distinct[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val sourceToDedup = interpret(query.toDedup, context)
 
@@ -1127,10 +1127,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretUnwind(
     query: Unwind[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
 
     /* Deciding how to unwind the value is a peculiar process. The Neo4j Cypher
@@ -1165,10 +1165,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   private[quine] def interpretAdjustContext(
     query: AdjustContext[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     interpret(query.adjustThis, context).map { (qc: QueryContext) =>
       val removed = query.dropExisting match {
@@ -1186,10 +1186,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
    */
   final private[quine] def interpretEagerAggregation(
     query: EagerAggregation[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val (criteriaSyms: Vector[Symbol], criteriaExprs: Vector[Expr]) = query.aggregateAlong.unzip
     val (aggregateSyms: Vector[Symbol], aggregators: Vector[Aggregator]) = query.aggregateWith.unzip
@@ -1217,7 +1217,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
           }
           .map { aggregateValues =>
             val newCtx = QueryContext(
-              aggregateSyms.zip(aggregateValues.map(_.result())).toMap
+              aggregateSyms.zip(aggregateValues.map(_.result())).toMap,
             )
             if (query.keepExisting) context ++ newCtx else newCtx
           }
@@ -1240,7 +1240,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             buckets.toVector.map { case (criteriaValues, aggregateValues) =>
               val newCtx = QueryContext(
                 criteriaSyms.zip(criteriaValues).toMap ++
-                aggregateSyms.zip(aggregateValues.map(_.result()))
+                aggregateSyms.zip(aggregateValues.map(_.result())),
               )
               if (query.keepExisting) context ++ newCtx else newCtx
             }
@@ -1251,10 +1251,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretDelete(
     query: Delete,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     query.toDelete.eval(context) match {
       case Expr.Null => Source.empty
@@ -1266,8 +1266,8 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
             case DeleteNodeCommand.Failed(n) =>
               Future.failed(
                 CypherException.ConstraintViolation(
-                  s"Node $qid cannot be deleted since it still has $n relationships."
-                )
+                  s"Node $qid cannot be deleted since it still has $n relationships.",
+                ),
               )
           }(cypherEc)
         Source.future(completed).map(_ => context)
@@ -1284,16 +1284,16 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Node, Type.Relationship, Type.Path),
           actualValue = otherVal,
-          context = "target for deletion"
+          context = "target for deletion",
         )
     }
 
   final private[quine] def interpretProcedureCall(
     query: ProcedureCall,
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
 
     // Remap the procedure outputs and add existing input columns
@@ -1316,10 +1316,10 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretSubQuery(
     query: SubQuery[Start],
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] =
     /* Variable scoping here is tricky:
      *
@@ -1332,7 +1332,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
 
   final private[quine] def interpretRecursiveSubquery(query: RecursiveSubQuery[Start], context: QueryContext)(implicit
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[QueryContext, _] = {
     val initialRecursiveContexts: Source[(QueryContext, Map[Symbol, Type]), _] =
       interpretRecursive(query.initialVariables.setup, context).map { primedRow =>
@@ -1366,7 +1366,7 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
           } yield CypherException.TypeMismatch(
             expected = Seq(expectedType),
             actualValue = value,
-            context = s"recursive subquery return value (variable `${plainVariable.name}`)"
+            context = s"recursive subquery return value (variable `${plainVariable.name}`)",
           )
 
           illegalTypes.headOption.foreach(throw _) // fail the query if there are any type errors

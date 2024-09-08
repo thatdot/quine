@@ -29,7 +29,7 @@ object AlgorithmMessage {
     returnParam: Double,
     inOutParam: Double,
     seedOpt: Option[String],
-    replyTo: QuineRef
+    replyTo: QuineRef,
   ) extends AlgorithmCommand
       with AskableQuineMessage[RandomWalkResult]
 
@@ -56,7 +56,7 @@ object AlgorithmMessage {
     prependAcc: List[String],
     validateHalfEdge: Option[HalfEdge],
     excludeOther: Set[QuineId],
-    reportTo: QuineRef
+    reportTo: QuineRef,
   ) extends AlgorithmCommand
 
   final case class RandomWalkResult(acc: List[String], didComplete: Boolean) extends AlgorithmMessage

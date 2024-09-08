@@ -18,14 +18,14 @@ object ProtobufSchemaError {
 
   class NoSuchMessageType(val typeName: String, val validTypes: Set[String])
       extends IllegalArgumentException(
-        s"No protobuf message descriptor found with name $typeName in discovered types: $validTypes"
+        s"No protobuf message descriptor found with name $typeName in discovered types: $validTypes",
       )
       with ProtobufSchemaMessageTypeException
 
   class AmbiguousMessageType(val typeName: String, val possibleMatches: Set[String])
       extends IllegalArgumentException(
         s"""Multiple protobuf message descriptors found with name $typeName.
-           |Consider using a fully-qualified name from among: $possibleMatches""".stripMargin.replace('\n', ' ')
+           |Consider using a fully-qualified name from among: $possibleMatches""".stripMargin.replace('\n', ' '),
       )
       with ProtobufSchemaMessageTypeException
 }

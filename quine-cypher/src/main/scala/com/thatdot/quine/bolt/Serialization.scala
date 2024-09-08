@@ -55,7 +55,7 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
   final private val structuredValues: Map[Byte, Structured[_ <: Value]] =
     List[Structured[_ <: Value]](
       Structured.NodeStructure,
-      Structured.RelationshipStructure
+      Structured.RelationshipStructure,
     ).map(s => s.signature -> s).toMap
 
   /** Given a de-serialization function acting on an iterator, read a value
@@ -66,16 +66,16 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
     * @return the extracted value
     */
   final def readFull[A](
-    readingFunction: ByteIterator => A
+    readingFunction: ByteIterator => A,
   )(
-    payload: ByteString
+    payload: ByteString,
   ): A = {
     val buf = payload.iterator
     val value: A = readingFunction(buf)
     if (buf.hasNext) {
       val offset = payload.length - buf.len
       throw new IllegalArgumentException(
-        s"Leftover bytes at offset $offset left over after reading $value"
+        s"Leftover bytes at offset $offset left over after reading $value",
       )
     }
     value
@@ -89,9 +89,9 @@ final case class Serialization()(implicit idProvider: QuineIdProvider) {
     * @return the bytes
     */
   final def writeFull[A](
-    writingFunction: (ByteStringBuilder, A) => Unit
+    writingFunction: (ByteStringBuilder, A) => Unit,
   )(
-    value: A
+    value: A,
   ): ByteString = {
     val buf = new ByteStringBuilder()
     writingFunction(buf, value)

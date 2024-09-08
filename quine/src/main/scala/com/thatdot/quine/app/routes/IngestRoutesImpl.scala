@@ -66,18 +66,18 @@ trait IngestStreamState {
     // support switching between v1 and v2 ingest. This will only be true when
     // called from the v2 api when starting quine with the v2 enabled flag set.
     // This should be removed when v1 api is removed.
-    useV2Ingest: Boolean = false
+    useV2Ingest: Boolean = false,
   ): Try[Boolean]
 
   def getIngestStream(
     name: String,
-    namespace: NamespaceId
+    namespace: NamespaceId,
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = getIngestStreams(namespace).get(name)
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
 
   protected def getIngestStreamsFromState(
-    namespace: NamespaceId
+    namespace: NamespaceId,
   )(implicit logConfig: LogConfig): Map[IngestName, IngestStreamWithControl[IngestStreamConfiguration]] =
     ingestStreams
       .getOrElse(namespace, Map.empty)
@@ -86,7 +86,7 @@ trait IngestStreamState {
         isc.settings match {
           case Left(v1) => isc.copy(settings = v1.asV1IngestStreamConfiguration)
           case Right(v2) => isc.copy(settings = v2)
-        }
+        },
       )
       .toMap
 
@@ -95,7 +95,7 @@ trait IngestStreamState {
   //TODO MAP + PERISTENCE
   def removeIngestStream(
     name: String,
-    namespace: NamespaceId
+    namespace: NamespaceId,
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]]
 }
 
@@ -134,7 +134,7 @@ final case class IngestStreamWithControl[+Conf](
   terminated: () => Future[Future[Done]],
   var close: () => Unit,
   var initialStatus: IngestStreamStatus,
-  var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None
+  var optWs: Option[(Sink[Json, NotUsed], IngestMeter)] = None,
 )(implicit logConfig: LogConfig)
     extends LazySafeLogging {
 
@@ -149,12 +149,12 @@ final case class IngestStreamWithControl[+Conf](
           logger.warn(log"Ingest stream: ${settings.toString} failed." withException e)
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
-      }
+      },
     )
   }
 
   private def pendingStatusFuture(
-    valveSwitch: ValveSwitch
+    valveSwitch: ValveSwitch,
   )(implicit materializer: Materializer): Future[IngestStreamStatus] = {
     /* Add a timeout to work around <https://github.com/akka/akka-stream-contrib/issues/119>
      *
@@ -174,7 +174,7 @@ final case class IngestStreamWithControl[+Conf](
         }(materializer.executionContext)
         .recover { case _: org.apache.pekko.stream.StreamDetachedException =>
           IngestStreamStatus.Terminated
-        }(materializer.executionContext)
+        }(materializer.executionContext),
     )
     materializer.system.scheduler.scheduleOnce(1.second) {
       val _ = theStatus.trySuccess(IngestStreamStatus.Terminated)
@@ -208,7 +208,7 @@ final case class IngestStreamWithControl[+Conf](
 final private[thatdot] case class IngestMetrics(
   startTime: Instant,
   private var completionTime: Option[Instant],
-  private var meter: IngestMetered
+  private var meter: IngestMetered,
 ) {
   def stop(completedAt: Instant): Unit = {
     completionTime = Some(completedAt)
@@ -223,7 +223,7 @@ final private[thatdot] case class IngestMetrics(
       meter.getOneMinuteRate,
       meter.getFiveMinuteRate,
       meter.getFifteenMinuteRate,
-      meter.getMeanRate
+      meter.getMeanRate,
     )
 
   def toEndpointResponse: IngestStreamStats = IngestStreamStats(
@@ -231,7 +231,7 @@ final private[thatdot] case class IngestMetrics(
     rates = meterToIngestRates(meter.counts),
     byteRates = meterToIngestRates(meter.bytes),
     startTime = startTime,
-    totalRuntime = millisSinceStart(completionTime getOrElse Instant.now)
+    totalRuntime = millisSinceStart(completionTime getOrElse Instant.now),
   )
 }
 
@@ -260,7 +260,7 @@ trait IngestRoutesImpl
     def addSettings(
       name: String,
       intoNamespace: NamespaceId,
-      settings: IngestStreamConfiguration
+      settings: IngestStreamConfiguration,
     ): Either[ClientErrors, Option[Unit]] =
       quineApp.addIngestStream(
         name,
@@ -269,13 +269,13 @@ trait IngestRoutesImpl
         previousStatus = None, // this ingest is being created, not restored, so it has no previous status
         shouldResumeRestoredIngests = false,
         timeout,
-        memberIdx = None
+        memberIdx = None,
       ) match {
         case Success(false) =>
           http400(
             endpoints4s.Invalid(
-              s"Cannot create ingest stream `$name` (a stream with this name already exists)"
-            )
+              s"Cannot create ingest stream `$name` (a stream with this name already exists)",
+            ),
           )
         case Success(true) => httpSuccess(())
         case Failure(_: NamespaceNotFoundException) => http404
@@ -289,13 +289,13 @@ trait IngestRoutesImpl
         KafkaSettingsValidator.validateInput(
           settings.kafkaProperties,
           settings.groupId,
-          settings.offsetCommitting
+          settings.offsetCommitting,
         ) match {
           case Some(errors) =>
             http400(
               endpoints4s.Invalid(
-                s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}"
-              )
+                s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}",
+              ),
             )
           case None => addSettings(ingestName, namespace, settings)
         }
@@ -319,8 +319,8 @@ trait IngestRoutesImpl
                 terminated,
                 close,
                 initialStatus @ _,
-                optWs @ _
-              )
+                optWs @ _,
+              ),
             ) =>
           val finalStatus = control.status.map { previousStatus =>
             import IngestStreamStatus._
@@ -342,7 +342,7 @@ trait IngestRoutesImpl
                   .map({ case Done => None })(graph.shardDispatcherEC)
                   .recover({ case e =>
                     Some(e.toString)
-                  })(graph.shardDispatcherEC)
+                  })(graph.shardDispatcherEC),
               )(graph.shardDispatcherEC)
           }
 
@@ -355,8 +355,8 @@ trait IngestRoutesImpl
                   newStatus,
                   message,
                   settings,
-                  metrics.toEndpointResponse
-                )
+                  metrics.toEndpointResponse,
+                ),
               )
             }(graph.shardDispatcherEC)
       }
@@ -378,7 +378,7 @@ trait IngestRoutesImpl
     graph.requiredGraphIsReadyFuture {
       Future
         .traverse(
-          quineApp.getIngestStreams(namespaceFromParam(namespaceParam)).toList
+          quineApp.getIngestStreams(namespaceFromParam(namespaceParam)).toList,
         ) { case (name, ingest) =>
           stream2Info(ingest).map(name -> _)(graph.shardDispatcherEC)
         }(implicitly, graph.shardDispatcherEC)

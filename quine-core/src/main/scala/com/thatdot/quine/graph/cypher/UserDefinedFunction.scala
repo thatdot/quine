@@ -65,7 +65,7 @@ abstract class UserDefinedFunction {
   */
 abstract class JavaUserDefinedFunction(
   override val name: String,
-  udfSignatures: java.lang.Iterable[UserDefinedFunctionSignature]
+  udfSignatures: java.lang.Iterable[UserDefinedFunctionSignature],
 ) extends UserDefinedFunction {
 
   /** Java API: How to call the UDF
@@ -92,7 +92,7 @@ abstract class JavaUserDefinedFunction(
 final case class UserDefinedFunctionSignature(
   arguments: Seq[(String, Type)],
   output: Type,
-  description: String
+  description: String,
 ) {
 
   /** Pretty-print the signature
@@ -118,7 +118,7 @@ object UserDefinedFunctionSignature {
   def create(
     arguments: java.lang.Iterable[Argument],
     output: Type,
-    description: String
+    description: String,
   ): UserDefinedFunctionSignature =
     apply(arguments.asScala.map(a => (a.name, a.input)).toSeq, output, description)
 }
@@ -130,5 +130,5 @@ object UserDefinedFunctionSignature {
   */
 final case class Argument(
   name: String,
-  input: Type
+  input: Type,
 )

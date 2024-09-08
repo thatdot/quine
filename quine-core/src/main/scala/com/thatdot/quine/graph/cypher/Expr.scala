@@ -48,11 +48,11 @@ sealed abstract class Expr {
     */
   @throws[CypherException]
   def eval(
-    context: QueryContext
+    context: QueryContext,
   )(implicit
     idProvider: QuineIdProvider,
     parameters: Parameters,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Value
 
   /** substitute all parameters in this expression and all descendants
@@ -429,7 +429,7 @@ object Expr {
   final case class Node(
     id: QuineId,
     labels: Set[Symbol],
-    properties: ScalaMap[Symbol, Value]
+    properties: ScalaMap[Symbol, Value],
   ) extends Value {
 
     def typ = Type.Node
@@ -453,7 +453,7 @@ object Expr {
     start: QuineId,
     name: Symbol,
     properties: ScalaMap[Symbol, Value],
-    end: QuineId
+    end: QuineId,
   ) extends Value {
 
     def typ = Type.Relationship
@@ -553,7 +553,7 @@ object Expr {
     }
 
     def toList: List = List(
-      head +: tails.flatMap { case (r, n) => Vector[Value](r, n) }
+      head +: tails.flatMap { case (r, n) => Vector[Value](r, n) },
     )
   }
 
@@ -658,7 +658,7 @@ object Expr {
     override def adjustInto[R <: Temporal](temporal: R, newValue: Long) =
       ChronoField.MILLI_OF_SECOND.adjustInto(
         ChronoField.INSTANT_SECONDS.adjustInto(temporal, newValue / 1000),
-        newValue % 1000
+        newValue % 1000,
       )
     override def isSupportedBy(temporal: TemporalAccessor) =
       temporal.isSupported(ChronoField.INSTANT_SECONDS) &&
@@ -688,7 +688,7 @@ object Expr {
     // "offsetMinutes" -> ???, TODO
     "offsetSeconds" -> ChronoField.OFFSET_SECONDS,
     "epochMillis" -> InstantMillis,
-    "epochSeconds" -> ChronoField.INSTANT_SECONDS
+    "epochSeconds" -> ChronoField.INSTANT_SECONDS,
   )
 
   // The set of temporal units we allow in a duration constructor (eg `WITH duration({years: 2}) AS d`)
@@ -704,7 +704,7 @@ object Expr {
     "seconds" -> ChronoUnit.SECONDS,
     "milliseconds" -> ChronoUnit.MILLIS,
     "microseconds" -> ChronoUnit.MICROS,
-    "nanoseconds" -> ChronoUnit.NANOS
+    "nanoseconds" -> ChronoUnit.NANOS,
   )
 
   /** A cypher duration
@@ -737,7 +737,7 @@ object Expr {
             Left(e)
           case unexpectedError => throw unexpectedError
         },
-        result => Right(Expr.Integer(result))
+        result => Right(Expr.Integer(result)),
       )
     }
   }
@@ -813,10 +813,10 @@ object Expr {
                 // stream's error handling mode.
                 logger.warn(
                   log"""Duration property access failed on duration value: ${d.toString} due to arithmetic
-                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e
+                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e,
                 )
                 Null
-              }
+              },
             )
             .merge
 
@@ -828,10 +828,10 @@ object Expr {
               Type.Relationship,
               Type.LocalDateTime,
               Type.DateTime,
-              Type.Duration
+              Type.Duration,
             ),
             actualValue = other,
-            context = "property access"
+            context = "property access",
           )
       }
   }
@@ -858,7 +858,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): DynamicProperty = copy(
       expr = expr.substitute(parameters),
-      keyExpr = keyExpr.substitute(parameters)
+      keyExpr = keyExpr.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -905,10 +905,10 @@ object Expr {
                 // stream's error handling mode.
                 logger.warn(
                   log"""Duration property access failed on duration value: ${d.toString} due to arithmetic
-                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e
+                       |exception. Current row: ${qc.pretty} Returning Null.""".cleanLines withException e,
                 )
                 Null
-              }
+              },
             )
             .merge
 
@@ -929,10 +929,10 @@ object Expr {
               Type.Relationship,
               Type.LocalDateTime,
               Type.DateTime,
-              Type.Duration
+              Type.Duration,
             ),
             actualValue = other,
-            context = "dynamic property access"
+            context = "dynamic property access",
           )
       }
   }
@@ -957,7 +957,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): ListSlice = copy(
       list = list.substitute(parameters),
       from = from.map(_.substitute(parameters)),
-      to = to.map(_.substitute(parameters))
+      to = to.map(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -985,7 +985,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.ListOfAnything),
             actualValue = other,
-            context = "list slice"
+            context = "list slice",
           )
       }
   }
@@ -1046,7 +1046,7 @@ object Expr {
     def cannotFail: Boolean = entries.values.forall(_.cannotFail)
 
     def substitute(parameters: ScalaMap[Parameter, Value]): MapLiteral = copy(
-      entries = entries.fmap(_.substitute(parameters))
+      entries = entries.fmap(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1067,7 +1067,7 @@ object Expr {
   final case class MapProjection(
     original: Expr,
     items: Seq[(String, Expr)],
-    includeAllProps: Boolean
+    includeAllProps: Boolean,
   ) extends Expr {
 
     def isPure: Boolean = original.isPure && items.forall(_._2.isPure)
@@ -1077,7 +1077,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): MapProjection = copy(
       original = original.substitute(parameters),
-      items = items.map { case (str, expr) => str -> expr.substitute(parameters) }
+      items = items.map { case (str, expr) => str -> expr.substitute(parameters) },
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
@@ -1093,7 +1093,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Map, Type.Node, Type.Relationship),
             actualValue = other,
-            context = "map projection"
+            context = "map projection",
           )
       }
       val droppedProperties: ScalaMap[String, Value] =
@@ -1116,7 +1116,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): PathExpression = copy(
-      nodeEdges = nodeEdges.map(_.substitute(parameters))
+      nodeEdges = nodeEdges.map(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
@@ -1145,7 +1145,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipStart = copy(
-      relationship = relationship.substitute(parameters)
+      relationship = relationship.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1157,7 +1157,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Relationship),
             actualValue = other,
-            context = "start of relationship"
+            context = "start of relationship",
           )
       }
   }
@@ -1174,7 +1174,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): RelationshipEnd = copy(
-      relationship = relationship.substitute(parameters)
+      relationship = relationship.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1186,7 +1186,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Relationship),
             actualValue = other,
-            context = "end of relationship"
+            context = "end of relationship",
           )
       }
   }
@@ -1209,7 +1209,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Equal = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1239,7 +1239,7 @@ object Expr {
             case a: ArithmeticException =>
               throw CypherException.Arithmetic(
                 wrapping = a.getMessage,
-                operands = Seq(n1, n2)
+                operands = Seq(n1, n2),
               )
           }
 
@@ -1247,13 +1247,13 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number),
             actualValue = other,
-            context = contextName
+            context = contextName,
           )
         case (other, _) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number),
             actualValue = other,
-            context = contextName
+            context = contextName,
           )
       }
   }
@@ -1276,7 +1276,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Subtract = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     @throws[ArithmeticException]("if the result overflows")
@@ -1291,7 +1291,7 @@ object Expr {
             case a: ArithmeticException =>
               throw CypherException.Arithmetic(
                 wrapping = a.getMessage,
-                operands = Seq(n1, n2)
+                operands = Seq(n1, n2),
               )
           }
 
@@ -1307,19 +1307,19 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number),
             actualValue = other,
-            context = "subtraction"
+            context = "subtraction",
           )
         case (_: DateTime | _: LocalDateTime | _: Duration, other) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Duration),
             actualValue = other,
-            context = "subtraction"
+            context = "subtraction",
           )
         case (other, _) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number, Type.LocalDateTime, Type.DateTime, Type.Duration),
             actualValue = other,
-            context = "subtraction"
+            context = "subtraction",
           )
       }
   }
@@ -1341,7 +1341,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Multiply = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     @inline
@@ -1367,7 +1367,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Divide = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     @inline
@@ -1391,7 +1391,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Modulo = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     @inline
@@ -1416,7 +1416,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Exponentiate = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     @inline
@@ -1448,7 +1448,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Add = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1467,7 +1467,7 @@ object Expr {
             case a: ArithmeticException =>
               throw CypherException.Arithmetic(
                 wrapping = a.getMessage,
-                operands = Seq(n1, n2)
+                operands = Seq(n1, n2),
               )
           }
 
@@ -1490,31 +1490,31 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number, Type.Str, Type.ListOfAnything),
             actualValue = other,
-            context = "addition"
+            context = "addition",
           )
         case (_: Number, other) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number, Type.Str, Type.ListOfAnything),
             actualValue = other,
-            context = "addition"
+            context = "addition",
           )
         case (_: DateTime | _: LocalDateTime, other) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Duration),
             actualValue = other,
-            context = "addition"
+            context = "addition",
           )
         case (_: Duration, other) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.LocalDateTime, Type.DateTime, Type.Duration),
             actualValue = other,
-            context = "addition"
+            context = "addition",
           )
         case (_, other) =>
           throw CypherException.TypeMismatch(
             expected = Seq(Type.ListOfAnything),
             actualValue = other,
-            context = "addition"
+            context = "addition",
           )
       }
   }
@@ -1536,7 +1536,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): UnaryAdd = copy(
-      argument = argument.substitute(parameters)
+      argument = argument.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Number =
@@ -1547,7 +1547,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number),
             actualValue = other,
-            context = "unary addition"
+            context = "unary addition",
           )
       }
   }
@@ -1568,7 +1568,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): UnarySubtract = copy(
-      argument = argument.substitute(parameters)
+      argument = argument.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Number =
@@ -1579,7 +1579,7 @@ object Expr {
             case a: ArithmeticException =>
               throw CypherException.Arithmetic(
                 wrapping = a.getMessage,
-                operands = Seq(n)
+                operands = Seq(n),
               )
           }
 
@@ -1587,7 +1587,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Number),
             actualValue = other,
-            context = "unary negation"
+            context = "unary negation",
           )
       }
   }
@@ -1611,7 +1611,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): GreaterEqual = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1640,7 +1640,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): LessEqual = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1669,7 +1669,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Greater = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1698,7 +1698,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Less = copy(
       lhs = lhs.substitute(parameters),
-      rhs = rhs.substitute(parameters)
+      rhs = rhs.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1729,7 +1729,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): InList = copy(
       element = element.substitute(parameters),
-      list = list.substitute(parameters)
+      list = list.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1743,7 +1743,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.ListOfAnything),
             actualValue = other,
-            context = "list containment"
+            context = "list containment",
           )
       }
   }
@@ -1765,7 +1765,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): StartsWith = copy(
       scrutinee = scrutinee.substitute(parameters),
-      startsWith = startsWith.substitute(parameters)
+      startsWith = startsWith.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1792,7 +1792,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): EndsWith = copy(
       scrutinee = scrutinee.substitute(parameters),
-      endsWith = endsWith.substitute(parameters)
+      endsWith = endsWith.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1819,7 +1819,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Contains = copy(
       scrutinee = scrutinee.substitute(parameters),
-      contained = contained.substitute(parameters)
+      contained = contained.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1852,7 +1852,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Regex = copy(
       scrutinee = scrutinee.substitute(parameters),
-      regex = regex.substitute(parameters)
+      regex = regex.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1877,7 +1877,7 @@ object Expr {
     def cannotFail: Boolean = notNull.cannotFail
 
     def substitute(parameters: ScalaMap[Parameter, Value]): IsNotNull = copy(
-      notNull = notNull.substitute(parameters)
+      notNull = notNull.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1902,7 +1902,7 @@ object Expr {
     def cannotFail: Boolean = isNull.cannotFail
 
     def substitute(parameters: ScalaMap[Parameter, Value]): IsNull = copy(
-      isNull = isNull.substitute(parameters)
+      isNull = isNull.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1929,7 +1929,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Not = copy(
-      negated = negated.substitute(parameters)
+      negated = negated.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -1939,7 +1939,7 @@ object Expr {
           throw CypherException.TypeMismatch(
             expected = Seq(Type.Bool),
             actualValue = other,
-            context = "logical NOT"
+            context = "logical NOT",
           )
       }
   }
@@ -1962,7 +1962,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): And = copy(
-      conjuncts = conjuncts.map(_.substitute(parameters))
+      conjuncts = conjuncts.map(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -1973,7 +1973,7 @@ object Expr {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Bool),
               actualValue = other,
-              context = "operand of logical AND"
+              context = "operand of logical AND",
             )
         }
       }
@@ -1997,7 +1997,7 @@ object Expr {
     def cannotFail: Boolean = false
 
     def substitute(parameters: ScalaMap[Parameter, Value]): Or = copy(
-      disjuncts = disjuncts.map(_.substitute(parameters))
+      disjuncts = disjuncts.map(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -2008,7 +2008,7 @@ object Expr {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Bool),
               actualValue = other,
-              context = "operand of logical OR"
+              context = "operand of logical OR",
             )
         }
       }
@@ -2027,7 +2027,7 @@ object Expr {
   final case class Case(
     scrutinee: Option[Expr],
     branches: Vector[(Expr, Expr)],
-    default: Option[Expr]
+    default: Option[Expr],
   ) extends Expr {
 
     def isPure: Boolean = scrutinee.forall(_.isPure) &&
@@ -2040,7 +2040,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): Case = copy(
       scrutinee = scrutinee.map(_.substitute(parameters)),
       branches = branches.map { case (l, r) => l.substitute(parameters) -> r.substitute(parameters) },
-      default = default.map(_.substitute(parameters))
+      default = default.map(_.substitute(parameters)),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = {
@@ -2065,7 +2065,7 @@ object Expr {
     */
   final case class Function(
     function: Func,
-    arguments: Vector[Expr]
+    arguments: Vector[Expr],
   ) extends Expr {
 
     // TODO function purity should be determined per-signature, not per-function name
@@ -2103,7 +2103,7 @@ object Expr {
     variable: Symbol,
     list: Expr,
     filterPredicate: Expr,
-    extract: Expr
+    extract: Expr,
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure && extract.isPure
@@ -2113,7 +2113,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): ListComprehension = copy(
       list = list.substitute(parameters),
       filterPredicate = filterPredicate.substitute(parameters),
-      extract = extract.substitute(parameters)
+      extract = extract.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): List =
@@ -2129,7 +2129,7 @@ object Expr {
               case _ => None // TODO: should we throw if we don't find a Bool?
             }
           }
-          .toVector
+          .toVector,
       )
   }
 
@@ -2149,7 +2149,7 @@ object Expr {
   final case class AllInList(
     variable: Symbol,
     list: Expr,
-    filterPredicate: Expr
+    filterPredicate: Expr,
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
@@ -2159,7 +2159,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): AllInList = copy(
       list = list.substitute(parameters),
-      filterPredicate = filterPredicate.substitute(parameters)
+      filterPredicate = filterPredicate.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -2173,7 +2173,7 @@ object Expr {
               throw CypherException.TypeMismatch(
                 expected = Seq(Type.Bool),
                 actualValue = other,
-                context = "predicate in `all`"
+                context = "predicate in `all`",
               )
           }
         }
@@ -2195,7 +2195,7 @@ object Expr {
   final case class AnyInList(
     variable: Symbol,
     list: Expr,
-    filterPredicate: Expr
+    filterPredicate: Expr,
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
@@ -2205,7 +2205,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): AnyInList = copy(
       list = list.substitute(parameters),
-      filterPredicate = filterPredicate.substitute(parameters)
+      filterPredicate = filterPredicate.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool =
@@ -2219,7 +2219,7 @@ object Expr {
               throw CypherException.TypeMismatch(
                 expected = Seq(Type.Bool),
                 actualValue = other,
-                context = "predicate in `any`"
+                context = "predicate in `any`",
               )
           }
         }
@@ -2241,7 +2241,7 @@ object Expr {
   final case class SingleInList(
     variable: Symbol,
     list: Expr,
-    filterPredicate: Expr
+    filterPredicate: Expr,
   ) extends Expr {
 
     def isPure: Boolean = list.isPure && filterPredicate.isPure
@@ -2251,7 +2251,7 @@ object Expr {
 
     def substitute(parameters: ScalaMap[Parameter, Value]): SingleInList = copy(
       list = list.substitute(parameters),
-      filterPredicate = filterPredicate.substitute(parameters)
+      filterPredicate = filterPredicate.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Bool = {
@@ -2267,7 +2267,7 @@ object Expr {
               throw CypherException.TypeMismatch(
                 expected = Seq(Type.Bool),
                 actualValue = other,
-                context = "predicate in `single`"
+                context = "predicate in `single`",
               )
           }
         }
@@ -2303,7 +2303,7 @@ object Expr {
     initial: Expr,
     variable: Symbol,
     list: Expr,
-    reducer: Expr
+    reducer: Expr,
   ) extends Expr {
 
     def isPure: Boolean = initial.isPure && list.isPure && reducer.isPure
@@ -2314,7 +2314,7 @@ object Expr {
     def substitute(parameters: ScalaMap[Parameter, Value]): ReduceList = copy(
       initial = initial.substitute(parameters),
       list = list.substitute(parameters),
-      reducer = reducer.substitute(parameters)
+      reducer = reducer.substitute(parameters),
     )
 
     override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value =
@@ -2369,7 +2369,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Integer),
         actualValue = other,
-        context
+        context,
       )
   }
   def asNumber(context: String): Double = this match {
@@ -2378,7 +2378,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Number),
         actualValue = other,
-        context
+        context,
       )
   }
 
@@ -2389,7 +2389,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Str),
         actualValue = other,
-        context
+        context,
       )
   }
 
@@ -2400,7 +2400,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.ListOfAnything),
         actualValue = other,
-        context
+        context,
       )
   }
 
@@ -2411,7 +2411,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Map),
         actualValue = other,
-        context
+        context,
       )
   }
 
@@ -2421,7 +2421,7 @@ sealed abstract class Value extends Expr {
       throw CypherException.TypeMismatch(
         expected = Seq(Type.Duration),
         actualValue = other,
-        str
+        str,
       )
   }
 
@@ -2429,7 +2429,7 @@ sealed abstract class Value extends Expr {
   def getField(context: String)(fieldName: String): Value =
     asMap(context).getOrElse(
       fieldName,
-      throw CypherException.NoSuchField(fieldName, asMap(context).keySet, context)
+      throw CypherException.NoSuchField(fieldName, asMap(context).keySet, context),
     )
 
   override def eval(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Value = this
@@ -2470,15 +2470,15 @@ sealed abstract class Value extends Expr {
 
     case _: Expr.Node =>
       throw new IllegalArgumentException(
-        s"Value.toAny: node input not supported ${this.pretty}"
+        s"Value.toAny: node input not supported ${this.pretty}",
       )
     case _: Expr.Relationship =>
       throw new IllegalArgumentException(
-        s"Value.toAny: relationship input not supported ${this.pretty}"
+        s"Value.toAny: relationship input not supported ${this.pretty}",
       )
     case _: Expr.Path =>
       throw new IllegalArgumentException(
-        s"Value.toAny: path input not supported ${this.pretty}"
+        s"Value.toAny: path input not supported ${this.pretty}",
       )
 
     case Expr.List(cypherList) => cypherList.map(_.toAny)
@@ -2577,7 +2577,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
 
       // Booleans: `false < true`
@@ -2589,7 +2589,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Bool),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
 
       // Numbers: `NaN` is larger than all others
@@ -2605,7 +2605,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Number),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
 
       // Dates
@@ -2614,14 +2614,14 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.LocalDateTime),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
       case (Expr.DateTime(i1), Expr.DateTime(i2)) => Some(i1.compareTo(i2))
       case (_: Expr.DateTime, other) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.DateTime),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
 
       // Duration
@@ -2630,7 +2630,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Duration),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
       case (Expr.Map(m1), Expr.Map(m2)) =>
         if (m1.valuesIterator.contains(Expr.Null) || m2.valuesIterator.contains(Expr.Null)) {
@@ -2643,14 +2643,14 @@ object Value {
               .map { case (entry1, entry2) => sortedMapEntryOrdering.compare(entry1, entry2) }
               .dropWhile(_ == 0)
               .headOption
-              .getOrElse(JavaInteger.compare(m1.size, m2.size))
+              .getOrElse(JavaInteger.compare(m1.size, m2.size)),
           )
         }
       case (_: Expr.Map, other) =>
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Map),
           actualValue = other,
-          context = "right-hand side of a comparison"
+          context = "right-hand side of a comparison",
         )
 
       // TODO: Compare lists, possibly more
@@ -2660,7 +2660,7 @@ object Value {
         throw CypherException.TypeMismatch(
           expected = Seq(Type.Str, Type.Bool, Type.Number, Type.Duration, Type.LocalDateTime, Type.DateTime),
           actualValue = other,
-          context = "left-hand side of a comparison"
+          context = "left-hand side of a comparison",
         )
     }
   }
@@ -2903,7 +2903,7 @@ object Value {
           case key: String => builder += key -> fromAny(elem)
           case other =>
             throw new IllegalArgumentException(
-              s"Value.fromAny: non-string key in map $other"
+              s"Value.fromAny: non-string key in map $other",
             )
         }
       Expr.Map(builder.result())
@@ -2919,7 +2919,7 @@ object Value {
 
     case other =>
       throw new IllegalArgumentException(
-        s"Value.fromAny: unexpected Java value $other"
+        s"Value.fromAny: unexpected Java value $other",
       )
   }
 
@@ -2948,7 +2948,7 @@ object Value {
       },
     (s: String) => Expr.Str(s),
     (u: Seq[Json]) => Expr.List(u.map(fromJson): _*),
-    (m: JsonObject) => Expr.Map(m.toMap.fmap(fromJson))
+    (m: JsonObject) => Expr.Map(m.toMap.fmap(fromJson)),
   )
 
   /** Encode a Cypher value into JSON
@@ -2981,14 +2981,14 @@ object Value {
       Json.obj(
         "id" -> Json.fromString(qid.pretty),
         "labels" -> Json.fromValues(labels.map(sym => Json.fromString(sym.name))),
-        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2))))
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2)))),
       )
     case Expr.Relationship(start, name, props, end) =>
       Json.obj(
         "start" -> Json.fromString(start.pretty),
         "end" -> Json.fromString(end.pretty),
         "name" -> Json.fromString(name.name),
-        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2))))
+        "properties" -> Json.fromFields(props.map(kv => (kv._1.name, toJson(kv._2)))),
       )
     case path: Expr.Path => toJson(path.toList)
   }
@@ -2999,7 +2999,7 @@ object Value {
   *  @param params parameters that are held constant throughout the query
   */
 final case class Parameters(
-  params: IndexedSeq[Value]
+  params: IndexedSeq[Value],
 )
 object Parameters {
   val empty: Parameters = Parameters(IndexedSeq.empty)

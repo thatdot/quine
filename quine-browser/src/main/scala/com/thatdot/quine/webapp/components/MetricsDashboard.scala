@@ -32,7 +32,7 @@ object MetricsDashboard {
     errorMessage: Option[String],
     metrics: MetricsReport,
     shardSizes: Map[Int, ShardInMemoryLimit],
-    advanced: Boolean
+    advanced: Boolean,
   )
 
   override def initialState: State = State(
@@ -40,7 +40,7 @@ object MetricsDashboard {
     errorMessage = None,
     metrics = MetricsReport.empty,
     shardSizes = Map.empty,
-    advanced = false
+    advanced = false,
   )
 
   override def componentDidMount(): Unit = {
@@ -64,8 +64,8 @@ object MetricsDashboard {
         setState(
           _.copy(
             errorMessage = Some(errorMsg),
-            refresh = Some(pollMetrics())
-          )
+            refresh = Some(pollMetrics()),
+          ),
         )
 
       case Success((newMetrics, newShardSizes)) =>
@@ -74,8 +74,8 @@ object MetricsDashboard {
             errorMessage = None,
             refresh = Some(pollMetrics()),
             metrics = newMetrics,
-            shardSizes = newShardSizes
-          )
+            shardSizes = newShardSizes,
+          ),
         )
     }
   }
@@ -119,8 +119,8 @@ object MetricsDashboard {
             name = "MB",
             value = currGaugeVal,
             softMax = maxGaugeVal,
-            hardMax = maxGaugeVal
-          )
+            hardMax = maxGaugeVal,
+          ),
         )
         title -> card
       }
@@ -151,7 +151,7 @@ object MetricsDashboard {
         }
 
     div(
-      style := js.Dynamic.literal(padding = "1em")
+      style := js.Dynamic.literal(padding = "1em"),
     )(
       h2(className := "px-3")("System Dashboard"),
       // aesthetic invariant: each `col` will have `mt-3`
@@ -168,60 +168,60 @@ object MetricsDashboard {
                   onChange := { event =>
                     val newCheckedState = event.currentTarget.checked
                     setState(_.copy(advanced = newCheckedState))
-                  }
-                )
-              )
-            )
-          )
+                  },
+                ),
+              ),
+            ),
+          ),
         ), // end header row
         div(key := "error-row", className := "row")( // error row
           state.errorMessage.toList.map(msg =>
-            div(className := "col-12 mt-3", style := js.Dynamic.literal(color = "red"))(msg)
-          ): _*
+            div(className := "col-12 mt-3", style := js.Dynamic.literal(color = "red"))(msg),
+          ): _*,
         ),
         div( // memory info row
           key := "memory-info-row",
-          className := "row"
+          className := "row",
         )(
           extractMemoryCards().map { case (keyTitle: String, memoryCard: ReactElement) =>
             div(key := keyTitle, className := "col-12 col-md-6 col-xl-3 mt-3")(
-              memoryCard
+              memoryCard,
             )
-          }
+          },
         ), // end memory info row
         div( // shard info row
           key := "shard-info-row",
-          className := "row"
+          className := "row",
         )(
           shardInfos.map { case (shardId: Int, shardInfoCard: ReactElement) =>
             div(key := s"shard-$shardId", className := "col-12 col-md-6 col-xl-3 mt-3")(
-              shardInfoCard
+              shardInfoCard,
             )
-          }
+          },
         ), // end shard info row
         div( // binary histograms row
           key := "binary-histograms-row",
-          className := "row"
+          className := "row",
         )(
           histograms.map { case (keyTitle: String, histogramCard: ReactElement) =>
             div(
               key := keyTitle,
-              className := "col-12 col-md-6 mt-3"
+              className := "col-12 col-md-6 mt-3",
             )(histogramCard)
-          }
+          },
         ), // end histograms row
         div( // timers row
           key := "timers-row",
-          className := "row"
+          className := "row",
         )(
           timers.map { case (keyTitle: String, timerCard: ReactElement) =>
             div(
               key := keyTitle,
-              className := "col-12 col-md-6 col-xl-3 mt-3"
+              className := "col-12 col-md-6 col-xl-3 mt-3",
             )(timerCard)
-          }
-        ) // end timers row
-      )
+          },
+        ), // end timers row
+      ),
     )
   }
 }

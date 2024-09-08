@@ -25,7 +25,7 @@ final case class Tab(
   path: String,
   page: facade.ReactElement,
   baseURI: String,
-  mountFunction: Option[() => Unit] = None
+  mountFunction: Option[() => Unit] = None,
 )
 
 /** Page which has a (fixed) side bar on the left. The side bar can be used to
@@ -51,12 +51,12 @@ final case class Tab(
   case class State(
     isOpen: Boolean,
     selected: Int,
-    visited: Vector[Boolean]
+    visited: Vector[Boolean],
   ) {
     def switchToTab(newTab: Int): State = copy(
       isOpen = false,
       selected = newTab,
-      visited = visited.updated(newTab, true)
+      visited = visited.updated(newTab, true),
     )
   }
 
@@ -96,21 +96,21 @@ final case class Tab(
 
             tab.mountFunction.foreach(_())
             s.switchToTab(idx)
-          }
+          },
         ),
         className := cls,
-        key := s"item-$idx"
+        key := s"item-$idx",
       )(
         td(style := js.Dynamic.literal(textAlign = "center", padding = ".5em 0"), key := "tab-icon")(
           i(
             className := tab.icon,
             style := js.Dynamic.literal(fontSize = "2em"),
-            title := tab.name
-          )()
+            title := tab.name,
+          )(),
         ),
         td(key := "tab-name")(
-          tab.name
-        )
+          tab.name,
+        ),
       )
     }
     window.dispatchEvent(new dom.Event("resize"))
@@ -120,22 +120,22 @@ final case class Tab(
       onClick := (_ => setState(s => s.copy(isOpen = !s.isOpen))),
       className := Styles.sideBarItem,
       style := js.Dynamic.literal(padding = "1em .5em"),
-      key := "hamburger"
+      key := "hamburger",
     )(
       td(style := js.Dynamic.literal(textAlign = "center", padding = "1em 0"), key := "tab-icon")(
         i(
           className := "ion-android-menu",
-          style := js.Dynamic.literal(fontSize = "2em")
-        )
+          style := js.Dynamic.literal(fontSize = "2em"),
+        ),
       ),
-      td(key := "tab-name")()
+      td(key := "tab-name")(),
     )
 
     val overlayToggleClass = if (state.isOpen) Styles.openOverlay else Styles.closedOverlay
     val overlayDiv: ReactElement = div(
       className := s"${Styles.overlay} $overlayToggleClass",
       key := "overlay",
-      onClick := (_ => setState(_.copy(isOpen = false)))
+      onClick := (_ => setState(_.copy(isOpen = false))),
     )()
 
     val tabStripWidth = "3.5em"
@@ -148,11 +148,11 @@ final case class Tab(
               zIndex = 0,
               display = if (state.selected == idx) "block" else "none",
               paddingLeft = tabStripWidth,
-              height = "100%"
+              height = "100%",
             ),
-            key := s"page-$idx"
+            key := s"page-$idx",
           )(
-            tab.page
+            tab.page,
           )
       }
       .toList
@@ -160,12 +160,12 @@ final case class Tab(
     div(
       className := Styles.sideBar,
       style := js.Dynamic.literal(width = if (state.isOpen) "14em" else tabStripWidth),
-      key := "sidebar"
+      key := "sidebar",
     )(
       table(
         thead(tr(th(style := js.Dynamic.literal(width = tabStripWidth, minWidth = tabStripWidth)), th())),
-        tbody((drawerIcon :: sideBarItems): _*)
-      )
+        tbody((drawerIcon :: sideBarItems): _*),
+      ),
     ) :: overlayDiv :: tabPages
   }
 }

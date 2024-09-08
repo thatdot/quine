@@ -140,8 +140,8 @@ object GenerateCypherTables extends App {
       new CypherParseProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
       new CypherToProtobuf(ProtobufSchemaCache.Blocking: @nowarn) ::
       (new CypherStandingWiretap((_, _) => None) ::
-      Proc.userDefinedProcedures.values.toList).sortBy(_.name)
-    )
+      Proc.userDefinedProcedures.values.toList).sortBy(_.name),
+    ),
   )
 
   for ((outputPath, outputString) <- paths) {
@@ -150,7 +150,7 @@ object GenerateCypherTables extends App {
       outputPath,
       outputString.getBytes(StandardCharsets.UTF_8),
       StandardOpenOption.TRUNCATE_EXISTING,
-      StandardOpenOption.CREATE
+      StandardOpenOption.CREATE,
     )
   }
 }

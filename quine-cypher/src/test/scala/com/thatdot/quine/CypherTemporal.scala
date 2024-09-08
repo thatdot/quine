@@ -5,7 +5,7 @@ import java.time.{
   Duration => JavaDuration,
   LocalDateTime => JavaLocalDateTime,
   ZoneOffset,
-  ZonedDateTime => JavaZonedDateTime
+  ZonedDateTime => JavaZonedDateTime,
 }
 
 import com.thatdot.quine.graph.cypher.Expr
@@ -16,42 +16,42 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
     testExpression(
       "localdatetime({ year: 2019 })",
       Expr.LocalDateTime(JavaLocalDateTime.of(2019, 1, 1, 0, 0)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "localdatetime({ year: 1995, month: 4, day: 24 })",
       Expr.LocalDateTime(JavaLocalDateTime.of(1995, 4, 24, 0, 0)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "datetime({ epochSeconds: 1607532063, timezone: 'UTC' }).ordinalDay",
       Expr.Integer(344L),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "date({ year: 1995, month: 4, day: 24 })",
       Expr.Date(java.time.LocalDate.of(1995, 4, 24)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "time({ hour: 10, minute: 4, second: 24, nanosecond: 110, offsetSeconds: -25200})",
       Expr.Time(java.time.OffsetTime.of(10, 4, 24, 110, ZoneOffset.ofTotalSeconds(-25200))),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "localtime({ hour: 10, minute: 4, second: 24, nanosecond: 110 })",
       Expr.LocalTime(java.time.LocalTime.of(10, 4, 24, 110)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
     testExpression(
       "duration({ days: 24 })",
       Expr.Duration(JavaDuration.ofDays(24)),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -59,25 +59,25 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
     testExpression(
       "datetime('2020-12-09T13:15:41.914-05:00[America/Montreal]')",
       Expr.DateTime(JavaZonedDateTime.parse("2020-12-09T13:15:41.914-05:00[America/Montreal]")),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "localdatetime('2020-12-09T13:15:41.914')",
       Expr.LocalDateTime(JavaLocalDateTime.parse("2020-12-09T13:15:41.914")),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "duration('PT20.345S')",
       Expr.Duration(JavaDuration.parse("PT20.345S")),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     testExpression(
       "duration({ years: 800 })",
       Expr.Duration(ChronoUnit.YEARS.getDuration.multipliedBy(800L)),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -96,49 +96,49 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
       "second" -> 0L,
       "millisecond" -> 0L,
       "microsecond" -> 0L,
-      "nanosecond" -> 0L
+      "nanosecond" -> 0L,
     )
     for ((name, value) <- components)
       testExpression(
         s"localdatetime({ year: 1995, month: 4, day: 24 }).$name",
         Expr.Integer(value),
-        expectedIsIdempotent = false
+        expectedIsIdempotent = false,
       )
 
     testExpression(
       "datetime({ year: 1995, month: 4, day: 24, timezone: 'Asia/Hong_Kong' }).epochSeconds",
       Expr.Integer(798652800L),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "duration({ days: 24 }).seconds",
       Expr.Integer(24 * 86400L),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     testExpression(
       "duration({ nanoseconds: 200, milliseconds: 80 }).nanoseconds",
       Expr.Integer(80 * 1000L * 1000L + 200L),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     val oneYearAsSeconds = 31556952L // 365.2425 days
     testExpression(
       "duration({ years: 300, milliseconds: 125 }).milliseconds",
       Expr.Integer(300 * oneYearAsSeconds * 1000L + 125L),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
     testExpression(
       "duration({ years: 100, minutes: 4, seconds: 5 })['seconds']",
       Expr.Integer(100 * oneYearAsSeconds + 4 * 60L + 5L),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     testExpression(
       "duration({ years: 350 })['nanoseconds']", // overflow -- too many nanoseconds for a Long
       Expr.Null,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -149,7 +149,7 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
         |  localdatetime({ year: 1995, month: 4, day: 25, hour: 5, minute: 1, second: 53 })
         |)""".stripMargin,
       Expr.Duration(JavaDuration.parse("PT25H59M53S")),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
@@ -158,7 +158,7 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
         |  datetime({ epochSeconds: 1372231111, timezone: 'America/Montreal' })
         |)""".stripMargin,
       Expr.Duration(JavaDuration.ofMillis(0)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
@@ -167,7 +167,7 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
         |  datetime({ year: 1995, month: 4, day: 24, timezone: 'America/Montreal' })
         |)""".stripMargin,
       Expr.Duration(JavaDuration.ofHours(12)),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 
@@ -175,13 +175,13 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
     testExpression(
       "datetime({ epochSeconds: 798652800 }) = datetime({ epochSeconds: 798652800 })",
       Expr.True,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "localdatetime({ year: 2001, month: 11 }) < localdatetime({ year: 2000, month: 10, day: 2 })",
       Expr.False,
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 
@@ -189,31 +189,31 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
     testExpression(
       "(datetime({ year: 2001 }) + duration({ days: 13, hours: 1 })).day",
       Expr.Integer(14L),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "(duration({ days: 13, hours: 1 }) + datetime({ year: 2001 })).hour",
       Expr.Integer(1L),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "(datetime({ year: 2001 }) - duration({ days: 13, hours: 1 })).dayOfQuarter",
       Expr.Integer(79L),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "duration({ minutes: 361 }) + duration({ days: 14 })",
       Expr.Duration(JavaDuration.parse("PT342H1M")),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
 
     testExpression(
       "duration({ minutes: 361 }) - duration({ days: 14 })",
       Expr.Duration(JavaDuration.parse("PT-329H-59M")),
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -221,13 +221,13 @@ class CypherTemporal extends CypherHarness("cypher-temporal-tests") {
     testExpression(
       "temporal.format(datetime('Mon, 1 Apr 2019 11:05:30 GMT', 'E, d MMM yyyy HH:mm:ss z'), 'MMM dd uu')",
       Expr.Str("Apr 01 19"),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
 
     testExpression(
       "temporal.format(localdatetime('Apr 1, 11 oclock in \\'19', 'MMM d, HH \\'oclock in \\'\\'\\'yy'), 'MMM dd uu')",
       Expr.Str("Apr 01 19"),
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 }

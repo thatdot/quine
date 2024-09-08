@@ -38,7 +38,7 @@ case class FramedFileSource(
   delimiterFlow: Flow[ByteString, ByteString, NotUsed],
   ingestBounds: IngestBounds = IngestBounds(),
   decoders: Seq[ContentDecoder] = Seq(),
-  ingestMeter: IngestMeter
+  ingestMeter: IngestMeter,
 ) {
 
   val source: Source[ByteString, NotUsed] =
@@ -72,7 +72,7 @@ object FileSource extends LazyLogging {
     .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
 
   def srcFromIngest(path: String, fileIngestMode: Option[FileIngestMode])(implicit
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[ByteString, NotUsed] =
     NamedPipeSource.fileOrNamedPipeSource(Paths.get(path), fileIngestMode)
 
@@ -83,7 +83,7 @@ object FileSource extends LazyLogging {
     maximumLineSize: Int,
     bounds: IngestBounds = IngestBounds(),
     meter: IngestMeter,
-    decoders: Seq[ContentDecoder] = Seq()
+    decoders: Seq[ContentDecoder] = Seq(),
   ): DecodedSource =
     format match {
       case _: CypherLine =>
@@ -93,7 +93,7 @@ object FileSource extends LazyLogging {
           lineDelimitingFlow(maximumLineSize),
           bounds,
           decoders,
-          meter
+          meter,
         ).framedSource.toDecoded(CypherStringDecoder)
       case _: CypherJson =>
         FramedFileSource(
@@ -102,7 +102,7 @@ object FileSource extends LazyLogging {
           jsonDelimitingFlow(maximumLineSize),
           bounds,
           decoders,
-          meter
+          meter,
         ).framedSource.toDecoded(JsonDecoder)
       case CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
@@ -115,7 +115,7 @@ object FileSource extends LazyLogging {
           quoteChar.byte,
           escapeChar.byte,
           maximumLineSize,
-          decoders
+          decoders,
         ).decodedSource
     }
 

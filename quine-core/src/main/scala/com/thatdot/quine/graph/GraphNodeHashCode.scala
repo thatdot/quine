@@ -43,7 +43,7 @@ object GraphNodeHashCode {
           h.putUnencodedChars(k.name)
           putPropertyValue(v, h)
           h.hash()
-        }
+        },
       )
 
       // and node half edges.
@@ -60,7 +60,7 @@ object GraphNodeHashCode {
           })
           h.putBytes(other.array)
           h.hash()
-        }
+        },
       )
 
       GraphNodeHashCode(resultHashCode.hash().asLong)

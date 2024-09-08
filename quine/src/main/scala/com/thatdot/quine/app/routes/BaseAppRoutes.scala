@@ -82,7 +82,7 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
       .adaptSettings(
         // See https://pekko.apache.org/docs/pekko-http/current//common/http-model.html#registering-custom-media-types
         _.mapWebsocketSettings(_.withPeriodicKeepAliveMaxIdle(10.seconds))
-          .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`))
+          .mapParserSettings(_.withCustomMediaTypes(MediaTypes.`application/yaml`)),
       )
 
     //capture unknown addresses with a 404
@@ -91,11 +91,11 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
     ssl
       .fold(serverBuilder) { ssl =>
         serverBuilder.enableHttps(
-          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password))
+          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password)),
         )
       }
       .bind(
-        Route.toFunction(routeWithDefault)(system)
+        Route.toFunction(routeWithDefault)(system),
       )
   }
 }

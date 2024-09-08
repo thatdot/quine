@@ -40,8 +40,8 @@ trait ImportFormat {
     if (!isSingleHost && data.length > pekkoMessageSizeLimit)
       Failure(
         new Exception(
-          s"Attempted to decode ${data.length} bytes, but records larger than $pekkoMessageSizeLimit bytes are prohibited."
-        )
+          s"Attempted to decode ${data.length} bytes, but records larger than $pekkoMessageSizeLimit bytes are prohibited.",
+        ),
       )
     else importBytes(data)
 
@@ -56,7 +56,7 @@ trait ImportFormat {
   def writeValueToGraph(
     graph: CypherOpsGraph,
     intoNamespace: NamespaceId,
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Done]
 }
 
@@ -67,7 +67,7 @@ class TestOnlyDrop extends ImportFormat {
   override def writeValueToGraph(
     graph: CypherOpsGraph,
     intoNamespace: NamespaceId,
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Done] = Future.successful(Done)
 }
 
@@ -84,20 +84,20 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
     // TODO this should be lifted to an (overridable, see allowAllNodeScan in SQ outputs) API error
     logger.warn(
       log"Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
-      compiled.queryText.fold(log"")(q => log"The provided query was: $q")
+      compiled.queryText.fold(log"")(q => log"The provided query was: $q"),
     )
   }
   if (!compiled.query.isIdempotent) {
     // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
     logger.warn(
       safe"""Could not verify that the provided ingest query is idempotent. If timeouts occur, query
-            |execution may be retried and duplicate data may be created.""".cleanLines
+            |execution may be retried and duplicate data may be created.""".cleanLines,
     )
   }
   def writeValueToGraph(
     graph: CypherOpsGraph,
     intoNamespace: NamespaceId,
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Done] =
     atLeastOnceQuery
       .stream(deserialized, intoNamespace)(graph)

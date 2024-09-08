@@ -11,7 +11,7 @@ import com.thatdot.quine.persistor.{
   InMemoryPersistor,
   PrimePersistor,
   RocksDbPersistor,
-  WrappedPersistenceAgent
+  WrappedPersistenceAgent,
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
 import com.thatdot.quine.util.Log._
@@ -26,7 +26,7 @@ object QuineMigrations {
     val migration = MultipleValuesRewrite
 
     def run()(implicit
-      ecs: ComputeAndBlockingExecutionContext
+      ecs: ComputeAndBlockingExecutionContext,
     ): Future[Either[MigrationError, Unit]] = {
       val defaultPersistor = WrappedPersistenceAgent.unwrap(persistor.getDefault)
       // check the persistor type before doing any persistor lookups -- if it's a persistor that _can't_ have
@@ -58,8 +58,8 @@ object QuineMigrations {
               Left(
                 MigrationError.UserInterventionRequired(
                   safe"${Safe(adviceContext)} ${Safe(userAdvice)}" + safe"\n" +
-                  safe"${Safe(changeReference)}"
-                )
+                  safe"${Safe(changeReference)}",
+                ),
               )
             }
           })(ecs.nodeDispatcherEC)
@@ -69,7 +69,7 @@ object QuineMigrations {
   object ApplyMultipleValuesRewrite {
 
     private[this] def anyMultipleValuesQueriesRegistered(persistor: PrimePersistor)(implicit
-      ecs: ComputeAndBlockingExecutionContext
+      ecs: ComputeAndBlockingExecutionContext,
     ): Future[Boolean] =
       persistor
         .getAllStandingQueries()
@@ -79,12 +79,12 @@ object QuineMigrations {
             .exists {
               case _: StandingQueryPattern.MultipleValuesQueryPattern => true
               case _ => false
-            }
+            },
         )(ecs.nodeDispatcherEC)
 
     private[this] def anyNamespaceHasMultipleValuesStates(
       persistor: PrimePersistor,
-      namespaces: Set[NamespaceId]
+      namespaces: Set[NamespaceId],
     ): Future[Boolean] =
       namespaces.toSeq
         .flatMap(persistor.apply)
@@ -97,16 +97,16 @@ object QuineMigrations {
             .recoverWith { case err: Throwable =>
               Future.failed(
                 new MigrationError.PersistorError(
-                  err
-                )
+                  err,
+                ),
               )
-            }(ExecutionContext.parasitic)
+            }(ExecutionContext.parasitic),
         )
 
     /** Perform persistor lookups to see if the persistor contains any multiplevalues-related state
       */
     def needsMigration(persistor: PrimePersistor, namespaces: Set[NamespaceId])(implicit
-      ecs: ComputeAndBlockingExecutionContext
+      ecs: ComputeAndBlockingExecutionContext,
     ): Future[Either[MigrationError, Boolean]] =
       anyMultipleValuesQueriesRegistered(persistor)
         .flatMap {
@@ -126,9 +126,9 @@ object QuineMigrations {
           // do their own string substitution
           val (keyspace, keyspaceExplanation) =
             cass.keyspace.fold(
-              "<keyspace>" -> "\n(where <keyspace> is the name of your configured keyspace)."
+              "<keyspace>" -> "\n(where <keyspace> is the name of your configured keyspace).",
             )(
-              _ -> ""
+              _ -> "",
             )
 
           """In order to continue using your persisted data in Cassandra, please run the previous version of

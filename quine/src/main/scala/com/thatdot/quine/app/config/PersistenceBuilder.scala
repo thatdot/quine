@@ -20,7 +20,7 @@ import com.thatdot.quine.util.QuineDispatchers
 object PersistenceBuilder {
   def build(pt: PersistenceAgentType, persistenceConfig: PersistenceConfig)(implicit
     materializer: Materializer,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): PrimePersistor = {
     val quineDispatchers = new QuineDispatchers(materializer.system)
     pt match {
@@ -29,7 +29,7 @@ object PersistenceBuilder {
         new StatelessPrimePersistor(
           persistenceConfig,
           None,
-          (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
+          (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns),
         )
       case r: PersistenceAgentType.RocksDb =>
         new RocksDbPrimePersistor(
@@ -40,7 +40,7 @@ object PersistenceBuilder {
           new Properties(),
           persistenceConfig,
           r.bloomFilterSize,
-          quineDispatchers.blockingDispatcherEC
+          quineDispatchers.blockingDispatcherEC,
         )
 
       case m: MapDb =>
@@ -55,7 +55,7 @@ object PersistenceBuilder {
               Metrics,
               persistenceConfig,
               m.bloomFilterSize,
-              quineDispatchers
+              quineDispatchers,
             )
           case None =>
             new TempMapDbPrimePersistor(
@@ -65,7 +65,7 @@ object PersistenceBuilder {
               Metrics,
               persistenceConfig,
               m.bloomFilterSize,
-              quineDispatchers
+              quineDispatchers,
             )
         }
 
@@ -82,16 +82,16 @@ object PersistenceBuilder {
             c.shouldCreateTables,
             CassandraStatementSettings(
               c.readConsistency,
-              c.readTimeout
+              c.readTimeout,
             ),
             CassandraStatementSettings(
               c.writeConsistency,
-              c.writeTimeout
+              c.writeTimeout,
             ),
             c.snapshotPartMaxSizeBytes,
-            Some(Metrics)
+            Some(Metrics),
           ),
-          90.seconds
+          90.seconds,
         )
 
       case c: Keyspaces =>
@@ -104,20 +104,20 @@ object PersistenceBuilder {
             c.awsRoleArn,
             CassandraStatementSettings(
               c.readConsistency,
-              c.readTimeout
+              c.readTimeout,
             ),
             c.writeTimeout,
             c.shouldCreateKeyspace,
             c.shouldCreateTables,
             Some(Metrics),
-            c.snapshotPartMaxSizeBytes
+            c.snapshotPartMaxSizeBytes,
           ),
-          91.seconds
+          91.seconds,
         )
 
       case _: ClickHouse =>
         throw new IllegalArgumentException(
-          "ClickHouse is not available in Quine. If you are interested in using ClickHouse, please contact us to discuss upgrading to thatDot Streaming Graph."
+          "ClickHouse is not available in Quine. If you are interested in using ClickHouse, please contact us to discuss upgrading to thatDot Streaming Graph.",
         )
     }
   }

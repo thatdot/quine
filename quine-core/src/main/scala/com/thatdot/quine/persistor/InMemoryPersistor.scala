@@ -20,7 +20,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -49,14 +49,14 @@ class InMemoryPersistor(
   multipleValuesStandingQueryStates: ConcurrentMap[
     QuineId,
     ConcurrentMap[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[
-      Byte
-    ]]
+      Byte,
+    ]],
   ] = new ConcurrentHashMap(),
   quinePatterns: ConcurrentMap[StandingQueryId, QuinePattern] = new ConcurrentHashMap(),
   metaData: ConcurrentMap[String, Array[Byte]] = new ConcurrentHashMap(),
   domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
-  val namespace: NamespaceId = None
+  val namespace: NamespaceId = None,
 )(implicit val logConfig: LogConfig)
     extends PersistenceAgent {
 
@@ -64,7 +64,7 @@ class InMemoryPersistor(
     Seq(journals, domainIndexEvents, snapshots, standingQueries, multipleValuesStandingQueryStates, domainGraphNodes)
   override def emptyOfQuineData(): Future[Boolean] =
     Future.successful(
-      allTables.forall(_.isEmpty)
+      allTables.forall(_.isEmpty),
     )
 
   def persistNodeChangeEvents(id: QuineId, events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]): Future[Unit] = {
@@ -81,7 +81,7 @@ class InMemoryPersistor(
 
   def persistDomainIndexEvents(
     id: QuineId,
-    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]],
   ): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- events.toList } domainIndexEvents
       .computeIfAbsent(id, (_: QuineId) => new ConcurrentSkipListMap())
@@ -97,7 +97,7 @@ class InMemoryPersistor(
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = {
     val eventsMap = journals.get(id)
     Future.successful(
@@ -110,14 +110,14 @@ class InMemoryPersistor(
           .iterator
           .asScala
           .flatMap(a => Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey)))
-          .toSeq
+          .toSeq,
     )
   }
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] = {
     val eventsMap = domainIndexEvents.get(id)
     Future.successful(
@@ -130,7 +130,7 @@ class InMemoryPersistor(
           .iterator
           .asScala
           .flatMap(a => Iterator.single(NodeEvent.WithTime(a.getValue, a.getKey)))
-          .toSeq
+          .toSeq,
     )
   }
 
@@ -142,7 +142,7 @@ class InMemoryPersistor(
           entry.getValue match {
             case event: DomainIndexEvent if event.dgnId == dgnId => true
             case _ => false
-          }
+          },
         )
     }
 
@@ -174,7 +174,7 @@ class InMemoryPersistor(
       else
         Option
           .apply(snapshotsMap.floorEntry(upToTime))
-          .map(e => e.getValue)
+          .map(e => e.getValue),
     )
   }
 
@@ -189,19 +189,19 @@ class InMemoryPersistor(
   }
 
   def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     Future.successful(
       Option
         .apply(multipleValuesStandingQueryStates.get(id))
-        .fold(Map.empty[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]])(m => m.asScala.toMap)
+        .fold(Map.empty[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]])(m => m.asScala.toMap),
     )
 
   def setMultipleValuesStandingQueryState(
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = {
     state match {
       case Some(bytes) =>
@@ -248,11 +248,11 @@ class InMemoryPersistor(
 
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     Future.successful(
-      this.domainGraphNodes.putAll(domainGraphNodes.asJava)
+      this.domainGraphNodes.putAll(domainGraphNodes.asJava),
     )
 
   def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = Future.successful(
-    for { domainGraphNodesId <- domainGraphNodes } this.domainGraphNodes.remove(domainGraphNodesId)
+    for { domainGraphNodesId <- domainGraphNodes } this.domainGraphNodes.remove(domainGraphNodesId),
   )
 
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] =
@@ -261,7 +261,7 @@ class InMemoryPersistor(
   def shutdown(): Future[Unit] = Future.unit
 
   def delete(): Future[Unit] = Future.successful(
-    allTables.foreach(_.clear())
+    allTables.foreach(_.clear()),
   )
 }
 
@@ -273,7 +273,7 @@ object InMemoryPersistor {
   def namespacePersistor: PrimePersistor = new StatelessPrimePersistor(
     PersistenceConfig(),
     None,
-    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strictest)
+    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strictest),
   )(null, LogConfig.strictest) // Materializer is never used if bloomFilterSize is set to none
   def persistorMaker: ActorSystem => PrimePersistor =
     _ => namespacePersistor

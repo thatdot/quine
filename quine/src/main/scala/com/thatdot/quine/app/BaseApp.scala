@@ -56,7 +56,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @return the value, if found
     */
   final protected def getLocalMetaData[A](key: String, localMemberId: MemberIdx)(implicit
-    schema: JsonSchema[A]
+    schema: JsonSchema[A],
   ): Future[Option[A]] =
     graph.namespacePersistor
       .getLocalMetaData(key, localMemberId)
@@ -116,7 +116,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
   final protected def getOrDefaultLocalMetaData[A: JsonSchema](
     key: String,
     localMemberId: MemberIdx,
-    defaultValue: => A
+    defaultValue: => A,
   ): Future[A] =
     getLocalMetaData[A](key, localMemberId).flatMap {
       case Some(value) => Future.successful(value)
@@ -140,7 +140,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     key: String,
     localMemberId: MemberIdx,
     defaultValue: => A,
-    recovery: B => A
+    recovery: B => A,
   ): Future[A] =
     getLocalMetaData[A](key, localMemberId)
       .flatMap {

@@ -41,7 +41,7 @@ trait PureconfigInstances {
   import software.amazon.awssdk.regions.Region
   private val regions = Region.regions.asScala.map(r => r.id -> r).toMap
   implicit val regionReader: ConfigReader[Region] = ConfigReader.fromNonEmptyString(s =>
-    regions.get(s.toLowerCase) toRight CannotConvert(s, "Region", "expected one of " + regions.keys.mkString(", "))
+    regions.get(s.toLowerCase) toRight CannotConvert(s, "Region", "expected one of " + regions.keys.mkString(", ")),
   )
   implicit val regionWriter: ConfigWriter[Region] = ConfigWriter.toString(_.id)
 }

@@ -50,6 +50,6 @@ object Packaging extends AutoPlugin {
 
   override lazy val projectSettings =
     Seq(
-      assembly / assemblyMergeStrategy := customMergeStrategy
+      assembly / assemblyMergeStrategy := customMergeStrategy,
     )
 }

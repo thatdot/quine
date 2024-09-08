@@ -17,13 +17,13 @@ import com.thatdot.quine.webapp.Styles
     val tableBody: Seq[ReactElement] = props.results.map { row: Seq[Json] =>
       tr(row.map { cypherValue =>
         td(
-          renderJsonResultValue(cypherValue)
+          renderJsonResultValue(cypherValue),
         ): ReactElement
       }: _*)
     }
     table(className := Styles.cypherResultsTable)(
       thead(tr(tableHead: _*)),
-      tbody(tableBody: _*)
+      tbody(tableBody: _*),
     )
   }
 }

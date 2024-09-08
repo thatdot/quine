@@ -23,7 +23,7 @@ class MultipleValuesResultsReporterTest extends AnyFunSpecLike with should.Match
 
       reportDiff should contain theSameElementsAs Seq(
         queryContextToResult(isPositive = true, queryContext2),
-        queryContextToResult(isPositive = false, queryContext1)
+        queryContextToResult(isPositive = false, queryContext1),
       )
     }
     it("omits duplicate reports") {
@@ -45,7 +45,7 @@ class MultipleValuesResultsReporterTest extends AnyFunSpecLike with should.Match
       reportDiff shouldNot contain(queryContextToResult(isPositive = false, queryContext3))
       reportDiff should contain theSameElementsAs Seq(
         queryContextToResult(isPositive = true, queryContext1),
-        queryContextToResult(isPositive = true, queryContext2)
+        queryContextToResult(isPositive = true, queryContext2),
       )
     }
   }

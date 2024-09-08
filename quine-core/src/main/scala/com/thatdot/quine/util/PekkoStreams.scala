@@ -26,7 +26,7 @@ object PekkoStreams extends LazySafeLogging {
         // Wrap the elements we want to keep with Some, return None otherwise
         newState -> Option.when(cond)(elem)
       },
-      _ => None
+      _ => None,
     )
     // Filter out all the `None`s from above, and unwrap the `Some`s
     .collect { case Some(s) => s }
@@ -38,7 +38,7 @@ object PekkoStreams extends LazySafeLogging {
     // Don't have a previous element at the start of the stream, so just using null, which shouldn't be equal to anything
     statefulFilter(null: A)((previous, element) =>
       // "Emit"s when the element is not equal to the previous element
-      element -> (element != previous)
+      element -> (element != previous),
     )
 
   /** Run a side-effect only on the first element in the stream.
@@ -48,7 +48,7 @@ object PekkoStreams extends LazySafeLogging {
     */
   def wireTapFirst[A](runOnFirst: A => Unit): Flow[A, A, NotUsed] = Flow[A].statefulMap(() => false)(
     (ran, element) => (true, if (ran) element else { runOnFirst(element); element }),
-    _ => None
+    _ => None,
   )
 
   /** Create a MergeHub with the given name that, instead of propagating the pekko-streams error signal,
@@ -56,7 +56,7 @@ object PekkoStreams extends LazySafeLogging {
     * in the logs when exception logging is enabled, and makes stream-killing errors respect the user's log settings.
     */
   def errorSuppressingMergeHub[T](mergeHubName: String, materializer: Materializer)(implicit
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): (Sink[T, NotUsed], Source[T, NotUsed]) = {
     val (sink, source) = MergeHub
       .source[T]
@@ -67,7 +67,7 @@ object PekkoStreams extends LazySafeLogging {
       .recoverWith { err =>
         logger.error(
           log"""Detected stream-killing error (${Safe(err.getClass.getName)}) from pekko stream feeding
-               |into MergeHub ${Safe(mergeHubName)}""".cleanLines withException err
+               |into MergeHub ${Safe(mergeHubName)}""".cleanLines withException err,
         )
         Source.empty
       }

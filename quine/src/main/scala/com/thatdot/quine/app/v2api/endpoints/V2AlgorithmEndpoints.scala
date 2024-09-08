@@ -48,25 +48,25 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
        |
        |The provided query will have the following prefix prepended: `$queryPrefix` where `${"$n"}` evaluates
        |to the ID of the node on which the query is executed. The default value of this parameter is:
-       |`$querySuffix`""".stripMargin
+       |`$querySuffix`""".stripMargin,
   )
   val numberOfWalksQs: EndpointInput.Query[Option[Int]] = query[Option[Int]]("count")
     .description("An optional integer for how many random walks from each node to generate. Default: `5`")
 
   val returnQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("return").description(
     "the `p` parameter to determine likelihood of returning to the node just visited: `1/p`  Lower is " +
-    "more likely; but if `0`, never return to previous node. Default: `1`"
+    "more likely; but if `0`, never return to previous node. Default: `1`",
   )
 
   val inOutQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("in-out").description(
     "the `q` parameter to determine likelihood of visiting a node outside the neighborhood of the" +
-    " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`"
+    " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`",
   )
 
   val randomSeedOptQs: EndpointInput.Query[Option[String]] = query[Option[String]]("seed").description(
     "Optionally specify any string as a random seed for generating walks. This is used to determine all " +
     "randomness, so providing the same seed will always produce the same random walk. If unset, a new seed is " +
-    "used each time a random choice is needed."
+    "used each time a random choice is needed.",
   )
 
   @title("Save Location")
@@ -78,7 +78,7 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
 
   @title("Local File")
   case class LocalFile(
-    @description("Optional name of the file to save in the working directory") fileName: Option[String]
+    @description("Optional name of the file to save in the working directory") fileName: Option[String],
   ) extends TSaveLocation {
 
     def fileName(defaultFileName: String): String = fileName match {
@@ -96,7 +96,7 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
   @title("S3 Bucket")
   case class S3Bucket(
     @description("S3 bucket name") bucketName: String,
-    @description("Optional name of the file in the S3 bucket") key: Option[String]
+    @description("Optional name of the file in the S3 bucket") key: Option[String],
   ) extends TSaveLocation {
     def fileName(defaultFileName: String): String = key.getOrElse(defaultFileName)
 
@@ -114,7 +114,7 @@ trait V2AlgorithmEndpoints extends V2EndpointDefinitions {
   private def algorithmEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ) = baseEndpoint[T]("algorithm")
     .tag("Graph Algorithms")
     .description("High-level operations on the graph to support graph AI, ML, and other algorithms.")
@@ -178,7 +178,7 @@ concatenated to produce the final file name:
             namespace,
             atTimeOpt,
             parallelismOpt,
-            saveLocation
+            saveLocation,
           ) =>
         runServerLogicWithError[
           (
@@ -191,9 +191,9 @@ concatenated to produce the final file name:
             NamespaceId,
             Option[Milliseconds],
             Int,
-            TSaveLocation
+            TSaveLocation,
           ),
-          Option[String]
+          Option[String],
         ](
           SaveRandomWalksApiCmd,
           memberIdx,
@@ -207,10 +207,10 @@ concatenated to produce the final file name:
             namespaceFromParam(namespace),
             atTimeOpt,
             parallelismOpt.getOrElse(IngestRoutes.defaultWriteParallelism),
-            saveLocation
+            saveLocation,
           ),
           t =>
-            Future.successful(app.algorithmSaveRandomWalks(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10))
+            Future.successful(app.algorithmSaveRandomWalks(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)),
         )
     }
 
@@ -238,20 +238,20 @@ concatenated to produce the final file name:
             Option[Double],
             Option[String],
             NamespaceId,
-            Option[Milliseconds]
+            Option[Milliseconds],
           ),
-          Option[List[String]]
+          Option[List[String]],
         ](
           GenerateRandomWalkApiCmd,
           memberIdx,
           (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespaceFromParam(namespace), atTimeOpt),
-          t => app.algorithmRandomWalk(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8)
+          t => app.algorithmRandomWalk(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8),
         )
 
     }
 
   val algorithmEndpoints: List[ServerEndpoint[Any, Future]] = List(
     generateRandomWalkEndpoint,
-    saveRandomWalksEndpoint
+    saveRandomWalksEndpoint,
   )
 }

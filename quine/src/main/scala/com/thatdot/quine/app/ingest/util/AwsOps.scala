@@ -6,7 +6,7 @@ import software.amazon.awssdk.auth.credentials.{
   AwsBasicCredentials,
   AwsCredentialsProvider,
   DefaultCredentialsProvider,
-  StaticCredentialsProvider
+  StaticCredentialsProvider,
 }
 import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
@@ -22,12 +22,12 @@ case object AwsOps extends LazySafeLogging {
   def staticCredentialsProvider(credsOpt: Option[AwsCredentials]): AwsCredentialsProvider =
     credsOpt.fold[AwsCredentialsProvider](DefaultCredentialsProvider.create()) { credentials =>
       StaticCredentialsProvider.create(
-        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey)
+        AwsBasicCredentials.create(credentials.accessKeyId, credentials.secretAccessKey),
       )
     }
 
   implicit class AwsBuilderOps[Client: ClassTag, Builder <: AwsClientBuilder[Builder, Client]](
-    builder: AwsClientBuilder[Builder, Client]
+    builder: AwsClientBuilder[Builder, Client],
   ) {
 
     /** Credentials to use for this AWS client. If provided, these will be used explicitly.
@@ -50,7 +50,7 @@ case object AwsOps extends LazySafeLogging {
         logger.info(
           safe"""No AWS credentials provided while building AWS client of type
                |${Safe(classTag[Client].runtimeClass.getSimpleName)}. Defaulting
-               |to environmental credentials.""".cleanLines
+               |to environmental credentials.""".cleanLines,
         )
         None
       }
@@ -62,7 +62,7 @@ case object AwsOps extends LazySafeLogging {
         logger.info(
           safe"""No AWS region provided while building AWS client of type:
                 |${Safe(classTag[Client].runtimeClass.getSimpleName)}.
-                |Defaulting to environmental settings.""".cleanLines
+                |Defaulting to environmental settings.""".cleanLines,
         )
         builder.applyMutation(_ => ()) // return the builder unmodified
       }(region => builder.region(Region.of(region.region)))

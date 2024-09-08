@@ -48,13 +48,13 @@ class HistoryNavigationButtons extends Component {
     atTime: Option[Long],
     setTime: Option[Option[Long] => Unit],
     toggleLayout: () => Unit,
-    recenterViewport: () => Unit
+    recenterViewport: () => Unit,
   )
 
   // These buttons flash with different icons to indicate the successful action
   case class State(
     madeCheckpointConfirmation: Boolean,
-    downloadConfirmation: Boolean
+    downloadConfirmation: Boolean,
   )
 
   def initialState: com.thatdot.quine.webapp.queryui.HistoryNavigationButtons.State =
@@ -104,27 +104,27 @@ class HistoryNavigationButtons extends Component {
       HistoryNavButton(
         "ion-ios-rewind",
         "Undo until previous checkpoint",
-        onClick = props.undoMany.map(func => (_ => func()))
+        onClick = props.undoMany.map(func => (_ => func())),
       ),
       HistoryNavButton(
         "ion-ios-skipbackward",
         "Undo previous change",
-        onClick = props.undo.map(func => (_ => func()))
+        onClick = props.undo.map(func => (_ => func())),
       ),
       HistoryNavButton(
         if (props.isAnimating) "ion-ios-pause" else "ion-ios-play",
         if (props.isAnimating) "Stop animating graph" else "Animate graph",
-        onClick = Some(_ => props.animate())
+        onClick = Some(_ => props.animate()),
       ),
       HistoryNavButton(
         "ion-ios-skipforward",
         "Redo or apply next change",
-        onClick = props.redo.map(func => (_ => func()))
+        onClick = props.redo.map(func => (_ => func())),
       ),
       HistoryNavButton(
         "ion-ios-fastforward",
         "Redo until next checkpoint",
-        onClick = props.redoMany.map(func => (_ => func()))
+        onClick = props.redoMany.map(func => (_ => func())),
       ),
       HistoryNavButton(
         s"ion-ios-location${if (state.madeCheckpointConfirmation) "" else "-outline"}",
@@ -135,11 +135,11 @@ class HistoryNavigationButtons extends Component {
             () => {
               window.setTimeout(() => setState(_.copy(madeCheckpointConfirmation = false)), 2000)
               ()
-            }
+            },
           )
           props.makeCheckpoint()
         },
-        onContextMenu = Some(props.checkpointContextMenu)
+        onContextMenu = Some(props.checkpointContextMenu),
       ),
       HistoryNavButton(
         if (state.downloadConfirmation) "ion-checkmark-round" else "ion-ios-cloud-download-outline",
@@ -150,22 +150,22 @@ class HistoryNavigationButtons extends Component {
             () => {
               window.setTimeout(() => setState(_.copy(downloadConfirmation = false)), 2000)
               ()
-            }
+            },
           )
           props.downloadHistory(e.shiftKey)
-        }
+        },
       ),
       HistoryNavButton(
         "ion-ios-cloud-upload-outline",
         "Upload a history log.",
-        onClick = Some(_ => uploadInputRef.current.click())
+        onClick = Some(_ => uploadInputRef.current.click()),
       ),
       input(
         `type` := "file",
         ref := uploadInputRef,
         name := "file",
         style := jsObj(display = "none"),
-        onChange := (e => props.uploadHistory(e))
+        onChange := (e => props.uploadHistory(e)),
       ),
       HistoryNavButton(
         "ion-ios-time-outline",
@@ -184,7 +184,7 @@ class HistoryNavigationButtons extends Component {
                |
                |WARNING: this will reset the query history and clear all currently rendered nodes from the browser window (the actual data is unaffected)
                |""".stripMargin,
-              currentTime
+              currentTime,
             )
             enteredDate match {
               case null => // this indicates that the user clicked "cancel", so do nothing
@@ -199,7 +199,7 @@ class HistoryNavigationButtons extends Component {
                   "Historical query time set from offset timestamp",
                   enteredDate,
                   "to UNIX timestamp",
-                  timestampMs
+                  timestampMs,
                 )
                 func(Some(timestampMs))
               case SugaredDate(ms) =>
@@ -208,18 +208,18 @@ class HistoryNavigationButtons extends Component {
               case _ => window.alert(s"Invalid time provided: $enteredDate")
             }
           }
-        }
+        },
       ),
       HistoryNavButton(
         "ion-android-share-alt",
         "Toggle between a tree and graph layout of nodes",
-        onClick = Some(_ => props.toggleLayout())
+        onClick = Some(_ => props.toggleLayout()),
       ),
       HistoryNavButton(
         "ion-pinpoint",
         "Recenter the viewport to the initial location",
-        onClick = Some(_ => props.recenterViewport())
-      )
+        onClick = Some(_ => props.recenterViewport()),
+      ),
     )
 }
 
@@ -232,7 +232,7 @@ object HistoryNavButton {
     ionClass: String,
     tooltipTitle: String,
     onClick: Option[SyntheticMouseEvent[dom.HTMLElement] => Unit] = None,
-    onContextMenu: Option[SyntheticMouseEvent[dom.HTMLElement] => Unit] = None
+    onContextMenu: Option[SyntheticMouseEvent[dom.HTMLElement] => Unit] = None,
   )
 
   val component: FunctionalComponent[HistoryNavButton.Props] = FunctionalComponent[Props] {
@@ -240,13 +240,13 @@ object HistoryNavButton {
       val classes = List(
         ionClass,
         Styles.navBarButton,
-        if (onClickAct.isEmpty) Styles.disabled else Styles.clickable
+        if (onClickAct.isEmpty) Styles.disabled else Styles.clickable,
       )
       i(
         className := classes.mkString(" "),
         title := tooltipTitle,
         onClick := (e => onClickAct.foreach(_.apply(e))),
-        onContextMenu := (e => onContextMenuAct.foreach(_.apply(e)))
+        onContextMenu := (e => onContextMenuAct.foreach(_.apply(e))),
       )()
   }
 }

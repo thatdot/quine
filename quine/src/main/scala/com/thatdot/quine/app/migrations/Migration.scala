@@ -18,7 +18,7 @@ trait Migration {
 
   @deprecatedOverriding(
     "Are you sure you want to introduce a migration that skips versions? If so, suppress this warning",
-    "1.7.0"
+    "1.7.0",
   )
   def to: MigrationVersion = MigrationVersion(from.version + 1)
 }

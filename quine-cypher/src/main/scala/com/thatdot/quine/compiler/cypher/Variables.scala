@@ -16,7 +16,7 @@ object VariableRewriter {
 
   def convertAnyQuery(
     query: Query[Location.Anywhere],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Query[Location.Anywhere] = {
     val converted = AnywhereConverter.convertQuery(query, columnsIn)
     converted.columns match {
@@ -36,7 +36,7 @@ object VariableRewriter {
               .zip(mangledCols)
               .map { case (demangled, mangled) => demangled -> Expr.Variable(mangled) },
             adjustThis = converted,
-            columns = Columns.Specified(demangledCols)
+            columns = Columns.Specified(demangledCols),
           )
         }
     }
@@ -44,13 +44,13 @@ object VariableRewriter {
 
   def convertNodeQuery(
     query: Query[Location.OnNode],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Query[Location.OnNode] = OnNodeConverter.convertQuery(query, columnsIn)
 
   private object OnNodeConverter extends VariableRewriter[Location.OnNode] {
     def convertQuery(
       query: Query[Location.OnNode],
-      columnsIn: Columns
+      columnsIn: Columns,
     ): Query[Location.OnNode] = query match {
       case query: Empty => convertEmpty(query, columnsIn)
       case query: Unit => convertUnit(query, columnsIn)
@@ -90,7 +90,7 @@ object VariableRewriter {
 
     protected def convertGetDegree(
       query: GetDegree,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): GetDegree = {
       val cols = columnsIn + query.bindName
       query.copy(columns = cols)
@@ -98,7 +98,7 @@ object VariableRewriter {
 
     protected def convertExpand(
       query: Expand,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): Expand = {
       val cols = query.bindRelation match {
         case None => columnsIn
@@ -110,7 +110,7 @@ object VariableRewriter {
 
     protected def convertLocalNode(
       query: LocalNode,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): LocalNode = {
       val cols = query.bindName match {
         case None => columnsIn
@@ -121,17 +121,17 @@ object VariableRewriter {
 
     protected def convertSetProperty(
       query: SetProperty,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): SetProperty = query.copy(columns = columnsIn)
 
     protected def convertSetProperties(
       query: SetProperties,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): SetProperties = query.copy(columns = columnsIn)
 
     protected def convertSetEdge(
       query: SetEdge,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): SetEdge = {
       val cols = query.bindRelation match {
         case None => columnsIn
@@ -140,13 +140,13 @@ object VariableRewriter {
       val andThen = convertQuery(query.andThen, cols)
       query.copy(
         andThen = andThen,
-        columns = andThen.columns
+        columns = andThen.columns,
       )
     }
 
     protected def convertSetLabels(
       query: SetLabels,
-      columnsIn: Columns
+      columnsIn: Columns,
     ): SetLabels = query.copy(columns = columnsIn)
 
   }
@@ -154,7 +154,7 @@ object VariableRewriter {
   private object AnywhereConverter extends VariableRewriter[Location.Anywhere] {
     def convertQuery(
       query: Query[Location.Anywhere],
-      columnsIn: Columns
+      columnsIn: Columns,
     ): Query[Location.Anywhere] = query match {
       case query: Empty => convertEmpty(query, columnsIn)
       case query: Unit => convertUnit(query, columnsIn)
@@ -188,7 +188,7 @@ object VariableRewriter {
 
   def convertExpr(
     columnsIn: Columns,
-    expr: Expr
+    expr: Expr,
   ): Expr = expr
 }
 
@@ -197,52 +197,52 @@ trait VariableRewriter[Start <: Location] {
 
   def convertQuery(
     query: Query[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Query[Start]
 
   /* Columns unaffacted */
   protected def convertEmpty(
     query: Empty,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Empty = query.copy(columns = columnsIn)
 
   /* Columns unaffacted */
   protected def convertUnit(
     query: Unit,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Unit = query.copy(columns = columnsIn)
 
   protected def convertAnchoredEntry(
     query: AnchoredEntry,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): AnchoredEntry = {
     val andThen = VariableRewriter.convertNodeQuery(query.andThen, columnsIn)
     query.copy(
       andThen = andThen,
-      columns = andThen.columns
+      columns = andThen.columns,
     )
   }
 
   protected def convertArgumentEntry(
     query: ArgumentEntry,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): ArgumentEntry = {
     val andThen = VariableRewriter.convertNodeQuery(query.andThen, columnsIn)
     query.copy(
       andThen = andThen,
-      columns = andThen.columns
+      columns = andThen.columns,
     )
   }
 
   protected def convertLoadCSV(
     query: LoadCSV,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): LoadCSV =
     query.copy(columns = columnsIn + query.variable)
 
   protected def convertUnion(
     query: Union[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Union[Start] = {
     val unionLhs = convertQuery(query.unionLhs, columnsIn)
     val unionRhs = convertQuery(query.unionRhs, columnsIn)
@@ -252,13 +252,13 @@ trait VariableRewriter[Start <: Location] {
     query.copy(
       unionLhs = unionLhs,
       unionRhs = unionRhs,
-      columns = unionLhs.columns
+      columns = unionLhs.columns,
     )
   }
 
   protected def convertOr(
     query: Or[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Or[Start] = {
     val tryFirst = convertQuery(query.tryFirst, columnsIn)
     val trySecond = convertQuery(query.trySecond, columnsIn)
@@ -266,18 +266,18 @@ trait VariableRewriter[Start <: Location] {
     // TODO: should this even be possible?
     require(
       tryFirst.columns == trySecond.columns,
-      s"Or branches have different columns ${tryFirst.columns} ${trySecond.columns}"
+      s"Or branches have different columns ${tryFirst.columns} ${trySecond.columns}",
     )
     query.copy(
       tryFirst = tryFirst,
       trySecond = trySecond,
-      columns = tryFirst.columns
+      columns = tryFirst.columns,
     )
   }
 
   protected def convertValueHashJoin(
     query: ValueHashJoin[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): ValueHashJoin[Start] = {
     val joinLhs = convertQuery(query.joinLhs, columnsIn)
     val joinRhs = convertQuery(query.joinRhs, columnsIn)
@@ -285,37 +285,37 @@ trait VariableRewriter[Start <: Location] {
     query.copy(
       joinLhs = joinLhs,
       joinRhs = joinRhs,
-      columns = joinLhs.columns ++ joinRhs.columns
+      columns = joinLhs.columns ++ joinRhs.columns,
     )
   }
 
   protected def convertSemiApply(
     query: SemiApply[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): SemiApply[Start] = {
     val testQuery = convertQuery(query.acceptIfThisSucceeds, columnsIn)
     query.copy(
       acceptIfThisSucceeds = testQuery,
-      columns = columnsIn
+      columns = columnsIn,
     )
   }
 
   protected def convertApply(
     query: Apply[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Apply[Start] = {
     val start = convertQuery(query.startWithThis, columnsIn)
     val thenCross = convertQuery(query.thenCrossWithThis, start.columns)
     query.copy(
       startWithThis = start,
       thenCrossWithThis = thenCross,
-      columns = thenCross.columns
+      columns = thenCross.columns,
     )
   }
 
   protected def convertOptional(
     query: Optional[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Optional[Start] = {
     val optional = convertQuery(query.query, columnsIn)
     query.copy(query = optional, columns = optional.columns)
@@ -323,7 +323,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertFilter(
     query: Filter[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Filter[Start] = {
     val toFilter = convertQuery(query.toFilter, columnsIn)
     query.copy(toFilter = toFilter, columns = toFilter.columns)
@@ -331,7 +331,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertSkip(
     query: Skip[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Skip[Start] = {
     val toSkip = convertQuery(query.toSkip, columnsIn)
     query.copy(toSkip = toSkip, columns = toSkip.columns)
@@ -339,7 +339,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertLimit(
     query: Limit[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Limit[Start] = {
     val toLimit = convertQuery(query.toLimit, columnsIn)
     query.copy(toLimit = toLimit, columns = toLimit.columns)
@@ -347,7 +347,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertSort(
     query: Sort[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Sort[Start] = {
     val toSort = convertQuery(query.toSort, columnsIn)
     query.copy(toSort = toSort, columns = toSort.columns)
@@ -355,7 +355,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertReturn(
     query: Return[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Return[Start] = {
     val toReturn = convertQuery(query.toReturn, columnsIn)
     query.copy(toReturn = toReturn, columns = toReturn.columns)
@@ -363,7 +363,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertDistinct(
     query: Distinct[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Distinct[Start] = {
     val toDedup = convertQuery(query.toDedup, columnsIn)
     query.copy(toDedup = toDedup, columns = toDedup.columns)
@@ -371,7 +371,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertUnwind(
     query: Unwind[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Unwind[Start] = {
     val unwindFrom = convertQuery(query.unwindFrom, columnsIn + query.as)
     query.copy(columns = unwindFrom.columns)
@@ -379,7 +379,7 @@ trait VariableRewriter[Start <: Location] {
 
   protected def convertAdjustContext(
     query: AdjustContext[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): AdjustContext[Start] = {
     val adjusted = convertQuery(query.adjustThis, columnsIn)
     val oldCols = query.dropExisting match {
@@ -389,13 +389,13 @@ trait VariableRewriter[Start <: Location] {
     val newCols = Columns.Specified(query.toAdd.map(_._1).toVector)
     query.copy(
       adjustThis = adjusted,
-      columns = oldCols ++ newCols
+      columns = oldCols ++ newCols,
     )
   }
 
   protected def convertEagerAggregation(
     query: EagerAggregation[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): EagerAggregation[Start] = {
     val toAggregate = convertQuery(query.toAggregate, columnsIn)
     val oldCols = query.keepExisting match {
@@ -403,51 +403,51 @@ trait VariableRewriter[Start <: Location] {
       case false => Columns.Specified(Vector.empty)
     }
     val newCols = Columns.Specified(
-      (query.aggregateAlong ++ query.aggregateWith).map(_._1).toVector
+      (query.aggregateAlong ++ query.aggregateWith).map(_._1).toVector,
     )
     query.copy(
       toAggregate = toAggregate,
-      columns = oldCols ++ newCols
+      columns = oldCols ++ newCols,
     )
   }
 
   protected def convertDelete(
     query: Delete,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): Delete = query.copy(columns = columnsIn)
 
   protected def convertProcedureCall(
     query: ProcedureCall,
-    columnsIn: Columns
+    columnsIn: Columns,
   ): ProcedureCall = {
     val newCols = query.returns match {
       case None => query.procedure.outputColumns
       case Some(remapping) => query.procedure.outputColumns.rename(remapping)
     }
     query.copy(
-      columns = columnsIn ++ newCols
+      columns = columnsIn ++ newCols,
     )
   }
 
   protected def convertSubQuery(
     query: SubQuery[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): SubQuery[Start] = {
     val subQuery = convertQuery(query.subQuery, Columns.Specified(query.importedVariables))
     query.copy(
       subQuery = subQuery,
-      columns = subQuery.columns ++ columnsIn
+      columns = subQuery.columns ++ columnsIn,
     )
   }
 
   protected def convertRecursiveSubQuery(
     query: RecursiveSubQuery[Start],
-    columnsIn: Columns
+    columnsIn: Columns,
   ): RecursiveSubQuery[Start] = {
     val subQuery = convertQuery(query.innerQuery, Columns.Specified(query.initialVariables.initialValues.keys.toVector))
     query.copy(
       innerQuery = subQuery,
-      columns = subQuery.columns ++ columnsIn
+      columns = subQuery.columns ++ columnsIn,
     )
   }
 }

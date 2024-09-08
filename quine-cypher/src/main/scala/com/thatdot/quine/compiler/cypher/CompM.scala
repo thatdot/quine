@@ -25,8 +25,8 @@ final case class CompM[A] private (
   private val eitherRws: EitherT[
     ReaderWriterState[(ParametersIndex, SourceText), Unit, QueryScopeInfo, *],
     CypherException.Compile,
-    A
-  ]
+    A,
+  ],
 ) {
 
   def map[B](f: A => B): CompM[B] = CompM.monadError.map(this)(f)
@@ -43,7 +43,7 @@ final case class CompM[A] private (
   def run(
     params: ParametersIndex,
     sourceText: SourceText,
-    scopeInfo: QueryScopeInfo
+    scopeInfo: QueryScopeInfo,
   ): Either[CypherException.Compile, A] =
     eitherRws.value.runA(params -> sourceText, scopeInfo).value
 }
@@ -63,11 +63,11 @@ object CompM {
   implicit val monadError: MonadError[CompM, CypherException.Compile] =
     new MonadErrorVia[EitherT[RwsPart, ErrorPart, *], CompM, ErrorPart](
       EitherT.catsDataMonadErrorForEitherT[RwsPart, ErrorPart](
-        IndexedReaderWriterStateT.catsDataMonadForRWST[Eval, ReaderPart, WriterPart, StatePart]
+        IndexedReaderWriterStateT.catsDataMonadForRWST[Eval, ReaderPart, WriterPart, StatePart],
       ),
       // The `Lambda` bit makes anonymous polymorphic functions for wrapping/unwrapping `CompM`
       Lambda[FunctionK[EitherT[RwsPart[*], ErrorPart, *], CompM]](CompM.apply(_)),
-      Lambda[FunctionK[CompM, EitherT[RwsPart[*], ErrorPart, *]]](_.eitherRws)
+      Lambda[FunctionK[CompM, EitherT[RwsPart[*], ErrorPart, *]]](_.eitherRws),
     )
 
   /** @return current scope information */
@@ -84,7 +84,7 @@ object CompM {
   def getParameter(parameterName: String, astNode: util.ASTNode): CompM[Expr.Parameter] =
     for {
       paramIdxOpt <- liftRWS[Option[Int]](
-        ReaderWriterState.ask[ReaderPart, WriterPart, StatePart].map(_._1.index.get(parameterName))
+        ReaderWriterState.ask[ReaderPart, WriterPart, StatePart].map(_._1.index.get(parameterName)),
       )
       paramExpr <- paramIdxOpt match {
         case Some(idx) => CompM.pure(Expr.Parameter(idx))
@@ -118,7 +118,7 @@ object CompM {
   // the non-monadic code to the monadic code)
   val getContextParametersAndSource: CompM[(QueryScopeInfo, ParametersIndex, SourceText)] =
     liftRWS(
-      ReaderWriterState.apply((e: (ParametersIndex, SourceText), n: QueryScopeInfo) => ((), n, (n, e._1, e._2)))
+      ReaderWriterState.apply((e: (ParametersIndex, SourceText), n: QueryScopeInfo) => ((), n, (n, e._1, e._2))),
     )
 
   /** Add or override anchors for node variables
@@ -142,7 +142,7 @@ object CompM {
       ReaderWriterState { (_, initialScope: QueryScopeInfo) =>
         val (newScope, varExpr) = initialScope.addColumn(variable)
         ((), newScope, varExpr)
-      }
+      },
     )
 
   def addColumn(variable: LogicalVariable): CompM[Expr.Variable] = addColumn(logicalVariable2Symbol(variable))

@@ -19,13 +19,13 @@ class PersistorFirstEdgeProcessor(
   runPostActions: List[NodeChangeEvent] => Unit,
   qid: QuineId,
   costToSleep: CostToSleep,
-  nodeEdgesCounter: BinaryHistogramCounter
+  nodeEdgesCounter: BinaryHistogramCounter,
 )(implicit idProvider: QuineIdProvider, val logConfig: LogConfig)
     extends SynchronousEdgeProcessor(edges, qid, costToSleep, nodeEdgesCounter) {
 
   protected def journalAndApplyEffects(
     effectingEvents: NonEmptyList[EdgeEvent],
-    produceTimestamp: () => EventTime
+    produceTimestamp: () => EventTime,
   ): Future[Unit] =
     pauseMessageProcessingUntil(
       persistToJournal(effectingEvents.map(e => WithTime(e, produceTimestamp()))),
@@ -40,10 +40,10 @@ class PersistorFirstEdgeProcessor(
           logger.error(
             log"""Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply
                  |events: $effectingEvents to in-memory state. Returning failed result.""".cleanLines
-            withException err
+            withException err,
           )
       },
-      true
+      true,
     )
 
 }

@@ -29,7 +29,7 @@ abstract class TapirRoutes {
 
   private def v2ApiRoutes(implicit ec: ExecutionContext): Route =
     DebuggingDirectives.logRequestResult(("HTTP", Logging.DebugLevel))(
-      PekkoHttpServerInterpreter(serverOptions)(ec).toRoute(apiEndpoints)
+      PekkoHttpServerInterpreter(serverOptions)(ec).toRoute(apiEndpoints),
     )
   private def v2DocsRoute(implicit ec: ExecutionContext): Route =
     PekkoHttpServerInterpreter(serverOptions)(ec).toRoute(docEndpoints.toList)

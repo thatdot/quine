@@ -33,11 +33,11 @@ object StandingQueryPatterns extends LazySafeLogging {
   def compile(
     statement: ast.Statement,
     avng: AnonymousVariableNameGenerator,
-    paramsIdx: ParametersIndex
+    paramsIdx: ParametersIndex,
   )(implicit
     source: SourceText,
     idProvider: QuineIdProvider,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): GraphQueryPattern = {
     val (parts, whereOpt, hints, returnItems, distinct) = statement match {
       case ast.Query(
@@ -51,17 +51,17 @@ object StandingQueryPatterns extends LazySafeLogging {
                   None,
                   None,
                   emptySet,
-                  _
-                )
-              )
-            )
+                  _,
+                ),
+              ),
+            ),
           ) if emptySet.isEmpty =>
         (parts, whereOpt, hints, returnItems, distinct)
 
       case e =>
         throw new CypherException.Compile(
           wrapping = "Wrong format for a standing query (expected `MATCH ... WHERE ... RETURN ...`)",
-          position = Some(position(e.position))
+          position = Some(position(e.position)),
         )
     }
 
@@ -100,7 +100,7 @@ object StandingQueryPatterns extends LazySafeLogging {
         case _ =>
           throw CypherException.Compile(
             wrapping = "Invalid node constraint (expected a map literal)",
-            position = Some(position(nodePattern.position))
+            position = Some(position(nodePattern.position)),
           )
       }
       val whereProps = nodePattern.variable
@@ -112,10 +112,10 @@ object StandingQueryPatterns extends LazySafeLogging {
       nodePatterns += NodePattern(
         nodePatternId,
         nodePattern.labelExpression.fold(Set.empty[Symbol])(le =>
-          handleLabelExpression(le, Some(position(nodePattern.position)))
+          handleLabelExpression(le, Some(position(nodePattern.position))),
         ),
         idConstraint,
-        whereProps ++ constraintProps
+        whereProps ++ constraintProps,
       )
       nodePatternId
     }
@@ -144,12 +144,12 @@ object StandingQueryPatterns extends LazySafeLogging {
             //val badLabels = labels.map(x => ":" + x.name).mkString(", ")
             throw CypherException.Compile(
               s"Edges in standing query patterns must have exactly one label (got ${badLabels.asCanonicalStringVal})",
-              relPos
+              relPos,
             )
           case None =>
             throw CypherException.Compile(
               s"Must include exactly one label in a standing query pattern (got none)",
-              relPos
+              relPos,
             )
         }
         val leftNodeId = visitPatternElement(elem)
@@ -163,7 +163,7 @@ object StandingQueryPatterns extends LazySafeLogging {
           case _ =>
             throw CypherException.Compile(
               wrapping = "Edge in standing queries must specify a direction",
-              position = relPos
+              position = relPos,
             )
         }
 
@@ -174,7 +174,7 @@ object StandingQueryPatterns extends LazySafeLogging {
       case other =>
         throw CypherException.Compile(
           wrapping = s"Unexpected pattern: $other",
-          position = Some(position(other.position))
+          position = Some(position(other.position)),
         )
     }
 
@@ -185,13 +185,13 @@ object StandingQueryPatterns extends LazySafeLogging {
       case pat: expressions.NamedPatternPart =>
         throw CypherException.Compile(
           wrapping = "Named patterns are not supported in standing queries",
-          position = Some(position(pat.position))
+          position = Some(position(pat.position)),
         )
 
       case pat: expressions.ShortestPaths =>
         throw CypherException.Compile(
           wrapping = "`shortestPath` planning in graph patterns is not supported",
-          position = Some(position(pat.position))
+          position = Some(position(pat.position)),
         )
     }
 
@@ -215,7 +215,7 @@ object StandingQueryPatterns extends LazySafeLogging {
         propertiesWatched,
         idsWatched,
         "Returned column",
-        avng
+        avng,
       )
       colName -> expr
     }
@@ -233,7 +233,7 @@ object StandingQueryPatterns extends LazySafeLogging {
           propertiesWatched,
           idsWatched,
           "Filter condition",
-          avng
+          avng,
         )
       }
       Some(if (conjuncts.length == 1) conjuncts.head else Expr.And(conjuncts.toVector))
@@ -263,8 +263,8 @@ object StandingQueryPatterns extends LazySafeLogging {
           nodeVar,
           throw CypherException.Compile(
             wrapping = s"Using hint refers to undefined variable `${nodeVar.name}`",
-            position = Some(position(nodeVar.position))
-          )
+            position = Some(position(nodeVar.position)),
+          ),
         )
 
       // legacy style `match ... return n`
@@ -285,7 +285,7 @@ object StandingQueryPatterns extends LazySafeLogging {
         toExtract.sortBy(col => toReturn.indexWhere(_._1 == col.aliasedAs)),
         filterCond,
         Nil,
-        distinct
+        distinct,
       )
     } else {
       GraphQueryPattern(
@@ -296,7 +296,7 @@ object StandingQueryPatterns extends LazySafeLogging {
         toExtract,
         filterCond,
         toReturn,
-        distinct
+        distinct,
       )
     }
   }
@@ -320,13 +320,13 @@ object StandingQueryPatterns extends LazySafeLogging {
     nodesInScope: collection.Set[expressions.LogicalVariable],
     propertiesWatched: mutable.Map[
       (expressions.LogicalVariable, Option[expressions.PropertyKeyName]),
-      expressions.LogicalVariable
+      expressions.LogicalVariable,
     ],
     idsWatched: mutable.Map[(Boolean, expressions.LogicalVariable), expressions.LogicalVariable],
     contextName: String,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   )(implicit
-    source: SourceText
+    source: SourceText,
   ): Expr = {
 
     /* We actually compile the expression _twice_. This is done strictly for the sake of good error
@@ -366,18 +366,18 @@ object StandingQueryPatterns extends LazySafeLogging {
         case propAccess @ expressions.Property(nodeVariable: expressions.LogicalVariable, propKeyName) =>
           propertiesWatched.getOrElseUpdate(
             nodeVariable -> Some(propKeyName),
-            expressions.Variable(variableNamer(propAccess))(propAccess.position)
+            expressions.Variable(variableNamer(propAccess))(propAccess.position),
           )
 
         case propertiesFunc @ expressions.FunctionInvocation(
               _,
               _,
               _,
-              Vector(nodeVariable: expressions.LogicalVariable)
+              Vector(nodeVariable: expressions.LogicalVariable),
             ) if propertiesFunc.function == functions.Properties =>
           propertiesWatched.getOrElseUpdate(
             nodeVariable -> None,
-            expressions.Variable(variableNamer(propertiesFunc))(propertiesFunc.position)
+            expressions.Variable(variableNamer(propertiesFunc))(propertiesFunc.position),
           )
 
         // Rewrite `id(nodeVariable)` to a fresh variable
@@ -385,11 +385,11 @@ object StandingQueryPatterns extends LazySafeLogging {
               _,
               _,
               _,
-              Vector(nodeVariable: expressions.LogicalVariable)
+              Vector(nodeVariable: expressions.LogicalVariable),
             ) if idFunc.function == functions.Id =>
           idsWatched.getOrElseUpdate(
             false -> nodeVariable,
-            expressions.Variable(variableNamer(idFunc))(idFunc.position)
+            expressions.Variable(variableNamer(idFunc))(idFunc.position),
           )
 
         // Rewrite `strId(nodeVariable)` to a fresh variable
@@ -397,18 +397,18 @@ object StandingQueryPatterns extends LazySafeLogging {
               _,
               expressions.FunctionName(functionName),
               false,
-              Vector(nodeVariable: expressions.LogicalVariable)
+              Vector(nodeVariable: expressions.LogicalVariable),
             ) if functionName.toLowerCase == CypherStrId.name.toLowerCase =>
           idsWatched.getOrElseUpdate(
             true -> nodeVariable,
-            expressions.Variable(variableNamer(idFunc))(idFunc.position)
+            expressions.Variable(variableNamer(idFunc))(idFunc.position),
           )
 
         // Raise an error for any other variables (which must not have matched the preceding cases)
         case variable: expressions.LogicalVariable =>
           throw new CypherException.Compile(
             s"Invalid use of node variable `${variable.name}` (in standing queries, node variables can only reference constant properties or IDs)",
-            Some(position(variable.position))
+            Some(position(variable.position)),
           )
       }))
       .endoRewrite(bottomUp(Rewriter.lift(resolveFunctions.rewriteFunc)))
@@ -424,7 +424,7 @@ object StandingQueryPatterns extends LazySafeLogging {
       case Right(_) =>
         throw new CypherException.Compile(
           wrapping = s"$contextName is not a pure expression - it requires querying the graph",
-          position = Some(position(expr.position))
+          position = Some(position(expr.position)),
         )
     }
   }
@@ -462,14 +462,14 @@ object StandingQueryPatterns extends LazySafeLogging {
     */
   @throws[CypherException]
   def partitionConstraints(
-    whereOpt: Option[ast.Where]
+    whereOpt: Option[ast.Where],
   )(implicit
     idProvider: QuineIdProvider,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): (
     mutable.Map[expressions.LogicalVariable, Map[Symbol, PropertyValuePattern]],
     mutable.Map[expressions.LogicalVariable, QuineId],
-    mutable.ListBuffer[expressions.Expression]
+    mutable.ListBuffer[expressions.Expression],
   ) = {
 
     /* Constraints of the form
@@ -506,7 +506,7 @@ object StandingQueryPatterns extends LazySafeLogging {
           // Constraints of the form `nodeVariable.someProperty = <someLiteral>`
           case expressions.Equals(
                 expressions.Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName)),
-                QuineValueLiteral(literalArg)
+                QuineValueLiteral(literalArg),
               ) =>
             (v, keyName, PropertyValuePattern.Value(literalArg))
 
@@ -514,7 +514,7 @@ object StandingQueryPatterns extends LazySafeLogging {
           case expressions.NotEquals(
                 expressions
                   .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName)),
-                QuineValueLiteral(literalArg)
+                QuineValueLiteral(literalArg),
               ) =>
             (v, keyName, PropertyValuePattern.AnyValueExcept(literalArg))
 
@@ -522,7 +522,7 @@ object StandingQueryPatterns extends LazySafeLogging {
           case expressions.RegexMatch(
                 expressions
                   .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName)),
-                expressions.StringLiteral(rePattern)
+                expressions.StringLiteral(rePattern),
               ) =>
             (v, keyName, PropertyValuePattern.RegexMatch(Pattern.compile(rePattern)))
 
@@ -533,8 +533,8 @@ object StandingQueryPatterns extends LazySafeLogging {
                 false,
                 Vector(
                   expressions
-                    .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName))
-                )
+                    .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName)),
+                ),
               ) if f.function == functions.Exists =>
             (v, keyName, PropertyValuePattern.AnyValue)
 
@@ -542,8 +542,8 @@ object StandingQueryPatterns extends LazySafeLogging {
           case expressions.IsNotNull(
                 expressions.Property(
                   v: expressions.LogicalVariable,
-                  expressions.PropertyKeyName(keyName)
-                )
+                  expressions.PropertyKeyName(keyName),
+                ),
               ) =>
             (v, keyName, PropertyValuePattern.AnyValue)
 
@@ -555,9 +555,9 @@ object StandingQueryPatterns extends LazySafeLogging {
                   false,
                   Vector(
                     expressions
-                      .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName))
-                  )
-                )
+                      .Property(v: expressions.LogicalVariable, expressions.PropertyKeyName(keyName)),
+                  ),
+                ),
               ) if f.function == functions.Exists =>
             (v, keyName, PropertyValuePattern.NoValue)
 
@@ -565,8 +565,8 @@ object StandingQueryPatterns extends LazySafeLogging {
           case expressions.IsNull(
                 expressions.Property(
                   v: expressions.LogicalVariable,
-                  expressions.PropertyKeyName(keyName)
-                )
+                  expressions.PropertyKeyName(keyName),
+                ),
               ) =>
             (v, keyName, PropertyValuePattern.NoValue)
 
@@ -603,7 +603,7 @@ object StandingQueryPatterns extends LazySafeLogging {
                 _,
                 expressions.FunctionName(functionName),
                 false,
-                args
+                args,
               ) if functionName.toLowerCase == CypherIdFrom.name.toLowerCase =>
             Some(CypherIdFrom -> args.toVector)
           // locIdFrom with at least 2 args
@@ -611,7 +611,7 @@ object StandingQueryPatterns extends LazySafeLogging {
                 _,
                 expressions.FunctionName(functionName),
                 false,
-                args
+                args,
               ) if functionName.toLowerCase == CypherLocIdFrom.name.toLowerCase && args.length >= 2 =>
             Some(CypherLocIdFrom -> args.toVector)
           case _ => None
@@ -637,21 +637,21 @@ object StandingQueryPatterns extends LazySafeLogging {
             result match {
               case Expr.Bytes(qidBytes, representsId @ false) =>
                 logger.info(
-                  safe"Precomputing ID predicate in Standing Query returned bytes not tagged as an ID. Using as an ID anyways"
+                  safe"Precomputing ID predicate in Standing Query returned bytes not tagged as an ID. Using as an ID anyways",
                 )
                 Some(QuineId(qidBytes))
               case Expr.Bytes(qidBytes, representsId @ true) =>
                 logger.debug(
                   safe"""Precomputing ID predicate in Standing Query returned ID-tagged bytes, but idProvider didn't
                         |recognize the value as a QuineId. This is most likely a bug in toQuineValue or
-                        |idProvider.valueToQid, unless the user switched their ID provider""".cleanLines
+                        |idProvider.valueToQid, unless the user switched their ID provider""".cleanLines,
                 )
                 Some(QuineId(qidBytes))
               case cantBeUsedAsId =>
                 logger.warn(
                   log"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom).
                         |Precomputing the ID predicate produced a constraint (${cantBeUsedAsId.toString}) with type:
-                        |${Safe(cantBeUsedAsId.typ.toString)}""".cleanLines
+                        |${Safe(cantBeUsedAsId.typ.toString)}""".cleanLines,
                 )
                 None
             }

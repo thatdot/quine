@@ -19,8 +19,8 @@ object GitVersion extends AutoPlugin {
     tagPrefix := "quine/",
     version := gitReader.value.withGit(git =>
       // Try "v" as a fallback option to support just "v" as the tag prefix in the OSS repo
-      tagWithPrefix(git, tagPrefix.value) orElse tagWithPrefix(git, "v") getOrElse "UNKNOWN"
-    )
+      tagWithPrefix(git, tagPrefix.value) orElse tagWithPrefix(git, "v") getOrElse "UNKNOWN",
+    ),
   )
 
 }

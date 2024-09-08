@@ -35,14 +35,14 @@ object Protocol extends LazySafeLogging {
       def apply(
         nextState: State,
         response: ProtocolMessage,
-        resultsQueue: Source[Record, NotUsed]
+        resultsQueue: Source[Record, NotUsed],
       ): HandlerResult =
         HandlerResult(nextState, Source.single(response), resultsQueue)
     }
     final case class HandlerResult(
       nextState: State,
       response: Source[ProtocolMessage, NotUsed] = Source.empty,
-      resultsQueue: Source[Record, NotUsed] = Source.empty
+      resultsQueue: Source[Record, NotUsed] = Source.empty,
     )
     case object Uninitialized extends State {
       override def handleMessage(implicit graph: CypherOpsGraph, timeout: Timeout, logConfig: LogConfig): Handler = {
@@ -56,9 +56,9 @@ object Protocol extends LazySafeLogging {
             Success(
               Map(
                 "db" -> Expr.Str("quine"),
-                "server" -> Expr.Str(version)
-              )
-            )
+                "server" -> Expr.Str(version),
+              ),
+            ),
           ) // TODO authorization, quine version string}
       }
     }
@@ -77,7 +77,7 @@ object Protocol extends LazySafeLogging {
             val queryResult: RunningCypherQuery = cypher.queryCypherValues(
               cleanedStatement,
               namespace,
-              parameters
+              parameters,
             )
 
             val fields = queryResult.columns.map(col => Expr.Str(col.name))
@@ -92,10 +92,10 @@ object Protocol extends LazySafeLogging {
                   Map(
                     "db" -> Expr.Str("quine"),
                     "plan" -> plan.toValue,
-                    "result_available_after" -> Expr.Integer(resultAvailableAfter)
-                  )
+                    "result_available_after" -> Expr.Integer(resultAvailableAfter),
+                  ),
                 ),
-                Source.empty[Record]
+                Source.empty[Record],
               )
             } else {
               (
@@ -103,10 +103,10 @@ object Protocol extends LazySafeLogging {
                   Map(
                     "db" -> Expr.Str("quine"),
                     "fields" -> Expr.List(fields),
-                    "result_available_after" -> Expr.Integer(resultAvailableAfter)
-                  )
+                    "result_available_after" -> Expr.Integer(resultAvailableAfter),
+                  ),
                 ),
-                queryResult.results.map(Record.apply)
+                queryResult.results.map(Record.apply),
               )
             }
           } match {
@@ -119,9 +119,9 @@ object Protocol extends LazySafeLogging {
                 Failure(
                   Map(
                     "message" -> Expr.Str(error.getMessage),
-                    "code" -> Expr.Str(error.getClass.getName)
-                  )
-                )
+                    "code" -> Expr.Str(error.getClass.getName),
+                  ),
+                ),
               )
           }
       }
@@ -139,22 +139,22 @@ object Protocol extends LazySafeLogging {
                   Map(
                     "db" -> Expr.Str("quine"),
                     "result_consumed_after" -> Expr
-                      .Integer(1) // milliseconds from when results were made available to when results were pulled
-                  )
-                )
-              )
+                      .Integer(1), // milliseconds from when results were made available to when results were pulled
+                  ),
+                ),
+              ),
             )
             .recover {
               case err: CypherException =>
                 Failure(
                   Map(
                     "message" -> Expr.Str(err.getMessage),
-                    "code" -> Expr.Str(err.getClass.getName)
-                  )
+                    "code" -> Expr.Str(err.getClass.getName),
+                  ),
                 )
               case err =>
                 logger.error(
-                  log"Cypher handler threw unexpected error while streaming results to client: " withException err
+                  log"Cypher handler threw unexpected error while streaming results to client: " withException err,
                 )
                 throw err // TODO possibly terminate connection
             }
@@ -167,11 +167,11 @@ object Protocol extends LazySafeLogging {
                 "db" -> Expr.Str("quine"),
                 "result_consumed_after" -> Expr
                   .Integer(
-                    1
-                  ) // milliseconds from when results were made available to when results were pulled
-              )
+                    1,
+                  ), // milliseconds from when results were made available to when results were pulled
+              ),
             ),
-            Source.empty
+            Source.empty,
           )
       }
     }
@@ -208,7 +208,7 @@ object Protocol extends LazySafeLogging {
   def bolt(implicit
     graph: CypherOpsGraph,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Flow[ByteString, ByteString, NotUsed] =
     Protocol.handleMessages
       .join(Protocol.protocolMessageSerialization(graph.idProvider))
@@ -253,8 +253,8 @@ object Protocol extends LazySafeLogging {
               ) {
                 logger.info(
                   safe"Handshake ${Safe(header.toPrettyString)} received from client did not pass. The rest was ${Safe(
-                    rest.toPrettyString
-                  )}. Full string on next line.\n${Safe((header ++ rest).toHexString)}"
+                    rest.toPrettyString,
+                  )}. Full string on next line.\n${Safe((header ++ rest).toHexString)}",
                 )
                 ???
                 // TODO somehow kill connection and respond with ByteString(0x00, 0x00, 0x00, 0x00)
@@ -267,7 +267,7 @@ object Protocol extends LazySafeLogging {
               List.empty
             }
         }
-      }
+      },
     )
   }
 
@@ -295,18 +295,18 @@ object Protocol extends LazySafeLogging {
           byteOrder = java.nio.ByteOrder.BIG_ENDIAN,
           computeFrameSize = { (_, x) =>
             x + LENGTH_BYTES + TERMINATOR.length
-          }
+          },
         )
         .map(
-          _.drop(LENGTH_BYTES).dropRight(TERMINATOR.length)
+          _.drop(LENGTH_BYTES).dropRight(TERMINATOR.length),
         ) // drop the length bytes and the terminator
-        .map(MessageBytes.apply) // wrap the bytes in a Protocol.Message
+        .map(MessageBytes.apply), // wrap the bytes in a Protocol.Message
     )
   }
 
   /** Protocol messaging layer */
   def protocolMessageSerialization(implicit
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
   ): BidiFlow[ProtocolMessage, MessageBytes, MessageBytes, ProtocolMessage, NotUsed] = {
 
     /** Handles the messaging layer */
@@ -325,7 +325,7 @@ object Protocol extends LazySafeLogging {
           case scala.util.Failure(err) =>
             throw BoltSerializationException(
               s"Failed to deserialize message with bytes: $data",
-              err
+              err,
             )
         }
 
@@ -333,24 +333,24 @@ object Protocol extends LazySafeLogging {
           case Some(msg) => msg
           case None =>
             throw new BoltSerializationException(
-              s"Failed to decode message with signature ${structure.signature}: $structure"
+              s"Failed to decode message with signature ${structure.signature}: $structure",
             )
         }
-      }
+      },
     )
   }
 
   def handleMessages(implicit
     graph: CypherOpsGraph,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Flow[ProtocolMessage, ProtocolMessage, NotUsed] =
     handleMessagesToSources(graph, timeout, logConfig).flatMapConcat(identity)
 
   def handleMessagesToSources(implicit
     graph: CypherOpsGraph,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Flow[ProtocolMessage, Source[ProtocolMessage, NotUsed], NotUsed] =
     Flow[ProtocolMessage].statefulMapConcat { () =>
       var connectionState: State = State.Uninitialized
@@ -368,14 +368,14 @@ object Protocol extends LazySafeLogging {
                 State.HandlerResult(State.Ready, Success(), Source.empty)
               case _ =>
                 logger.warn(
-                  log"Received message that is invalid for current BOLT protocol state ${Safe(connectionState.toString)}. Message: $msg"
+                  log"Received message that is invalid for current BOLT protocol state ${Safe(connectionState.toString)}. Message: $msg",
                 )
                 State.HandlerResult(State.Defunct)
-            }
+            },
           )
         if (newState == State.Defunct) {
           logger.error(
-            safe"Message handler explicitly indicated the connection should be killed"
+            safe"Message handler explicitly indicated the connection should be killed",
           ) // TODO actually terminate
         }
         connectionState = newState
@@ -450,7 +450,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of RESET has the wrong schema"
+              s"Structure with signature of RESET has the wrong schema",
             )
         }
       }
@@ -466,7 +466,7 @@ object Protocol extends LazySafeLogging {
   /** @see <https://boltprotocol.org/v1/#message-init> */
   final case class Init(
     clientName: String,
-    authToken: Option[Map[String, Value]]
+    authToken: Option[Map[String, Value]],
   ) extends ProtocolMessage
 
   object Init {
@@ -478,19 +478,19 @@ object Protocol extends LazySafeLogging {
         structure.fields match {
           case List(
                 Expr.Str(clientName),
-                Expr.Map(authToken)
+                Expr.Map(authToken),
               ) =>
             Init(clientName, Some(authToken))
 
           case List(
                 Expr.Str(clientName),
-                Expr.Null
+                Expr.Null,
               ) =>
             Init(clientName, None)
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of INIT has the wrong schema"
+              s"Structure with signature of INIT has the wrong schema",
             )
         }
       }
@@ -502,7 +502,7 @@ object Protocol extends LazySafeLogging {
         init.authToken match {
           case None => Expr.Null
           case Some(authToken) => Expr.Map(authToken)
-        }
+        },
       )
 
     }
@@ -522,7 +522,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of SUCCESS has the wrong schema"
+              s"Structure with signature of SUCCESS has the wrong schema",
             )
         }
       }
@@ -530,7 +530,7 @@ object Protocol extends LazySafeLogging {
       val signature: Byte = 0x70.toByte
 
       def fields(success: Success)(implicit idp: QuineIdProvider): List[Value] = List(
-        Expr.Map(success.metadata)
+        Expr.Map(success.metadata),
       )
 
     }
@@ -550,7 +550,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of FAILURE has the wrong schema"
+              s"Structure with signature of FAILURE has the wrong schema",
             )
         }
       }
@@ -558,7 +558,7 @@ object Protocol extends LazySafeLogging {
       val signature: Byte = 0x7F.toByte
 
       def fields(failure: Failure)(implicit idp: QuineIdProvider): List[Value] = List(
-        Expr.Map(failure.metadata)
+        Expr.Map(failure.metadata),
       )
 
     }
@@ -578,7 +578,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of ACK_FAILURE has the wrong schema"
+              s"Structure with signature of ACK_FAILURE has the wrong schema",
             )
         }
       }
@@ -604,7 +604,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of IGNORED has the wrong schema"
+              s"Structure with signature of IGNORED has the wrong schema",
             )
         }
       }
@@ -630,7 +630,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of RUN has the wrong schema"
+              s"Structure with signature of RUN has the wrong schema",
             )
         }
       }
@@ -639,7 +639,7 @@ object Protocol extends LazySafeLogging {
 
       def fields(run: Run)(implicit idp: QuineIdProvider): List[Value] = List(
         Expr.Str(run.statement),
-        Expr.Map(run.parameters)
+        Expr.Map(run.parameters),
       )
 
     }
@@ -659,7 +659,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of PULL_ALL has the wrong schema"
+              s"Structure with signature of PULL_ALL has the wrong schema",
             )
         }
       }
@@ -685,7 +685,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of DISCARD_ALL has the wrong schema"
+              s"Structure with signature of DISCARD_ALL has the wrong schema",
             )
         }
       }
@@ -711,7 +711,7 @@ object Protocol extends LazySafeLogging {
 
           case _ =>
             throw new IllegalArgumentException(
-              s"Structure with signature of RECORD has the wrong schema"
+              s"Structure with signature of RECORD has the wrong schema",
             )
         }
       }
@@ -719,7 +719,7 @@ object Protocol extends LazySafeLogging {
       val signature: Byte = 0x71.toByte
 
       def fields(record: Record)(implicit idp: QuineIdProvider): List[Value] = List(
-        Expr.List(record.fields)
+        Expr.List(record.fields),
       )
 
     }
@@ -742,5 +742,5 @@ object Protocol extends LazySafeLogging {
 
 final case class BoltSerializationException(
   message: String,
-  cause: Throwable = null
+  cause: Throwable = null,
 ) extends RuntimeException(message, cause)

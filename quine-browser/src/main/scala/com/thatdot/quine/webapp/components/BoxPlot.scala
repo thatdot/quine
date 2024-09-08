@@ -34,7 +34,7 @@ import com.thatdot.quine.Util.toJsObject
     orientation: PlotOrientation = PlotOrientation.Horizontal,
     units: Option[String] = None,
     logScale: Boolean = true,
-    layout: js.Object = js.Dynamic.literal()
+    layout: js.Object = js.Dynamic.literal(),
   ) {
 
     /** The part of Plotly's `data` that define layout or may change with orientation:
@@ -56,9 +56,9 @@ import com.thatdot.quine.Util.toJsObject
         "orientation" -> orientation.orientationVal,
         orientation.primaryAxis -> js
           .Array(
-            explicitlyVisible.map(_._1).toJSArray
+            explicitlyVisible.map(_._1).toJSArray,
           ), // intentionally Array[Array[Double]] (where outer array is unary),
-        "text" -> js.Array(explicitlyVisible.map(_._2).toJSArray)
+        "text" -> js.Array(explicitlyVisible.map(_._2).toJSArray),
       )
 
     /** The part of Plotly's `data` defining the values to be rendered independent of layout:
@@ -75,7 +75,7 @@ import com.thatdot.quine.Util.toJsObject
         "q1" -> q1,
         "median" -> median,
         "q3" -> q3,
-        "upperfence" -> max
+        "upperfence" -> max,
       ) ++ mean.map(x => "mean" -> x))
         .map { case (k, v) => k -> js.Array(v) } // make into unary arrays
 
@@ -91,33 +91,33 @@ import com.thatdot.quine.Util.toJsObject
               if (logScale) "log"
               else "linear"
             ),
-            "fixedrange" -> true
-          ) ++ units.map[(String, js.Any)](s => "title" -> s)
+            "fixedrange" -> true,
+          ) ++ units.map[(String, js.Any)](s => "title" -> s),
         ),
         orientation.secondaryAxisName ->
         js.Dynamic.literal(
           fixedrange = true,
-          visible = false
-        )
+          visible = false,
+        ),
       )
 
     def asPlotlyLayout(): js.Object = js.Object.assign(
       js.Dynamic.literal(),
       toJsObject(asPlotlyLayoutBase()),
-      layout
+      layout,
     )
   }
 
   def render(): ReactElement =
     Plotly(
       data = js.Array(
-        props.asPlotlyData()
+        props.asPlotlyData(),
       ),
       layout = props.asPlotlyLayout(),
       useResizeHandler = true,
       style = js.Dynamic.literal(
         width = "100%",
-        height = "100%"
-      )
+        height = "100%",
+      ),
     )
 }

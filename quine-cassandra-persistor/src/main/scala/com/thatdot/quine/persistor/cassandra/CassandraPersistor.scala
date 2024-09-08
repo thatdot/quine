@@ -27,7 +27,7 @@ import com.thatdot.quine.graph.{
   NodeEvent,
   StandingQueryId,
   StandingQueryInfo,
-  namespaceToString
+  namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.QuineId
@@ -69,20 +69,20 @@ abstract class CassandraPersistorDefinition {
     TableDefinition[StandingQueries],
     TableDefinition[StandingQueryStates],
     //TableDefinition[QuinePatterns],
-    TableDefinition[DomainIndexEvents]
+    TableDefinition[DomainIndexEvents],
   ) = (
     journalsTableDef(namespace),
     snapshotsTableDef(namespace),
     new StandingQueriesDefinition(namespace),
     new StandingQueryStatesDefinition(namespace),
     //new QuinePatternsDefinition(namespace),
-    new DomainIndexEventsDefinition(namespace)
+    new DomainIndexEventsDefinition(namespace),
   )
 
   def createTables(
     namespace: NamespaceId,
     session: CqlSession,
-    verifyTable: CqlSession => CqlIdentifier => Future[Unit]
+    verifyTable: CqlSession => CqlIdentifier => Future[Unit],
   )(implicit ec: ExecutionContext, logConfig: LogConfig): Future[Unit] =
     Future
       .traverse(tablesForNamespace(namespace).productIterator)(
@@ -93,7 +93,7 @@ abstract class CassandraPersistorDefinition {
         // on the output of .tablesForNamespace().
         // 2) Extract a stand-alone reproduction
         // 3) Open a bug against shapeless with that reproduction
-        _.asInstanceOf[TableDefinition[_]].executeCreateTable(session, verifyTable(session))
+        _.asInstanceOf[TableDefinition[_]].executeCreateTable(session, verifyTable(session)),
       )
       .map(_ => ())(ExecutionContext.parasitic)
 }
@@ -102,7 +102,7 @@ class PrepareStatements(
   session: CqlSession,
   chunker: Chunker,
   readSettings: CassandraStatementSettings,
-  writeSettings: CassandraStatementSettings
+  writeSettings: CassandraStatementSettings,
 )(implicit materializer: Materializer, futureInstance: Applicative[Future], val logConfig: LogConfig)
     extends (TableDefinition ~> Future) {
   def apply[A](f: TableDefinition[A]): Future[A] = f.create(session, chunker, readSettings, writeSettings)
@@ -117,10 +117,10 @@ abstract class CassandraPersistor(
   val persistenceConfig: PersistenceConfig,
   session: CqlSession,
   namespace: NamespaceId,
-  protected val snapshotPartMaxSizeBytes: Int
+  protected val snapshotPartMaxSizeBytes: Int,
 )(implicit
   materializer: Materializer,
-  logConfig: LogConfig
+  logConfig: LogConfig,
 ) extends NamespacedPersistenceAgent
     with MultipartSnapshotPersistenceAgent {
 
@@ -156,7 +156,7 @@ abstract class CassandraPersistor(
   override def persistSnapshotPart(
     id: QuineId,
     atTime: EventTime,
-    part: MultipartSnapshotPart
+    part: MultipartSnapshotPart,
   ): Future[Unit] = {
     val MultipartSnapshotPart(bytes, index, count) = part
     snapshots.persistSnapshotPart(id, atTime, bytes, index, count)
@@ -165,7 +165,7 @@ abstract class CassandraPersistor(
 
   override def getLatestMultipartSnapshot(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[MultipartSnapshot]] =
     snapshots
       .getLatestSnapshotTime(id, upToTime)
@@ -173,8 +173,8 @@ abstract class CassandraPersistor(
         _.traverse(time =>
           snapshots
             .getSnapshotParts(id, time)
-            .map(MultipartSnapshot(time, _))(ExecutionContext.parasitic)
-        )
+            .map(MultipartSnapshot(time, _))(ExecutionContext.parasitic),
+        ),
       )(multipartSnapshotExecutionContext)
 
   override def persistStandingQuery(standingQuery: StandingQueryInfo): Future[Unit] =
@@ -190,7 +190,7 @@ abstract class CassandraPersistor(
         case Failure(e) =>
           logger.error(
             log"Error deleting rows in namespace ${Safe(namespaceToString(namespace))} from standing query states table for ${standingQuery}"
-            withException e
+            withException e,
           )
       }(materializer.executionContext)
     standingQueries.removeStandingQuery(standingQuery)
@@ -200,7 +200,7 @@ abstract class CassandraPersistor(
     standingQueries.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     standingQueryStates.getMultipleValuesStandingQueryStates(id)
 
@@ -208,12 +208,12 @@ abstract class CassandraPersistor(
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = standingQueryStates.setStandingQueryState(
     standingQuery,
     id,
     standingQueryId,
-    state
+    state,
   )
   override def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit] =
     standingQueryStates.deleteStandingQueryStates(id)
@@ -227,25 +227,25 @@ abstract class CassandraPersistor(
   override def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] = journals.getJournalWithTime(id, startingAt, endingAt)
   override def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     domainIndexEvents.getJournalWithTime(id, startingAt, endingAt)
 
   override def persistNodeChangeEvents(
     id: QuineId,
-    events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]
+    events: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]],
   ): Future[Unit] =
     journals.persistEvents(id, events)
 
   override def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = journals.deleteEvents(qid)
   override def persistDomainIndexEvents(
     id: QuineId,
-    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+    events: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]],
   ): Future[Unit] =
     domainIndexEvents.persistEvents(id, events)
   override def deleteDomainIndexEvents(qid: QuineId): Future[Unit] = domainIndexEvents.deleteEvents(qid)

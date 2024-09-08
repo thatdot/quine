@@ -7,7 +7,7 @@ import com.thatdot.quine.graph.{
   StandingQueryInfo,
   StandingQueryPattern,
   StandingQueryResult,
-  cypher
+  cypher,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
@@ -35,7 +35,7 @@ object StandingQueryMessage {
     final case class NodeSubscriber(
       subscribingNode: QuineId,
       globalId: StandingQueryId,
-      queryId: MultipleValuesStandingQueryPartId
+      queryId: MultipleValuesStandingQueryPartId,
     ) extends MultipleValuesStandingQuerySubscriber {
       def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String =
         s"${this.getClass.getSimpleName}(${subscribingNode.pretty}, $globalId, $queryId)"
@@ -46,7 +46,7 @@ object StandingQueryMessage {
       * [[com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter]]
       */
     final case class GlobalSubscriber(
-      globalId: StandingQueryId
+      globalId: StandingQueryId,
     ) extends MultipleValuesStandingQuerySubscriber {
       def pretty(implicit idProvider: QuineIdProvider, logConfig: LogConfig): String = this.toString
     }
@@ -57,7 +57,7 @@ object StandingQueryMessage {
     */
   final case class CreateMultipleValuesStandingQuerySubscription(
     subscriber: MultipleValuesStandingQuerySubscriber,
-    query: MultipleValuesStandingQuery
+    query: MultipleValuesStandingQuery,
   ) extends MultipleValuesStandingQueryCommand
 
   /** @param originalSubscriber node which had created a subscription
@@ -65,7 +65,7 @@ object StandingQueryMessage {
     */
   final case class CancelMultipleValuesSubscription(
     originalSubscriber: MultipleValuesStandingQuerySubscriber,
-    queryId: MultipleValuesStandingQueryPartId
+    queryId: MultipleValuesStandingQueryPartId,
   ) extends MultipleValuesStandingQueryCommand
 
   /** Internal (node to node) representation of a standing query result group
@@ -82,7 +82,7 @@ object StandingQueryMessage {
     queryPartId: MultipleValuesStandingQueryPartId,
     globalId: StandingQueryId,
     forQueryPartId: Option[MultipleValuesStandingQueryPartId],
-    resultGroup: Seq[cypher.QueryContext]
+    resultGroup: Seq[cypher.QueryContext],
   ) extends MultipleValuesStandingQueryCommand {
     def isPositive = true
 
@@ -106,20 +106,20 @@ object StandingQueryMessage {
   final case class CreateDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
     replyTo: Either[QuineId, StandingQueryId],
-    relatedQueries: Set[StandingQueryId]
+    relatedQueries: Set[StandingQueryId],
   ) extends DomainNodeSubscriptionCommand
 
   final case class DomainNodeSubscriptionResult(
     from: QuineId,
     dgnId: DomainGraphNodeId,
-    result: Boolean
+    result: Boolean,
   ) extends DomainNodeSubscriptionCommand
       with SqResultLike {
 
     def isPositive: Boolean = result
 
     def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider)(implicit
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Seq[StandingQueryResult] = {
       val (formatAsString, aliasedAs) = sq.queryPattern match {
         case pat: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
@@ -135,7 +135,7 @@ object StandingQueryMessage {
 
   final case class CancelDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
-    alreadyCancelledSubscriber: QuineId
+    alreadyCancelledSubscriber: QuineId,
   ) extends DomainNodeSubscriptionCommand
 
   sealed abstract class UpdateStandingQueriesCommand extends StandingQueryMessage
@@ -162,7 +162,7 @@ object StandingQueryMessage {
     def isPositive: Boolean
 
     def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider)(implicit
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Seq[StandingQueryResult]
   }
 }

@@ -43,11 +43,11 @@ sealed abstract class Proc {
   def call(
     context: QueryContext,
     arguments: Seq[Value],
-    location: ProcedureExecutionLocation
+    location: ProcedureExecutionLocation,
   )(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _]
 
 }
@@ -73,11 +73,11 @@ object Proc {
     def call(
       context: QueryContext,
       arguments: Seq[Value],
-      location: ProcedureExecutionLocation
+      location: ProcedureExecutionLocation,
     )(implicit
       parameters: Parameters,
       timeout: Timeout,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Source[Vector[Value], _] = {
 
       val (startNode, endNode, options): (QuineId, QuineId, Map[String, Value]) = arguments match {
@@ -87,7 +87,7 @@ object Proc {
           throw CypherException.WrongSignature(
             name,
             expectedArguments = Seq(Type.Node, Type.Node, Type.Map),
-            actualArguments = other
+            actualArguments = other,
           )
       }
       val literalGraph = LiteralOpsGraph.getOrThrow(s"`$name` procedure", location.graph)
@@ -128,7 +128,7 @@ object Proc {
       def stepOutwards(
         seen: Set[QuineId],
         toExpand: Map[QuineId, List[(QuineId, Expr.Relationship)]],
-        dirFilter: Option[EdgeDirection]
+        dirFilter: Option[EdgeDirection],
       ): Future[Map[QuineId, List[(QuineId, Expr.Relationship)]]] =
         Future
           .traverse(toExpand: Iterable[(QuineId, List[(QuineId, Expr.Relationship)])]) { case (qid, path) =>
@@ -140,7 +140,7 @@ object Proc {
                 // type, only query for half edges with that type.
                 withType = edgeTypes.collect { case s if s.size == 1 => s.head },
                 withDir = dirFilter,
-                atTime = atTime
+                atTime = atTime,
               )
               .map(_.collect {
                 case HalfEdge(edgeType, dir, other)
@@ -161,7 +161,7 @@ object Proc {
           }(implicitly, cypherGraph.nodeDispatcherEC)
           .map(
             _.foldLeft(Map.newBuilder[QuineId, List[(QuineId, Expr.Relationship)]])(_ ++= _)
-              .result()
+              .result(),
           )(literalGraph.nodeDispatcherEC)
 
       /** Essentially, this does two breadth-first searches (via stepOutwards), alternating which
@@ -181,7 +181,7 @@ object Proc {
         seenFromEnd: Set[QuineId],
         progressFromEnd: Map[QuineId, List[(QuineId, Expr.Relationship)]],
         forward: Boolean = true,
-        currentPathLength: Int = 0
+        currentPathLength: Int = 0,
       ): Future[Option[Expr.Path]] = {
 
         // Give up if we exceed the path limit
@@ -198,7 +198,7 @@ object Proc {
             seenFromStart,
             progressFromStart,
             !forward,
-            currentPathLength
+            currentPathLength,
           )
 
         // Look to see if we have found a path and are done
@@ -248,7 +248,7 @@ object Proc {
           stepOutwards(
             seenFromStart,
             progressFromStart,
-            if (forward) directionFilter else directionFilter.map(_.reverse)
+            if (forward) directionFilter else directionFilter.map(_.reverse),
           )
             .map { newProgressFromStart =>
               val newSeenFromStart = seenFromStart | progressFromStart.keySet
@@ -261,7 +261,7 @@ object Proc {
                 newSeenFromStart,
                 newProgressFromStart,
                 !forward,
-                currentPathLength + 1
+                currentPathLength + 1,
               )
             }(literalGraph.nodeDispatcherEC)
       }
@@ -272,7 +272,7 @@ object Proc {
             seenFromStart = Set.empty[QuineId],
             progressFromStart = Map(startNode -> Nil),
             seenFromEnd = Set.empty[QuineId],
-            progressFromEnd = Map(endNode -> Nil)
+            progressFromEnd = Map(endNode -> Nil),
           )
           pathOptFut.map {
             case Some(path) => Source.single(Vector(path))
@@ -295,11 +295,11 @@ object Proc {
     def call(
       context: QueryContext,
       arguments: Seq[Value],
-      location: ProcedureExecutionLocation
+      location: ProcedureExecutionLocation,
     )(implicit
       parameters: Parameters,
       timeout: Timeout,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Source[Vector[Value], _] =
       underlying.call(context, arguments, location)
   }

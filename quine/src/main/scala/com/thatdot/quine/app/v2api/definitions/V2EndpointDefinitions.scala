@@ -54,7 +54,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
 
   val atTimeParameter: EndpointInput.Query[Option[AtTime]] =
     query[Option[AtTime]]("atTime").description(
-      "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query"
+      "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query",
     )
 
   // ------- id ----------------
@@ -77,7 +77,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
 
   val timeoutParameter: EndpointInput.Query[Option[FiniteDuration]] =
     query[Option[FiniteDuration]]("timeout").description(
-      "Milliseconds to wait before the HTTP request times out"
+      "Milliseconds to wait before the HTTP request times out",
     )
 
   type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T]]
@@ -93,7 +93,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     ns.flatMap(t => Option.when(t != "default")(Symbol(t)))
 
   def ifNamespaceFound[A](namespaceId: NamespaceId)(
-    ifFound: => Future[Either[CustomError, A]]
+    ifFound: => Future[Either[CustomError, A]],
   ): Future[Either[CustomError, Option[A]]] =
     if (!app.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
     else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
@@ -107,25 +107,25 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     : EndpointOutput.OneOf[ErrorEnvelope[_ <: CustomError], ErrorEnvelope[_ <: CustomError]] =
     oneOf[ErrorEnvelope[_ <: CustomError]](
       oneOfVariantFromMatchType(
-        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[ServerError]].description("bad request"))
+        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[ServerError]].description("bad request")),
       ),
       oneOfVariantFromMatchType(
-        statusCode(StatusCode.BadRequest).and(jsonBody[ErrorEnvelope[BadRequest]].description("bad request"))
+        statusCode(StatusCode.BadRequest).and(jsonBody[ErrorEnvelope[BadRequest]].description("bad request")),
       ),
       oneOfVariantFromMatchType(
-        statusCode(StatusCode.NotFound).and(jsonBody[ErrorEnvelope[NotFound]].description("not found"))
+        statusCode(StatusCode.NotFound).and(jsonBody[ErrorEnvelope[NotFound]].description("not found")),
       ),
       oneOfVariantFromMatchType(
-        statusCode(StatusCode.Unauthorized).and(jsonBody[ErrorEnvelope[Unauthorized]].description("unauthorized"))
+        statusCode(StatusCode.Unauthorized).and(jsonBody[ErrorEnvelope[Unauthorized]].description("unauthorized")),
       ),
       oneOfVariantFromMatchType(
         statusCode(StatusCode.ServiceUnavailable)
-          .and(jsonBody[ErrorEnvelope[ServiceUnavailable]].description("service unavailable"))
+          .and(jsonBody[ErrorEnvelope[ServiceUnavailable]].description("service unavailable")),
       ),
       oneOfVariantFromMatchType(statusCode(StatusCode.NoContent).and(emptyOutputAs(ErrorEnvelope(NoContent)))),
       oneOfDefaultVariant(
-        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[Unknown]].description("server error"))
-      )
+        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[Unknown]].description("server error")),
+      ),
     )
 
   private def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] = (a: ObjectEnvelope[T]) =>
@@ -143,7 +143,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
     */
   def rawEndpoint(
-    basePaths: String*
+    basePaths: String*,
   ): Endpoint[Unit, Option[Int], Unit, Unit, Any] =
     endpoint
       .in(basePaths.foldLeft("api" / "v2")((path, segment) => path / segment))
@@ -152,7 +152,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
   def withOutput[T](endpoint: EndpointBase)(implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     endpoint
       .errorOut(commonErrorOutput)
@@ -162,25 +162,25 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     * @param basePaths Provided base Paths will be appended in order, i.e `endpoint("a","b") == /api/v2/a/b`
     */
   def baseEndpoint[T](
-    basePaths: String*
+    basePaths: String*,
   )(implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     withOutput[T](rawEndpoint(basePaths: _*))
 
   def yamlBody[T]()(implicit
     schema: Schema[T],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): EndpointIO.Body[String, T] = stringBodyAnyFormat(YamlCodec.createCodec[T](), StandardCharsets.UTF_8)
 
   @unused
   def jsonOrYamlBody[T](implicit
     schema: Schema[T],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): EndpointIO.OneOfBody[T, T] =
     oneOfBody[T](jsonBody[T], yamlBody[T]())
 
@@ -193,7 +193,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     cmd: ApiCommand,
     idx: Option[Int],
     in: IN,
-    f: IN => Future[OUT]
+    f: IN => Future[OUT],
   ): Future[EndpointOutput[OUT]] = {
     implicit val ctx = ExecutionContext.parasitic
     val g: Future[OUT] => Future[Either[CustomError, OUT]] = gin =>
@@ -207,7 +207,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     cmd: ApiCommand,
     idx: Option[Int],
     in: IN,
-    f: IN => Future[Either[CustomError, OUT]]
+    f: IN => Future[Either[CustomError, OUT]],
   ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
     logger.debug(log"Received arguments for API call ${Safe(cmd.toString)}: ${in.toString}")
     implicit val ec: ExecutionContext = ExecutionContext.parasitic

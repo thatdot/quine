@@ -24,7 +24,7 @@ import org.opencypher.v9_0.util.{
   NotImplementedErrorMessageProvider,
   OpenCypherExceptionFactory,
   RecordingNotificationLogger,
-  symbols
+  symbols,
 }
 import org.opencypher.v9_0.{ast, expressions}
 
@@ -45,9 +45,9 @@ package object cypher {
     statement: ast.Statement,
     avng: AnonymousVariableNameGenerator,
     paramsIdx: ParametersIndex,
-    initialCols: Vector[Symbol]
+    initialCols: Vector[Symbol],
   )(implicit
-    source: SourceText
+    source: SourceText,
   ): Query[Location.Anywhere] =
     statement match {
 
@@ -63,7 +63,7 @@ package object cypher {
       case _: ast.SchemaCommand =>
         throw CypherException.Compile(
           "Cypher commands are not supported (only queries)",
-          Some(position(statement.position))
+          Some(position(statement.position)),
         )
 
       /* TODO: periodic commit hint, which Alec thinks is only relevant for
@@ -77,7 +77,7 @@ package object cypher {
       case other =>
         throw CypherException.Compile(
           wrapping = s"Unexpected AST element: $other",
-          position = Some(position(other.position))
+          position = Some(position(other.position)),
         )
     }
 
@@ -96,7 +96,7 @@ package object cypher {
   @throws[CypherException]
   private def compileFresh(
     queryIdentity: UncompiledQueryIdentity,
-    customParsingContext: Option[(InputPosition, SourceText)]
+    customParsingContext: Option[(InputPosition, SourceText)],
   ): (Query[Location.Anywhere], Parameters) = {
     // parameters passed to openCypher only on load
     // these are used for producing (helpful) errors, but errors which may not be relevant on reuse of the query
@@ -108,7 +108,7 @@ package object cypher {
       queryIdentity.queryText,
       queryIdentity.initialColumns,
       parserStartPosition,
-      openCypherPipeline
+      openCypherPipeline,
     )(sourceForParseErrors)
     val (fixedParameters: Parameters, paramsIdx: ParametersIndex) = {
       var idx = 0
@@ -133,9 +133,9 @@ package object cypher {
     val initialCols: Vector[Symbol] = queryIdentity.initialColumns.view.map(c => Symbol(c._1)).toVector
     val compiled = VariableRewriter.convertAnyQuery(
       compileStatement(astState.statement(), astState.anonymousVariableNameGenerator, paramsIdx, initialCols)(
-        SourceText(queryIdentity.queryText)
+        SourceText(queryIdentity.queryText),
       ),
-      Columns.Specified.empty
+      Columns.Specified.empty,
     )
     (compiled, fixedParameters)
 
@@ -154,11 +154,11 @@ package object cypher {
   @throws[CypherException]
   private def compileCached(
     queryIdentity: UncompiledQueryIdentity,
-    customParsingContext: Option[(InputPosition, SourceText)]
+    customParsingContext: Option[(InputPosition, SourceText)],
   ): (Query[Location.Anywhere], Parameters) =
     try compiledQueryCache.get(
       queryIdentity,
-      () => compileFresh(queryIdentity, customParsingContext)
+      () => compileFresh(queryIdentity, customParsingContext),
     )
     catch {
       case e: ExecutionException =>
@@ -184,7 +184,7 @@ package object cypher {
     unfixedParameters: Seq[String] = Seq.empty,
     initialColumns: Seq[(String, symbols.CypherType)] = Seq.empty,
     customParsingContext: Option[(InputPosition, SourceText)] = None,
-    cache: Boolean = true
+    cache: Boolean = true,
   ): CompiledQuery[Location.Anywhere] = {
     val uncompiled = UncompiledQueryIdentity(queryText, unfixedParameters, initialColumns)
 
@@ -197,7 +197,7 @@ package object cypher {
       query = compiled,
       unfixedParameters,
       fixedParameters,
-      uncompiled.initialColumns.map(_._1)
+      uncompiled.initialColumns.map(_._1),
     )
   }
 
@@ -217,7 +217,7 @@ package object cypher {
     unfixedParameters: Seq[String] = Seq.empty,
     initialColumns: Seq[(String, symbols.CypherType)] = Seq.empty,
     customErrorContext: Option[(InputPosition, SourceText)] = None,
-    cache: Boolean = true
+    cache: Boolean = true,
   ): CompiledExpr = {
     val returnPrefix = "RETURN "
     val startPosition = InputPosition(-returnPrefix.length, 1, 1 - returnPrefix.length)
@@ -227,7 +227,7 @@ package object cypher {
       unfixedParameters,
       initialColumns,
       customErrorContext.orElse(Some(startPosition -> sourceText)),
-      cache
+      cache,
     )
     compiled.query match {
       case Query.AdjustContext(true, Vector((_, compiledExpr)), Query.Unit(_), _) =>
@@ -236,7 +236,7 @@ package object cypher {
           compiledExpr,
           compiled.unfixedParameters,
           compiled.fixedParameters,
-          compiled.initialColumns
+          compiled.initialColumns,
         )
       case _ =>
         throw CypherException.Compile("Cypher expression cannot be evaluated outside a graph", None)
@@ -250,7 +250,7 @@ package object cypher {
     */
   @throws[CypherException]
   def compileStandingQueryGraphPattern(
-    queryText: String
+    queryText: String,
   )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): GraphQueryPattern = {
     val source = SourceText(queryText)
     val startPosition = InputPosition(0, 1, 1)
@@ -259,7 +259,7 @@ package object cypher {
     StandingQueryPatterns.compile(astState.statement(), astState.anonymousVariableNameGenerator, ParametersIndex.empty)(
       source,
       idProvider,
-      logConfig
+      logConfig,
     )
   }
 
@@ -283,9 +283,9 @@ package object cypher {
     parameters: Map[String, Value] = Map.empty,
     initialColumns: Map[String, Value] = Map.empty,
     atTime: Option[Milliseconds] = None,
-    cacheCompilation: Boolean = true
+    cacheCompilation: Boolean = true,
   )(implicit
-    graph: CypherOpsGraph
+    graph: CypherOpsGraph,
   ): RunningCypherQuery = {
 
     val initialCompiledColumns: Seq[(String, symbols.CypherType)] = initialColumns.toSeq.map { case (col, value) =>

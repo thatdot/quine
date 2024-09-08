@@ -15,19 +15,19 @@ trait V2NamespaceEndpoints extends V2EndpointDefinitions {
   private def namespaceEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ) = baseEndpoint[T]("namespace")
 
   val getNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[List[String]], Any, Future] =
     namespaceEndpoint[List[String]].get
       .serverLogic(memberIdx =>
-        runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => app.getNamespaces)
+        runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => app.getNamespaces),
       )
 
   val createNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[Boolean], Any, Future] =
     namespaceEndpoint[Boolean]
       .in(path[String]("namespace"))
@@ -37,7 +37,7 @@ trait V2NamespaceEndpoints extends V2EndpointDefinitions {
       }
 
   val deleteNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
-    _ <: CustomError
+    _ <: CustomError,
   ], ObjectEnvelope[Boolean], Any, Future] =
     namespaceEndpoint[Boolean]
       .in(path[String]("namespace"))

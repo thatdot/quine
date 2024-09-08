@@ -62,11 +62,11 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[Snapshots] = {
     import shapeless.syntax.std.tuple._
     logger.debug(log"Preparing statements for ${(Safe(tableName.toString))}")
@@ -92,7 +92,7 @@ class Snapshots(
   getLatestTimeStatement: PreparedStatement,
   getLatestTimeBeforeStatement: PreparedStatement,
   getPartsStatement: PreparedStatement,
-  selectAllQuineIds: PreparedStatement
+  selectAllQuineIds: PreparedStatement,
 ) extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with SnapshotsColumnNames {
   import syntax._
@@ -102,22 +102,22 @@ class Snapshots(
     atTime: EventTime,
     part: Array[Byte],
     partIndex: Int,
-    partCount: Int
+    partCount: Int,
   ): Future[Unit] = executeFuture(
     insertStatement.bindColumns(
       quineIdColumn.set(id),
       timestampColumn.set(atTime),
       dataColumn.set(part),
       multipartIndexColumn.set(partIndex),
-      multipartCountColumn.set(partCount)
-    )
+      multipartCountColumn.set(partCount),
+    ),
   )
 
   def deleteAllByQid(id: QuineId): Future[Unit] = executeFuture(deleteByQidStatement.bindColumns(quineIdColumn.set(id)))
 
   def getLatestSnapshotTime(
     id: QuineId,
-    upToTime: EventTime
+    upToTime: EventTime,
   ): Future[Option[EventTime]] = queryOne(
     upToTime match {
       case EventTime.MaxValue =>
@@ -125,21 +125,21 @@ class Snapshots(
       case _ =>
         getLatestTimeBeforeStatement.bindColumns(
           quineIdColumn.set(id),
-          timestampColumn.setLt(upToTime)
+          timestampColumn.setLt(upToTime),
         )
     },
-    timestampColumn
+    timestampColumn,
   )
 
   def getSnapshotParts(
     id: QuineId,
-    atTime: EventTime
+    atTime: EventTime,
   )(implicit mat: Materializer): Future[Seq[MultipartSnapshotPart]] =
     executeSelect(
       getPartsStatement.bindColumns(
         quineIdColumn.set(id),
-        timestampColumn.set(atTime)
-      )
+        timestampColumn.set(atTime),
+      ),
     )(row => MultipartSnapshotPart(dataColumn.get(row), multipartIndexColumn.get(row), multipartCountColumn.get(row)))
 
   def enumerateAllNodeIds(): Source[QuineId, NotUsed] =

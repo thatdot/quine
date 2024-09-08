@@ -23,8 +23,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     qidOpt = None,
     properties = Map(
       Symbol("foo") -> PropertyValuePattern.AnyValue,
-      Symbol("bar") -> PropertyValuePattern.Value(QuineValue.Str("DEADBEEF"))
-    )
+      Symbol("bar") -> PropertyValuePattern.Value(QuineValue.Str("DEADBEEF")),
+    ),
   )
   val node1Labelled: NodePattern = node1.copy(id = NodePatternId(11), labels = Set(Symbol("LABELLED_NODE")))
 
@@ -32,7 +32,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
     id = NodePatternId(2),
     labels = Set(),
     qidOpt = None,
-    properties = Map.empty
+    properties = Map.empty,
   )
 
   val node3: NodePattern = NodePattern(
@@ -41,8 +41,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     qidOpt = None,
     properties = Map(
       Symbol("qux") -> PropertyValuePattern.Value(QuineValue.Str("0011223344")),
-      Symbol("bar") -> PropertyValuePattern.AnyValue
-    )
+      Symbol("bar") -> PropertyValuePattern.AnyValue,
+    ),
   )
 
   val node4: NodePattern = NodePattern(
@@ -51,15 +51,15 @@ class GraphQueryPatternTest extends AnyFunSuite {
     qidOpt = Some(IdentityIdProvider.customIdFromString("123456").get),
     properties = Map(
       Symbol("qux") -> PropertyValuePattern.Value(QuineValue.Str("0011223344")),
-      Symbol("bar") -> PropertyValuePattern.AnyValue
-    )
+      Symbol("bar") -> PropertyValuePattern.AnyValue,
+    ),
   )
 
   val node5: NodePattern = NodePattern(
     id = NodePatternId(5),
     labels = Set(),
     qidOpt = Some(IdentityIdProvider.customIdFromString("5678abcd").get),
-    properties = Map.empty
+    properties = Map.empty,
   )
 
   val node6: NodePattern = NodePattern(
@@ -68,8 +68,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     qidOpt = None,
     properties = Map(
       Symbol("quux") -> PropertyValuePattern.AnyValue,
-      Symbol("quz") -> PropertyValuePattern.AnyValue
-    )
+      Symbol("quz") -> PropertyValuePattern.AnyValue,
+    ),
   )
 
   val node7: NodePattern = NodePattern(
@@ -78,8 +78,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     qidOpt = None,
     properties = Map(
       Symbol("quux") -> PropertyValuePattern.Value(QuineValue.Integer(4L)),
-      Symbol("quz") -> PropertyValuePattern.Value(QuineValue.Integer(4L))
-    )
+      Symbol("quz") -> PropertyValuePattern.Value(QuineValue.Integer(4L)),
+    ),
   )
 
   val node8: NodePattern = NodePattern(
@@ -87,8 +87,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     labels = Set(),
     qidOpt = None,
     properties = Map(
-      Symbol("bax") -> PropertyValuePattern.AnyValue
-    )
+      Symbol("bax") -> PropertyValuePattern.AnyValue,
+    ),
   )
 
   val node9: NodePattern = NodePattern(
@@ -96,8 +96,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
     labels = Set(),
     qidOpt = None,
     properties = Map(
-      Symbol("box") -> PropertyValuePattern.Value(QuineValue.Integer(1234L))
-    )
+      Symbol("box") -> PropertyValuePattern.Value(QuineValue.Integer(1234L)),
+    ),
   )
 
   test("Single pattern") {
@@ -108,7 +108,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
       toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
       filterCond = None,
       toReturn = Nil,
-      distinct = true
+      distinct = true,
     )
     val expectedBranch = SingleBranch(
       DomainNodeEquiv(
@@ -116,13 +116,13 @@ class GraphQueryPatternTest extends AnyFunSuite {
         Map(
           Symbol("foo") -> (PropertyComparisonFunctions.Wildcard -> None),
           Symbol("bar") -> (PropertyComparisonFunctions.Identicality -> Some(
-            PropertyValue(QuineValue.Str("DEADBEEF"))
-          ))
+            PropertyValue(QuineValue.Str("DEADBEEF")),
+          )),
         ),
-        Set()
+        Set(),
       ),
       None,
-      List.empty
+      List.empty,
     )
     assert(singlePattern.compiledDomainGraphBranch(labelsProp)._1 == expectedBranch)
   }
@@ -139,7 +139,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
     val expected = SingleBranch(
@@ -148,10 +148,10 @@ class GraphQueryPatternTest extends AnyFunSuite {
         Map(
           Symbol("foo") -> (PropertyComparisonFunctions.Wildcard -> None),
           Symbol("bar") -> (PropertyComparisonFunctions.Identicality -> Some(
-            PropertyValue(QuineValue.Str("DEADBEEF"))
-          ))
+            PropertyValue(QuineValue.Str("DEADBEEF")),
+          )),
         ),
-        Set()
+        Set(),
       ),
       None,
       List(
@@ -170,20 +170,20 @@ class GraphQueryPatternTest extends AnyFunSuite {
                     None,
                     Map(
                       Symbol("qux") -> (PropertyComparisonFunctions.Identicality -> Some(
-                        PropertyValue(QuineValue.Str("0011223344"))
+                        PropertyValue(QuineValue.Str("0011223344")),
                       )),
-                      Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None)
+                      Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None),
                     ),
-                    Set()
+                    Set(),
                   ),
                   None,
-                  List()
-                )
-              )
-            )
-          )
-        )
-      )
+                  List(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     )
     assert(linePattern.compiledDomainGraphBranch(labelsProp)._1 == expected)
   }
@@ -200,7 +200,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node2.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
     val expected = SingleBranch(
@@ -216,14 +216,14 @@ class GraphQueryPatternTest extends AnyFunSuite {
               Map(
                 Symbol("foo") -> (PropertyComparisonFunctions.Wildcard -> None),
                 Symbol("bar") -> (PropertyComparisonFunctions.Identicality -> Some(
-                  PropertyValue(QuineValue.Str("DEADBEEF"))
-                ))
+                  PropertyValue(QuineValue.Str("DEADBEEF")),
+                )),
               ),
-              Set()
+              Set(),
             ),
             None,
-            List()
-          )
+            List(),
+          ),
         ),
         DomainEdge(
           GenericEdge(Symbol("b"), EdgeDirection.Outgoing),
@@ -233,17 +233,17 @@ class GraphQueryPatternTest extends AnyFunSuite {
               None,
               Map(
                 Symbol("qux") -> (PropertyComparisonFunctions.Identicality -> Some(
-                  PropertyValue(QuineValue.Str("0011223344"))
+                  PropertyValue(QuineValue.Str("0011223344")),
                 )),
-                Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None)
+                Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None),
               ),
-              Set()
+              Set(),
             ),
             None,
-            List()
-          )
-        )
-      )
+            List(),
+          ),
+        ),
+      ),
     )
     assert(rootedPattern.compiledDomainGraphBranch(labelsProp)._1 == expected)
   }
@@ -264,7 +264,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node4.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
     val expected = SingleBranch(
@@ -272,11 +272,11 @@ class GraphQueryPatternTest extends AnyFunSuite {
         None,
         Map(
           Symbol("qux") -> (PropertyComparisonFunctions.Identicality -> Some(
-            PropertyValue(QuineValue.Str("0011223344"))
+            PropertyValue(QuineValue.Str("0011223344")),
           )),
-          Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None)
+          Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None),
         ),
-        Set()
+        Set(),
       ),
       node4.qidOpt,
       List(
@@ -296,10 +296,10 @@ class GraphQueryPatternTest extends AnyFunSuite {
                     Map(
                       Symbol("foo") -> (PropertyComparisonFunctions.Wildcard -> None),
                       Symbol("bar") -> (PropertyComparisonFunctions.Identicality -> Some(
-                        PropertyValue(QuineValue.Str("DEADBEEF"))
-                      ))
+                        PropertyValue(QuineValue.Str("DEADBEEF")),
+                      )),
                     ),
-                    Set()
+                    Set(),
                   ),
                   None,
                   List(
@@ -311,11 +311,11 @@ class GraphQueryPatternTest extends AnyFunSuite {
                           None,
                           Map(
                             Symbol("qux") -> (PropertyComparisonFunctions.Identicality -> Some(
-                              PropertyValue(QuineValue.Str("0011223344"))
+                              PropertyValue(QuineValue.Str("0011223344")),
                             )),
-                            Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None)
+                            Symbol("bar") -> (PropertyComparisonFunctions.Wildcard -> None),
                           ),
-                          Set()
+                          Set(),
                         ),
                         None,
                         List(
@@ -327,27 +327,27 @@ class GraphQueryPatternTest extends AnyFunSuite {
                                 None,
                                 Map(
                                   Symbol(
-                                    "quux"
+                                    "quux",
                                   ) -> (PropertyComparisonFunctions.Identicality -> Some(
-                                    PropertyValue(QuineValue.Integer(4L))
+                                    PropertyValue(QuineValue.Integer(4L)),
                                   )),
                                   Symbol(
-                                    "quz"
+                                    "quz",
                                   ) -> (PropertyComparisonFunctions.Identicality -> Some(
-                                    PropertyValue(QuineValue.Integer(4L))
-                                  ))
+                                    PropertyValue(QuineValue.Integer(4L)),
+                                  )),
                                 ),
-                                Set()
+                                Set(),
                               ),
                               None,
-                              List()
-                            )
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
+                              List(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
               DomainEdge(
                 GenericEdge(Symbol("d"), EdgeDirection.Outgoing),
@@ -355,8 +355,8 @@ class GraphQueryPatternTest extends AnyFunSuite {
                 SingleBranch(
                   DomainNodeEquiv.empty,
                   node5.qidOpt,
-                  List()
-                )
+                  List(),
+                ),
               ),
               DomainEdge(
                 GenericEdge(Symbol("e"), EdgeDirection.Outgoing),
@@ -366,18 +366,18 @@ class GraphQueryPatternTest extends AnyFunSuite {
                     None,
                     Map(
                       Symbol("quux") -> (PropertyComparisonFunctions.Wildcard -> None),
-                      Symbol("quz") -> (PropertyComparisonFunctions.Wildcard -> None)
+                      Symbol("quz") -> (PropertyComparisonFunctions.Wildcard -> None),
                     ),
-                    Set()
+                    Set(),
                   ),
                   None,
-                  List()
-                )
-              )
-            )
-          )
-        )
-      )
+                  List(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     )
     assert(treePattern.compiledDomainGraphBranch(labelsProp)._1 == expected)
   }
@@ -393,18 +393,18 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
 
     val expected = NotConnected
     assert(
-      intercept[InvalidQueryPattern](disconnectedPattern.compiledDomainGraphBranch(labelsProp)) == expected
+      intercept[InvalidQueryPattern](disconnectedPattern.compiledDomainGraphBranch(labelsProp)) == expected,
     )
     assert(
       intercept[InvalidQueryPattern](
-        disconnectedPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
-      ) == expected
+        disconnectedPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider),
+      ) == expected,
     )
   }
 
@@ -422,7 +422,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
 
@@ -450,7 +450,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node1.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
 
@@ -474,7 +474,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         toExtract = Seq(ReturnColumn.Id(node4.id, formatAsString = false, Symbol("id"))),
         filterCond = None,
         toReturn = Nil,
-        distinct = true
+        distinct = true,
       )
     }
 
@@ -483,7 +483,7 @@ class GraphQueryPatternTest extends AnyFunSuite {
         MultipleValuesStandingQuery.LocalProperty(
           Symbol("qux"),
           MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
-          None
+          None,
         ),
         MultipleValuesStandingQuery
           .LocalProperty(Symbol("bar"), MultipleValuesStandingQuery.LocalProperty.Any, None),
@@ -491,12 +491,12 @@ class GraphQueryPatternTest extends AnyFunSuite {
           Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(Symbol("__local_id")),
-              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get)
-            )
+              cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("123456").get),
+            ),
           ),
           MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), formatAsString = false),
           dropExisting = true,
-          List()
+          List(),
         ),
         MultipleValuesStandingQuery.LocalId(Symbol("id"), formatAsString = false),
         MultipleValuesStandingQuery.SubscribeAcrossEdge(
@@ -513,12 +513,12 @@ class GraphQueryPatternTest extends AnyFunSuite {
                       .LocalProperty(
                         Symbol("foo"),
                         MultipleValuesStandingQuery.LocalProperty.Any,
-                        None
+                        None,
                       ),
                     MultipleValuesStandingQuery.LocalProperty(
                       Symbol("bar"),
                       MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
-                      None
+                      None,
                     ),
                     MultipleValuesStandingQuery.SubscribeAcrossEdge(
                       Some(Symbol("b")),
@@ -528,12 +528,12 @@ class GraphQueryPatternTest extends AnyFunSuite {
                           MultipleValuesStandingQuery.LocalProperty(
                             Symbol("qux"),
                             MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("0011223344")),
-                            None
+                            None,
                           ),
                           MultipleValuesStandingQuery.LocalProperty(
                             Symbol("bar"),
                             MultipleValuesStandingQuery.LocalProperty.Any,
-                            None
+                            None,
                           ),
                           MultipleValuesStandingQuery.SubscribeAcrossEdge(
                             Some(Symbol("f")),
@@ -543,24 +543,24 @@ class GraphQueryPatternTest extends AnyFunSuite {
                                 MultipleValuesStandingQuery.LocalProperty(
                                   Symbol("quux"),
                                   MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
-                                  None
+                                  None,
                                 ),
                                 MultipleValuesStandingQuery.LocalProperty(
                                   Symbol("quz"),
                                   MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Integer(4)),
-                                  None
-                                )
+                                  None,
+                                ),
                               ),
-                              emitSubscriptionsLazily = true
-                            )
-                          )
+                              emitSubscriptionsLazily = true,
+                            ),
+                          ),
                         ),
-                        emitSubscriptionsLazily = true
-                      )
-                    )
+                        emitSubscriptionsLazily = true,
+                      ),
+                    ),
                   ),
-                  emitSubscriptionsLazily = true
-                )
+                  emitSubscriptionsLazily = true,
+                ),
               ),
               MultipleValuesStandingQuery.SubscribeAcrossEdge(
                 Some(Symbol("d")),
@@ -569,13 +569,13 @@ class GraphQueryPatternTest extends AnyFunSuite {
                   Some(
                     cypher.Expr.Equal(
                       cypher.Expr.Variable(Symbol("__local_id")),
-                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get)
-                    )
+                      cypher.Expr.Bytes(IdentityIdProvider.customIdFromString("5678ABCD").get),
+                    ),
                   ),
                   MultipleValuesStandingQuery.LocalId(Symbol("__local_id"), formatAsString = false),
                   dropExisting = true,
-                  List()
-                )
+                  List(),
+                ),
               ),
               MultipleValuesStandingQuery.SubscribeAcrossEdge(
                 Some(Symbol("e")),
@@ -586,24 +586,24 @@ class GraphQueryPatternTest extends AnyFunSuite {
                       .LocalProperty(
                         Symbol("quux"),
                         MultipleValuesStandingQuery.LocalProperty.Any,
-                        None
+                        None,
                       ),
                     MultipleValuesStandingQuery
                       .LocalProperty(
                         Symbol("quz"),
                         MultipleValuesStandingQuery.LocalProperty.Any,
-                        None
-                      )
+                        None,
+                      ),
                   ),
-                  emitSubscriptionsLazily = true
-                )
-              )
+                  emitSubscriptionsLazily = true,
+                ),
+              ),
             ),
-            emitSubscriptionsLazily = true
-          )
-        )
+            emitSubscriptionsLazily = true,
+          ),
+        ),
       ),
-      emitSubscriptionsLazily = true
+      emitSubscriptionsLazily = true,
     )
 
     val actual = treePattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
@@ -618,11 +618,11 @@ class GraphQueryPatternTest extends AnyFunSuite {
       startingPoint = node1Labelled.id,
       toExtract = Seq(
         ReturnColumn
-          .Property(node1Labelled.id, Symbol("foo"), Symbol("pulledValue"))
+          .Property(node1Labelled.id, Symbol("foo"), Symbol("pulledValue")),
       ),
       filterCond = None,
       toReturn = Nil,
-      distinct = false
+      distinct = false,
     )
 
     val actual = graphPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
@@ -632,31 +632,31 @@ class GraphQueryPatternTest extends AnyFunSuite {
         MultipleValuesStandingQuery.LocalProperty(
           Symbol("foo"),
           MultipleValuesStandingQuery.LocalProperty.Any,
-          Some(Symbol("pulledValue"))
+          Some(Symbol("pulledValue")),
         ),
         MultipleValuesStandingQuery.LocalProperty(
           Symbol("bar"),
           MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
-          None
+          None,
         ),
         MultipleValuesStandingQuery.FilterMap(
           Some(
             cypher.Expr.AnyInList(
               Symbol("__label"),
               cypher.Expr.Variable(Symbol("__label_list")),
-              cypher.Expr.Equal(cypher.Expr.Variable(Symbol("__label")), cypher.Expr.Str("LABELLED_NODE"))
-            )
+              cypher.Expr.Equal(cypher.Expr.Variable(Symbol("__label")), cypher.Expr.Str("LABELLED_NODE")),
+            ),
           ),
           MultipleValuesStandingQuery.LocalProperty(
             Symbol("_LABEL"),
             MultipleValuesStandingQuery.LocalProperty.Any,
-            Some(Symbol("__label_list"))
+            Some(Symbol("__label_list")),
           ),
           dropExisting = true,
-          List()
-        )
+          List(),
+        ),
       ),
-      emitSubscriptionsLazily = true
+      emitSubscriptionsLazily = true,
     )
 
     assert(expected === actual)
@@ -669,19 +669,19 @@ class GraphQueryPatternTest extends AnyFunSuite {
           NodePatternId(0),
           Set(),
           None,
-          Map.empty
-        )
+          Map.empty,
+        ),
       ),
       List(),
       NodePatternId(0),
       Seq(
         ReturnColumn.Property(NodePatternId(0), Symbol("name"), Symbol("n.name")),
         ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)")),
-        ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))
+        ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)")),
       ),
       None,
       Nil,
-      distinct = false
+      distinct = false,
     )
 
     val actual = graphPattern.compiledMultipleValuesStandingQuery(labelsProp, IdentityIdProvider)
@@ -691,18 +691,18 @@ class GraphQueryPatternTest extends AnyFunSuite {
         MultipleValuesStandingQuery.LocalProperty(
           Symbol("name"),
           MultipleValuesStandingQuery.LocalProperty.Unconditional,
-          Some(Symbol("n.name"))
+          Some(Symbol("n.name")),
         ),
         MultipleValuesStandingQuery.LocalId(
           Symbol("id(n)"),
-          formatAsString = false
+          formatAsString = false,
         ),
         MultipleValuesStandingQuery.LocalId(
           Symbol("strId(n)"),
-          formatAsString = true
-        )
+          formatAsString = true,
+        ),
       ),
-      emitSubscriptionsLazily = true
+      emitSubscriptionsLazily = true,
     )
 
     assert(expected === actual)

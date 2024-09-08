@@ -16,7 +16,7 @@ import slinky.web.html.{className, div, key, role, style}
     name: String,
     value: Double,
     softMax: Double,
-    hardMax: Double
+    hardMax: Double,
   ) {
     // NB percentFill and percentOverfill are in the range [0, 1]
     def percentFill: Double = math.max((value / softMax) * (softMax / hardMax), 0)
@@ -28,21 +28,21 @@ import slinky.web.html.{className, div, key, role, style}
       div(className := "label me-3 align-self-center", key := "label")(
         (if (props.name.nonEmpty) s"${props.name} " else "")
         + s"${props.value}/${props.softMax}"
-        + (if (props.softMax < props.hardMax) s"  (${props.hardMax})" else "")
+        + (if (props.softMax < props.hardMax) s"  (${props.hardMax})" else ""),
       ),
       div(className := "progress flex-grow-1", style := js.Dynamic.literal(height = "30px"), key := "bar")(
         div(
           className := "progress-bar progress-bar-striped",
           role := "progressbar",
           key := "normal-range-bar",
-          style := js.Dynamic.literal(width = s"${props.percentFill * 100}%")
+          style := js.Dynamic.literal(width = s"${props.percentFill * 100}%"),
         )(),
         div(
           className := "progress-bar progress-bar-striped bg-danger",
           role := "progressbar",
           key := "overfilled-range-bar",
-          style := js.Dynamic.literal(width = s"${props.percentOverfill * 100}%")
-        )()
-      )
+          style := js.Dynamic.literal(width = s"${props.percentOverfill * 100}%"),
+        )(),
+      ),
     )
 }

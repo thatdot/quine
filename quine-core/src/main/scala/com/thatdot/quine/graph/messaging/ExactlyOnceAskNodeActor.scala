@@ -47,7 +47,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
   promisedResult: Promise[Resp],
   timeout: FiniteDuration,
   resultHandler: ResultHandler[Resp],
-  metrics: RelayAskMetric
+  metrics: RelayAskMetric,
 )(implicit logConf: LogConfig)
     extends Actor
     with ActorSafeLogging
@@ -74,13 +74,13 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
         BaseMessage.DeliveryRelay(
           BaseMessage.LocalMessageDelivery(updateExpiry(msg), recipient, self),
           dedupId,
-          needsAck = true
+          needsAck = true,
         )
 
       val retryInterval: FiniteDuration = 2.seconds // TODO: exponential backoff?
       context.system.scheduler.scheduleAtFixedRate(
         initialDelay = Duration.Zero,
-        interval = retryInterval
+        interval = retryInterval,
       )(() => shardTarget.!(toSendFunc())(self))(context.dispatcher)
   }
 
@@ -88,7 +88,7 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
   timers.startSingleTimer(
     key = GiveUpWaiting,
     msg = GiveUpWaiting,
-    timeout
+    timeout,
   )
 
   private def receiveResponse(response: QuineResponse): Unit = {
@@ -127,13 +127,13 @@ final private[quine] class ExactlyOnceAskNodeActor[Resp](
       val timeoutException = new ExactlyOnceTimeoutException(
         s"""Ask relayed by graph timed out after $timeout waiting for $waitingForStr to message of type:
            |${msg.getClass.getSimpleName} from originalSender: "$originalSender"
-           |to: $recipientStr. Message: $msg""".stripMargin.replace('\n', ' ').trim
+           |to: $recipientStr. Message: $msg""".stripMargin.replace('\n', ' ').trim,
       )
       log.warn(
         log"""Ask relayed by graph timed out after ${Safe(timeout.toString)} waiting for ${Safe(waitingForStr)} to
              |message of type: ${Safe(msg.getClass.getSimpleName)} from originalSender: "${Safe(originalSender)}" to:
              |${Safe(recipientStr)}. If this occurred as part of a Cypher query, the query will be retried by default.
-             |Message: ${msg.toString}""".cleanLines
+             |Message: ${msg.toString}""".cleanLines,
       )
       promisedResult.tryFailure(timeoutException)
       context.stop(self)

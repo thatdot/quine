@@ -22,7 +22,7 @@ class GenerateOpenApiTest extends AnyFunSuite {
       val method = methodSymbol.asMethod
       assert(
         method.paramLists.flatten.headOption.exists(_.typeSignature =:= typeOf[Array[String]]),
-        "Main method should accept Array[String] as argument"
+        "Main method should accept Array[String] as argument",
       )
 
     } catch {

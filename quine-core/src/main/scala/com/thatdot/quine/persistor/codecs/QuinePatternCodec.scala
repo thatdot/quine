@@ -24,7 +24,7 @@ object QuinePatternCodec extends PersistenceCodec[QuinePattern] {
 
   private[this] def writeQuinePattern(
     builder: FlatBufferBuilder,
-    qp: QuinePattern
+    qp: QuinePattern,
   ): Offset =
     qp match {
       case QuinePattern.QuineUnit => persistence.QuineUnit.endQuineUnit(builder)
@@ -51,7 +51,7 @@ object QuinePatternCodec extends PersistenceCodec[QuinePattern] {
             case BinOp.Merge => persistence.Merge.endMerge(builder)
             case BinOp.Append => persistence.Append.endAppend(builder)
           },
-          persistence.Output.endOutput(builder)
+          persistence.Output.endOutput(builder),
         )
     }
 

@@ -30,6 +30,6 @@ object GenerateOpenApi extends App {
     outputPath,
     openApiDocumentationJson.getBytes(StandardCharsets.UTF_8),
     StandardOpenOption.TRUNCATE_EXISTING,
-    StandardOpenOption.CREATE
+    StandardOpenOption.CREATE,
   )
 }

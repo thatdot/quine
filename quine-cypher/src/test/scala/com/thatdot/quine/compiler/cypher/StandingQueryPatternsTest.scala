@@ -20,9 +20,9 @@ class StandingQueryPatternsTest extends AnyFunSpec {
   def testQuery(
     queryText: String,
     expected: GraphQueryPattern,
-    skip: Boolean = false
+    skip: Boolean = false,
   )(implicit
-    pos: source.Position
+    pos: source.Position,
   ): Unit = {
     def theTest(): Assertion = {
       val compiled = compileStandingQueryGraphPattern(queryText)
@@ -44,10 +44,10 @@ class StandingQueryPatternsTest extends AnyFunSpec {
   def interceptQuery[T <: AnyRef](
     queryText: String,
     expected: T,
-    skip: Boolean = false
+    skip: Boolean = false,
   )(implicit
     pos: source.Position,
-    manifest: Manifest[T]
+    manifest: Manifest[T],
   ): Unit = {
     def theTest(): Assertion = {
       val actual = intercept[T] {
@@ -72,16 +72,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(50L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     // valid DISTINCT id() in where condition
@@ -93,16 +93,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(50L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // valid strId() in where condition
@@ -114,16 +114,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(99L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     // multiple non-conflicting id() in where condition
@@ -135,16 +135,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(50L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // multiple non-conflicting strId() in where condition
@@ -156,16 +156,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(99L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // multiple non-conflicting heterogeneous id constraints in where condition
@@ -177,16 +177,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(100L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // idFrom-based id constraint
@@ -198,16 +198,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idFrom(Expr.Integer(-1))),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // idFrom-based strid constraint
@@ -219,16 +219,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idFrom(Expr.Str("hello"), Expr.Str("world"))),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
 
     // locIdFrom-based strid constraint
@@ -239,7 +239,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
       val id = namespacedIdProvider.customIdToQid(customId)
 
       val compiled = compileStandingQueryGraphPattern(
-        "MATCH (n) WHERE strId(n) = locIdFrom(10, 101) RETURN DISTINCT strId(n)"
+        "MATCH (n) WHERE strId(n) = locIdFrom(10, 101) RETURN DISTINCT strId(n)",
       )(namespacedIdProvider, logConfig)
       assert(
         compiled ===
@@ -249,16 +249,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
                 NodePatternId(0),
                 Set(),
                 Some(id),
-                Map.empty
-              )
+                Map.empty,
+              ),
             ),
             List(),
             NodePatternId(0),
             Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))),
             None,
             Nil,
-            distinct = true
-          )
+            distinct = true,
+          ),
       )
     }
 
@@ -271,8 +271,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
            |because the configured ID provider is not position-aware. Consider setting `quine.id.partitioned = true`
            |in your configuration.
            |""".stripMargin.replace('\n', ' ').trim,
-        None
-      )
+        None,
+      ),
     )
   }
 
@@ -286,16 +286,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         Some(Expr.Equal(Expr.Variable(Symbol("id(n)")), Expr.Str("hello"))),
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     // id() equality constraints turn into filters
@@ -307,37 +307,37 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map.empty
+            Map.empty,
           ),
           NodePattern(
             NodePatternId(1),
             Set(),
             None,
-            Map.empty
+            Map.empty,
           ),
           NodePattern(
             NodePatternId(2),
             Set(),
             None,
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(
           EdgePattern(NodePatternId(0), NodePatternId(1), isDirected = true, Symbol("foo")),
-          EdgePattern(NodePatternId(1), NodePatternId(2), isDirected = true, Symbol("bar"))
+          EdgePattern(NodePatternId(1), NodePatternId(2), isDirected = true, Symbol("bar")),
         ),
         NodePatternId(0),
         Seq(
           ReturnColumn.Id(NodePatternId(1), formatAsString = false, Symbol("id(m)")),
           ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("anon_0")),
-          ReturnColumn.Id(NodePatternId(2), formatAsString = false, Symbol("anon_1"))
+          ReturnColumn.Id(NodePatternId(2), formatAsString = false, Symbol("anon_1")),
         ),
         Some(
-          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_0")), Expr.Variable(Symbol("anon_1"))))
+          Expr.Not(Expr.Equal(Expr.Variable(Symbol("anon_0")), Expr.Variable(Symbol("anon_1")))),
         ),
         Seq(Symbol("id(m)") -> Expr.Variable(Symbol("id(m)"))),
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     // UDFs in filters or returns
@@ -349,24 +349,24 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map.empty
+            Map.empty,
           ),
           NodePattern(
             NodePatternId(1),
             Set(),
             None,
-            Map.empty
+            Map.empty,
           ),
           NodePattern(
             NodePatternId(2),
             Set(),
             None,
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(
           EdgePattern(NodePatternId(0), NodePatternId(1), isDirected = true, Symbol("foo")),
-          EdgePattern(NodePatternId(1), NodePatternId(2), isDirected = true, Symbol("bar"))
+          EdgePattern(NodePatternId(1), NodePatternId(2), isDirected = true, Symbol("bar")),
         ),
         NodePatternId(0),
         Seq(
@@ -375,35 +375,35 @@ class StandingQueryPatternsTest extends AnyFunSpec {
           // (see comment in StandingQueryPatterns.scala by `val toExtract = `)
           ReturnColumn.Property(NodePatternId(0), Symbol("jsonField"), Symbol("anon_1")),
           ReturnColumn.Property(NodePatternId(1), Symbol("qux"), Symbol("anon_0")),
-          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_2"))
+          ReturnColumn.Property(NodePatternId(2), Symbol("quz"), Symbol("anon_2")),
         ),
         Some(
           Expr.Equal(
             Expr.Property(
               Expr.Function(
                 Func.UserDefined("parseJson"),
-                Vector(Expr.Variable(Symbol("anon_1")))
+                Vector(Expr.Variable(Symbol("anon_1"))),
               ),
-              Symbol("baz")
+              Symbol("baz"),
             ),
-            Expr.Variable(Symbol("anon_2"))
-          )
+            Expr.Variable(Symbol("anon_2")),
+          ),
         ),
         Seq(
           Symbol("bytes(m.qux)") -> Expr.Function(
             Func.UserDefined("bytes"),
-            Vector(Expr.Variable(Symbol("anon_0")))
-          )
+            Vector(Expr.Variable(Symbol("anon_0"))),
+          ),
         ),
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     // invalid strId() in where condition gets downgraded to filter
     interceptQuery(
       "MATCH (n) WHERE strId(n) = 'hello' RETURN id(n)",
       CypherException.Compile("", None),
-      skip = true
+      skip = true,
     )
 
     // conflicting id()s in where condition
@@ -415,16 +415,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             Some(idProvider.customIdToQid(22L)),
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         Some(Expr.Equal(Expr.Variable(Symbol("id(n)")), Expr.Integer(23L))),
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
   }
 
@@ -436,16 +436,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
           NodePatternId(0),
           Set(),
           None,
-          Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
-        )
+          Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar"))),
+        ),
       ),
       List(),
       NodePatternId(0),
       Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
       None,
       Nil,
-      distinct = false
-    )
+      distinct = false,
+    ),
   )
 
   describe("Returning `id` and `strId`") {
@@ -457,20 +457,20 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map.empty
-          )
+            Map.empty,
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(
           ReturnColumn.Property(NodePatternId(0), Symbol("name"), Symbol("n.name")),
           ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)")),
-          ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)"))
+          ReturnColumn.Id(NodePatternId(0), formatAsString = true, Symbol("strId(n)")),
         ),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
   }
 
@@ -483,16 +483,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
-          )
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar"))),
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("idN"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     testQuery(
@@ -503,16 +503,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
-          )
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar"))),
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("idN"))),
         None,
         Nil,
-        distinct = true
-      )
+        distinct = true,
+      ),
     )
   }
 
@@ -525,16 +525,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar")))
-          )
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("bar"))),
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("n"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     testQuery(
@@ -545,16 +545,16 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(Symbol("Person")),
             None,
-            Map(Symbol("name") -> PropertyValuePattern.Value(QuineValue.Str("Joe")))
-          )
+            Map(Symbol("name") -> PropertyValuePattern.Value(QuineValue.Str("Joe"))),
+          ),
         ),
         List(),
         NodePatternId(0),
         Seq(ReturnColumn.Id(NodePatternId(0), formatAsString = false, Symbol("id(n)"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     testQuery(
@@ -565,31 +565,31 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map(Symbol("baz") -> PropertyValuePattern.Value(QuineValue.Floating(7.0)))
+            Map(Symbol("baz") -> PropertyValuePattern.Value(QuineValue.Floating(7.0))),
           ),
           NodePattern(
             NodePatternId(1),
             Set(),
             None,
-            Map(Symbol("name") -> PropertyValuePattern.AnyValue)
+            Map(Symbol("name") -> PropertyValuePattern.AnyValue),
           ),
           NodePattern(
             NodePatternId(2),
             Set(),
             None,
-            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
-          )
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR"))),
+          ),
         ),
         List(
           EdgePattern(NodePatternId(0), NodePatternId(1), isDirected = true, Symbol("bar")),
-          EdgePattern(NodePatternId(2), NodePatternId(1), isDirected = true, Symbol("foo"))
+          EdgePattern(NodePatternId(2), NodePatternId(1), isDirected = true, Symbol("foo")),
         ),
         NodePatternId(1),
         Seq(ReturnColumn.Id(NodePatternId(1), formatAsString = false, Symbol("id(m)"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     testQuery(
@@ -600,7 +600,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             NodePatternId(0),
             Set(),
             None,
-            Map()
+            Map(),
           ),
           NodePattern(
             NodePatternId(1),
@@ -611,29 +611,29 @@ class StandingQueryPatternsTest extends AnyFunSpec {
                 QuineValue.List(
                   Vector(
                     QuineValue.Integer(1L),
-                    QuineValue.Integer(2L)
-                  )
-                )
-              )
-            )
+                    QuineValue.Integer(2L),
+                  ),
+                ),
+              ),
+            ),
           ),
           NodePattern(
             NodePatternId(2),
             Set(),
             None,
-            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR")))
-          )
+            Map(Symbol("foo") -> PropertyValuePattern.Value(QuineValue.Str("BAR"))),
+          ),
         ),
         List(
           EdgePattern(NodePatternId(0), NodePatternId(1), isDirected = true, Symbol("bar")),
-          EdgePattern(NodePatternId(2), NodePatternId(1), isDirected = true, Symbol("foo"))
+          EdgePattern(NodePatternId(2), NodePatternId(1), isDirected = true, Symbol("foo")),
         ),
         NodePatternId(1),
         Seq(ReturnColumn.Id(NodePatternId(1), formatAsString = false, Symbol("id(m)"))),
         None,
         Nil,
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
     testQuery(
@@ -645,9 +645,9 @@ class StandingQueryPatternsTest extends AnyFunSpec {
             Set(),
             None,
             Map(
-              Symbol("foo") -> PropertyValuePattern.AnyValue
-            )
-          )
+              Symbol("foo") -> PropertyValuePattern.AnyValue,
+            ),
+          ),
         ),
         Nil,
         NodePatternId(0),
@@ -655,10 +655,10 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         Some(Expr.Equal(Expr.Modulo(Expr.Variable(Symbol("fooValue")), Expr.Integer(3L)), Expr.Integer(1L))),
         List(
           Symbol("fooValue") -> Expr.Variable(Symbol("fooValue")),
-          Symbol("fooValueTripled") -> Expr.Multiply(Expr.Variable(Symbol("fooValue")), Expr.Integer(3L))
+          Symbol("fooValueTripled") -> Expr.Multiply(Expr.Variable(Symbol("fooValue")), Expr.Integer(3L)),
         ),
-        distinct = false
-      )
+        distinct = false,
+      ),
     )
 
   }
@@ -678,8 +678,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Wrong format for a standing query (expected `MATCH ... WHERE ... RETURN ...`)",
-          Some(Position(1, 1, 0, SourceText(query)))
-        )
+          Some(Position(1, 1, 0, SourceText(query))),
+        ),
       )
     }
 
@@ -690,8 +690,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Assigning edges to variables is not yet supported in standing query patterns",
-          Some(Position(1, 10, 9, SourceText(query)))
-        )
+          Some(Position(1, 10, 9, SourceText(query))),
+        ),
       )
     }
 
@@ -702,8 +702,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Edges in standing query patterns must have exactly one label (got ColonDisjunction(Leaf(RelTypeName(Foo)),Leaf(RelTypeName(Bar))))",
-          Some(Position(1, 10, 9, SourceText(query)))
-        )
+          Some(Position(1, 10, 9, SourceText(query))),
+        ),
       )
     }
 
@@ -714,8 +714,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Edge in standing queries must specify a direction",
-          Some(Position(1, 10, 9, SourceText(query)))
-        )
+          Some(Position(1, 10, 9, SourceText(query))),
+        ),
       )
     }
 
@@ -726,8 +726,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Invalid use of node variable `n` (in standing queries, node variables can only reference constant properties or IDs)",
-          Some(Position(1, 27, 26, SourceText(query)))
-        )
+          Some(Position(1, 27, 26, SourceText(query))),
+        ),
       )
     }
 
@@ -738,8 +738,8 @@ class StandingQueryPatternsTest extends AnyFunSpec {
         query,
         CypherException.Compile(
           "Variable `m` not defined",
-          Some(Position(1, 18, 17, SourceText(query)))
-        )
+          Some(Position(1, 18, 17, SourceText(query))),
+        ),
       )
     }
   }

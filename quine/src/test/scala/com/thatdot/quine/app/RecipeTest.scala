@@ -30,22 +30,22 @@ class RecipeTest extends AnyFunSuite with EitherValues {
         |    ^
         |""".stripMargin
     assert(
-      loadRecipeFromClasspath("/yaml/invalid.yaml").left.value == Seq(expectedParseError)
+      loadRecipeFromClasspath("/yaml/invalid.yaml").left.value == Seq(expectedParseError),
     )
   }
 
   test("not an object") {
     assert(
       loadYamlString("foo").left.value == NonEmptyList.one(
-        DecodingFailure(WrongTypeExpectation("object", Json.fromString("foo")), List())
-      )
+        DecodingFailure(WrongTypeExpectation("object", Json.fromString("foo")), List()),
+      ),
     )
   }
   test("empty object") {
     assert(
       loadYamlString("{}") == Right(
-        Recipe(Recipe.currentVersion, "RECIPE", None, None, None, None, List(), List(), List(), List(), List(), None)
-      )
+        Recipe(Recipe.currentVersion, "RECIPE", None, None, None, None, List(), List(), List(), List(), List(), None),
+      ),
     )
   }
 
@@ -61,13 +61,13 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       recipe.left.value == NonEmptyList.of(
         DecodingFailure(
           "Unexpected field: [not_a_key]; valid fields: version, title, contributor, summary, description, iconImage, ingestStreams, standingQueries, nodeAppearances, quickQueries, sampleQueries, statusQuery",
-          List()
+          List(),
         ),
         DecodingFailure(
           "Unexpected field: [also_not_a_key]; valid fields: version, title, contributor, summary, description, iconImage, ingestStreams, standingQueries, nodeAppearances, quickQueries, sampleQueries, statusQuery",
-          List()
-        )
-      )
+          List(),
+        ),
+      ),
     )
   }
 
@@ -78,7 +78,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
       """.stripMargin).value
 
     assert(
-      Recipe.validateRecipeCurrentVersion(recipe).left.value == Seq("The only supported Recipe version number is 1")
+      Recipe.validateRecipeCurrentVersion(recipe).left.value == Seq("The only supported Recipe version number is 1"),
     )
 
   }
@@ -86,7 +86,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     loadYamlString("version: foo\ntitle: 6").left.value ==
       NonEmptyList.of(
         DecodingFailure(CustomReason("Int"), List(DownField("version"))),
-        DecodingFailure(WrongTypeExpectation("string", Json.fromInt(6)), List(DownField("title")))
+        DecodingFailure(WrongTypeExpectation("string", Json.fromInt(6)), List(DownField("title"))),
       )
 
   }
@@ -114,8 +114,8 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          statusQuery = None
-        )
+          statusQuery = None,
+        ),
     )
   }
   test("full recipe") {
@@ -131,13 +131,13 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           ingestStreams = List(
             FileIngest(
               format = CypherJson(
-                query = "yadda"
+                query = "yadda",
               ),
               path = "/tmp/somefile",
               ingestLimit = None,
               maximumPerSecond = None,
-              fileIngestMode = None
-            )
+              fileIngestMode = None,
+            ),
           ),
           standingQueries = List(
             StandingQueryDefinition(
@@ -146,16 +146,16 @@ class RecipeTest extends AnyFunSuite with EitherValues {
                 "output-1" -> StandingQueryResultOutputUserDef.CypherQuery(
                   query = "X",
                   parameter = "bar",
-                  andThen = None
-                )
-              )
-            )
+                  andThen = None,
+                ),
+              ),
+            ),
           ),
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          statusQuery = Some(StatusQuery("MATCH (n) RETURN count(n)"))
-        )
+          statusQuery = Some(StatusQuery("MATCH (n) RETURN count(n)")),
+        ),
     )
   }
 
@@ -163,7 +163,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
     val values = Map(
       "a" -> "b",
       "c" -> "d",
-      "$x" -> "y"
+      "$x" -> "y",
     )
     assert(Recipe.applySubstitution("a", values) == Validated.valid("a"))
     assert(Recipe.applySubstitution("$a", values) == Validated.valid("b"))
@@ -203,7 +203,7 @@ class RecipeTest extends AnyFunSuite with EitherValues {
         |""".stripMargin
     val recipe = loadYamlString(yaml)
     val values = Map(
-      "path" -> "/foo/bar"
+      "path" -> "/foo/bar",
     )
     assert(
       Recipe.applySubstitutions(recipe.value, values) == Validated.valid(
@@ -217,21 +217,21 @@ class RecipeTest extends AnyFunSuite with EitherValues {
           ingestStreams = List(
             FileIngest(
               format = CypherJson(
-                query = "yadda"
+                query = "yadda",
               ),
               path = "/foo/bar",
               ingestLimit = None,
               maximumPerSecond = None,
-              fileIngestMode = None
-            )
+              fileIngestMode = None,
+            ),
           ),
           standingQueries = List.empty[StandingQueryDefinition],
           nodeAppearances = List.empty[UiNodeAppearance],
           quickQueries = List.empty[UiNodeQuickQuery],
           sampleQueries = List.empty[SampleQuery],
-          statusQuery = Some(StatusQuery("match (n) return count(n)"))
-        )
-      )
+          statusQuery = Some(StatusQuery("match (n) return count(n)")),
+        ),
+      ),
     )
   }
 
@@ -273,16 +273,16 @@ class RecipeTest extends AnyFunSuite with EitherValues {
         |""".stripMargin
     val recipe = loadYamlString(yaml)
     val values = Map(
-      "path2" -> "/foo/bar"
+      "path2" -> "/foo/bar",
     )
     assert(
       Recipe.applySubstitutions(recipe.value, values) == Validated.invalid(
         NonEmptyList.of(
           Recipe.UnboundVariableError("path1"),
           Recipe.UnboundVariableError("path4"),
-          Recipe.UnboundVariableError("path3")
-        )
-      )
+          Recipe.UnboundVariableError("path3"),
+        ),
+      ),
     )
   }
 

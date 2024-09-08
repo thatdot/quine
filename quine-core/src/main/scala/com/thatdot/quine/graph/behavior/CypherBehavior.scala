@@ -11,7 +11,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{
   CheckOtherHalfEdge,
   CypherQueryInstruction,
   QueryContextResult,
-  QueryPackage
+  QueryPackage,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
@@ -24,7 +24,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
     */
   def runQuery(
     query: CompiledQuery[Location.OnNode],
-    parameters: Map[String, cypher.Value]
+    parameters: Map[String, cypher.Value],
   )(implicit logConfig: LogConfig): RunningCypherQuery = {
     val nodeInterpreter = this: CypherInterpreter[Location.OnNode]
     query.run(parameters, Map.empty, nodeInterpreter)

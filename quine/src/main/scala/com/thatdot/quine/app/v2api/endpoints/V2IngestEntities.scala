@@ -26,7 +26,7 @@ import com.thatdot.quine.routes.{
   ServerSentEventsIngest,
   StandardInputIngest,
   StreamedRecordFormat,
-  WebsocketSimpleStartupIngest
+  WebsocketSimpleStartupIngest,
 }
 
 object V2IngestEntities {
@@ -60,7 +60,7 @@ object V2IngestEntities {
     startOffset: Long,
     limit: Option[Long],
     characterEncoding: Charset,
-    recordDecoders: Seq[RecordDecodingType] = Seq()
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSourceType
       with IngestCharsetSupport
       with IngestBoundingSupport
@@ -74,7 +74,7 @@ object V2IngestEntities {
     startOffset: Long,
     limit: Option[Long],
     characterEncoding: Charset,
-    recordDecoders: Seq[RecordDecodingType] = Seq()
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSourceType
       with IngestCharsetSupport
       with IngestBoundingSupport
@@ -92,7 +92,7 @@ object V2IngestEntities {
     url: String,
     initMessages: Seq[String],
     keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
-    characterEncoding: Charset
+    characterEncoding: Charset,
   ) extends IngestSourceType
       with IngestCharsetSupport
 
@@ -103,7 +103,7 @@ object V2IngestEntities {
     region: Option[AwsRegion],
     iteratorType: V1KinesisIngest.IteratorType = V1KinesisIngest.IteratorType.Latest,
     numRetries: Int = 3,
-    recordDecoders: Seq[RecordDecodingType] = Seq()
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSourceType
       with IngestDecompressionSupport
 
@@ -120,7 +120,7 @@ object V2IngestEntities {
     region: Option[AwsRegion],
     @description("Whether the queue consumer should acknowledge receipt of in-flight messages.")
     deleteReadMessages: Boolean = true,
-    recordDecoders: Seq[RecordDecodingType] = Seq()
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSourceType
       with IngestDecompressionSupport
 
@@ -128,26 +128,26 @@ object V2IngestEntities {
     @description(
       """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
                                 |whose values are partition indices.""".stripMargin
-        .replace('\n', ' ')
+        .replace('\n', ' '),
     )
     topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
     @description("A comma-separated list of Kafka broker servers.")
     bootstrapServers: String,
     @description(
-      "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream."
+      "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream.",
     )
     groupId: Option[String],
     securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
     offsetCommitting: Option[KafkaOffsetCommitting],
     autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
     @description(
-      "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
+      "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
     )
     kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
     @description(
-      "The offset at which this stream should complete; offsets are sequential integers starting at 0."
+      "The offset at which this stream should complete; offsets are sequential integers starting at 0.",
     ) endingOffset: Option[Long],
-    recordDecoders: Seq[RecordDecodingType] = Seq()
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSourceType
       with IngestDecompressionSupport
 
@@ -175,11 +175,11 @@ object V2IngestEntities {
     @description("CSV row delimiter character.")
     delimiter: CsvCharacter = CsvCharacter.Comma,
     @description(
-      "Character used to quote values in a field. Special characters (like new lines) inside of a quoted section will be a part of the CSV value."
+      "Character used to quote values in a field. Special characters (like new lines) inside of a quoted section will be a part of the CSV value.",
     )
     quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
     @description("Character used to escape special characters.")
-    escapeChar: CsvCharacter = CsvCharacter.Backslash
+    escapeChar: CsvCharacter = CsvCharacter.Backslash,
   ) extends IngestFormat
 
   @title("String format")
@@ -188,11 +188,11 @@ object V2IngestEntities {
   @title("Protobuf format")
   case class ProtobufIngestFormat(
     @description(
-      "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`."
+      "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
     )
     schemaUrl: String,
     @description("Message type name to use from the given `.desc` file as the incoming message type.")
-    typeName: String
+    typeName: String,
   ) extends IngestFormat
 
   case object RawIngestFormat extends IngestFormat
@@ -214,7 +214,7 @@ object V2IngestEntities {
   sealed trait OnRecordErrorHandler
 
   case class DeadLetterErrorHandler(
-    destination: String //TODO placeholder parameter
+    destination: String, //TODO placeholder parameter
   ) extends OnRecordErrorHandler
 
   case object LogRecordErrorHandler extends OnRecordErrorHandler
@@ -227,7 +227,7 @@ object V2IngestEntities {
     maxPerSecond: Option[Int] = None,
     format: IngestFormat,
     onRecordError: OnRecordErrorHandler,
-    onStreamError: OnStreamErrorHandler
+    onStreamError: OnStreamErrorHandler,
   ) {
 
     def asV1IngestStreamConfiguration: IngestStreamConfiguration = {
@@ -261,7 +261,7 @@ object V2IngestEntities {
             startOffset,
             limit,
             maxPerSecond,
-            fileIngestMode
+            fileIngestMode,
           )
         case V2S3Ingest(bucket, key, credentials, maximumLineSize, startOffset, limit, charset, _) =>
           // last param recordDecoders unsupported in V1
@@ -275,7 +275,7 @@ object V2IngestEntities {
             maximumLineSize.getOrElse(Integer.MAX_VALUE),
             startOffset,
             limit,
-            maxPerSecond
+            maxPerSecond,
           )
         case V2StdInputIngest(maximumLineSize, characterEncoding) =>
           StandardInputIngest(
@@ -283,7 +283,7 @@ object V2IngestEntities {
             characterEncoding.name(),
             parallelism,
             maximumLineSize.getOrElse(Integer.MAX_VALUE),
-            maxPerSecond
+            maxPerSecond,
           )
         case V2NumberIteratorIngest(startOffset, limit) =>
           V1NumberIteratorIngest(asV1FileIngestFormat(format), startOffset, limit, maxPerSecond, parallelism)
@@ -294,7 +294,7 @@ object V2IngestEntities {
             initMessages,
             keepAlive,
             parallelism,
-            charset.name()
+            charset.name(),
           )
         case V2KinesisIngest(streamName, shardIds, credentials, region, iteratorType, numRetries, recordDecoders) =>
           //Note V1 checkpoint settings don't appear to be used.
@@ -310,7 +310,7 @@ object V2IngestEntities {
             numRetries,
             maxPerSecond,
             recordDecoders,
-            optionKinesisCheckpointSettings
+            optionKinesisCheckpointSettings,
           )
         case V2ServerSentEventIngest(url, recordDecoders) =>
           ServerSentEventsIngest(asV1StreamedRecordFormat(format), url, parallelism, maxPerSecond, recordDecoders)
@@ -321,7 +321,7 @@ object V2IngestEntities {
               credentials,
               region,
               deleteReadMessages,
-              recordDecoders
+              recordDecoders,
             ) =>
           SQSIngest(
             asV1StreamedRecordFormat(format),
@@ -332,7 +332,7 @@ object V2IngestEntities {
             region,
             deleteReadMessages,
             maxPerSecond,
-            recordDecoders
+            recordDecoders,
           )
         case V2KafkaIngest(
               topics,
@@ -343,7 +343,7 @@ object V2IngestEntities {
               autoOffsetReset,
               kafkaProperties,
               endingOffset,
-              recordDecoders
+              recordDecoders,
             ) =>
           KafkaIngest(
             asV1StreamedRecordFormat(format),
@@ -357,7 +357,7 @@ object V2IngestEntities {
             kafkaProperties,
             endingOffset,
             maxPerSecond,
-            recordDecoders
+            recordDecoders,
           )
       }
     }
@@ -395,7 +395,7 @@ object V2IngestEntities {
             kafkaProperties,
             endingOffset,
             maximumPerSecond,
-            recordDecoders
+            recordDecoders,
           ) =>
         val (f, q, p) = fromFormat(format)
         val kafka: V2KafkaIngest = V2KafkaIngest(
@@ -407,7 +407,7 @@ object V2IngestEntities {
           autoOffsetReset,
           kafkaProperties,
           endingOffset,
-          recordDecoders
+          recordDecoders,
         )
         IngestConfiguration(
           kafka,
@@ -417,7 +417,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case V1KinesisIngest(
@@ -431,7 +431,7 @@ object V2IngestEntities {
             numRetries,
             maximumPerSecond,
             recordDecoders,
-            _ //checkpointSettings - not used
+            _, //checkpointSettings - not used
           ) =>
         val (f, q, p) = fromFormat(format)
         val v2kinesis: V2KinesisIngest =
@@ -444,7 +444,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case ServerSentEventsIngest(format, url, parallelism, maximumPerSecond, recordDecoders) =>
@@ -457,7 +457,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
       case SQSIngest(
             format,
@@ -468,7 +468,7 @@ object V2IngestEntities {
             region,
             deleteReadMessages,
             maximumPerSecond,
-            recordDecoders
+            recordDecoders,
           ) =>
         val (f, q, p) = fromFormat(format)
         val sqs = V2SQSIngest(
@@ -478,7 +478,7 @@ object V2IngestEntities {
           credentials,
           region,
           deleteReadMessages,
-          recordDecoders
+          recordDecoders,
         )
         IngestConfiguration(
           sqs,
@@ -488,7 +488,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case WebsocketSimpleStartupIngest(format, url, initMessages, keepAlive, parallelism, encoding) =>
@@ -502,7 +502,7 @@ object V2IngestEntities {
           None,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case V1FileIngest(
@@ -514,7 +514,7 @@ object V2IngestEntities {
             startAtOffset,
             ingestLimit,
             maximumPerSecond,
-            fileIngestMode
+            fileIngestMode,
           ) =>
         val (f, q, p) = fromFormat(format)
         val file = V2FileIngest(
@@ -524,7 +524,7 @@ object V2IngestEntities {
           startAtOffset,
           ingestLimit,
           Charset.forName(encoding),
-          Seq()
+          Seq(),
         )
         IngestConfiguration(
           file,
@@ -534,7 +534,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case V1S3Ingest(
@@ -547,7 +547,7 @@ object V2IngestEntities {
             maximumLineSize,
             startAtOffset,
             ingestLimit,
-            maximumPerSecond
+            maximumPerSecond,
           ) =>
         val (f, q, p) = fromFormat(format)
         val s3 = V2S3Ingest(
@@ -558,7 +558,7 @@ object V2IngestEntities {
           startAtOffset,
           ingestLimit,
           Charset.forName(encoding),
-          Seq()
+          Seq(),
         )
         IngestConfiguration(
           s3,
@@ -568,7 +568,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case StandardInputIngest(format, encoding, parallelism, maximumLineSize, maximumPerSecond) =>
@@ -581,7 +581,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
 
       case V1NumberIteratorIngest(format, startAtOffset, ingestLimit, maximumPerSecond, parallelism) =>
@@ -594,7 +594,7 @@ object V2IngestEntities {
           maximumPerSecond,
           f,
           LogRecordErrorHandler,
-          LogStreamError
+          LogStreamError,
         )
     }
 

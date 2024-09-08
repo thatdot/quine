@@ -18,7 +18,7 @@ import com.thatdot.quine.graph.cypher.{
   Type,
   UserDefinedProcedure,
   UserDefinedProcedureSignature,
-  Value
+  Value,
 }
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.util.Log._
@@ -36,7 +36,7 @@ class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefin
   def call(context: QueryContext, arguments: Seq[Value], location: ProcedureExecutionLocation)(implicit
     parameters: Parameters,
     timeout: Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
     val (value, schemaUrl, typeName): (Map[String, QuineValue], URL, String) = arguments match {
       case Seq(Expr.Map(value), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
@@ -67,6 +67,6 @@ class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefin
     outputs = Seq("protoBytes" -> Type.Bytes),
     description = """Serializes a Cypher value into bytes, according to a protobuf schema.
                     |Returns null if the value is not serializable as the requested type
-                    |""".stripMargin.replace('\n', ' ').trim
+                    |""".stripMargin.replace('\n', ' ').trim,
   )
 }

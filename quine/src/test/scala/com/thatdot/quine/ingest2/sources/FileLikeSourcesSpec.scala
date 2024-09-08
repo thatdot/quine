@@ -48,7 +48,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     format: FileIngestFormat,
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
-    contentDecoders: Seq[ContentDecoder] = Seq()
+    contentDecoders: Seq[ContentDecoder] = Seq(),
   ): TestResult = {
     val meter = IngestMetered.ingestMeter(None, randomString())
 
@@ -60,7 +60,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       maximumLineSize,
       bounds,
       meter,
-      contentDecoders
+      contentDecoders,
     )
 
     (meter, streamedCypherValues(decodedSource).toList)
@@ -71,7 +71,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     format: CypherCsv,
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
-    contentDecoders: Seq[ContentDecoder] = Seq()
+    contentDecoders: Seq[ContentDecoder] = Seq(),
   ): TestResult = {
     val src = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
     val meter = IngestMetered.ingestMeter(None, randomString())
@@ -83,7 +83,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       maximumLineSize,
       bounds,
       meter: IngestMeter,
-      contentDecoders
+      contentDecoders,
     )
 
     (meter, streamedCypherValues(decodedSource).toList)
@@ -100,8 +100,8 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
-          "A" -> Expr.Integer(1)
-        )
+          "A" -> Expr.Integer(1),
+        ),
       )
 
       meter.bytes.getCount shouldBe calculatedByteLength(jsonSample)
@@ -114,8 +114,8 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
-          "A" -> Expr.Integer(1)
-        )
+          "A" -> Expr.Integer(1),
+        ),
       )
 
       meter.bytes.getCount shouldBe calculatedByteLength(undelimitedSample)
@@ -129,8 +129,8 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       values.length shouldEqual resultCount
       values.head shouldEqual Expr.Map(
         TreeMap(
-          "A" -> Expr.Integer(11)
-        )
+          "A" -> Expr.Integer(11),
+        ),
       )
 
       meter.counts.getCount shouldBe resultCount
@@ -141,13 +141,13 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val (meter, values) = generateValues(
         jsonSample,
         format,
-        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder)
+        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
-          "A" -> Expr.Integer(1)
-        )
+          "A" -> Expr.Integer(1),
+        ),
       )
 
       meter.bytes.getCount shouldBe calculatedByteLength(jsonSample)
@@ -158,13 +158,13 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val (meter, values) = generateValues(
         jsonSample,
         format,
-        contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder)
+        contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
-          "A" -> Expr.Integer(1)
-        )
+          "A" -> Expr.Integer(1),
+        ),
       )
 
       meter.bytes.getCount shouldBe calculatedByteLength(jsonSample)
@@ -213,7 +213,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val (meter, values) = generateValues(
         lineSample,
         format,
-        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder)
+        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
       values.head shouldEqual Expr.Str("ABCDEFG_1")
@@ -226,7 +226,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val (meter, values) = generateValues(
         lineSample,
         format,
-        contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder)
+        contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
       values.head shouldEqual Expr.Str("ABCDEFG_1")
@@ -269,7 +269,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
       values.length shouldEqual 2
       values.head shouldEqual Expr.Map(
-        SortedMap("A1" -> Expr.Str("A2"), "B1" -> Expr.Str("B2"), "C1" -> Expr.Str("C2"))
+        SortedMap("A1" -> Expr.Str("A2"), "B1" -> Expr.Str("B2"), "C1" -> Expr.Str("C2")),
       )
       meter.counts.getCount shouldBe 3
       // byte meter ignores field delimiter
@@ -283,7 +283,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
         Right(List("X", "Y", "Z")),
         CsvCharacter.Comma,
         CsvCharacter.DoubleQuote,
-        CsvCharacter.Backslash
+        CsvCharacter.Backslash,
       )
       val (meter, values) = generateCsvValues(csvSample, format)
 
@@ -327,7 +327,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val (meter, values) = generateCsvValues(
         csvSample,
         format,
-        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder)
+        contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 3
       values.head shouldEqual Expr.List(Vector(Expr.Str("A1"), Expr.Str("B1"), Expr.Str("C1")))

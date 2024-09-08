@@ -69,7 +69,7 @@ object PropertyValue {
   def apply(v: scala.collection.immutable.List[QuineValue]): PropertyValue = PropertyValue(QuineValue(v))
   def apply(v: scala.collection.immutable.Map[String, QuineValue]): PropertyValue = PropertyValue(QuineValue(v))
   def apply[CustomIdType](v: CustomIdType)(implicit
-    idProvider: QuineIdProvider.Aux[CustomIdType]
+    idProvider: QuineIdProvider.Aux[CustomIdType],
   ): PropertyValue = PropertyValue(QuineValue(v))
 
   def unapply(arg: PropertyValue): Option[QuineValue] = arg.deserialized.toOption

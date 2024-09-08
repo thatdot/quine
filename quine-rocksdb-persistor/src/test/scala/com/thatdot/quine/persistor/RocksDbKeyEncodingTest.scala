@@ -21,7 +21,7 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
       .frequency(
         2 -> Gen.const(128), // UUID sized
         1 -> Gen.const(64), // Long sized
-        1 -> Gen.long.map(n => Math.abs(n % 256).toInt) // uniformly picked
+        1 -> Gen.long.map(n => Math.abs(n % 256).toInt), // uniformly picked
       )
       .flatMap(n => Gen.containerOfN[Array, Byte](n, Arbitrary.arbByte.arbitrary))
       .map(QuineId(_))
@@ -72,7 +72,7 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
    */
   val quineIdOrdering: Ordering[QuineId] = Ordering
     .by[Array[Byte], (Int, Array[Byte])](arr => (arr.length, arr))(
-      Ordering.Tuple2(implicitly, unsignedByteArrayOrdering)
+      Ordering.Tuple2(implicitly, unsignedByteArrayOrdering),
     )
     .on[QuineId](_.array)
 
@@ -93,7 +93,7 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
     Ordering.Tuple3[StandingQueryId, QuineId, MultipleValuesStandingQueryPartId](
       unsignedUuidOrdering.on[StandingQueryId](_.uuid),
       quineIdOrdering,
-      unsignedUuidOrdering.on[MultipleValuesStandingQueryPartId](_.uuid)
+      unsignedUuidOrdering.on[MultipleValuesStandingQueryPartId](_.uuid),
     )
 
   "(QuineId, EventTime) key encoding" should "round-trip" in {
@@ -114,7 +114,7 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
       QuineId(Array[Byte](0, 0)) -> EventTime.fromRaw(0L),
       QuineId(Array[Byte](0, 0)) -> EventTime.fromRaw(1L),
       QuineId(Array[Byte](1, 0)) -> EventTime.fromRaw(1L),
-      QuineId(Array[Byte](0, 1)) -> EventTime.fromRaw(1L)
+      QuineId(Array[Byte](0, 1)) -> EventTime.fromRaw(1L),
     )
 
     for {
@@ -167,7 +167,7 @@ class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyCh
         sqPartId1: MultipleValuesStandingQueryPartId,
         sqId2: StandingQueryId,
         q2: QuineId,
-        sqPartId2: MultipleValuesStandingQueryPartId
+        sqPartId2: MultipleValuesStandingQueryPartId,
       ) =>
         val k1 = (sqId1, q1, sqPartId1)
         val k2 = (sqId2, q2, sqPartId2)

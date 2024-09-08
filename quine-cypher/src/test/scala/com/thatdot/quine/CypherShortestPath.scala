@@ -37,70 +37,70 @@ class CypherShortestPath extends CypherHarness("cypher-shortestpath-tests") {
     from: Long,
     to: Long,
     expectedValue: Option[Value],
-    skip: Boolean = false
+    skip: Boolean = false,
   )(implicit
-    pos: Position
+    pos: Position,
   ): Unit =
     testQuery(
       query = s"MATCH (n), (m) WHERE id(n) = $from AND id(m) = $to RETURN $shortestPathText",
       expectedColumns = Vector(shortestPathText),
       expectedRows = expectedValue.map(Vector(_)).toSeq,
-      skip = skip
+      skip = skip,
     )
 
   testShortestPath(
     "shortestPath((n)-[*]-(m))",
     from = 1L,
     to = 4L,
-    expectedValue = Some(Expr.Path(n1, Vector(e51 -> n5, e54 -> n4)))
+    expectedValue = Some(Expr.Path(n1, Vector(e51 -> n5, e54 -> n4))),
   )
 
   testShortestPath(
     "shortestPath((n)-[:foo*]-(m))",
     from = 1L,
     to = 4L,
-    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e43 -> n4)))
+    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e43 -> n4))),
   )
 
   testShortestPath(
     "shortestPath((n)-[:foo*]->(m))",
     from = 1L,
     to = 4L,
-    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e35 -> n5, e54 -> n4)))
+    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e35 -> n5, e54 -> n4))),
   )
 
   testShortestPath(
     "shortestPath((n)-[:foo*..4]->(m))",
     from = 1L,
     to = 4L,
-    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e35 -> n5, e54 -> n4)))
+    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2, e23 -> n3, e35 -> n5, e54 -> n4))),
   )
 
   testShortestPath(
     "shortestPath((n)-[:foo*..3]->(m))",
     from = 1L,
     to = 4L,
-    expectedValue = None
+    expectedValue = None,
   )
 
   testShortestPath(
     "shortestPath((n)-[:foo]-(m))",
     from = 1L,
     to = 2L,
-    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2)))
+    expectedValue = Some(Expr.Path(n1, Vector(e12 -> n2))),
   )
 
   testShortestPath(
     "shortestPath((n)<-[:foo|bar*]-(m))",
     from = 5L,
     to = 1L,
-    expectedValue = Some(Expr.Path(n5, Vector(e35 -> n3, e13 -> n1)))
+    expectedValue = Some(Expr.Path(n5, Vector(e35 -> n3, e13 -> n1))),
   )
 
   testShortestPath(
     "shortestPath((n)-[*]->(m))",
     from = 5L,
     to = 1L,
-    expectedValue = Some(Expr.Path(n5, Vector(e51 -> n1)))
+    expectedValue = Some(Expr.Path(n5, Vector(e51 -> n1))),
   )
 }

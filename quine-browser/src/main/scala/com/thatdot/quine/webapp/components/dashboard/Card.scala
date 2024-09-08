@@ -11,24 +11,24 @@ import slinky.web.html.{className, div, key}
 
   case class Props(
     title: ReactElement,
-    body: ReactElement
+    body: ReactElement,
   )
 
   override def render(): ReactElement =
     div(
-      className := "card"
+      className := "card",
     )(
       div(
-        className := "card-body"
+        className := "card-body",
       )(
         div(
           className := "card-title",
-          key := "card-title"
+          key := "card-title",
         )(props.title),
         div(
           className := "card-text",
-          key := "card-text"
-        )(props.body)
-      )
+          key := "card-text",
+        )(props.body),
+      ),
     )
 }

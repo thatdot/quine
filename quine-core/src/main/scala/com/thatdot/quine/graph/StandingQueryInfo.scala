@@ -37,7 +37,7 @@ final case class StandingQueryInfo(
   queryPattern: StandingQueryPattern,
   queueBackpressureThreshold: Int,
   queueMaxSize: Int,
-  shouldCalculateResultHashCode: Boolean
+  shouldCalculateResultHashCode: Boolean,
 )
 
 object StandingQueryInfo {
@@ -83,7 +83,7 @@ object PatternOrigin {
   case object DirectSqV4 extends SqV4Origin
   final case class GraphPattern(
     pattern: GraphQueryPattern,
-    cypherOriginal: Option[String]
+    cypherOriginal: Option[String],
   ) extends DgbOrigin
       with SqV4Origin
 }
@@ -108,7 +108,7 @@ object StandingQueryPattern {
     formatReturnAsStr: Boolean,
     aliasReturnAs: Symbol,
     includeCancellation: Boolean,
-    origin: PatternOrigin.DgbOrigin
+    origin: PatternOrigin.DgbOrigin,
   ) extends StandingQueryPattern
 
   /** An SQv4 standing query (also referred to as a Cypher standing query)
@@ -120,13 +120,13 @@ object StandingQueryPattern {
   final case class MultipleValuesQueryPattern(
     compiledQuery: MultipleValuesStandingQuery,
     includeCancellation: Boolean,
-    origin: PatternOrigin.SqV4Origin
+    origin: PatternOrigin.SqV4Origin,
   ) extends StandingQueryPattern
 
   final case class QuinePatternQueryPattern(
     quinePattern: QuinePattern,
     includeCancellation: Boolean,
-    origin: PatternOrigin
+    origin: PatternOrigin,
   ) extends StandingQueryPattern
 }
 
@@ -149,7 +149,7 @@ final class RunningStandingQuery(
   outputTermination: Future[Done],
   val resultMeter: Meter,
   val droppedCounter: Counter,
-  val startTime: Instant
+  val startTime: Instant,
 ) extends LazySafeLogging {
 
   def this(
@@ -158,7 +158,7 @@ final class RunningStandingQuery(
     inNamespace: NamespaceId,
     resultsHub: Source[StandingQueryResult, NotUsed],
     outputTermination: Future[Done],
-    metrics: HostQuineMetrics
+    metrics: HostQuineMetrics,
   ) =
     this(
       resultsQueue,
@@ -167,7 +167,7 @@ final class RunningStandingQuery(
       outputTermination,
       resultMeter = metrics.standingQueryResultMeter(inNamespace, query.name),
       droppedCounter = metrics.standingQueryDroppedCounter(inNamespace, query.name),
-      startTime = Instant.now()
+      startTime = Instant.now(),
     )
 
   def terminateOutputQueue(): Future[Unit] = {
@@ -191,18 +191,18 @@ final class RunningStandingQuery(
       case QueueOfferResult.Failure(err) =>
         logger.warn(
           log"onResult: failed to enqueue Standing Query result for: ${Safe(query.name)}. Result: $result"
-          withException err
+          withException err,
         )
         false
       case QueueOfferResult.QueueClosed =>
         logger.warn(
           log"""onResult: Standing Query Result arrived but result queue already closed for:
-               |${Safe(query.name)}. Dropped result: $result""".cleanLines
+               |${Safe(query.name)}. Dropped result: $result""".cleanLines,
         )
         false
       case QueueOfferResult.Dropped =>
         logger.warn(
-          log"onResult: dropped Standing Query result for: ${Safe(query.name)}. Result: $result"
+          log"onResult: dropped Standing Query result for: ${Safe(query.name)}. Result: $result",
         )
         false
     }

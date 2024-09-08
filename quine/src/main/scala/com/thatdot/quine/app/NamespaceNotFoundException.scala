@@ -7,6 +7,6 @@ case class NamespaceNotFoundException(namespace: String)
 
 object NamespaceNotFoundException {
   def apply(namespaceId: NamespaceId): NamespaceNotFoundException = NamespaceNotFoundException(
-    namespaceToString(namespaceId)
+    namespaceToString(namespaceId),
   )
 }

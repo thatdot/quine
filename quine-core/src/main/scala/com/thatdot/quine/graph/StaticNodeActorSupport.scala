@@ -9,7 +9,7 @@ object StaticNodeActorSupport extends StaticNodeSupport[NodeActor, NodeSnapshot,
   def createNodeArgs(
     snapshot: Option[NodeSnapshot],
     initialJournal: Journal,
-    multipleValuesStandingQueryStates: MultipleValuesStandingQueries
+    multipleValuesStandingQueryStates: MultipleValuesStandingQueries,
   ): NodeConstructorArgs =
     // Using .map.getOrElse instead of fold to avoid needing a lot of type hints
     NodeConstructorArgs(
@@ -19,6 +19,6 @@ object StaticNodeActorSupport extends StaticNodeSupport[NodeActor, NodeSnapshot,
       domainNodeIndex =
         new DomainNodeIndexBehavior.DomainNodeIndex(snapshot.map(_.domainNodeIndex).getOrElse(mutable.Map.empty)),
       multipleValuesStandingQueryStates = multipleValuesStandingQueryStates,
-      initialJournal = initialJournal
+      initialJournal = initialJournal,
     )
 }

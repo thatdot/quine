@@ -6,7 +6,7 @@ import java.time.{
   LocalDateTime => JavaLocalDateTime,
   OffsetDateTime,
   OffsetTime,
-  ZoneOffset
+  ZoneOffset,
 }
 
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
@@ -49,7 +49,7 @@ object QuineValue {
   def apply(v: scala.collection.immutable.List[QuineValue]): QuineValue = List(v.toVector)
   def apply(v: ScalaMap[String, QuineValue]): QuineValue = Map(v)
   def apply[CustomIdType](v: CustomIdType)(implicit
-    idProvider: QuineIdProvider.Aux[CustomIdType]
+    idProvider: QuineIdProvider.Aux[CustomIdType],
   ): QuineValue = Id(v)
 
   def fromBoolean(b: Boolean): QuineValue = if (b) True else False
@@ -241,7 +241,7 @@ object QuineValue {
 
   object Id {
     def apply[CustomIdType](id: CustomIdType)(implicit
-      idProvider: QuineIdProvider.Aux[CustomIdType]
+      idProvider: QuineIdProvider.Aux[CustomIdType],
     ): QuineValue.Id = Id(idProvider.customIdToQid(id))
   }
   final case class Id(id: QuineId) extends QuineValue {
@@ -274,7 +274,7 @@ object QuineValue {
     num => num.toLong.fold[QuineValue](QuineValue.Floating(num.toDouble))(QuineValue.Integer(_)),
     QuineValue.Str,
     jsonVals => QuineValue.List(jsonVals map fromJson),
-    jsonObj => QuineValue.Map(jsonObj.toMap.fmap(fromJson))
+    jsonObj => QuineValue.Map(jsonObj.toMap.fmap(fromJson)),
   )
 
   /** Encode a Quine value into JSON
@@ -454,7 +454,7 @@ object QuineValue {
             val epochDay = unpacker.unpackInt()
             val nanoDay = unpacker.unpackLong()
             QuineValue.LocalDateTime(
-              JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), java.time.LocalTime.ofNanoOfDay(nanoDay))
+              JavaLocalDateTime.of(LocalDate.ofEpochDay(epochDay.toLong), java.time.LocalTime.ofNanoOfDay(nanoDay)),
             )
 
           case DateTimeExt =>
@@ -472,13 +472,13 @@ object QuineValue {
                     OffsetDateTime.of(
                       LocalDate.ofEpochDay(epochDays - 1),
                       java.time.LocalTime.ofNanoOfDay(NanosPerDay + nanoOfDay),
-                      offset
+                      offset,
                     )
                   else
                     OffsetDateTime.of(
                       LocalDate.ofEpochDay(epochDays),
                       java.time.LocalTime.ofNanoOfDay(nanoOfDay),
-                      offset
+                      offset,
                     )
                 QuineValue.DateTime(dateTime)
 
@@ -490,7 +490,7 @@ object QuineValue {
                   OffsetDateTime.of(
                     LocalDate.ofEpochDay(epochDay.toLong),
                     java.time.LocalTime.ofNanoOfDay(nanoOfDay),
-                    offset
+                    offset,
                   )
                 QuineValue.DateTime(dateTime)
 
@@ -615,7 +615,7 @@ object QuineValue {
 }
 class InvalidHeaderLengthException(expected: String, actual: Int)
     extends IllegalArgumentException(
-      s"Invalid length for date time (expected $expected but got $actual)"
+      s"Invalid length for date time (expected $expected but got $actual)",
     )
 
 /** Types of [[QuineValue]], used for runtime type-mismatched exceptions */

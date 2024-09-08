@@ -17,7 +17,7 @@ import com.thatdot.quine.persistor.cassandra.support.{
   CassandraColumn,
   CassandraStatementSettings,
   CassandraTable,
-  TableDefinition
+  TableDefinition,
 }
 import com.thatdot.quine.persistor.codecs.QuinePatternCodec
 import com.thatdot.quine.util.Log.{LogConfig, Safe, SafeLoggableInterpolator}
@@ -49,11 +49,11 @@ class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: Lo
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings
+    writeSettings: CassandraStatementSettings,
   )(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Future[QuinePatterns] = {
     import shapeless.syntax.std.tuple._
     logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
@@ -79,9 +79,9 @@ class QuinePatterns(
   dropTableStatement: SimpleStatement,
   insertStatement: PreparedStatement,
   deleteStatement: PreparedStatement,
-  selectAllStatement: PreparedStatement
+  selectAllStatement: PreparedStatement,
 )(implicit
   //mat: Materializer,
-  val logConfig: LogConfig
+  val logConfig: LogConfig,
 ) extends CassandraTable(session, firstRowStatement, dropTableStatement)
     with StandingQueriesColumnNames {}

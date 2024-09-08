@@ -211,7 +211,7 @@ object WithExplicitPositions {
   * @see [[WithExplicitPositions.Id]]
   */
 final case class WithExplicitPositions private (underlying: QuineIdProvider)(implicit
-  protected val logConfig: LogConfig
+  protected val logConfig: LogConfig,
 ) extends PositionAwareIdProvider {
   type CustomIdType = WithExplicitPositions.Id[underlying.CustomIdType]
 
@@ -225,7 +225,7 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
 
   def hashedCustomIdAtPositionIndex(
     positionIdx: Integer,
-    bytes: Array[Byte]
+    bytes: Array[Byte],
   ): WithExplicitPositions.Id[underlying.CustomIdType] =
     WithExplicitPositions.Id(positionIdx, underlying.hashedCustomId(bytes))
 
@@ -258,14 +258,14 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
         for {
           positionIdx <- Try(Integer.parseUnsignedInt(positionIdxHex, 16)).recoverWith { case err =>
             Failure(
-              new IllegalArgumentException("Unable to decode position marker portion of explicitly-positioned ID", err)
+              new IllegalArgumentException("Unable to decode position marker portion of explicitly-positioned ID", err),
             )
           }
           underlyingId <- underlying
             .customIdFromString(underlyingStr)
             .recoverWith { case err =>
               Failure(
-                new IllegalArgumentException("Unable to decode underlying ID portion of explicitly-positioned ID", err)
+                new IllegalArgumentException("Unable to decode underlying ID portion of explicitly-positioned ID", err),
               )
             }
         } yield WithExplicitPositions.Id(positionIdx, underlyingId)
@@ -274,8 +274,8 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
           new IllegalArgumentException(
             s"""Provided ID string: $doesntMatch was not in the required format (`positionIdx`/`customIdString`) where
                |`positionIdx` is eight hex characters, and `customIdString` is a valid string representation for 
-               |the underlying id provider: $underlying""".stripMargin.replace('\n', ' ')
-          )
+               |the underlying id provider: $underlying""".stripMargin.replace('\n', ' '),
+          ),
         )
     }
   }
@@ -304,7 +304,7 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
         log"""Couldn't parse out an explicitly-positioned QuineId from provided id
             |${Safe(qid.pretty(this))}. Falling back to the underlying node
             |location algorithm""".cleanLines
-        withException exception
+        withException exception,
       )
       underlying.nodeLocation(qid)
     case Success(id) =>
@@ -333,13 +333,13 @@ object NameSpacedUuidProvider {
   */
 final case class NameSpacedUuidProvider(
   localNamespaces: List[String],
-  thisNamespaceIdx: Int
+  thisNamespaceIdx: Int,
 ) extends QuineIdProvider {
   type CustomIdType = (String, UUID)
   val customIdTag: ClassTag[(String, UUID)] = classTag[(String, UUID)]
 
   logger.warn(
-    safe"NamespacedUuidProvider is deprecated - use a specific-version UUID provider with explicit positioning instead"
+    safe"NamespacedUuidProvider is deprecated - use a specific-version UUID provider with explicit positioning instead",
   )
 
   require(thisNamespaceIdx <= localNamespaces.size - 1 && thisNamespaceIdx >= 0)
@@ -350,7 +350,7 @@ final case class NameSpacedUuidProvider(
 
   def hashedCustomId(bytes: Array[Byte]): (String, UUID) = {
     val chosenNamespace = localNamespaces(
-      Math.floorMod(ByteBuffer.wrap(QuineIdProvider.hashToLength(bytes, 4)).getInt, namespaceCount)
+      Math.floorMod(ByteBuffer.wrap(QuineIdProvider.hashToLength(bytes, 4)).getInt, namespaceCount),
     )
     hashedCustomIdInNamespace(chosenNamespace, bytes).get
   }
@@ -386,10 +386,10 @@ final case class NameSpacedUuidProvider(
         // This is the core definition of which host is responsible for a specific QID:
         custom._1
           .split("_")(1)
-          .toInt // Distribute to the host that is literally specified (modded later if host count > this Int).
+          .toInt, // Distribute to the host that is literally specified (modded later if host count > this Int).
 //    hashToLength(qid.array, 1).head.toInt           // Distribute evenly among shards
 //    hashToLength(qid.array.drop(16), 1).head.toInt  // IDs in the same namespace go to the same shard
-      )
+      ),
     ).getOrElse { // In case that fails:
       Math.abs(ByteBuffer.wrap(QuineIdProvider.hashToLength(custom._1.getBytes(UTF_8), 4)).getInt())
     }
@@ -403,10 +403,10 @@ final case class NameSpacedUuidProvider(
               .putLong(custom._2.getMostSignificantBits)
               .putLong(custom._2.getLeastSignificantBits)
               .array(),
-            4
-          )
+            4,
+          ),
         )
-        .getInt()
+        .getInt(),
     )
 
     QuineGraphLocation(Some(hostIdx), localShardIdx)
@@ -427,7 +427,7 @@ final case class NameSpacedUuidProvider(
 
 final case class WrongUuidVersion[V <: UUID4s: ClassTag](u: UUID4s)
     extends IllegalArgumentException(
-      s"Got a UUID $u with V${u.version}, expected " + classTag[V].runtimeClass.getSimpleName
+      s"Got a UUID $u with V${u.version}, expected " + classTag[V].runtimeClass.getSimpleName,
     )
 
 /** Common supertype of UUID IDProviders that use only a single version of UUID (represented as a single subtype of

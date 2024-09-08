@@ -265,7 +265,7 @@ object Expression {
         for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Equal(lhs1, rhs1)
       case expressions.NotEquals(lhs, rhs) =>
         for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Not(
-          cypher.Expr.Equal(lhs1, rhs1)
+          cypher.Expr.Equal(lhs1, rhs1),
         )
       case expressions.LessThan(lhs, rhs) =>
         for { lhs1 <- compile(lhs, avng); rhs1 <- compile(rhs, avng) } yield cypher.Expr.Less(lhs1, rhs1)
@@ -324,9 +324,9 @@ object Expression {
                     cypher.Query.LocalNode(
                       labelsOpt = None,
                       propertiesOpt = None,
-                      bindName = Some(nodeVarExpr.id)
-                    )
-                  )
+                      bindName = Some(nodeVarExpr.id),
+                    ),
+                  ),
                 )
               }
             }
@@ -353,9 +353,9 @@ object Expression {
                     cypher.Query.LocalNode(
                       labelsOpt = None,
                       propertiesOpt = None,
-                      bindName = Some(nodeVarExpr.id)
-                    )
-                  )
+                      bindName = Some(nodeVarExpr.id),
+                    ),
+                  ),
                 )
               }
             }
@@ -363,7 +363,7 @@ object Expression {
             WithQueryT[CompM, cypher.Expr](
               compileBuiltinScalarFunction(f.function, f).map { func =>
                 WithQuery[cypher.Expr](cypher.Expr.Function(func, args.toVector))
-              }
+              },
             )
           }
         }
@@ -389,9 +389,9 @@ object Expression {
                 cypher.Query.GetDegree(
                   edgeName = relType.map(r => Symbol(r.name)),
                   direction,
-                  bindName = bindVarExpr.id
-                )
-              )
+                  bindName = bindVarExpr.id,
+                ),
+              ),
             )
           }
         }
@@ -405,16 +405,16 @@ object Expression {
               cypher.Query.LocalNode(
                 labelsOpt = Some(labels.map(lbl => Symbol(lbl.name)).toVector),
                 propertiesOpt = None,
-                bindName = None
-              )
-            )
+                bindName = None,
+              ),
+            ),
           )
         }
 
       case e @ expressions.PatternComprehension(namedPath, rel, pred, project) =>
         require(
           namedPath.isEmpty,
-          s"During query compilation, encountered a pattern comprehension using a named path. This is a known issue when using exists() in standing query patterns. Named path was: ${namedPath.get}. Full expression was: ${e}."
+          s"During query compilation, encountered a pattern comprehension using a named path. This is a known issue when using exists() in standing query patterns. Named path was: ${namedPath.get}. Full expression was: ${e}.",
         )
 
         // Put the pattern into a form
@@ -436,14 +436,14 @@ object Expression {
                 aggregateWith = Vector(
                   pathVarExpr.id -> cypher.Aggregator.collect(
                     distinct = false,
-                    returnExpr
-                  )
+                    returnExpr,
+                  ),
                 ),
                 toAggregate = predWqOpt.sequence.toQuery {
                   case None => patQuery
                   case Some(filterCond) => cypher.Query.filter(filterCond, patQuery)
                 },
-                keepExisting = true
+                keepExisting = true,
               )
 
               WithQuery(pathVarExpr, queryPart)
@@ -470,7 +470,7 @@ object Expression {
                 rel,
                 _,
                 _,
-                restPath: expressions.NodePathStep
+                restPath: expressions.NodePathStep,
               ) =>
             for {
               head <- compile(rel, avng)
@@ -497,7 +497,7 @@ object Expression {
           case expressions.RelationshipChain(
                 expressions.NodePattern(Some(startNodeLv), None, None, None),
                 expressions.RelationshipPattern(None, edgeTypes, length, None, _, direction),
-                expressions.NodePattern(Some(endNodeLv), None, None, None)
+                expressions.NodePattern(Some(endNodeLv), None, None, None),
               ) =>
             // An APOC-style map of optional arguments passed to the algorithms.shortestPath procedure
 
@@ -532,7 +532,7 @@ object Expression {
             // edge types
             val edgeTypeOption = edgeTypes
               .fold(Set[Symbol]())(le =>
-                handleLabelExpression(le, Some(position(e.position)(SourceText(e.asCanonicalStringVal))))
+                handleLabelExpression(le, Some(position(e.position)(SourceText(e.asCanonicalStringVal)))),
               ) match {
               case edges if edges.isEmpty => Map.empty
               case edges =>
@@ -555,10 +555,10 @@ object Expression {
                   Vector(
                     startNode,
                     endNode,
-                    cypher.Expr.Map(lengthOptions ++ directionOption ++ edgeTypeOption)
+                    cypher.Expr.Map(lengthOptions ++ directionOption ++ edgeTypeOption),
                   ),
-                  Some(Map(cypher.Proc.ShortestPath.retColumnPathName -> shortestPathVarExpr.id))
-                )
+                  Some(Map(cypher.Proc.ShortestPath.retColumnPathName -> shortestPathVarExpr.id)),
+                ),
               )
             }
 
@@ -589,7 +589,7 @@ object Expression {
     */
   private def compileBuiltinScalarFunction(
     func: functions.Function,
-    callExpr: expressions.FunctionInvocation
+    callExpr: expressions.FunctionInvocation,
   ): CompM[cypher.Func] =
     func match {
       case functions.Abs => CompM.pure(cypher.Func.Abs)
@@ -649,19 +649,19 @@ object Expression {
           functions.PercentileDisc | functions.StdDev | functions.StdDevP | functions.Sum =>
         CompM.raiseCompileError(
           message = s"Invalid position for aggregating function `${func.name}`",
-          astNode = callExpr
+          astNode = callExpr,
         )
 
       case functions.StartNode | functions.EndNode =>
         CompM.raiseCompileError(
           message = s"Compiler error: `${func.name}` should already have been handled",
-          astNode = callExpr
+          astNode = callExpr,
         )
 
       case functions.File | functions.Linenumber | functions.Point | functions.Distance | functions.Reduce | _ =>
         CompM.raiseCompileError(
           message = s"Failed to resolve function `${callExpr.name}`",
-          astNode = callExpr
+          astNode = callExpr,
         )
     }
 }
@@ -717,7 +717,7 @@ case object patternExpressionAsComprehension extends Phase[BaseContext, BaseStat
           _,
           _,
           false,
-          IndexedSeq(patternComp: expressions.PatternComprehension)
+          IndexedSeq(patternComp: expressions.PatternComprehension),
         ) if fi.function == functions.Exists =>
       val emptyList = expressions.ListLiteral(Seq())(fi.position)
       expressions.NotEquals(patternComp, emptyList)(fi.position)
@@ -725,7 +725,7 @@ case object patternExpressionAsComprehension extends Phase[BaseContext, BaseStat
 
   def patternExpr2Comp(
     e: expressions.PatternExpression,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): expressions.PatternComprehension = {
     val expressions.PatternExpression(relsPat) = e
 
@@ -736,7 +736,7 @@ case object patternExpressionAsComprehension extends Phase[BaseContext, BaseStat
       namedPath = Some(freshVariable),
       pattern = relsPat,
       predicate = None,
-      projection = freshVariable
+      projection = freshVariable,
     )(e.position, Set.empty)
   }
 

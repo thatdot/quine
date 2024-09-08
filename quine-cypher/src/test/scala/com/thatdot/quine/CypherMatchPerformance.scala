@@ -26,14 +26,14 @@ class CypherMatchPerformance extends CypherHarness("cypher-match-performance") {
         |create (existingNode)-[:edge]->(newNode)""".stripMargin,
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
 
     testQuery(
       "match ({ prop: 5 })--({ prop: 9 })--({ prop: 4 })--({ prop: 2 })--({ prop: 6 })--({ prop: 8 })--({ prop: 1 })--({ prop: 7 })--({ prop: 3 }) return count(*)",
       expectedColumns = Vector("count(*)"),
       expectedRows = Seq(Vector(Expr.Integer(1L))),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 }

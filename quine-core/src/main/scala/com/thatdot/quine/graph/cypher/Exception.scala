@@ -36,7 +36,7 @@ final case class Position(
   row: Int,
   column: Int,
   offset: Int,
-  source: SourceText
+  source: SourceText,
 )
 object CypherException {
 
@@ -51,7 +51,7 @@ object CypherException {
     expected: Seq[Type],
     actualValue: Value,
     context: String,
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
 
     /** Actual type */
@@ -69,7 +69,7 @@ object CypherException {
     desiredField: String,
     presentFields: Set[String],
     context: String,
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
     override def getMessage: String =
       s"Field $desiredField not present in ${presentFields.mkString("[", ", ", "]")} in $context"
@@ -82,7 +82,7 @@ object CypherException {
     */
   final case class InvalidIndex(
     index: Value,
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
     override def getMessage(): String =
       s"${index.pretty} cannot be used as an index"
@@ -100,7 +100,7 @@ object CypherException {
   final case class Arithmetic(
     wrapping: String,
     operands: Seq[Expr.Number],
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
     override def getMessage(): String = {
       val operandsString = operands.map(_.string).mkString(", ")
@@ -116,7 +116,7 @@ object CypherException {
     */
   final case class Runtime(
     message: String,
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
     override def getMessage(): String = message
   }
@@ -128,7 +128,7 @@ object CypherException {
     */
   final case class ConstraintViolation(
     message: String,
-    position: Option[Position] = None
+    position: Option[Position] = None,
   ) extends CypherException {
     override def getMessage(): String = message
   }
@@ -142,7 +142,7 @@ object CypherException {
     */
   final case class Compile(
     wrapping: String,
-    position: Option[Position]
+    position: Option[Position],
   ) extends CypherException {
     override def getMessage(): String = s"$wrapping @ $position"
   }
@@ -158,7 +158,7 @@ object CypherException {
     */
   final case class Syntax(
     wrapping: String,
-    position: Option[Position]
+    position: Option[Position],
   ) extends CypherException {
     private val stripPos = raw" \(line \d+, column \d+ \(offset: \d+\)\)$$".r
     override def getMessage(): String = stripPos.replaceAllIn(wrapping, "")
@@ -173,7 +173,7 @@ object CypherException {
   final case class WrongSignature(
     expectedSignature: String,
     actualArguments: Seq[Value],
-    position: Option[Position]
+    position: Option[Position],
   ) extends CypherException {
     override def getMessage(): String = {
       val actual = actualArguments.map(_.pretty).mkString(", ")
@@ -192,7 +192,7 @@ object CypherException {
     def apply(
       calledName: String,
       expectedArguments: Seq[Type],
-      actualArguments: Seq[Value]
+      actualArguments: Seq[Value],
     ): WrongSignature =
       WrongSignature(s"$calledName(${expectedArguments.mkString(", ")})", actualArguments, None)
   }
@@ -204,11 +204,11 @@ object CypherException {
   def wrongSignature(
     calledName: String,
     expectedArguments: java.lang.Iterable[Type],
-    actualArguments: java.lang.Iterable[Value]
+    actualArguments: java.lang.Iterable[Value],
   ): WrongSignature =
     WrongSignature(
       calledName,
       expectedArguments.asScala.toSeq,
-      actualArguments.asScala.toSeq
+      actualArguments.asScala.toSeq,
     )
 }

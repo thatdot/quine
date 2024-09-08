@@ -12,21 +12,21 @@ object Retry {
     condition: T => Boolean,
     attempts: Int,
     delay: FiniteDuration,
-    scheduler: Scheduler
+    scheduler: Scheduler,
   )(ec: ExecutionContext): Future[T] = attempt.flatMap(result =>
     if (condition(result))
       Future.successful(result)
     else if (attempts > 0)
       after(delay, scheduler)(until(attempt, condition, attempts - 1, delay, scheduler)(ec))(ec)
     else
-      Future.failed(new NoSuchElementException("Ran out of attempts trying to retry; last value was: " + result))
+      Future.failed(new NoSuchElementException("Ran out of attempts trying to retry; last value was: " + result)),
   )(ec)
 
   def untilDefined[T](
     attempt: => Future[Option[T]],
     attempts: Int,
     delay: FiniteDuration,
-    scheduler: Scheduler
+    scheduler: Scheduler,
   )(ec: ExecutionContext): Future[T] =
     until[Option[T]](attempt, _.isDefined, attempts, delay, scheduler)(ec).map(_.get)(ExecutionContext.parasitic)
 

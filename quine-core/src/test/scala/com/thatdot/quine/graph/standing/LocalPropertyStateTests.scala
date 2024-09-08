@@ -13,7 +13,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = None
+      aliasedAs = None,
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -61,7 +61,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.None,
-      aliasedAs = None
+      aliasedAs = None,
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -114,7 +114,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.None,
-      aliasedAs = Some(Symbol("nulled"))
+      aliasedAs = Some(Symbol("nulled")),
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -166,7 +166,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-      aliasedAs = Some(Symbol("interesting"))
+      aliasedAs = Some(Symbol("interesting")),
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -227,7 +227,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
-      aliasedAs = None
+      aliasedAs = None,
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -294,7 +294,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.Equal(Expr.Integer(1L)),
-      aliasedAs = Some(Symbol("interesting"))
+      aliasedAs = Some(Symbol("interesting")),
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -360,7 +360,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
-      aliasedAs = None
+      aliasedAs = None,
     )
 
     val state = new StandingQueryStateWrapper(query)
@@ -427,7 +427,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
       propConstraint = MultipleValuesStandingQuery.LocalProperty.NotEqual(Expr.Integer(1L)),
-      aliasedAs = Some(Symbol("cathy"))
+      aliasedAs = Some(Symbol("cathy")),
     )
 
     val state = new StandingQueryStateWrapper(query)

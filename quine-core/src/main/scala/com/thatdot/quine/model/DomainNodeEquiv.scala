@@ -13,7 +13,7 @@ import DGBOps._
 final case class DomainNodeEquiv(
   className: Option[String],
   localProps: Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])],
-  circularEdges: Set[CircularEdge]
+  circularEdges: Set[CircularEdge],
 ) {
   def containsEquiv(other: DomainNodeEquiv): Boolean =
     (this.className.isEmpty || this.className == other.className) &&
@@ -27,7 +27,7 @@ final case class DomainNodeEquiv(
       DomainNodeEquiv(
         className orElse other.className,
         localProps ++ other.localProps,
-        circularEdges ++ other.circularEdges
+        circularEdges ++ other.circularEdges,
       )
 
   def +(newProp: (Symbol, (PropertyComparisonFunc, Option[PropertyValue]))): DomainNodeEquiv =

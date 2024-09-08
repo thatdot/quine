@@ -27,7 +27,7 @@ case class S3Source(
   charset: Charset = DEFAULT_CHARSET,
   ingestBounds: IngestBounds = IngestBounds(),
   meter: IngestMeter,
-  decoders: Seq[ContentDecoder] = Seq()
+  decoders: Seq[ContentDecoder] = Seq(),
 )(implicit system: ActorSystem) {
   val src: Source[ByteString, Future[ObjectMetadata]] = credentials match {
     case None =>
@@ -47,7 +47,7 @@ case class S3Source(
       maximumLineSize,
       ingestBounds,
       meter,
-      decoders
+      decoders,
     )
 
 }

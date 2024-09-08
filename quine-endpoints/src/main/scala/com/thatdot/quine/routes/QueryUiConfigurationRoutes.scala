@@ -9,17 +9,17 @@ import com.thatdot.quine.routes.exts.EndpointsWithCustomErrorText
 @docs("A query that appears as an option in the dropdown under the query bar.")
 final case class SampleQuery(
   @docs("A descriptive label for the query.") name: String,
-  @docs("The Cypher or Gremlin query to be run on selection.") query: String
+  @docs("The Cypher or Gremlin query to be run on selection.") query: String,
 )
 object SampleQuery {
   def recentNodes: SampleQuery = SampleQuery(
     name = "Get a few recent nodes",
-    query = "CALL recentNodes(10)"
+    query = "CALL recentNodes(10)",
   )
 
   def getNodesById: SampleQuery = SampleQuery(
     name = "Get nodes by their ID(s)",
-    query = "MATCH (n) WHERE id(n) = idFrom(0) RETURN n"
+    query = "MATCH (n) WHERE id(n) = idFrom(0) RETURN n",
   )
 
   val defaults: Vector[SampleQuery] = Vector(recentNodes, getNodesById)
@@ -33,9 +33,9 @@ final case class UiNodePredicate(
   @docs("Properties the node must have to apply this style") propertyKeys: Vector[String],
   @docs("Properties with known constant values the node must have to apply this style") knownValues: Map[
     String,
-    Json
+    Json,
   ],
-  @docs("Label the node must have to apply this style") dbLabel: Option[String]
+  @docs("Label the node must have to apply this style") dbLabel: Option[String],
 ) {
   def matches(node: UiNode[String]): Boolean = {
     def hasRightLabel = dbLabel.forall(_ == node.label)
@@ -57,13 +57,13 @@ final case class UiNodeAppearance(
   @docs("(Optional) size of this icon in pixels")
   size: Option[Double],
   @docs(
-    "(Optional) name of the icon character to use. For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)"
+    "(Optional) name of the icon character to use. For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)",
   )
   icon: Option[String],
   @docs("(Optional) color to use, specified as a hex value")
   color: Option[String],
   @docs("(Optional) node label to use")
-  label: Option[UiNodeLabel]
+  label: Option[UiNodeLabel],
 )
 
 object UiNodeAppearance {
@@ -73,18 +73,18 @@ object UiNodeAppearance {
     size: Option[Double] = None,
     icon: Option[String] = None,
     color: Option[String] = None,
-    label: Option[UiNodeLabel] = None
+    label: Option[UiNodeLabel] = None,
   ) = new UiNodeAppearance(predicate, size, icon, color, label)
 
   val person: UiNodeAppearance = UiNodeAppearance(
     predicate = UiNodePredicate(Vector.empty, Map.empty, Some("Person")),
     label = Some(UiNodeLabel.Property("name", None)),
-    icon = Some("\uf47e")
+    icon = Some("\uf47e"),
   )
   val file: UiNodeAppearance = UiNodeAppearance(
     predicate = UiNodePredicate(Vector.empty, Map.empty, Some("File")),
     label = Some(UiNodeLabel.Property("path", Some("File path: "))),
-    icon = Some("\uf381")
+    icon = Some("\uf381"),
   )
   val defaults: Vector[UiNodeAppearance] = Vector(person, file)
 }
@@ -99,7 +99,7 @@ object UiNodeLabel {
   @docs("Use a specified, fixed value as a label.")
   @unnamed()
   final case class Constant(
-    value: String
+    value: String,
   ) extends UiNodeLabel
 
   @title("Property Value Label")
@@ -107,7 +107,7 @@ object UiNodeLabel {
   @unnamed()
   final case class Property(
     key: String,
-    prefix: Option[String]
+    prefix: Option[String],
   ) extends UiNodeLabel
 }
 
@@ -120,7 +120,7 @@ final case class UiNodeQuickQuery(
   predicate: UiNodePredicate,
   @docs("Query to run when the context menu entry is selected")
   @unnamed
-  quickQuery: QuickQuery
+  quickQuery: QuickQuery,
 )
 object UiNodeQuickQuery {
   def every(query: QuickQuery): UiNodeQuickQuery = UiNodeQuickQuery(UiNodePredicate.every, query)
@@ -128,7 +128,7 @@ object UiNodeQuickQuery {
   val defaults: Vector[UiNodeQuickQuery] = Vector(
     UiNodeQuickQuery.every(QuickQuery.adjacentNodes(QueryLanguage.Cypher)),
     UiNodeQuickQuery.every(QuickQuery.refreshNode(QueryLanguage.Cypher)),
-    UiNodeQuickQuery.every(QuickQuery.getProperties(QueryLanguage.Cypher))
+    UiNodeQuickQuery.every(QuickQuery.getProperties(QueryLanguage.Cypher)),
   )
 }
 
@@ -174,31 +174,31 @@ trait QueryUiConfigurationRoutes
         """Operations for customizing parts of the Query UI. These options are generally useful
           |for tailoring the UI to a particular domain or data model (eg. to customize the
           |icon, color, size, context-menu queries, etc. for nodes based on their contents).
-          |""".stripMargin
-      )
+          |""".stripMargin,
+      ),
     )
 
   final val queryUiSampleQueries: Endpoint[Unit, Vector[SampleQuery]] =
     endpoint(
       request = get(
-        url = sampleQueries
+        url = sampleQueries,
       ),
       response = ok(jsonResponseWithExample[Vector[SampleQuery]](SampleQuery.defaults)),
       docs = EndpointDocs()
         .withSummary(Some("List Sample Queries"))
         .withDescription(
           Some(
-            """Queries provided here will be available via a drop-down menu from the Quine UI search bar.""".stripMargin
-          )
+            """Queries provided here will be available via a drop-down menu from the Quine UI search bar.""".stripMargin,
+          ),
         )
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 
   final val updateQueryUiSampleQueries: Endpoint[Vector[SampleQuery], Unit] =
     endpoint(
       request = put(
         url = sampleQueries,
-        entity = jsonOrYamlRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[SampleQuery]](SampleQuery.defaults),
       ),
       response = noContent(),
       docs = EndpointDocs()
@@ -207,19 +207,19 @@ trait QueryUiConfigurationRoutes
           Some(
             """Queries provided here will be available via a drop-down menu from the Quine UI search bar.
               |
-              |Queries applied here will replace any currently existing sample queries.""".stripMargin
-          )
+              |Queries applied here will replace any currently existing sample queries.""".stripMargin,
+          ),
         )
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 
   final val queryUiAppearance: Endpoint[Unit, Vector[UiNodeAppearance]] =
     endpoint(
       request = get(
-        url = nodeAppearances
+        url = nodeAppearances,
       ),
       response = ok(
-        jsonResponseWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults)
+        jsonResponseWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults),
       ),
       docs = EndpointDocs()
         .withSummary(Some("List Node Appearances"))
@@ -227,33 +227,33 @@ trait QueryUiConfigurationRoutes
           Some(
             "When rendering a node in the UI, a node's style is decided by " +
             "picking the first style in this list whose `predicate` matches " +
-            "the node."
-          )
+            "the node.",
+          ),
         )
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 
   final val updateQueryUiAppearance: Endpoint[Vector[UiNodeAppearance], Unit] =
     endpoint(
       request = put(
         url = nodeAppearances,
-        entity = jsonOrYamlRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[UiNodeAppearance]](UiNodeAppearance.defaults),
       ),
       response = noContent(),
       docs = EndpointDocs()
         .withSummary(Some("Replace Node Appearances"))
         .withDescription(
           Some(
-            "For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)"
-          )
+            "For a list of icon names, refer to [this page](https://ionicons.com/v2/cheatsheet.html)",
+          ),
         )
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 
   final val queryUiQuickQueries: Endpoint[Unit, Vector[UiNodeQuickQuery]] =
     endpoint(
       request = get(
-        url = quickQueries
+        url = quickQueries,
       ),
       response = ok(jsonResponseWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults)),
       docs = EndpointDocs()
@@ -262,16 +262,16 @@ trait QueryUiConfigurationRoutes
           Some("""Quick queries are queries that appear when right-clicking
                  |a node in the UI.
                  |Nodes will only display quick queries that satisfy any
-                 |provided predicates.""".stripMargin)
+                 |provided predicates.""".stripMargin),
         )
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 
   final val updateQueryUiQuickQueries: Endpoint[Vector[UiNodeQuickQuery], Unit] =
     endpoint(
       request = put(
         url = quickQueries,
-        entity = jsonOrYamlRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults)
+        entity = jsonOrYamlRequestWithExample[Vector[UiNodeQuickQuery]](UiNodeQuickQuery.defaults),
       ),
       response = noContent(),
       docs = EndpointDocs()
@@ -280,6 +280,6 @@ trait QueryUiConfigurationRoutes
             |a node in the UI.
             |Queries applied here will replace any currently existing quick queries.
             |""".stripMargin))
-        .withTags(List(queryUiTag))
+        .withTags(List(queryUiTag)),
     )
 }

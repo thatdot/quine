@@ -46,10 +46,10 @@ trait EndpointsWithCustomErrorText extends Endpoints {
     internalServerError(docs = Some(f"${serverErrorDoc.format("")}"))
 
   def customBadRequest(messages: String*): Response[ClientErrors] = badRequest(
-    Some(buildErrorMessage(badRequestDoc, messages))
+    Some(buildErrorMessage(badRequestDoc, messages)),
   )
   def customServerError(messages: String*): Response[ServerError] = internalServerError(
-    Some(buildErrorMessage(serverErrorDoc, messages))
+    Some(buildErrorMessage(serverErrorDoc, messages)),
   )
 
 }

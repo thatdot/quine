@@ -48,12 +48,12 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       context: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Source[Any, NotUsed] = {
       val evaled = value.evalTo[Any]("unexpected type error - hitting this constitutes a bug")(
         implicitly,
         context,
-        idProvider
+        idProvider,
       )
       `then`.run(context + (name -> evaled), namespace, atTime, logConfig)
     }
@@ -69,7 +69,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       context: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Source[Any, NotUsed] =
       traversal.flow(context, namespace, atTime, logConfig) match {
         case Failure(err) => Source.failed(err)
@@ -90,7 +90,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] =
       Try(steps.foldLeft(Flow[Result])((acc, step) => acc.via(step.flow.get)))
 
@@ -109,7 +109,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
   case class Result(
     unwrap: Any,
     path: List[QuineId],
-    matchContext: VariableStore
+    matchContext: VariableStore,
   )
 
   sealed abstract class TraversalStep extends Positional {
@@ -124,7 +124,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]]
 
     /** Ideally, this roundtrips parsing. We can't guarantee that though.
@@ -140,7 +140,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = {
       val allNodes = graph
         .enumerateAllNodeIds(namespace)
@@ -162,7 +162,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       c: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Parse an ID (either because it is already the right type, or by parsing it from a string)
@@ -170,9 +170,9 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
         something
           .castTo[idProvider.CustomIdType](
             s"`.V(...)` requires its arguments to be ids, but ${original.pprint} was not",
-            pos = Some(original.pos)
+            pos = Some(original.pos),
           )(
-            idProvider.customIdTag
+            idProvider.customIdTag,
           )
           .map(idProvider.customIdToQid)
           .recoverWith { case err: Throwable =>
@@ -203,8 +203,8 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
           Source(
             vertValues.view
               .map(qid => Result(Vertex(qid), List(qid), VariableStore.empty))
-              .toList
-          )
+              .toList,
+          ),
         )
     }
 
@@ -221,7 +221,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the limit
       val lim = limit.fold(100L) {
@@ -240,9 +240,9 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
                     Result(
                       unwrap = Vertex(qid),
                       path = List(qid),
-                      matchContext = VariableStore.empty
-                    )
-                  )
+                      matchContext = VariableStore.empty,
+                    ),
+                  ),
               )
             }(gremlinEc)
         })
@@ -252,13 +252,13 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
   }
 
   case class EqToVar(
-    key: GremlinExpression
+    key: GremlinExpression,
   ) extends TraversalStep {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the variable name
       val str = key.evalTo[String]("`.eqToVar(...)` requires its argument to be a string")
@@ -279,13 +279,13 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
 
   case class Has(
     key: GremlinExpression,
-    hasRestriction: HasTests
+    hasRestriction: HasTests,
   ) extends TraversalStep {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       // Determine the property key name
       val keyStr = key.evalTo[String]("`.has(...)` requires its key argument to be a string")
@@ -336,13 +336,13 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
   }
 
   case class HasId(
-    ids: Seq[GremlinExpression]
+    ids: Seq[GremlinExpression],
   ) extends TraversalStep {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the accepted IDs
@@ -350,7 +350,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
         val cid = id.evalTo("`.hadId(...)` requires its arguments to be an ids")(
           idProvider.customIdTag,
           ctx,
-          idProvider
+          idProvider,
         )
         idProvider.customIdToQid(cid)
       }.toSet
@@ -375,20 +375,20 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
     edgeNames: Seq[GremlinExpression],
     dirRestriction: HopTypes,
     toVertex: Boolean, // as opposed as to edge
-    limitOpt: Option[GremlinExpression]
+    limitOpt: Option[GremlinExpression],
   ) extends TraversalStep {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the valid outgoing edge names
       val edgeLbls: List[Symbol] = edgeNames.toList.map { (edgeName: GremlinExpression) =>
         Symbol(
           edgeName
-            .evalTo[String](s"`.$name(...)` requires its arguments to be strings")
+            .evalTo[String](s"`.$name(...)` requires its arguments to be strings"),
         )
       }
 
@@ -417,7 +417,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
                 vert.id,
                 withDir = filterDirections,
                 withLimit = lim.map(_.toInt),
-                atTime = atTime
+                atTime = atTime,
               )
           } else {
             // Get edges for the labels we asked for
@@ -430,7 +430,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
                     withType = Some(lbl),
                     withDir = filterDirections,
                     withLimit = lim.map(_.toInt),
-                    atTime = atTime
+                    atTime = atTime,
                   )
               }(implicitly, gremlinEc)
               .map(_.flatten)(gremlinEc)
@@ -463,7 +463,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
 
                 // Only add to the result path if we go to a vertex
                 newPath = if (toVertex) otherQid :: path else path
-              } yield Result(newU, newPath, matchContext)
+              } yield Result(newU, newPath, matchContext),
             )
           }(gremlinEc))
         }
@@ -482,13 +482,13 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
 
   // covers OutV, InV, and BothV
   case class HopFromEdge(
-    dirRestriction: HopTypes
+    dirRestriction: HopTypes,
   ) extends TraversalStep {
     override def flow(implicit
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .flatMapConcat { case Result(u, path, matchContext) =>
@@ -531,7 +531,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Produce a flow which passes through elements only if those elements
@@ -539,7 +539,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       def ifResults(
         traversal: Traversal,
         ifEmpty: Result => Source[Result, NotUsed],
-        ifNotEmpty: Result => Source[Result, NotUsed]
+        ifNotEmpty: Result => Source[Result, NotUsed],
       ): Flow[Result, Result, NotUsed] = {
         val traversalFlow = traversal.flow.get
         Flow[Result].flatMapConcat { r =>
@@ -558,14 +558,14 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
           ifResults(
             traversal = t,
             ifEmpty = Source.single,
-            ifNotEmpty = _ => Source.empty
+            ifNotEmpty = _ => Source.empty,
           )
 
         case Where(t) =>
           ifResults(
             traversal = t,
             ifEmpty = _ => Source.empty,
-            ifNotEmpty = Source.single
+            ifNotEmpty = Source.single,
           )
 
         // Note the short-circuiting which allows us to not run some traversals
@@ -574,7 +574,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
             ifResults(
               traversal = t,
               ifEmpty = _ => Source.empty,
-              ifNotEmpty = r => Source.single(r).via(acc)
+              ifNotEmpty = r => Source.single(r).via(acc),
             )
           }
 
@@ -583,7 +583,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
             ifResults(
               traversal = t,
               ifEmpty = r => Source.single(r).via(acc),
-              ifNotEmpty = Source.single
+              ifNotEmpty = Source.single,
             )
           }
       }
@@ -611,7 +611,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val unionFlows = combined.map(_.flow.get)
       Flow[Result].flatMapConcat { (elem: Result) =>
@@ -632,7 +632,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the valid outgoing edge names
@@ -673,7 +673,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
                     Result(kv._2, path, matchContext)
                   })
                 }
-              }(gremlinEc)
+              }(gremlinEc),
           )
         }
     }
@@ -695,7 +695,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       val pred = testAgainst.evalPredicate()
 
@@ -714,7 +714,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       statefulFilter(Set.empty[Any])((seen, result) => (seen + result.unwrap, !seen.contains(result.unwrap)))
     }
@@ -731,7 +731,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val keyStr = key.evalTo[String]("`.as(...)` requires its argument to be a string")
       val keySym = Symbol(keyStr)
@@ -754,7 +754,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
 
       // Determine the variable name(s)
@@ -794,10 +794,10 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Try[Flow[Result, Result, NotUsed]] = Try {
       val limitBy = num.evalTo[Long](
-        "`.limit(...)` requires its argument to be a long"
+        "`.limit(...)` requires its argument to be a long",
       )
       Flow[Result].take(limitBy)
     }
@@ -812,7 +812,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .mapConcat { case Result(u, path, matchContext) =>
@@ -840,7 +840,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .flatMapConcat { case Result(_, path, matchContext) =>
@@ -861,7 +861,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .fold(Map.empty[Any, Long]) { case (seenCounts, Result(u, _, _)) =>
@@ -882,7 +882,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
       ctx: VariableStore,
       namespace: NamespaceId,
       atTime: AtTime,
-      logConfig: LogConfig
+      logConfig: LogConfig,
     ): Success[Flow[Result, Result, NotUsed]] = Success {
       Flow[Result]
         .fold(0)((counter, _) => counter + 1)

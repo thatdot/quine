@@ -39,9 +39,9 @@ final case class QuickQuery(
   sort: QuerySort,
   @docs(
     """If this label is set and the query is configured to return nodes, each of the nodes returned
-      |will have an additional dotted edge which connect to the source node of the quick query""".stripMargin
+      |will have an additional dotted edge which connect to the source node of the quick query""".stripMargin,
   )
-  edgeLabel: Option[String]
+  edgeLabel: Option[String],
 ) {
 
   /** Synthesize a full query
@@ -87,7 +87,7 @@ object QuickQuery {
       querySuffix,
       queryLanguage,
       sort = QuerySort.Node,
-      edgeLabel = None
+      edgeLabel = None,
     )
   }
 
@@ -105,7 +105,7 @@ object QuickQuery {
       querySuffix,
       queryLanguage,
       sort = QuerySort.Node,
-      edgeLabel = None
+      edgeLabel = None,
     )
   }
 
@@ -123,7 +123,7 @@ object QuickQuery {
       querySuffix,
       queryLanguage,
       sort = QuerySort.Text,
-      edgeLabel = None
+      edgeLabel = None,
     )
   }
 }

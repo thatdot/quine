@@ -47,9 +47,9 @@ class LoggableTest extends AnyFunSpecLike {
             Some(Expr.True),
             Vector(
               Expr.Null -> Expr.DynamicProperty(Expr.Duration(1.hours.toJava), Expr.Str("parsecs")),
-              Expr.Str("true") -> Expr.Add(Expr.Str("antimatter"), Expr.Str("matter"))
+              Expr.Str("true") -> Expr.Add(Expr.Str("antimatter"), Expr.Str("matter")),
             ),
-            Some(Expr.FreshNodeId)
+            Some(Expr.FreshNodeId),
           ),
           Expr.Function(
             UserDefined("strId"),
@@ -57,11 +57,11 @@ class LoggableTest extends AnyFunSpecLike {
               Expr.Node(
                 QuineId(Array(0x12, 0x34)),
                 labels = Set.empty,
-                Map(Symbol("__LABEL") -> Expr.List(Expr.Str("jk")))
-              )
-            )
-          )
-        )
+                Map(Symbol("__LABEL") -> Expr.List(Expr.Str("jk"))),
+              ),
+            ),
+          ),
+        ),
       )
 
       withClue("revealing its value") {
@@ -138,15 +138,15 @@ class LoggableTest extends AnyFunSpecLike {
       withClue("without revealing its value") {
         assert(
           asLog(
-            QuineValue.List(Vector(QuineValue.Integer(100L), QuineValue.Str("world")))
-          ) == """List(Integer(*), Str(*))"""
+            QuineValue.List(Vector(QuineValue.Integer(100L), QuineValue.Str("world"))),
+          ) == """List(Integer(*), Str(*))""",
         )
       }
       withClue("revealing its value") {
         assert(
           asSafeLog(
-            QuineValue.List(Vector(QuineValue.Str("hello"), QuineValue.Str("world")))
-          ) == """List(Str("hello"), Str("world"))"""
+            QuineValue.List(Vector(QuineValue.Str("hello"), QuineValue.Str("world"))),
+          ) == """List(Str("hello"), Str("world"))""",
         )
       }
     }
@@ -154,15 +154,15 @@ class LoggableTest extends AnyFunSpecLike {
       withClue("without revealing its value") {
         assert(
           asLog(
-            QuineValue.Map(Map("hello" -> QuineValue.Null, "world" -> QuineValue.Date(LocalDate.EPOCH)))
-          ) == "Map(* -> Null, * -> Date(*))"
+            QuineValue.Map(Map("hello" -> QuineValue.Null, "world" -> QuineValue.Date(LocalDate.EPOCH))),
+          ) == "Map(* -> Null, * -> Date(*))",
         )
       }
       withClue("revealing its value") {
         assert(
           asSafeLog(
-            QuineValue.Map(Map("hello" -> QuineValue.Null, "world" -> QuineValue.Date(LocalDate.EPOCH)))
-          ) == "Map(hello -> Null, world -> Date(1970-01-01))"
+            QuineValue.Map(Map("hello" -> QuineValue.Null, "world" -> QuineValue.Date(LocalDate.EPOCH))),
+          ) == "Map(hello -> Null, world -> Date(1970-01-01))",
         )
       }
     }
@@ -170,20 +170,20 @@ class LoggableTest extends AnyFunSpecLike {
       withClue("(lists of strings)") {
         assert(
           asLog(
-            QuineValue.List(Vector(QuineValue.Str("a"), QuineValue.Str("b")))
+            QuineValue.List(Vector(QuineValue.Str("a"), QuineValue.Str("b"))),
           ) == asLog(
-            QuineValue.List(Vector(QuineValue.Str("x"), QuineValue.Str("y")))
-          )
+            QuineValue.List(Vector(QuineValue.Str("x"), QuineValue.Str("y"))),
+          ),
         )
       }
       withClue("(maps)") {
         assert(
           asLog(
-            QuineValue.Map(Map("a" -> QuineValue.Str("b"), "c" -> QuineValue.Str("d")))
+            QuineValue.Map(Map("a" -> QuineValue.Str("b"), "c" -> QuineValue.Str("d"))),
           ) ==
             asLog(
-              QuineValue.Map(Map("x" -> QuineValue.Str("y"), "z" -> QuineValue.Str("w")))
-            )
+              QuineValue.Map(Map("x" -> QuineValue.Str("y"), "z" -> QuineValue.Str("w"))),
+            ),
         )
       }
     }

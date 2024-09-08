@@ -8,7 +8,7 @@ import java.time.{
   OffsetDateTime,
   OffsetTime => JavaOffsetTime,
   ZoneOffset,
-  ZonedDateTime => JavaZonedDateTime
+  ZonedDateTime => JavaZonedDateTime,
 }
 import java.util.UUID
 import java.util.regex.Pattern
@@ -33,7 +33,7 @@ import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty.
   None,
   NotEqual,
   Regex,
-  ValueConstraint
+  ValueConstraint,
 }
 import com.thatdot.quine.graph.cypher.{
   Expr => CypherExpr,
@@ -41,7 +41,7 @@ import com.thatdot.quine.graph.cypher.{
   MultipleValuesStandingQuery,
   MultipleValuesStandingQueryState,
   QueryContext,
-  Value => CypherValue
+  Value => CypherValue,
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
@@ -88,7 +88,7 @@ trait ArbitraryInstances {
   import GenInstances._
 
   implicit def arbNel[A](implicit arbitraryElem: Arbitrary[A]): Arbitrary[NonEmptyList[A]] = Arbitrary(
-    genNel(arbitraryElem.arbitrary)
+    genNel(arbitraryElem.arbitrary),
   )
 
   /* Tweak the containers so that the generation size does _not_ get passed
@@ -98,25 +98,25 @@ trait ArbitraryInstances {
   implicit def arbContainer[C[_], T](implicit
     a: Arbitrary[T],
     b: Buildable[T, C[T]],
-    t: C[T] => Iterable[T]
+    t: C[T] => Iterable[T],
   ): Arbitrary[C[T]] = Arbitrary {
     Gen.sized(s =>
       Gen.choose(0, s).flatMap { s1 =>
         val s2 = s / Math.max(s1, 1)
         Gen.buildableOfN[C[T], T](s1, Gen.resize(s2, a.arbitrary))
-      }
+      },
     )
   }
   implicit def arbContainer2[C[_, _], T, U](implicit
     a: Arbitrary[(T, U)],
     b: Buildable[(T, U), C[T, U]],
-    t: C[T, U] => Iterable[(T, U)]
+    t: C[T, U] => Iterable[(T, U)],
   ): Arbitrary[C[T, U]] = Arbitrary {
     Gen.sized(s =>
       Gen.choose(0, s).flatMap { s1 =>
         val s2 = s / Math.max(s1, 1)
         Gen.buildableOfN[C[T, U], (T, U)](s1, Gen.resize(s2, a.arbitrary))
-      }
+      },
     )
   }
 
@@ -178,7 +178,7 @@ trait ArbitraryInstances {
       } yield f(t1, t2, t3, t4)
 
     def resultOf[T1: Arbitrary, T2: Arbitrary, T3: Arbitrary, T4: Arbitrary, T5: Arbitrary, R](
-      f: (T1, T2, T3, T4, T5) => R
+      f: (T1, T2, T3, T4, T5) => R,
     ): Gen[R] =
       for {
         Seq(s1, s2, s3, s4, s5) <- partitionSize(5)
@@ -190,7 +190,7 @@ trait ArbitraryInstances {
       } yield f(t1, t2, t3, t4, t5)
 
     def resultOf[T1: Arbitrary, T2: Arbitrary, T3: Arbitrary, T4: Arbitrary, T5: Arbitrary, T6: Arbitrary, R](
-      f: (T1, T2, T3, T4, T5, T6) => R
+      f: (T1, T2, T3, T4, T5, T6) => R,
     ): Gen[R] =
       for {
         Seq(s1, s2, s3, s4, s5, s6) <- partitionSize(6)
@@ -246,7 +246,7 @@ trait ArbitraryInstances {
       .frequency(
         20 -> Gen.choose(0, 10),
         2 -> Gen.choose(10, 50),
-        1 -> Gen.choose(50, 100)
+        1 -> Gen.choose(50, 100),
       )
       .flatMap { n =>
         Gen
@@ -261,7 +261,7 @@ trait ArbitraryInstances {
     Gen.oneOf(
       EdgeDirection.Outgoing,
       EdgeDirection.Incoming,
-      EdgeDirection.Undirected
+      EdgeDirection.Undirected,
     )
   }
 
@@ -279,7 +279,7 @@ trait ArbitraryInstances {
         small = List(
           Gen.const[QuineValue](QuineValue.True),
           Gen.const[QuineValue](QuineValue.False),
-          Gen.const[QuineValue](QuineValue.Null)
+          Gen.const[QuineValue](QuineValue.Null),
         ),
         other = List(
           Gen.resultOf[String, QuineValue](QuineValue.Str),
@@ -293,9 +293,9 @@ trait ArbitraryInstances {
           Gen.resultOf[JavaDuration, QuineValue](QuineValue.Duration),
           intBoundedDateGen.map(QuineValue.Date),
           Gen.resultOf[JavaLocalTime, QuineValue](QuineValue.LocalTime),
-          intBoundedLocalDateTimeGen.map(QuineValue.LocalDateTime)
-        )
-      )
+          intBoundedLocalDateTimeGen.map(QuineValue.LocalDateTime),
+        ),
+      ),
     )
   }
 
@@ -305,7 +305,7 @@ trait ArbitraryInstances {
 
   implicit val arbRelationshipCypherValue: Arbitrary[CypherExpr.Relationship] = Arbitrary {
     GenApply.resultOf[QuineId, Symbol, Map[Symbol, CypherValue], QuineId, CypherExpr.Relationship](
-      CypherExpr.Relationship.apply
+      CypherExpr.Relationship.apply,
     )
   }
 
@@ -319,7 +319,7 @@ trait ArbitraryInstances {
         small = List(
           Gen.const[CypherValue](CypherExpr.True),
           Gen.const[CypherValue](CypherExpr.False),
-          Gen.const[CypherValue](CypherExpr.Null)
+          Gen.const[CypherValue](CypherExpr.Null),
         ),
         other = List(
           Gen.resultOf[String, CypherValue](CypherExpr.Str.apply),
@@ -331,7 +331,7 @@ trait ArbitraryInstances {
           GenApply.resultOf[Vector[CypherValue], CypherValue](CypherExpr.List.apply),
           GenApply.resultOf[Map[String, CypherValue], CypherValue](CypherExpr.Map.apply),
           GenApply.resultOf[CypherExpr.Node, Vector[(CypherExpr.Relationship, CypherExpr.Node)], CypherValue](
-            CypherExpr.Path.apply
+            CypherExpr.Path.apply,
           ),
           Gen.resultOf[JavaLocalDateTime, CypherValue](CypherExpr.LocalDateTime.apply),
           Gen.resultOf[JavaZonedDateTime, CypherValue](CypherExpr.DateTime.apply),
@@ -342,9 +342,9 @@ trait ArbitraryInstances {
           // so we can't use the general java.time.OffsetTime generator because
           // it generates UTC offsets with random seconds at the end (that don't exist in real life)
           // Gen.resultOf[JavaOffsetTime, CypherValue](CypherExpr.Time),
-          Gen.resultOf[JavaLocalDate, CypherValue](CypherExpr.Date)
-        )
-      )
+          Gen.resultOf[JavaLocalDate, CypherValue](CypherExpr.Date),
+        ),
+      ),
     )
   }
 
@@ -352,7 +352,7 @@ trait ArbitraryInstances {
     Gen.lzy(
       sizedOneOf(
         small = List(
-          Gen.const[CypherExpr](CypherExpr.FreshNodeId)
+          Gen.const[CypherExpr](CypherExpr.FreshNodeId),
         ),
         other = List(
           arbCypherValue.arbitrary,
@@ -391,16 +391,16 @@ trait ArbitraryInstances {
           GenApply.resultOf[Vector[CypherExpr], CypherExpr](CypherExpr.And.apply),
           GenApply.resultOf[Vector[CypherExpr], CypherExpr](CypherExpr.Or.apply),
           GenApply.resultOf[Option[CypherExpr], Vector[(CypherExpr, CypherExpr)], Option[CypherExpr], CypherExpr](
-            CypherExpr.Case.apply
+            CypherExpr.Case.apply,
           ),
           GenApply.resultOf[CypherFunc, Vector[CypherExpr], CypherExpr](CypherExpr.Function.apply),
           GenApply.resultOf[Symbol, CypherExpr, CypherExpr, CypherExpr, CypherExpr](CypherExpr.ListComprehension.apply),
           GenApply.resultOf[Symbol, CypherExpr, CypherExpr, CypherExpr](CypherExpr.AllInList.apply),
           GenApply.resultOf[Symbol, CypherExpr, CypherExpr, CypherExpr](CypherExpr.AnyInList.apply),
           GenApply.resultOf[Symbol, CypherExpr, CypherExpr, CypherExpr](CypherExpr.SingleInList.apply),
-          GenApply.resultOf[Symbol, CypherExpr, Symbol, CypherExpr, CypherExpr, CypherExpr](CypherExpr.ReduceList.apply)
-        )
-      )
+          GenApply.resultOf[Symbol, CypherExpr, Symbol, CypherExpr, CypherExpr, CypherExpr](CypherExpr.ReduceList.apply),
+        ),
+      ),
     )
   }
 
@@ -417,7 +417,7 @@ trait ArbitraryInstances {
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeAdded.apply),
       Gen.resultOf[HalfEdge, NodeChangeEvent](EdgeRemoved.apply),
       Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertySet.apply),
-      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply)
+      Gen.resultOf[Symbol, PropertyValue, NodeChangeEvent](PropertyRemoved.apply),
     )
   }
 
@@ -425,13 +425,13 @@ trait ArbitraryInstances {
     import DomainIndexEvent._
     Gen.oneOf(
       Gen.resultOf[DomainGraphNodeId, QuineId, Set[StandingQueryId], DomainIndexEvent](
-        CreateDomainNodeSubscription.apply
+        CreateDomainNodeSubscription.apply,
       ),
       Gen.resultOf[DomainGraphNodeId, StandingQueryId, Set[StandingQueryId], DomainIndexEvent](
-        CreateDomainStandingQuerySubscription.apply
+        CreateDomainStandingQuerySubscription.apply,
       ),
       Gen.resultOf[QuineId, DomainGraphNodeId, Boolean, DomainIndexEvent](DomainNodeSubscriptionResult.apply),
-      Gen.resultOf[DomainGraphNodeId, QuineId, DomainIndexEvent](CancelDomainNodeSubscription.apply)
+      Gen.resultOf[DomainGraphNodeId, QuineId, DomainIndexEvent](CancelDomainNodeSubscription.apply),
     )
   }
 
@@ -446,7 +446,7 @@ trait ArbitraryInstances {
       PropertyComparisonFunctions.NoValue,
       PropertyComparisonFunctions.Wildcard,
       PropertyComparisonFunctions.RegexMatch("[a-z].*"),
-      PropertyComparisonFunctions.ListContains(Set[QuineValue](QuineValue.Str("KNOWS")))
+      PropertyComparisonFunctions.ListContains(Set[QuineValue](QuineValue.Str("KNOWS"))),
     )
   }
 
@@ -454,7 +454,7 @@ trait ArbitraryInstances {
     Gen.oneOf[NodeLocalComparisonFunc](
       NodeLocalComparisonFunctions.Identicality,
       NodeLocalComparisonFunctions.EqualSubset,
-      NodeLocalComparisonFunctions.Wildcard
+      NodeLocalComparisonFunctions.Wildcard,
     )
   }
 
@@ -478,7 +478,7 @@ trait ArbitraryInstances {
       Option[String],
       Map[Symbol, (PropertyComparisonFunc, Option[PropertyValue])],
       Set[CircularEdge],
-      DomainNodeEquiv
+      DomainNodeEquiv,
     ](DomainNodeEquiv.apply)
   }
 
@@ -489,7 +489,7 @@ trait ArbitraryInstances {
       DomainGraphNodeId,
       Boolean,
       EdgeMatchConstraints,
-      DomainGraphEdge
+      DomainGraphEdge,
     ](DomainGraphEdge.apply)
   }
 
@@ -501,36 +501,36 @@ trait ArbitraryInstances {
             _: DomainNodeEquiv,
             _: Option[QuineId],
             _: Seq[DomainGraphEdge],
-            _: NodeLocalComparisonFunc
-          )
+            _: NodeLocalComparisonFunc,
+          ),
         ),
         GenApply.resultOf(
           DomainGraphNode.Or(
-            _: Seq[DomainGraphNodeId]
-          )
+            _: Seq[DomainGraphNodeId],
+          ),
         ),
         GenApply.resultOf(
           DomainGraphNode.And(
-            _: Seq[DomainGraphNodeId]
-          )
+            _: Seq[DomainGraphNodeId],
+          ),
         ),
         GenApply.resultOf(
           DomainGraphNode.Not(
-            _: DomainGraphNodeId
-          )
+            _: DomainGraphNodeId,
+          ),
         ),
         GenApply.resultOf(
           DomainGraphNode.Mu(
             _: MuVariableName,
-            _: DomainGraphNodeId
-          )
+            _: DomainGraphNodeId,
+          ),
         ),
         GenApply.resultOf(
           DomainGraphNode.MuVar(
-            _: MuVariableName
-          )
-        )
-      )
+            _: MuVariableName,
+          ),
+        ),
+      ),
     )
   }
 
@@ -541,7 +541,7 @@ trait ArbitraryInstances {
       DomainGraphBranch,
       Boolean,
       EdgeMatchConstraints,
-      DomainEdge
+      DomainEdge,
     ](DomainEdge.apply)
   }
 
@@ -555,22 +555,22 @@ trait ArbitraryInstances {
               _: DomainNodeEquiv,
               _: Option[QuineId],
               _: List[DomainEdge],
-              _: NodeLocalComparisonFunc
-            )
+              _: NodeLocalComparisonFunc,
+            ),
           ),
           GenApply.resultOf(And(_: List[DomainGraphBranch])),
           GenApply.resultOf(Or(_: List[DomainGraphBranch])),
           GenApply.resultOf(Not(_: DomainGraphBranch)),
-          GenApply.resultOf(Mu(_: MuVariableName, _: DomainGraphBranch))
-        )
-      )
+          GenApply.resultOf(Mu(_: MuVariableName, _: DomainGraphBranch)),
+        ),
+      ),
     )
   }
 
   implicit val arbEdgeMatchConstraints: Arbitrary[EdgeMatchConstraints] = Arbitrary {
     Gen.oneOf(
       Gen.const(MandatoryConstraint),
-      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints](FetchConstraint.apply)
+      GenApply.resultOf[Int, Option[Int], EdgeMatchConstraints](FetchConstraint.apply),
     )
   }
 
@@ -579,7 +579,7 @@ trait ArbitraryInstances {
   }
 
   implicit val arbEdgeCollection: Arbitrary[Iterator[HalfEdge]] = Arbitrary(
-    Gen.resultOf[Seq[HalfEdge], Iterator[HalfEdge]](_.iterator)
+    Gen.resultOf[Seq[HalfEdge], Iterator[HalfEdge]](_.iterator),
   )
 
   implicit val arbProperties: Arbitrary[Properties] = cachedImplicit
@@ -589,13 +589,13 @@ trait ArbitraryInstances {
       Set[Notifiable],
       LastNotification,
       Set[StandingQueryId],
-      SubscribersToThisNodeUtil.DistinctIdSubscription
+      SubscribersToThisNodeUtil.DistinctIdSubscription,
     ](SubscribersToThisNodeUtil.DistinctIdSubscription.apply)
   }
 
   type IndexSubscribers = MutableMap[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.DistinctIdSubscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription,
   ]
   implicit val arbIndexSubscribers: Arbitrary[IndexSubscribers] = cachedImplicit
 
@@ -603,8 +603,8 @@ trait ArbitraryInstances {
     QuineId,
     MutableMap[
       DomainGraphNodeId,
-      Option[IsDirected]
-    ]
+      Option[IsDirected],
+    ],
   ]
   implicit val arbDomainNodeIndex: Arbitrary[DomainNodeIndex] = cachedImplicit
 
@@ -615,7 +615,7 @@ trait ArbitraryInstances {
       Gen.const[ValueConstraint](Any),
       Gen.const[ValueConstraint](None),
       Gen.const[ValueConstraint](Regex("[a-z].*")),
-      Gen.resultOf[Set[CypherValue], ValueConstraint](ListContains.apply)
+      Gen.resultOf[Set[CypherValue], ValueConstraint](ListContains.apply),
     )
   }
 
@@ -623,31 +623,31 @@ trait ArbitraryInstances {
     Gen.lzy(
       sizedOneOf(
         small = List(
-          Gen.resultOf[Unit, MultipleValuesStandingQuery](_ => MultipleValuesStandingQuery.UnitSq.instance)
+          Gen.resultOf[Unit, MultipleValuesStandingQuery](_ => MultipleValuesStandingQuery.UnitSq.instance),
         ),
         other = List(
           GenApply.resultOf[ArraySeq[MultipleValuesStandingQuery], Boolean, MultipleValuesStandingQuery](
-            MultipleValuesStandingQuery.Cross(_, _)
+            MultipleValuesStandingQuery.Cross(_, _),
           ),
           GenApply
             .resultOf[Symbol, MultipleValuesStandingQuery.LocalProperty.ValueConstraint, Option[
-              Symbol
+              Symbol,
             ], MultipleValuesStandingQuery](
-              MultipleValuesStandingQuery.LocalProperty(_, _, _)
+              MultipleValuesStandingQuery.LocalProperty(_, _, _),
             ),
           GenApply.resultOf[Symbol, Boolean, MultipleValuesStandingQuery](MultipleValuesStandingQuery.LocalId(_, _)),
           GenApply
             .resultOf[Option[Symbol], Option[EdgeDirection], MultipleValuesStandingQuery, MultipleValuesStandingQuery](
-              MultipleValuesStandingQuery.SubscribeAcrossEdge(_, _, _)
+              MultipleValuesStandingQuery.SubscribeAcrossEdge(_, _, _),
             ),
           GenApply.resultOf[HalfEdge, MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery](
-            MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(_, _)
+            MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(_, _),
           ),
           GenApply.resultOf[Option[CypherExpr], MultipleValuesStandingQuery, Boolean, List[
-            (Symbol, CypherExpr)
-          ], MultipleValuesStandingQuery](MultipleValuesStandingQuery.FilterMap(_, _, _, _))
-        )
-      )
+            (Symbol, CypherExpr),
+          ], MultipleValuesStandingQuery](MultipleValuesStandingQuery.FilterMap(_, _, _, _)),
+        ),
+      ),
     )
   }
 
@@ -663,14 +663,14 @@ trait ArbitraryInstances {
       Gen.resultOf[QuineValue, PropertyValuePattern](AnyValueExcept.apply),
       Gen.const[PropertyValuePattern](AnyValue),
       Gen.const[PropertyValuePattern](NoValue),
-      Gen.const[PropertyValuePattern](RegexMatch(Pattern.compile("[a-z].*")))
+      Gen.const[PropertyValuePattern](RegexMatch(Pattern.compile("[a-z].*"))),
     )
   }
 
   implicit val arbNodePattern: Arbitrary[GraphQueryPattern.NodePattern] = Arbitrary {
     Gen.resultOf[GraphQueryPattern.NodePatternId, Set[Symbol], Option[QuineId], Map[
       Symbol,
-      GraphQueryPattern.PropertyValuePattern
+      GraphQueryPattern.PropertyValuePattern,
     ], GraphQueryPattern.NodePattern](GraphQueryPattern.NodePattern.apply)
   }
 
@@ -680,7 +680,7 @@ trait ArbitraryInstances {
       GraphQueryPattern.NodePatternId,
       Boolean,
       Symbol,
-      GraphQueryPattern.EdgePattern
+      GraphQueryPattern.EdgePattern,
     ](GraphQueryPattern.EdgePattern.apply)
   }
 
@@ -688,7 +688,7 @@ trait ArbitraryInstances {
     import GraphQueryPattern.ReturnColumn
     Gen.oneOf(
       Gen.resultOf[GraphQueryPattern.NodePatternId, Boolean, Symbol, ReturnColumn](ReturnColumn.Id.apply),
-      Gen.resultOf[GraphQueryPattern.NodePatternId, Symbol, Symbol, ReturnColumn](ReturnColumn.Property.apply)
+      Gen.resultOf[GraphQueryPattern.NodePatternId, Symbol, Symbol, ReturnColumn](ReturnColumn.Property.apply),
     )
   }
 
@@ -700,7 +700,7 @@ trait ArbitraryInstances {
       toExtract <- arbitrary[Seq[GraphQueryPattern.ReturnColumn]]
       filterCond <- arbitrary[Option[cypher.Expr]]
       toReturn <- arbitrary[Seq[(Symbol, cypher.Expr)]]
-    } yield GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, distinct = true)
+    } yield GraphQueryPattern(nodes, edges, startingPoint, toExtract, filterCond, toReturn, distinct = true),
   )
   val arbNonDistinctGraphPattern: Arbitrary[GraphQueryPattern] = Arbitrary {
     arbDistinctGraphPattern.arbitrary.map(_.copy(distinct = false))
@@ -710,7 +710,7 @@ trait ArbitraryInstances {
     implicit val distinctGraphPattern = arbDistinctGraphPattern
     Gen.oneOf(
       Gen.const[PatternOrigin.DgbOrigin](PatternOrigin.DirectDgb),
-      Gen.resultOf[GraphQueryPattern, Option[String], PatternOrigin.DgbOrigin](PatternOrigin.GraphPattern.apply)
+      Gen.resultOf[GraphQueryPattern, Option[String], PatternOrigin.DgbOrigin](PatternOrigin.GraphPattern.apply),
     )
   }
 
@@ -718,7 +718,7 @@ trait ArbitraryInstances {
     implicit val distinctGraphPattern = arbNonDistinctGraphPattern
     Gen.oneOf(
       Gen.const[PatternOrigin.SqV4Origin](PatternOrigin.DirectSqV4),
-      Gen.resultOf[GraphQueryPattern, Option[String], PatternOrigin.SqV4Origin](PatternOrigin.GraphPattern.apply)
+      Gen.resultOf[GraphQueryPattern, Option[String], PatternOrigin.SqV4Origin](PatternOrigin.GraphPattern.apply),
     )
   }
 
@@ -730,20 +730,20 @@ trait ArbitraryInstances {
         Symbol,
         Boolean,
         PatternOrigin.DgbOrigin,
-        StandingQueryPattern
+        StandingQueryPattern,
       ](StandingQueryPattern.DomainGraphNodeStandingQueryPattern.apply),
       Gen.resultOf[
         MultipleValuesStandingQuery,
         Boolean,
         PatternOrigin.SqV4Origin,
-        StandingQueryPattern
-      ](StandingQueryPattern.MultipleValuesQueryPattern.apply)
+        StandingQueryPattern,
+      ](StandingQueryPattern.MultipleValuesQueryPattern.apply),
     )
   }
 
   implicit val arbStandingQueryInfo: Arbitrary[StandingQueryInfo] = Arbitrary {
     Gen.resultOf[String, StandingQueryId, StandingQueryPattern, Int, Int, Boolean, StandingQueryInfo](
-      StandingQueryInfo.apply
+      StandingQueryInfo.apply,
     )
   }
 
@@ -757,20 +757,20 @@ trait ArbitraryInstances {
       Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](_ => UnitState()),
       Gen.const(UnitState()),
       Gen.resultOf[MultipleValuesStandingQueryPartId, MutableMap[MultipleValuesStandingQueryPartId, Option[
-        Seq[QueryContext]
+        Seq[QueryContext],
       ]], MultipleValuesStandingQueryState] { (partId, results) =>
         val state = CrossState(partId)
         state.resultsAccumulator ++= results
         state
       },
       Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
-        LocalPropertyState.apply
+        LocalPropertyState.apply,
       ),
       Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
-        AllPropertiesState.apply
+        AllPropertiesState.apply,
       ),
       Gen.resultOf[MultipleValuesStandingQueryPartId, MultipleValuesStandingQueryState](
-        LocalIdState.apply
+        LocalIdState.apply,
       ),
       Gen.resultOf[MultipleValuesStandingQueryPartId, Map[
         HalfEdge,
@@ -786,9 +786,9 @@ trait ArbitraryInstances {
         MultipleValuesStandingQueryPartId,
         Boolean,
         Option[
-          Seq[QueryContext]
+          Seq[QueryContext],
         ],
-        MultipleValuesStandingQueryState
+        MultipleValuesStandingQueryState,
       ] { (partId, halfEdge, andThenId, currentlyMatching, cachedResult) =>
         val state = EdgeSubscriptionReciprocalState(partId, halfEdge, andThenId)
         state.currentlyMatching = currentlyMatching
@@ -798,36 +798,36 @@ trait ArbitraryInstances {
       Gen.resultOf[
         MultipleValuesStandingQueryPartId,
         Option[Seq[QueryContext]],
-        MultipleValuesStandingQueryState
+        MultipleValuesStandingQueryState,
       ] { (queryPartId, keptResults) =>
         val state = FilterMapState(queryPartId)
         state.keptResults = keptResults
         state
-      }
+      },
     )
   }
 
   implicit val arbCypherSubscriber: Arbitrary[MultipleValuesStandingQuerySubscriber] = Arbitrary {
     Gen.oneOf[MultipleValuesStandingQuerySubscriber](
       Gen.resultOf[QuineId, StandingQueryId, MultipleValuesStandingQueryPartId, MultipleValuesStandingQuerySubscriber](
-        MultipleValuesStandingQuerySubscriber.NodeSubscriber.apply
+        MultipleValuesStandingQuerySubscriber.NodeSubscriber.apply,
       ),
       Gen.resultOf[StandingQueryId, MultipleValuesStandingQuerySubscriber](
-        MultipleValuesStandingQuerySubscriber.GlobalSubscriber.apply
-      )
+        MultipleValuesStandingQuerySubscriber.GlobalSubscriber.apply,
+      ),
     )
   }
 
   implicit val arbStandingQueryPartSubscription: Arbitrary[MultipleValuesStandingQueryPartSubscription] = Arbitrary {
     Gen.resultOf[MultipleValuesStandingQueryPartId, StandingQueryId, MutableSet[
-      MultipleValuesStandingQuerySubscriber
+      MultipleValuesStandingQuerySubscriber,
     ], MultipleValuesStandingQueryPartSubscription](
       MultipleValuesStandingQueryPartSubscription
         .apply(
           _: MultipleValuesStandingQueryPartId,
           _: StandingQueryId,
-          _: MutableSet[MultipleValuesStandingQuerySubscriber]
-        )
+          _: MutableSet[MultipleValuesStandingQuerySubscriber],
+        ),
     )
   }
   implicit val arbNodeSnapshot: Arbitrary[NodeSnapshot] = Arbitrary {
@@ -837,14 +837,14 @@ trait ArbitraryInstances {
       Iterable[HalfEdge], // edges
       IndexSubscribers, // subscribersToThisNode
       DomainNodeIndex, // domainNodeIndex
-      NodeSnapshot
+      NodeSnapshot,
     ](NodeSnapshot.apply)
   }
 
   implicit val arbStandingQueryResultMeta: Arbitrary[StandingQueryResult.Meta] = Arbitrary {
     Gen.resultOf[
       Boolean,
-      StandingQueryResult.Meta
+      StandingQueryResult.Meta,
     ](StandingQueryResult.Meta.apply)
   }
 
@@ -852,7 +852,7 @@ trait ArbitraryInstances {
     Gen.resultOf[
       StandingQueryResult.Meta,
       Map[String, QuineValue],
-      StandingQueryResult
+      StandingQueryResult,
     ](StandingQueryResult.apply)
   }
 }

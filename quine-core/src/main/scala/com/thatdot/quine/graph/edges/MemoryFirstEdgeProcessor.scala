@@ -25,7 +25,7 @@ class MemoryFirstEdgeProcessor(
   runPostActions: List[NodeChangeEvent] => Unit,
   qid: QuineId,
   costToSleep: CostToSleep,
-  nodeEdgesCounter: BinaryHistogramCounter
+  nodeEdgesCounter: BinaryHistogramCounter,
 )(implicit system: ActorSystem, idProvider: QuineIdProvider, val logConfig: LogConfig)
     extends SynchronousEdgeProcessor(edges, qid, costToSleep, nodeEdgesCounter) {
 
@@ -33,7 +33,7 @@ class MemoryFirstEdgeProcessor(
 
   protected def journalAndApplyEffects(
     effectingEvents: NonEmptyList[EdgeEvent],
-    produceTimestamp: () => EventTime
+    produceTimestamp: () => EventTime,
   ): Future[Unit] = {
     val persistAttempts = new AtomicInteger(1)
     val effectingEventsTimestamped = effectingEvents.map(WithTime(_, produceTimestamp()))
@@ -48,10 +48,10 @@ class MemoryFirstEdgeProcessor(
             val attemptCount = persistAttempts.getAndIncrement()
             logger.info(
               log"""Retrying persistence from node: ${Safe(qid.pretty)} with events: $effectingEvents after:
-                   |${Safe(attemptCount)} attempts""".cleanLines withException e
+                   |${Safe(attemptCount)} attempts""".cleanLines withException e,
             )
             e
-          }
+          },
         )(nodeDispatcher)
 
     effectingEvents.toList.foreach(applyEdgeEffect)
@@ -64,7 +64,7 @@ class MemoryFirstEdgeProcessor(
         Int.MaxValue,
         1.millisecond,
         10.seconds,
-        randomFactor = 0.1d
+        randomFactor = 0.1d,
       )(nodeDispatcher, system.scheduler)
   }
 }

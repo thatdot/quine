@@ -11,7 +11,7 @@ import com.thatdot.quine.app.ingest.serialization.{
   CypherImportFormat,
   CypherJsonInputFormat,
   CypherRawInputFormat,
-  CypherStringInputFormat
+  CypherStringInputFormat,
 }
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
@@ -31,7 +31,7 @@ abstract class ContentDelimitedIngestSrcDef(
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
-  name: String
+  name: String,
 )(implicit graph: CypherOpsGraph)
     extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, Seq(), name) {
 
@@ -55,7 +55,7 @@ abstract class LineDelimitedIngestSrcDef(
   startAtOffset: Long,
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
-  name: String
+  name: String,
 )(implicit graph: CypherOpsGraph)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -66,7 +66,7 @@ abstract class LineDelimitedIngestSrcDef(
       startAtOffset,
       ingestLimit,
       maxPerSecond,
-      name
+      name,
     ) {
 
   type InputType = ByteString
@@ -89,7 +89,7 @@ case class CsvIngestSrcDef(
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   override val name: String,
-  override val intoNamespace: NamespaceId
+  override val intoNamespace: NamespaceId,
 )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -100,14 +100,14 @@ case class CsvIngestSrcDef(
       startAtOffset,
       ingestLimit,
       maxPerSecond,
-      name
+      name,
     ) {
 
   type InputType = List[ByteString] // csv row
 
   def source(): Source[List[ByteString], NotUsed] = src
     .via(
-      CsvParsing.lineScanner(format.delimiter.byte, format.quoteChar.byte, format.escapeChar.byte, maximumLineSize)
+      CsvParsing.lineScanner(format.delimiter.byte, format.quoteChar.byte, format.escapeChar.byte, maximumLineSize),
     )
     .via(bounded)
 
@@ -143,7 +143,7 @@ case class CsvIngestSrcDef(
     // inefficient, but should never be used anyways since csv defines its own deserializeAndMeter
     logger.debug(
       safe"""${Safe(getClass.getSimpleName)}.rawBytes was called: this function has an inefficient
-            |implementation but should not be accessible during normal operation.""".cleanLines
+            |implementation but should not be accessible during normal operation.""".cleanLines,
     )
     value.reduce { (l, r) =>
       val bs = ByteString.createBuilder
@@ -166,7 +166,7 @@ case class StringIngestSrcDef(
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   override val name: String,
-  override val intoNamespace: NamespaceId
+  override val intoNamespace: NamespaceId,
 )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -178,7 +178,7 @@ case class StringIngestSrcDef(
       startAtOffset,
       ingestLimit,
       maxPerSecond,
-      name
+      name,
     ) {
 
   def source(): Source[ByteString, NotUsed] = src
@@ -199,7 +199,7 @@ case class JsonLinesIngestSrcDef(
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   override val name: String,
-  override val intoNamespace: NamespaceId
+  override val intoNamespace: NamespaceId,
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends LineDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -211,7 +211,7 @@ case class JsonLinesIngestSrcDef(
       startAtOffset,
       ingestLimit,
       maxPerSecond,
-      name
+      name,
     ) {
 
   def source(): Source[ByteString, NotUsed] = src
@@ -236,7 +236,7 @@ object ContentDelimitedIngestSrcDef {
     ingestLimit: Option[Long],
     maxPerSecond: Option[Int],
     name: String,
-    intoNamespace: NamespaceId
+    intoNamespace: NamespaceId,
   )(implicit graph: CypherOpsGraph, logConfig: LogConfig): ContentDelimitedIngestSrcDef =
     format match {
       case CypherLine(query, parameter) =>
@@ -251,7 +251,7 @@ object ContentDelimitedIngestSrcDef {
           ingestLimit,
           maxPerSecond,
           name,
-          intoNamespace
+          intoNamespace,
         )
       case CypherJson(query, parameter) =>
         JsonLinesIngestSrcDef(
@@ -265,7 +265,7 @@ object ContentDelimitedIngestSrcDef {
           ingestLimit,
           maxPerSecond,
           name,
-          intoNamespace
+          intoNamespace,
         )
 
       case cv @ CypherCsv(_, _, _, _, _, _) =>
@@ -280,7 +280,7 @@ object ContentDelimitedIngestSrcDef {
           ingestLimit,
           maxPerSecond,
           name,
-          intoNamespace
+          intoNamespace,
         )
     }
 

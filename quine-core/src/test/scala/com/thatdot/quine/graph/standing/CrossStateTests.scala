@@ -14,7 +14,7 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesS
 class CrossStateTests extends AnyFunSuite {
 
   def makeState(
-    query: MultipleValuesStandingQuery.Cross
+    query: MultipleValuesStandingQuery.Cross,
   ): StandingQueryStateWrapper[MultipleValuesStandingQuery.Cross] =
     new StandingQueryStateWrapper(query) {
       override def testInvariants()(implicit pos: Position): Unit =
@@ -31,12 +31,12 @@ class CrossStateTests extends AnyFunSuite {
       MultipleValuesStandingQuery.LocalProperty(
         Symbol("foo"),
         MultipleValuesStandingQuery.LocalProperty.Any,
-        Some(aliasedAs)
-      )
+        Some(aliasedAs),
+      ),
     )
     val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery),
-      emitSubscriptionsLazily = false
+      emitSubscriptionsLazily = false,
     )
 
     val state = makeState(query)
@@ -56,7 +56,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs -> Expr.Integer(2L))))
+        Seq(QueryContext(Map(aliasedAs -> Expr.Integer(2L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val resultCtx = effects.resultsReported.dequeue()
@@ -71,7 +71,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs -> Expr.Integer(2L))), QueryContext(Map(aliasedAs -> Expr.Integer(3L))))
+        Seq(QueryContext(Map(aliasedAs -> Expr.Integer(2L))), QueryContext(Map(aliasedAs -> Expr.Integer(3L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()
@@ -90,8 +90,8 @@ class CrossStateTests extends AnyFunSuite {
       MultipleValuesStandingQuery.LocalProperty(
         Symbol("foo"),
         MultipleValuesStandingQuery.LocalProperty.Any,
-        Some(aliasedAs1)
-      )
+        Some(aliasedAs1),
+      ),
     )
 
     val aliasedAs2 = Symbol("baz")
@@ -101,13 +101,13 @@ class CrossStateTests extends AnyFunSuite {
       MultipleValuesStandingQuery.LocalProperty(
         Symbol("qux"),
         MultipleValuesStandingQuery.LocalProperty.Any,
-        Some(aliasedAs2)
-      )
+        Some(aliasedAs2),
+      ),
     )
 
     val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery1, reqQuery2),
-      emitSubscriptionsLazily = false
+      emitSubscriptionsLazily = false,
     )
 
     val state = makeState(query)
@@ -129,7 +129,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))))
+        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L)))),
       )
       state.testInvariants()
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
@@ -147,7 +147,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery2.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))))
+        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()
@@ -162,7 +162,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))), QueryContext(Map(aliasedAs1 -> Expr.Integer(4L))))
+        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))), QueryContext(Map(aliasedAs1 -> Expr.Integer(4L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults2 = effects.resultsReported.dequeue()
@@ -178,7 +178,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery2.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))), QueryContext(Map(aliasedAs2 -> Expr.Integer(5L))))
+        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))), QueryContext(Map(aliasedAs2 -> Expr.Integer(5L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()
@@ -201,8 +201,8 @@ class CrossStateTests extends AnyFunSuite {
       MultipleValuesStandingQuery.LocalProperty(
         Symbol("foo"),
         MultipleValuesStandingQuery.LocalProperty.Any,
-        Some(aliasedAs1)
-      )
+        Some(aliasedAs1),
+      ),
     )
 
     val aliasedAs2 = Symbol("baz")
@@ -212,13 +212,13 @@ class CrossStateTests extends AnyFunSuite {
       MultipleValuesStandingQuery.LocalProperty(
         Symbol("qux"),
         MultipleValuesStandingQuery.LocalProperty.Any,
-        Some(aliasedAs2)
-      )
+        Some(aliasedAs2),
+      ),
     )
 
     val query = MultipleValuesStandingQuery.Cross(
       queries = ArraySeq(reqQuery1, reqQuery2),
-      emitSubscriptionsLazily = true
+      emitSubscriptionsLazily = true,
     )
 
     val state = makeState(query)
@@ -238,7 +238,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))))
+        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L)))),
       )
       state.testInvariants()
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
@@ -256,7 +256,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery2.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))))
+        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()
@@ -272,7 +272,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))), QueryContext(Map(aliasedAs1 -> Expr.Integer(4L))))
+        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(2L))), QueryContext(Map(aliasedAs1 -> Expr.Integer(4L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults2 = effects.resultsReported.dequeue()
@@ -289,7 +289,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery2.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))), QueryContext(Map(aliasedAs2 -> Expr.Integer(5L))))
+        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(3L))), QueryContext(Map(aliasedAs2 -> Expr.Integer(5L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()
@@ -308,7 +308,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery2.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(5L))))
+        Seq(QueryContext(Map(aliasedAs2 -> Expr.Integer(5L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()
@@ -326,7 +326,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(4L))))
+        Seq(QueryContext(Map(aliasedAs1 -> Expr.Integer(4L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()
@@ -343,7 +343,7 @@ class CrossStateTests extends AnyFunSuite {
         reqQuery1.queryPartId,
         globalId,
         Some(query.queryPartId),
-        Seq.empty
+        Seq.empty,
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()

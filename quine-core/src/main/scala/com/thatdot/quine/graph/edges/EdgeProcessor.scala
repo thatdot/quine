@@ -13,7 +13,7 @@ import com.thatdot.quine.util.Log.implicits._
 //abstract class DontCareWrapper(edges: AbstractEdgeCollectionView[F forSome { type F[_] }, S forSome { type S[_] }])
 //    extends EdgeProcessor(edges)
 abstract class EdgeProcessor(
-  edges: AbstractEdgeCollectionView
+  edges: AbstractEdgeCollectionView,
 ) extends EdgeCollectionView {
 
   /** Apply edge events to a node including:
@@ -31,7 +31,7 @@ abstract class EdgeProcessor(
     */
   def processEdgeEvents(
     events: List[EdgeEvent],
-    atTime: () => EventTime
+    atTime: () => EventTime,
   )(implicit logConfig: LogConfig): Future[Unit]
 
   /** Apply a single edge event to the edge collection without causing any other side effects (SQs, metrics
@@ -81,7 +81,7 @@ abstract class SynchronousEdgeProcessor(
   edgeCollection: SyncEdgeCollection,
   qid: QuineId,
   costToSleep: CostToSleep,
-  nodeEdgesCounter: BinaryHistogramCounter
+  nodeEdgesCounter: BinaryHistogramCounter,
 )(implicit idProvider: QuineIdProvider)
     extends EdgeProcessor(edgeCollection)
     with LazySafeLogging {
@@ -98,7 +98,7 @@ abstract class SynchronousEdgeProcessor(
 
   protected def journalAndApplyEffects(
     effectingEvents: NonEmptyList[EdgeEvent],
-    produceTimestamp: () => EventTime
+    produceTimestamp: () => EventTime,
   ): Future[Unit]
 
   def processEdgeEvents(events: List[EdgeEvent], atTime: () => EventTime)(implicit logConfig: LogConfig): Future[Unit] =

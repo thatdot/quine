@@ -12,7 +12,7 @@ import com.thatdot.quine.graph.{
   Uuid3Provider,
   Uuid4Provider,
   Uuid5Provider,
-  WithExplicitPositions
+  WithExplicitPositions,
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
@@ -36,7 +36,7 @@ object IdProviderType {
 
   final case class Long(
     consecutiveStart: Option[scala.Long],
-    partitioned: Boolean = false
+    partitioned: Boolean = false,
   ) extends IdProviderType {
     def createUnpartitioned: QuineIdProvider = consecutiveStart match {
       case None => QuineIdRandomLongProvider
@@ -50,7 +50,7 @@ object IdProviderType {
 
   final case class Uuid3(
     namespace: ju.UUID = UUID4s.NIL.asJava(),
-    partitioned: Boolean = false
+    partitioned: Boolean = false,
   ) extends IdProviderType {
     def createUnpartitioned: Uuid3Provider = Uuid3Provider(namespace)
   }
@@ -61,7 +61,7 @@ object IdProviderType {
 
   final case class Uuid5(
     namespace: ju.UUID = UUID4s.NIL.asJava(),
-    partitioned: Boolean = false
+    partitioned: Boolean = false,
   ) extends IdProviderType {
     def createUnpartitioned: Uuid5Provider = Uuid5Provider(namespace)
   }

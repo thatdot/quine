@@ -13,7 +13,7 @@ import com.thatdot.quine.graph.cypher.{
   UserDefinedFunction,
   UserDefinedFunctionSignature,
   UserDefinedProcedure,
-  Value
+  Value,
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
@@ -30,7 +30,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     birthYear: Option[Long],
     hasMother: Option[idProv.CustomIdType],
     hasFather: Option[idProv.CustomIdType],
-    id: idProv.CustomIdType = idProv.newCustomId()
+    id: idProv.CustomIdType = idProv.newCustomId(),
   )
 
   val people: List[Person] = {
@@ -74,26 +74,26 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       "WITH 1 + 2 AS x RETURN x",
       expectedColumns = Vector("x"),
       expectedRows = Seq(Vector(Expr.Integer(3L))),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
       "WITH 1 + 2 AS x WHERE x > 2 RETURN x",
       expectedColumns = Vector("x"),
-      expectedRows = Seq(Vector(Expr.Integer(3L)))
+      expectedRows = Seq(Vector(Expr.Integer(3L))),
     )
 
     testQuery(
       "WITH 1 + 2 AS x WHERE x > 3 RETURN x",
       expectedColumns = Vector("x"),
-      expectedRows = Seq()
+      expectedRows = Seq(),
     )
 
     // See QU-433
     testQuery(
       "WITH 123 AS n WITH 124 AS n RETURN toJson(n)",
       expectedColumns = Vector("toJson(n)"),
-      expectedRows = Seq(Vector(Expr.Str("124")))
+      expectedRows = Seq(Vector(Expr.Str("124"))),
     )
   }
 
@@ -103,7 +103,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedColumns = Vector("x"),
       expectedRows = Seq(Vector(Expr.Integer(3L)), Vector(Expr.Str("str"))),
       ordered = false,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -116,9 +116,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(2L)),
         Vector(Expr.Integer(3L)),
         Vector(Expr.Integer(1L)),
-        Vector(Expr.Integer(2L))
+        Vector(Expr.Integer(2L)),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -128,9 +128,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(1L), Expr.Str("val")),
         Vector(Expr.Integer(2L), Expr.Str("val")),
         Vector(Expr.Integer(3L), Expr.Str("val")),
-        Vector(Expr.Null, Expr.Str("val"))
+        Vector(Expr.Null, Expr.Str("val")),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -139,7 +139,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         |RETURN collect(DISTINCT x) AS setOfVals""".stripMargin('|'),
       expectedColumns = Vector("setOfVals"),
       expectedRows = Seq(Vector(Expr.List(Vector(Expr.Integer(1L), Expr.Integer(2L))))),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -149,8 +149,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(1L)),
         Vector(Expr.Integer(2L)),
         Vector(Expr.Integer(3L)),
-        Vector(Expr.Integer(4L))
-      )
+        Vector(Expr.Integer(4L)),
+      ),
     )
 
     testQuery(
@@ -164,29 +164,29 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(2L)),
         Vector(Expr.Integer(3L)),
         Vector(Expr.Integer(4L)),
-        Vector(Expr.Integer(5L))
+        Vector(Expr.Integer(5L)),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
       "UNWIND [] AS empty RETURN empty, 'literal_returned_0_times'",
       expectedColumns = Vector("empty", "'literal_returned_0_times'"),
       expectedRows = Seq.empty,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
       "UNWIND NULL AS x RETURN x, 'some_literal'",
       expectedColumns = Vector("x", "'some_literal'"),
       expectedRows = Seq.empty,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
       "UNWIND [1,2,3,4,56] AS nId MATCH (n) WHERE ID(n) = nId RETURN n.prop",
       expectedColumns = Vector("n.prop"),
-      expectedRows = Seq.fill(5)(Vector(Expr.Null))
+      expectedRows = Seq.fill(5)(Vector(Expr.Null)),
     )
   }
 
@@ -203,10 +203,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Str("Hugo"), Expr.Str("Hermione")),
         Vector(Expr.Str("Ancestors"), Expr.Str("Ancestors")),
         Vector(Expr.Str("Missus"), Expr.Str("Ancestors")),
-        Vector(Expr.Str("Arthur"), Expr.Str("Ancestors"))
+        Vector(Expr.Str("Arthur"), Expr.Str("Ancestors")),
       ),
       expectedCanContainAllNodeScan = true,
-      ordered = false
+      ordered = false,
     )
 
     testQuery(
@@ -217,10 +217,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Str("Hermione")),
         Vector(Expr.Str("Rose")),
         Vector(Expr.Str("Hugo")),
-        Vector(Expr.Str("Missus"))
+        Vector(Expr.Str("Missus")),
       ),
       expectedCanContainAllNodeScan = true,
-      ordered = false
+      ordered = false,
     )
 
     testQuery(
@@ -229,10 +229,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedRows = Seq(
         Vector(Expr.Str("Rose")),
         Vector(Expr.Str("Hugo")),
-        Vector(Expr.Str("Ron"))
+        Vector(Expr.Str("Ron")),
       ),
       expectedCanContainAllNodeScan = true,
-      ordered = false
+      ordered = false,
     )
 
     describe("Pattern structure is normalized") {
@@ -245,10 +245,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Str("Mister"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Hermione"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Missus"), Expr.Str("Ancestors")),
-          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors"))
+          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors")),
         ),
         expectedCanContainAllNodeScan = true,
-        ordered = false
+        ordered = false,
       )
 
       testQuery(
@@ -260,10 +260,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Str("Mister"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Hermione"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Missus"), Expr.Str("Ancestors")),
-          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors"))
+          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors")),
         ),
         expectedCanContainAllNodeScan = true,
-        ordered = false
+        ordered = false,
       )
 
       testQuery(
@@ -275,10 +275,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Str("Mister"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Hermione"), Expr.Str("Ancestors")),
           Vector(Expr.Str("Missus"), Expr.Str("Ancestors")),
-          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors"))
+          Vector(Expr.Str("Arthur"), Expr.Str("Ancestors")),
         ),
         expectedCanContainAllNodeScan = true,
-        ordered = false
+        ordered = false,
       )
     }
   }
@@ -296,9 +296,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Str("Mister"), Expr.Str("Ancestors")),
         Vector(Expr.Str("Molly"), Expr.Str("Ancestors")),
         Vector(Expr.Str("Ron"), Expr.Str("Molly")),
-        Vector(Expr.Str("Rose"), Expr.Str("Hermione"))
+        Vector(Expr.Str("Rose"), Expr.Str("Hermione")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -307,9 +307,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedRows = Seq(
         Vector(Expr.Str("Weasley"), Expr.Str("Ancestors")),
         Vector(Expr.Str("Granger"), Expr.Str("Missus")),
-        Vector(Expr.Str("Granger"), Expr.Str("Hermione"))
+        Vector(Expr.Str("Granger"), Expr.Str("Hermione")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -317,9 +317,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedColumns = Vector("p.first", "m.first"),
       expectedRows = Seq(
         Vector(Expr.Str("Arthur"), Expr.Str("Ancestors")),
-        Vector(Expr.Str("Molly"), Expr.Str("Ancestors"))
+        Vector(Expr.Str("Molly"), Expr.Str("Ancestors")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -329,9 +329,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedColumns = Vector("p.first"),
       expectedRows = Seq(
         Vector(Expr.Str("Ron")),
-        Vector(Expr.Str("Hermione"))
+        Vector(Expr.Str("Hermione")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -340,14 +340,14 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     testQuery(
       "RETURN 1 + 2 AS num1, \"hello\" + \"!\"",
       expectedColumns = Vector("num1", "\"hello\" + \"!\""),
-      expectedRows = Seq(Vector(Expr.Integer(3L), Expr.Str("hello!")))
+      expectedRows = Seq(Vector(Expr.Integer(3L), Expr.Str("hello!"))),
     )
 
     testQuery(
       "RETURN 1 AS k, 2 AS b, 3 AS d, 4 AS e, 5 AS x, 6 AS q, 7 AS o, 8 AS l",
       expectedColumns = Vector("k", "b", "d", "e", "x", "q", "o", "l"),
       expectedRows = Seq((1 to 8).map(i => Expr.Integer(i.toLong)).toVector),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
@@ -362,9 +362,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(3L), Expr.Str("b")),
         Vector(Expr.Integer(1L), Expr.Str("c")),
         Vector(Expr.Integer(2L), Expr.Str("c")),
-        Vector(Expr.Integer(3L), Expr.Str("c"))
+        Vector(Expr.Integer(3L), Expr.Str("c")),
       ),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     describe("aggregations") {
@@ -380,9 +380,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
             Expr.List(Vector(Expr.Integer(5L))),
             Expr.Integer(6L),
             Expr.Integer(7L),
-            Expr.Integer(8L)
-          )
-        )
+            Expr.Integer(8L),
+          ),
+        ),
       )
 
       testQuery(
@@ -391,10 +391,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedRows = Vector(
           Vector(Expr.Integer(3L), Expr.Integer(5L)),
           Vector(Expr.Integer(3L), Expr.Integer(6L)),
-          Vector(Expr.Integer(3L), Expr.Integer(4L))
+          Vector(Expr.Integer(3L), Expr.Integer(4L)),
         ),
         expectedCannotFail = true,
-        ordered = false
+        ordered = false,
       )
 
       testQuery(
@@ -402,7 +402,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedColumns = Vector("count(*)"),
         expectedRows = Seq(Vector(Expr.Integer(9L))),
         expectedCanContainAllNodeScan = true,
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
@@ -412,10 +412,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.Str("Ancestors"), Expr.Integer(5L)),
           Vector(Expr.Str("Missus"), Expr.Integer(1L)),
           Vector(Expr.Str("Molly"), Expr.Integer(1L)),
-          Vector(Expr.Str("Hermione"), Expr.Integer(2L))
+          Vector(Expr.Str("Hermione"), Expr.Integer(2L)),
         ),
         expectedCanContainAllNodeScan = true,
-        ordered = false
+        ordered = false,
       )
 
       testQuery(
@@ -430,25 +430,25 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
                 Expr.Str("Arthur"),
                 Expr.Str("Missus"),
                 Expr.Str("Mister"),
-                Expr.Str("Molly")
-              )
-            )
+                Expr.Str("Molly"),
+              ),
+            ),
           ),
           Vector(
             Expr.Str("Hermione"),
-            Expr.List(Vector(Expr.Str("Hugo"), Expr.Str("Rose")))
+            Expr.List(Vector(Expr.Str("Hugo"), Expr.Str("Rose"))),
           ),
           Vector(
             Expr.Str("Molly"),
-            Expr.List(Vector(Expr.Str("Ron")))
+            Expr.List(Vector(Expr.Str("Ron"))),
           ),
           Vector(
             Expr.Str("Missus"),
-            Expr.List(Vector(Expr.Str("Hermione")))
-          )
+            Expr.List(Vector(Expr.Str("Hermione"))),
+          ),
         ),
         expectedCanContainAllNodeScan = true,
-        ordered = false
+        ordered = false,
       )
 
       testQuery(
@@ -463,11 +463,11 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
                 Expr.Floating(4.0),
                 Expr.Floating(9.0),
                 Expr.Floating(16.0),
-                Expr.Floating(25.0)
-              )
-            )
-          )
-        )
+                Expr.Floating(25.0),
+              ),
+            ),
+          ),
+        ),
       )
     }
 
@@ -480,9 +480,9 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           Vector(Expr.False),
           Vector(Expr.True),
           Vector(Expr.False),
-          Vector(Expr.False)
+          Vector(Expr.False),
         ),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
@@ -490,23 +490,23 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedColumns = Vector("x = 3"),
         expectedRows = Seq(
           Vector(Expr.False),
-          Vector(Expr.True)
+          Vector(Expr.True),
         ),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN count(x)",
         expectedColumns = Vector("count(x)"),
         expectedRows = Seq(Vector(Expr.Integer(5L))),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN count(DISTINCT x)",
         expectedColumns = Vector("count(DISTINCT x)"),
         expectedRows = Seq(Vector(Expr.Integer(3L))),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
@@ -515,23 +515,23 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedRows = Seq(
           Vector(Expr.Integer(1L)),
           Vector(Expr.Integer(2L)),
-          Vector(Expr.Integer(3L))
+          Vector(Expr.Integer(3L)),
         ),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN DISTINCT count(x)",
         expectedColumns = Vector("count(x)"),
         expectedRows = Seq(Vector(Expr.Integer(5L))),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
 
       testQuery(
         "UNWIND [1,2,3,1,2] AS x RETURN DISTINCT count(DISTINCT x)",
         expectedColumns = Vector("count(DISTINCT x)"),
         expectedRows = Seq(Vector(Expr.Integer(3L))),
-        expectedCannotFail = true
+        expectedCannotFail = true,
       )
     }
   }
@@ -558,13 +558,13 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
           "day",
           "hour",
           "minute",
-          "second"
-        ).map(period => Expr.List(Expr.Str(period)))
+          "second",
+        ).map(period => Expr.List(Expr.Str(period))),
       ),
       expectedIsReadOnly = false,
       // This is actually idempotent, but it isn't recognized as such because datetime is marked as non-idempotent
       // even when it is provided with a constant datetime value.
-      expectedIsIdempotent = false
+      expectedIsIdempotent = false,
     )
   }
 
@@ -573,7 +573,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     testQuery(
       "RETURN myreverse(\"hello\") AS REV",
       expectedColumns = Vector("REV"),
-      expectedRows = Seq(Vector(Expr.Str("olleh")))
+      expectedRows = Seq(Vector(Expr.Str("olleh"))),
     )
   }
 
@@ -586,8 +586,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         Vector(Expr.Integer(1L)),
         Vector(Expr.Integer(2L)),
         Vector(Expr.Str("hello")),
-        Vector(Expr.Null)
-      )
+        Vector(Expr.Null),
+      ),
     )
 
     testQuery(
@@ -599,8 +599,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedRows = Seq(
         Vector(Expr.Integer(3L)),
         Vector(Expr.Integer(4L)),
-        Vector(Expr.Integer(7L))
-      )
+        Vector(Expr.Integer(7L)),
+      ),
     )
 
     testQuery(
@@ -609,8 +609,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       expectedColumns = Vector("unwound"),
       expectedRows = Seq(
         Vector(Expr.Str("hi")),
-        Vector(Expr.Str("world"))
-      )
+        Vector(Expr.Str("world")),
+      ),
     )
   }
 
@@ -618,13 +618,13 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
     testQuery(
       "RETURN hEaD(['heLLo'])",
       expectedColumns = Vector("hEaD(['heLLo'])"),
-      expectedRows = Seq(Vector(Expr.Str("heLLo")))
+      expectedRows = Seq(Vector(Expr.Str("heLLo"))),
     )
 
     testQuery(
       "CALL mYuNwINd(['heLLo'])",
       expectedColumns = Vector("unwound"),
-      expectedRows = Seq(Vector(Expr.Str("heLLo")))
+      expectedRows = Seq(Vector(Expr.Str("heLLo"))),
     )
   }
 
@@ -643,10 +643,10 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       Vector(Expr.Str("Ancestors"), Expr.Null),
       Vector(Expr.Str("Ron"), Expr.Null),
       Vector(Expr.Str("Hugo"), Expr.Str("Rose")),
-      Vector(Expr.Str("Mister"), Expr.Null)
+      Vector(Expr.Str("Mister"), Expr.Null),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   describe("Exceptions") {
@@ -656,8 +656,8 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         CypherException.TypeMismatch(
           expected = Seq(Type.Number),
           actualValue = Expr.Str("Weasley"),
-          context = "division"
-        )
+          context = "division",
+        ),
       )
 
       assertQueryExecutionFailure(
@@ -669,11 +669,11 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
             Type.Relationship,
             Type.LocalDateTime,
             Type.DateTime,
-            Type.Duration
+            Type.Duration,
           ),
           actualValue = Expr.Str("Weasley"),
-          context = "property access"
-        )
+          context = "property access",
+        ),
       )
     }
 
@@ -682,16 +682,16 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         "MATCH (p) WHERE p.first = 'Molly' RETURN p.birthYear / 0",
         CypherException.Arithmetic(
           wrapping = "/ by zero",
-          operands = Seq(Expr.Integer(1949L), Expr.Integer(0L))
-        )
+          operands = Seq(Expr.Integer(1949L), Expr.Integer(0L)),
+        ),
       )
 
       assertQueryExecutionFailure(
         "MATCH (p) WHERE p.first = 'Molly' WITH p.birthYear + 9223372036854775800 AS N RETURN 1",
         CypherException.Arithmetic(
           wrapping = "long overflow",
-          operands = Seq(Expr.Integer(1949L), Expr.Integer(9223372036854775800L))
-        )
+          operands = Seq(Expr.Integer(1949L), Expr.Integer(9223372036854775800L)),
+        ),
       )
     }
   }
@@ -701,18 +701,18 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
       s"CALL purgeNode($molly)",
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     testQuery(
       s"MATCH (n) where id(n) = $molly RETURN properties(n)",
       expectedColumns = Vector("properties(n)"),
-      expectedRows = Seq(Vector(Expr.Map.empty))
+      expectedRows = Seq(Vector(Expr.Map.empty)),
     )
     testQuery(
       s"MATCH (n)-[e]-(x) where id(n) = $molly RETURN e",
       expectedColumns = Vector("e"),
       expectedRows = Seq.empty,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
   describe("Updates and void procedures' return behavior") {
@@ -727,38 +727,38 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         "OPTIONAL MATCH (n) WHERE id(n) = null SET n.foo = 1 RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
       testQuery(
         "OPTIONAL MATCH (n) WHERE id(n) = null CALL util.sleep(1) RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = true
+        expectedIsReadOnly = true,
       )
       testQuery(
         "OPTIONAL MATCH (n) WHERE id(n) = null REMOVE n.foo RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
       testQuery(
         "OPTIONAL MATCH (n) WHERE id(n) = null DELETE n RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
 
       testQuery(
         "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [] | DELETE n) RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
       testQuery(
         "OPTIONAL MATCH (n) WHERE id(n) = null FOREACH (x IN [1,2,3] | DELETE n) RETURN 1",
         expectedColumns = Vector("1"),
         expectedRows = Seq(Vector(Expr.Integer(1L))),
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
     }
     describe("Used as the final clause: SET/REMOVE et al should return 0 rows") {
@@ -767,26 +767,26 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
         expectedIsReadOnly = false,
-        expectedIsIdempotent = false
+        expectedIsIdempotent = false,
       )
       testQuery(
         "MATCH (n) WHERE id(n) = idFrom(8675309) SET n.name = 'Jenny', n.number = '8675309'",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
         expectedIsReadOnly = false,
-        expectedIsIdempotent = true
+        expectedIsIdempotent = true,
       )
       testQuery(
         "MATCH (n) WHERE id(n) = idFrom(8675309) REMOVE n.name",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
       testQuery(
         "MATCH (n) WHERE id(n) = idFrom(8675309) DELETE n",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
-        expectedIsReadOnly = false
+        expectedIsReadOnly = false,
       )
       testQuery(
         "UNWIND range(0, 15) AS x CALL util.sleep(0)",
@@ -798,7 +798,7 @@ class CypherComplete extends CypherHarness("cypher-complete-tests") {
         "CALL debug.sleep(idFrom(8675309))",
         expectedColumns = Vector.empty,
         expectedRows = Vector.empty,
-        expectedIsReadOnly = true
+        expectedIsReadOnly = true,
       )
     }
   }
@@ -817,13 +817,13 @@ object MyReverse extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Str),
       output = Type.Str,
-      description = "Returns the string reversed"
+      description = "Returns the string reversed",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.ListOfAnything),
       output = Type.ListOfAnything,
-      description = "Returns the list reversed"
-    )
+      description = "Returns the list reversed",
+    ),
   )
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
@@ -841,17 +841,17 @@ object MyUnwind extends UserDefinedProcedure {
   val signature: cypher.UserDefinedProcedureSignature = cypher.UserDefinedProcedureSignature(
     arguments = Vector("list" -> cypher.Type.ListOfAnything),
     outputs = Vector("unwound" -> cypher.Type.Anything),
-    description = "Unwind list"
+    description = "Unwind list",
   )
 
   def call(
     context: cypher.QueryContext,
     arguments: Seq[cypher.Value],
-    location: cypher.ProcedureExecutionLocation
+    location: cypher.ProcedureExecutionLocation,
   )(implicit
     parameters: cypher.Parameters,
     timeout: pekko.util.Timeout,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): pekko.stream.scaladsl.Source[Vector[cypher.Value], _] =
     arguments match {
       case Seq(Expr.List(l)) => pekko.stream.scaladsl.Source(l.map(Vector(_)))

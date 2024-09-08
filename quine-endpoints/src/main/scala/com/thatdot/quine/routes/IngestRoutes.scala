@@ -24,7 +24,7 @@ sealed abstract class IngestStreamStatus(val isTerminal: Boolean, val position: 
 object IngestStreamStatus {
   def decideRestoredStatus(
     statusAtShutdown: IngestStreamStatus,
-    shouldResumeRestoredIngests: Boolean
+    shouldResumeRestoredIngests: Boolean,
   ): IngestStreamStatus =
     statusAtShutdown match {
       case status: TerminalStatus =>
@@ -47,7 +47,7 @@ object IngestStreamStatus {
   case object Paused extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs(
-    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application."
+    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application.",
   )
   case object Restored extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
@@ -81,29 +81,29 @@ trait IngestQuery {
 final case class IngestStreamInfoWithName(
   @docs("Unique name identifying the ingest stream") name: String,
   @docs(
-    "Indicator of whether the ingest is still running, completed, etc."
+    "Indicator of whether the ingest is still running, completed, etc.",
   ) status: IngestStreamStatus,
   @docs("Error message about the ingest, if any") message: Option[String],
   @docs("Configuration of the ingest stream") settings: IngestStreamConfiguration,
-  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats
+  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats,
 )
 
 @title("Ingest Stream Info")
 @docs("An active stream of data being ingested.")
 final case class IngestStreamInfo(
   @docs(
-    "Indicator of whether the ingest is still running, completed, etc."
+    "Indicator of whether the ingest is still running, completed, etc.",
   ) status: IngestStreamStatus,
   @docs("Error message about the ingest, if any") message: Option[String],
   @docs("Configuration of the ingest stream") settings: IngestStreamConfiguration,
-  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats
+  @docs("Statistics on progress of running ingest stream") stats: IngestStreamStats,
 ) {
   def withName(name: String): IngestStreamInfoWithName = IngestStreamInfoWithName(
     name = name,
     status = status,
     message = message,
     settings = settings,
-    stats = stats
+    stats = stats,
   )
 }
 
@@ -115,7 +115,7 @@ final case class IngestStreamStats(
   @docs("Records/second over different time periods") rates: RatesSummary,
   @docs("Bytes/second over different time periods") byteRates: RatesSummary,
   @docs("Time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
-  @docs("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long
+  @docs("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long,
 )
 object IngestStreamStats {
   val example: IngestStreamStats = IngestStreamStats(
@@ -125,17 +125,17 @@ object IngestStreamStats {
       14.1,
       14.5,
       14.15,
-      14.0
+      14.0,
     ),
     byteRates = RatesSummary(
       8664000L,
       142030.1,
       145299.6,
       144287.6,
-      144400.0
+      144400.0,
     ),
     startTime = Instant.parse("2020-06-05T18:02:42.907Z"),
-    60000L
+    60000L,
   )
 }
 
@@ -147,7 +147,7 @@ final case class RatesSummary(
   @docs("Approximate rate per second in the last minute") oneMinute: Double,
   @docs("Approximate rate per second in the last five minutes") fiveMinute: Double,
   @docs("Approximate rate per second in the last fifteen minutes") fifteenMinute: Double,
-  @docs("Approximate rate per second since the meter was started") overall: Double
+  @docs("Approximate rate per second since the meter was started") overall: Double,
 )
 
 trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
@@ -158,14 +158,14 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
 @unnamed
 @title("AWS Credentials")
 @docs(
-  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>."
+  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
 )
 final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
 @unnamed
 @title("AWS Region")
 @docs(
-  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>."
+  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
 )
 final case class AwsRegion(region: String)
 
@@ -177,7 +177,7 @@ trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
 @unnamed
 @title("Kafka Auto Offset Reset")
 @docs(
-  "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset)."
+  "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).",
 )
 sealed abstract class KafkaAutoOffsetReset(val name: String)
 object KafkaAutoOffsetReset {
@@ -190,7 +190,7 @@ object KafkaAutoOffsetReset {
 @unnamed
 @title("Kafka Security Protocol")
 @docs(
-  "See [`security.protocol` in the Kafka documentation](https://kafka.apache.org/24/javadoc/org/apache/kafka/common/security/auth/SecurityProtocol.html)."
+  "See [`security.protocol` in the Kafka documentation](https://kafka.apache.org/24/javadoc/org/apache/kafka/common/security/auth/SecurityProtocol.html).",
 )
 sealed abstract class KafkaSecurityProtocol(val name: String)
 object KafkaSecurityProtocol {
@@ -206,14 +206,14 @@ object KafkaSecurityProtocol {
 @docs(
   "How to keep track of current offset when consuming from Kafka, if at all. " +
   """You could alternatively set "enable.auto.commit": "true" in kafkaProperties  for this ingest, """ +
-  "but in that case messages will be lost if the ingest is stopped while processing messages"
+  "but in that case messages will be lost if the ingest is stopped while processing messages",
 )
 sealed abstract class KafkaOffsetCommitting
 object KafkaOffsetCommitting {
   @unnamed
   @title("Explicit Commit")
   @docs(
-    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record."
+    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record.",
   )
   final case class ExplicitCommit(
     @docs("Maximum number of messages in a single commit batch.")
@@ -223,7 +223,7 @@ object KafkaOffsetCommitting {
     @docs("Parallelism for async committing.")
     parallelism: Int = 100,
     @docs("Wait for a confirmation from Kafka on ack.")
-    waitForCommitConfirmation: Boolean = true
+    waitForCommitConfirmation: Boolean = true,
   ) extends KafkaOffsetCommitting
 }
 @title("Scheduler Checkpoint Settings")
@@ -233,7 +233,7 @@ final case class KinesisCheckpointSettings(
   @docs("Maximum checkpoint batch size.")
   maxBatchSize: Int,
   @docs("Maximum checkpoint batch wait time in ms.")
-  maxBatchWait: Long
+  maxBatchWait: Long,
 )
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
@@ -255,7 +255,7 @@ object IngestStreamConfiguration {
   */
 final case class IngestStreamWithStatus(
   config: IngestStreamConfiguration,
-  status: Option[IngestStreamStatus]
+  status: Option[IngestStreamStatus],
 )
 
 object KafkaIngest {
@@ -300,7 +300,7 @@ final case class KafkaIngest(
   @docs(
     """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
                                   |whose values are partition indices.""".stripMargin
-      .replace('\n', ' ')
+      .replace('\n', ' '),
   )
   topics: Either[KafkaIngest.Topics, KafkaIngest.PartitionAssignments],
   @docs("Maximum number of records to process at once.")
@@ -308,24 +308,24 @@ final case class KafkaIngest(
   @docs("A comma-separated list of Kafka broker servers.")
   bootstrapServers: String,
   @docs(
-    "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream."
+    "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream.",
   )
   groupId: Option[String],
   securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
   offsetCommitting: Option[KafkaOffsetCommitting],
   autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
   @docs(
-    "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>"
+    "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
   )
   kafkaProperties: KafkaIngest.KafkaProperties = Map.empty[String, String],
   @docs(
-    "The offset at which this stream should complete; offsets are sequential integers starting at 0."
+    "The offset at which this stream should complete; offsets are sequential integers starting at 0.",
   ) endingOffset: Option[Long],
   @docs("Maximum records to process per second.")
   maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input. The specified decodings are applied in declared array order.")
   @unnamed
-  recordDecoders: Seq[RecordDecodingType] = Seq.empty
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty,
 ) extends IngestStreamConfiguration {
   def getQuery: Option[String] = StreamedRecordFormat.getQuery(format)
   override def slug: String = "kafka"
@@ -381,7 +381,7 @@ final case class KinesisIngest(
   format: StreamedRecordFormat = IngestRoutes.defaultStreamedRecordFormat,
   @docs("Name of the Kinesis stream to ingest.") streamName: String,
   @docs(
-    "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed."
+    "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed.",
   )
   shardIds: Option[Set[String]],
   @docs("Maximum number of records to write simultaneously.")
@@ -394,9 +394,9 @@ final case class KinesisIngest(
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
   recordDecoders: Seq[RecordDecodingType] = Seq.empty,
   @docs(
-    "Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`, ignoring those fields in the API request."
+    "Optional stream checkpoint settings. If present, checkpointing will manage `iteratorType` and `shardIds`, ignoring those fields in the API request.",
   )
-  checkpointSettings: Option[KinesisCheckpointSettings]
+  checkpointSettings: Option[KinesisCheckpointSettings],
 ) extends IngestStreamConfiguration {
   override def slug: String = "kinesis"
 }
@@ -404,7 +404,7 @@ final case class KinesisIngest(
 @title("Server Sent Events Stream")
 @unnamed
 @docs(
-  "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event."
+  "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event.",
 )
 final case class ServerSentEventsIngest(
   @docs("Format used to decode each event's `data`.")
@@ -414,8 +414,8 @@ final case class ServerSentEventsIngest(
   parallelism: Int = IngestRoutes.defaultWriteParallelism,
   @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
   @docs(
-    "List of encodings that have been applied to each input. Decoding of each type is applied in order."
-  ) recordDecoders: Seq[RecordDecodingType] = Seq.empty
+    "List of encodings that have been applied to each input. Decoding of each type is applied in order.",
+  ) recordDecoders: Seq[RecordDecodingType] = Seq.empty,
 ) extends IngestStreamConfiguration {
   override def slug: String = "sse"
 }
@@ -436,7 +436,7 @@ final case class SQSIngest(
   deleteReadMessages: Boolean = true,
   @docs("Maximum records to process per second.") maximumPerSecond: Option[Int],
   @docs("List of decodings to be applied to each input, where specified decodings are applied in declared array order.")
-  recordDecoders: Seq[RecordDecodingType] = Seq.empty
+  recordDecoders: Seq[RecordDecodingType] = Seq.empty,
 ) extends IngestStreamConfiguration {
   override def slug: String = "sqs"
 }
@@ -475,7 +475,7 @@ final case class WebsocketSimpleStartupIngest(
   @docs(s"""Text encoding used to read text messages in the stream. Only UTF-8, US-ASCII and ISO-8859-1 are directly
                                                         |supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).
                                                         |""".stripMargin)
-  encoding: String = "UTF-8"
+  encoding: String = "UTF-8",
 ) extends IngestStreamConfiguration {
   override def slug: String = "websocket"
   override val maximumPerSecond = None
@@ -495,7 +495,7 @@ object StreamedRecordFormat {
   """.stripMargin)
   final case class CypherJson(
     @docs("Cypher query to execute on each record.") query: String,
-    @docs("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that"
+    @docs("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that",
   ) extends StreamedRecordFormat
       with IngestQuery
 
@@ -507,7 +507,7 @@ object StreamedRecordFormat {
   """.stripMargin)
   final case class CypherRaw(
     @docs("Cypher query to execute on each record.") query: String,
-    @docs("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that"
+    @docs("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that",
   ) extends StreamedRecordFormat
       with IngestQuery
 
@@ -516,17 +516,17 @@ object StreamedRecordFormat {
   @docs(
     "Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at " +
     "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
-    "in the query set equal to the new (deserialized) Protobuf message."
+    "in the query set equal to the new (deserialized) Protobuf message.",
   )
   final case class CypherProtobuf(
     @docs("Cypher query to execute on each record.") query: String,
     @docs("Name of the Cypher parameter to populate with the Protobuf message.") parameter: String = "that",
     @docs(
-      "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`."
+      "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
     ) schemaUrl: String,
     @docs(
-      "Message type name to use from the given `.desc` file as the incoming message type."
-    ) typeName: String
+      "Message type name to use from the given `.desc` file as the incoming message type.",
+    ) typeName: String,
   ) extends StreamedRecordFormat
       with IngestQuery
 
@@ -557,7 +557,7 @@ final case class FileIngest(
   path: String,
   @docs(
     "The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are " +
-    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
+    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
   )
   encoding: String = "UTF-8",
   @docs("Maximum number of records to process at once.")
@@ -566,7 +566,7 @@ final case class FileIngest(
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs(
     s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-                                  |resuming ingest from a partially consumed file.""".stripMargin
+                                  |resuming ingest from a partially consumed file.""".stripMargin,
   )
   startAtOffset: Long = 0L,
   @docs(s"Optionally limit how many records are ingested from this file.")
@@ -574,8 +574,8 @@ final case class FileIngest(
   @docs("Maximum number of records to process per second.")
   maximumPerSecond: Option[Int],
   @docs(
-    "Ingest mode for reading from a non-regular file type; default is to auto-detect if file is named pipe."
-  ) fileIngestMode: Option[FileIngestMode]
+    "Ingest mode for reading from a non-regular file type; default is to auto-detect if file is named pipe.",
+  ) fileIngestMode: Option[FileIngestMode],
 ) extends IngestStreamConfiguration {
   override def slug: String = "file"
 }
@@ -586,7 +586,7 @@ final case class FileIngest(
   """An ingest stream from a file in S3, newline delimited. This ingest source is
     |experimental and is subject to change without warning. In particular, there are
     |known issues with durability when the stream is inactive for at least 1 minute.""".stripMargin
-    .replace('\n', ' ')
+    .replace('\n', ' '),
 )
 final case class S3Ingest(
   @docs("format used to decode each incoming line from a file in S3")
@@ -597,7 +597,7 @@ final case class S3Ingest(
   key: String,
   @docs(
     "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
-    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower)."
+    "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
   )
   encoding: String = "UTF-8",
   @docs("maximum number of records being processed at once")
@@ -611,7 +611,7 @@ final case class S3Ingest(
   @docs(s"optionally limit how many records are ingested from this file.")
   ingestLimit: Option[Long],
   @docs("maximum records to process per second")
-  maximumPerSecond: Option[Int]
+  maximumPerSecond: Option[Int],
 ) extends IngestStreamConfiguration {
   override def slug: String = "s3"
 }
@@ -624,7 +624,7 @@ final case class StandardInputIngest(
   format: FileIngestFormat = IngestRoutes.defaultFileRecordFormat,
   @docs(
     "Text encoding used to read data. Only UTF-8, US-ASCII and ISO-8859-1 are directly supported " +
-    "-- other encodings will be transcoded to UTF-8 on the fly (and ingest may be slower)."
+    "-- other encodings will be transcoded to UTF-8 on the fly (and ingest may be slower).",
   )
   encoding: String = "UTF-8",
   @docs("Maximum number of records process at once.")
@@ -632,7 +632,7 @@ final case class StandardInputIngest(
   @docs("Maximum size (in bytes) of any line.")
   maximumLineSize: Int = IngestRoutes.defaultMaximumLineSize,
   @docs("Maximum records to process per second.")
-  maximumPerSecond: Option[Int]
+  maximumPerSecond: Option[Int],
 ) extends IngestStreamConfiguration {
   override def slug: String = "stdin"
 }
@@ -642,7 +642,7 @@ final case class StandardInputIngest(
 @title("Number Iterator Ingest")
 @docs(
   "An infinite ingest stream which requires no data source and just produces new sequential numbers" +
-  " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value."
+  " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value.",
 )
 case class NumberIteratorIngest(
   format: FileIngestFormat = IngestRoutes.defaultNumberFormat,
@@ -652,11 +652,11 @@ case class NumberIteratorIngest(
   ingestLimit: Option[Long],
   @docs(
     "Limit the maximum rate of production to this many records per second. Note that this may be slowed by " +
-    "backpressure elsewhere in the system."
+    "backpressure elsewhere in the system.",
   )
   maximumPerSecond: Option[Int],
   @docs("Maximum number of records to process at once.")
-  parallelism: Int = IngestRoutes.defaultWriteParallelism
+  parallelism: Int = IngestRoutes.defaultWriteParallelism,
 ) extends IngestStreamConfiguration {
   override def slug: String = "numberIterator"
 }
@@ -679,7 +679,7 @@ object FileIngestFormat {
   """.stripMargin.replace('\n', ' '))
   final case class CypherLine(
     @docs("Cypher query to execute on each line") query: String,
-    @docs("name of the Cypher parameter holding the string line value") parameter: String = "that"
+    @docs("name of the Cypher parameter holding the string line value") parameter: String = "that",
   ) extends FileIngestFormat
 
   /** Create using a cypher query, expecting each line to be a JSON record */
@@ -691,7 +691,7 @@ object FileIngestFormat {
   """.stripMargin.replace('\n', ' '))
   final case class CypherJson(
     @docs("Cypher query to execute on each record") query: String,
-    @docs("name of the Cypher parameter holding the JSON value") parameter: String = "that"
+    @docs("name of the Cypher parameter holding the JSON value") parameter: String = "that",
   ) extends FileIngestFormat
 
   /** Create using a cypher query, expecting each line to be a single row CSV record */
@@ -719,7 +719,7 @@ object FileIngestFormat {
                                       |section will be a part of the CSV value.""".stripMargin)
     quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
     @docs("Character used to escape special characters.")
-    escapeChar: CsvCharacter = CsvCharacter.Backslash
+    escapeChar: CsvCharacter = CsvCharacter.Backslash,
   ) extends FileIngestFormat {
     require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
     require(delimiter != escapeChar, "Different characters must be used for `delimiter` and `escapeChar`.")
@@ -778,7 +778,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
     import KinesisIngest.IteratorType
     val unparameterizedKinesisIteratorSchema: Enum[IteratorType.Unparameterized] =
       stringEnumeration[IteratorType.Unparameterized](
-        Seq(IteratorType.TrimHorizon, IteratorType.Latest)
+        Seq(IteratorType.TrimHorizon, IteratorType.Latest),
       )(_.toString)
 
     val parameterizedKinesisIteratorSchema: Tagged[IteratorType.Parameterized] =
@@ -804,9 +804,9 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
       groupId = Some("quine-e1-ingester"),
       offsetCommitting = None,
       endingOffset = None,
-      maximumPerSecond = None
+      maximumPerSecond = None,
     ),
-    stats = IngestStreamStats.example
+    stats = IngestStreamStats.example,
   )
   val exampleIngestStreamInfoWithName: IngestStreamInfoWithName =
     exampleIngestStreamInfo.withName("log1-entity-ingest-source")
@@ -844,10 +844,10 @@ object IngestRoutes {
   val defaultStreamedRecordFormat: StreamedRecordFormat.CypherJson = StreamedRecordFormat.CypherJson("CREATE ($that)")
   val defaultFileRecordFormat: FileIngestFormat.CypherJson = FileIngestFormat.CypherJson("CREATE ($that)")
   val defaultNumberFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
-    "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)"
+    "MATCH (x) WHERE id(x) = idFrom(toInteger($that)) SET x.i = toInteger($that)",
   )
   val defaultTextFileFormat: FileIngestFormat.CypherLine = FileIngestFormat.CypherLine(
-    "MATCH (x) WHERE id(x) = idFrom($that) SET x.content = $that"
+    "MATCH (x) WHERE id(x) = idFrom($that) SET x.content = $that",
   )
 }
 
@@ -887,7 +887,7 @@ trait IngestRoutes
     endpoint(
       request = post(
         url = ingest / segment[String]("name", Some("Unique name for the ingest stream")) /? namespace,
-        entity = jsonOrYamlRequest[IngestStreamConfiguration]
+        entity = jsonOrYamlRequest[IngestStreamConfiguration],
       ),
       response = customBadRequest("Ingest stream exists already")
         .orElse(wheneverFound(ok(emptyResponse))),
@@ -900,16 +900,16 @@ trait IngestRoutes
               |
               |An ingest stream is defined by selecting a source `type`, then an appropriate data `format`,
               |and must be created with a unique name. Many ingest stream types allow a Cypher query to operate
-              |on the event stream data to create nodes and relationships in the graph.""".stripMargin
-          )
+              |on the event stream data to create nodes and relationships in the graph.""".stripMargin,
+          ),
         )
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 
   val ingestStreamStop: Endpoint[(String, NamespaceParameter), Option[IngestStreamInfoWithName]] =
     endpoint(
       request = delete(
-        url = ingest / ingestStreamName /? namespace
+        url = ingest / ingestStreamName /? namespace,
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
@@ -919,25 +919,25 @@ trait IngestRoutes
             """Immediately halt and remove the named ingest stream from Quine.
               |
               |The ingest stream will complete any pending operations and return stream information
-              |once the operation is complete.""".stripMargin
-          )
+              |once the operation is complete.""".stripMargin,
+          ),
         )
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 
   // Inner Option is for representing namespace not found
   val ingestStreamLookup: Endpoint[(String, NamespaceParameter), Option[IngestStreamInfoWithName]] =
     endpoint(
       request = get(
-        url = ingest / ingestStreamName /? namespace
+        url = ingest / ingestStreamName /? namespace,
       ),
       response = wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       docs = EndpointDocs()
         .withSummary(Some("Ingest Stream Status"))
         .withDescription(
-          Some("Return the ingest stream status information for a configured ingest stream by name.")
+          Some("Return the ingest stream status information for a configured ingest stream by name."),
         )
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 
   // Inner Option is for representing namespace not found
@@ -946,15 +946,15 @@ trait IngestRoutes
     endpoint(
       request = put(
         url = ingest / ingestStreamName / "pause" /? namespace,
-        entity = emptyRequest
+        entity = emptyRequest,
       ),
       response = customBadRequest("Cannot pause failed ingest").orElse(
-        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName]))
+        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       ),
       docs = EndpointDocs()
         .withSummary(Some("Pause Ingest Stream"))
         .withDescription(Some("Temporarily pause processing new events by the named ingest stream."))
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 
   // Inner Option is for representing namespace not found
@@ -963,35 +963,35 @@ trait IngestRoutes
     endpoint(
       request = put(
         url = ingest / ingestStreamName / "start" /? namespace,
-        entity = emptyRequest
+        entity = emptyRequest,
       ),
       response = customBadRequest("Cannot resume failed ingest").orElse(
-        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName]))
+        wheneverFound(ok(jsonResponse[IngestStreamInfoWithName])),
       ),
       docs = EndpointDocs()
         .withSummary(Some("Unpause Ingest Stream"))
         .withDescription(Some("Resume processing new events by the named ingest stream."))
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 
   val ingestStreamList: Endpoint[NamespaceParameter, Map[String, IngestStreamInfo]] =
     endpoint(
       request = get(
-        url = ingest /? namespace
+        url = ingest /? namespace,
       ),
       response = ok(
         jsonResponseWithExample[Map[String, IngestStreamInfo]](
-          Map(exampleIngestStreamInfoWithName.name -> exampleIngestStreamInfo)
-        )
+          Map(exampleIngestStreamInfoWithName.name -> exampleIngestStreamInfo),
+        ),
       ),
       docs = EndpointDocs()
         .withSummary(Some("List Ingest Streams"))
         .withDescription(
           Some(
             """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
-              |and their associated stream metrics keyed by the stream name. """.stripMargin
-          )
+              |and their associated stream metrics keyed by the stream name. """.stripMargin,
+          ),
         )
-        .withTags(List(ingestStreamTag))
+        .withTags(List(ingestStreamTag)),
     )
 }

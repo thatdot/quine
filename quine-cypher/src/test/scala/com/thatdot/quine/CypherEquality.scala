@@ -13,7 +13,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Vector("datum"),
       expectedValues.map(Vector(_)),
       expectedCannotFail = true,
-      ordered = true
+      ordered = true,
     )
 
   describe("`IN` list operator") {
@@ -56,7 +56,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.False,
       expectedCannotFail = true,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH null AS x RETURN "
+      queryPreamble = "WITH null AS x RETURN ",
     )
 
     testExpression(
@@ -64,7 +64,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.True,
       expectedCannotFail = true,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH null AS x RETURN "
+      queryPreamble = "WITH null AS x RETURN ",
     )
 
     testExpression(
@@ -72,7 +72,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.True,
       expectedCannotFail = true,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH 1 AS x RETURN "
+      queryPreamble = "WITH 1 AS x RETURN ",
     )
 
     testExpression(
@@ -80,7 +80,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.False,
       expectedCannotFail = true,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH 1 AS x RETURN "
+      queryPreamble = "WITH 1 AS x RETURN ",
     )
   }
 
@@ -92,20 +92,20 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.False,
       expectedIsIdempotent = true,
       expectedCannotFail = true,
-      queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
+      queryPreamble = "WITH 0.0/0.0 AS nan RETURN ",
     )
     testExpression(
       "0.0/0.0 <> nan",
       Expr.True,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
+      queryPreamble = "WITH 0.0/0.0 AS nan RETURN ",
     )
     testExpression(
       "nan = nan",
       Expr.False,
       expectedIsIdempotent = true,
       expectedCannotFail = true,
-      queryPreamble = "WITH 0.0/0.0 AS nan RETURN "
+      queryPreamble = "WITH 0.0/0.0 AS nan RETURN ",
     )
     testExpression("nan <> nan", Expr.True, expectedIsIdempotent = true, queryPreamble = "WITH 0.0/0.0 AS nan RETURN ")
   }
@@ -116,14 +116,14 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.True,
       expectedIsIdempotent = true,
       expectedCannotFail = true,
-      queryPreamble = "WITH 1.0/0.0 AS n RETURN "
+      queryPreamble = "WITH 1.0/0.0 AS n RETURN ",
     )
     testExpression(
       "n = n",
       Expr.True,
       expectedIsIdempotent = true,
       expectedCannotFail = true,
-      queryPreamble = "WITH 1.0/0.0 AS n RETURN "
+      queryPreamble = "WITH 1.0/0.0 AS n RETURN ",
     )
   }
 
@@ -141,7 +141,7 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       Expr.Null,
       expectedCannotFail = true,
       expectedIsIdempotent = true,
-      queryPreamble = "WITH null AS n RETURN "
+      queryPreamble = "WITH null AS n RETURN ",
     )
     testExpression("n <> n", Expr.Null, expectedIsIdempotent = true, queryPreamble = "WITH null AS n RETURN ")
   }
@@ -161,8 +161,8 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
         Expr.Map(Map("a" -> Expr.Integer(7))),
         Expr.Map(Map("b" -> Expr.Str("cello"))),
         Expr.Map(Map("b" -> Expr.Integer(1))),
-        Expr.Map(Map("b" -> Expr.Integer(1), "c" -> Expr.Integer(3)))
-      )
+        Expr.Map(Map("b" -> Expr.Integer(1), "c" -> Expr.Integer(3))),
+      ),
     )
 
     /** comparison with <, >, <=, >= on maps doesn't compile, but it can still come up when cypher's static analysis
@@ -173,15 +173,15 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       val gt = Expr.Greater(
         Expr.Map(
           Map(
-            "a" -> Expr.Integer(7)
-          )
+            "a" -> Expr.Integer(7),
+          ),
         ),
         Expr.Map(
           Map(
             "a" -> Expr.Integer(6),
-            "b" -> Expr.Integer(7)
-          )
-        )
+            "b" -> Expr.Integer(7),
+          ),
+        ),
       )
       assert(gt.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.True)
     }
@@ -190,14 +190,14 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       val lt = Expr.Less(
         Expr.Map(
           Map(
-            "a" -> Expr.Str("six")
-          )
+            "a" -> Expr.Str("six"),
+          ),
         ),
         Expr.Map(
           Map(
-            "a" -> Expr.Integer(6)
-          )
-        )
+            "a" -> Expr.Integer(6),
+          ),
+        ),
       )
       assert(lt.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.True)
     }
@@ -206,15 +206,15 @@ class CypherEquality extends CypherHarness("cypher-equality-tests") {
       val lte = Expr.LessEqual(
         Expr.Map(
           Map(
-            "a" -> Expr.Integer(1)
-          )
+            "a" -> Expr.Integer(1),
+          ),
         ),
         Expr.Map(
           Map(
             "a" -> Expr.Integer(1),
-            "b" -> Expr.Null
-          )
-        )
+            "b" -> Expr.Null,
+          ),
+        ),
       )
       assert(lte.eval(QueryContext.empty)(idProv, Parameters.empty, logConfig) === Expr.Null)
     }

@@ -32,7 +32,7 @@ object IngestMetered {
     IngestMeter(
       name,
       Metrics.meter(mkCountMeterName(namespaceId, name)),
-      Metrics.meter(mkBytesMeterName(namespaceId, name))
+      Metrics.meter(mkBytesMeterName(namespaceId, name)),
     )
 
   /** Removes any meters used in ingest meters for the provided ingest name
@@ -44,7 +44,7 @@ object IngestMetered {
 
   private def ingestMeterName(namespaceId: NamespaceId, name: String, attribute: String): String =
     namespaceId.fold(MetricRegistry.name("ingest", name, attribute))(ns =>
-      MetricRegistry.name("ns", ns.name, "ingest", name, attribute)
+      MetricRegistry.name("ns", ns.name, "ingest", name, attribute),
     )
 
   private def mkCountMeterName(namespaceId: NamespaceId, name: String): String =
@@ -56,7 +56,7 @@ object IngestMetered {
 final case class IngestMeter private[routes] (
   name: String,
   countMeter: Meter, // mutable
-  bytesMeter: Meter // mutable
+  bytesMeter: Meter, // mutable
 ) extends IngestMetered {
   def mark(bytes: Int): Unit = {
     countMeter.mark()
@@ -76,7 +76,7 @@ final case class StoppedMeter(
   getFifteenMinuteRate: Double,
   getFiveMinuteRate: Double,
   getMeanRate: Double,
-  getOneMinuteRate: Double
+  getOneMinuteRate: Double,
 ) extends Metered
 object StoppedMeter {
   def fromMeter(meter: Metered): Metered = StoppedMeter(
@@ -84,6 +84,6 @@ object StoppedMeter {
     meter.getFifteenMinuteRate,
     meter.getFiveMinuteRate,
     meter.getMeanRate,
-    meter.getOneMinuteRate
+    meter.getOneMinuteRate,
   )
 }

@@ -14,7 +14,7 @@ package com.thatdot.quine.model
 final case class HalfEdge(
   edgeType: Symbol,
   direction: EdgeDirection,
-  other: QuineId
+  other: QuineId,
 ) {
 
   /** Make a reciprocal half edge

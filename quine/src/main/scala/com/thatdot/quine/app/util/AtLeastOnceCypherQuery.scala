@@ -29,7 +29,7 @@ final case class AtLeastOnceCypherQuery(
   query: cypher.CompiledQuery[Location.External],
   cypherParameterName: String,
   debugName: String = "unnamed",
-  startupRetryDelay: FiniteDuration = 100.millis
+  startupRetryDelay: FiniteDuration = 100.millis,
 )(implicit logConfig: LogConfig)
     extends LazySafeLogging {
 
@@ -44,7 +44,7 @@ final case class AtLeastOnceCypherQuery(
     *          [[com.thatdot.quine.graph.cypher.RunningCypherQuery]]
     */
   def stream(value: cypher.Value, intoNamespace: NamespaceId)(implicit
-    graph: CypherOpsGraph
+    graph: CypherOpsGraph,
   ): Source[Vector[cypher.Value], NotUsed] = {
     // this Source represents the work that would be needed to query over one specific `value`
     // Work does not begin until the source is `run` (after the recovery strategy is hooked up below)
@@ -59,7 +59,7 @@ final case class AtLeastOnceCypherQuery(
             query,
             namespace = intoNamespace,
             atTime = None,
-            parameters = Map(cypherParameterName -> value)
+            parameters = Map(cypherParameterName -> value),
           )
           .results
         catch {
@@ -78,11 +78,11 @@ final case class AtLeastOnceCypherQuery(
             logger.debug(
               log"""Suppressed ${Safe(e.getClass.getSimpleName)} during execution of query:
                    |${Safe(debugName)}, retrying now. Ingested item: $value. Query: $queryStr
-                   |""".cleanLines withException e
+                   |""".cleanLines withException e,
             )
           }
           bestEffortSource
-        }
+        },
       )
   }.named(s"at-least-once-cypher-query-$debugName")
 }

@@ -19,9 +19,9 @@ class DataFoldableFromSpec extends AnyFunSpec with Matchers {
         "qux" -> Json.arr(
           Json.fromBoolean(true),
           Json.obj(
-            "zip" -> Json.Null
-          )
-        )
+            "zip" -> Json.Null,
+          ),
+        ),
       )
       val result = DataFoldableFrom[Json].fold[cypher.Value](original, DataFolderTo[cypher.Value])
       val expected = ce.Map(
@@ -30,9 +30,9 @@ class DataFoldableFromSpec extends AnyFunSpec with Matchers {
         "qux" -> ce.List(
           ce.True,
           ce.Map(
-            "zip" -> ce.Null
-          )
-        )
+            "zip" -> ce.Null,
+          ),
+        ),
       )
       result shouldBe expected
     }
@@ -46,9 +46,9 @@ class DataFoldableFromSpec extends AnyFunSpec with Matchers {
         "qux" -> ce.List(
           ce.True,
           ce.Map(
-            "zip" -> ce.Null
-          )
-        )
+            "zip" -> ce.Null,
+          ),
+        ),
       )
 
       val result = DataFoldableFrom[cypher.Value].fold[cypher.Value](original, DataFolderTo[cypher.Value])

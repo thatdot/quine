@@ -14,7 +14,7 @@ import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
   */
 abstract class UnifiedPrimePersistor(
   persistenceConfig: PersistenceConfig,
-  bloomFilterSize: Option[Long]
+  bloomFilterSize: Option[Long],
 )(implicit materializer: Materializer)
     extends PrimePersistor(persistenceConfig, bloomFilterSize) {
 
@@ -31,7 +31,7 @@ abstract class UnifiedPrimePersistor(
     getDefault.setMetaData(key, newValue)
 
   protected def internalPersistDomainGraphNodes(
-    domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]
+    domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode],
   ): Future[Unit] =
     getDefault.persistDomainGraphNodes(domainGraphNodes)
 

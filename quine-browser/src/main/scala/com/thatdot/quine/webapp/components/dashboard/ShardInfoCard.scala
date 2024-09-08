@@ -16,7 +16,7 @@ object ShardInfoCard {
     raw"shard\.(?:current-)?shard-(\d+)\.((?:unlikely\.(.*))|.*)",
     "shardId",
     "counterName",
-    "alertName"
+    "alertName",
   )
 
   final case class ShardInfo(
@@ -27,7 +27,7 @@ object ShardInfoCard {
     nodesSleepFailure: Long,
     nodesSleepSuccess: Long,
     nodesRemoved: Long,
-    alertCounters: Map[String, Long]
+    alertCounters: Map[String, Long],
   ) {
     def nodesAwake: Long = nodesWoken - (nodesSleepFailure + nodesSleepSuccess + nodesRemoved)
   }
@@ -35,7 +35,7 @@ object ShardInfoCard {
     def forShard(
       shardId: Int,
       sourceCounters: Seq[Counter],
-      limits: Option[ShardInMemoryLimit]
+      limits: Option[ShardInMemoryLimit],
     ): Option[ShardInfo] = {
       val countsForThisShard = sourceCounters.collect {
         case Counter(ShardCounterName(countsForShardId, counterName, _), count) if shardId == countsForShardId.toInt =>
@@ -63,12 +63,12 @@ object ShardInfoCard {
         nodesSleepFailure,
         nodesSleepSuccess,
         nodesRemoved,
-        alertCounters
+        alertCounters,
       )).orElse {
         org.scalajs.dom.console.warn(
           s"Unable to find all necessary information to populate card for shard: $shardId. Logging sourceCounters and shard limit",
           sourceCounters,
-          limits
+          limits,
         )
         None
       }
@@ -83,7 +83,7 @@ object ShardInfoCard {
   case class State(silencedAlerts: Map[String, Long])
   case class Props(
     info: ShardInfoCard.ShardInfo,
-    displayAlerts: Boolean
+    displayAlerts: Boolean,
   )
   // The initial state sets a silencing threshold for all known alerts to 0, where "known" means "name was provided as part of props"
   override def initialState: State = {
@@ -108,15 +108,15 @@ object ShardInfoCard {
             alert, { // if the alert is a new one, register it with a threshold of 0
               setAlertThreshold(alert, ShardInfoCard.DefaultAlertThreshold)
               0
-            }
+            },
           )
         if count > threshold // filter to only alerts above their silencing threshold
       } yield div(className := "alert alert-warning", key := alert)(
         s"$alert is $count, exceeding threshold ($threshold)",
         button(className := "close", onClick := (() => setAlertThreshold(alert, count)))(
-          span("\u00D7") // HTML entity &times;
-        )
-      )
+          span("\u00D7"), // HTML entity &times;
+        ),
+      ),
     )
 
   def progressBar(): ReactElement =
@@ -124,12 +124,12 @@ object ShardInfoCard {
       name = "Nodes awake",
       value = props.info.nodesAwake.toDouble,
       softMax = props.info.nodeSoftMax.toDouble,
-      hardMax = props.info.nodeHardMax.toDouble
+      hardMax = props.info.nodeHardMax.toDouble,
     )
 
   override def render(): ReactElement =
     Card(
       title = s"Shard ${props.info.shardId}",
-      body = if (props.displayAlerts) div(alerts(), progressBar()) else progressBar()
+      body = if (props.displayAlerts) div(alerts(), progressBar()) else progressBar(),
     )
 }

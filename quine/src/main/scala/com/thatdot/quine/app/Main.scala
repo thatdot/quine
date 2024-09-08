@@ -35,13 +35,13 @@ object Main extends App with LazySafeLogging {
     new StatusLines(
       // This name comes from quine's logging.conf
       SafeLogger("thatdot.Interactive"),
-      System.err
+      System.err,
     )
 
   // Warn if character encoding is unexpected
   if (Charset.defaultCharset != StandardCharsets.UTF_8) {
     statusLines.warn(
-      log"System character encoding is ${Safe(Charset.defaultCharset)} - did you mean to specify -Dfile.encoding=UTF-8?"
+      log"System character encoding is ${Safe(Charset.defaultCharset)} - did you mean to specify -Dfile.encoding=UTF-8?",
     )
   }
 
@@ -90,8 +90,8 @@ object Main extends App with LazySafeLogging {
       }
       withWebserverOverrides.copy(
         store = PersistenceAgentType.RocksDb(
-          filepath = tempDataFile
-        )
+          filepath = tempDataFile,
+        ),
       )
     } else withWebserverOverrides
   }
@@ -143,18 +143,18 @@ object Main extends App with LazySafeLogging {
           labelsProperty = config.labelsProperty,
           edgeCollectionFactory = config.edgeIteration.edgeCollectionFactory,
           metricRegistry = Metrics,
-          enableDebugMetrics = config.metrics.enableDebugMetrics
+          enableDebugMetrics = config.metrics.enableDebugMetrics,
         ).flatMap(graph =>
           graph.namespacePersistor
             .syncVersion(
               "Quine app state",
               QuineApp.VersionKey,
               QuineApp.CurrentPersistenceVersion,
-              () => QuineApp.quineAppIsEmpty(graph.namespacePersistor)
+              () => QuineApp.quineAppIsEmpty(graph.namespacePersistor),
             )
-            .map(_ => graph)(ExecutionContext.parasitic)
+            .map(_ => graph)(ExecutionContext.parasitic),
         )(ExecutionContext.parasitic),
-        atMost = timeout.duration
+        atMost = timeout.duration,
       )
     catch {
       case NonFatal(err) =>
@@ -186,11 +186,11 @@ object Main extends App with LazySafeLogging {
         //  running the migrations. For now, with one migration, and in Quine's main, we know what to run
         require(
           currentVersion == MigrationVersion(0) && GoalVersion == MigrationVersion(1),
-          s"Unexpected migration versions (current: $currentVersion, goal: $GoalVersion)"
+          s"Unexpected migration versions (current: $currentVersion, goal: $GoalVersion)",
         )
         val migrationApply = new QuineMigrations.ApplyMultipleValuesRewrite(
           graph.namespacePersistor,
-          graph.getNamespaces.toSet
+          graph.getNamespaces.toSet,
         )
 
         quineApp
@@ -214,11 +214,11 @@ object Main extends App with LazySafeLogging {
       case includeDiagnosticInfo: Throwable =>
         statusLines.error(
           log"Encountered a migration error during startup. Shutting down."
-          withException includeDiagnosticInfo
+          withException includeDiagnosticInfo,
         )
       case opaque =>
         statusLines.error(
-          log"Encountered a migration error during startup. Shutting down. Error: ${opaque.message}"
+          log"Encountered a migration error during startup. Shutting down. Error: ${opaque.message}",
         )
     }
     sys.exit(1)
@@ -235,14 +235,14 @@ object Main extends App with LazySafeLogging {
     // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
     // from the bind URL
     webserver -> config.webserverAdvertise.fold(webserver.asResolveableUrl)(
-      _.overrideHostAndPort(webserver.asResolveableUrl)
+      _.overrideHostAndPort(webserver.asResolveableUrl),
     )
   }
 
   var recipeInterpreterTask: Option[Cancellable] = recipe.map { r =>
 
     val interpreter = RecipeInterpreter(statusLines, r, quineApp, graph, bindAndResolvableAddresses.map(_._2))(
-      graph.idProvider
+      graph.idProvider,
     )
     interpreter.run(quineApp.thisMemberIdx)
     interpreter
@@ -256,7 +256,7 @@ object Main extends App with LazySafeLogging {
       persistor = config.store.label,
       app = Some(quineApp),
       recipeUsed = recipe.isDefined,
-      recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None
+      recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None,
     )
     iq.startTelemetry()
   }
@@ -264,7 +264,7 @@ object Main extends App with LazySafeLogging {
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled)(
       ExecutionContext.parasitic,
-      logConfig
+      logConfig,
     )
       .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
       .onComplete {

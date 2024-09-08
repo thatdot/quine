@@ -14,7 +14,7 @@ object ScalaFix extends AutoPlugin {
     semanticdbEnabled := true, // enable SemanticDB
     semanticdbVersion := scalafixSemanticdb.revision, // use Scalafix compatible version
     ThisBuild / scalafixDependencies ++= Seq(
-      "org.scala-lang" %% "scala-rewrites" % "0.1.5"
-    )
+      "org.scala-lang" %% "scala-rewrites" % "0.1.5",
+    ),
   )
 }

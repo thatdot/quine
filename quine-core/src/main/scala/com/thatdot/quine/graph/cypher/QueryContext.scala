@@ -20,7 +20,7 @@ import com.thatdot.quine.util.Log._
   * @param environment mapping of variable to value
   */
 final case class QueryContext(
-  environment: Map[Symbol, Value] // VariableName -> Value
+  environment: Map[Symbol, Value], // VariableName -> Value
 ) extends AnyVal {
 
   def +(kv: (Symbol, Value)): QueryContext = QueryContext(environment + kv)
@@ -40,7 +40,7 @@ final case class QueryContext(
     // TODO: if `QueryContext` was ordered, re-order it according to `importedColumns`
     QueryContext(
       environment
-        .filter(p => importedColumns.contains(p._1))
+        .filter(p => importedColumns.contains(p._1)),
     )
 
   def pretty: String = environment
@@ -59,7 +59,7 @@ object QueryContext {
     * @return an ordering of query contexts
     */
   def orderingBy(
-    exprs: Seq[(Expr, Boolean)]
+    exprs: Seq[(Expr, Boolean)],
   )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Ordering[QueryContext] =
     exprs.foldRight[Ordering[QueryContext]](Ordering.by(_ => ())) { case ((by, isAscending), tieBreaker) =>
       val evaluated = Ordering.by[QueryContext, Value](by.eval(_))(Value.ordering)
@@ -91,7 +91,7 @@ object Columns {
     def +(variable: Symbol) = {
       require(
         !variables.contains(variable),
-        s"Variable $variable cannot be added to a context it is already in ($variables)"
+        s"Variable $variable cannot be added to a context it is already in ($variables)",
       )
       Specified(variables :+ variable)
     }
@@ -103,13 +103,13 @@ object Columns {
       }
       require(
         (variables.toSet & variables2.toSet).isEmpty,
-        s"Variable context $variables and $variables2 cannot be added - they have elements in common"
+        s"Variable context $variables and $variables2 cannot be added - they have elements in common",
       )
       Specified(variables ++ variables2)
     }
 
     def rename(remapping: PartialFunction[Symbol, Symbol]): Specified = Columns.Specified(
-      variables.collect(remapping)
+      variables.collect(remapping),
     )
   }
   object Specified {

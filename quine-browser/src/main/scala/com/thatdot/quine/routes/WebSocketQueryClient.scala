@@ -20,7 +20,7 @@ import com.thatdot.quine.routes.exts.CirceJsonAnySchema
   */
 class WebSocketQueryClient(
   val webSocket: dom.WebSocket,
-  val clientName: String = "WebSocketQueryClient"
+  val clientName: String = "WebSocketQueryClient",
 ) extends QueryProtocolMessageSchema
     with JsonSchemas
     with exts.NoopIdSchema
@@ -214,7 +214,7 @@ final case class StreamingQuery(
   language: QueryLanguage,
   atTime: Option[Long],
   maxResultBatch: Option[Int],
-  resultsWithinMillis: Option[Int]
+  resultsWithinMillis: Option[Int],
 ) {
   def makeRunQueryMessage(queryId: QueryId, sort: QueryProtocolMessage.QuerySort): QueryProtocolMessage.RunQuery =
     QueryProtocolMessage.RunQuery(
@@ -225,7 +225,7 @@ final case class StreamingQuery(
       language,
       atTime,
       maxResultBatch,
-      resultsWithinMillis
+      resultsWithinMillis,
     )
 }
 
@@ -282,7 +282,7 @@ sealed trait QueryCallbacks {
     */
   def onProtocolError(
     clientMessage: QueryProtocolMessage.ClientRequestMessage,
-    serverMessage: QueryProtocolMessage.ServerResponseMessage
+    serverMessage: QueryProtocolMessage.ServerResponseMessage,
   ): Unit = onError(s"Query protocol error: $serverMessage is not a valid response to $clientMessage")
 
   /** Error handler for websocket failures

@@ -23,7 +23,7 @@ import endpoints4s.openapi.model.{
   SecurityRequirement,
   SecurityScheme,
   Server,
-  ServerVariable
+  ServerVariable,
 }
 import io.circe.yaml.v12.syntax._
 import ujson.circe.CirceJson
@@ -69,9 +69,9 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
                   .withDefinedDescription(p.description)
                   .withDefinedDefault(p.defaultValue)
                 p.name -> schemaJson(schema)
-              }: _*
-            )
-          )
+              }: _*,
+            ),
+          ),
         )
         val required = obj.properties.filter(_.isRequired).map(_.name)
         if (required.nonEmpty) {
@@ -92,16 +92,16 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
                   alternatives = Schema.EnumeratedAlternatives(value),
                   description = None,
                   example = None,
-                  title = None
-                )
+                  title = None,
+                ),
               ),
               "minItems" -> ujson.Num(value.length.toDouble),
-              "maxItems" -> ujson.Num(value.length.toDouble)
+              "maxItems" -> ujson.Num(value.length.toDouble),
             )
         }
       case enm: Schema.Enum =>
         fields ++= schemaJson(
-          enm.elementType.withDefinedDescription(enm.description)
+          enm.elementType.withDefinedDescription(enm.description),
         ).value
         fields += "enum" -> ujson.Arr(enm.values: _*)
       case oneOf: Schema.OneOf =>
@@ -114,7 +114,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
                 }: _*)
               val discFields = mutable.LinkedHashMap.empty[String, ujson.Value]
               discFields += "propertyName" -> ujson.Str(
-                discAlternatives.discriminatorFieldName
+                discAlternatives.discriminatorFieldName,
               )
               if (mappingFields.nonEmpty) {
                 discFields += "mapping" -> new ujson.Obj(mappingFields)
@@ -123,14 +123,14 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
                 "oneOf" -> ujson
                   .Arr(
                     discAlternatives.alternatives
-                      .map(kv => schemaJson(kv._2)): _*
+                      .map(kv => schemaJson(kv._2)): _*,
                   ),
-                "discriminator" -> ujson.Obj(discFields)
+                "discriminator" -> ujson.Obj(discFields),
               )
             case enumAlternatives: Schema.EnumeratedAlternatives =>
               List(
                 "oneOf" -> ujson
-                  .Arr(enumAlternatives.alternatives.map(schemaJson): _*)
+                  .Arr(enumAlternatives.alternatives.map(schemaJson): _*),
               )
           })
       case allOf: Schema.AllOf =>
@@ -160,7 +160,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   private def securitySchemeJson(securityScheme: SecurityScheme): ujson.Obj = {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "type" -> ujson.Str(securityScheme.`type`)
+      "type" -> ujson.Str(securityScheme.`type`),
     )
     for (description <- securityScheme.description)
       fields += "description" -> ujson.Str(description)
@@ -179,7 +179,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     val fields: mutable.LinkedHashMap[String, ujson.Value] =
       mutable.LinkedHashMap(
         "title" -> ujson.Str(info.title),
-        "version" -> ujson.Str(info.version)
+        "version" -> ujson.Str(info.version),
       )
     info.description.foreach(description => fields += "description" -> ujson.Str(description))
     ujson.Obj(fields)
@@ -189,13 +189,13 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     ujson.Obj(
       "schemas" -> mapJson(components.schemas)(schemaJson),
       "securitySchemes" -> mapJson(components.securitySchemes)(
-        securitySchemeJson
-      )
+        securitySchemeJson,
+      ),
     )
 
   private def responseJson(response: Response): ujson.Obj = {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "description" -> ujson.Str(response.description)
+      "description" -> ujson.Str(response.description),
     )
     if (response.headers.nonEmpty) {
       fields += "headers" -> mapJson(response.headers)(responseHeaderJson)
@@ -208,7 +208,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   def responseHeaderJson(responseHeader: ResponseHeader): ujson.Value = {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "schema" -> schemaJson(responseHeader.schema)
+      "schema" -> schemaJson(responseHeader.schema),
     )
     if (responseHeader.required) {
       fields += "required" -> ujson.True
@@ -227,7 +227,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   private def operationJson(operation: Operation): ujson.Obj = {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "responses" -> mapJson(operation.responses)(responseJson)
+      "responses" -> mapJson(operation.responses)(responseJson),
     )
     operation.operationId.foreach { id =>
       fields += "operationId" -> ujson.Str(id)
@@ -243,7 +243,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
         // FORK DIFFERENCE
         operation.parameters
           .filter(param => isEnterprise || !enterpriseParams.contains(param.name))
-          .map(parameterJson): _*
+          .map(parameterJson): _*,
       )
     }
     operation.requestBody.foreach { requestBody =>
@@ -251,12 +251,12 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     }
     if (operation.tags.nonEmpty) {
       fields += "tags" -> ujson.Arr(
-        operation.tags.map(tag => ujson.Str(tag.name)): _*
+        operation.tags.map(tag => ujson.Str(tag.name)): _*,
       )
     }
     if (operation.security.nonEmpty) {
       fields += "security" -> ujson.Arr(
-        operation.security.map(securityRequirementJson): _*
+        operation.security.map(securityRequirementJson): _*,
       )
     }
     if (operation.callbacks.nonEmpty) {
@@ -272,7 +272,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     val fields = mutable.LinkedHashMap[String, ujson.Value](
       "name" -> ujson.Str(parameter.name),
       "in" -> inJson(parameter.in),
-      "schema" -> schemaJson(parameter.schema)
+      "schema" -> schemaJson(parameter.schema),
     )
     parameter.description.foreach { description =>
       fields += "description" -> ujson.Str(description)
@@ -310,7 +310,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
             .map(ex => "example" -> ujson.Str(ex.transform(CirceJson).asYaml.spaces2))
         }
         k -> schemaJson
-      })
+      }),
     )
     body.description.foreach { description =>
       fields += "description" -> ujson.Str(description)
@@ -321,7 +321,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
   private def tagJson(tag: Tag): ujson.Value = {
     val fields: mutable.LinkedHashMap[String, ujson.Value] =
       mutable.LinkedHashMap(
-        "name" -> ujson.Str(tag.name)
+        "name" -> ujson.Str(tag.name),
       )
 
     if (tag.description.nonEmpty) {
@@ -329,7 +329,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     }
     if (tag.externalDocs.nonEmpty) {
       fields += "externalDocs" -> externalDocumentationObjectJson(
-        tag.externalDocs.get
+        tag.externalDocs.get,
       )
     }
     new ujson.Obj(fields)
@@ -337,7 +337,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   private def serverJson(server: Server): ujson.Value = {
     val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-      "url" -> ujson.Str(server.url)
+      "url" -> ujson.Str(server.url),
     )
     for (description <- server.description)
       fields += "description" -> ujson.Str(description)
@@ -349,7 +349,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   private def serverVariableJson(variable: ServerVariable): ujson.Value = {
     val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-      "default" -> ujson.Str(variable.default)
+      "default" -> ujson.Str(variable.default),
     )
     for (description <- variable.description)
       fields += "description" -> ujson.Str(description)
@@ -359,11 +359,11 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
   }
 
   private def externalDocumentationObjectJson(
-    externalDoc: ExternalDocumentationObject
+    externalDoc: ExternalDocumentationObject,
   ): ujson.Value = {
     val fields: mutable.LinkedHashMap[String, ujson.Value] =
       mutable.LinkedHashMap(
-        "url" -> ujson.Str(externalDoc.url)
+        "url" -> ujson.Str(externalDoc.url),
       )
 
     if (externalDoc.description.nonEmpty)
@@ -372,12 +372,12 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
   }
 
   private def securityRequirementJson(
-    securityRequirement: SecurityRequirement
+    securityRequirement: SecurityRequirement,
   ): ujson.Value =
     ujson.Obj(
       securityRequirement.name -> ujson.Arr(
-        securityRequirement.scopes.map(ujson.Str): _*
-      )
+        securityRequirement.scopes.map(ujson.Str): _*,
+      ),
     )
 
   private def pathsJson(paths: collection.Map[String, PathItem]): ujson.Obj =
@@ -389,7 +389,7 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
         mutable.LinkedHashMap(
           "openapi" -> ujson.Str(openApiVersion),
           "info" -> infoJson(openApi.info),
-          "paths" -> pathsJson(openApi.paths)
+          "paths" -> pathsJson(openApi.paths),
         )
       if (openApi.servers.nonEmpty) {
         val serversAsJson = openApi.servers.map(server => serverJson(server))

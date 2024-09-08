@@ -24,7 +24,7 @@ import com.thatdot.quine.Util.toJsObject
     orientation: PlotOrientation = PlotOrientation.Vertical,
     logScale: Boolean = true,
     layout: js.Object = js.Dynamic.literal(),
-    sortBucketsBy: Ordering[String] = implicitly
+    sortBucketsBy: Ordering[String] = implicitly,
   ) {
     private val bucketsOrdered: Seq[(String, Double)] =
       buckets.toSeq.sorted(Ordering.by[(String, Double), String](_._1)(sortBucketsBy))
@@ -35,27 +35,27 @@ import com.thatdot.quine.Util.toJsObject
         orientation.primaryAxis -> bucketsOrdered.map { case (_, count) => count }.toJSArray,
         // labels along secondary (label) axis
         orientation.secondaryAxis -> bucketsOrdered.map { case (label, _) => label }.toJSArray,
-        "type" -> "bar"
-      )
+        "type" -> "bar",
+      ),
     )
 
     private def asPlotlyLayoutBase(): Map[String, js.Any] = Map(
       orientation.primaryAxisName ->
       js.Dynamic.literal(
         `type` = if (logScale) "log" else "linear",
-        fixedrange = true
+        fixedrange = true,
       ),
       orientation.secondaryAxisName ->
       js.Dynamic.literal(
         fixedrange = true,
-        visible = false
-      )
+        visible = false,
+      ),
     )
 
     def asPlotlyLayout(): js.Object = js.Object.assign(
       js.Dynamic.literal(),
       toJsObject(asPlotlyLayoutBase()),
-      layout
+      layout,
     )
   }
 
@@ -66,7 +66,7 @@ import com.thatdot.quine.Util.toJsObject
       useResizeHandler = true,
       style = js.Dynamic.literal(
         width = "100%",
-        height = "100%"
-      )
+        height = "100%",
+      ),
     )
 }

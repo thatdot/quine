@@ -19,7 +19,7 @@ class CypherMatch extends CypherHarness("cypher-match-rewrite-tests") with Match
     compiledQuery
       .copy(
         query = compiledQuery.query.substitute(fixedParamsToSubstitute),
-        fixedParameters = Parameters.empty
+        fixedParameters = Parameters.empty,
       )
   }
 
@@ -39,20 +39,20 @@ class CypherMatch extends CypherHarness("cypher-match-rewrite-tests") with Match
                 labelsOpt = Some(Vector()),
                 propertiesOpt = None,
                 bindName = Some(Symbol("a")),
-                columns = Columns.Specified(Vector(Symbol("a")))
+                columns = Columns.Specified(Vector(Symbol("a"))),
               ),
-              columns = Columns.Specified(Vector(Symbol("a")))
+              columns = Columns.Specified(Vector(Symbol("a"))),
             ),
-            columns = Columns.Specified(Vector(Symbol("a"), Symbol("p")))
+            columns = Columns.Specified(Vector(Symbol("a"), Symbol("p"))),
           ),
           orderBy = None,
           distinctBy = None,
           drop = None,
           take = None,
-          columns = Columns.Specified(Vector(Symbol("a"), Symbol("p")))
+          columns = Columns.Specified(Vector(Symbol("a"), Symbol("p"))),
         ),
-        columns = Columns.Specified(Vector(Symbol("p")))
-      )
+        columns = Columns.Specified(Vector(Symbol("p"))),
+      ),
     )
   }
 }

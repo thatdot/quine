@@ -11,7 +11,7 @@ import java.time.{
   OffsetTime,
   ZoneId,
   ZoneOffset,
-  ZonedDateTime => JavaZonedDateTime
+  ZonedDateTime => JavaZonedDateTime,
 }
 import java.util.regex.PatternSyntaxException
 import java.util.{Locale, TimeZone}
@@ -60,7 +60,7 @@ final class OpenCypherUdf(quineUdf: UserDefinedFunction) extends Function with T
         argumentTypes = arguments.map(arg => OpenCypherUdf.typeToOpenCypherType(arg._2)).toVector,
         outputType = OpenCypherUdf.typeToOpenCypherType(outputType),
         description = description,
-        category = quineUdf.category
+        category = quineUdf.category,
       )
   }
 }
@@ -98,7 +98,7 @@ final class QuineFunctionInvocation(
   override val namespace: Namespace,
   override val functionName: FunctionName,
   override val args: IndexedSeq[Expression],
-  override val position: InputPosition
+  override val position: InputPosition,
 ) extends FunctionInvocation(namespace, functionName, distinct = false, args)(position)
     with Rewritable {
   override val distinct = false
@@ -122,7 +122,7 @@ final class QuineFunctionInvocation(
         children(0).asInstanceOf[Namespace],
         children(1).asInstanceOf[FunctionName],
         children(3).asInstanceOf[IndexedSeq[Expression @unchecked]],
-        position
+        position,
       ).asInstanceOf[this.type]
     }
 }
@@ -167,7 +167,7 @@ case object resolveFunctions extends StatementRewriter {
     CypherFormatTemporal,
     CypherCollMax,
     CypherCollMin,
-    CypherMetaType
+    CypherMetaType,
   ) ++ CypherGenFroms.all ++ CypherCasts.all
 
   /** This map is only meant to maintain backward compatibility for a short time. */
@@ -201,8 +201,8 @@ object CypherQuineId extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Str),
       output = Type.Bytes,
-      description = "Returns the Quine ID corresponding to the string"
-    )
+      description = "Returns the Quine ID corresponding to the string",
+    ),
   )
   val category = Category.SCALAR
 
@@ -225,8 +225,8 @@ object CypherStrId extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Node),
       output = Type.Str,
-      description = "Returns a string representation of the node's ID"
-    )
+      description = "Returns a string representation of the node's ID",
+    ),
   )
   val category = Category.SCALAR
 
@@ -248,8 +248,8 @@ object CypherBytes extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Str),
       output = Type.Bytes,
-      description = "Returns bytes represented by a hexadecimal string"
-    )
+      description = "Returns bytes represented by a hexadecimal string",
+    ),
   )
   val category = Category.STRING
 
@@ -272,8 +272,8 @@ object CypherStringBytes extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("input" -> Type.Str, "encoding" -> Type.Str),
       output = Type.Bytes,
-      description = "Encodes a string into bytes according to the specified encoding"
-    )
+      description = "Encodes a string into bytes according to the specified encoding",
+    ),
   )
   val category = Category.STRING
 
@@ -300,7 +300,7 @@ object CypherHash extends UserDefinedFunction {
         s"input$j" -> Type.Anything
       },
       output = Type.Integer,
-      description = "Hashes the input arguments"
+      description = "Hashes the input arguments",
     )
   }
   val category = Category.SCALAR
@@ -322,14 +322,14 @@ object CypherKafkaHash extends UserDefinedFunction {
       arguments = Vector("partitionKey" -> Type.Str),
       output = Type.Integer,
       description =
-        "Hashes a string to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner"
+        "Hashes a string to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("partitionKey" -> Type.Bytes),
       output = Type.Integer,
       description =
-        "Hashes a bytes value to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner"
-    )
+        "Hashes a bytes value to a (32-bit) integer using the same algorithm Apache Kafka uses for its DefaultPartitioner",
+    ),
   )
   val category = Category.SCALAR
 
@@ -354,7 +354,7 @@ object CypherIdFrom extends UserDefinedFunction {
         s"input$j" -> Type.Anything
       },
       output = Type.Anything, // depends on the id provider
-      description = "Hashes the input arguments into a valid ID"
+      description = "Hashes the input arguments into a valid ID",
     )
   }.toVector
   val category = Category.SCALAR
@@ -377,12 +377,12 @@ trait PositionSensitiveFunction extends UserDefinedFunction {
            |because the configured ID provider is not position-aware. Consider setting `quine.id.partitioned = true`
            |in your configuration.
            |""".stripMargin.replace('\n', ' ').trim,
-          None
+          None,
         )
     }
 
   def callWithPositioning(
-    arguments: Vector[Value]
+    arguments: Vector[Value],
   )(implicit idProvider: PositionAwareIdProvider, logConfig: LogConfig): Value
 }
 
@@ -402,13 +402,13 @@ object CypherLocIdFrom extends UserDefinedFunction with PositionSensitiveFunctio
         output = Type.Anything, // depends on the id provider
         description = s"""Generates a consistent (based on a hash of the arguments) ID. The ID created will be managed
              |by the cluster member whose position corresponds to the provided position index given the
-             |cluster topology.""".stripMargin.replace('\n', ' ')
+             |cluster topology.""".stripMargin.replace('\n', ' '),
       )
     }.toVector
   val category = Category.SCALAR
 
   def callWithPositioning(
-    arguments: Vector[Value]
+    arguments: Vector[Value],
   )(implicit idProvider: PositionAwareIdProvider, logConfig: LogConfig): Value = {
     // parse the arguments
     val (positionIdxLong: Long, argsToHash: List[Value]) = arguments.toList match {
@@ -424,7 +424,7 @@ object CypherLocIdFrom extends UserDefinedFunction with PositionSensitiveFunctio
         safe"""locIdFrom was called with positionIdx argument: ${Safe(positionIdxLong)}. This is outside the 32-bit
               |range, and has been reduced to the 32-bit value: ${Safe(positionIdx)} via modulo. The resultant ID
               |will be managed by the member corresponding with position index: ${Safe(positionIdx)}
-              |""".cleanLines
+              |""".cleanLines,
       )
     }
     // compute the ID
@@ -447,20 +447,20 @@ object CypherGetHostFunction extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("node" -> Type.Node),
       output = Type.Integer,
-      description = "Compute which host a node should be assigned to (null if unknown without contacting the graph)"
+      description = "Compute which host a node should be assigned to (null if unknown without contacting the graph)",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("nodeIdStr" -> Type.Str),
       output = Type.Integer,
       description =
-        "Compute which host a node ID (string representation) should be assigned to (null if unknown without contacting the graph)"
+        "Compute which host a node ID (string representation) should be assigned to (null if unknown without contacting the graph)",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("nodeIdBytes" -> Type.Bytes),
       output = Type.Integer,
       description =
-        "Compute which host a node ID (bytes representation) should be assigned to (null if unknown without contacting the graph)"
-    )
+        "Compute which host a node ID (bytes representation) should be assigned to (null if unknown without contacting the graph)",
+    ),
   )
   val category = Category.SCALAR
 
@@ -482,8 +482,8 @@ object CypherToJson extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("x" -> Type.Anything),
       output = Type.Str,
-      description = "Returns x encoded as a JSON string"
-    )
+      description = "Returns x encoded as a JSON string",
+    ),
   )
   val category = Category.STRING
 
@@ -500,8 +500,8 @@ object CypherParseJson extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("jsonStr" -> Type.Str),
       output = Type.Anything,
-      description = "Parses jsonStr to a Cypher value"
-    )
+      description = "Parses jsonStr to a Cypher value",
+    ),
   )
   val category = Category.STRING
 
@@ -518,8 +518,8 @@ object CypherUtf8Decode extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("bytes" -> Type.Bytes),
       output = Type.Str,
-      description = "Returns the bytes decoded as a UTF-8 String"
-    )
+      description = "Returns the bytes decoded as a UTF-8 String",
+    ),
   )
   val category = Category.STRING
 
@@ -539,8 +539,8 @@ object CypherUtf8Encode extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("string" -> Type.Str),
       output = Type.Bytes,
-      description = "Returns the string encoded as UTF-8 bytes"
-    )
+      description = "Returns the string encoded as UTF-8 bytes",
+    ),
   )
   val category = Category.STRING
 
@@ -560,8 +560,8 @@ object CypherMapFromPairs extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("entries" -> Type.List(Type.ListOfAnything)),
       output = Type.Map,
-      description = "Construct a map from a list of [key,value] entries"
-    )
+      description = "Construct a map from a list of [key,value] entries",
+    ),
   )
   val category = "Map"
 
@@ -577,7 +577,7 @@ object CypherMapFromPairs extends UserDefinedFunction {
               throw CypherException.TypeMismatch(
                 expected = Seq(Type.ListOfAnything), // TODO: this isn't very informative!
                 actualValue = entry,
-                context = "key value pair in `map.fromPairs`"
+                context = "key value pair in `map.fromPairs`",
               )
           }
       case other => throw wrongSignature(other)
@@ -594,8 +594,8 @@ object CypherMapSortedProperties extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("map" -> Type.Map),
       output = Type.List(Type.ListOfAnything),
-      description = "Extract from a map a list of [key,value] entries sorted by the key"
-    )
+      description = "Extract from a map a list of [key,value] entries sorted by the key",
+    ),
   )
   val category = "Map"
 
@@ -618,8 +618,8 @@ object CypherMapRemoveKey extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("map" -> Type.Map, "key" -> Type.Str),
       output = Type.Map,
-      description = "remove the key from the map"
-    )
+      description = "remove the key from the map",
+    ),
   )
   val category = "Map"
 
@@ -638,8 +638,8 @@ object CypherMapMerge extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("first" -> Type.Map, "second" -> Type.Map),
       output = Type.Map,
-      description = "Merge two maps"
-    )
+      description = "Merge two maps",
+    ),
   )
   val category = "Map"
 
@@ -658,8 +658,8 @@ object CypherMapDropNullValues extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("argument" -> Type.Map),
       output = Type.Map,
-      description = "Keep only non-null from the map"
-    )
+      description = "Keep only non-null from the map",
+    ),
   )
   val category = "Map"
 
@@ -678,13 +678,13 @@ object CypherTextSplit extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "regex" -> Type.Str),
       output = Type.List(Type.Str),
-      description = "Splits the string around matches of the regex"
+      description = "Splits the string around matches of the regex",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "regex" -> Type.Str, "limit" -> Type.Integer),
       output = Type.List(Type.Str),
-      description = "Splits the string around the first `limit` matches of the regex"
-    )
+      description = "Splits the string around the first `limit` matches of the regex",
+    ),
   )
   val category = Category.STRING
 
@@ -706,8 +706,8 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
       arguments = Vector("text" -> Type.Str, "regex" -> Type.Str),
       output = Type.List(Type.Str),
       description =
-        "Parses the string `text` using the regular expression `regex` and returns the first set of capture group matches"
-    )
+        "Parses the string `text` using the regular expression `regex` and returns the first set of capture group matches",
+    ),
   )
   val category = Category.STRING
 
@@ -723,7 +723,7 @@ object CypherTextRegexFirstMatch extends UserDefinedFunction {
           for {
             m <- firstMatch
             i <- 0 to m.groupCount
-          } yield Expr.Str(m.group(i))
+          } yield Expr.Str(m.group(i)),
         )
       case other => throw wrongSignature(other)
     }
@@ -737,8 +737,8 @@ object CypherTextRegexGroups extends UserDefinedFunction {
       arguments = Vector("text" -> Type.Str, "regex" -> Type.Str),
       output = Type.List(Type.Str),
       description =
-        "Parses the string `text` using the regular expression `regex` and returns all groups matching the given regular expression in the given text"
-    )
+        "Parses the string `text` using the regular expression `regex` and returns all groups matching the given regular expression in the given text",
+    ),
   )
   val category = Category.STRING
 
@@ -757,7 +757,7 @@ object CypherTextRegexGroups extends UserDefinedFunction {
               i <- (0 to m.groupCount).toVector
             } yield m.group(i)
             matchedCypher = Expr.List(matched.map(Expr.Str))
-          } yield matchedCypher
+          } yield matchedCypher,
         )
       case other => throw wrongSignature(other)
     }
@@ -771,8 +771,8 @@ object CypherTextRegexReplaceAll extends UserDefinedFunction {
       arguments = Vector("text" -> Type.Str, "regex" -> Type.Str, "replacement" -> Type.Str),
       output = Type.Str,
       description =
-        "Replaces all instances of the regular expression `regex` in the string `text` with the `replacement` string. Numbered capture groups may be referenced with $1, $2, etc."
-    )
+        "Replaces all instances of the regular expression `regex` in the string `text` with the `replacement` string. Numbered capture groups may be referenced with $1, $2, etc.",
+    ),
   )
   val category = Category.STRING
 
@@ -795,26 +795,26 @@ object CypherTextUrlEncode extends UserDefinedFunction {
       arguments = Vector("text" -> Type.Str),
       output = Type.List(Type.Str),
       description =
-        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces"
+        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "usePlusForSpace" -> Type.Bool),
       output = Type.List(Type.Str),
       description =
-        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces; optionally using `+` for spaces instead of `%20`"
+        "URL-encodes the provided string; additionally percent-encoding quotes, angle brackets, and curly braces; optionally using `+` for spaces instead of `%20`",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "encodeExtraChars" -> Type.Str),
       output = Type.List(Type.Str),
       description =
-        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`"
+        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "usePlusForSpace" -> Type.Bool, "encodeExtraChars" -> Type.Str),
       output = Type.List(Type.Str),
       description =
-        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`, optionally using `+` for spaces instead of `%20`"
-    )
+        "URL-encodes the provided string, additionally percent-encoding the characters enumerated in `encodeExtraChars`, optionally using `+` for spaces instead of `%20`",
+    ),
   )
   val category = Category.STRING
 
@@ -867,13 +867,13 @@ object CypherTextUrlDecode extends UserDefinedFunction with LazySafeLogging {
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str),
       output = Type.List(Type.Str),
-      description = "URL-decodes (x-www-form-urlencoded) the provided string"
+      description = "URL-decodes (x-www-form-urlencoded) the provided string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("text" -> Type.Str, "decodePlusAsSpace" -> Type.Bool),
       output = Type.List(Type.Str),
-      description = "URL-decodes the provided string, using RFC3986 if decodePlusAsSpace = false"
-    )
+      description = "URL-decodes the provided string, using RFC3986 if decodePlusAsSpace = false",
+    ),
   )
   val category = Category.STRING
 
@@ -911,23 +911,23 @@ object CypherDateTime extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector(),
       output = Type.DateTime,
-      description = "Get the current date time"
+      description = "Get the current date time",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.DateTime,
-      description = "Construct a date time from the options"
+      description = "Construct a date time from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("datetime" -> Type.Str),
       output = Type.DateTime,
-      description = "Parse a date time from a string"
+      description = "Parse a date time from a string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("datetime" -> Type.Str, "format" -> Type.Str),
       output = Type.DateTime,
-      description = "Parse a local date time from a string using a custom format"
-    )
+      description = "Parse a local date time from a string using a custom format",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -944,7 +944,7 @@ object CypherDateTime extends UserDefinedFunction {
         throw CypherException.TypeMismatch(
           Seq(Type.LocalDateTime, Type.DateTime),
           other,
-          "`date` field in options map"
+          "`date` field in options map",
         )
     }
 
@@ -955,7 +955,7 @@ object CypherDateTime extends UserDefinedFunction {
         throw CypherException.TypeMismatch(
           Seq(Type.Str),
           other,
-          "`timezone` field in options map"
+          "`timezone` field in options map",
         )
     }
 
@@ -991,7 +991,7 @@ object CypherDateTime extends UserDefinedFunction {
                 throw CypherException.TypeMismatch(
                   Seq(Type.Integer),
                   other,
-                  s"`$unitFieldName` field in options map"
+                  s"`$unitFieldName` field in options map",
                 )
             }
         }
@@ -999,7 +999,7 @@ object CypherDateTime extends UserDefinedFunction {
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1024,23 +1024,23 @@ object CypherLocalDateTime extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector(),
       output = Type.LocalDateTime,
-      description = "Get the current local date time"
+      description = "Get the current local date time",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.LocalDateTime,
-      description = "Construct a local date time from the options"
+      description = "Construct a local date time from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("datetime" -> Type.Str),
       output = Type.LocalDateTime,
-      description = "Parse a local date time from a string"
+      description = "Parse a local date time from a string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("datetime" -> Type.Str, "format" -> Type.Str),
       output = Type.LocalDateTime,
-      description = "Parse a local date time from a string using a custom format"
-    )
+      description = "Parse a local date time from a string using a custom format",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1080,7 +1080,7 @@ object CypherLocalDateTime extends UserDefinedFunction {
                 throw CypherException.TypeMismatch(
                   Seq(Type.Integer),
                   other,
-                  s"`$unitFieldName` field in options map"
+                  s"`$unitFieldName` field in options map",
                 )
             }
         }
@@ -1088,7 +1088,7 @@ object CypherLocalDateTime extends UserDefinedFunction {
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1113,23 +1113,23 @@ object CypherDate extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector(),
       output = Type.Date,
-      description = "Get the current local date"
+      description = "Get the current local date",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.Date,
-      description = "Construct a local date from the options"
+      description = "Construct a local date from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("date" -> Type.Str),
       output = Type.Date,
-      description = "Parse a local date from a string"
+      description = "Parse a local date from a string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("date" -> Type.Str, "format" -> Type.Str),
       output = Type.Date,
-      description = "Parse a local date from a string using a custom format"
-    )
+      description = "Parse a local date from a string using a custom format",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1137,7 +1137,7 @@ object CypherDate extends UserDefinedFunction {
     List(
       "year" -> ChronoField.YEAR,
       "month" -> ChronoField.MONTH_OF_YEAR,
-      "day" -> ChronoField.DAY_OF_MONTH
+      "day" -> ChronoField.DAY_OF_MONTH,
     )
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
@@ -1157,7 +1157,7 @@ object CypherDate extends UserDefinedFunction {
                 throw CypherException.TypeMismatch(
                   Seq(Type.Integer),
                   other,
-                  s"`$unitFieldName` field in options map"
+                  s"`$unitFieldName` field in options map",
                 )
             }
         }
@@ -1165,7 +1165,7 @@ object CypherDate extends UserDefinedFunction {
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1190,23 +1190,23 @@ object CypherTime extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector(),
       output = Type.Time,
-      description = "Get the current local time"
+      description = "Get the current local time",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.Time,
-      description = "Construct a local time from the options"
+      description = "Construct a local time from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("time" -> Type.Str),
       output = Type.Time,
-      description = "Parse a local time from a string"
+      description = "Parse a local time from a string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("time" -> Type.Str, "format" -> Type.Str),
       output = Type.Time,
-      description = "Parse a local time from a string using a custom format"
-    )
+      description = "Parse a local time from a string using a custom format",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1218,7 +1218,7 @@ object CypherTime extends UserDefinedFunction {
       "millisecond" -> ChronoField.MILLI_OF_SECOND,
       "microsecond" -> ChronoField.MICRO_OF_SECOND,
       "nanosecond" -> ChronoField.NANO_OF_SECOND,
-      "offsetSeconds" -> ChronoField.OFFSET_SECONDS
+      "offsetSeconds" -> ChronoField.OFFSET_SECONDS,
     )
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
@@ -1238,7 +1238,7 @@ object CypherTime extends UserDefinedFunction {
                 throw CypherException.TypeMismatch(
                   Seq(Type.Integer),
                   other,
-                  s"`$unitFieldName` field in options map"
+                  s"`$unitFieldName` field in options map",
                 )
             }
         }
@@ -1246,7 +1246,7 @@ object CypherTime extends UserDefinedFunction {
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1271,23 +1271,23 @@ object CypherLocalTime extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector(),
       output = Type.LocalTime,
-      description = "Get the current local time"
+      description = "Get the current local time",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.LocalTime,
-      description = "Construct a local time from the options"
+      description = "Construct a local time from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("time" -> Type.Str),
       output = Type.LocalTime,
-      description = "Parse a local time from a string"
+      description = "Parse a local time from a string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("time" -> Type.Str, "format" -> Type.Str),
       output = Type.LocalTime,
-      description = "Parse a local time from a string using a custom format"
-    )
+      description = "Parse a local time from a string using a custom format",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1298,7 +1298,7 @@ object CypherLocalTime extends UserDefinedFunction {
       "second" -> ChronoField.SECOND_OF_MINUTE,
       "millisecond" -> ChronoField.MILLI_OF_SECOND,
       "microsecond" -> ChronoField.MICRO_OF_SECOND,
-      "nanosecond" -> ChronoField.NANO_OF_SECOND
+      "nanosecond" -> ChronoField.NANO_OF_SECOND,
     )
 
   def call(args: Vector[Value])(implicit idp: QuineIdProvider, logConfig: LogConfig): Value =
@@ -1317,7 +1317,7 @@ object CypherLocalTime extends UserDefinedFunction {
               throw CypherException.TypeMismatch(
                 Seq(Type.Integer),
                 other,
-                s"`$unitFieldName` field in options map"
+                s"`$unitFieldName` field in options map",
               )
           }
         }
@@ -1325,7 +1325,7 @@ object CypherLocalTime extends UserDefinedFunction {
         // Disallow unknown fields
         if (remainingOptions.nonEmpty) {
           throw CypherException.Runtime(
-            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`")
+            "Unknown fields in options map: " + remainingOptions.keys.mkString("`", "`, `", "`"),
           )
         }
 
@@ -1350,13 +1350,13 @@ object CypherDuration extends UserDefinedFunction with LazySafeLogging {
     UserDefinedFunctionSignature(
       arguments = Vector("options" -> Type.Map),
       output = Type.Duration,
-      description = "Construct a duration from the options"
+      description = "Construct a duration from the options",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("duration" -> Type.Str),
       output = Type.Duration,
-      description = "Parse a duration from a string"
-    )
+      description = "Parse a duration from a string",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1372,12 +1372,12 @@ object CypherDuration extends UserDefinedFunction with LazySafeLogging {
               throw CypherException.TypeMismatch(
                 Seq(Type.Integer),
                 other,
-                s"`$unitFieldName` field in options map"
+                s"`$unitFieldName` field in options map",
               )
           }
           val unit = Expr.temporalUnits.getOrElse(
             unitFieldName,
-            throw CypherException.Runtime(s"Unknown field in options map: `$unitFieldName`")
+            throw CypherException.Runtime(s"Unknown field in options map: `$unitFieldName`"),
           )
           duration = if (unit.isDurationEstimated) {
             logger.whenWarnEnabled {
@@ -1386,7 +1386,7 @@ object CypherDuration extends UserDefinedFunction with LazySafeLogging {
               logger.warn(
                 log"""Adding: ${unitQuantity.toString} $unit to a duration. Note that $unit is an estimated unit,
                    |so a value of ${unit.getDuration.getSeconds.toString} seconds$nanoSecondsMessage will be added
-                   |as an approximation.""".cleanLines
+                   |as an approximation.""".cleanLines,
               )
             }
             duration.plus(unit.getDuration.multipliedBy(unitQuantity))
@@ -1412,13 +1412,13 @@ object CypherDurationBetween extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("date1" -> Type.LocalDateTime, "date2" -> Type.LocalDateTime),
       output = Type.Duration,
-      description = "Compute the duration between two local dates"
+      description = "Compute the duration between two local dates",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("date1" -> Type.DateTime, "date2" -> Type.DateTime),
       output = Type.Duration,
-      description = "Compute the duration between two dates"
-    )
+      description = "Compute the duration between two dates",
+    ),
   )
 
   val category = Category.TEMPORAL
@@ -1442,13 +1442,13 @@ object CypherFormatTemporal extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("date" -> Type.DateTime, "format" -> Type.Str),
       output = Type.Str,
-      description = "Convert date time into string"
+      description = "Convert date time into string",
     ),
     UserDefinedFunctionSignature(
       arguments = Vector("date" -> Type.LocalDateTime, "format" -> Type.Str),
       output = Type.Str,
-      description = "Convert local date time into string"
-    )
+      description = "Convert local date time into string",
+    ),
   )
   val category = Category.TEMPORAL
 
@@ -1475,14 +1475,14 @@ object CypherCollMax extends UserDefinedFunction {
       UserDefinedFunctionSignature(
         arguments = Vector("value" -> Type.ListOfAnything),
         output = Type.Anything,
-        description = "Computes the maximum of values in a list"
+        description = "Computes the maximum of values in a list",
       )
     } else {
       // These are not provided by APOC
       UserDefinedFunctionSignature(
         arguments = Vector.tabulate(i)(j => s"input$j" -> Type.Anything),
         output = Type.Anything,
-        description = "Computes the maximum argument"
+        description = "Computes the maximum argument",
       )
     }
   }
@@ -1506,14 +1506,14 @@ object CypherCollMin extends UserDefinedFunction {
       UserDefinedFunctionSignature(
         arguments = Vector("value" -> Type.ListOfAnything),
         output = Type.Anything,
-        description = "Computes the minimum of values in a list"
+        description = "Computes the minimum of values in a list",
       )
     } else {
       // These are not provided by APOC
       UserDefinedFunctionSignature(
         arguments = Vector.tabulate(i)(j => s"input$j" -> Type.Anything),
         output = Type.Anything,
-        description = "Computes the minimum argument"
+        description = "Computes the minimum argument",
       )
     }
   }
@@ -1535,8 +1535,8 @@ object CypherMetaType extends UserDefinedFunction {
     UserDefinedFunctionSignature(
       arguments = Vector("value" -> Type.Anything),
       output = Type.Str,
-      description = "Inspect the (name of the) type of a value"
-    )
+      description = "Inspect the (name of the) type of a value",
+    ),
   )
   val category = Category.SCALAR
 
@@ -1568,7 +1568,7 @@ object CypherCasts {
     Type.Path,
     Type.LocalDateTime,
     Type.DateTime,
-    Type.Duration
+    Type.Duration,
   ).map(cType => cType.pretty.toLowerCase -> cType) :+
     /** Note that all instances of [[Expr.List]] return [[Type.ListOfAnything]] when `list.typ` is invoked. We use the
       * same sentinel value here, as cypher doesn't have full support for the 1-kinded List type
@@ -1592,7 +1592,7 @@ object CypherCasts {
         case Vector(expr) =>
           logger.debug(
             log"""Failed to cast value: ${expr.toString} to a: ${Safe(cType.toString)},
-                 |returning `null` instead from: ${Safe(name)}""".cleanLines
+                 |returning `null` instead from: ${Safe(name)}""".cleanLines,
           )
           Expr.Null
         case args => throw wrongSignature(args)
@@ -1606,8 +1606,8 @@ object CypherCasts {
            |requested type, this will return null. For functions that convert between types, see `toInteger` et al.
            |This can be useful to recover type information in cases where the Cypher compiler is unable to fully track
            |types on its own. This is most common when dealing with lists, due to the limited support for
-           |higher-kinded types within the Cypher language.""".stripMargin.replace('\n', ' ')
-      )
+           |higher-kinded types within the Cypher language.""".stripMargin.replace('\n', ' '),
+      ),
     )
   }
 
@@ -1621,7 +1621,7 @@ object CypherCasts {
         case Vector(expr) if expr.typ == cType => expr
         case Vector(expr) =>
           throw CypherException.Runtime(
-            s"Cast failed: Cypher execution engine is unable to determine that $expr is a valid ${cType.pretty}"
+            s"Cast failed: Cypher execution engine is unable to determine that $expr is a valid ${cType.pretty}",
           )
         case args => throw wrongSignature(args)
       }
@@ -1632,8 +1632,8 @@ object CypherCasts {
         s"""Adds a runtime assertion that the provided `value` is actually of type $cType. This can be useful to recover
            |type information in cases where the Cypher compiler is unable to fully track types on its own. This is
            |most common when dealing with lists, due to the limited support for higher-kinded types within the
-           |Cypher language.""".stripMargin.replace('\n', ' ')
-      )
+           |Cypher language.""".stripMargin.replace('\n', ' '),
+      ),
     )
   }
 }
@@ -1657,7 +1657,7 @@ class CypherValueGenFrom(outputType: Type, defaultSize: Long, randGen: (Long, Lo
     val sig = UserDefinedFunctionSignature(
       arguments = Vector("fromValue" -> Type.Anything, "withSize" -> Type.Integer),
       output = outputType,
-      description = s"Deterministically generate a random ${outputType.pretty.toLowerCase} from the provided input."
+      description = s"Deterministically generate a random ${outputType.pretty.toLowerCase} from the provided input.",
     )
     Seq(sig.copy(arguments = sig.arguments.dropRight(1)), sig)
   }
@@ -1674,24 +1674,24 @@ object CypherGenFroms {
     new CypherValueGenFrom(
       Type.Str,
       8L,
-      (hash: Long, size: Long) => Expr.Str(new Random(hash).alphanumeric.take(size.toInt).mkString)
+      (hash: Long, size: Long) => Expr.Str(new Random(hash).alphanumeric.take(size.toInt).mkString),
     ),
     new CypherValueGenFrom(
       Type.Integer,
       Int.MaxValue,
-      (hash: Long, size: Long) => Expr.Integer(new Random(hash).nextLong() % size) // Tolerating mod bias.
+      (hash: Long, size: Long) => Expr.Integer(new Random(hash).nextLong() % size), // Tolerating mod bias.
     ),
     new CypherValueGenFrom(
       Type.Floating,
       1L,
-      (hash: Long, size: Long) => Expr.Floating(new Random(hash).nextDouble() * size)
+      (hash: Long, size: Long) => Expr.Floating(new Random(hash).nextDouble() * size),
     ),
     new CypherValueGenFrom(Type.Bool, 1L, (hash: Long, size: Long) => Expr.Bool(new Random(hash).nextBoolean())),
     new CypherValueGenFrom(Type.Bytes, 12L, (hash: Long, size: Long) => Expr.Bytes(bytes(hash, size.toInt))),
     new CypherValueGenFrom(
       Type.Node,
       0L,
-      (hash: Long, size: Long) => Expr.Node(QuineId(Array.emptyByteArray), Set.empty, Map.empty)
+      (hash: Long, size: Long) => Expr.Node(QuineId(Array.emptyByteArray), Set.empty, Map.empty),
     ) {
       override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value = {
         val size = Try(arguments(1).asLong("").toInt).getOrElse(4)
@@ -1701,6 +1701,6 @@ object CypherGenFroms {
           .toMap
         Expr.Node(idFrom(arguments.head), Set.empty, props)
       }
-    }
+    },
   )
 }

@@ -19,7 +19,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -46,7 +46,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
   /** Persist [[NodeChangeEvent]] values. */
   def persistNodeChangeEvents(
     id: QuineId,
-    eventsWithTime: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]]
+    eventsWithTime: NonEmptyList[NodeEvent.WithTime[NodeChangeEvent]],
   ): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- eventsWithTime.toList } {
       val previous = events
@@ -54,7 +54,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
         .put(atTime, event)
       assert(
         (previous eq null) || (previous eq event),
-        s"Duplicate events at node id $id and time $atTime: $event & $previous"
+        s"Duplicate events at node id $id and time $atTime: $event & $previous",
       )
     }
     wrapped.persistNodeChangeEvents(id, eventsWithTime)
@@ -63,7 +63,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
   /** Persist [[DomainIndexEvent]] values. */
   def persistDomainIndexEvents(
     id: QuineId,
-    eventsWithTime: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]]
+    eventsWithTime: NonEmptyList[NodeEvent.WithTime[DomainIndexEvent]],
   ): Future[Unit] = {
     for { NodeEvent.WithTime(event, atTime) <- eventsWithTime.toList } {
       val previous = events
@@ -71,7 +71,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
         .put(atTime, event)
       assert(
         (previous eq null) || (previous eq event),
-        s"Duplicate events at node id $id and time $atTime: $event & $previous"
+        s"Duplicate events at node id $id and time $atTime: $event & $previous",
       )
     }
     wrapped.persistDomainIndexEvents(id, eventsWithTime)
@@ -80,14 +80,14 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     wrapped.getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     wrapped.getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
@@ -101,7 +101,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
       .put(atTime, state)
     assert(
       (previous eq null) || (previous eq state),
-      s"Duplicate snapshots at node id $id and time $atTime: $state & $previous"
+      s"Duplicate snapshots at node id $id and time $atTime: $state & $previous",
     )
     wrapped.persistSnapshot(id, atTime, state)
   }
@@ -117,7 +117,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
   def getStandingQueries: Future[List[StandingQueryInfo]] = wrapped.getStandingQueries
 
   def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     wrapped.getMultipleValuesStandingQueryStates(id)
 
@@ -138,7 +138,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
   def persistDomainGraphNodes(domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]): Future[Unit] =
     wrapped.persistDomainGraphNodes(domainGraphNodes)
   def removeDomainGraphNodes(domainGraphNodes: Set[DomainGraphNodeId]): Future[Unit] = wrapped.removeDomainGraphNodes(
-    domainGraphNodes
+    domainGraphNodes,
   )
   def getDomainGraphNodes(): Future[Map[DomainGraphNodeId, DomainGraphNode]] = wrapped.getDomainGraphNodes()
 
@@ -146,7 +146,7 @@ class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogCon
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = wrapped.setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
   override def declareReady(graph: BaseGraph): Unit = wrapped.declareReady(graph)

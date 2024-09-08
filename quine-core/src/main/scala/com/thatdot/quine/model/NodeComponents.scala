@@ -13,22 +13,22 @@ import scala.collection.mutable
   */
 final case class NodeComponents(
   qid: QuineId,
-  components: Map[Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])]]
+  components: Map[Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])]],
 ) {
   def get(key: Symbol): Option[Either[PropertyValue, (EdgeDirection, Set[NodeComponents])]] =
     components.get(key)
 
   def ++(
     otherComponents: IterableOnce[
-      (Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])])
-    ]
+      (Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])]),
+    ],
   ): NodeComponents =
     NodeComponents(qid, components ++ otherComponents)
 
   def ++:(
     otherComponents: IterableOnce[
-      (Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])])
-    ]
+      (Symbol, Either[PropertyValue, (EdgeDirection, Set[NodeComponents])]),
+    ],
   ): NodeComponents =
     NodeComponents(qid, components ++ otherComponents)
 
@@ -41,7 +41,7 @@ final case class NodeComponents(
   // Not tail recursive!
   def allIds: Set[QuineId] = components.values
     .flatMap(
-      _.map[Set[QuineId]](_._2.flatMap(_.allIds).toSet).getOrElse(Set.empty[QuineId])
+      _.map[Set[QuineId]](_._2.flatMap(_.allIds).toSet).getOrElse(Set.empty[QuineId]),
     )
     .toSet[QuineId] + qid
 
@@ -51,7 +51,7 @@ final case class NodeComponents(
     * tuple element.
     */
   def flatValues(
-    startingKeys: List[Symbol] = Nil
+    startingKeys: List[Symbol] = Nil,
   ): List[(List[Symbol], Either[QuineId, PropertyValue])] =
     (startingKeys :+ Symbol("_qid_")) -> Left(qid) :: components.toList.flatMap { case (symbol, propOrEdge) =>
       propOrEdge match {
@@ -89,7 +89,7 @@ object NodeComponents {
               case (Some(Left(p1)), Left(p2)) =>
                 assert(
                   p1 == p2,
-                  s"Cannot merge two different properties $p1 and $p2 both at key $k"
+                  s"Cannot merge two different properties $p1 and $p2 both at key $k",
                 )
               case (Some(Right((eDir1, eNc1))), Right((eDir2, eNc2))) =>
                 assert(eDir1 == eDir2, "Cannot merge edges with different directions")

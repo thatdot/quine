@@ -27,15 +27,15 @@ object V2CypherEndpointEntities extends TapirJsonCirce {
   @title("Cypher Query")
   final case class TCypherQuery(
     @description("Text of the query to execute") text: String,
-    @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty
+    @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
   )
   implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
     .derived[TCypherQuery]
     .encodedExample(
       TCypherQuery(
         "MATCH (n) RETURN n LIMIT $lim",
-        Map("lim" -> Json.fromInt(1))
-      ).asJson
+        Map("lim" -> Json.fromInt(1)),
+      ).asJson,
     )
 
   val cypherQueryAsStringCodec: Codec[String, TCypherQuery, TextPlain] =
@@ -61,7 +61,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
   private def cypherQueryEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ) = baseEndpoint[T]("query", "cypher").tag("Cypher Query Language")
 
   private def queryBody =
@@ -84,7 +84,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
           CypherPostApiCmd,
           memberIdx,
           (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-          t => app.cypherPost(t._1, toConcreteDuration(t._2), t._3, t._4)
+          t => app.cypherPost(t._1, toConcreteDuration(t._2), t._3, t._4),
         )
       }
 
@@ -103,7 +103,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
         CypherNodesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-        t => app.cypherNodesPost(t._1, toConcreteDuration(t._2), t._3, t._4)
+        t => app.cypherNodesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
       )
     }
 
@@ -122,13 +122,13 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
         CypherEdgesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-        t => app.cypherEdgesPost(t._1, toConcreteDuration(t._2), t._3, t._4)
+        t => app.cypherEdgesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
       )
     }
 
   val cypherEndpoints: List[ServerEndpoint[Any, Future]] = List(
     cypherEndpoint,
     cypherNodesEndpoint,
-    cypherEdgesEndpoint
+    cypherEdgesEndpoint,
   )
 }

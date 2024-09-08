@@ -28,14 +28,14 @@ import com.thatdot.quine.app.ingest.serialization.ProtobufTest.{
   testReadablePerson,
   testSchemaCache,
   testWritablePerson,
-  warcraftSchemaFile
+  warcraftSchemaFile,
 }
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
   AmbiguousMessageType,
   InvalidProtobufSchema,
   NoSuchMessageType,
-  UnreachableProtobufSchema
+  UnreachableProtobufSchema,
 }
 import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
 import com.thatdot.quine.graph.cypher.Expr.toQuineValue
@@ -92,7 +92,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
         "tutorial.AddressBook",
         "tutorial.Person",
         "tutorial.Person.MapFieldEntry",
-        "tutorial.Person.PhoneNumber"
+        "tutorial.Person.PhoneNumber",
       ))
     }
     it("should fail to construct a parser for an ambiguous type, listing all candidates for ambiguity") {
@@ -102,23 +102,23 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       error.possibleMatches should contain theSameElementsAs (Seq(
         "com.thatdot.test.azeroth.Zone",
         "com.thatdot.test.azeroth.expansions.crusade.Zone",
-        "com.thatdot.test.azeroth.expansions.cataclysm.Zone"
+        "com.thatdot.test.azeroth.expansions.cataclysm.Zone",
       ))
     }
     val barrensZoneAsMap = Expr.Map(
       "name" -> Expr.Str("Barrens"),
       "owner" -> Expr.Str("HORDE"),
-      "continent" -> Expr.Str("KALIMDOR")
+      "continent" -> Expr.Str("KALIMDOR"),
     )
     it(
-      "should parse a protobuf value with an ambiguous type name, provided the parser was initialized unambiguously"
+      "should parse a protobuf value with an ambiguous type name, provided the parser was initialized unambiguously",
     ) {
       val parser = parserFor(warcraftSchemaFile, "com.thatdot.test.azeroth.Zone")
       val result = parser.parseBytes(bytesFromURL(testAzerothZone))
       result shouldBe barrensZoneAsMap
     }
     it(
-      "should parse a protobuf value with an ambiguous type name that references a different user of that name"
+      "should parse a protobuf value with an ambiguous type name that references a different user of that name",
     ) {
       val parser = parserFor(warcraftSchemaFile, "com.thatdot.test.azeroth.expansions.cataclysm.Zone")
       val result = parser.parseBytes(bytesFromURL(testCataclysmZone1))
@@ -128,8 +128,8 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
         "region" -> Expr.Str("KALIMDOR"),
         "changelog" -> Expr.Str("Split from some of the Barrens, now a separate zone"),
         "original_zone" -> Expr.Map(
-          "azeroth_zone" -> barrensZoneAsMap
-        )
+          "azeroth_zone" -> barrensZoneAsMap,
+        ),
       )
     }
     it("should parse a value that is oneof ambiguously-named types") {
@@ -159,7 +159,7 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       val message = protobufSerializer.toProtobuf(testWritablePerson).value
 
       def extractList(
-        xs: List[Descriptors.FieldDescriptor]
+        xs: List[Descriptors.FieldDescriptor],
       ): (Descriptors.FieldDescriptor, Descriptors.FieldDescriptor, Descriptors.FieldDescriptor) =
         xs match {
           case List(name, id, email) => (name, id, email)
@@ -233,21 +233,21 @@ object ProtobufTest {
     "phones" -> QuineValue.List(
       Vector(
         QuineValue.Map(Map("number" -> QuineValue.Str("503-555-1234"), "type" -> QuineValue.Str("MOBILE"))),
-        QuineValue.Map(Map("number" -> QuineValue.Str("360-555-1234"), "type" -> QuineValue.Str("HOME")))
-      )
+        QuineValue.Map(Map("number" -> QuineValue.Str("360-555-1234"), "type" -> QuineValue.Str("HOME"))),
+      ),
     ),
     "blob" -> QuineValue.Bytes("foo".getBytes(UTF_8)),
-    "numPets" -> QuineValue.Integer(8L)
+    "numPets" -> QuineValue.Integer(8L),
   )
   private val readableButNotWritable = Map(
     "mapField" -> QuineValue.Map(
       Map(
-        "ANumber" -> QuineValue.Floating(1.5)
-      )
-    )
+        "ANumber" -> QuineValue.Floating(1.5),
+      ),
+    ),
   )
   private val writableButNotReadable = Map(
-    "garbage" -> QuineValue.Null
+    "garbage" -> QuineValue.Null,
   )
   val testReadablePerson: Map[String, QuineValue] = testPerson ++ readableButNotWritable
   val testWritablePerson: Map[String, QuineValue] = testPerson ++ writableButNotReadable
@@ -269,8 +269,8 @@ object ProtobufTest {
       "owner" -> Expr.Str("ALLIANCE"),
       "region" -> Expr.Str("EASTERN_KINGDOMS"),
       "changelog" -> Expr.Str("Added as the worgen starting zone"),
-      "name" -> Expr.Str("Gilneas")
-    )
+      "name" -> Expr.Str("Gilneas"),
+    ),
   )
 
   val testSchemaCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking: @nowarn

@@ -14,7 +14,7 @@ import io.circe
 final case class RecipePackage(
   name: String,
   recipe: Recipe,
-  source: String
+  source: String,
 )
 object RecipePackage {
 
@@ -31,7 +31,7 @@ object RecipePackage {
       case Array(name, ext) if Seq("yml", "yaml", "json").contains(ext) => name
       case _ =>
         throw new IllegalArgumentException(
-          s"File $file does not have an accepted recipe extension"
+          s"File $file does not have an accepted recipe extension",
         )
     }
 

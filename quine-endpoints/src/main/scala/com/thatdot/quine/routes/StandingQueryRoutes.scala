@@ -20,7 +20,7 @@ final case class StandingQueryDefinition(
   @docs("how many standing query results to buffer before backpressuring")
   inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
   @docs("For debug and test only")
-  shouldCalculateResultHashCode: Boolean = false
+  shouldCalculateResultHashCode: Boolean = false,
 )
 
 @title("Registered Standing Query")
@@ -32,7 +32,7 @@ final case class RegisteredStandingQuery(
   @docs("Query or pattern to answer in a standing fashion")
   pattern: Option[StandingQueryPattern], // TODO: remove Option once we remove DGB SQs
   @docs(
-    s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}"
+    s"output sinks into which all new standing query results should be enqueued - see ${StandingQueryResultOutputUserDef.title}",
   )
   outputs: Map[String, StandingQueryResultOutputUserDef],
   @docs("Whether or not to include cancellations in the results of this query")
@@ -40,7 +40,7 @@ final case class RegisteredStandingQuery(
   @docs("how many standing query results to buffer on each host before backpressuring")
   inputBufferSize: Int,
   @docs(s"Statistics on progress of running the standing query, per host - see ${StandingQueryStats.title}")
-  stats: Map[String, StandingQueryStats]
+  stats: Map[String, StandingQueryStats],
 )
 
 @unnamed
@@ -56,7 +56,7 @@ object StandingQueryPattern {
                                    |MATCH <pattern> WHERE <condition> RETURN <columns>. When the `mode` is `DistinctId`,
                                    |the `RETURN` must also be `DISTINCT`.""".stripMargin)
     query: String,
-    mode: StandingQueryMode = StandingQueryMode.DistinctId
+    mode: StandingQueryMode = StandingQueryMode.DistinctId,
   ) extends StandingQueryPattern
 
   sealed abstract class StandingQueryMode
@@ -85,7 +85,7 @@ final case class StandingQueryStats(
   @docs("How many standing query results are buffered and waiting to be emitted")
   bufferSize: Int,
   @docs("Accumulated output hash code")
-  outputHashCode: Long
+  outputHashCode: Long,
 )
 
 object StandingQueryStats {
@@ -99,7 +99,7 @@ object StandingQueryStats {
   */
 final case class StandingQueryRegistered(
   name: String,
-  output: StandingQueryResultOutputUserDef
+  output: StandingQueryResultOutputUserDef,
 )
 
 /** Confirmation of a standing query being cancelled
@@ -109,7 +109,7 @@ final case class StandingQueryRegistered(
   */
 final case class StandingQueryCancelled(
   name: String,
-  output: StandingQueryResultOutputUserDef
+  output: StandingQueryResultOutputUserDef,
 )
 
 /** Output sink for processing standing query results */
@@ -133,7 +133,7 @@ final case class StandingQueryCancelled(
     |```
     |{"meta": {"isPositiveMatch": false}, "data": {}}
     |```
-    |""".stripMargin
+    |""".stripMargin,
 )
 sealed abstract class StandingQueryResultOutputUserDef {
   def slug: String
@@ -145,12 +145,12 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("POST to HTTP[S] Webhook")
   @docs(
-    "Makes an HTTP[S] POST for each result. For the format of the result, see \"Standing Query Result Output\"."
+    "Makes an HTTP[S] POST for each result. For the format of the result, see \"Standing Query Result Output\".",
   )
   final case class PostToEndpoint(
     url: String,
     parallelism: Int = 8,
-    onlyPositiveMatchData: Boolean = false
+    onlyPositiveMatchData: Boolean = false,
   ) extends StandingQueryResultOutputUserDef {
     override def slug = "http"
   }
@@ -158,16 +158,16 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Publish to Kafka Topic")
   @docs(
-    "Publishes a JSON record for each result to the provided Apache Kafka topic. For the format of the result record, see \"Standing Query Result Output\"."
+    "Publishes a JSON record for each result to the provided Apache Kafka topic. For the format of the result record, see \"Standing Query Result Output\".",
   )
   final case class WriteToKafka(
     topic: String,
     bootstrapServers: String,
     format: OutputFormat = OutputFormat.JSON,
     @docs(
-      "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>"
+      "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>",
     )
-    kafkaProperties: Map[String, String] = Map.empty[String, String]
+    kafkaProperties: Map[String, String] = Map.empty[String, String],
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "kafka"
   }
@@ -175,7 +175,7 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Publish to Kinesis Data Stream")
   @docs(
-    "Publishes a JSON record for each result to the provided Kinesis stream. For the format of the result record, see \"StandingQueryResult\"."
+    "Publishes a JSON record for each result to the provided Kinesis stream. For the format of the result record, see \"StandingQueryResult\".",
   )
   final case class WriteToKinesis(
     credentials: Option[AwsCredentials],
@@ -185,7 +185,7 @@ object StandingQueryResultOutputUserDef {
     kinesisParallelism: Option[Int],
     kinesisMaxBatchSize: Option[Int],
     kinesisMaxRecordsPerSecond: Option[Int],
-    kinesisMaxBytesPerSecond: Option[Int]
+    kinesisMaxBytesPerSecond: Option[Int],
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "kinesis"
   }
@@ -199,12 +199,12 @@ object StandingQueryResultOutputUserDef {
               |**Double check your credentials and topic ARN.** If writing to SNS fails, the write will
               |be retried indefinitely. If the error is unfixable (eg, the topic or credentials
               |cannot be found), the outputs will never be emitted and the Standing Query this output
-              |is attached to may stop running.""".stripMargin
+              |is attached to may stop running.""".stripMargin,
   )
   final case class WriteToSNS(
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
-    @docs("ARN of the topic to publish to") topic: String
+    @docs("ARN of the topic to publish to") topic: String,
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "sns"
   }
@@ -214,7 +214,7 @@ object StandingQueryResultOutputUserDef {
   @docs("Prints each result as a single-line JSON object to stdout on the Quine server.")
   final case class PrintToStandardOut(
     logLevel: PrintToStandardOut.LogLevel = PrintToStandardOut.LogLevel.Info,
-    logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete
+    logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete,
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "stdout"
   }
@@ -249,10 +249,10 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Log JSON to File")
   @docs(
-    "Writes each result as a single-line JSON record. For the format of the result, see \"Standing Query Result Output\"."
+    "Writes each result as a single-line JSON record. For the format of the result, see \"Standing Query Result Output\".",
   )
   final case class WriteToFile(
-    path: String
+    path: String,
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "file"
   }
@@ -260,12 +260,12 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Publish to Slack Webhook")
   @docs(
-    "Sends a message to Slack via a configured webhook URL. See <https://api.slack.com/messaging/webhooks>."
+    "Sends a message to Slack via a configured webhook URL. See <https://api.slack.com/messaging/webhooks>.",
   )
   final case class PostToSlack(
     hookUrl: String,
     onlyPositiveMatchData: Boolean = false,
-    @docs("Number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20
+    @docs("Number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20,
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "slack"
   }
@@ -283,7 +283,7 @@ object StandingQueryResultOutputUserDef {
   @unnamed
   @title("Run Cypher Query")
   @docs(
-    "For each result, assigns the result as `parameter` and runs `query`, running at most `parallelism` queries simultaneously."
+    "For each result, assigns the result as `parameter` and runs `query`, running at most `parallelism` queries simultaneously.",
   )
   final case class CypherQuery(
     @docs("Cypher query to execute on standing query result") query: String,
@@ -294,11 +294,11 @@ object StandingQueryResultOutputUserDef {
       """Send the result of the Cypher query to another standing query output (in order to provide chained
                                     |transformation and actions). The data returned by this query will be passed as the `data` object
                                     |of the new StandingQueryResult (see \"Standing Query Result Output\")""".stripMargin
-        .replace('\n', ' ')
+        .replace('\n', ' '),
     )
     andThen: Option[StandingQueryResultOutputUserDef],
     @docs(
-      "To prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true"
+      "To prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true",
     )
     allowAllNodeScan: Boolean = false,
     @docs(
@@ -307,9 +307,9 @@ object StandingQueryResultOutputUserDef {
                                     |effects may occur multiple times in the case of external system failure. Query idempotency
                                     |can be checked with the EXPLAIN keyword. If set to false, results and effects will not be duplicated,
                                     |but may be dropped in the case of external system failure""".stripMargin
-        .replace('\n', ' ')
+        .replace('\n', ' '),
     )
-    shouldRetry: Boolean = true
+    shouldRetry: Boolean = true,
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "cypher"
   }
@@ -365,11 +365,11 @@ object OutputFormat {
   @title("Protobuf")
   final case class Protobuf(
     @docs(
-      "URL (or local filename) of the Protobuf .desc file to load that contains the desired typeName to serialize to"
+      "URL (or local filename) of the Protobuf .desc file to load that contains the desired typeName to serialize to",
     ) schemaUrl: String,
     @docs(
-      "message type name to use (from the given .desc file) as the message type"
-    ) typeName: String
+      "message type name to use (from the given .desc file) as the message type",
+    ) typeName: String,
   ) extends OutputFormat
 }
 
@@ -384,7 +384,7 @@ trait StandingQuerySchemas
 
   implicit lazy val logModeSchema: Enum[StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode] =
     stringEnumeration[StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode](
-      StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.modes
+      StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.modes,
     )(_.toString).withDescription(
       """Mode used to log Standing Query results. `Complete` is the
         |default and logs all matches found, slowing down result processing
@@ -392,12 +392,12 @@ trait StandingQuerySchemas
         |matches when there are too many to keep up with, but never slows down
         |the stream of results. Use `FastSampling` if you don't need every result
         |to be logged. Note that neither option changes the behavior of other
-        |StandingQueryResultOutputs registered on the same standing query.""".stripMargin
+        |StandingQueryResultOutputs registered on the same standing query.""".stripMargin,
     )
 
   implicit lazy val logLevelSchema: Enum[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel] =
     stringEnumeration[StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel](
-      StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.levels
+      StandingQueryResultOutputUserDef.PrintToStandardOut.LogLevel.levels,
     )(_.toString)
 
   implicit lazy val standingQueryModeSchema: Enum[StandingQueryMode] =
@@ -406,7 +406,7 @@ trait StandingQuerySchemas
         """Mode used to execute Standing Query. `DistinctId` is the default and
           |recommended value. `MultipleValues` can be used for more
           |expressive query capabilities, but requires more computation and
-          |uses more memory.""".stripMargin
+          |uses more memory.""".stripMargin,
       )
 
   implicit lazy val outputFormatSchema: Tagged[OutputFormat] =
@@ -414,22 +414,22 @@ trait StandingQuerySchemas
 
   implicit lazy val standingQueryResultOutputSchema: Tagged[StandingQueryResultOutputUserDef] =
     lazyTagged(StandingQueryResultOutputUserDef.title)(
-      genericTagged[StandingQueryResultOutputUserDef]
+      genericTagged[StandingQueryResultOutputUserDef],
     ).withExample(
       StandingQueryResultOutputUserDef.CypherQuery(
         query = "MATCH (n) WHERE id(n) = $that.data.id SET n.flagged = true",
-        andThen = None
-      )
+        andThen = None,
+      ),
     )
 
   val sqExample: StandingQueryDefinition =
     StandingQueryDefinition(
       pattern = StandingQueryPattern.Cypher(
-        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad"
+        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad",
       ),
       outputs = Map(
-        "file-of-results" -> StandingQueryResultOutputUserDef.WriteToFile("kidsWithDads.jsonl")
-      )
+        "file-of-results" -> StandingQueryResultOutputUserDef.WriteToFile("kidsWithDads.jsonl"),
+      ),
     )
 
   val runningSqExample: RegisteredStandingQuery = RegisteredStandingQuery(
@@ -446,18 +446,18 @@ trait StandingQuerySchemas
           oneMinute = 14.2,
           fiveMinute = 14.2,
           fifteenMinute = 14.2,
-          overall = 14.2
+          overall = 14.2,
         ),
         startTime = Instant.parse("2020-06-05T18:02:42.907Z"),
         totalRuntime = 60000L,
         bufferSize = 20,
-        outputHashCode = 14344L
-      )
-    )
+        outputHashCode = 14344L,
+      ),
+    ),
   )
 
   val additionalSqOutput: PrintToStandardOut = StandingQueryResultOutputUserDef.PrintToStandardOut(logMode =
-    StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling
+    StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling,
   )
 
   implicit lazy val standingQueryPatternSchema: Tagged[StandingQueryPattern] =
@@ -493,35 +493,35 @@ trait StandingQueryRoutes
       Some(
         """Live queries that automatically propagate through streaming data and instantly
           |return results.
-          |""".stripMargin
-      )
+          |""".stripMargin,
+      ),
     )
 
   val standingName: Path[String] =
     segment[String]("standing-query-name", docs = Some("Unique name for a standing query"))
   val standingOutputName: Path[String] = segment[String](
     "standing-query-output-name",
-    docs = Some("Unique name for a standing query output")
+    docs = Some("Unique name for a standing query output"),
   )
 
   val standingIssue
     : Endpoint[(String, NamespaceParameter, StandingQueryDefinition), Either[ClientErrors, Option[Unit]]] = {
     val sq: StandingQueryDefinition = StandingQueryDefinition(
       StandingQueryPattern.Cypher(
-        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad"
+        "MATCH (n)-[:has_father]->(m) WHERE n.name IS NOT NULL AND m.name IS NOT NULL RETURN DISTINCT strId(n) AS kidWithDad",
       ),
       Map(
         "endpoint" -> StandingQueryResultOutputUserDef.PostToEndpoint("http://myendpoint"),
-        "stdout" -> StandingQueryResultOutputUserDef.PrintToStandardOut()
+        "stdout" -> StandingQueryResultOutputUserDef.PrintToStandardOut(),
       ),
       includeCancellations = true,
       32,
-      shouldCalculateResultHashCode = true
+      shouldCalculateResultHashCode = true,
     )
     endpoint(
       request = post(
         url = standing / standingName /? namespace,
-        entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq)
+        entity = jsonOrYamlRequestWithExample[StandingQueryDefinition](sq),
       ),
       response = customBadRequest("Standing query exists already")
         .orElse(wheneverFound(created())),
@@ -538,30 +538,30 @@ trait StandingQueryRoutes
                |
                |Learn more about writing
                |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
-               |in the docs.""".stripMargin
-          )
+               |in the docs.""".stripMargin,
+          ),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
   }
 
   val standingAddOut: Endpoint[(String, String, NamespaceParameter, StandingQueryResultOutputUserDef), Option[
-    Either[ClientErrors, Unit]
+    Either[ClientErrors, Unit],
   ]] =
     endpoint(
       request = post(
         url = standing / standingName / "output" / standingOutputName /? namespace,
-        entity = jsonOrYamlRequestWithExample[StandingQueryResultOutputUserDef](additionalSqOutput)
+        entity = jsonOrYamlRequestWithExample[StandingQueryResultOutputUserDef](additionalSqOutput),
       ),
       response = wheneverFound(badRequest() orElse created()),
       docs = EndpointDocs()
         .withSummary(Some("Create Standing Query Output"))
         .withDescription(
           Some(
-            "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed."
-          )
+            "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
+          ),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
 
   val standingRemoveOut: Endpoint[(String, String, NamespaceParameter), Option[StandingQueryResultOutputUserDef]] =
@@ -572,46 +572,46 @@ trait StandingQueryRoutes
         .withSummary(Some("Delete Standing Query Output"))
         .withDescription(
           Some(
-            "Remove an output from a standing query."
-          )
+            "Remove an output from a standing query.",
+          ),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
 
   val standingCancel: Endpoint[(String, NamespaceParameter), Option[RegisteredStandingQuery]] =
     endpoint(
       request = delete(
-        url = standing / standingName /? namespace
+        url = standing / standingName /? namespace,
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
         .withSummary(Some("Delete Standing Query"))
         .withDescription(
           Some(
-            "Immediately halt and remove the named standing query from Quine."
-          )
+            "Immediately halt and remove the named standing query from Quine.",
+          ),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
 
   val standingGet: Endpoint[(String, NamespaceParameter), Option[RegisteredStandingQuery]] =
     endpoint(
       request = get(
-        url = standing / standingName /? namespace
+        url = standing / standingName /? namespace,
       ),
       response = wheneverFound(ok(jsonResponse[RegisteredStandingQuery])),
       docs = EndpointDocs()
         .withSummary(Some("Standing Query Status"))
         .withDescription(
-          Some("Return the status information for a configured standing query by name.")
+          Some("Return the status information for a configured standing query by name."),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
 
   val standingList: Endpoint[NamespaceParameter, List[RegisteredStandingQuery]] =
     endpoint(
       request = get(
-        url = standing /? namespace
+        url = standing /? namespace,
       ),
       response = ok(jsonResponse[List[RegisteredStandingQuery]]),
       docs = EndpointDocs()
@@ -620,10 +620,10 @@ trait StandingQueryRoutes
           Some(
             """|Return a JSON array containing the configured
                |[standing queries](https://docs.quine.io/components/writing-standing-queries.html)
-               |and their associated metrics keyed by standing query name. """.stripMargin
-          )
+               |and their associated metrics keyed by standing query name. """.stripMargin,
+          ),
         )
-        .withTags(List(standingTag))
+        .withTags(List(standingTag)),
     )
 
   val standingPropagate: Endpoint[(Boolean, Int, NamespaceParameter), Option[Unit]] = {
@@ -632,21 +632,21 @@ trait StandingQueryRoutes
       docs = Some(
         """Propagate to all sleeping nodes. Setting to `true` can be costly if there is lot of
           |data. Default is false.
-          |""".stripMargin
-      )
+          |""".stripMargin,
+      ),
     ).xmap(_.getOrElse(false))(Some(_))
     val wakeUpParallelism = qs[Option[Int]](
       "wake-up-parallelism",
       docs = Some(
         """In the case of `include-sleeping = true`, this controls the parallelism for how many
           |nodes to propagate to at once. Default is 4.
-          |""".stripMargin
-      )
+          |""".stripMargin,
+      ),
     ).xmap(_.getOrElse(4))(Some(_))
     endpoint(
       request = post(
         url = standing / "control" / "propagate" /? (sleepingToo & wakeUpParallelism & namespace),
-        entity = emptyRequest
+        entity = emptyRequest,
       ),
       response = accepted(emptyResponse).orNotFound(notFoundDocs = Some("Namespace not found")),
       docs = EndpointDocs()
@@ -664,9 +664,9 @@ trait StandingQueryRoutes
               |
               |  * When interactively constructing a standing query for already-ingested data
               |  * When creating a new standing query that needs to be applied to recent data
-              |""".stripMargin
-          )
-        )
+              |""".stripMargin,
+          ),
+        ),
     )
   }
 }

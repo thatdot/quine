@@ -14,7 +14,7 @@ import com.thatdot.quine.util.Log.LogConfig
 
 trait QuineIngestQuery {
   def apply(
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Unit]
 }
 
@@ -22,7 +22,7 @@ case class QuineValueIngestQuery(
   graph: CypherOpsGraph,
   query: CompiledQuery[Location.Anywhere],
   parameter: String,
-  namespaceId: NamespaceId
+  namespaceId: NamespaceId,
 )(implicit logConfig: LogConfig)
     extends (cypher.Value => Future[Unit])
     with QuineIngestQuery {
@@ -30,7 +30,7 @@ case class QuineValueIngestQuery(
     AtLeastOnceCypherQuery(query, parameter, "ingest-query")
 
   def apply(
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Unit] =
     atLeastOnceQuery
       .stream(deserialized, namespaceId)(graph)
@@ -41,7 +41,7 @@ case class QuineValueIngestQuery(
 
 case object QuineDropIngestQuery extends QuineIngestQuery {
   def apply(
-    deserialized: cypher.Value
+    deserialized: cypher.Value,
   ): Future[Unit] = Future.successful(())
 
 }
@@ -51,7 +51,7 @@ object QuineValueIngestQuery extends LazyLogging {
   def apply(
     config: IngestStreamConfiguration,
     graph: CypherOpsGraph,
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   )(implicit logConfig: LogConfig): QuineIngestQuery = {
 
     def fromStreamedRecordFormat(f: StreamedRecordFormat): QuineIngestQuery = f match {
@@ -81,7 +81,7 @@ object QuineValueIngestQuery extends LazyLogging {
     graph: CypherOpsGraph,
     query: String,
     parameter: String,
-    namespaceId: NamespaceId
+    namespaceId: NamespaceId,
   )(implicit logConfig: LogConfig): Try[QuineValueIngestQuery] =
     Try(compiler.cypher.compile(query, unfixedParameters = Seq(parameter))).map {
       compiled: CompiledQuery[Location.Anywhere] =>
@@ -89,14 +89,14 @@ object QuineValueIngestQuery extends LazyLogging {
           // TODO this should be lifted to an (overridable, see allowAllNodeScan in SQ outputs) API error
           logger.warn(
             "Cypher query may contain full node scan; for improved performance, re-write without full node scan. " +
-            "The provided query was: " + compiled.queryText
+            "The provided query was: " + compiled.queryText,
           )
         }
         if (!compiled.query.isIdempotent) {
           // TODO allow user to override this (see: allowAllNodeScan) and only retry when idempotency is asserted
           logger.warn(
             """Could not verify that the provided ingest query is idempotent. If timeouts occur, query
-              |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' ')
+              |execution may be retried and duplicate data may be created.""".stripMargin.replace('\n', ' '),
           )
         }
         QuineValueIngestQuery(graph, compiled, parameter, namespaceId)

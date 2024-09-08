@@ -29,7 +29,7 @@ import com.thatdot.quine.model.EdgeDirection
 final case class Graph(
   nodes: Map[expressions.LogicalVariable, expressions.NodePattern],
   relationships: Set[Relationship],
-  namedParts: Map[expressions.Variable, expressions.AnonymousPatternPart]
+  namedParts: Map[expressions.Variable, expressions.AnonymousPatternPart],
 ) {
 
   /** Synthesize a fetch query
@@ -44,7 +44,7 @@ final case class Graph(
     */
   def synthesizeFetch(
     freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression],
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.Anywhere]] = for {
 
     // If possible, we want to jump straight to an anchor node
@@ -95,7 +95,7 @@ final case class Graph(
   def synthesizeFetchOnNode(
     atNode: expressions.LogicalVariable,
     freeConstraints: WithFreeVariables[expressions.LogicalVariable, expressions.Expression],
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.OnNode]] = for {
     scopeInfo: QueryScopeInfo <- CompM.getQueryScopeInfo
 
@@ -106,7 +106,7 @@ final case class Graph(
      */
     (returnQuery, constraints1, remainingNodes) <- (
       scopeInfo.getVariable(logicalVariable2Symbol(atNode)),
-      nodes.get(atNode)
+      nodes.get(atNode),
     ) match {
 
       case (Some(cypherVar), None) =>
@@ -118,14 +118,14 @@ final case class Graph(
           localNode = cypher.Query.LocalNode(
             labelsOpt = None,
             propertiesOpt = None,
-            bindName = Some(tempVarExpr.id)
+            bindName = Some(tempVarExpr.id),
           )
           filter = cypher.Query.filter(
             condition = cypher.Expr.Equal(
               cypher.Expr.Function(cypher.Func.Id, Vector(cypherVar)),
-              cypher.Expr.Function(cypher.Func.Id, Vector(tempVarExpr))
+              cypher.Expr.Function(cypher.Func.Id, Vector(tempVarExpr)),
             ),
-            toFilter = cypher.Query.Unit()
+            toFilter = cypher.Query.Unit(),
           )
           returnQuery = (cont: cypher.Query[cypher.Location.OnNode]) => {
             cypher.Query.apply(cypher.Query.apply(localNode, filter), cont)
@@ -157,23 +157,23 @@ final case class Graph(
           labelsOpt = nodePat.labelExpression.fold(Set.empty[Symbol])(le =>
             handleLabelExpression(
               le,
-              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString)))
-            )
+              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString))),
+            ),
           )
           localNode = nodeWQ.toNodeQuery { (props: Option[cypher.Expr]) =>
             cypher.Query.LocalNode(
               Some(labelsOpt.toVector),
               propertiesOpt = props,
-              bindName
+              bindName,
             )
           }
           returnQuery = (cont: cypher.Query[cypher.Location.OnNode]) => {
             cypher.Query.apply(
               cypher.Query.apply(
                 localNode,
-                constraintsWQ.toNodeQuery(cypher.Query.filter(_, cypher.Query.Unit()))
+                constraintsWQ.toNodeQuery(cypher.Query.filter(_, cypher.Query.Unit())),
               ),
-              cont
+              cont,
             )
           }
         } yield (returnQuery, newFreeConstraints, nodes - atNode)
@@ -209,8 +209,8 @@ final case class Graph(
         val edgeName = rel.labelExpression.map(le =>
           handleLabelExpression(
             le,
-            Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString)))
-          )
+            Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString))),
+          ),
         )
 //        val edgeName = if (rel.types.isEmpty) {
 //          None
@@ -262,7 +262,7 @@ final case class Graph(
           bindRelation,
           range,
           cypher.VisitedVariableEdgeMatches.empty,
-          constraintsWQ.toNodeQuery(cypher.Query.filter(_, andThen))
+          constraintsWQ.toNodeQuery(cypher.Query.filter(_, andThen)),
         )
     }
   } yield returnQuery(remainingQuery)
@@ -307,7 +307,7 @@ final case class Graph(
   /** Like [[synthesizeCreate]] but starts already in the graph */
   def synthesizeCreateOnNode(
     atNode: expressions.LogicalVariable,
-    avng: AnonymousVariableNameGenerator
+    avng: AnonymousVariableNameGenerator,
   ): CompM[cypher.Query[cypher.Location.OnNode]] = for {
     scopeInfo <- CompM.getQueryScopeInfo
 
@@ -326,9 +326,9 @@ final case class Graph(
           nodePat.labelExpression.fold(Set.empty[Symbol])(le =>
             handleLabelExpression(
               le,
-              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString)))
-            )
-          )
+              Some(position(nodePat.position)(com.thatdot.quine.graph.cypher.SourceText(nodePat.toString))),
+            ),
+          ),
         )
 //        val labelsOpt = if (nodePat.labels.isEmpty) {
 //          None
@@ -346,13 +346,13 @@ final case class Graph(
           localNode = cypher.Query.LocalNode(
             labelsOpt = None,
             propertiesOpt = None,
-            bindName = Some(atNodeExpr.id)
+            bindName = Some(atNodeExpr.id),
           )
           setData = nodeWC.toNodeQuery { (props: Option[cypher.Expr]) =>
             val setProps = cypher.Query.SetProperties(
               nodeVar = atNodeExpr.id,
               properties = props.getOrElse(cypher.Expr.Map.empty),
-              includeExisting = true
+              includeExisting = true,
             )
             val setLabels = labelsOpt match {
               case Some(lbls) =>
@@ -370,9 +370,9 @@ final case class Graph(
         (
           CompM.raiseCompileError[cypher.Query[cypher.Location.OnNode] => cypher.Query[cypher.Location.OnNode]](
             s"Bug: node should either be in context or in graph: $other",
-            atNode
+            atNode,
           ),
-          nodes
+          nodes,
         )
     }
     returnQuery <- returnQueryM
@@ -412,14 +412,14 @@ final case class Graph(
           edgeName: Symbol <- rel.labelExpression.map(le =>
             handleLabelExpression(
               le,
-              Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString)))
-            )
+              Some(position(rel.position)(com.thatdot.quine.graph.cypher.SourceText(rel.toString))),
+            ),
           ) match {
             case Some(edges) => CompM.pure(edges.head)
             case labels @ _ =>
               CompM.raiseCompileError(
                 s"Edges must be created with exactly one label (got ${rel.labelExpression.map(_.asCanonicalStringVal)})",
-                rel
+                rel,
               )
           }
 
@@ -442,7 +442,7 @@ final case class Graph(
           bindRelation,
           otherNode,
           add = true,
-          andThen
+          andThen,
         )
     }
   } yield returnQuery(remainingQuery)
@@ -459,7 +459,7 @@ object Graph {
 
     def addNodePattern(
       nodeVar: expressions.LogicalVariable,
-      nodePat: expressions.NodePattern
+      nodePat: expressions.NodePattern,
     ): Unit = nodesSeen.contains(nodeVar) match {
       // This is the first time we see the variable, so define it
       case false =>
@@ -483,7 +483,7 @@ object Graph {
       case pat: expressions.ShortestPaths =>
         throw cypher.CypherException.Compile(
           "`shortestPath` planning in graph patterns is not supported",
-          Some(position(pat.position))
+          Some(position(pat.position)),
         )
     }
 
@@ -492,9 +492,9 @@ object Graph {
      * @return the rightmost node variable
      */
     def visitPatternElement(
-      pat: expressions.PatternElement
+      pat: expressions.PatternElement,
     )(implicit
-      source: cypher.SourceText
+      source: cypher.SourceText,
     ): expressions.LogicalVariable =
       pat match {
         case expressions.RelationshipChain(elem, rel, rightNode) =>
@@ -535,7 +535,7 @@ object Graph {
 final case class Relationship(
   start: expressions.LogicalVariable,
   end: expressions.LogicalVariable,
-  relationshipPattern: expressions.RelationshipPattern
+  relationshipPattern: expressions.RelationshipPattern,
 ) {
   def endpoints: List[expressions.LogicalVariable] = List(start, end)
 }

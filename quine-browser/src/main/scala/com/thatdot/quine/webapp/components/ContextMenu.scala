@@ -20,7 +20,7 @@ import com.thatdot.quine.webapp.Styles
 final case class ContextMenuItem(
   item: ReactElement,
   title: String,
-  action: () => Unit
+  action: () => Unit,
 )
 
 /** Context menu */
@@ -33,7 +33,7 @@ final case class ContextMenuItem(
   case class Props(
     x: Double,
     y: Double,
-    items: Seq[ContextMenuItem]
+    items: Seq[ContextMenuItem],
   )
 
   val component: FunctionalComponent[ContextMenu.Props] = FunctionalComponent[Props] { props =>
@@ -44,10 +44,10 @@ final case class ContextMenuItem(
           li(
             className := Styles.grayClickable,
             title := itemTitle,
-            onClick := (_ => action())
+            onClick := (_ => action()),
           )(item)
-        }: _*
-      )
+        }: _*,
+      ),
     )
   }
 

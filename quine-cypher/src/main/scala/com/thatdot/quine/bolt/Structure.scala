@@ -17,7 +17,7 @@ import com.thatdot.quine.util.Log.implicits._
   */
 final case class Structure(
   signature: Byte,
-  fields: List[Value]
+  fields: List[Value],
 )
 object Structure {
 
@@ -29,7 +29,7 @@ object Structure {
     */
   def apply[A](value: A)(implicit
     impl: Structured[A],
-    idp: QuineIdProvider
+    idp: QuineIdProvider,
   ): Structure = impl.intoStructure(value)
 
 }
@@ -66,11 +66,11 @@ object Structured extends LazySafeLogging {
         case List(
               nodeId,
               Expr.List(lbls),
-              Expr.Map(props)
+              Expr.Map(props),
             ) =>
           val nodeQid = idp.valueToQid(Expr.toQuineValue(nodeId)).getOrElse {
             throw new IllegalArgumentException(
-              s"Cannot deserialize node $structure whose ID cannot be read"
+              s"Cannot deserialize node $structure whose ID cannot be read",
             )
           }
 
@@ -80,19 +80,19 @@ object Structured extends LazySafeLogging {
               case Expr.Str(l) => lblSet += Symbol(l)
               case _ =>
                 throw new IllegalArgumentException(
-                  s"Structure with signature of a node has the wrong schema"
+                  s"Structure with signature of a node has the wrong schema",
                 )
             }
 
           Expr.Node(
             id = nodeQid,
             labels = lblSet.result(),
-            properties = props.map(kv => Symbol(kv._1) -> kv._2)
+            properties = props.map(kv => Symbol(kv._1) -> kv._2),
           )
 
         case _ =>
           throw new IllegalArgumentException(
-            s"Structure with signature of a node has the wrong schema"
+            s"Structure with signature of a node has the wrong schema",
           )
       }
     }
@@ -104,12 +104,12 @@ object Structured extends LazySafeLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            safe"Serializing node: ${Safe(node.id.pretty)} with a non-integer ID may cause Bolt clients to crash"
+            safe"Serializing node: ${Safe(node.id.pretty)} with a non-integer ID may cause Bolt clients to crash",
           )
           other
       },
       Expr.List(node.labels.map(lbl => Expr.Str(lbl.name)).toVector),
-      Expr.Map(node.properties.map(kv => kv._1.name -> kv._2))
+      Expr.Map(node.properties.map(kv => kv._1.name -> kv._2)),
     )
 
   }
@@ -130,21 +130,21 @@ object Structured extends LazySafeLogging {
               startId,
               endId,
               Expr.Str(typ),
-              Expr.Map(props)
+              Expr.Map(props),
             ) =>
           Expr.Relationship(
             idp.valueToQid(Expr.toQuineValue(startId)).getOrElse {
               throw new IllegalArgumentException(
-                s"Cannot deserialize edge $structure whose start cannot be read as an ID"
+                s"Cannot deserialize edge $structure whose start cannot be read as an ID",
               )
             },
             Symbol(typ),
             props.map(kv => Symbol(kv._1) -> kv._2),
             idp.valueToQid(Expr.toQuineValue(endId)).getOrElse {
               throw new IllegalArgumentException(
-                s"Cannot deserialize edge $structure whose end cannot be read as an ID"
+                s"Cannot deserialize edge $structure whose end cannot be read as an ID",
               )
-            }
+            },
           )
         case unknown => sys.error(s"Expected a specific list structure, but got $unknown instead")
       }
@@ -158,16 +158,16 @@ object Structured extends LazySafeLogging {
             Vector(
               relationship.start,
               relationship.end,
-              relationship.name
-            )
+              relationship.name,
+            ),
           )
-          .toLong
+          .toLong,
       ),
       Expr.fromQuineValue(idp.qidToValue(relationship.start)) match {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            safe"Serializing edge with a non-integer start ID: ${Safe(other)} may cause Bolt clients to crash"
+            safe"Serializing edge with a non-integer start ID: ${Safe(other)} may cause Bolt clients to crash",
           )
           other
       },
@@ -175,12 +175,12 @@ object Structured extends LazySafeLogging {
         case i: Expr.Integer => i
         case other =>
           logger.warn(
-            safe"Serializing edge with a non-integer end ID: ${Safe(other)} may cause Bolt clients to crash"
+            safe"Serializing edge with a non-integer end ID: ${Safe(other)} may cause Bolt clients to crash",
           )
           other
       },
       Expr.Str(relationship.name.name),
-      Expr.Map(Map.empty) // TODO: relationship properties go here
+      Expr.Map(Map.empty), // TODO: relationship properties go here
     )
   }
 

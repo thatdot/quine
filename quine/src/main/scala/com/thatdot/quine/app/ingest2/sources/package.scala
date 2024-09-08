@@ -34,13 +34,13 @@ package object sources extends LazyLogging {
       Flow[ByteString]
     case otherCharset =>
       logger.warn(
-        s"Charset-sensitive ingest does not directly support $otherCharset - transcoding through UTF-8 first"
+        s"Charset-sensitive ingest does not directly support $otherCharset - transcoding through UTF-8 first",
       )
       TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
   }
 
   def boundingFlow[A](ingestBounds: IngestBounds): Flow[A, A, NotUsed] =
     ingestBounds.ingestLimit.fold(Flow[A].drop(ingestBounds.startAtOffset))(limit =>
-      Flow[A].drop(ingestBounds.startAtOffset).take(limit)
+      Flow[A].drop(ingestBounds.startAtOffset).take(limit),
     )
 }

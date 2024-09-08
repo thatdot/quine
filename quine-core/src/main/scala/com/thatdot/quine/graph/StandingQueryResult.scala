@@ -18,7 +18,7 @@ import com.thatdot.quine.util.Log._
   */
 final case class StandingQueryResult(
   meta: StandingQueryResult.Meta,
-  data: Map[String, QuineValue]
+  data: Map[String, QuineValue],
 ) {
 
   /** Return this result as a single `QuineValue` (use sparingly, this effectively throws away type safety!)
@@ -26,16 +26,16 @@ final case class StandingQueryResult(
   def toQuineValueMap: QuineValue.Map = QuineValue.Map(
     Map(
       "meta" -> QuineValue(meta.toMap),
-      "data" -> QuineValue(data)
-    )
+      "data" -> QuineValue(data),
+    ),
   )
 
   def toJson(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json =
     Json.fromFields(
       Seq(
         ("meta", meta.toJson),
-        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq))
-      )
+        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)),
+      ),
     )
 
   // TODO eliminate duplicated code below and in DomainGraphNode.scala
@@ -92,14 +92,14 @@ final case class StandingQueryResult(
         putOrdered[QuineValue](
           list,
           into,
-          putQuineValue(_, newHasher).hash
+          putQuineValue(_, newHasher).hash,
         )
       case QuineValue.Map(map) =>
         into.putByte(8)
         putUnordered[(String, QuineValue)](
           map,
           into,
-          putQuineValueMapKeyValue(_, newHasher).hash
+          putQuineValueMapKeyValue(_, newHasher).hash,
         )
       case QuineValue.DateTime(datetime) =>
         into.putByte(9)
@@ -142,10 +142,10 @@ object StandingQueryResult {
     */
   def apply(
     isPositiveMatch: Boolean,
-    data: Map[String, QuineValue]
+    data: Map[String, QuineValue],
   ): StandingQueryResult = StandingQueryResult(
     StandingQueryResult.Meta(isPositiveMatch),
-    data
+    data,
   )
 
   /** (DGB) standing query result
@@ -159,14 +159,14 @@ object StandingQueryResult {
     isPositiveMatch: Boolean,
     id: QuineId,
     formatAsString: Boolean,
-    aliasedAs: String
+    aliasedAs: String,
   )(implicit idProvider: QuineIdProvider): StandingQueryResult = {
     val idValue =
       if (formatAsString) QuineValue.Str(idProvider.qidToPrettyString(id))
       else idProvider.qidToValue(id)
     StandingQueryResult(
       StandingQueryResult.Meta(isPositiveMatch),
-      data = Map(aliasedAs -> idValue)
+      data = Map(aliasedAs -> idValue),
     )
   }
 
@@ -179,13 +179,13 @@ object StandingQueryResult {
     */
   final case class Meta(isPositiveMatch: Boolean) {
     def toMap: Map[String, QuineValue] = Map(
-      "isPositiveMatch" -> QuineValue(isPositiveMatch)
+      "isPositiveMatch" -> QuineValue(isPositiveMatch),
     )
 
     def toJson: Json = Json.fromFields(
       Seq(
-        ("isPositiveMatch", Json.fromBoolean(isPositiveMatch))
-      )
+        ("isPositiveMatch", Json.fromBoolean(isPositiveMatch)),
+      ),
     )
   }
 }

@@ -17,7 +17,7 @@ case class StandardInputSource(
   maximumLineSize: Int,
   charset: Charset = DEFAULT_CHARSET,
   meter: IngestMeter,
-  decoders: Seq[ContentDecoder] = Seq()
+  decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
   val meteredDecompressedSource: Source[ByteString, NotUsed] =
@@ -34,7 +34,7 @@ case class StandardInputSource(
     maximumLineSize,
     IngestBounds(),
     meter,
-    decoders
+    decoders,
   )
 
 }

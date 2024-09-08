@@ -21,7 +21,7 @@ object syntax {
       override def encode(value: B, protocolVersion: ProtocolVersion): ByteBuffer =
         longCodec.encodePrimitive(to(value), protocolVersion)
       override def decode(bytes: ByteBuffer, protocolVersion: ProtocolVersion): B = from(
-        longCodec.decodePrimitive(bytes, protocolVersion)
+        longCodec.decodePrimitive(bytes, protocolVersion),
       )
       override def format(value: B): String = longCodec.format(to(value))
       override def parse(value: String): B = from(longCodec.parse(value))

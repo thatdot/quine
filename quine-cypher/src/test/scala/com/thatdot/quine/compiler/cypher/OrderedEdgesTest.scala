@@ -25,7 +25,7 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
         _ <- Future.traverse(david.knows)(p =>
           graph
             .literalOps(cypherHarnessNamespace)
-            .addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows")
+            .addEdge(idProv.customIdToQid(david.id), idProv.customIdToQid(p.id), "knows"),
         )
       } yield assert(true)
     }
@@ -33,7 +33,7 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
     testQuery(
       "MATCH (d)-[:knows]->(p) WHERE id(d) = 4 RETURN p.name",
       expectedColumns = Vector("p.name"),
-      expectedRows = david.knows.reverse.map(p => Vector(Expr.Str(p.name)))
+      expectedRows = david.knows.reverse.map(p => Vector(Expr.Str(p.name))),
     )
 
   }
@@ -53,7 +53,7 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
       """,
       expectedColumns = Vector.empty,
       expectedRows = Seq.empty,
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
 
     val pageSize = 5
@@ -66,8 +66,8 @@ class OrderedEdgesTest extends CypherHarness("ordered-edges-test") {
       """,
       expectedColumns = Vector("m.index"),
       expectedRows = Range(totalEdges - pageNo * pageSize, totalEdges - (pageNo + 1) * pageSize, -1) map (i =>
-        Vector(Expr.Integer(i.toLong))
-      )
+        Vector(Expr.Integer(i.toLong)),
+      ),
     )
 
     for (i <- 0 to 2) page(i)

@@ -32,12 +32,12 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
         List(
           """{"id":"0","labels":[],"properties":{"foo":"bar"}}""",
           """{"start":"0","end":"1","name":"relation","properties":{}}""",
-          """{"id":"1","labels":[],"properties":{}}"""
-        ).mkString("[", ",", "]")
+          """{"id":"1","labels":[],"properties":{}}""",
+        ).mkString("[", ",", "]"),
       ),
       queryPreamble = """CREATE (n{foo: "bar"})-[r:relation]->(m) RETURN """,
       expectedIsIdempotent = false,
-      expectedIsReadOnly = false
+      expectedIsReadOnly = false,
     )
     // TODO depends on bytes tests
     // testExpression("""toJson(bytes("c0de"))""", Expr.Bytes(Array(0xc0, 0xde).map(_.toByte)))
@@ -61,37 +61,37 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
               "birds" -> Expr.List(
                 Vector(
                   Expr.Integer(1),
-                  Expr.Integer(4)
-                )
+                  Expr.Integer(4),
+                ),
               ),
-              "type" -> Expr.Str("robin")
-            )
-          )
-        )
-      )
+              "type" -> Expr.Str("robin"),
+            ),
+          ),
+        ),
+      ),
     )
   }
 
   describe("`map.fromPairs` function") {
     testExpression(
       "map.fromPairs([])",
-      Expr.Map(Map.empty)
+      Expr.Map(Map.empty),
     )
     testExpression(
       "map.fromPairs([['a', 1],['b',2]])",
-      Expr.Map(Map("a" -> Expr.Integer(1L), "b" -> Expr.Integer(2L)))
+      Expr.Map(Map("a" -> Expr.Integer(1L), "b" -> Expr.Integer(2L))),
     )
   }
 
   describe("`map.removeKey` function") {
     testExpression(
       "map.removeKey({ foo: 'bar', baz: 123 }, 'foo')",
-      Expr.Map(Map("baz" -> Expr.Integer(123L)))
+      Expr.Map(Map("baz" -> Expr.Integer(123L))),
     )
 
     testExpression(
       "map.removeKey({ foo: 'bar', baz: 123 }, 'qux')",
-      Expr.Map(Map("foo" -> Expr.Str("bar"), "baz" -> Expr.Integer(123L)))
+      Expr.Map(Map("foo" -> Expr.Str("bar"), "baz" -> Expr.Integer(123L))),
     )
   }
 
@@ -107,10 +107,10 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       "UNWIND [3.14, 10.1, 2, 2.9] AS x RETURN max(x)",
       expectedColumns = Vector("max(x)"),
       expectedRows = Seq(
-        Vector(Expr.Floating(10.1))
+        Vector(Expr.Floating(10.1)),
       ),
       expectedCannotFail = true,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -126,10 +126,10 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
       "UNWIND [3.14, 10.1, 2, 2.9] AS x RETURN min(x)",
       expectedColumns = Vector("min(x)"),
       expectedRows = Seq(
-        Vector(Expr.Integer(2L))
+        Vector(Expr.Integer(2L)),
       ),
       expectedCannotFail = true,
-      expectedIsIdempotent = true
+      expectedIsIdempotent = true,
     )
   }
 
@@ -191,41 +191,41 @@ class CypherFunctions extends CypherHarness("cypher-function-tests") {
   describe("`text.utf8Decode` function") {
     testExpression(
       "text.utf8Decode(bytes('6162206364'))",
-      Expr.Str("ab cd")
+      Expr.Str("ab cd"),
     )
     testExpression(
       "text.utf8Decode(bytes('5765204469646E2774205374617274207468652046697265'))",
-      Expr.Str("We Didn't Start the Fire")
+      Expr.Str("We Didn't Start the Fire"),
     )
     testExpression(
       "text.utf8Decode(bytes('F09F8C88'))",
-      Expr.Str("\uD83C\uDF08") // 🌈
+      Expr.Str("\uD83C\uDF08"), // 🌈
     )
     testExpression(
       "text.utf8Decode(bytes('E4BDA0E5A5BDE4B896E7958C'))",
-      Expr.Str("你好世界")
+      Expr.Str("你好世界"),
     )
   }
 
   describe("`text.utf8Encode` function") {
     testExpression(
       """text.utf8Encode("ab cd")""",
-      Expr.Bytes(Array(0x61, 0x62, 0x20, 0x63, 0x64).map(_.toByte))
+      Expr.Bytes(Array(0x61, 0x62, 0x20, 0x63, 0x64).map(_.toByte)),
     )
     testExpression(
       """text.utf8Encode("We Didn't Start the Fire")""",
       Expr.Bytes(
         Array(0x57, 0x65, 0x20, 0x44, 0x69, 0x64, 0x6E, 0x27, 0x74, 0x20, 0x53, 0x74, 0x61, 0x72, 0x74, 0x20, 0x74,
-          0x68, 0x65, 0x20, 0x46, 0x69, 0x72, 0x65).map(_.toByte)
-      )
+          0x68, 0x65, 0x20, 0x46, 0x69, 0x72, 0x65).map(_.toByte),
+      ),
     )
     testExpression(
       """text.utf8Encode("🌈")""", // \uD83C\uDF08
-      Expr.Bytes(Array(0xF0, 0x9F, 0x8C, 0x88).map(_.toByte))
+      Expr.Bytes(Array(0xF0, 0x9F, 0x8C, 0x88).map(_.toByte)),
     )
     testExpression(
       """text.utf8Encode("你好世界")""",
-      Expr.Bytes(Array(0xE4, 0xBD, 0xA0, 0xE5, 0xA5, 0xBD, 0xE4, 0xB8, 0x96, 0xE7, 0x95, 0x8C).map(_.toByte))
+      Expr.Bytes(Array(0xE4, 0xBD, 0xA0, 0xE5, 0xA5, 0xBD, 0xE4, 0xB8, 0x96, 0xE7, 0x95, 0x8C).map(_.toByte)),
     )
   }
   describe("getHost function") {

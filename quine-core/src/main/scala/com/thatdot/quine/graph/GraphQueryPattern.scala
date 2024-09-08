@@ -48,7 +48,7 @@ final case class GraphQueryPattern(
   toExtract: Seq[GraphQueryPattern.ReturnColumn],
   filterCond: Option[cypher.Expr],
   toReturn: Seq[(Symbol, cypher.Expr)],
-  distinct: Boolean
+  distinct: Boolean,
 ) extends LazySafeLogging {
 
   import GraphQueryPattern._
@@ -70,7 +70,7 @@ final case class GraphQueryPattern(
     */
   @throws[InvalidQueryPattern]
   def compiledDomainGraphBranch(
-    labelsProperty: Symbol
+    labelsProperty: Symbol,
   ): (model.SingleBranch, ReturnColumn.Id) = {
 
     if (filterCond.nonEmpty)
@@ -108,7 +108,7 @@ final case class GraphQueryPattern(
           domainEdges += model.DomainEdge(
             edge = model.GenericEdge(label, edgeDir),
             depDirection = model.DependsUpon, // really anything will do
-            branch = synthesizeBranch(to)
+            branch = synthesizeBranch(to),
           )
         } else
           /* if (to == id) */ {
@@ -116,7 +116,7 @@ final case class GraphQueryPattern(
             domainEdges += model.DomainEdge(
               edge = model.GenericEdge(label, edgeDir),
               depDirection = model.DependsUpon, // really anything will do
-              branch = synthesizeBranch(from)
+              branch = synthesizeBranch(from),
             )
           }
 
@@ -144,7 +144,7 @@ final case class GraphQueryPattern(
       val domainNodeEquiv = model.DomainNodeEquiv(
         className = None,
         localPropsWithLabels,
-        circularEdges.result()
+        circularEdges.result(),
       )
 
       model.SingleBranch(domainNodeEquiv, qidOpt, domainEdges.result())
@@ -168,7 +168,7 @@ final case class GraphQueryPattern(
   @throws[InvalidQueryPattern]
   def compiledMultipleValuesStandingQuery(
     labelsProperty: Symbol,
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
   )(implicit logConfig: LogConfig): MultipleValuesStandingQuery = {
 
     val watchedProperties: Map[NodePatternId, Map[Symbol, Symbol]] = toExtract
@@ -208,33 +208,33 @@ final case class GraphQueryPattern(
             subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
               MultipleValuesStandingQuery.LocalProperty.Any,
-              alias
+              alias,
             )
           case PropertyValuePattern.Value(value) =>
             val cypherValue = cypher.Expr.fromQuineValue(value)
             subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
               MultipleValuesStandingQuery.LocalProperty.Equal(cypherValue),
-              alias
+              alias,
             )
           case PropertyValuePattern.AnyValueExcept(value) =>
             val cypherValue = cypher.Expr.fromQuineValue(value)
             subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
               MultipleValuesStandingQuery.LocalProperty.NotEqual(cypherValue),
-              alias
+              alias,
             )
           case PropertyValuePattern.NoValue =>
             subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
               MultipleValuesStandingQuery.LocalProperty.None,
-              alias
+              alias,
             )
           case PropertyValuePattern.RegexMatch(pattern) =>
             subQueries += MultipleValuesStandingQuery.LocalProperty(
               propKey,
               MultipleValuesStandingQuery.LocalProperty.Regex(pattern.pattern),
-              alias
+              alias,
             )
         }
       }
@@ -246,7 +246,7 @@ final case class GraphQueryPattern(
         subQueries += MultipleValuesStandingQuery.LocalProperty(
           propKey,
           MultipleValuesStandingQuery.LocalProperty.Unconditional,
-          Some(alias)
+          Some(alias),
         )
 
       for (alias <- watchingAllProperties.getOrElse(id, Set.empty)) subQueries += {
@@ -266,17 +266,17 @@ final case class GraphQueryPattern(
               list = cypher.Expr.Variable(labelListTempVar),
               filterPredicate = cypher.Expr.Equal(
                 cypher.Expr.Variable(labelTempVar),
-                cypher.Expr.fromQuineValue(QuineValue.Str(label.name))
-              )
-            )
+                cypher.Expr.fromQuineValue(QuineValue.Str(label.name)),
+              ),
+            ),
           ),
           dropExisting = true,
           toFilter = MultipleValuesStandingQuery.LocalProperty(
             propKey = labelsProperty,
             propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-            aliasedAs = Some(labelListTempVar)
+            aliasedAs = Some(labelListTempVar),
           ),
-          toAdd = Nil
+          toAdd = Nil,
         )
       }
       qidOpt.foreach { qid =>
@@ -285,12 +285,12 @@ final case class GraphQueryPattern(
           condition = Some(
             cypher.Expr.Equal(
               cypher.Expr.Variable(nodeIdTempVar),
-              cypher.Expr.fromQuineValue(idProvider.qidToValue(qid))
-            )
+              cypher.Expr.fromQuineValue(idProvider.qidToValue(qid)),
+            ),
           ),
           dropExisting = true,
           toFilter = MultipleValuesStandingQuery.LocalId(nodeIdTempVar, formatAsString = false),
-          toAdd = Nil
+          toAdd = Nil,
         )
       }
 
@@ -311,7 +311,7 @@ final case class GraphQueryPattern(
         subQueries += MultipleValuesStandingQuery.SubscribeAcrossEdge(
           edgeName = Some(label),
           edgeDirection = Some(edgeDir),
-          andThen = synthesizeQuery(other)
+          andThen = synthesizeQuery(other),
         )
       }
 
@@ -330,7 +330,7 @@ final case class GraphQueryPattern(
         filterCond,
         query,
         dropExisting = toReturn.nonEmpty,
-        toAdd = toReturn.toList
+        toAdd = toReturn.toList,
       )
     } else query
 
@@ -361,7 +361,7 @@ object GraphQueryPattern {
     id: NodePatternId,
     labels: Set[Symbol],
     qidOpt: Option[QuineId],
-    properties: Map[Symbol, PropertyValuePattern]
+    properties: Map[Symbol, PropertyValuePattern],
   )
 
   /** The sort of pattern we can express on a node in a graph standing query */
@@ -390,7 +390,7 @@ object GraphQueryPattern {
     from: NodePatternId,
     to: NodePatternId,
     isDirected: Boolean,
-    label: Symbol
+    label: Symbol,
   )
 
   /** The sort of thing to extract
@@ -407,18 +407,18 @@ object GraphQueryPattern {
     final case class Id(
       node: NodePatternId,
       formatAsString: Boolean,
-      aliasedAs: Symbol
+      aliasedAs: Symbol,
     ) extends ReturnColumn
 
     final case class Property(
       node: NodePatternId,
       propertyKey: Symbol,
-      aliasedAs: Symbol
+      aliasedAs: Symbol,
     ) extends ReturnColumn
 
     final case class AllProperties(
       node: NodePatternId,
-      aliasedAs: Symbol
+      aliasedAs: Symbol,
     ) extends ReturnColumn
   }
 }

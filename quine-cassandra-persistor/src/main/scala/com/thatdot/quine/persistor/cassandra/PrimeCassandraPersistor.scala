@@ -24,7 +24,7 @@ abstract class PrimeCassandraPersistor(
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings,
   shouldCreateTables: Boolean,
-  verifyTable: CqlSession => CqlIdentifier => Future[Unit]
+  verifyTable: CqlSession => CqlIdentifier => Future[Unit],
 )(implicit materializer: Materializer)
     extends PrimePersistor(persistenceConfig, bloomFilterSize) {
 
@@ -41,9 +41,9 @@ abstract class PrimeCassandraPersistor(
       MetaDataDefinition
         .create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
       DomainGraphNodesDefinition
-        .create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables)
+        .create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
     ).tupled,
-    36.seconds
+    36.seconds,
   )
 
   protected def internalGetMetaData(key: String): Future[Option[Array[Byte]]] = metaData.getMetaData(key)
@@ -54,7 +54,7 @@ abstract class PrimeCassandraPersistor(
     metaData.setMetaData(key, newValue)
 
   protected def internalPersistDomainGraphNodes(
-    domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode]
+    domainGraphNodes: Map[DomainGraphNodeId, DomainGraphNode],
   ): Future[Unit] =
     this.domainGraphNodes.persistDomainGraphNodes(domainGraphNodes)
 

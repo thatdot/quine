@@ -65,7 +65,7 @@ final case class EventTime private (eventTime: Long) extends AnyVal with Ordered
         log.warn(
           safe"""Too many operations on this node caused tickEventSequence to overflow
                 |milliseconds from: ${Safe(millis)} to: ${Safe(nextTime.millis)}. Historical
-                |queries for the overflowed millisecond may not reflect all updates.""".cleanLines
+                |queries for the overflowed millisecond may not reflect all updates.""".cleanLines,
         )
       }
     }
@@ -136,17 +136,17 @@ object EventTime extends LazySafeLogging {
   final def apply(
     milliseconds: Long,
     timestampSequence: Long = 0L,
-    eventSequence: Long = 0L
+    eventSequence: Long = 0L,
   ): EventTime = {
     val time = new EventTime(
       (milliseconds << MillisOffset) +
       (timestampSequence << TimestampSequenceOffset) +
-      eventSequence
+      eventSequence,
     )
     // Warn on various overflows
     if (milliseconds < 0L || MillisMax <= milliseconds) {
       logger.error(
-        log"Milliseconds: ${Safe(milliseconds)} in: ${Safe(time)} needs to be between 0 and ${Safe(MillisMax)}"
+        log"Milliseconds: ${Safe(milliseconds)} in: ${Safe(time)} needs to be between 0 and ${Safe(MillisMax)}",
       )
     }
     if (timestampSequence < 0L || TimestampSequenceMax <= timestampSequence) {

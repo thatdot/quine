@@ -21,7 +21,7 @@ trait ServerRequestTimeoutOps { self: endpoints4s.pekkohttp.server.Endpoints =>
       * @return Pekko HTTP route
       */
     def implementedByAsyncWithRequestTimeout(requestedTimeout: A => Option[Duration])(
-      implementation: (A, Duration) => Future[B]
+      implementation: (A, Duration) => Future[B],
     ): Route =
       handleExceptions(ExceptionHandler { case NonFatal(t) => handleServerError(t) }) {
         endpoint.request.directive { arguments =>

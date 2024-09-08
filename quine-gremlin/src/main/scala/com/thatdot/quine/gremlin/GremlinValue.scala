@@ -38,10 +38,10 @@ sealed abstract class GremlinExpression extends Positional {
     * @param idProvider procedures for handling ID values
     */
   @throws(
-    "The TypedValue(QuineValue.Id) provided could not be deserialized using the implicitly-provided idProvider"
+    "The TypedValue(QuineValue.Id) provided could not be deserialized using the implicitly-provided idProvider",
   )
   @throws[UnboundVariableError](
-    "The Variable provided was not bound by the implicitly-provided store"
+    "The Variable provided was not bound by the implicitly-provided store",
   )
   def eval()(implicit store: VariableStore, idProvider: QuineIdProvider): Any = this match {
     case TypedValue(QuineValue.Id(id)) => idProvider.customIdFromQid(id).get
@@ -68,7 +68,7 @@ sealed abstract class GremlinExpression extends Positional {
     * @tparam T type to which the evaluated value is cast
     */
   def evalTo[T](
-    errorMessage: => String
+    errorMessage: => String,
   )(implicit ct: ClassTag[T], store: VariableStore, idProvider: QuineIdProvider): T =
     eval().castTo[T](errorMessage, Some(pos)).get
 
@@ -111,7 +111,7 @@ sealed private[gremlin] trait GremlinPredicateExpression extends Positional {
 
   def evalPredicate()(implicit
     store: VariableStore,
-    idProvider: QuineIdProvider
+    idProvider: QuineIdProvider,
   ): GremlinPredicate[_] = this match {
     case EqPred(x) =>
       val compareTo = x.eval()
@@ -166,7 +166,7 @@ final private[gremlin] case class RegexPred(pattern: GremlinExpression) extends 
   */
 final case class GremlinPredicate[Input: ClassTag](
   predicate: Input => Boolean,
-  evaluatedFrom: GremlinPredicateExpression
+  evaluatedFrom: GremlinPredicateExpression,
 ) {
 
   /** Run the predicate against a value.
@@ -180,10 +180,10 @@ final case class GremlinPredicate[Input: ClassTag](
     */
   def testAgainst(
     value: Any,
-    pos: Option[Position]
+    pos: Option[Position],
   )(implicit
     graph: BaseGraph,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): Try[Boolean] = {
     def printedPredicate = evaluatedFrom.pprint(graph.idProvider, logConfig)
     value
@@ -209,7 +209,7 @@ final class VariableStore(private val mapping: Map[Symbol, Any]) {
     */
   def get(variable: Symbol, pos: Position): Any = mapping.getOrElse(
     variable,
-    throw UnboundVariableError(variable, Some(pos))
+    throw UnboundVariableError(variable, Some(pos)),
   )
 
   override def toString: String = s"VariableStore($mapping)"

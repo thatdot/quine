@@ -62,9 +62,9 @@ trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonS
   /** Maps of symbols */
   implicit def mapSymbol[T: JsonSchema]: JsonSchema[Map[Symbol, T]] = mapJsonSchema[T]
     .xmap[Map[Symbol, T]](
-      _.map { case (k, v) => Symbol(k) -> v }
+      _.map { case (k, v) => Symbol(k) -> v },
     )(
-      _.map { case (k, v) => k.name -> v }
+      _.map { case (k, v) => k.name -> v },
     )
 
   /** Schema for symbol */

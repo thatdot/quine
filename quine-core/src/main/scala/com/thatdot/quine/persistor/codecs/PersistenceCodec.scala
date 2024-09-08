@@ -24,12 +24,12 @@ import com.thatdot.quine.util.Log._
   */
 class InvalidUnionType(
   typeTag: Byte,
-  validTags: Array[String]
+  validTags: Array[String],
 ) extends IllegalArgumentException(s"Invalid tag $typeTag (valid tags: ${validTags.mkString(", ")})")
 
 class UnsupportedExtension(
   msg: String = s"Persisted data requires an extension to Quine that the current application does not support.",
-  cause: Throwable = null
+  cause: Throwable = null,
 ) extends IllegalArgumentException(msg, cause)
 
 //TODO this is temporary, and only serves to mark places where the code is processing a NodeEvent type
@@ -37,15 +37,15 @@ class UnsupportedExtension(
 // union type.
 class InvalidEventType(
   event: NodeEvent,
-  validTags: Array[String]
+  validTags: Array[String],
 ) extends IllegalArgumentException(
-      s"The type ${event.getClass.getSimpleName} can not be processed as a NodeChangeEvent (valid types: ${validTags.mkString(", ")})"
+      s"The type ${event.getClass.getSimpleName} can not be processed as a NodeChangeEvent (valid types: ${validTags.mkString(", ")})",
     )
 
 class InvalidPersistedQuineData(
   msg: String =
     s"Persisted data is invalid for the current version of Quine. Current Quine serialization version is ${PersistenceAgent.CurrentVersion}",
-  cause: Throwable = null
+  cause: Throwable = null,
 ) extends IllegalArgumentException(msg, cause)
 
 /** FlatBuffer-based codecs
@@ -85,7 +85,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       localDate.getYear,
       localDate.getMonthValue.toByte,
-      localDate.getDayOfMonth.toByte
+      localDate.getDayOfMonth.toByte,
     )
   private[this] def readLocalDate(localDate: persistence.LocalDate): java.time.LocalDate =
     java.time.LocalDate.of(localDate.year, localDate.month.toInt, localDate.day.toInt)
@@ -96,7 +96,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       localTime.getHour.toByte,
       localTime.getMinute.toByte,
       localTime.getSecond.toByte,
-      localTime.getNano
+      localTime.getNano,
     )
 
   private[this] def readLocalTime(localTime: persistence.LocalTime): java.time.LocalTime =
@@ -108,7 +108,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       offsetTime.getMinute.toByte,
       offsetTime.getSecond.toByte,
       offsetTime.getNano,
-      (offsetTime.getOffset.getTotalSeconds / 60).toShort
+      (offsetTime.getOffset.getTotalSeconds / 60).toShort,
     )
   private[this] def readOffsetTime(offsetTime: persistence.OffsetTime): java.time.OffsetTime =
     java.time.OffsetTime
@@ -129,7 +129,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       localDateTime.getHour.toByte,
       localDateTime.getMinute.toByte,
       localDateTime.getSecond.toByte,
-      localDateTime.getNano
+      localDateTime.getNano,
     )
 
   private[this] def readLocalDateTime(localDateTime: persistence.LocalDateTime): java.time.LocalDateTime = {
@@ -174,14 +174,14 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       builder.createSharedString(edge.edgeType.name),
       edgeDirection2Byte(edge.direction),
-      writeQuineId(builder, edge.other)
+      writeQuineId(builder, edge.other),
     )
 
   protected[this] def readHalfEdge(edge: persistence.HalfEdge): HalfEdge =
     HalfEdge(
       Symbol(edge.edgeType),
       byte2EdgeDirection(edge.direction),
-      readQuineId(edge.other)
+      readQuineId(edge.other),
     )
 
   protected[this] def writeHalfEdge2(builder: FlatBufferBuilder, edge: HalfEdge): Offset = {
@@ -191,7 +191,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       edgeTypeOffset,
       edgeDirection2Byte(edge.direction),
-      otherQuineIdOffset
+      otherQuineIdOffset,
     )
   }
 
@@ -199,13 +199,13 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     HalfEdge(
       Symbol(edge.edgeType),
       byte2EdgeDirection(edge.direction),
-      QuineId(edge.otherQuineIdAsByteBuffer.remainingBytes)
+      QuineId(edge.otherQuineIdAsByteBuffer.remainingBytes),
     )
 
   protected[this] def writeQuineId(builder: FlatBufferBuilder, qid: QuineId): Offset =
     persistence.QuineId.createQuineId(
       builder,
-      persistence.QuineId.createIdVector(builder, qid.array)
+      persistence.QuineId.createIdVector(builder, qid.array),
     )
 
   protected[this] def readQuineId(qid: persistence.QuineId): QuineId =
@@ -216,7 +216,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
   protected[this] def writeQuineValue(builder: FlatBufferBuilder, quineValue: QuineValue): Offset =
     persistence.QuineValue.createQuineValue(
       builder,
-      builder.createByteVector(QuineValue.writeMsgPack(quineValue))
+      builder.createByteVector(QuineValue.writeMsgPack(quineValue)),
     )
 
   protected[this] def readQuineValue(quineValue: persistence.QuineValue): QuineValue =
@@ -261,7 +261,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       idOff,
       labelsOff,
-      propertiesOff
+      propertiesOff,
     )
   }
 
@@ -342,7 +342,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
   }
 
   private[this] def readCypherLocalDateTime(
-    localDateTime: persistence.CypherLocalDateTime
+    localDateTime: persistence.CypherLocalDateTime,
   ): cypher.Expr.LocalDateTime = {
     val javaLocalDateTime = readLocalDateTime(localDateTime.localDateTime)
     cypher.Expr.LocalDateTime(javaLocalDateTime)
@@ -375,7 +375,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherRelationship(
     builder: FlatBufferBuilder,
-    relationship: cypher.Expr.Relationship
+    relationship: cypher.Expr.Relationship,
   ): Offset = {
     val startOff: Offset = writeQuineId(builder, relationship.start)
     val nameOff: Offset = builder.createString(relationship.name.name)
@@ -395,7 +395,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       startOff,
       nameOff,
       propertiesOff,
-      endOff
+      endOff,
     )
   }
 
@@ -423,7 +423,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         builder,
         keyOff,
         valueTyp,
-        valueOff
+        valueOff,
       )
     }
     val elemsOffsOff: Offset = persistence.CypherMap.createEntriesVector(builder, elemsOffs)
@@ -441,7 +441,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         tailsOffs(i) = persistence.CypherPathSegment.createCypherPathSegment(
           builder,
           relOff,
-          nodeOff
+          nodeOff,
         )
       }
       persistence.CypherPath.createTailsVector(builder, tailsOffs)
@@ -451,7 +451,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherLocalDateTime(
     builder: FlatBufferBuilder,
-    localDateTime: cypher.Expr.LocalDateTime
+    localDateTime: cypher.Expr.LocalDateTime,
   ): Offset = {
     persistence.CypherLocalDateTime.startCypherLocalDateTime(builder)
     val localDateTimeOff: Offset = writeLocalDateTime(builder, localDateTime.localDateTime)
@@ -499,7 +499,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherProperty(
     builder: FlatBufferBuilder,
-    property: cypher.Expr.Property
+    property: cypher.Expr.Property,
   ): Offset = {
     val TypeAndOffset(exprTyp, exprOff) = writeCypherExpr(builder, property.expr)
     val keyOff = builder.createString(property.key.name)
@@ -514,7 +514,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherDynamicProperty(
     builder: FlatBufferBuilder,
-    property: cypher.Expr.DynamicProperty
+    property: cypher.Expr.DynamicProperty,
   ): Offset = {
     val TypeAndOffset(exprTyp, exprOff) = writeCypherExpr(builder, property.expr)
     val TypeAndOffset(keyExprTyp, keyExprOff) = writeCypherExpr(builder, property.keyExpr)
@@ -523,12 +523,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       exprTyp,
       exprOff,
       keyExprTyp,
-      keyExprOff
+      keyExprOff,
     )
   }
 
   private[this] def readCypherDynamicProperty(
-    property: persistence.CypherDynamicPropertyAccess
+    property: persistence.CypherDynamicPropertyAccess,
   ): cypher.Expr.DynamicProperty = {
     val expr: cypher.Expr = readCypherExpr(property.exprType, property.expr(_))
     val keyExpr: cypher.Expr = readCypherExpr(property.keyExprType, property.keyExpr(_))
@@ -537,7 +537,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherListSlice(
     builder: FlatBufferBuilder,
-    listSlice: cypher.Expr.ListSlice
+    listSlice: cypher.Expr.ListSlice,
   ): Offset = {
     val TypeAndOffset(listTyp, listOff) = writeCypherExpr(builder, listSlice.list)
     val TypeAndOffset(fromTyp, fromOff) = listSlice.from match {
@@ -605,12 +605,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       originalTyp,
       originalOff,
       itemsOff,
-      mapProj.includeAllProps
+      mapProj.includeAllProps,
     )
   }
 
   private[this] def readCypherMapProjection(
-    mapProjection: persistence.CypherMapProjection
+    mapProjection: persistence.CypherMapProjection,
   ): cypher.Expr.MapProjection = {
     val original: cypher.Expr = readCypherExpr(mapProjection.originalType, mapProjection.original)
     val items: Seq[(String, cypher.Expr)] = Seq.tabulate(mapProjection.itemsLength) { i =>
@@ -624,14 +624,14 @@ trait PersistenceCodec[T] extends LazySafeLogging {
   private[this] def writeCypherUnaryOp(
     builder: FlatBufferBuilder,
     unaryOperator: Byte,
-    rhs: cypher.Expr
+    rhs: cypher.Expr,
   ): Offset = {
     val TypeAndOffset(rhsTyp, rhsOff) = writeCypherExpr(builder, rhs)
     persistence.CypherUnaryOp.createCypherUnaryOp(
       builder,
       unaryOperator,
       rhsTyp,
-      rhsOff
+      rhsOff,
     )
   }
 
@@ -653,7 +653,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     builder: FlatBufferBuilder,
     binaryOperator: Byte,
     lhs: cypher.Expr,
-    rhs: cypher.Expr
+    rhs: cypher.Expr,
   ): Offset = {
     val TypeAndOffset(lhsTyp, lhsOff) = writeCypherExpr(builder, lhs)
     val TypeAndOffset(rhsTyp, rhsOff) = writeCypherExpr(builder, rhs)
@@ -663,7 +663,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       lhsTyp,
       lhsOff,
       rhsTyp,
-      rhsOff
+      rhsOff,
     )
   }
 
@@ -694,7 +694,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
   private[this] def writeCypherNaryOp(
     builder: FlatBufferBuilder,
     naryOperator: Byte,
-    args: Vector[cypher.Expr]
+    args: Vector[cypher.Expr],
   ): Offset = {
     val argTypesOffs: Array[Byte] = new Array[Byte](args.length)
     val argOffs: Array[Offset] = new Array[Offset](args.length)
@@ -709,7 +709,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       naryOperator,
       argTypesOff,
-      argsOff
+      argsOff,
     )
   }
 
@@ -742,7 +742,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
           condTyp,
           condOff,
           outcomeTyp,
-          outcomeOff
+          outcomeOff,
         )
       }
       persistence.CypherCase.createBranchesVector(builder, branchesOffs)
@@ -757,7 +757,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       scrutineeOff,
       branchesOff,
       fallThroughTyp,
-      fallThroughOff
+      fallThroughOff,
     )
   }
 
@@ -792,7 +792,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       nameOff,
       argumentTypsOff,
-      argumentsOff
+      argumentsOff,
     )
   }
 
@@ -809,7 +809,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeCypherListComprehension(
     builder: FlatBufferBuilder,
-    comp: cypher.Expr.ListComprehension
+    comp: cypher.Expr.ListComprehension,
   ): Offset = {
     val variableOff: Offset = builder.createString(comp.variable.name)
     val TypeAndOffset(listTyp, listOff) = writeCypherExpr(builder, comp.list)
@@ -823,12 +823,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       predTyp,
       predOff,
       extractTyp,
-      extractOff
+      extractOff,
     )
   }
 
   private[this] def readCypherListComprehension(
-    comp: persistence.CypherListComprehension
+    comp: persistence.CypherListComprehension,
   ): cypher.Expr.ListComprehension = {
     val variable: Symbol = Symbol(comp.variable)
     val list: cypher.Expr = readCypherExpr(comp.listType, comp.list(_))
@@ -842,7 +842,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     listFoldOperator: Byte,
     variable: Symbol,
     list: cypher.Expr,
-    pred: cypher.Expr
+    pred: cypher.Expr,
   ): Offset = {
     val variableOff: Offset = builder.createString(variable.name)
     val TypeAndOffset(listTyp, listOff) = writeCypherExpr(builder, list)
@@ -854,12 +854,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       listTyp,
       listOff,
       predTyp,
-      predOff
+      predOff,
     )
   }
 
   private[this] def readCypherListFold(
-    comp: persistence.CypherListFold
+    comp: persistence.CypherListFold,
   ): cypher.Expr = {
     val variable: Symbol = Symbol(comp.variable)
     val list: cypher.Expr = readCypherExpr(comp.listType, comp.list(_))
@@ -894,12 +894,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       listTyp,
       listOff,
       reducerTyp,
-      reducerOff
+      reducerOff,
     )
   }
 
   private[this] def readCypherReduceList(
-    reduce: persistence.CypherReduceList
+    reduce: persistence.CypherReduceList,
   ): cypher.Expr.ReduceList = {
     val accumulator: Symbol = Symbol(reduce.accumulator)
     val initial: cypher.Expr = readCypherExpr(reduce.initialType, reduce.initial(_))
@@ -1402,31 +1402,31 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   protected[this] def writeMultipleValuesStandingQueryPartId(
     builder: FlatBufferBuilder,
-    sqId: MultipleValuesStandingQueryPartId
+    sqId: MultipleValuesStandingQueryPartId,
   ): Offset =
     persistence.MultipleValuesStandingQueryPartId.createMultipleValuesStandingQueryPartId(
       builder,
       sqId.uuid.getLeastSignificantBits,
-      sqId.uuid.getMostSignificantBits
+      sqId.uuid.getMostSignificantBits,
     )
 
   protected[this] def readMultipleValuesStandingQueryPartId(
-    sqId: persistence.MultipleValuesStandingQueryPartId
+    sqId: persistence.MultipleValuesStandingQueryPartId,
   ): MultipleValuesStandingQueryPartId =
     MultipleValuesStandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
 
   protected[this] def writeMultipleValuesStandingQueryPartId2(
     builder: FlatBufferBuilder,
-    sqId: MultipleValuesStandingQueryPartId
+    sqId: MultipleValuesStandingQueryPartId,
   ): Offset =
     persistence.MultipleValuesStandingQueryPartId2.createMultipleValuesStandingQueryPartId2(
       builder,
       sqId.uuid.getLeastSignificantBits,
-      sqId.uuid.getMostSignificantBits
+      sqId.uuid.getMostSignificantBits,
     )
 
   protected[this] def readMultipleValuesStandingQueryPartId2(
-    sqId: persistence.MultipleValuesStandingQueryPartId2
+    sqId: persistence.MultipleValuesStandingQueryPartId2,
   ): MultipleValuesStandingQueryPartId =
     MultipleValuesStandingQueryPartId(new UUID(sqId.highBytes, sqId.lowBytes))
 
@@ -1434,7 +1434,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     persistence.StandingQueryId.createStandingQueryId(
       builder,
       sqId.uuid.getLeastSignificantBits,
-      sqId.uuid.getMostSignificantBits
+      sqId.uuid.getMostSignificantBits,
     )
 
   protected[this] def readStandingQueryId(sqId: persistence.StandingQueryId): StandingQueryId =
@@ -1444,7 +1444,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     persistence.StandingQueryId2.createStandingQueryId2(
       builder,
       sqId.uuid.getLeastSignificantBits,
-      sqId.uuid.getMostSignificantBits
+      sqId.uuid.getMostSignificantBits,
     )
 
   protected[this] def readStandingQueryId2(sqId: persistence.StandingQueryId2): StandingQueryId =
@@ -1452,7 +1452,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeMultipleValuesCrossStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.Cross
+    query: MultipleValuesStandingQuery.Cross,
   ): Offset = {
     val queriesTyps: Array[Byte] = new Array[Byte](query.queries.length)
     val queriesOffs: Array[Offset] = new Array[Offset](query.queries.length)
@@ -1465,12 +1465,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       builder,
       persistence.MultipleValuesCrossStandingQuery.createQueriesTypeVector(builder, queriesTyps),
       persistence.MultipleValuesCrossStandingQuery.createQueriesVector(builder, queriesOffs),
-      query.emitSubscriptionsLazily
+      query.emitSubscriptionsLazily,
     )
   }
 
   private[this] def readMultipleValuesCrossStandingQuery(
-    query: persistence.MultipleValuesCrossStandingQuery
+    query: persistence.MultipleValuesCrossStandingQuery,
   ): MultipleValuesStandingQuery.Cross = {
     var i = 0
     val queriesLength = query.queriesLength
@@ -1481,13 +1481,13 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     }
     MultipleValuesStandingQuery.Cross(
       ArraySeq.unsafeWrapArray(queries),
-      query.emitSubscriptionsLazily
+      query.emitSubscriptionsLazily,
     )
   }
 
   private[this] def writeCypherValueConstraint(
     builder: FlatBufferBuilder,
-    constraint: MultipleValuesStandingQuery.LocalProperty.ValueConstraint
+    constraint: MultipleValuesStandingQuery.LocalProperty.ValueConstraint,
   ): TypeAndOffset =
     constraint match {
       case MultipleValuesStandingQuery.LocalProperty.Equal(value) =>
@@ -1495,7 +1495,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val off = persistence.CypherValueConstraintEqual.createCypherValueConstraintEqual(
           builder,
           compareToTyp,
-          compareToOff
+          compareToOff,
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintEqual, off)
 
@@ -1504,7 +1504,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val off = persistence.CypherValueConstraintNotEqual.createCypherValueConstraintNotEqual(
           builder,
           compareToTyp,
-          compareToOff
+          compareToOff,
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintNotEqual, off)
 
@@ -1518,7 +1518,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val patternOff = builder.createString(pattern)
         val off = persistence.CypherValueConstraintRegex.createCypherValueConstraintRegex(
           builder,
-          patternOff
+          patternOff,
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintRegex, off)
 
@@ -1533,7 +1533,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val off = persistence.CypherValueConstraintListContains.createCypherValueConstraintListContains(
           builder,
           persistence.CypherValueConstraintListContains.createValuesTypeVector(builder, valuesTyps),
-          persistence.CypherValueConstraintListContains.createValuesVector(builder, valuesOffs)
+          persistence.CypherValueConstraintListContains.createValuesVector(builder, valuesOffs),
         )
         TypeAndOffset(persistence.CypherValueConstraint.CypherValueConstraintListContains, off)
 
@@ -1543,7 +1543,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def readCypherValueConstraint(
     typ: Byte,
-    makeValueConstraint: Table => Table
+    makeValueConstraint: Table => Table,
   ): MultipleValuesStandingQuery.LocalProperty.ValueConstraint =
     typ match {
       case persistence.CypherValueConstraint.CypherValueConstraintEqual =>
@@ -1594,7 +1594,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeMultipleValuesLocalPropertyStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.LocalProperty
+    query: MultipleValuesStandingQuery.LocalProperty,
   ): Offset = {
     val propertyKeyOff: Offset = builder.createString(query.propKey.name)
     val TypeAndOffset(consTyp, consOff) = writeCypherValueConstraint(builder, query.propConstraint)
@@ -1607,12 +1607,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       propertyKeyOff,
       consTyp,
       consOff,
-      aliasedAsOff
+      aliasedAsOff,
     )
   }
 
   private[this] def readMultipleValuesLocalPropertyStandingQuery(
-    query: persistence.MultipleValuesLocalPropertyStandingQuery
+    query: persistence.MultipleValuesLocalPropertyStandingQuery,
   ): MultipleValuesStandingQuery.LocalProperty = {
     val propertyKey = Symbol(query.propertyKey)
     val propertyConstraint = readCypherValueConstraint(query.propertyConstraintType, query.propertyConstraint(_))
@@ -1621,25 +1621,25 @@ trait PersistenceCodec[T] extends LazySafeLogging {
   }
 
   private[this] def readMultipleValuesLocalIdStandingQuery(
-    query: persistence.MultipleValuesLocalIdStandingQuery
+    query: persistence.MultipleValuesLocalIdStandingQuery,
   ): MultipleValuesStandingQuery.LocalId =
     MultipleValuesStandingQuery.LocalId(Symbol(query.aliasedAs), query.formatAsString)
 
   private[this] def writeMultipleValuesLocalIdStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.LocalId
+    query: MultipleValuesStandingQuery.LocalId,
   ): Offset = {
     val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
     persistence.MultipleValuesLocalIdStandingQuery.createMultipleValuesLocalIdStandingQuery(
       builder,
       aliasedAsOff,
-      query.formatAsString
+      query.formatAsString,
     )
   }
 
   private[this] def writeMultipleValuesSubscribeAcrossEdgeStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.SubscribeAcrossEdge
+    query: MultipleValuesStandingQuery.SubscribeAcrossEdge,
   ): Offset = {
     val edgeNameOff: Offset = query.edgeName match {
       case None => NoOffset
@@ -1654,7 +1654,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
             case EdgeDirection.Outgoing => persistence.EdgeDirection.Outgoing
             case EdgeDirection.Incoming => persistence.EdgeDirection.Incoming
             case EdgeDirection.Undirected => persistence.EdgeDirection.Undirected
-          }
+          },
         )
     }
     val TypeAndOffset(andThenTyp, andThenOff) = writeMultipleValuesStandingQuery(builder, query.andThen)
@@ -1663,12 +1663,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       edgeNameOff,
       edgeDirOff,
       andThenTyp,
-      andThenOff
+      andThenOff,
     )
   }
 
   private[this] def readMultipleValuesSubscribeAcrossEdgeStandingQuery(
-    query: persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery
+    query: persistence.MultipleValuesSubscribeAcrossEdgeStandingQuery,
   ): MultipleValuesStandingQuery.SubscribeAcrossEdge = {
     val edgeName: Option[Symbol] = Option(query.edgeName).map(Symbol.apply)
     val edgeDirection: Option[EdgeDirection] = Option(query.edgeDirection).map { dir =>
@@ -1685,7 +1685,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
+    query: MultipleValuesStandingQuery.EdgeSubscriptionReciprocal,
   ): Offset = {
     val halfEdgeOff: Offset = writeHalfEdge(builder, query.halfEdge)
     val andThenIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, query.andThenId)
@@ -1693,12 +1693,12 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       .createMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
         builder,
         halfEdgeOff,
-        andThenIdOff
+        andThenIdOff,
       )
   }
 
   private[this] def readMultipleValuesEdgeSubscriptionReciprocalStandingQuery(
-    query: persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery
+    query: persistence.MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
   ): MultipleValuesStandingQuery.EdgeSubscriptionReciprocal = {
     val halfEdge: HalfEdge = readHalfEdge(query.halfEdge)
     val andThenId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(query.andThenId)
@@ -1707,7 +1707,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   private[this] def writeMultipleValuesFilterMapStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.FilterMap
+    query: MultipleValuesStandingQuery.FilterMap,
   ): Offset = {
     val TypeAndOffset(condTyp, condOff) = query.condition match {
       case None => TypeAndOffset(persistence.CypherExpr.NONE, NoOffset)
@@ -1730,28 +1730,28 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       toFilterTyp,
       toFilterOff,
       query.dropExisting,
-      toAddOff
+      toAddOff,
     )
   }
 
   private[this] def readMultipleValuesAllPropertiesStandingQuery(
-    query: persistence.MultipleValuesAllPropertiesStandingQuery
+    query: persistence.MultipleValuesAllPropertiesStandingQuery,
   ): MultipleValuesStandingQuery.AllProperties =
     MultipleValuesStandingQuery.AllProperties(Symbol(query.aliasedAs))
 
   private[this] def writeMultipleValuesAllPropertiesStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.AllProperties
+    query: MultipleValuesStandingQuery.AllProperties,
   ): Offset = {
     val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
     persistence.MultipleValuesAllPropertiesStandingQuery.createMultipleValuesAllPropertiesStandingQuery(
       builder,
-      aliasedAsOff
+      aliasedAsOff,
     )
   }
 
   private[this] def readMultipleValuesFilterMapStandingQuery(
-    query: persistence.MultipleValuesFilterMapStandingQuery
+    query: persistence.MultipleValuesFilterMapStandingQuery,
   ): MultipleValuesStandingQuery.FilterMap = {
     val condition: Option[cypher.Expr] =
       if (query.conditionType == persistence.CypherExpr.NONE) None
@@ -1768,7 +1768,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   protected[this] def writeMultipleValuesStandingQuery(
     builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery
+    query: MultipleValuesStandingQuery,
   ): TypeAndOffset =
     query match {
       case _: MultipleValuesStandingQuery.UnitSq =>
@@ -1794,7 +1794,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val offset: Offset = writeMultipleValuesEdgeSubscriptionReciprocalStandingQuery(builder, reciprocal)
         TypeAndOffset(
           persistence.MultipleValuesStandingQuery.MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
-          offset
+          offset,
         )
 
       case filterMap: MultipleValuesStandingQuery.FilterMap =>
@@ -1809,7 +1809,7 @@ trait PersistenceCodec[T] extends LazySafeLogging {
 
   protected[this] def readMultipleValuesStandingQuery(
     typ: Byte,
-    makeSq: Table => Table
+    makeSq: Table => Table,
   ): MultipleValuesStandingQuery =
     typ match {
       case persistence.MultipleValuesStandingQuery.MultipleValuesUnitStandingQuery =>

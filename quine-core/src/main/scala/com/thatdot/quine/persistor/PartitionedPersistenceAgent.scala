@@ -16,7 +16,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   NodeEvent,
   StandingQueryId,
-  StandingQueryInfo
+  StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
@@ -50,14 +50,14 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
   def getNodeChangeEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[NodeChangeEvent]]] =
     getAgent(id).getNodeChangeEventsWithTime(id, startingAt, endingAt)
 
   def getDomainIndexEventsWithTime(
     id: QuineId,
     startingAt: EventTime,
-    endingAt: EventTime
+    endingAt: EventTime,
   ): Future[Iterable[NodeEvent.WithTime[DomainIndexEvent]]] =
     getAgent(id).getDomainIndexEventsWithTime(id, startingAt, endingAt)
 
@@ -94,7 +94,7 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     rootAgent.getStandingQueries
 
   override def getMultipleValuesStandingQueryStates(
-    id: QuineId
+    id: QuineId,
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     getAgent(id).getMultipleValuesStandingQueryStates(id)
 
@@ -102,7 +102,7 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
     standingQuery: StandingQueryId,
     id: QuineId,
     standingQueryId: MultipleValuesStandingQueryPartId,
-    state: Option[Array[Byte]]
+    state: Option[Array[Byte]],
   ): Future[Unit] = getAgent(id).setMultipleValuesStandingQueryState(standingQuery, id, standingQueryId, state)
 
   def containsMultipleValuesStates(): Future[Boolean] =

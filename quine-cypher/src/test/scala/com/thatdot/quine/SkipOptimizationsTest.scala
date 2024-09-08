@@ -29,12 +29,12 @@ class SkipOptimizationsTest
       Func.Range,
       Vector(
         Expr.Integer(0),
-        Expr.Integer(999)
-      )
+        Expr.Integer(999),
+      ),
     ),
     XSym,
     Query.Unit(Columns.Omitted),
-    Columns.Specified(Vector(XSym))
+    Columns.Specified(Vector(XSym)),
   )
   val atTime: Some[Milliseconds] = Some(Milliseconds(1586631600L))
 
@@ -44,7 +44,7 @@ class SkipOptimizationsTest
   }
   def actorIsPresentInCache: Boolean =
     graph.cypherOps.skipOptimizerCache.getIfPresent(
-      SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime)
+      SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime),
     ) != null
 
   /** Executes a query in [[queryFamily]] according to the provided projection rules
@@ -55,7 +55,7 @@ class SkipOptimizationsTest
     takeRule: Option[Query.Limit.Take],
     orderBy: Option[Query.Sort.SortBy] = None,
     distinctBy: Option[Query.Distinct.DistinctBy] = None,
-    restartIfAppropriate: Boolean = false
+    restartIfAppropriate: Boolean = false,
   ): Future[Seq[Value]] =
     (actor ? (
       ResumeQuery(
@@ -65,13 +65,13 @@ class SkipOptimizationsTest
           distinctBy,
           dropRule,
           takeRule,
-          columns = Columns.Specified(Vector(XSym))
+          columns = Columns.Specified(Vector(XSym)),
         ),
         QueryContext.empty,
         Parameters.empty,
         restartIfAppropriate,
-        _
-      )
+        _,
+      ),
     )).mapTo[Either[SkipOptimizationError, Source[QueryContext, NotUsed]]]
       .flatMap { e =>
         val resultStream = e.value
@@ -85,7 +85,7 @@ class SkipOptimizationsTest
     takeRule: Option[Query.Limit.Take],
     orderBy: Option[Query.Sort.SortBy] = None,
     distinctBy: Option[Query.Distinct.DistinctBy] = None,
-    innerQuery: Query[Location.Anywhere] = queryFamily
+    innerQuery: Query[Location.Anywhere] = queryFamily,
   ): Future[SkipOptimizationError] =
     (actor ? (
       ResumeQuery(
@@ -95,13 +95,13 @@ class SkipOptimizationsTest
           distinctBy,
           dropRule,
           takeRule,
-          columns = Columns.Specified(Vector(XSym))
+          columns = Columns.Specified(Vector(XSym)),
         ),
         QueryContext.empty,
         Parameters.empty,
         restartIfAppropriate = false,
-        _
-      )
+        _,
+      ),
     )).mapTo[Either[SkipOptimizationError, Source[QueryContext, NotUsed]]]
       .map { response =>
         assert(actorIsPresentInCache, "rejected ResumeQuery requests should not terminate the actor")
@@ -117,7 +117,7 @@ class SkipOptimizationsTest
           results should contain theSameElementsInOrderAs expectedResultValues
         }
         .map(_ =>
-          assert(!actorIsPresentInCache, "completing the family's stream should remove the actor from the cache")
+          assert(!actorIsPresentInCache, "completing the family's stream should remove the actor from the cache"),
         )
     }
     it("should return a partial collection of results given a LIMIT") {
@@ -130,8 +130,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
     }
     it("should return sequential pages") {
@@ -145,12 +145,12 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
         // page 2: 100-199
         .flatMap(_ =>
-          queryFamilyViaActor(skipActor, dropRule = Some(Expr.Integer(100)), takeRule = Some(Expr.Integer(100)))
+          queryFamilyViaActor(skipActor, dropRule = Some(Expr.Integer(100)), takeRule = Some(Expr.Integer(100))),
         )
         .map { results =>
           val expectedResultValues = (100 until 200).map(i => Expr.Integer(i.toLong))
@@ -159,8 +159,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
     }
     it("should return nonsequential increasing pages") {
@@ -174,12 +174,12 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
         // page 2: 200-499
         .flatMap(_ =>
-          queryFamilyViaActor(skipActor, dropRule = Some(Expr.Integer(200)), takeRule = Some(Expr.Integer(300)))
+          queryFamilyViaActor(skipActor, dropRule = Some(Expr.Integer(200)), takeRule = Some(Expr.Integer(300))),
         )
         .map { results =>
           val expectedResultValues = (200 until 500).map(i => Expr.Integer(i.toLong))
@@ -188,8 +188,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
     }
     it("should return a final unbounded page") {
@@ -203,8 +203,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
         // page 2: 210-??? (ie, 999)
         .flatMap(_ => queryFamilyViaActor(skipActor, dropRule = Some(Expr.Integer(210)), takeRule = None))
@@ -215,8 +215,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             !actorIsPresentInCache,
-            "completing the family's stream should remove the actor from the cache"
-          )
+            "completing the family's stream should remove the actor from the cache",
+          ),
         )
     }
     it("should allow querying of out-of-order pages when restartIfAppropriate = true") {
@@ -230,8 +230,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
         // page 2: 50-54
         .flatMap(_ =>
@@ -239,8 +239,8 @@ class SkipOptimizationsTest
             skipActor,
             dropRule = Some(Expr.Integer(50)),
             takeRule = Some(Expr.Integer(5)),
-            restartIfAppropriate = true
-          )
+            restartIfAppropriate = true,
+          ),
         )
         .map { results =>
           val expectedResultValues = (50 until 55).map(i => Expr.Integer(i.toLong))
@@ -249,8 +249,8 @@ class SkipOptimizationsTest
         .map(_ =>
           assert(
             actorIsPresentInCache,
-            "completing only some streams in a family should not remove the actor from the cache"
-          )
+            "completing only some streams in a family should not remove the actor from the cache",
+          ),
         )
     }
   }
@@ -259,7 +259,7 @@ class SkipOptimizationsTest
     it("should reject queries specifying no SKIP or LIMIT") {
       val skipActor: ActorRef = freshSkipActor()
       queryActorExpectingError(skipActor, dropRule = None, takeRule = None).map(err =>
-        assert(err.isInstanceOf[SkipOptimizationError.UnsupportedProjection])
+        assert(err.isInstanceOf[SkipOptimizationError.UnsupportedProjection]),
       )
     }
     it("should reject queries specifying a DISTINCT") {
@@ -268,7 +268,7 @@ class SkipOptimizationsTest
         skipActor,
         dropRule = Some(Expr.Integer(100)),
         takeRule = None,
-        distinctBy = Some(Seq(Expr.Variable(XSym)))
+        distinctBy = Some(Seq(Expr.Variable(XSym))),
       ).map(err => assert(err.isInstanceOf[SkipOptimizationError.UnsupportedProjection]))
     }
     it("should reject queries specifying an ORDER BY") {
@@ -277,7 +277,7 @@ class SkipOptimizationsTest
         skipActor,
         dropRule = Some(Expr.Integer(100)),
         takeRule = None,
-        orderBy = Some(Seq(Expr.Variable(XSym) -> true))
+        orderBy = Some(Seq(Expr.Variable(XSym) -> true)),
       ).map(err => assert(err.isInstanceOf[SkipOptimizationError.UnsupportedProjection]))
     }
     it("should reject queries specifying an ill-typed SKIP") {
@@ -285,7 +285,7 @@ class SkipOptimizationsTest
       queryActorExpectingError(
         skipActor,
         dropRule = Some(Expr.Null),
-        takeRule = None
+        takeRule = None,
       ).map(err => assert(err.isInstanceOf[SkipOptimizationError.InvalidSkipLimit]))
     }
     it("should reject queries specifying an ill-typed LIMIT") {
@@ -293,7 +293,7 @@ class SkipOptimizationsTest
       queryActorExpectingError(
         skipActor,
         dropRule = None,
-        takeRule = Some(Expr.Str("the number 5"))
+        takeRule = Some(Expr.Str("the number 5")),
       ).map(err => assert(err.isInstanceOf[SkipOptimizationError.InvalidSkipLimit]))
     }
     it("should reject queries for the wrong family") {
@@ -303,8 +303,8 @@ class SkipOptimizationsTest
         dropRule = Some(Expr.Integer(100)),
         takeRule = None,
         innerQuery = queryFamily.copy(as =
-          Symbol("y")
-        ) // "UNWIND range(0, 999) AS y" -- which does not match "UNWIND range(0, 999) AS x
+          Symbol("y"),
+        ), // "UNWIND range(0, 999) AS y" -- which does not match "UNWIND range(0, 999) AS x
       ).map(err => assert(err == SkipOptimizationError.QueryMismatch))
     }
   }

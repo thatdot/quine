@@ -22,7 +22,7 @@ import com.thatdot.quine.graph.{
   NamespaceId,
   StandingQueryId,
   StandingQueryOpsGraph,
-  StandingQueryResult
+  StandingQueryResult,
 }
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
@@ -38,13 +38,13 @@ trait StandingQueryStore {
     queryName: String,
     outputName: String,
     inNamespace: NamespaceId,
-    sqResultOutput: StandingQueryResultOutputUserDef
+    sqResultOutput: StandingQueryResultOutputUserDef,
   ): Future[Option[Boolean]]
 
   def removeStandingQueryOutput(
     queryName: String,
     outputName: String,
-    inNamespace: NamespaceId
+    inNamespace: NamespaceId,
   ): Future[Option[StandingQueryResultOutputUserDef]]
 
   def getStandingQueries(inNamespace: NamespaceId): Future[List[RegisteredStandingQuery]]
@@ -120,7 +120,7 @@ trait StandingQueryRoutesImpl
         validateOutputDef(sqResultOutput) match {
           case Some(errors) =>
             Future.successful(
-              Some(Left(Invalid(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}")))
+              Some(Left(Invalid(s"Cannot create output `$outputName`: ${errors.toList.mkString(",")}"))),
             )
           case None =>
             quineApp
@@ -145,7 +145,7 @@ trait StandingQueryRoutesImpl
             graph
               .standingQueries(namespaceFromParam(namespaceParam))
               // Silently ignores SQs in any absent namespace, returning `None`
-              .flatMap(_.wireTapStandingQuery(sqid))
+              .flatMap(_.wireTapStandingQuery(sqid)),
           ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
@@ -155,9 +155,9 @@ trait StandingQueryRoutesImpl
                   Sink.ignore,
                   source
                     .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
-                    .map((r: StandingQueryResult) => ws.TextMessage(r.toJson.noSpaces))
+                    .map((r: StandingQueryResult) => ws.TextMessage(r.toJson.noSpaces)),
                 )
-                .named(s"sq-results-websocket-for-$name")
+                .named(s"sq-results-websocket-for-$name"),
             )
 
         }
@@ -172,7 +172,7 @@ trait StandingQueryRoutesImpl
         quineApp
           .getStandingQueryId(name, namespaceFromParam(namespaceParam))
           .flatMap(sqid => // Silently ignores any SQs in an absent namespace, returning `None`
-            graph.standingQueries(namespaceFromParam(namespaceParam)).flatMap(_.wireTapStandingQuery(sqid))
+            graph.standingQueries(namespaceFromParam(namespaceParam)).flatMap(_.wireTapStandingQuery(sqid)),
           ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
@@ -182,9 +182,9 @@ trait StandingQueryRoutesImpl
                   ServerSentEvent(
                     data = sqResult.toJson.noSpaces,
                     eventType = Some(if (sqResult.meta.isPositiveMatch) "result" else "cancellation"),
-                    id = Some(sqResult.dataHashCode.toString)
-                  )
-                )
+                    id = Some(sqResult.dataHashCode.toString),
+                  ),
+                ),
             )
         }
       case Invalid(nameValidationErrors) =>

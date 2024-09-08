@@ -10,7 +10,7 @@ import slinky.web.html._
 /** Item in a [[NavBar]] */
 final case class NavItem(
   title: String,
-  body: facade.ReactElement
+  body: facade.ReactElement,
 )
 
 /** Navigation bar that sits on the LHS of the window */
@@ -18,7 +18,7 @@ final case class NavItem(
 
   case class Props(
     initiallySelected: String,
-    children: NavItem*
+    children: NavItem*,
   )
   case class State(selected: String)
 
@@ -31,28 +31,28 @@ final case class NavItem(
     top = "0",
     left = "0",
     width = "160px",
-    backgroundColor = "#ddd"
+    backgroundColor = "#ddd",
   )
   private val bodyStyle = js.Dynamic.literal(
-    marginLeft = "170px"
+    marginLeft = "170px",
   )
   private val listStyle = js.Dynamic.literal(
     listStyleType = "none",
     padding = "0",
     margin = "0",
-    fontSize = "large"
+    fontSize = "large",
   )
   private val itemStyle = js.Dynamic.literal(
     padding = "0.5em",
     cursor = "pointer",
     backgroundColor = "#ddd",
-    transition = "background-color 0.2s"
+    transition = "background-color 0.2s",
   )
   private val selecteditemStyle = js.Dynamic.literal(
     padding = "0.5em",
     fontWeight = "bold",
     backgroundColor = "#bbb",
-    transition = "background-color 0.2s"
+    transition = "background-color 0.2s",
   )
 
   def render(): ReactElement = {
@@ -64,7 +64,7 @@ final case class NavItem(
           val clickItem = () => setState(State(nav.title));
           li(style := itemStyle, onClick := clickItem)(nav.title)
         }
-      }: _*
+      }: _*,
     )
 
     val body: facade.ReactElement = props.children.toSeq
@@ -74,7 +74,7 @@ final case class NavItem(
 
     facade.Fragment(
       div(style := menuStyle)(elements),
-      div(style := bodyStyle)(body)
+      div(style := bodyStyle)(body),
     )
   }
 }

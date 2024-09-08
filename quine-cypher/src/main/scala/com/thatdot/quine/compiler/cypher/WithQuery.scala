@@ -21,7 +21,7 @@ final case class WithQueryT[F[_], A](runWithQuery: F[WithQuery[A]]) {
         flatMapF.map(f(a).runWithQuery) { case WithQuery(b, queryB) =>
           WithQuery(b, Query.apply(queryA, queryB))
         }
-      }
+      },
     )
 }
 object WithQueryT {
@@ -53,7 +53,7 @@ object WithQueryT {
   def pure[F[_]: Monad, A](a: A) = monad.pure(a)
 
   def apply[F[_], A](result: A, query: Query[Location.Anywhere])(implicit
-    monadF: Monad[F]
+    monadF: Monad[F],
   ): WithQueryT[F, A] =
     WithQueryT(monadF.pure(WithQuery(result, query)))
 
@@ -86,7 +86,7 @@ object WithQueryT {
   */
 final case class WithQuery[+E](
   result: E,
-  query: Query[Location.Anywhere] = Query.Unit()
+  query: Query[Location.Anywhere] = Query.Unit(),
 ) {
 
   /** Update only the result part of a [[WithQuery]]
@@ -105,7 +105,7 @@ final case class WithQuery[+E](
     val WithQuery(result2, query2) = fn(result)
     WithQuery(
       result = result2,
-      query = Query.apply(query, query2)
+      query = Query.apply(query, query2),
     )
   }
 
@@ -119,7 +119,7 @@ final case class WithQuery[+E](
   def toNodeQuery(elim: E => Query[Location.OnNode]): Query[Location.OnNode] =
     Query.apply(
       query,
-      elim(result)
+      elim(result),
     )
 
   /** Make a general query
@@ -132,7 +132,7 @@ final case class WithQuery[+E](
   def toQuery(elim: E => Query[Location.Anywhere]): Query[Location.Anywhere] =
     Query.apply(
       query,
-      elim(result)
+      elim(result),
     )
 }
 

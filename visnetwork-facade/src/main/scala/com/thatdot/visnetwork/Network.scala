@@ -60,7 +60,7 @@ class Network(container: dom.HTMLElement, data: Data, options: Network.Options) 
   @nowarn
   def getConnectedNodes(
     nodeOrEdgeId: IdType,
-    direction: DirectionType = js.native
+    direction: DirectionType = js.native,
   ): js.Array[IdType] | js.Array[Network.ConnectedEdges] = js.native
   def getConnectedEdges(nodeId: IdType): js.Array[IdType] = js.native
   def startSimulation(): Unit = js.native
@@ -280,7 +280,7 @@ trait ClusterOptions extends js.Object {
 trait OpenClusterOptions extends js.Object {
   def releaseFunction(
     clusterPosition: Position,
-    containedNodesPositions: js.Dictionary[Position]
+    containedNodesPositions: js.Dictionary[Position],
   ): js.Dictionary[Position]
 }
 
@@ -512,7 +512,7 @@ trait OptionsScaling extends js.Object {
     js.UndefOr[Double],
     js.UndefOr[Double],
     js.UndefOr[Double],
-    Double
+    Double,
   ]]
 }
 

@@ -55,7 +55,7 @@ trait QuineIngestSource extends LazySafeLogging {
     */
   def stream(
     intoNamespace: NamespaceId,
-    registerTerminationHooks: Future[Done] => Unit
+    registerTerminationHooks: Future[Done] => Unit,
   ): Source[IngestSrcExecToken, NotUsed]
 
   /** MaxPerSecond rate limiting. */
@@ -80,7 +80,7 @@ trait QuineIngestSource extends LazySafeLogging {
   protected def setControl(
     control: Future[QuineAppIngestControl],
     desiredSwitchMode: SwitchMode,
-    registerTerminationHooks: Future[Done] => Unit
+    registerTerminationHooks: Future[Done] => Unit,
   ): Unit = {
 
     val streamMaterializerEc = graph.materializer.executionContext
@@ -89,7 +89,7 @@ trait QuineIngestSource extends LazySafeLogging {
     control.foreach(c =>
       c.valveHandle
         .flip(desiredSwitchMode)
-        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(streamMaterializerEc)
+        .recover { case _: org.apache.pekko.stream.StreamDetachedException => false }(streamMaterializerEc),
     )(graph.nodeDispatcherEC)
     control.map(c => registerTerminationHooks(c.termSignal))(graph.nodeDispatcherEC)
 
@@ -99,7 +99,7 @@ trait QuineIngestSource extends LazySafeLogging {
       if (!controlsSuccessfullyAttached) {
         logger.warn(
           safe"""Ingest stream: ${Safe(name)} was materialized more than once. Control handles for pausing,
-                |resuming, and terminating the stream may be unavailable (usually temporary).""".cleanLines
+                |resuming, and terminating the stream may be unavailable (usually temporary).""".cleanLines,
         )
       }
     }(streamMaterializerEc)
@@ -133,7 +133,7 @@ abstract class IngestSrcDef(
   initialSwitchMode: SwitchMode,
   parallelism: Int,
   maxPerSecond: Option[Int],
-  val name: String
+  val name: String,
 )(implicit graph: CypherOpsGraph)
     extends QuineIngestSource
     with LazySafeLogging {
@@ -190,7 +190,7 @@ abstract class IngestSrcDef(
         logger.warn(
           log"""Ingest ${Safe(name)} in namespace ${Safe(intoNamespace)}
                |failed to deserialize ingested record: ${sourceRecord.toString}
-               |""".cleanLines withException deserializationError
+               |""".cleanLines withException deserializationError,
         )
         Future.successful(failedAttempt)
     }
@@ -204,7 +204,7 @@ abstract class IngestSrcDef(
   /** Assembled stream definition. */
   def stream(
     intoNamespace: NamespaceId,
-    registerTerminationHooks: Future[Done] => Unit
+    registerTerminationHooks: Future[Done] => Unit,
   ): Source[IngestSrcExecToken, NotUsed] =
     RestartSource.onFailuresWithBackoff(restartSettings) { () =>
       sourceWithShutdown()
@@ -229,7 +229,7 @@ abstract class RawValuesIngestSrcDef(
   parallelism: Int,
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder],
-  name: String
+  name: String,
 )(implicit graph: CypherOpsGraph)
     extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
 
@@ -264,7 +264,7 @@ abstract class RawValuesIngestSrcDef(
 object IngestSrcDef extends LazySafeLogging {
 
   private def importFormatFor(
-    label: StreamedRecordFormat
+    label: StreamedRecordFormat,
   )(implicit protobufSchemaCache: ProtobufSchemaCache, logConfig: LogConfig): ImportFormat =
     label match {
       case StreamedRecordFormat.CypherJson(query, parameter) =>
@@ -278,7 +278,7 @@ object IngestSrcDef extends LazySafeLogging {
         //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
         val descriptor = Await.result(
           protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
-          Duration.Inf
+          Duration.Inf,
         )
         new ProtobufInputFormat(query, parameter, new ProtobufParser(descriptor))
       case StreamedRecordFormat.CypherRaw(query, parameter) =>
@@ -305,7 +305,7 @@ object IngestSrcDef extends LazySafeLogging {
         userCharset -> Flow[ByteString]
       case otherCharset =>
         logger.warn(
-          safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset)} - transcoding through UTF-8 first"
+          safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset)} - transcoding through UTF-8 first",
         )
         StandardCharsets.UTF_8 -> TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
     }
@@ -314,11 +314,11 @@ object IngestSrcDef extends LazySafeLogging {
     name: String,
     intoNamespace: NamespaceId,
     settings: IngestStreamConfiguration,
-    initialSwitchMode: SwitchMode
+    initialSwitchMode: SwitchMode,
   )(implicit
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
-    logConfig: LogConfig
+    logConfig: LogConfig,
   ): ValidatedNel[String, IngestSrcDef] = settings match {
     case KafkaIngest(
           format,
@@ -332,7 +332,7 @@ object IngestSrcDef extends LazySafeLogging {
           kafkaProperties,
           endingOffset,
           maxPerSecond,
-          recordEncodings
+          recordEncodings,
         ) =>
       KafkaSrcDef(
         name,
@@ -349,7 +349,7 @@ object IngestSrcDef extends LazySafeLogging {
         kafkaProperties,
         endingOffset,
         maxPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
+        recordEncodings.map(ContentDecoder.apply),
       )
 
     case KinesisIngest(
@@ -363,7 +363,7 @@ object IngestSrcDef extends LazySafeLogging {
           numRetries,
           maxPerSecond,
           recordEncodings,
-          _
+          _,
         ) =>
       KinesisSrcDef(
         name,
@@ -378,7 +378,7 @@ object IngestSrcDef extends LazySafeLogging {
         iteratorType,
         numRetries,
         maxPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
+        recordEncodings.map(ContentDecoder.apply),
       ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>
@@ -390,7 +390,7 @@ object IngestSrcDef extends LazySafeLogging {
         initialSwitchMode,
         parallelism,
         maxPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
+        recordEncodings.map(ContentDecoder.apply),
       ).valid
 
     case SQSIngest(
@@ -402,7 +402,7 @@ object IngestSrcDef extends LazySafeLogging {
           regionOpt,
           deleteReadMessages,
           maxPerSecond,
-          recordEncodings
+          recordEncodings,
         ) =>
       SqsStreamSrcDef(
         name,
@@ -416,7 +416,7 @@ object IngestSrcDef extends LazySafeLogging {
         regionOpt,
         deleteReadMessages,
         maxPerSecond,
-        recordEncodings.map(ContentDecoder.apply)
+        recordEncodings.map(ContentDecoder.apply),
       ).valid
 
     case WebsocketSimpleStartupIngest(
@@ -425,7 +425,7 @@ object IngestSrcDef extends LazySafeLogging {
           initMessages,
           keepAliveProtocol,
           parallelism,
-          encoding
+          encoding,
         ) =>
       WebsocketSimpleStartupSrcDef(
         name,
@@ -436,7 +436,7 @@ object IngestSrcDef extends LazySafeLogging {
         keepAliveProtocol,
         parallelism,
         encoding,
-        initialSwitchMode
+        initialSwitchMode,
       ).valid
 
     case FileIngest(
@@ -448,7 +448,7 @@ object IngestSrcDef extends LazySafeLogging {
           startAtOffset,
           ingestLimit,
           maxPerSecond,
-          fileIngestMode
+          fileIngestMode,
         ) =>
       if (!Files.exists(Paths.get(path)))
         Validated.Invalid(NonEmptyList.one(s"Could not load ingest file $path"))
@@ -465,7 +465,7 @@ object IngestSrcDef extends LazySafeLogging {
             ingestLimit,
             maxPerSecond,
             name,
-            intoNamespace
+            intoNamespace,
           )
           .valid
 
@@ -479,7 +479,7 @@ object IngestSrcDef extends LazySafeLogging {
           maxLineSize,
           offset,
           ingestLimit,
-          maxPerSecond
+          maxPerSecond,
         ) =>
       val source: Source[ByteString, NotUsed] = {
         val downloadStream: Source[ByteString, Future[ObjectMetadata]] = credsOpt match {
@@ -505,7 +505,7 @@ object IngestSrcDef extends LazySafeLogging {
         ingestLimit,
         maxPerSecond,
         name,
-        intoNamespace
+        intoNamespace,
       ).valid // TODO move what validations can be done ahead, ahead.
 
     case StandardInputIngest(
@@ -513,7 +513,7 @@ object IngestSrcDef extends LazySafeLogging {
           encodingString,
           parallelism,
           maximumLineSize,
-          maxPerSecond
+          maxPerSecond,
         ) =>
       ContentDelimitedIngestSrcDef
         .apply(
@@ -527,7 +527,7 @@ object IngestSrcDef extends LazySafeLogging {
           ingestLimit = None,
           maxPerSecond,
           name,
-          intoNamespace
+          intoNamespace,
         )
         .valid
 
@@ -544,7 +544,7 @@ object IngestSrcDef extends LazySafeLogging {
           ingestLimit,
           throttlePerSecond,
           name,
-          intoNamespace
+          intoNamespace,
         )
         .valid
   }

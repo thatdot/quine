@@ -38,13 +38,13 @@ final case class TypeMismatchError(
   actual: Class[_],
   offender: Any,
   explanation: String,
-  position: Option[Position]
+  position: Option[Position],
 ) extends QuineGremlinException {
   def pretty: String = errorString(
     "TypeMismatchError",
     s"$explanation\n" +
     s"  expected $expected\n" +
-    s"  but got  $actual"
+    s"  but got  $actual",
   )
 }
 
@@ -53,12 +53,12 @@ final case class TypeMismatchError(
   * @param position where in the query did lexing fail
   */
 final case class LexicalError(
-  pos: Position
+  pos: Position,
 ) extends QuineGremlinException {
   val position: Some[Position] = Some(pos)
   def pretty: String = errorString(
     "LexicalError",
-    "syntax error"
+    "syntax error",
   )
 }
 
@@ -69,11 +69,11 @@ final case class LexicalError(
   */
 final case class ParseError(
   message: String,
-  position: Option[Position]
+  position: Option[Position],
 ) extends QuineGremlinException {
   def pretty: String = errorString(
     "ParseError",
-    message
+    message,
   )
 }
 
@@ -86,11 +86,11 @@ final case class ParseError(
   */
 final case class UnboundVariableError(
   variable: Symbol,
-  position: Option[Position]
+  position: Option[Position],
 ) extends QuineGremlinException {
   def pretty: String = errorString(
     "UnboundVariableError",
-    s"${variable.name} is unbound"
+    s"${variable.name} is unbound",
   )
 }
 
@@ -103,12 +103,12 @@ final case class UnboundVariableError(
 final case class FailedDeserializationError(
   property: String,
   rawBytes: Array[Byte],
-  position: Option[Position]
+  position: Option[Position],
 ) extends QuineGremlinException {
   def pretty: String =
     errorString(
       "FailedDeserializationError",
       s"property `$property` could not be unpickled.\n" +
-      s"  Raw bytes: ${ByteConversions.formatHexBinary(rawBytes)}"
+      s"  Raw bytes: ${ByteConversions.formatHexBinary(rawBytes)}",
     )
 }

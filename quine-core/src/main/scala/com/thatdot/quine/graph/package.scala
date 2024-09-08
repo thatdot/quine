@@ -14,7 +14,7 @@ import com.thatdot.quine.model.{
   NodeLocalComparisonFunctions,
   PropertyComparisonFunctions,
   QuineId,
-  QuineIdProvider
+  QuineIdProvider,
 }
 
 package object graph {

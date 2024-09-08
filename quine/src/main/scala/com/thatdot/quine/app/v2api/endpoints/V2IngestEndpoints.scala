@@ -14,7 +14,7 @@ import com.thatdot.quine.routes.{
   IngestStreamConfiguration,
   IngestStreamInfo,
   IngestStreamInfoWithName,
-  IngestStreamStatus
+  IngestStreamStatus,
 }
 
 trait V2IngestEndpoints extends V2EndpointDefinitions {
@@ -26,7 +26,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
   private def ingestEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     baseEndpoint[T]("ingest")
       .tag("Ingest Streams")
@@ -49,7 +49,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns), ingestStreamConfig),
-        t => Future.successful(app.createIngestStream(t._1, t._2, t._3))
+        t => Future.successful(app.createIngestStream(t._1, t._2, t._3)),
       )
     }
 
@@ -65,7 +65,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         PauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.pauseIngestStream(t._1, t._2)
+        t => app.pauseIngestStream(t._1, t._2),
       )
     }
 
@@ -81,7 +81,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         UnpauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.unpauseIngestStream(t._1, t._2)
+        t => app.unpauseIngestStream(t._1, t._2),
       )
     }
 
@@ -99,7 +99,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.deleteIngestStream(t._1, t._2)
+        t => app.deleteIngestStream(t._1, t._2),
       )
     }
 
@@ -114,7 +114,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         IngestStatusApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.ingestStreamStatus(t._1, t._2)
+        t => app.ingestStreamStatus(t._1, t._2),
       )
     }
 
@@ -122,7 +122,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
     .name("List Ingest Streams")
     .description(
       """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
-        |and their associated stream metrics keyed by the stream name. """.stripMargin
+        |and their associated stream metrics keyed by the stream name. """.stripMargin,
     )
     .in(namespaceParameter)
     .get
@@ -131,7 +131,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
         IngestStatusApiCmd,
         memberIdx,
         namespaceFromParam(ns),
-        ns => app.listIngestStreams(ns)
+        ns => app.listIngestStreams(ns),
       )
     }
 
@@ -141,7 +141,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
     unpauseIngestEndpoint,
     deleteIngestEndpoint,
     ingestStatusEndpoint,
-    listIngestEndpoint
+    listIngestEndpoint,
   )
 
 }

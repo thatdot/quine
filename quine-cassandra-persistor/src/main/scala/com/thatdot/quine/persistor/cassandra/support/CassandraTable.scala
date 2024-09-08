@@ -16,7 +16,7 @@ import com.datastax.oss.driver.api.core.data.GettableById
 abstract class CassandraTable(
   session: CqlSession,
   firstRowStatement: SimpleStatement,
-  dropTableStatement: SimpleStatement
+  dropTableStatement: SimpleStatement,
 ) {
 
   /** Does the table have any rows?
@@ -46,7 +46,7 @@ abstract class CassandraTable(
     */
   final protected def executeSelect[A, C](statement: Statement[_])(rowFn: Row => A)(implicit
     materializer: Materializer,
-    cbf: Factory[A, C with immutable.Iterable[_]]
+    cbf: Factory[A, C with immutable.Iterable[_]],
   ): Future[C] =
     executeSource(statement).map(rowFn).named("cassandra-select-query").runWith(Sink.collection)
 
@@ -60,17 +60,17 @@ abstract class CassandraTable(
     */
   final protected def selectColumn[A, C](statement: Statement[_], col: CassandraColumn[A])(implicit
     materializer: Materializer,
-    cbf: Factory[A, C with immutable.Iterable[_]]
+    cbf: Factory[A, C with immutable.Iterable[_]],
   ): Future[C] =
     executeSelect(statement)(col.get)
 
   final protected def selectColumns[A, B, C](
     statement: Statement[_],
     colA: CassandraColumn[A],
-    colB: CassandraColumn[B]
+    colB: CassandraColumn[B],
   )(implicit
     materializer: Materializer,
-    cbf: Factory[(A, B), C with immutable.Iterable[_]]
+    cbf: Factory[(A, B), C with immutable.Iterable[_]],
   ): Future[C] =
     executeSelect(statement)(pair(colA, colB))
 
@@ -88,7 +88,7 @@ abstract class CassandraTable(
       // We convert it to int because this will probably time out above around 500,000 rows anyways.
       val count = resultSet.one().getLong(0)
       if (count <= Int.MaxValue) count.toInt else sys.error(s"Row count $count too big to fit in Int")
-    }
+    },
   )
 
   /** Helper method for converting no-op results to {{{Future[Unit]}}}

@@ -31,7 +31,7 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedColumns = Vector.empty,
     expectedRows = Seq.empty,
     expectedIsReadOnly = false,
-    expectedIsIdempotent = false
+    expectedIsIdempotent = false,
   )
 
   testQuery(
@@ -55,9 +55,9 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
       Vector(Expr.Relationship(neoNode.id, Symbol("LOVES"), Map.empty, trinityNode.id)),
       Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, trinityNode.id)),
       Vector(Expr.Relationship(morpheusNode.id, Symbol("KNOWS"), Map.empty, cypherNode.id)),
-      Vector(Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id))
+      Vector(Expr.Relationship(cypherNode.id, Symbol("KNOWS"), Map.empty, agentSmithNode.id)),
     ),
-    expectedCanContainAllNodeScan = true
+    expectedCanContainAllNodeScan = true,
   )
 
   testQuery(
@@ -65,10 +65,10 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedColumns = Vector("type(r)", "m.name"),
     expectedRows = Seq(
       Vector(Expr.Str("KNOWS"), Expr.Str("Morpheus")),
-      Vector(Expr.Str("LOVES"), Expr.Str("Trinity"))
+      Vector(Expr.Str("LOVES"), Expr.Str("Trinity")),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   testQuery(
@@ -77,10 +77,10 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedRows = Seq(
       Vector(Expr.Str("Neo")),
       Vector(Expr.Str("Cypher")),
-      Vector(Expr.Str("Trinity"))
+      Vector(Expr.Str("Trinity")),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   testQuery(
@@ -91,12 +91,12 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
       Vector(Expr.Str("Neo"), Expr.List(Vector(Expr.Str("Trinity"), Expr.Str("Morpheus")))),
       Vector(
         Expr.Str("Morpheus"),
-        Expr.List(Vector(Expr.Str("Cypher"), Expr.Str("Trinity"), Expr.Str("Neo")))
+        Expr.List(Vector(Expr.Str("Cypher"), Expr.Str("Trinity"), Expr.Str("Neo"))),
       ),
-      Vector(Expr.Str("Trinity"), Expr.List(Vector(Expr.Str("Neo"), Expr.Str("Morpheus"))))
+      Vector(Expr.Str("Trinity"), Expr.List(Vector(Expr.Str("Neo"), Expr.Str("Morpheus")))),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   testQuery(
@@ -111,10 +111,10 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
       Vector(Expr.Str("Morpheus"), Expr.Str("Cypher")),
       Vector(Expr.Str("Morpheus"), Expr.Str("Neo")),
       Vector(Expr.Str("Trinity"), Expr.Str("Neo")),
-      Vector(Expr.Str("Trinity"), Expr.Str("Morpheus"))
+      Vector(Expr.Str("Trinity"), Expr.Str("Morpheus")),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   testQuery(
@@ -123,10 +123,10 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedRows = Seq(
       Vector(Expr.Str("Neo")),
       Vector(Expr.Str("Cypher")),
-      Vector(Expr.Str("Morpheus"))
+      Vector(Expr.Str("Morpheus")),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   testQuery(
@@ -134,7 +134,7 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
     expectedColumns = Vector("count(*)"),
     expectedRows = Seq(Vector(Expr.Integer(6L))),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 
   val neoMorpheusEdge: Expr.Relationship = Expr.Relationship(neoNode.id, Symbol("KNOWS"), Map.empty, morpheusNode.id)
@@ -159,18 +159,18 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
               neoNode,
               Vector(
                 neoMorpheusEdge -> morpheusNode,
-                morpheusCypherEdge -> cypherNode
-              )
+                morpheusCypherEdge -> cypherNode,
+              ),
             ),
             Expr.Path(
               neoNode,
               Vector(
                 neoMorpheusEdge -> morpheusNode,
-                morpheusTrinityEdge -> trinityNode
-              )
-            )
-          )
-        )
+                morpheusTrinityEdge -> trinityNode,
+              ),
+            ),
+          ),
+        ),
       ),
       Vector(
         Expr.Str("Morpheus"),
@@ -180,11 +180,11 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
               morpheusNode,
               Vector(
                 morpheusCypherEdge -> cypherNode,
-                cypherAgentSmithEdge -> agentSmithNode
-              )
-            )
-          )
-        )
+                cypherAgentSmithEdge -> agentSmithNode,
+              ),
+            ),
+          ),
+        ),
       ),
       Vector(
         Expr.Str("Cypher"),
@@ -194,17 +194,17 @@ class CypherMatrix extends CypherHarness("cypher-matrix-tests") {
               cypherNode,
               Vector(
                 cypherAgentSmithEdge -> agentSmithNode,
-                agentSmithArchitectEdge -> architectNode
-              )
-            )
-          )
-        )
+                agentSmithArchitectEdge -> architectNode,
+              ),
+            ),
+          ),
+        ),
       ),
       Vector(Expr.Str("Agent Smith"), Expr.List(Vector.empty)),
       Vector(Expr.Str("The Architect"), Expr.List(Vector.empty)),
-      Vector(Expr.Str("Trinity"), Expr.List(Vector.empty))
+      Vector(Expr.Str("Trinity"), Expr.List(Vector.empty)),
     ),
     expectedCanContainAllNodeScan = true,
-    ordered = false
+    ordered = false,
   )
 }

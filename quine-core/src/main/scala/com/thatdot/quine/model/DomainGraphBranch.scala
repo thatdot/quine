@@ -50,7 +50,7 @@ object DomainGraphBranch {
     DomainNodeEquiv.empty,
     None,
     Nil,
-    NodeLocalComparisonFunctions.Wildcard
+    NodeLocalComparisonFunctions.Wildcard,
   )
 
   /** Cache domainGraphBranch values for re-use. */
@@ -63,12 +63,12 @@ object DomainGraphBranch {
   /** Produces a [[DomainGraphBranch]] from the provided [[DomainGraphNodeId]]. */
   def fromDomainGraphNodeId(
     dgnId: DomainGraphNodeId,
-    getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
+    getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode],
   ): Option[DomainGraphBranch] = {
 
     def retrieveValue(
       dgnId: DomainGraphNodeId,
-      getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode]
+      getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode],
     ): Option[DomainGraphBranch] = {
       val f = fromDomainGraphNodeId(_, getDomainGraphNode)
       getDomainGraphNode(dgnId) flatMap {
@@ -80,7 +80,7 @@ object DomainGraphBranch {
               }
           }
           Option.when(nextNodes.size == edges.size)(
-            model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc)
+            model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc),
           )
         case DomainGraphNode.Or(disjuncts) =>
           val disjunctDgbs = disjuncts.flatMap(f(_))
@@ -118,7 +118,7 @@ final case class SingleBranch(
   domainNodeEquiv: DomainNodeEquiv,
   identification: Option[QuineId] = None,
   nextBranches: List[DomainEdge],
-  comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset
+  comparisonFunc: NodeLocalComparisonFunc = NodeLocalComparisonFunctions.EqualSubset,
 ) extends DomainGraphBranch {
 
   def length: Int = 1 + nextBranches.foldLeft(0)((acc, e) => Math.max(acc, e.branch.length))
@@ -162,7 +162,7 @@ object SingleBranch {
     DomainNodeEquiv.empty,
     None,
     List.empty,
-    NodeLocalComparisonFunctions.EqualSubset
+    NodeLocalComparisonFunctions.EqualSubset,
   )
 }
 
@@ -280,7 +280,7 @@ final case class MuVariableName(str: String) extends AnyVal
   */
 final case class Mu(
   variable: MuVariableName,
-  branch: DomainGraphBranch // scope of the variable
+  branch: DomainGraphBranch, // scope of the variable
 ) extends DomainGraphBranch {
 
   def unfold: DomainGraphBranch = Substitution.substitute(branch, variable, this)
@@ -338,7 +338,7 @@ object Substitution {
   def substitute(
     substituteIn: DomainGraphBranch,
     variable: MuVariableName,
-    branch: DomainGraphBranch
+    branch: DomainGraphBranch,
   ): DomainGraphBranch = substituteIn match {
     case SingleBranch(dne, id, nextBranches, comparisonFunc) =>
       val nextBranchesSubstituted =
@@ -356,7 +356,7 @@ object Substitution {
 
     case Mu(variableMu, branchMu) =>
       assert(
-        variableMu != variable
+        variableMu != variable,
       ) // This should not be possible - fresh vars must be used for every [[Mu]]
       Mu(variableMu, substitute(branchMu, variable, branch))
 
@@ -475,7 +475,7 @@ final case class DomainEdge(
   depDirection: DependencyDirection,
   branch: DomainGraphBranch,
   circularMatchAllowed: Boolean = false,
-  constraints: EdgeMatchConstraints = MandatoryConstraint
+  constraints: EdgeMatchConstraints = MandatoryConstraint,
 ) {
 
   def toString(indent: Int = 0): String = {

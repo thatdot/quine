@@ -13,7 +13,7 @@ import sttp.tapir.server.stub.TapirStubInterpreter
 trait V2ApiSpec {
 
   def endpointStub[INPUT, OUTPUT](
-    endpoint: Full[_, _, INPUT, ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUTPUT], Any, Future]
+    endpoint: Full[_, _, INPUT, ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUTPUT], Any, Future],
   ): SttpBackend[Future, capabilities.WebSockets] =
     TapirStubInterpreter(SttpBackendStub.asynchronousFuture)
       .whenServerEndpointRunLogic(endpoint)

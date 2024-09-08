@@ -24,7 +24,7 @@ case class SqsSource(
   regionOpt: Option[AwsRegion],
   deleteReadMessages: Boolean,
   meter: IngestMeter,
-  decoders: Seq[ContentDecoder] = Seq()
+  decoders: Seq[ContentDecoder] = Seq(),
 ) {
   // Available settings: see https://pekko.apache.org/docs/pekko-connectors/current/sqs.html
   implicit val client: SqsAsyncClient = SqsAsyncClient
@@ -32,7 +32,7 @@ case class SqsSource(
     .credentials(credentialsOpt)
     .region(regionOpt)
     .httpClient(
-      NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+      NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build(),
     )
     .build()
 
@@ -40,8 +40,8 @@ case class SqsSource(
     PekkoSqsSource(
       queueURL,
       SqsSourceSettings()
-        .withParallelRequests(readParallelism)
-    ).via(metered[Message](meter, m => m.body().length))
+        .withParallelRequests(readParallelism),
+    ).via(metered[Message](meter, m => m.body().length)),
   )
 
   def framedSource: FramedSource = {
@@ -59,7 +59,7 @@ case class SqsSource(
       meter,
       message => ContentDecoder.decode(decoders, message.body().getBytes()),
       ack,
-      () => onTermination()
+      () => onTermination(),
     )
   }
 

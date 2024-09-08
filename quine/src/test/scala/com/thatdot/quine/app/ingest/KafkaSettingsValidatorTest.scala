@@ -20,7 +20,7 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
 
   test("Unrecognized input setting disallowed") {
     assert(
-      KafkaSettingsValidator.validateInput(Map("Unrecognized.property.name" -> "anything")).get.size == 1
+      KafkaSettingsValidator.validateInput(Map("Unrecognized.property.name" -> "anything")).get.size == 1,
     )
   }
 
@@ -28,7 +28,7 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
 
     //group.id
     assert(
-      KafkaSettingsValidator.validateInput(Map("group.id" -> "a"), explicitGroupId = Some("group")).get.size == 1
+      KafkaSettingsValidator.validateInput(Map("group.id" -> "a"), explicitGroupId = Some("group")).get.size == 1,
     )
 
     //enable.auto.commit
@@ -36,10 +36,10 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
       KafkaSettingsValidator
         .validateInput(
           Map("enable.auto.commit" -> "a"),
-          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
+          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100)),
         )
         .get
-        .size == 1
+        .size == 1,
     )
 
     //auto.commit.interval.ms
@@ -47,10 +47,10 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
       KafkaSettingsValidator
         .validateInput(
           Map("auto.commit.interval.ms" -> "true"),
-          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100))
+          explicitOffsetCommitting = Some(ExplicitCommit(1000, 1000, 1100)),
         )
         .get
-        .size == 1
+        .size == 1,
     )
 
   }
@@ -87,17 +87,17 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
     assert(
       KafkaSettingsValidator
         .validateInput(
-          Map("ssl.truststore.location" -> "alpha", "ssl.truststore.password" -> "beta")
+          Map("ssl.truststore.location" -> "alpha", "ssl.truststore.password" -> "beta"),
         )
-        .isEmpty
+        .isEmpty,
     )
     // keystore
     assert(
       KafkaSettingsValidator
         .validateInput(
-          Map("ssl.keystore.location" -> "gamma", "ssl.keystore.password" -> "delta")
+          Map("ssl.keystore.location" -> "gamma", "ssl.keystore.password" -> "delta"),
         )
-        .isEmpty
+        .isEmpty,
     )
     // key
     assert(KafkaSettingsValidator.validateInput(Map("ssl.key.password" -> "epsilon")).isEmpty)
@@ -109,12 +109,12 @@ class KafkaSettingsValidatorTest extends AnyFunSuite {
       "producer.override.sasl.jaas.config" -> badModuleNoBiscuit,
       "consumer.override.sasl.jaas.config" -> badModuleNoBiscuit,
       "admin.override.sasl.jaas.config" -> badModuleNoBiscuit,
-      "sasl.jaas.config" -> badModuleNoBiscuit
+      "sasl.jaas.config" -> badModuleNoBiscuit,
     )
     // Each of these settings should be rejected for at least 1 reason
     forAll(bannedSettings) { setting =>
       assert(
-        KafkaSettingsValidator.validateInput(Map(setting)).nonEmpty
+        KafkaSettingsValidator.validateInput(Map(setting)).nonEmpty,
       )
       assert(KafkaSettingsValidator.validateOutput(Map(setting)).nonEmpty)
     }

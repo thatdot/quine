@@ -37,13 +37,13 @@ lazy val `quine-core`: Project = project
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
       "com.thatdot" %% "query-language" % quineQueryV,
-      "com.lihaoyi" %% "pprint" % pprintV
+      "com.lihaoyi" %% "pprint" % pprintV,
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {
       (Compile / sourceDirectory).value / "scala-2.13"
     },
-    addCompilerPlugin("org.typelevel" %% "kind-projector" % kindProjectorV cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" %% "kind-projector" % kindProjectorV cross CrossVersion.full),
     // Uncomment the following 2 lines to generate flamegraphs for the project's compilation in target/scala-2.13/classes/META-INF
     // (look for `.flamegraph` files -- these may be imported into intellij profiler or flamegraph.pl)
     // ThisBuild / scalacOptions += "-Vstatistics",
@@ -60,9 +60,9 @@ lazy val `quine-core`: Project = project
       git.gitHeadCommitDate,
       BuildInfoKey.action("javaVmName")(scala.util.Properties.javaVmName),
       BuildInfoKey.action("javaVendor")(scala.util.Properties.javaVendor),
-      BuildInfoKey.action("javaVersion")(scala.util.Properties.javaVersion)
+      BuildInfoKey.action("javaVersion")(scala.util.Properties.javaVersion),
     ),
-    buildInfoPackage := "com.thatdot.quine"
+    buildInfoPackage := "com.thatdot.quine",
   )
 
 // MapDB implementation of a Quine persistor
@@ -77,8 +77,8 @@ lazy val `quine-mapdb-persistor`: Project = project
      */
     libraryDependencies ++= Seq(
       ("org.mapdb" % "mapdb" % mapDbV).exclude("net.jpountz.lz4", "lz4"),
-      "org.lz4" % "lz4-java" % lz4JavaV
-    )
+      "org.lz4" % "lz4-java" % lz4JavaV,
+    ),
   )
 
 // RocksDB implementation of a Quine persistor
@@ -87,8 +87,8 @@ lazy val `quine-rocksdb-persistor`: Project = project
   .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
-      "org.rocksdb" % "rocksdbjni" % rocksdbV
-    )
+      "org.rocksdb" % "rocksdbjni" % rocksdbV,
+    ),
   )
 
 // Cassandra implementation of a Quine persistor
@@ -108,8 +108,8 @@ lazy val `quine-cassandra-persistor`: Project = project
       // at the sbt-assembly step (because they both have the same package names internally).
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
-      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest
-    )
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest,
+    ),
   )
 
 // Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
@@ -120,8 +120,8 @@ lazy val `quine-gremlin`: Project = project
     libraryDependencies ++= Seq(
       "org.scala-lang.modules" %% "scala-parser-combinators" % scalaParserCombinatorsV,
       "org.apache.commons" % "commons-text" % commonsTextV,
-      "org.scalatest" %% "scalatest" % scalaTestV % Test
-    )
+      "org.scalatest" %% "scalatest" % scalaTestV % Test,
+    ),
   )
 
 // Compiler for compiling [Cypher](https://neo4j.com/docs/cypher-manual/current/) into Quine queries
@@ -131,7 +131,7 @@ lazy val `quine-cypher`: Project = project
   .settings(
     scalacOptions ++= Seq(
       "-language:reflectiveCalls",
-      "-Xlog-implicits"
+      "-Xlog-implicits",
     ),
     libraryDependencies ++= Seq(
       "com.thatdot.opencypher" %% "expressions" % openCypherV,
@@ -141,10 +141,10 @@ lazy val `quine-cypher`: Project = project
       "commons-codec" % "commons-codec" % commonsCodecV,
       "org.typelevel" %% "cats-core" % catsV,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test
+      "org.apache.pekko" %% "pekko-stream-testkit" % pekkoV % Test,
     ),
     addCompilerPlugin("org.typelevel" % "kind-projector" % kindProjectorV cross CrossVersion.full),
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % betterMonadicForV)
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % betterMonadicForV),
   )
 
 /*
@@ -170,8 +170,8 @@ lazy val `visnetwork-facade`: Project = project
   .enablePlugins(ScalaJSPlugin)
   .settings(
     libraryDependencies ++= Seq(
-      "org.scala-js" %%% "scalajs-dom" % scalajsDomV
-    )
+      "org.scala-js" %%% "scalajs-dom" % scalajsDomV,
+    ),
   )
 
 // REST API specifications for `quine`-based applications
@@ -186,12 +186,12 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
       "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
       "com.lihaoyi" %% "ujson-circe" % ujsonV, // For the OpenAPI rendering
-      "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test
-    )
+      "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
+    ),
   )
   .jsSettings(
     // Provides an implementatAllows us to use java.time.Instant in Scala.js
-    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTimeV
+    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTimeV,
   )
 
 // Quine web application
@@ -203,14 +203,14 @@ lazy val `quine-browser`: Project = project
     libraryDependencies ++= Seq(
       "org.scala-js" %%% "scalajs-dom" % scalajsDomV,
       "org.scala-js" %%% "scala-js-macrotask-executor" % scalajsMacroTaskExecutorV,
-      "org.endpoints4s" %%% "xhr-client" % endpoints4sXhrClientV
+      "org.endpoints4s" %%% "xhr-client" % endpoints4sXhrClientV,
     ),
     Compile / npmDevDependencies ++= Seq(
       "ts-loader" -> "8.0.0",
       "typescript" -> "4.9.5",
       "@types/react" -> "17.0.0",
       "@types/react-dom" -> "17.0.0",
-      "@types/node" -> "16.7.13"
+      "@types/node" -> "16.7.13",
     ),
     Compile / npmDependencies ++= Seq(
       "react" -> reactV,
@@ -219,7 +219,7 @@ lazy val `quine-browser`: Project = project
       "react-plotly.js" -> reactPlotlyV,
       "plotly.js" -> plotlyV,
       "@stoplight/elements" -> stoplightElementsV,
-      "mkdirp" -> "1.0.0"
+      "mkdirp" -> "1.0.0",
     ),
     webpackNodeArgs := nodeLegacySslIfAvailable,
     // Scalajs-bundler 0.21.1 updates to webpack 5 but doesn't inform webpack that the scalajs-based file it emits is
@@ -232,7 +232,7 @@ lazy val `quine-browser`: Project = project
     Test / webpackConfigFile := Some(baseDirectory.value / "common.webpack.config.js"),
     test := {},
     useYarn := true,
-    yarnExtraArgs := Seq("--frozen-lockfile")
+    yarnExtraArgs := Seq("--frozen-lockfile"),
   )
 
 // Streaming graph application built on top of the Quine library
@@ -245,7 +245,7 @@ lazy val `quine`: Project = project
     `quine-gremlin`,
     `quine-cassandra-persistor`,
     `quine-mapdb-persistor`,
-    `quine-rocksdb-persistor`
+    `quine-rocksdb-persistor`,
   )
   .settings(
     libraryDependencies ++= Seq(
@@ -310,19 +310,19 @@ lazy val `quine`: Project = project
       "org.webjars.bowergithub.plotly" % "plotly.js" % plotlyV,
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
-      "org.xerial.snappy" % "snappy-java" % snappyV
-    )
+      "org.xerial.snappy" % "snappy-java" % snappyV,
+    ),
   )
   .enablePlugins(WebScalaJSBundlerPlugin)
   .settings(
     scalaJSProjects := Seq(`quine-browser`),
-    Assets / pipelineStages := Seq(scalaJSPipeline)
+    Assets / pipelineStages := Seq(scalaJSPipeline),
   )
   .enablePlugins(BuildInfoPlugin, Packaging, Docker, Ecr)
   .settings(
     startupMessage := "",
     buildInfoKeys := Seq[BuildInfoKey](version, startupMessage),
-    buildInfoPackage := "com.thatdot.quine.app"
+    buildInfoPackage := "com.thatdot.quine.app",
   )
 
 // Files under quine-docs/src/main/paradox/lib have been manually added. When we moved from
@@ -354,7 +354,7 @@ lazy val `quine-docs`: Project = {
       libraryDependencies ++= Seq(
         "org.pegdown" % "pegdown" % pegdownV,
         "org.parboiled" % "parboiled-java" % parboiledV,
-        "org.scalatest" %% "scalatest" % scalaTestV % Test
+        "org.scalatest" %% "scalatest" % scalaTestV % Test,
       ),
       Compile / paradoxProperties ++= Map(
         "snip.github_link" -> "false",
@@ -366,7 +366,7 @@ lazy val `quine-docs`: Project = {
         "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
         "project.name" -> projectName.value,
         "logo.link.title" -> "Quine",
-        "quine.jar" -> s"quine-${version.value}.jar"
+        "quine.jar" -> s"quine-${version.value}.jar",
       ),
       description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
       Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
@@ -376,7 +376,7 @@ lazy val `quine-docs`: Project = {
       },
       // Register the `openapi.json` file here
       Compile / paradox / mappings ++= List(
-        docJson.value -> "reference/openapi.json"
+        docJson.value -> "reference/openapi.json",
       ),
       // ---
       // Uncomment to build the recipe template pages
@@ -399,8 +399,8 @@ lazy val `quine-docs`: Project = {
               " com.thatdot.quine.docs.GenerateCypherTables",
               cypherTable1.value.getAbsolutePath,
               cypherTable2.value.getAbsolutePath,
-              cypherTable3.value.getAbsolutePath
-            ).mkString(" ")
+              cypherTable3.value.getAbsolutePath,
+            ).mkString(" "),
           )
           .map(_ => Nil) // files returned are included, not top-level
       },
@@ -410,7 +410,7 @@ lazy val `quine-docs`: Project = {
           .withColor("white", "quine-blue")
           .withFavicon("assets/images/favicon.svg")
       },
-      Compile / overlayDirectory := (`paradox-overlay` / baseDirectory).value
+      Compile / overlayDirectory := (`paradox-overlay` / baseDirectory).value,
     )
 }
 

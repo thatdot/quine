@@ -8,7 +8,7 @@ import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
 class AllPropertiesStateTest extends AnyFunSuite {
   val query: MultipleValuesStandingQuery.AllProperties = MultipleValuesStandingQuery.AllProperties(
-    aliasedAs = Symbol("props")
+    aliasedAs = Symbol("props"),
   )
 
   test("all properties state with bootstrapped properties") {
@@ -24,10 +24,10 @@ class AllPropertiesStateTest extends AnyFunSuite {
             QueryContext(
               Map(
                 query.aliasedAs ->
-                Expr.Map(initialProperties.map { case (k, v) => k.name -> Expr.fromQuineValue(v) })
-              )
-            )
-          )
+                Expr.Map(initialProperties.map { case (k, v) => k.name -> Expr.fromQuineValue(v) }),
+              ),
+            ),
+          ),
         )
         assert(effects.isEmpty)
       }
@@ -103,7 +103,7 @@ class AllPropertiesStateTest extends AnyFunSuite {
       }
     }
     withClue(
-      "Removing a single property and changing an existing property reports a new 1-result group"
+      "Removing a single property and changing an existing property reports a new 1-result group",
     ) {
       val events = Seq(makeDeleteEvent(prop4), makeSetEvent(prop2))
       state.reportNodeEvents(events, shouldHaveEffects = true) { effects =>

@@ -35,7 +35,7 @@ object GenerateRecipeDirectory extends App {
     Paths.get(recipeMarkdownOutputDir.toAbsolutePath.toString, "index.md"),
     recipeListingMarkdown(recipes).getBytes(StandardCharsets.UTF_8),
     StandardOpenOption.TRUNCATE_EXISTING,
-    StandardOpenOption.CREATE
+    StandardOpenOption.CREATE,
   )
 
   // write recipes/recipe-canonical-name.md files
@@ -46,7 +46,7 @@ object GenerateRecipeDirectory extends App {
       filePath,
       markdown,
       StandardOpenOption.TRUNCATE_EXISTING,
-      StandardOpenOption.CREATE
+      StandardOpenOption.CREATE,
     )
   }
 

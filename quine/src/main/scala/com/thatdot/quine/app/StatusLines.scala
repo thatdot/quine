@@ -9,7 +9,7 @@ import com.thatdot.quine.util.Log._
 
 class StatusLines(
   logger: SafeLogger,
-  realtimeOutput: PrintStream
+  realtimeOutput: PrintStream,
 ) {
 
   /** Logs an informational message and refreshes the status lines display.

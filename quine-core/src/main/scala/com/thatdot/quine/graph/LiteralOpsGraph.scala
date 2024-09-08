@@ -29,7 +29,7 @@ trait LiteralOpsGraph extends BaseGraph {
       * @return internal node state
       */
     def logState(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[NodeInternalState] = {
       requireCompatibleNodeType()
       relayAsk(SpaceTimeQuineId(node, namespace, atTime), LogInternalState).flatten
@@ -47,7 +47,7 @@ trait LiteralOpsGraph extends BaseGraph {
     }
 
     def getProps(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Map[Symbol, PropertyValue]] = {
       requireCompatibleNodeType()
       (getPropsAndLabels(node, atTime) map { case (x, _) =>
@@ -62,7 +62,7 @@ trait LiteralOpsGraph extends BaseGraph {
       * @return map of all of the properties and set of all of the labels
       */
     def getPropsAndLabels(node: QuineId, atTime: Option[Milliseconds] = None)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[(Map[Symbol, PropertyValue], Option[Set[Symbol]])] = {
       requireCompatibleNodeType()
       val futureSource = relayAsk(SpaceTimeQuineId(node, namespace, atTime), GetPropertiesCommand)
@@ -87,7 +87,7 @@ trait LiteralOpsGraph extends BaseGraph {
       * @param labels labels to set
       */
     def setLabels(node: QuineId, labels: Set[String])(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       relayAsk(SpaceTimeQuineId(node, namespace, None), SetLabels(labels.map(Symbol(_)), _)).flatten
@@ -100,7 +100,7 @@ trait LiteralOpsGraph extends BaseGraph {
       * @param label label to set
       */
     def setLabel(node: QuineId, label: String)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = setLabels(node, Set(label))
 
     /** Set a single property on a node
@@ -110,19 +110,19 @@ trait LiteralOpsGraph extends BaseGraph {
       * @param value property value to set
       */
     def setProp(node: QuineId, key: String, value: QuineValue)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       relayAsk(
         SpaceTimeQuineId(node, namespace, None),
-        SetPropertyCommand(Symbol(key), PropertyValue(value), _)
+        SetPropertyCommand(Symbol(key), PropertyValue(value), _),
       ).flatten
         .map(_ => ())(ExecutionContext.parasitic)
     }
 
     // Warning: make _sure_ the bytes you pass in here are correct. When in doubt, use [[setProp]]
     def setPropBytes(node: QuineId, key: String, value: Array[Byte])(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       val propVal = PropertyValue.fromBytes(value)
@@ -143,13 +143,13 @@ trait LiteralOpsGraph extends BaseGraph {
       withDir: Option[EdgeDirection] = None,
       withId: Option[QuineId] = None,
       withLimit: Option[Int] = None,
-      atTime: Option[Milliseconds] = None
+      atTime: Option[Milliseconds] = None,
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
       requireCompatibleNodeType()
       val halfEdgesSource =
         relayAsk(
           SpaceTimeQuineId(node, namespace, atTime),
-          GetHalfEdgesCommand(withType, withDir, withId, withLimit, _)
+          GetHalfEdgesCommand(withType, withDir, withId, withLimit, _),
         )
       Source.futureSource(halfEdgesSource).map(_.halfEdge).runWith(Sink.collection)
     }
@@ -161,7 +161,7 @@ trait LiteralOpsGraph extends BaseGraph {
       withDir: Option[EdgeDirection] = None,
       withId: Option[QuineId] = None,
       withLimit: Option[Int] = None,
-      atTime: Option[Milliseconds] = None
+      atTime: Option[Milliseconds] = None,
     )(implicit timeout: Timeout): Future[Set[HalfEdge]] = {
       requireCompatibleNodeType()
       getHalfEdges(node, withType, withDir, withId, withLimit, atTime)
@@ -174,41 +174,41 @@ trait LiteralOpsGraph extends BaseGraph {
                 withDir = Some(h.direction.reverse),
                 withId = Some(node),
                 withLimit = Some(1), // we just care about `nonEmpty`
-                atTime = atTime
+                atTime = atTime,
               ).map(otherSide => if (otherSide.nonEmpty) Some(h) else None)(shardDispatcherEC)
-            }(implicitly, shardDispatcherEC)
+            }(implicitly, shardDispatcherEC),
         )(shardDispatcherEC)
         .map(filtered => filtered.collect { case Some(completeEdges) => completeEdges })(shardDispatcherEC)
     }
 
     def addEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(
         SpaceTimeQuineId(from, namespace, None),
-        AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _)
+        AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _),
       )
       val two = relayAsk(
         SpaceTimeQuineId(to, namespace, None),
-        AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
+        AddHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _),
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)
     }
 
     def removeEdge(from: QuineId, to: QuineId, label: String, isDirected: Boolean = true)(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       val edgeDir = if (isDirected) EdgeDirection.Outgoing else EdgeDirection.Undirected
       val one = relayAsk(
         SpaceTimeQuineId(from, namespace, None),
-        RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _)
+        RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir, to), _),
       )
       val two = relayAsk(
         SpaceTimeQuineId(to, namespace, None),
-        RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _)
+        RemoveHalfEdgeCommand(HalfEdge(Symbol(label), edgeDir.reverse, from), _),
       )
       one.zipWith(two)((_, _) => ())(shardDispatcherEC)
     }

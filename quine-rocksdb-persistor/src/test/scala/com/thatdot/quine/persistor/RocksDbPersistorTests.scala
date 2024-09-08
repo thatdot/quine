@@ -29,12 +29,12 @@ class RocksDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
         dbOptionProperties = new Properties(),
         persistenceConfig = PersistenceConfig(),
         bloomFilterSize = None,
-        ioDispatcher = ExecutionContext.parasitic
+        ioDispatcher = ExecutionContext.parasitic,
       )(Materializer.matFromSystem(system), logConfig)
     } else {
       new StatelessPrimePersistor(PersistenceConfig(), None, new EmptyPersistor(_, _))(
         Materializer.matFromSystem(system),
-        logConfig
+        logConfig,
       )
     }
 }

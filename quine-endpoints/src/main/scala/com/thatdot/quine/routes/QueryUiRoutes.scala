@@ -24,7 +24,7 @@ final case class UiNode[Id](
   @docs("node id") id: Id,
   @docs("index of the cluster host responsible for this node") hostIndex: Int,
   @docs("categorical classification") label: String,
-  @docs("properties on the node") properties: Map[String, Json]
+  @docs("properties on the node") properties: Map[String, Json],
 )
 
 /** Edges in the UI
@@ -42,7 +42,7 @@ final case class UiEdge[Id](
   @docs("Node at the start of the edge") from: Id,
   @docs("Name of the edge") edgeType: String,
   @docs("Node at the end of the edge") to: Id,
-  @docs("Whether the edge is directed or undirected") isDirected: Boolean = true
+  @docs("Whether the edge is directed or undirected") isDirected: Boolean = true,
 )
 
 /** Result of issuing a generic Cypher query
@@ -60,7 +60,7 @@ final case class UiEdge[Id](
         |""".stripMargin)
 final case class CypherQueryResult(
   @docs("Return values of the Cypher query") columns: Seq[String],
-  @docs("Rows of results") results: Seq[Seq[Json]]
+  @docs("Rows of results") results: Seq[Seq[Json]],
 )
 
 /** A (possibly-parameterized) cypher query
@@ -70,7 +70,7 @@ final case class CypherQueryResult(
 @title("Cypher Query")
 final case class CypherQuery(
   @docs("Text of the query to execute") text: String,
-  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty
+  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
 )
 
 /** A (possibly-parameterized) gremlin query
@@ -80,7 +80,7 @@ final case class CypherQuery(
 @title("Gremlin Query")
 final case class GremlinQuery(
   @docs("Text of the query to execute") text: String,
-  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty
+  @docs("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
 )
 
 trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema with exts.IdSchema {
@@ -96,9 +96,9 @@ trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema w
           properties = Map(
             "first_name" -> Json.fromString("Harry"),
             "last_name" -> Json.fromString("Potter"),
-            "birth_year" -> Json.fromInt(1980)
-          )
-        )
+            "birth_year" -> Json.fromInt(1980),
+          ),
+        ),
       )
 
   }
@@ -109,8 +109,8 @@ trait QuerySchemas extends endpoints4s.generic.JsonSchemas with exts.AnySchema w
         UiEdge(
           from = sampleId(),
           edgeType = "likes",
-          to = sampleId()
-        )
+          to = sampleId(),
+        ),
       )
 }
 
@@ -150,24 +150,24 @@ trait QueryUiRoutes
       request = post(
         url = query / "cypher" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[CypherQuery](
-          CypherQuery("RETURN $x+$y AS three", Map(("x" -> Json.fromInt(1)), ("y" -> Json.fromInt(2))))
+          CypherQuery("RETURN $x+$y AS three", Map(("x" -> Json.fromInt(1)), ("y" -> Json.fromInt(2)))),
         ).orElse(textRequestWithExample("RETURN 1 + 2 AS three"))
-          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
+          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(
           wheneverFound(
             ok(
               jsonResponseWithExample[CypherQueryResult](
-                example = CypherQueryResult(Seq("three"), Seq(Seq(Json.fromInt(3))))
-              )
-            )
-          )
+                example = CypherQueryResult(Seq("three"), Seq(Seq(Json.fromInt(3)))),
+              ),
+            ),
+          ),
         ),
       docs = EndpointDocs()
         .withSummary(Some("Cypher Query"))
         .withDescription(Some(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query"))
-        .withTags(List(cypherTag))
+        .withTags(List(cypherTag)),
     )
 
   // Inner Option is to represent namespace not found
@@ -178,10 +178,10 @@ trait QueryUiRoutes
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH (n) RETURN n LIMIT $lim",
-            Map(("lim" -> Json.fromInt(1)))
-          )
+            Map(("lim" -> Json.fromInt(1))),
+          ),
         ).orElse(textRequestWithExample("MATCH (n) RETURN n LIMIT 1"))
-          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
+          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]]))),
@@ -189,7 +189,7 @@ trait QueryUiRoutes
         .withSummary(Some("Cypher Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
                |Queries that do not return nodes will fail with a type error.""".stripMargin))
-        .withTags(List(cypherTag))
+        .withTags(List(cypherTag)),
     )
 
   // Inner Option is to represent namespace not found
@@ -200,10 +200,10 @@ trait QueryUiRoutes
         entity = jsonOrYamlRequestWithExample[CypherQuery](
           CypherQuery(
             "MATCH ()-[e]->() RETURN e LIMIT $lim",
-            Map(("lim" -> Json.fromInt(1)))
-          )
+            Map(("lim" -> Json.fromInt(1))),
+          ),
         ).orElse(textRequestWithExample("MATCH ()-[e]->() RETURN e LIMIT 1"))
-          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq))
+          .xmap[CypherQuery](_.map(CypherQuery(_)).merge)(cq => if (cq.parameters.isEmpty) Right(cq.text) else Left(cq)),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]]))),
@@ -211,7 +211,7 @@ trait QueryUiRoutes
         .withSummary(Some("Cypher Query Return Edges"))
         .withDescription(Some(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
               |Queries that do not return edges will fail with a type error.""".stripMargin))
-        .withTags(List(cypherTag))
+        .withTags(List(cypherTag)),
     )
 
   // Inner Option is to represent namespace not found
@@ -221,11 +221,11 @@ trait QueryUiRoutes
       request = post(
         url = query / "gremlin" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> Json.fromInt(1)))
+          GremlinQuery("g.V().valueMap().limit(lim)", Map("lim" -> Json.fromInt(1))),
         ).orElse(textRequestWithExample("g.V().valueMap().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
-            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
-          )
+            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq),
+          ),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(
@@ -236,19 +236,19 @@ trait QueryUiRoutes
                   Json.obj(
                     "first_name" -> Json.fromString("Harry"),
                     "last_name" -> Json.fromString("Potter"),
-                    "birth_year" -> Json.fromInt(1980)
-                  )
-                )
-              )
-            )
-          )
+                    "birth_year" -> Json.fromInt(1980),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       docs = EndpointDocs()
         .withSummary(Some("Gremlin Query"))
         .withDescription(
-          Some(s"Execute a [Gremlin]($gremlinLanguageUrl) query. Note that we only support a simple subset of Gremlin.")
+          Some(s"Execute a [Gremlin]($gremlinLanguageUrl) query. Note that we only support a simple subset of Gremlin."),
         )
-        .withTags(List(gremlinTag))
+        .withTags(List(gremlinTag)),
     )
   }
 
@@ -258,11 +258,11 @@ trait QueryUiRoutes
       request = post(
         url = query / "gremlin" / "nodes" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().limit(lim)", Map("lim" -> Json.fromInt(1)))
+          GremlinQuery("g.V().limit(lim)", Map("lim" -> Json.fromInt(1))),
         ).orElse(textRequestWithExample("g.V().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
-            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
-          )
+            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq),
+          ),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(wheneverFound(ok(jsonResponse[Seq[UiNode[Id]]]))),
@@ -270,7 +270,7 @@ trait QueryUiRoutes
         .withSummary(Some("Gremlin Query Return Nodes"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns nodes.
               |Queries that do not return nodes will fail with a type error.""".stripMargin))
-        .withTags(List(gremlinTag))
+        .withTags(List(gremlinTag)),
     )
 
   // Inner Option is to represent namespace not found
@@ -279,11 +279,11 @@ trait QueryUiRoutes
       request = post(
         url = query / "gremlin" / "edges" /? (atTime & reqTimeout & namespace),
         entity = jsonOrYamlRequestWithExample[GremlinQuery](
-          GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> Json.fromInt(1)))
+          GremlinQuery("g.V().outE().limit(lim)", Map("lim" -> Json.fromInt(1))),
         ).orElse(textRequestWithExample("g.V().outE().limit(1)"))
           .xmap[GremlinQuery](_.map(GremlinQuery(_)).merge)(gq =>
-            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq)
-          )
+            if (gq.parameters.isEmpty) Right(gq.text) else Left(gq),
+          ),
       ),
       response = customBadRequest("runtime error in the query")
         .orElse(wheneverFound(ok(jsonResponse[Seq[UiEdge[Id]]]))),
@@ -291,6 +291,6 @@ trait QueryUiRoutes
         .withSummary(Some("Gremlin Query Return Edges"))
         .withDescription(Some(s"""Execute a [Gremlin]($gremlinLanguageUrl) query that returns edges.
                |Queries that do not return edges will fail with a type error.""".stripMargin))
-        .withTags(List(gremlinTag))
+        .withTags(List(gremlinTag)),
     )
 }

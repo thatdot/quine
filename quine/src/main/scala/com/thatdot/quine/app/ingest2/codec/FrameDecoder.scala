@@ -64,7 +64,7 @@ object DropDecoder extends FrameDecoder[Any] {
 }
 
 case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl: String, typeName: String)(implicit
-  protobufSchemaCache: ProtobufSchemaCache
+  protobufSchemaCache: ProtobufSchemaCache,
 ) extends FrameDecoder[DynamicMessage] {
 
   // this is a blocking call, but it should only actually block until the first time a type is successfully
@@ -77,7 +77,7 @@ case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl:
   //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
   val messageDescriptor: Descriptors.Descriptor = Await.result(
     protobufSchemaCache.getMessageDescriptor(filenameOrUrl(schemaUrl), typeName, flushOnFail = true),
-    Duration.Inf
+    Duration.Inf,
   )
 
   val foldable: DataFoldableFrom[DynamicMessage] = DataFoldableFrom.protobufDataFoldable
@@ -108,7 +108,7 @@ case class CsvMapDecoder(
   delimiterChar: Char,
   quoteChar: Char,
   escapeChar: Char,
-  charset: Charset = DEFAULT_CHARSET
+  charset: Charset = DEFAULT_CHARSET,
 ) extends FrameDecoder[Map[String, String]] {
 
   //if the keys are not passed in the first read values are the keys
@@ -124,7 +124,7 @@ case class CsvMapDecoder(
         headers match {
           case Some(value) => value.zip(csv).toMap
           case None => throw new Exception("Headers are empty")
-        }
+        },
       )
 
 }
@@ -153,7 +153,7 @@ object FrameDecoder {
               Some(values),
               delimiter.byte.toChar,
               quote.byte.toChar,
-              escape.byte.toChar
+              escape.byte.toChar,
             ) // map values provided
         }
     }

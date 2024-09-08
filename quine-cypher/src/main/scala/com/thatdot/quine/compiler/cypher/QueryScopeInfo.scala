@@ -23,7 +23,7 @@ import com.thatdot.quine.graph.cypher.Expr
 final case class QueryScopeInfo(
   private val anchoredNodes: Map[Symbol, Expr],
   private val columnIdx: Map[Symbol, Int],
-  private val columnsReversed: List[Symbol]
+  private val columnsReversed: List[Symbol],
 ) {
 
   /** Look up a variable in the columns
@@ -54,7 +54,7 @@ final case class QueryScopeInfo(
     * @return new context with extra anchors
     */
   def withNewAnchors(
-    anchors: Iterable[(Symbol, Expr)]
+    anchors: Iterable[(Symbol, Expr)],
   ): QueryScopeInfo =
     copy(anchoredNodes = anchoredNodes ++ anchors.filter { case (v, _) => !columnIdx.contains(v) })
 
@@ -74,7 +74,7 @@ final case class QueryScopeInfo(
     val scope = QueryScopeInfo(
       anchoredNodes = anchoredNodes - variable,
       columnIdx = columnIdx + (variable -> columnIdx.size),
-      columnsReversed = Symbol(variable.name) :: columnsReversed
+      columnsReversed = Symbol(variable.name) :: columnsReversed,
     )
     (scope, Expr.Variable(variable))
   }
@@ -87,7 +87,7 @@ final case class QueryScopeInfo(
     QueryScopeInfo(
       anchoredNodes,
       columnIdx = Map.empty,
-      columnsReversed = List.empty
+      columnsReversed = List.empty,
     )
 
   /** @return columns in scope */

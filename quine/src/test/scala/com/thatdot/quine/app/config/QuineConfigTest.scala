@@ -29,7 +29,7 @@ class QuineConfigTest extends AnyFunSuite with should.Matchers {
     roundtripped shouldEqual dumpConfig
 
     val error = intercept[ConfigReaderException[QuineConfig]](
-      readConfig("quine { dumpConfig = yes }")
+      readConfig("quine { dumpConfig = yes }"),
     )
     val failure = error.failures.head
     assert(failure.isInstanceOf[ConvertFailure])

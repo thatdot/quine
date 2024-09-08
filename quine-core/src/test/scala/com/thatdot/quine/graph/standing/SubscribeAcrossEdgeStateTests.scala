@@ -13,7 +13,7 @@ import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
 
   def makeState(
-    query: MultipleValuesStandingQuery.SubscribeAcrossEdge
+    query: MultipleValuesStandingQuery.SubscribeAcrossEdge,
   ): StandingQueryStateWrapper[MultipleValuesStandingQuery.SubscribeAcrossEdge] =
     new StandingQueryStateWrapper(query)
 
@@ -26,7 +26,7 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
       edgeName = Some(Symbol("myedge")),
       edgeDirection = Some(EdgeDirection.Incoming),
       andThen = MultipleValuesStandingQuery
-        .LocalProperty(Symbol("foo"), MultipleValuesStandingQuery.LocalProperty.Any, Some(andThenAliasedAs))
+        .LocalProperty(Symbol("foo"), MultipleValuesStandingQuery.LocalProperty.Any, Some(andThenAliasedAs)),
     )
     val state = makeState(query)
 
@@ -66,7 +66,7 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
         reciprocal7Id,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(2L))))
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(2L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val results = effects.resultsReported.dequeue()
@@ -81,7 +81,7 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
         reciprocal7Id,
         globalId,
         Some(query.queryPartId),
-        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(3L))))
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(3L)))),
       )
       state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
         val reportedResults = effects.resultsReported.dequeue()

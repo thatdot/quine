@@ -8,7 +8,7 @@ import com.thatdot.quine.util.Log._
 class StatelessPrimePersistor(
   persistenceConfig: PersistenceConfig,
   bloomFilterSize: Option[Long],
-  create: (PersistenceConfig, NamespaceId) => PersistenceAgent
+  create: (PersistenceConfig, NamespaceId) => PersistenceAgent,
 )(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 

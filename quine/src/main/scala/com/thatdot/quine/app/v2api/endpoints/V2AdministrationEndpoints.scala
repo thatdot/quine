@@ -31,7 +31,7 @@ object V2AdministrationEndpointEntities {
     @description("Hash value derived from the state of the graph (nodes, properties, and edges)")
     value: Long,
     @description("Time value used to derive the graph hash code")
-    atTime: Long
+    atTime: Long,
   )
 
   @title("System Build Information")
@@ -41,27 +41,27 @@ object V2AdministrationEndpointEntities {
     @title("Current build git commit") gitCommit: Option[String],
     @title("Current build commit date") gitCommitDate: Option[String],
     @title("Java compilation version") javaVersion: String,
-    @title("Persistence data format version") persistenceWriteVersion: String
+    @title("Persistence data format version") persistenceWriteVersion: String,
   )
 
   @title("Metrics Counter")
   @description("Counters record a single shared count, and give that count a name")
   final case class TCounter(
     @description("Name of the metric being reported") name: String,
-    @description("The value tracked by this counter") count: Long
+    @description("The value tracked by this counter") count: Long,
   )
 
   @title("Metrics Numeric Gauge")
   @description("Gauges provide a single point-in-time measurement, and give that measurement a name")
   final case class TNumericGauge(
     @description("Name of the metric being reported") name: String,
-    @description("The latest measurement recorded by this gauge") value: Double
+    @description("The latest measurement recorded by this gauge") value: Double,
   )
 
   @title("Metrics Timer Summary")
   @description(
     """A rough cumulative histogram of times recorded by a timer, as well as the average rate at which that timer is
-      |used to take new measurements. All times in milliseconds.""".stripMargin.replace('\n', ' ')
+      |used to take new measurements. All times in milliseconds.""".stripMargin.replace('\n', ' '),
   )
   final case class TTimerSummary(
     @description("Name of the metric being reported") name: String,
@@ -73,14 +73,14 @@ object V2AdministrationEndpointEntities {
     @description("First-quartile time") q1: Double,
     @description("Third-quartile time") q3: Double,
     @description(
-      "Average per-second rate of new events over the last one minute"
+      "Average per-second rate of new events over the last one minute",
     ) oneMinuteRate: Double,
     @description("90th percentile time") `90`: Double,
     @description("99th percentile time") `99`: Double,
     // pareto principle thresholds
     @description("80th percentile time") `80`: Double,
     @description("20th percentile time") `20`: Double,
-    @description("10th percentile time") `10`: Double
+    @description("10th percentile time") `10`: Double,
   )
 
   @title("Metrics Report")
@@ -93,19 +93,19 @@ object V2AdministrationEndpointEntities {
     @description(
       "Timers which measure how long an operation takes and how often that operation was timed, in milliseconds. " +
       "These are measured with wall time, and hence may be skewed by other system events outside our control like " +
-      "GC pauses or system load."
+      "GC pauses or system load.",
     ) timers: Seq[
-      TTimerSummary
+      TTimerSummary,
     ],
     @description("Gauges which report an instantaneously-sampled reading of a particular metric") gauges: Seq[
-      TNumericGauge
-    ]
+      TNumericGauge,
+    ],
   )
 
   @title("Shard In-Memory Limits")
   final case class TShardInMemoryLimit(
     @description("Number of in-memory nodes past which shards will try to shut down nodes") softLimit: Int,
-    @description("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int
+    @description("Number of in-memory nodes past which shards will not load in new nodes") hardLimit: Int,
   )
 
   private val genCounter = Generic[Counter]
@@ -120,7 +120,7 @@ object V2AdministrationEndpointEntities {
       metricsReport.atTime,
       metricsReport.counters.map(c => genTCounter.from(genCounter.to(c))),
       metricsReport.timers.map(t => genTTimer.from(genTimer.to(t))),
-      metricsReport.gauges.map(g => genTGauge.from(genGauge.to(g)))
+      metricsReport.gauges.map(g => genTGauge.from(genGauge.to(g))),
     )
 
 }
@@ -166,7 +166,7 @@ trait V2AdministrationEndpoints extends V2EndpointDefinitions {
   private def adminEndpoint[T](path: String)(implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
-    decoder: Decoder[T]
+    decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     withOutput[T](rawAdminEndpoint(path))
 
@@ -200,7 +200,7 @@ endpoint.
 
   private val graphHashCodeEndpoint
     : ServerEndpoint.Full[Unit, Unit, (Option[Int], Option[Milliseconds], Option[String]), ErrorEnvelope[
-      _ <: CustomError
+      _ <: CustomError,
     ], ObjectEnvelope[TGraphHashCode], Any, Future] = adminEndpoint[TGraphHashCode]("graph-hash-code")
     .description("""Generate a hash of the state of the graph at the provided timestamp.
                    |
@@ -220,7 +220,7 @@ endpoint.
         GraphHashCodeApiCmd,
         memberIdx,
         (atime, namespaceFromParam(ns)),
-        t => app.graphHashCode(t._1, t._2)
+        t => app.graphHashCode(t._1, t._2),
       )
     }
 
@@ -246,7 +246,7 @@ up ready and start routing user requests to it.
         GetReadinessApiCmd,
         memberIdx,
         (),
-        _ => Future.successful(Either.cond(app.isReady, true, ServiceUnavailable("System is not ready")))
+        _ => Future.successful(Either.cond(app.isReady, true, ServiceUnavailable("System is not ready"))),
       )
     }
 
@@ -259,7 +259,7 @@ up ready and start routing user requests to it.
         ShutdownApiCmd,
         memberIdx,
         (),
-        _ => app.performShutdown()
+        _ => app.performShutdown(),
       )
     }
 
@@ -273,7 +273,7 @@ up ready and start routing user requests to it.
           GetMetaDataApiCmd,
           memberIdx,
           (),
-          _ => app.metaData
+          _ => app.metaData,
         )
       }
 
@@ -306,7 +306,7 @@ up ready and start routing user requests to it.
           | - `memory.total`: JVM combined memory usage
           | - `shared.valve.ingest`: Number of current requests to slow ingest for another part of Quine to catch up
           | - `dgn-reg.count`: Number of in-memory registered DomainGraphNodes
-          |""".stripMargin
+          |""".stripMargin,
     )
     .get
     .serverLogic { memberIdx =>
@@ -314,7 +314,7 @@ up ready and start routing user requests to it.
         GetMetricsApiCmd,
         memberIdx,
         (),
-        _ => Future.successful(metricsReportFromV1Metrics(app.metrics))
+        _ => Future.successful(metricsReportFromV1Metrics(app.metrics)),
       )
     }
 
@@ -337,7 +337,7 @@ up ready and start routing user requests to it.
         r =>
           app
             .shardSizes(r.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
-            .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic)
+            .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
       )
     }
 
@@ -354,7 +354,7 @@ up ready and start routing user requests to it.
         SleepNodeApiCmd,
         memberIdx,
         (nodeId, namespaceFromParam(namespace)),
-        t => app.requestNodeSleep(t._1, t._2)
+        t => app.requestNodeSleep(t._1, t._2),
       )
     }
 
@@ -370,7 +370,7 @@ up ready and start routing user requests to it.
     metricsEndpoint,
     readinessEndpoint,
     requestNodeSleepEndpoint,
-    shardSizesEndpoint
+    shardSizesEndpoint,
   )
 
 }

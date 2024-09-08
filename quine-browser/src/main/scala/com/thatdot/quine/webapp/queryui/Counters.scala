@@ -21,7 +21,7 @@ object Counters {
   final case class CounterProps(
     ionClass: String,
     tooltipTitle: String,
-    count: Option[Int]
+    count: Option[Int],
   )
 
   /** Icon with a subscript counter beside it */
@@ -33,9 +33,9 @@ object Counters {
       i(className := classes.mkString(" "), title := tooltipTitle, style := iStyle)(
         span(
           span(style := jsObj(fontSize = "small"))(
-            countOpt.getOrElse(0).toString
-          )
-        )
+            countOpt.getOrElse(0).toString,
+          ),
+        ),
       )
   }
 
@@ -45,12 +45,12 @@ object Counters {
       val nodes = CounterProps(
         ionClass = "ion-android-radio-button-on",
         tooltipTitle = "Nodes returned by last query",
-        count = nodeCount
+        count = nodeCount,
       )
       val edges = CounterProps(
         ionClass = "ion-arrow-resize",
         tooltipTitle = "Edges returned by last query",
-        count = edgeCount
+        count = edgeCount,
       )
 
       div(style := jsObj(flexGrow = "0", display = "flex"))(counter(nodes), counter(edges))

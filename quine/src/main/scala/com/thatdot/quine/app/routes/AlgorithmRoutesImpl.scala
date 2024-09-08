@@ -36,7 +36,7 @@ trait AlgorithmMethods {
     queryOpt: Option[String],
     returnParamOpt: Option[Double],
     inOutParamOpt: Option[Double],
-    seedOpt: Option[String]
+    seedOpt: Option[String],
   ): String = s"""graph-walk-
               |${atTime.map(_.millis).getOrElse(s"${System.currentTimeMillis}_T")}-
               |${lengthOpt.getOrElse(AlgorithmGraph.defaults.walkLength)}x
@@ -69,7 +69,7 @@ trait AlgorithmRoutesImpl
           namespaceParam,
           atTime: Option[Milliseconds],
           parallelism,
-          saveLocation
+          saveLocation,
         ) =>
       graph.requiredGraphIsReady()
       val namespaceId = namespaceFromParam(namespaceParam)
@@ -111,7 +111,7 @@ trait AlgorithmRoutesImpl
               seedOpt,
               namespaceFromParam(namespaceParam),
               atTime,
-              parallelism
+              parallelism,
             )
           Some(fileName)
         }.toEither
@@ -157,9 +157,9 @@ trait AlgorithmRoutesImpl
               None,
               seedOpt,
               ns,
-              atTime
+              atTime,
             )
-            .map(w => Right(w.acc))(ExecutionContext.parasitic)
+            .map(w => Right(w.acc))(ExecutionContext.parasitic),
         )
       }
   }
@@ -169,7 +169,7 @@ trait AlgorithmRoutesImpl
     algorithmRandomWalkRoute
 
   final private def ifNamespaceFound[A](namespaceId: NamespaceId)(
-    ifFound: => Future[Either[ClientErrors, A]]
+    ifFound: => Future[Either[ClientErrors, A]],
   ): Future[Either[ClientErrors, Option[A]]] =
     if (!graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
     else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)

@@ -93,7 +93,7 @@ object ProtobufSchemaCache {
     * already-populated map.
     */
   private[this] def resolveMessageType(messageType: String)(
-    schema: DynamicSchema
+    schema: DynamicSchema,
   ): Either[ProtobufSchemaMessageTypeException, Descriptor] =
     Option(schema.getMessageDescriptor(messageType)).toRight {
       // failure cases: either the type doesn't exist, or it's ambiguous

@@ -180,12 +180,12 @@ object DataFoldableFrom {
                     case INT | LONG | BOOLEAN => Some(mapEntry.getField(k).toString)
                     case other =>
                       logger.warn(
-                        safe"Cannot process the key ${Safe(other.toString)}. Protobuf can only accept keys of type String, Boolean, Integer. This map key will be ignored."
+                        safe"Cannot process the key ${Safe(other.toString)}. Protobuf can only accept keys of type String, Boolean, Integer. This map key will be ignored.",
                       )
                       None
                   }
                   maybeKey.map(key =>
-                    localMapBuilder.add(key, fieldToValue(v.getJavaType, mapEntry.getField(v), folder))
+                    localMapBuilder.add(key, fieldToValue(v.getJavaType, mapEntry.getField(v), folder)),
                   )
                 }
 

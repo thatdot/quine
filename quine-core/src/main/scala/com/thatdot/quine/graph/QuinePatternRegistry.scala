@@ -16,7 +16,7 @@ object QuinePatternRegistryMessage {
     namespaceId: NamespaceId,
     standingQueryId: StandingQueryId,
     quinePattern: QuinePattern,
-    durable: Boolean
+    durable: Boolean,
   ) extends QuinePatternRegistryMessage
 }
 
@@ -35,8 +35,8 @@ class QuinePatternRegistry(persistor: PrimePersistor) extends Actor {
         persistor(namespace)
           .getOrElse(
             throw new IllegalArgumentException(
-              s"Could not persist standing query because namespace: $namespace does not exist."
-            )
+              s"Could not persist standing query because namespace: $namespace does not exist.",
+            ),
           )
           .persistQuinePattern(sqId, qp)
           .onComplete(_ => ())(this.context.system.dispatcher)

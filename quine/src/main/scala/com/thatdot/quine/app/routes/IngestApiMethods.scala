@@ -12,7 +12,7 @@ import com.thatdot.quine.routes.{
   IngestStreamConfiguration,
   IngestStreamInfo,
   IngestStreamInfoWithName,
-  IngestStreamStatus
+  IngestStreamStatus,
 }
 import com.thatdot.quine.util.SwitchMode
 
@@ -36,7 +36,7 @@ trait IngestApiMethods {
         status,
         conf.terminated().value collect { case Failure(exception) => exception.toString },
         conf.settings,
-        conf.metrics.toEndpointResponse
+        conf.metrics.toEndpointResponse,
       )
     }(graph.shardDispatcherEC)
 
@@ -45,7 +45,7 @@ trait IngestApiMethods {
   def setIngestStreamPauseState(
     name: String,
     namespace: NamespaceId,
-    newState: SwitchMode
+    newState: SwitchMode,
   ): Future[Option[IngestStreamInfoWithName]] =
     quineApp.getIngestStream(name, namespace) match {
       case None => Future.successful(None)
@@ -69,7 +69,7 @@ trait IngestApiMethods {
 
   def mkPauseOperationError[ERROR_TYPE](
     operation: String,
-    toError: String => ERROR_TYPE
+    toError: String => ERROR_TYPE,
   ): PartialFunction[Throwable, Either[ERROR_TYPE, Nothing]] = {
     case _: StreamDetachedException =>
       // A StreamDetachedException always occurs when the ingest has failed

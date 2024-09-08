@@ -16,7 +16,7 @@ import com.thatdot.quine.graph.NamespaceId
 final class LocalShardRef(
   val localRef: ActorRef,
   val shardId: Int,
-  nodesMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, NodeState]]
+  nodesMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, NodeState]],
 ) extends ShardRef {
   val isLocal: Boolean = true
 

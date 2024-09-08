@@ -15,7 +15,7 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
   case class Person(
     first: String,
     parent: Option[idProv.CustomIdType],
-    id: idProv.CustomIdType = idProv.newCustomId()
+    id: idProv.CustomIdType = idProv.newCustomId(),
   )
 
   val people: List[Person] = {
@@ -58,9 +58,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
       expectedRows = Seq(
         Vector(Expr.Str("1"), Expr.Str("0")),
         Vector(Expr.Str("2"), Expr.Str("1")),
-        Vector(Expr.Str("3"), Expr.Str("2"))
+        Vector(Expr.Str("3"), Expr.Str("2")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -69,9 +69,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
       expectedRows = Seq(
         Vector(Expr.Str("0"), Expr.Str("1")),
         Vector(Expr.Str("1"), Expr.Str("2")),
-        Vector(Expr.Str("2"), Expr.Str("3"))
+        Vector(Expr.Str("2"), Expr.Str("3")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -82,9 +82,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("3"), Expr.Str("1")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
         Vector(Expr.Str("loop-a"), Expr.Str("loop-b")),
-        Vector(Expr.Str("loop-b"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -101,9 +101,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-a"), Expr.Str("loop-b")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-b")),
         Vector(Expr.Str("loop-a"), Expr.Str("loop-c")),
-        Vector(Expr.Str("loop-b"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -118,9 +118,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-b"), Expr.Str("loop-b")),
         Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -130,9 +130,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("3"), Expr.Str("0")),
         Vector(Expr.Str("loop-a"), Expr.Str("loop-a")),
         Vector(Expr.Str("loop-b"), Expr.Str("loop-b")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -149,9 +149,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-b"), Expr.Str("loop-a")),
         Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-b"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-b")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -166,9 +166,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-b"), Expr.Str("loop-b")),
         Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -189,9 +189,9 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-b")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
@@ -212,16 +212,16 @@ class VariableLengthRelationshipPattern extends CypherHarness("variable-length-r
         Vector(Expr.Str("loop-b"), Expr.Str("loop-c")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-a")),
         Vector(Expr.Str("loop-c"), Expr.Str("loop-b")),
-        Vector(Expr.Str("loop-c"), Expr.Str("loop-c"))
+        Vector(Expr.Str("loop-c"), Expr.Str("loop-c")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
       "MATCH (n)<-[:parent*4..6]-(m) RETURN n.first AS n, m.first AS m ORDER BY n, m",
       expectedColumns = Vector("n", "m"),
       expectedRows = Seq(),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -243,11 +243,11 @@ class VariableLengthRelationshipPatternHarryPotter
           " (harry)<-[:has_father]-(:Person {name: \"Albus Severus Potter\", born: 2005})-[:has_mother]->(ginny),",
           " (harry)<-[:has_father]-(:Person {name: \"Lily Luna\", born: 2007})-[:has_mother]->(ginny),",
           " (ron)<-[:has_father]-(:Person {name: \"Rose Weasley\", born: 2005})-[:has_mother]->(hermione:Person {name: \"Hermione Granger\", born: 1979}),",
-          " (ron)<-[:has_father]-(:Person {name: \"Hugo Weasley\", born: 2008})-[:has_mother]->(hermione);"
+          " (ron)<-[:has_father]-(:Person {name: \"Hugo Weasley\", born: 2008})-[:has_mother]->(hermione);",
         ).mkString,
-        cypherHarnessNamespace
+        cypherHarnessNamespace,
       )(graph).results.runWith(Sink.ignore),
-      timeout.duration
+      timeout.duration,
     )
     ()
   }
@@ -261,9 +261,9 @@ class VariableLengthRelationshipPatternHarryPotter
         Vector(Expr.Str("Hugo Weasley"), Expr.Str("Arthur Weasley")),
         Vector(Expr.Str("James Sirius Potter"), Expr.Str("James Potter")),
         Vector(Expr.Str("Lily Luna"), Expr.Str("James Potter")),
-        Vector(Expr.Str("Rose Weasley"), Expr.Str("Arthur Weasley"))
+        Vector(Expr.Str("Rose Weasley"), Expr.Str("Arthur Weasley")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -275,24 +275,24 @@ class VariableLengthRelationshipPatternHarryPotter
         Vector(
           Expr.Str("Albus Severus Potter"),
           Expr.Str("Arthur Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father")),
         ),
         Vector(Expr.Str("Albus Severus Potter"), Expr.Str("Ginny Weasley"), Expr.List(Expr.Str("has_mother"))),
         Vector(Expr.Str("Albus Severus Potter"), Expr.Str("Harry Potter"), Expr.List(Expr.Str("has_father"))),
         Vector(
           Expr.Str("Albus Severus Potter"),
           Expr.Str("James Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_father")),
         ),
         Vector(
           Expr.Str("Albus Severus Potter"),
           Expr.Str("Lily Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother")),
         ),
         Vector(
           Expr.Str("Albus Severus Potter"),
           Expr.Str("Molly Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother")),
         ),
         Vector(Expr.Str("Ginny Weasley"), Expr.Str("Arthur Weasley"), Expr.List(Expr.Str("has_father"))),
         Vector(Expr.Str("Ginny Weasley"), Expr.Str("Molly Weasley"), Expr.List(Expr.Str("has_mother"))),
@@ -301,75 +301,75 @@ class VariableLengthRelationshipPatternHarryPotter
         Vector(
           Expr.Str("Hugo Weasley"),
           Expr.Str("Arthur Weasley"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_father")),
         ),
         Vector(Expr.Str("Hugo Weasley"), Expr.Str("Hermione Granger"), Expr.List(Expr.Str("has_mother"))),
         Vector(
           Expr.Str("Hugo Weasley"),
           Expr.Str("Molly Weasley"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother")),
         ),
         Vector(Expr.Str("Hugo Weasley"), Expr.Str("Ron Weasley"), Expr.List(Expr.Str("has_father"))),
         Vector(
           Expr.Str("James Sirius Potter"),
           Expr.Str("Arthur Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father")),
         ),
         Vector(Expr.Str("James Sirius Potter"), Expr.Str("Ginny Weasley"), Expr.List(Expr.Str("has_mother"))),
         Vector(Expr.Str("James Sirius Potter"), Expr.Str("Harry Potter"), Expr.List(Expr.Str("has_father"))),
         Vector(
           Expr.Str("James Sirius Potter"),
           Expr.Str("James Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_father")),
         ),
         Vector(
           Expr.Str("James Sirius Potter"),
           Expr.Str("Lily Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother")),
         ),
         Vector(
           Expr.Str("James Sirius Potter"),
           Expr.Str("Molly Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother")),
         ),
         Vector(
           Expr.Str("Lily Luna"),
           Expr.Str("Arthur Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_father")),
         ),
         Vector(Expr.Str("Lily Luna"), Expr.Str("Ginny Weasley"), Expr.List(Expr.Str("has_mother"))),
         Vector(Expr.Str("Lily Luna"), Expr.Str("Harry Potter"), Expr.List(Expr.Str("has_father"))),
         Vector(
           Expr.Str("Lily Luna"),
           Expr.Str("James Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_father")),
         ),
         Vector(
           Expr.Str("Lily Luna"),
           Expr.Str("Lily Potter"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother")),
         ),
         Vector(
           Expr.Str("Lily Luna"),
           Expr.Str("Molly Weasley"),
-          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_mother"), Expr.Str("has_mother")),
         ),
         Vector(Expr.Str("Ron Weasley"), Expr.Str("Arthur Weasley"), Expr.List(Expr.Str("has_father"))),
         Vector(Expr.Str("Ron Weasley"), Expr.Str("Molly Weasley"), Expr.List(Expr.Str("has_mother"))),
         Vector(
           Expr.Str("Rose Weasley"),
           Expr.Str("Arthur Weasley"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_father"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_father")),
         ),
         Vector(Expr.Str("Rose Weasley"), Expr.Str("Hermione Granger"), Expr.List(Expr.Str("has_mother"))),
         Vector(
           Expr.Str("Rose Weasley"),
           Expr.Str("Molly Weasley"),
-          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother"))
+          Expr.List(Expr.Str("has_father"), Expr.Str("has_mother")),
         ),
-        Vector(Expr.Str("Rose Weasley"), Expr.Str("Ron Weasley"), Expr.List(Expr.Str("has_father")))
+        Vector(Expr.Str("Rose Weasley"), Expr.Str("Ron Weasley"), Expr.List(Expr.Str("has_father"))),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 }
@@ -393,9 +393,9 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
         (Morpheus)-[:KNOWS]->(Cypher),
         (Cypher)-[:KNOWS]->(Smith),
         (Smith)-[:CODED_BY]->(Architect)""",
-        cypherHarnessNamespace
+        cypherHarnessNamespace,
       )(graph).results.runWith(Sink.ignore),
-      timeout.duration
+      timeout.duration,
     )
     ()
   }
@@ -407,9 +407,9 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
       expectedRows = Seq(
         Vector(Expr.Str("Morpheus"), Expr.Str("Morpheus")),
         Vector(Expr.Str("Morpheus"), Expr.Str("Morpheus")),
-        Vector(Expr.Str("Morpheus"), Expr.Str("The Architect"))
+        Vector(Expr.Str("Morpheus"), Expr.Str("The Architect")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
     testQuery(
       "match (n)-[*3..3]-(m) WHERE n.name = 'Morpheus' RETURN n.name AS n, m.name AS m ORDER BY m.name",
@@ -417,27 +417,27 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
       expectedRows = Seq(
         Vector(Expr.Str("Morpheus"), Expr.Str("Morpheus")),
         Vector(Expr.Str("Morpheus"), Expr.Str("Morpheus")),
-        Vector(Expr.Str("Morpheus"), Expr.Str("The Architect"))
+        Vector(Expr.Str("Morpheus"), Expr.Str("The Architect")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
     testQuery(
       "match (n)--()--()--()--(m) WHERE n.name = 'Morpheus' RETURN n.name AS n, m.name AS m",
       expectedColumns = Vector("n", "m"),
       expectedRows = Seq(
         Vector(Expr.Str("Morpheus"), Expr.Str("Cypher")),
-        Vector(Expr.Str("Morpheus"), Expr.Str("Cypher"))
+        Vector(Expr.Str("Morpheus"), Expr.Str("Cypher")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
     testQuery(
       "match (n)-[*4..4]-(m) WHERE n.name = 'Morpheus' RETURN n.name AS n, m.name AS m",
       expectedColumns = Vector("n", "m"),
       expectedRows = Seq(
         Vector(Expr.Str("Morpheus"), Expr.Str("Cypher")),
-        Vector(Expr.Str("Morpheus"), Expr.Str("Cypher"))
+        Vector(Expr.Str("Morpheus"), Expr.Str("Cypher")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 
@@ -449,16 +449,16 @@ class VariableLengthRelationshipPatternMatrix extends CypherHarness("variable-le
         Vector(Expr.Str("Morpheus"), Expr.Str("Agent Smith")),
         Vector(Expr.Str("Neo"), Expr.Str("Cypher")),
         Vector(Expr.Str("Neo"), Expr.Str("Trinity")),
-        Vector(Expr.Str("Cypher"), Expr.Str("The Architect"))
+        Vector(Expr.Str("Cypher"), Expr.Str("The Architect")),
       ),
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
 
     testQuery(
       "MATCH (a)-[:foo|:bar]->(b)-[:bar*]->(c) RETURN null",
       expectedColumns = Vector("null"),
       expectedRows = Seq.empty,
-      expectedCanContainAllNodeScan = true
+      expectedCanContainAllNodeScan = true,
     )
   }
 }

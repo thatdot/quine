@@ -33,7 +33,7 @@ import com.thatdot.quine.graph.{
   StandingQueryPattern,
   defaultNamespaceId,
   namespaceFromString,
-  namespaceToString
+  namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
@@ -94,8 +94,8 @@ abstract class PersistenceAgentSpec
           persistor.createNamespace(name)
           persistor(name).get // this should be defined -- we just created it, after all!
         }(ExecutionContext.parasitic),
-      41.seconds // potentially creates database tables, which is potentially slow depending on the database
-    )
+      41.seconds, // potentially creates database tables, which is potentially slow depending on the database
+    ),
   )
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -127,7 +127,7 @@ abstract class PersistenceAgentSpec
           _ <- system.terminate()
         } yield ()
       },
-      25.seconds
+      25.seconds,
     )
     ()
   }
@@ -163,10 +163,10 @@ abstract class PersistenceAgentSpec
 
   val sqPartId1: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(new UUID(0L, 0L))
   val sqPartId2: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
-    new UUID(1096520000288222086L, 748609736042323025L)
+    new UUID(1096520000288222086L, 748609736042323025L),
   )
   val sqPartId3: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
-    new UUID(-1613026160293696877L, 6732331004029745690L)
+    new UUID(-1613026160293696877L, 6732331004029745690L),
   )
   val sqPartId4: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(new UUID(-1L, -1L))
 
@@ -199,9 +199,9 @@ abstract class PersistenceAgentSpec
             NodeEvent.WithTime(event1, EventTime.fromRaw(36L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(38L)),
             NodeEvent.WithTime(event3, EventTime.fromRaw(40L)),
-            NodeEvent.WithTime(event4, EventTime.fromRaw(44L))
-          )
-        )
+            NodeEvent.WithTime(event4, EventTime.fromRaw(44L)),
+          ),
+        ),
       )
     }
 
@@ -214,8 +214,8 @@ abstract class PersistenceAgentSpec
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-            NodeEvent.WithTime(event3, EventTime.MaxValue)
-          )
+            NodeEvent.WithTime(event3, EventTime.MaxValue),
+          ),
         ),
         // in between qid
         namespacedPersistor.persistNodeChangeEvents(
@@ -224,8 +224,8 @@ abstract class PersistenceAgentSpec
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-            NodeEvent.WithTime(event3, EventTime.MaxValue)
-          )
+            NodeEvent.WithTime(event3, EventTime.MaxValue),
+          ),
         ),
         // "maximum qid" (all 1 bits)
         namespacedPersistor.persistNodeChangeEvents(
@@ -234,9 +234,9 @@ abstract class PersistenceAgentSpec
             NodeEvent.WithTime(event0, EventTime.MinValue),
             NodeEvent.WithTime(event1, EventTime.fromRaw(2394872938L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(-129387432L)),
-            NodeEvent.WithTime(event3, EventTime.MaxValue)
-          )
-        )
+            NodeEvent.WithTime(event3, EventTime.MaxValue),
+          ),
+        ),
       )
     }
   }
@@ -269,7 +269,7 @@ abstract class PersistenceAgentSpec
           .getJournal(qid4, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = false)
           .map { journal =>
             (journal shouldEqual Seq(event0, event1, event2, event3))
-          }
+          },
       )
     }
 
@@ -314,7 +314,7 @@ abstract class PersistenceAgentSpec
           .getJournal(qid4, EventTime.MinValue, EventTime.MinValue, includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldEqual Seq(event0))
-          }
+          },
       )
     }
 
@@ -365,7 +365,7 @@ abstract class PersistenceAgentSpec
           .getJournal(qid4, EventTime.MaxValue, EventTime.MaxValue, includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldEqual Seq(event3))
-          }
+          },
       )
     }
 
@@ -415,9 +415,9 @@ abstract class PersistenceAgentSpec
               event1,
               event2,
               event3,
-              event4
+              event4,
             )
-          }
+          },
       )
     }
 
@@ -454,7 +454,7 @@ abstract class PersistenceAgentSpec
           .getJournal(qid4, EventTime.fromRaw(2L), EventTime.fromRaw(-2L), includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldEqual Seq(event1, event2))
-          }
+          },
       )
     }
   }
@@ -466,7 +466,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(36L), snapshot1),
         namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(38L), snapshot2),
         namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(40L), snapshot3),
-        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(44L), snapshot4)
+        namespacedPersistor.persistSnapshot(qid1, EventTime.fromRaw(44L), snapshot4),
       )
     }
 
@@ -486,7 +486,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.persistSnapshot(qid4, EventTime.MinValue, snapshot0),
         namespacedPersistor.persistSnapshot(qid4, EventTime.fromRaw(2394872938L), snapshot1),
         namespacedPersistor.persistSnapshot(qid4, EventTime.fromRaw(-129387432L), snapshot2),
-        namespacedPersistor.persistSnapshot(qid4, EventTime.MaxValue, snapshot3)
+        namespacedPersistor.persistSnapshot(qid4, EventTime.MaxValue, snapshot3),
       )
     }
   }
@@ -513,7 +513,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.MaxValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot3)
-        }
+        },
       )
     }
 
@@ -536,7 +536,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.MinValue).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot0)
-        }
+        },
       )
     }
 
@@ -568,7 +568,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.getLatestSnapshot(qid1, EventTime.fromRaw(48L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot4)
-        }
+        },
       )
     }
 
@@ -592,7 +592,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.getLatestSnapshot(qid4, EventTime.fromRaw(-2L)).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot2)
-        }
+        },
       )
     }
   }
@@ -623,11 +623,11 @@ abstract class PersistenceAgentSpec
             formatReturnAsStr = true,
             aliasReturnAs = Symbol("foo"),
             includeCancellation = true,
-            origin = PatternOrigin.DirectDgb
+            origin = PatternOrigin.DirectDgb,
           ),
           queueBackpressureThreshold = 1,
           queueMaxSize = 1,
-          shouldCalculateResultHashCode = true
+          shouldCalculateResultHashCode = true,
         )
         for {
           _ <- namespacedPersistor.removeStandingQuery(standingQuery)
@@ -643,7 +643,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId1, Some(sqState1)),
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId2, Some(sqState2)),
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId3, Some(sqState3)),
-        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid1, sqPartId4, Some(sqState4)),
       )
     }
 
@@ -651,7 +651,7 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid2, sqPartId1, Some(sqState1)),
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid3, sqPartId1, Some(sqState2)),
-        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState3)),
       )
     }
 
@@ -661,7 +661,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId4, qid3, sqPartId1, Some(sqState3)),
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, Some(sqState4)),
         namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId4, Some(sqState3)),
-        namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1))
+        namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid4, sqPartId3, Some(sqState1)),
       )
     }
 
@@ -669,7 +669,7 @@ abstract class PersistenceAgentSpec
       it("can remove states") {
         allOfConcurrent(
           namespacedPersistor.setMultipleValuesStandingQueryState(sqId2, qid1, sqPartId3, None),
-          namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None)
+          namespacedPersistor.setMultipleValuesStandingQueryState(sqId3, qid2, sqPartId1, None),
         )
       }
     }
@@ -680,7 +680,7 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         namespacedPersistor.getMultipleValuesStandingQueryStates(qid0).map { sqStates =>
           (sqStates shouldEqual Map.empty)
-        }
+        },
       )
     }
 
@@ -689,7 +689,7 @@ abstract class PersistenceAgentSpec
         namespacedPersistor.getMultipleValuesStandingQueryStates(qid2).map { sqStates =>
           sqStates.keySet shouldEqual Set(sqId1 -> sqPartId1)
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState1)
-        }
+        },
       )
     }
 
@@ -701,7 +701,7 @@ abstract class PersistenceAgentSpec
             sqId1 -> sqPartId2,
             sqId1 -> sqPartId3,
             sqId2 -> sqPartId4,
-            sqId1 -> sqPartId4
+            sqId1 -> sqPartId4,
           )
 
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState1)
@@ -720,7 +720,7 @@ abstract class PersistenceAgentSpec
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState3)
           assertArraysEqual(sqStates(sqId2 -> sqPartId4), sqState1)
           assertArraysEqual(sqStates(sqId3 -> sqPartId3), sqState1)
-        }
+        },
       )
     }
   }
@@ -748,7 +748,7 @@ abstract class PersistenceAgentSpec
         persistor.setMetaData(metadata1, Some(snapshot1)),
         persistor.setMetaData(metadata2, Some(snapshot2)),
         persistor.setMetaData(metadata3, Some(snapshot3)),
-        persistor.setMetaData(metadata4, Some(snapshot4))
+        persistor.setMetaData(metadata4, Some(snapshot4)),
       )
     }
     it("can set metadata without polluting local metadata") {
@@ -757,7 +757,7 @@ abstract class PersistenceAgentSpec
         persistor.getLocalMetaData(metadata1, -1).map(opt => assert(opt.isEmpty)),
         persistor.getLocalMetaData(metadata2, 100).map(opt => assert(opt.isEmpty)),
         persistor.getLocalMetaData(metadata3, 12).map(opt => assert(opt.isEmpty)),
-        persistor.getLocalMetaData(metadata4, 1).map(opt => assert(opt.isEmpty))
+        persistor.getLocalMetaData(metadata4, 1).map(opt => assert(opt.isEmpty)),
       )
     }
     it("can get all metadata") {
@@ -776,7 +776,7 @@ abstract class PersistenceAgentSpec
         persistor.getMetaData(metadata1).map(datum => assertArraysEqual(datum.value, snapshot1)),
         persistor.getMetaData(metadata2).map(datum => assertArraysEqual(datum.value, snapshot2)),
         persistor.getMetaData(metadata3).map(datum => assertArraysEqual(datum.value, snapshot3)),
-        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4))
+        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4)),
       )
     }
     it("can set local metadata") {
@@ -785,7 +785,7 @@ abstract class PersistenceAgentSpec
         persistor.setLocalMetaData(metadata1, 1, Some(snapshot3)),
         persistor.setLocalMetaData(metadata2, 2, Some(snapshot0)),
         persistor.setLocalMetaData(metadata3, 3, Some(snapshot1)),
-        persistor.setLocalMetaData(metadata4, 4, Some(snapshot2))
+        persistor.setLocalMetaData(metadata4, 4, Some(snapshot2)),
       )
     }
     it("can get local metadata") {
@@ -794,7 +794,7 @@ abstract class PersistenceAgentSpec
         persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot3)),
         persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot0)),
         persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot1)),
-        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot2))
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot2)),
       )
     }
     it("can overwrite local metadata") {
@@ -803,7 +803,7 @@ abstract class PersistenceAgentSpec
         persistor.setLocalMetaData(metadata1, 1, Some(snapshot1)),
         persistor.setLocalMetaData(metadata2, 2, Some(snapshot2)),
         persistor.setLocalMetaData(metadata3, 3, Some(snapshot3)),
-        persistor.setLocalMetaData(metadata4, 4, Some(snapshot4))
+        persistor.setLocalMetaData(metadata4, 4, Some(snapshot4)),
       )
     }
     it("can get overwritten local metadata") {
@@ -812,7 +812,7 @@ abstract class PersistenceAgentSpec
         persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot1)),
         persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot2)),
         persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot3)),
-        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4))
+        persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4)),
       )
     }
     it("can set local metadata without polluting global metadata") {
@@ -822,7 +822,7 @@ abstract class PersistenceAgentSpec
         persistor.getMetaData(metadata1).map(datum => assertArraysEqual(datum.value, snapshot1)),
         persistor.getMetaData(metadata2).map(datum => assertArraysEqual(datum.value, snapshot2)),
         persistor.getMetaData(metadata3).map(datum => assertArraysEqual(datum.value, snapshot3)),
-        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4))
+        persistor.getMetaData(metadata4).map(datum => assertArraysEqual(datum.value, snapshot4)),
       )
     }
     if (runDeletionTests) {
@@ -832,7 +832,7 @@ abstract class PersistenceAgentSpec
           persistor.setMetaData(metadata1, None),
           persistor.setMetaData(metadata2, None),
           persistor.setMetaData(metadata3, None),
-          persistor.setMetaData(metadata4, None)
+          persistor.setMetaData(metadata4, None),
         )
       }
       it("can remove metadata without removing local metadata") {
@@ -848,7 +848,7 @@ abstract class PersistenceAgentSpec
           persistor.getLocalMetaData(metadata1, 1).map(datum => assertArraysEqual(datum.value, snapshot1)),
           persistor.getLocalMetaData(metadata2, 2).map(datum => assertArraysEqual(datum.value, snapshot2)),
           persistor.getLocalMetaData(metadata3, 3).map(datum => assertArraysEqual(datum.value, snapshot3)),
-          persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4))
+          persistor.getLocalMetaData(metadata4, 4).map(datum => assertArraysEqual(datum.value, snapshot4)),
         )
       }
     }
@@ -874,15 +874,15 @@ abstract class PersistenceAgentSpec
           persistor.setLocalMetaData(metadata1, 1, None),
           persistor.setLocalMetaData(metadata2, 2, None),
           persistor.setLocalMetaData(metadata3, 3, None),
-          persistor.setLocalMetaData(metadata4, 4, None)
+          persistor.setLocalMetaData(metadata4, 4, None),
         ).flatMap(_ =>
           allOfConcurrent(
             persistor.getLocalMetaData(metadata0, 0).map(datum => assert(datum.isEmpty)),
             persistor.getLocalMetaData(metadata1, 1).map(datum => assert(datum.isEmpty)),
             persistor.getLocalMetaData(metadata2, 2).map(datum => assert(datum.isEmpty)),
             persistor.getLocalMetaData(metadata3, 3).map(datum => assert(datum.isEmpty)),
-            persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty))
-          )
+            persistor.getLocalMetaData(metadata4, 4).map(datum => assert(datum.isEmpty)),
+          ),
         )
       }
     }
@@ -896,7 +896,7 @@ abstract class PersistenceAgentSpec
     it("read") {
       persistor.getDomainGraphNodes() map { n =>
         assert(
-          n === generated
+          n === generated,
         ) // TODO `shouldEqual` doesn't quite respect `PropertyValue.Serialized`/`PropertyValue.Deserialized` equivalence.
       }
     }
@@ -940,9 +940,9 @@ abstract class PersistenceAgentSpec
             journalEntries <- namespacedPersistor.getNodeChangeEventsWithTime(
               qid,
               EventTime.MinValue,
-              EventTime.MaxValue
+              EventTime.MaxValue,
             )
-          } yield journalEntries shouldBe empty
+          } yield journalEntries shouldBe empty,
         ).map(_ => succeed)(ExecutionContext.parasitic)
       }
     }
@@ -990,9 +990,9 @@ abstract class PersistenceAgentSpec
           idProvider.newQid() -> withIncrementedTime(
             NonEmptyList.of(
               CancelDomainNodeSubscription(dgnId1, qidFromInt(i)),
-              CancelDomainNodeSubscription(dgnId2, qidFromInt(i * 10))
-            )
-          )
+              CancelDomainNodeSubscription(dgnId2, qidFromInt(i * 10)),
+            ),
+          ),
         )
 
       /** returns Success iff the events could be read and deserialized successfully. Returned value is the count of events retrieved * */
@@ -1029,7 +1029,7 @@ abstract class PersistenceAgentSpec
     it("should write snapshots to any namespace at the same QuineId and AtTime") {
       allOfConcurrent(
         altPersistor1.persistSnapshot(qid1, testTimestamp1, snapshot0),
-        altPersistor2.persistSnapshot(qid1, testTimestamp1, snapshot1)
+        altPersistor2.persistSnapshot(qid1, testTimestamp1, snapshot1),
       )
     }
     it("should retrieve snapshots from different namespaces with the same QuineId and AtTime") {
@@ -1041,7 +1041,7 @@ abstract class PersistenceAgentSpec
         altPersistor2.getLatestSnapshot(qid1, testTimestamp1).map { snapshotOpt =>
           val snapshot = snapshotOpt.get
           assertArraysEqual(snapshot, snapshot1)
-        }
+        },
       )
     }
     it("should write journals for the same QuineId to different namespaces") {
@@ -1051,16 +1051,16 @@ abstract class PersistenceAgentSpec
           NonEmptyList.of(
             NodeEvent.WithTime(event0, EventTime.fromRaw(34L)),
             NodeEvent.WithTime(event2, EventTime.fromRaw(38L)),
-            NodeEvent.WithTime(event4, EventTime.fromRaw(44L))
-          )
+            NodeEvent.WithTime(event4, EventTime.fromRaw(44L)),
+          ),
         ),
         altPersistor2.persistNodeChangeEvents(
           qid2,
           NonEmptyList.of(
             NodeEvent.WithTime(event1, EventTime.fromRaw(36L)),
-            NodeEvent.WithTime(event3, EventTime.fromRaw(40L))
-          )
-        )
+            NodeEvent.WithTime(event3, EventTime.fromRaw(40L)),
+          ),
+        ),
       )
     }
     it("should retrieve journals for the same QuineId from different namespaces") {
@@ -1072,7 +1072,7 @@ abstract class PersistenceAgentSpec
         altPersistor2.getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true).map {
           journal =>
             (journal shouldEqual Seq(event1, event3))
-        }
+        },
       )
     }
     // Arbitrary DomainIndexEvents
@@ -1086,12 +1086,12 @@ abstract class PersistenceAgentSpec
       allOfConcurrent(
         altPersistor1.persistDomainIndexEvents(
           qid3,
-          domainIndexEvents1
+          domainIndexEvents1,
         ),
         altPersistor2.persistDomainIndexEvents(
           qid3,
-          domainIndexEvents2
-        )
+          domainIndexEvents2,
+        ),
       )
     }
     it("should read (generated) DomainIndexEvents for the same QuineId from different namespaces") {
@@ -1105,19 +1105,19 @@ abstract class PersistenceAgentSpec
           .getJournalWithTime(qid3, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
           .map { journal =>
             (journal shouldEqual domainIndexEvents2.toList)
-          }
+          },
       )
     }
     it(
-      "should register MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId in different namespaces"
+      "should register MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId in different namespaces",
     ) {
       allOfConcurrent(
         altPersistor1.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState2)),
-        altPersistor2.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState4))
+        altPersistor2.setMultipleValuesStandingQueryState(sqId1, qid4, sqPartId1, Some(sqState4)),
       )
     }
     it(
-      "should read MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId from different namespaces"
+      "should read MultipleValuesStandingQueryStates associated with the same SqId-QuineId-SqPartId from different namespaces",
     ) {
       allOfConcurrent(
         altPersistor1.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
@@ -1127,7 +1127,7 @@ abstract class PersistenceAgentSpec
         altPersistor2.getMultipleValuesStandingQueryStates(qid4).map { sqStates =>
           sqStates.keySet shouldEqual Set(sqId1 -> sqPartId1)
           assertArraysEqual(sqStates(sqId1 -> sqPartId1), sqState4)
-        }
+        },
       )
     }
     if (runDeletionTests && runPurgeNamespaceTest) {
@@ -1157,7 +1157,7 @@ abstract class PersistenceAgentSpec
               .getJournal(qid2, EventTime.MinValue, EventTime.MaxValue, includeDomainIndexEvents = true)
               .map { journal =>
                 (journal shouldEqual Seq.empty)
-              }
+              },
           )
         }
       }
@@ -1167,7 +1167,7 @@ abstract class PersistenceAgentSpec
   describe("Default namespace") {
     // resolution of Some("default") to None is handled by routes/apps, and should not reach the persistence agent.
     it(
-      s"should only be able to resolve the default namespace as $defaultNamespaceUnnamed and not $defaultNamespaceNamed"
+      s"should only be able to resolve the default namespace as $defaultNamespaceUnnamed and not $defaultNamespaceNamed",
     ) {
       // Have to create the default namespace before using it:
       persistor.initializeOnce

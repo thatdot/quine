@@ -30,7 +30,7 @@ import com.thatdot.quine.graph.behavior.{
   MultipleValuesStandingQueryBehavior,
   MultipleValuesStandingQueryPartSubscription,
   PriorityStashingBehavior,
-  QuinePatternQueryBehavior
+  QuinePatternQueryBehavior,
 }
 import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter
 import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
@@ -40,7 +40,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   LocallyRegisteredStandingQuery,
   NodeInternalState,
   SqStateResult,
-  SqStateResults
+  SqStateResults,
 }
 import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -80,10 +80,10 @@ abstract private[graph] class AbstractNodeActor(
   initialEdges: Iterable[HalfEdge],
   initialDomainGraphSubscribers: mutable.Map[
     DomainGraphNodeId,
-    SubscribersToThisNodeUtil.DistinctIdSubscription
+    SubscribersToThisNodeUtil.DistinctIdSubscription,
   ],
   protected val domainNodeIndex: DomainNodeIndexBehavior.DomainNodeIndex,
-  protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries
+  protected val multipleValuesStandingQueries: NodeActor.MultipleValuesStandingQueries,
 )(implicit protected val logConfig: LogConfig)
     extends Actor
     with ActorSafeLogging
@@ -129,7 +129,7 @@ abstract private[graph] class AbstractNodeActor(
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
-          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace)
+          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace),
         )
       case EventEffectOrder.MemoryFirst =>
         new MemoryFirstEdgeProcessor(
@@ -139,7 +139,7 @@ abstract private[graph] class AbstractNodeActor(
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
-          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace)
+          nodeEdgesCounter = metrics.nodeEdgesCounter(namespace),
         )(graph.system, idProvider, logConfig)
     }
   }
@@ -168,7 +168,7 @@ abstract private[graph] class AbstractNodeActor(
       .from(
         dgnRegistry,
         domainGraphSubscribers.subscribersToThisNode.keysIterator,
-        multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state }
+        multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state },
       )
       ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
 
@@ -187,7 +187,7 @@ abstract private[graph] class AbstractNodeActor(
       multipleValuesStandingQueries.values,
       properties,
       graph,
-      namespace
+      namespace,
     )
 
   /** Synchronizes this node's operating standing queries with those currently active on the thoroughgoing graph.
@@ -220,14 +220,14 @@ abstract private[graph] class AbstractNodeActor(
     hasEffectPredicate: E => Boolean,
     events: List[E],
     atTimeOverride: Option[EventTime],
-    onEffecting: NonEmptyList[NodeEvent.WithTime[E]] => Future[Done.type]
+    onEffecting: NonEmptyList[NodeEvent.WithTime[E]] => Future[Done.type],
   ): Future[Done.type] = {
     val produceEventTime = atTimeOverride.fold(() => tickEventSequence())(() => _)
     refuseHistoricalUpdates(events)(
       NonEmptyList.fromList(events.filter(hasEffectPredicate)) match {
         case Some(effectfulEvents) => onEffecting(effectfulEvents.map(e => NodeEvent.WithTime(e, produceEventTime())))
         case None => Future.successful(Done)
-      }
+      },
     )
   }
 
@@ -240,13 +240,13 @@ abstract private[graph] class AbstractNodeActor(
       persistAndApplyEventsEffectsInMemory[PropertyEvent](
         _,
         persistor.persistNodeChangeEvents(qid, _),
-        events => events.toList.foreach(applyPropertyEffect)
-      )
+        events => events.toList.foreach(applyPropertyEffect),
+      ),
     )
 
   protected def processPropertyEvent(
     event: PropertyEvent,
-    atTimeOverride: Option[EventTime] = None
+    atTimeOverride: Option[EventTime] = None,
   ): Future[Done.type] = propertyEvents(event :: Nil, atTimeOverride)
 
   protected def processPropertyEvents(events: List[PropertyEvent]): Future[Done.type] =
@@ -254,23 +254,23 @@ abstract private[graph] class AbstractNodeActor(
 
   protected[this] def edgeEvents(events: List[EdgeEvent], atTime: Option[EventTime]): Future[Done.type] =
     refuseHistoricalUpdates(events)(
-      edges.processEdgeEvents(events, atTime.fold(() => tickEventSequence())(() => _))
+      edges.processEdgeEvents(events, atTime.fold(() => tickEventSequence())(() => _)),
     ).map(_ => Done)(ExecutionContext.parasitic)
 
   protected def processEdgeEvents(
-    events: List[EdgeEvent]
+    events: List[EdgeEvent],
   ): Future[Done.type] =
     edgeEvents(events, None)
       .flatMap(_ =>
         Future.traverse[HalfEdge => Unit, Unit, Iterable](edgePatterns.values)(f =>
-          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContext.parasitic)
-        )(implicitly, ExecutionContext.parasitic)
+          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContext.parasitic),
+        )(implicitly, ExecutionContext.parasitic),
       )(ExecutionContext.parasitic)
       .map(_ => BaseMessage.Done)(ExecutionContext.parasitic)
 
   protected def processEdgeEvent(
     event: EdgeEvent,
-    atTimeOverride: Option[EventTime]
+    atTimeOverride: Option[EventTime],
   ): Future[Done.type] = edgeEvents(event :: Nil, atTimeOverride)
 
   /** This is just an assertion to guard against programmer error.
@@ -285,7 +285,7 @@ abstract private[graph] class AbstractNodeActor(
     atTime.fold(action)(historicalTime => Future.failed(IllegalHistoricalUpdate(events, qid, historicalTime)))
 
   protected def processDomainIndexEvent(
-    event: DomainIndexEvent
+    event: DomainIndexEvent,
   ): Future[Done.type] =
     refuseHistoricalUpdates(event :: Nil)(
       persistAndApplyEventsEffectsInMemory[DomainIndexEvent](
@@ -293,14 +293,14 @@ abstract private[graph] class AbstractNodeActor(
         persistor.persistDomainIndexEvents(qid, _),
         // We know there is only one event here, because we're only passing one above.
         // So just calling .head works as well as .foreach
-        events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true)
-      )
+        events => applyDomainIndexEffect(events.head, shouldCauseSideEffects = true),
+      ),
     )
 
   protected def persistAndApplyEventsEffectsInMemory[A <: NodeEvent](
     effectingEvents: NonEmptyList[NodeEvent.WithTime[A]],
     persistEvents: NonEmptyList[WithTime[A]] => Future[Unit],
-    applyEventsEffectsInMemory: NonEmptyList[A] => Unit
+    applyEventsEffectsInMemory: NonEmptyList[A] => Unit,
   ): Future[Done.type] = {
     val persistAttempts = new AtomicInteger(1)
     def persistEventsToJournal(): Future[Unit] =
@@ -316,10 +316,10 @@ abstract private[graph] class AbstractNodeActor(
               log.info(
                 log"""Retrying persistence from node: ${Safe(qid.pretty)} with events:
                      |${effectingEvents.toString} after: ${Safe(attemptCount)} attempts
-                     |""".cleanLines withException e
+                     |""".cleanLines withException e,
               )
               e
-            }
+            },
           )(cypherEc)
       } else Future.unit
 
@@ -334,7 +334,7 @@ abstract private[graph] class AbstractNodeActor(
             Int.MaxValue,
             1.millisecond,
             10.seconds,
-            randomFactor = 0.1d
+            randomFactor = 0.1d,
           )(cypherEc, context.system.scheduler)
           .map(_ => Done)(ExecutionContext.parasitic)
       case EventEffectOrder.PersistorFirst =>
@@ -349,10 +349,10 @@ abstract private[graph] class AbstractNodeActor(
             case Failure(e) =>
               log.info(
                 log"Persistor error occurred when writing events to journal on node: ${Safe(qid.pretty)} Will not apply " +
-                log"events: ${effectingEvents.toString} to in-memory state. Returning failed result" withException e
+                log"events: ${effectingEvents.toString} to in-memory state. Returning failed result" withException e,
               )
           },
-          true
+          true,
         ).map(_ => Done)(ExecutionContext.parasitic)
     }
 
@@ -369,8 +369,8 @@ abstract private[graph] class AbstractNodeActor(
           persistor.persistSnapshot(
             qid,
             if (persistenceConfig.snapshotSingleton) EventTime.MaxValue else occurredAt,
-            snapshot
-          )
+            snapshot,
+          ),
         )
 
     def infinitePersisting(logFunc: SafeInterpolator => Unit, f: => Future[Unit]): Future[Unit] =
@@ -476,7 +476,7 @@ abstract private[graph] class AbstractNodeActor(
                 ensureSubscriptionToDomainEdges(
                   dgn,
                   domainGraphSubscribers.getRelatedQueries(dgnId),
-                  shouldSendReplies = true
+                  shouldSendReplies = true,
                 )
                 // inform all subscribers to this node about any relevant changes caused by the recent event
                 domainGraphSubscribers.updateAnswerAndNotifySubscribers(dgn, shouldSendReplies = true)
@@ -484,7 +484,7 @@ abstract private[graph] class AbstractNodeActor(
               case None =>
                 true // true returned to standingQueriesWatchingNodeEvent indicates record should be removed
             }
-        }
+        },
       )
     }
     eventsForMvsqs.foreach { case (sq, events) =>
@@ -507,8 +507,8 @@ abstract private[graph] class AbstractNodeActor(
         properties,
         edges.toSerialize,
         domainGraphSubscribers.subscribersToThisNode,
-        domainNodeIndex.index
-      )
+        domainNodeIndex.index,
+      ),
     )
   }
 
@@ -517,7 +517,7 @@ abstract private[graph] class AbstractNodeActor(
     def propertyValue2String(propertyValue: PropertyValue): String =
       propertyValue.deserialized.fold(
         _ => ByteConversions.formatHexBinary(propertyValue.serialized),
-        _.toString
+        _.toString,
       )
 
     val subscribersStrings = domainGraphSubscribers.subscribersToThisNode.toList
@@ -554,7 +554,7 @@ abstract private[graph] class AbstractNodeActor(
       DgnWatchableEventIndexSummary(
         propsIdx,
         edgesIdx,
-        anyEdgesIdx.toList
+        anyEdgesIdx.toList,
       )
     }
 
@@ -564,7 +564,7 @@ abstract private[graph] class AbstractNodeActor(
         startingAt = EventTime.MinValue,
         endingAt =
           atTime.map(EventTime.fromMillis).map(_.largestEventTimeInThisMillisecond).getOrElse(EventTime.MaxValue),
-        includeDomainIndexEvents = false
+        includeDomainIndexEvents = false,
       )
       .recover { case err =>
         log.error(log"failed to get journal for node: ${Safe(qidAtTime.pretty)}" withException err)
@@ -586,11 +586,11 @@ abstract private[graph] class AbstractNodeActor(
                 sqId.toString,
                 globalId.toString,
                 subs.map(_.pretty).toSet,
-                s"${st.toString}{${st.readResults(properties - graph.labelsProperty).map(_.toList)}}"
+                s"${st.toString}{${st.readResults(properties - graph.labelsProperty).map(_.toList)}}",
               )
           },
           journal.toSet,
-          getNodeHashCode().value
+          getNodeHashCode().value,
         )
       }(context.dispatcher)
   }
@@ -609,7 +609,7 @@ abstract private[graph] class AbstractNodeActor(
         m.toList.map { case (dgnId, lastN) =>
           SqStateResult(dgnId, q, lastN)
         }
-      }
+      },
     )
 }
 

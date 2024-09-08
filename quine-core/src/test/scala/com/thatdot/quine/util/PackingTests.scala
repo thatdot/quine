@@ -45,7 +45,7 @@ class PackingTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       7, 8, 0, 2, 4, 0, 9, 0, 5, 1)
     val encoded7 = Array[Byte](
       -1, 1, 2, 3, 4, 5, 6, 7, 8, 3, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, -42, 2, 4,
-      9, 5, 1
+      9, 5, 1,
     )
     assert(Packing.pack(decoded7) sameElements encoded7)
     assert(Packing.unpack(encoded7) sameElements decoded7)
@@ -54,7 +54,7 @@ class PackingTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       7, 8, 0, 2, 4, 0, 9, 0, 5, 1)
     val encoded8 = Array[Byte](
       -1, 1, 2, 3, 4, 5, 6, 7, 8, 3, 1, 2, 3, 4, 5, 6, 7, 8, 6, 2, 4, 3, 9, 0, 5, 1, 1, 2, 3, 4, 5, 6, 7, 8, -42, 2, 4,
-      9, 5, 1
+      9, 5, 1,
     )
     assert(Packing.pack(decoded8) sameElements encoded8)
     assert(Packing.unpack(encoded8) sameElements decoded8)

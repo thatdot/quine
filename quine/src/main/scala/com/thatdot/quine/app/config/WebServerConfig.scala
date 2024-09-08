@@ -23,7 +23,7 @@ final case class WebServerBindConfig(
     case (Some(path), Some(password)) => Some(SslConfig(new File(path), password.toCharArray))
     case (Some(_), None) => sys.error("'SSL_KEYSTORE_PATH' was specified but 'SSL_KEYSTORE_PASSWORD' was not")
     case (None, Some(_)) => sys.error("'SSL_KEYSTORE_PASSWORD' was specified but 'SSL_KEYSTORE_PATH'  was not")
-  }
+  },
 ) extends WebServerConfig {
 
   val asResolveableUrl: Uri = {
@@ -43,7 +43,7 @@ final case class WebServerBindConfig(
 }
 final case class WebserverAdvertiseConfig(
   address: Host,
-  port: Port
+  port: Port,
 ) {
   def overrideHostAndPort(uri: Uri): Uri = uri.withHost(address.asString).withPort(port.asInt)
 }

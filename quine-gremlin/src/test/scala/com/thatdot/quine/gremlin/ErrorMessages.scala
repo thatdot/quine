@@ -52,7 +52,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         _ <- literalOps.addEdge(qid1, qid3, "edge3")
         _ <- literalOps.addEdge(qid4, qid3, "edge3")
       } yield (),
-      timeout.duration
+      timeout.duration,
     )
   }
 
@@ -62,7 +62,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """ParseError at 1.3: malformed traversal step
         |
         |g..V()
-        |  ^""".stripMargin
+        |  ^""".stripMargin,
     )
 
     interceptQuery(
@@ -70,7 +70,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """ParseError at 1.16: ')' expected but . found
         |
         |g.V().out().in(.values()
-        |               ^""".stripMargin
+        |               ^""".stripMargin,
     )
 
     interceptQuery(
@@ -78,7 +78,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """ParseError at 1.7: malformed traversal step
         |
         |g.V(12ds3)
-        |      ^""".stripMargin
+        |      ^""".stripMargin,
     )
 
     interceptQuery(
@@ -86,7 +86,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """LexicalError at 1.6: syntax error
         |
         |g.V()+.in()
-        |     ^""".stripMargin
+        |     ^""".stripMargin,
     )
   }
 
@@ -96,7 +96,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """UnboundVariableError at 1.19: x2 is unbound
         |
         |x1 = [1,2,3]; g.V(x2)
-        |                  ^""".stripMargin
+        |                  ^""".stripMargin,
     )
   }
 
@@ -106,7 +106,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
       """UnboundVariableError at 1.50: x is unbound
         |
         |g.V(00000000-0000-0000-0000-000000000001).select('x')
-        |                                                 ^""".stripMargin
+        |                                                 ^""".stripMargin,
     )
   }
 
@@ -118,7 +118,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         |  but got  class java.lang.Long
         |
         |g.V([]).out('foo',123,'bar')
-        |                  ^""".stripMargin
+        |                  ^""".stripMargin,
     )
 
     interceptQuery(
@@ -128,7 +128,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         |  but got  class java.lang.Long
         |
         |g.V(00000000-0000-0000-0000-000000000001,2,3)
-        |                                         ^""".stripMargin
+        |                                         ^""".stripMargin,
     )
 
     interceptQuery(
@@ -138,7 +138,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         |  but got  class java.lang.Long
         |
         |g.V(00000000-0000-0000-0000-000000000001).is(regex(123))
-        |                                                   ^""".stripMargin
+        |                                                   ^""".stripMargin,
     )
 
     interceptQuery(
@@ -148,7 +148,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         |  but got  class java.lang.Long
         |
         |g.V(00000000-0000-0000-0000-000000000001).values('foo').is(regex(".*"))
-        |                                                        ^""".stripMargin
+        |                                                        ^""".stripMargin,
     )
   }
 
@@ -159,7 +159,7 @@ class ErrorMessages extends GremlinHarness("quine-simple-gremlin-errors") {
         |  Raw bytes: DEADBEEF
         |
         |g.V(00000000-0000-0000-0000-000000000002).values('box')
-        |                                          ^""".stripMargin
+        |                                          ^""".stripMargin,
     )
   }
 }

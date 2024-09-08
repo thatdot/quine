@@ -48,7 +48,7 @@ object IngestTestGraph {
   def meter(): IngestMeter = IngestMeter(
     "test",
     Metrics.meter("test_ct"),
-    Metrics.meter("test_bytes")
+    Metrics.meter("test_bytes"),
   )
 
   def makeGraph(graphName: String = "test-service"): GraphService = Await.result(
@@ -56,9 +56,9 @@ object IngestTestGraph {
       graphName,
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
-      idProvider = QuineIdLongProvider()
+      idProvider = QuineIdLongProvider(),
     )(LogConfig.testing),
-    5.seconds
+    5.seconds,
   )
 
   def collect[T](src: Source[T, NotUsed])(implicit mat: Materializer): Seq[T] =

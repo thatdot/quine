@@ -14,7 +14,7 @@ import com.thatdot.quine.model.PropertyComparisonFunctions.{
   ListContains,
   NoValue,
   NonIdenticality,
-  Wildcard
+  Wildcard,
 }
 
 class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstances {
@@ -47,15 +47,15 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
           DomainNodeEquiv(
             None,
             Map(
-              (Symbol("EII"), (Identicality, Some(PropertyValue(QuineValue.Null))))
+              (Symbol("EII"), (Identicality, Some(PropertyValue(QuineValue.Null)))),
             ),
-            Set.empty
+            Set.empty,
           ),
           Some(QuineId.fromInternalString("067B6DBEFE32F32C9AED112D995EC159AD2AC6AD038EEE5A")),
           Seq.empty,
-          NodeLocalComparisonFunctions.Identicality
-        )
-      ) === 4058705439931334192L
+          NodeLocalComparisonFunctions.Identicality,
+        ),
+      ) === 4058705439931334192L,
     )
   }
   it must "t2" in {
@@ -65,13 +65,13 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
           DomainNodeEquiv(
             None,
             Map.empty,
-            Set.empty
+            Set.empty,
           ),
           None,
           Seq.empty,
-          NodeLocalComparisonFunctions.Wildcard
-        )
-      ) === -1908283053104376279L
+          NodeLocalComparisonFunctions.Wildcard,
+        ),
+      ) === -1908283053104376279L,
     )
   }
   it must "t3" in {
@@ -87,14 +87,14 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
           (Symbol("DShGE"), (ListContains(Set(QuineValue.Str("KNOWS"))), Some(PropertyValue(QuineValue.Null)))),
           (Symbol("do"), (NonIdenticality, Some(PropertyValue(QuineValue.False)))),
           (Symbol("UA"), (Wildcard, Some(PropertyValue(QuineValue.True)))),
-          (Symbol("oOKKigj"), (ListContains(Set(QuineValue.Str("KNOWS"))), Some(PropertyValue(QuineValue.True))))
+          (Symbol("oOKKigj"), (ListContains(Set(QuineValue.Str("KNOWS"))), Some(PropertyValue(QuineValue.True)))),
         ),
-        Set()
+        Set(),
       ),
       None,
       List(
       ),
-      NodeLocalComparisonFunctions.Wildcard
+      NodeLocalComparisonFunctions.Wildcard,
     )
     assert(DomainGraphNode.id(dgn) === -1045660870877700950L, dgn.toString)
   }
@@ -105,15 +105,15 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
           DomainNodeEquiv(
             None,
             Map(
-              (Symbol("jiurqCTYsNnlKcfkZzKsMBItBVHluzyb"), (Identicality, Some(PropertyValue(QuineValue.Null))))
+              (Symbol("jiurqCTYsNnlKcfkZzKsMBItBVHluzyb"), (Identicality, Some(PropertyValue(QuineValue.Null)))),
             ),
-            Set.empty
+            Set.empty,
           ),
           Some(QuineId.fromInternalString("067B6DBEFE32F32C9AED112D995EC159AD2AC6AD038EEE5A")),
           Seq.empty,
-          NodeLocalComparisonFunctions.Identicality
-        )
-      ) === -1988235072776381205L
+          NodeLocalComparisonFunctions.Identicality,
+        ),
+      ) === -1988235072776381205L,
     )
   }
   it must "t5" in {
@@ -123,15 +123,15 @@ class DomainGraphNodeTest extends AnyFlatSpec with Matchers with ArbitraryInstan
           DomainNodeEquiv(
             None,
             Map(
-              (Symbol("jiurqCTYsNnlKcfkZzKsMBItBVHluzyb"), (NoValue, Some(PropertyValue(QuineValue.Null))))
+              (Symbol("jiurqCTYsNnlKcfkZzKsMBItBVHluzyb"), (NoValue, Some(PropertyValue(QuineValue.Null)))),
             ),
-            Set.empty
+            Set.empty,
           ),
           Some(QuineId.fromInternalString("067B6DBEFE32F32C9AED112D995EC159AD2AC6AD038EEE5A")),
           Seq.empty,
-          NodeLocalComparisonFunctions.Identicality
-        )
-      ) === 3652871857713815700L
+          NodeLocalComparisonFunctions.Identicality,
+        ),
+      ) === 3652871857713815700L,
     )
   }
 }

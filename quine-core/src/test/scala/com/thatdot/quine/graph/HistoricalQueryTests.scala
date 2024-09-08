@@ -17,7 +17,7 @@ import com.thatdot.quine.persistor.{
   InMemoryPersistor,
   PersistenceConfig,
   PrimePersistor,
-  StatelessPrimePersistor
+  StatelessPrimePersistor,
 }
 import com.thatdot.quine.util.Log.LogConfig
 
@@ -30,7 +30,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
     new StatelessPrimePersistor(
       PersistenceConfig(),
       None,
-      (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)
+      (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns),
     )(Materializer.matFromSystem(system), logConfig)
 
   implicit val timeout: Timeout = Timeout(10.seconds)
@@ -40,9 +40,9 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
       "historical-query-tests",
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = makePersistor,
-      idProvider = idProvider
+      idProvider = idProvider,
     ),
-    timeout.duration
+    timeout.duration,
   )
   implicit val ec: ExecutionContextExecutor = graph.system.dispatcher
   val namespace: NamespaceId = None // Use default namespace
@@ -71,7 +71,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
           attempts = 100,
           delay = 200.millis,
           graph.system.scheduler,
-          graph.system.dispatcher
+          graph.system.dispatcher,
         )
         _ = (t0 = Milliseconds.currentTime())
         _ <- pause()
@@ -95,7 +95,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
         _ <- pause()
         _ = (t5 = Milliseconds.currentTime())
       } yield (),
-      timeout.duration * 2L
+      timeout.duration * 2L,
     )
   }
 
@@ -127,7 +127,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
     assume(runnable)
     graph.literalOps(namespace).getProps(qid, atTime = Some(t1)).map { props =>
       val expected = Map(
-        Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L))
+        Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
       )
       assert(props == expected)
     }
@@ -138,7 +138,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
     graph.literalOps(namespace).getProps(qid, atTime = Some(t2)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
-        Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L))
+        Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
       )
       assert(props == expected)
     }
@@ -149,7 +149,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
     graph.literalOps(namespace).getProps(qid, atTime = Some(t3)).map { props =>
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
-        Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L))
+        Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
       )
       assert(props == expected)
     }
@@ -161,7 +161,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
-        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L))
+        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L)),
       )
       assert(props == expected)
     }
@@ -173,7 +173,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
-        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L))
+        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L)),
       )
       assert(props == expected)
     }
@@ -185,7 +185,7 @@ class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSu
       val expected = Map(
         Symbol("prop1") -> PropertyValue(QuineValue.Integer(1L)),
         Symbol("prop2") -> PropertyValue(QuineValue.Integer(2L)),
-        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L))
+        Symbol("prop3") -> PropertyValue(QuineValue.Integer(3L)),
       )
       assert(props == expected)
     }

@@ -10,7 +10,7 @@ import com.thatdot.quine.model.{Milliseconds, QuineId}
 final case class IllegalHistoricalUpdate(
   events: Seq[NodeEvent],
   node: QuineId,
-  historicalTime: Milliseconds
+  historicalTime: Milliseconds,
 ) extends IllegalArgumentException() {
   override def getMessage: String = s"Tried to mutate node at: $node with historical time: $historicalTime"
 }

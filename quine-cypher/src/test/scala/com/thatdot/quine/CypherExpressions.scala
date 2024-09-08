@@ -19,9 +19,9 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     */
   private def testBooleanOperator(
     componentToTest: TruthTableRow => Expr.Bool,
-    buildExpression: (String, String) => String
+    buildExpression: (String, String) => String,
   )(implicit
-    pos: Position
+    pos: Position,
   ): Unit = {
     val printBool: Expr.Bool => String = {
       case Expr.False => "false"
@@ -37,7 +37,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     } testExpression(
       buildExpression("x", "y"),
       componentToTest(row),
-      queryPreamble = s"WITH ${printBool(row.lhs)} AS x, ${printBool(row.rhs)} AS y RETURN "
+      queryPreamble = s"WITH ${printBool(row.lhs)} AS x, ${printBool(row.rhs)} AS y RETURN ",
     )(pos)
   }
 
@@ -48,7 +48,7 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     and: Expr.Bool,
     or: Expr.Bool,
     xor: Expr.Bool,
-    not: Expr.Bool
+    not: Expr.Bool,
   )
 
   // https://neo4j.com/docs/cypher-manual/current/syntax/operators/#query-operators-boolean
@@ -61,14 +61,14 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     TruthTableRow(Expr.True, Expr.True, Expr.True, Expr.True, Expr.False, Expr.False),
     TruthTableRow(Expr.Null, Expr.False, Expr.False, Expr.Null, Expr.Null, Expr.Null),
     TruthTableRow(Expr.Null, Expr.Null, Expr.Null, Expr.Null, Expr.Null, Expr.Null),
-    TruthTableRow(Expr.Null, Expr.True, Expr.Null, Expr.True, Expr.Null, Expr.Null)
+    TruthTableRow(Expr.Null, Expr.True, Expr.Null, Expr.True, Expr.Null, Expr.Null),
   )
 
   describe("Neo4j bugs") {
     testExpression(
       "+null",
       Expr.Null,
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
   }
 
@@ -302,17 +302,17 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
   describe("`range` function") {
     testExpression(
       "range(1, 10)",
-      Expr.List((1 to 10).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((1 to 10).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression(
       "range(1, 10, 2)",
-      Expr.List((1 to 10 by 2).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((1 to 10 by 2).map(i => Expr.Integer(i.toLong)).toVector),
     )
 
     testExpression(
       "range(1, 10, 3)",
-      Expr.List((1 to 10 by 3).map(i => Expr.Integer(i.toLong)).toVector)
+      Expr.List((1 to 10 by 3).map(i => Expr.Integer(i.toLong)).toVector),
     )
   }
 
@@ -333,24 +333,24 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     // Substring based
     testExpression(
       "split('123.456.789.012', '.')",
-      Expr.List(Expr.Str("123"), Expr.Str("456"), Expr.Str("789"), Expr.Str("012"))
+      Expr.List(Expr.Str("123"), Expr.Str("456"), Expr.Str("789"), Expr.Str("012")),
     )
 
     // Regex based
     testExpression(
       "text.split('123.456,789==012', '[.,]|==')",
-      Expr.List(Expr.Str("123"), Expr.Str("456"), Expr.Str("789"), Expr.Str("012"))
+      Expr.List(Expr.Str("123"), Expr.Str("456"), Expr.Str("789"), Expr.Str("012")),
     )
     testExpression(
       "text.split('123,456,789', ',', 2)",
-      Expr.List(Expr.Str("123"), Expr.Str("456,789"))
+      Expr.List(Expr.Str("123"), Expr.Str("456,789")),
     )
   }
 
   describe("regex") {
     testExpression(
       """text.regexFirstMatch('a,b', '(\\w),(\\w)')""",
-      Expr.List(Expr.Str("a,b"), Expr.Str("a"), Expr.Str("b"))
+      Expr.List(Expr.Str("a,b"), Expr.Str("a"), Expr.Str("b")),
     )
 
     val apacheLogExample =
@@ -369,22 +369,22 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
         Expr.Str("32352"),
         Expr.Str("-"),
         Expr.Str(
-          "Feedfetcher-Google; (+http://www.google.com/feedfetcher.html; 16 subscribers; feed-id=3389821348893992437)"
-        )
-      )
+          "Feedfetcher-Google; (+http://www.google.com/feedfetcher.html; 16 subscribers; feed-id=3389821348893992437)",
+        ),
+      ),
     )
 
     val pocExampleText = "abc <link xxx1>yyy1</link> def <link xxx2>yyy2</link>"
     val pocExampleRegex = """<link (\\w+)>(\\w+)</link>"""
     testExpression(
       s"text.regexFirstMatch('$pocExampleText', '$pocExampleRegex')",
-      Expr.List(Vector(Expr.Str("<link xxx1>yyy1</link>"), Expr.Str("xxx1"), Expr.Str("yyy1")))
+      Expr.List(Vector(Expr.Str("<link xxx1>yyy1</link>"), Expr.Str("xxx1"), Expr.Str("yyy1"))),
     )
 
     // no match
     testExpression(
       s"text.regexFirstMatch('foo', 'bar')",
-      Expr.List()
+      Expr.List(),
     )
 
     testExpression(
@@ -392,15 +392,15 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Expr.List(
         Vector(
           Expr.List(Vector(Expr.Str("<link xxx1>yyy1</link>"), Expr.Str("xxx1"), Expr.Str("yyy1"))),
-          Expr.List(Vector(Expr.Str("<link xxx2>yyy2</link>"), Expr.Str("xxx2"), Expr.Str("yyy2")))
-        )
-      )
+          Expr.List(Vector(Expr.Str("<link xxx2>yyy2</link>"), Expr.Str("xxx2"), Expr.Str("yyy2"))),
+        ),
+      ),
     )
 
     //Make sure we throw the correct error when passing an invalid regest to regexFirstMatch
     assertQueryExecutionFailure(
       "RETURN text.regexFirstMatch('hello', '(')",
-      CypherException.ConstraintViolation("Unclosed group near index 1\n(", None)
+      CypherException.ConstraintViolation("Unclosed group near index 1\n(", None),
     )
 
   }
@@ -429,30 +429,30 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     testExpression("""text.urlencode("hello, world")""", Expr.Str("hello%2C%20world"))
     testExpression(
       """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle')""",
-      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2212345678%2F54321%22%20RETURN%20n.foo%20AS%20fiddle")
+      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2212345678%2F54321%22%20RETURN%20n.foo%20AS%20fiddle"),
     )
     testExpression("""text.urlencode("%")""", Expr.Str("%25"))
     testExpression(
       """text.urlencode('MATCH(missEvents:missEvents) WHERE id(missEvents)="d75db269-41cb-3439-8810-085a8fe85c2e" MATCH (event {cache_class:"MISS"})-[:TARGETED]->(server) RETURN server, event LIMIT 10')""",
       Expr.Str(
-        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D%22d75db269-41cb-3439-8810-085a8fe85c2e%22%20MATCH%20%28event%20%7Bcache_class%3A%22MISS%22%7D%29-%5B%3ATARGETED%5D-%3E%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010"""
-      )
+        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D%22d75db269-41cb-3439-8810-085a8fe85c2e%22%20MATCH%20%28event%20%7Bcache_class%3A%22MISS%22%7D%29-%5B%3ATARGETED%5D-%3E%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010""",
+      ),
     )
 
     // RFC3986
     testExpression(
       """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle")""",
-      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2712345678%2F54321%27%20RETURN%20n.foo%20AS%20fiddle")
+      Expr.Str("MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20%2712345678%2F54321%27%20RETURN%20n.foo%20AS%20fiddle"),
     )
     testExpression(
       """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', '')""",
-      Expr.Str("""MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20"12345678%2F54321"%20RETURN%20n.foo%20AS%20fiddle""")
+      Expr.Str("""MATCH%20%28n%29%20WHERE%20strId%28n%29%20%3D%20"12345678%2F54321"%20RETURN%20n.foo%20AS%20fiddle"""),
     )
     testExpression(
       """text.urlencode('MATCH(missEvents:missEvents) WHERE id(missEvents)="d75db269-41cb-3439-8810-085a8fe85c2e" MATCH (event {cache_class:"MISS"})-[:TARGETED]->(server) RETURN server, event LIMIT 10', '')""",
       Expr.Str(
-        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D"d75db269-41cb-3439-8810-085a8fe85c2e"%20MATCH%20%28event%20{cache_class%3A"MISS"}%29-%5B%3ATARGETED%5D->%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010"""
-      )
+        """MATCH%28missEvents%3AmissEvents%29%20WHERE%20id%28missEvents%29%3D"d75db269-41cb-3439-8810-085a8fe85c2e"%20MATCH%20%28event%20{cache_class%3A"MISS"}%29-%5B%3ATARGETED%5D->%28server%29%20RETURN%20server%2C%20event%20LIMIT%2010""",
+      ),
     )
 
     // x-www-form-urlencoded + "{}
@@ -460,17 +460,17 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     testExpression("""text.urlencode("%", true)""", Expr.Str("%25"))
     testExpression(
       """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', true)""",
-      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2212345678%2F54321%22+RETURN+n.foo+AS+fiddle")
+      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2212345678%2F54321%22+RETURN+n.foo+AS+fiddle"),
     )
 
     // x-www-form-urlencoded
     testExpression(
       """text.urlencode("MATCH (n) WHERE strId(n) = '12345678/54321' RETURN n.foo AS fiddle", true)""",
-      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2712345678%2F54321%27+RETURN+n.foo+AS+fiddle")
+      Expr.Str("MATCH+%28n%29+WHERE+strId%28n%29+%3D+%2712345678%2F54321%27+RETURN+n.foo+AS+fiddle"),
     )
     testExpression(
       """text.urlencode('MATCH (n) WHERE strId(n) = "12345678/54321" RETURN n.foo AS fiddle', true, '')""",
-      Expr.Str("""MATCH+%28n%29+WHERE+strId%28n%29+%3D+"12345678%2F54321"+RETURN+n.foo+AS+fiddle""")
+      Expr.Str("""MATCH+%28n%29+WHERE+strId%28n%29+%3D+"12345678%2F54321"+RETURN+n.foo+AS+fiddle"""),
     )
   }
 
@@ -493,8 +493,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Vector(
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
   }
 
@@ -508,8 +508,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Vector(
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
-        Vector(Expr.Integer(3))
-      )
+        Vector(Expr.Integer(3)),
+      ),
     )
     testQuery(
       "UNWIND [1, 2, 'tortoise', 8675309] AS n RETURN castOrNull.integer(n) AS cast",
@@ -518,8 +518,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
         Vector(Expr.Integer(1)),
         Vector(Expr.Integer(2)),
         Vector(Expr.Null),
-        Vector(Expr.Integer(8675309))
-      )
+        Vector(Expr.Integer(8675309)),
+      ),
     )
   }
 
@@ -538,8 +538,8 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       "arr" -> Expr.List(Expr.Integer(1), Expr.Integer(2), Expr.Integer(3)),
       "sub" -> Expr.Map(
         "object" -> Expr.Map.empty,
-        "bool" -> Expr.True
-      )
+        "bool" -> Expr.True,
+      ),
     )
 
     // verification that the test case is coherent
@@ -551,9 +551,9 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       expectedColumns = Vector("j"),
       Vector(
         Vector(
-          testMap
-        )
-      )
+          testMap,
+        ),
+      ),
     )
 
     // This is the first real test: using the parsed value directly with UNWIND is possible
@@ -563,9 +563,9 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       CypherException.Compile(
         "Type mismatch: expected Map, Node or Relationship but was Any",
         Some(
-          com.thatdot.quine.graph.cypher.Position(1, 103, 102, SourceText(failedUnwind))
-        )
-      )
+          com.thatdot.quine.graph.cypher.Position(1, 103, 102, SourceText(failedUnwind)),
+        ),
+      ),
     )
     // But with castOrThrow, all is well:
     testQuery(
@@ -574,9 +574,9 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Vector(
         Vector(Expr.Str("hello")),
         Vector(Expr.Str("arr")),
-        Vector(Expr.Str("sub"))
+        Vector(Expr.Str("sub")),
       ),
-      ordered = false
+      ordered = false,
     )
   }
 
@@ -597,11 +597,11 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       Vector("key"),
       Vector(
         Vector(Expr.Str("foo")),
-        Vector(Expr.Str("fizz"))
+        Vector(Expr.Str("fizz")),
       ),
       expectedIsReadOnly = false,
       expectedIsIdempotent = true,
-      ordered = false
+      ordered = false,
     )
   }
 
@@ -615,11 +615,11 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
           Expr.Map(
             Map(
               "age" -> Expr.Null,
-              "baz" -> Expr.Integer(2L)
-            )
-          )
-        )
-      )
+              "baz" -> Expr.Integer(2L),
+            ),
+          ),
+        ),
+      ),
     )
 
     testQuery(
@@ -633,17 +633,17 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
               "foo" -> Expr.Integer(1L),
               "bar" -> Expr.Str("hi"),
               "baz" -> Expr.Integer(2L),
-              "quz" -> Expr.Floating(1.2)
-            )
-          )
-        )
-      )
+              "quz" -> Expr.Floating(1.2),
+            ),
+          ),
+        ),
+      ),
     )
 
     testQuery(
       "with NULL as m return m { .age, baz: 987, .* }",
       expectedColumns = Vector("m"),
-      expectedRows = Seq(Vector(Expr.Null))
+      expectedRows = Seq(Vector(Expr.Null)),
     )
   }
 
@@ -652,44 +652,44 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
     testQuery(
       "WITH 3 as x, 2 as y RETURN (CASE ((x + 1) - y >= 0) WHEN true THEN y ELSE x END) as z",
       expectedColumns = Vector("z"),
-      expectedRows = Seq(Vector(Expr.Integer(2L)))
+      expectedRows = Seq(Vector(Expr.Integer(2L))),
     )
 
     testQuery(
       "WITH 3 as x, 2 as y RETURN (CASE WHEN ((x + 1) - y >= 0) THEN y ELSE x END) as z",
       expectedColumns = Vector("z"),
-      expectedRows = Seq(Vector(Expr.Integer(2L)))
+      expectedRows = Seq(Vector(Expr.Integer(2L))),
     )
 
     testQuery(
       "WITH 3 as x, null as y RETURN (CASE WHEN ((x + 1) - y >= 0) THEN y ELSE x END) as z",
       expectedColumns = Vector("z"),
-      expectedRows = Seq(Vector(Expr.Integer(3L)))
+      expectedRows = Seq(Vector(Expr.Integer(3L))),
     )
 
     testQuery(
       "WITH null as x, 7 as y RETURN (CASE WHEN ((x + 1) - y >= 0) THEN y ELSE x END) as z",
       expectedColumns = Vector("z"),
-      expectedRows = Seq(Vector(Expr.Null))
+      expectedRows = Seq(Vector(Expr.Null)),
     )
 
     testQuery(
       "WITH 3 as x, 2 as y RETURN (CASE x*2+y*2 WHEN x+y THEN 'one' WHEN 2*(x+y) THEN 'two' ELSE 'three' END) as z",
       expectedColumns = Vector("z"),
-      expectedRows = Seq(Vector(Expr.Str("two")))
+      expectedRows = Seq(Vector(Expr.Str("two"))),
     )
 
     testQuery(
       "RETURN CASE 2.0 WHEN 2 THEN 'equal' ELSE 'not-equal' END AS answer",
       expectedColumns = Vector("answer"),
       expectedRows = Seq(Vector(Expr.Str("equal"))),
-      expectedCannotFail = true
+      expectedCannotFail = true,
     )
 
     testQuery(
       "RETURN CASE toInteger(NULL) WHEN NULL THEN 'equal' ELSE 'not-equal' END AS answer",
       expectedColumns = Vector("answer"),
-      expectedRows = Seq(Vector(Expr.Str("equal")))
+      expectedRows = Seq(Vector(Expr.Str("equal"))),
     )
   }
 
@@ -706,56 +706,56 @@ class CypherExpressions extends CypherHarness("cypher-expression-tests") {
       "UNWIND [1] AS x RETURN 9223372036854775807 + x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
-        operands = Seq(Expr.Integer(9223372036854775807L), Expr.Integer(1L))
-      )
+        operands = Seq(Expr.Integer(9223372036854775807L), Expr.Integer(1L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [1] AS x RETURN -9223372036854775808 - x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
-        operands = Seq(Expr.Integer(-9223372036854775808L), Expr.Integer(1L))
-      )
+        operands = Seq(Expr.Integer(-9223372036854775808L), Expr.Integer(1L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [-9223372036854775808] AS x RETURN -x",
       CypherException.Arithmetic(
         wrapping = "long overflow",
-        operands = Seq(Expr.Integer(0L), Expr.Integer(-9223372036854775808L))
-      )
+        operands = Seq(Expr.Integer(0L), Expr.Integer(-9223372036854775808L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [0] AS x RETURN 500 / x",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
-        operands = Seq(Expr.Integer(500L), Expr.Integer(0L))
-      )
+        operands = Seq(Expr.Integer(500L), Expr.Integer(0L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [0] AS x RETURN 500 % x",
       CypherException.Arithmetic(
         wrapping = "/ by zero",
-        operands = Seq(Expr.Integer(500L), Expr.Integer(0L))
-      )
+        operands = Seq(Expr.Integer(500L), Expr.Integer(0L)),
+      ),
     )
 
     assertQueryExecutionFailure(
       "UNWIND [922337203685] AS x RETURN x * 45938759384",
       CypherException.Arithmetic(
         wrapping = "long overflow",
-        operands = Seq(Expr.Integer(922337203685L), Expr.Integer(45938759384L))
-      )
+        operands = Seq(Expr.Integer(922337203685L), Expr.Integer(45938759384L)),
+      ),
     )
 
     // cast failure
     assertQueryExecutionFailure(
       "RETURN castOrThrow.integer(2.0)",
       CypherException.Runtime(
-        s"Cast failed: Cypher execution engine is unable to determine that Floating(2.0) is a valid INTEGER"
-      )
+        s"Cast failed: Cypher execution engine is unable to determine that Floating(2.0) is a valid INTEGER",
+      ),
     )
   }
 }

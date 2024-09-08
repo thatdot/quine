@@ -40,7 +40,7 @@ class QuineAppRoutes(
   val config: BaseConfig,
   val uri: Uri,
   val timeout: Timeout,
-  val apiV2Enabled: Boolean
+  val apiV2Enabled: Boolean,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -140,7 +140,7 @@ class QuineAppRoutes(
 
     if (apiV2Enabled) {
       val v2Route = new V2OssRoutes(
-        new OssApiInterface(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout)
+        new OssApiInterface(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
       ).v2Routes
       logger.warn(safe"Starting with Api V2 endpoints enabled")
       v1Routes ~ v2Route

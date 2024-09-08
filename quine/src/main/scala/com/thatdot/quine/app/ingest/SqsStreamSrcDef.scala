@@ -46,7 +46,7 @@ final case class SqsStreamSrcDef(
   regionOpt: Option[AwsRegion],
   deleteReadMessages: Boolean,
   maxPerSecond: Option[Int],
-  decoders: Seq[ContentDecoder]
+  decoders: Seq[ContentDecoder],
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(
       format,
@@ -54,7 +54,7 @@ final case class SqsStreamSrcDef(
       writeParallelism,
       maxPerSecond,
       decoders,
-      s"$name (SQS ingest)"
+      s"$name (SQS ingest)",
     ) {
 
   type InputType = Message
@@ -64,7 +64,7 @@ final case class SqsStreamSrcDef(
     .credentials(credentialsOpt)
     .region(regionOpt)
     .httpClient(
-      NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build()
+      NettyNioAsyncHttpClient.builder.maxConcurrency(AwsOps.httpConcurrencyPerClient).build(),
     )
     .build()
 

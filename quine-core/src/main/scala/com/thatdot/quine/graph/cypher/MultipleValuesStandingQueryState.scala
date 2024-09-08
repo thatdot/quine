@@ -91,7 +91,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     */
   def onNodeEvents(
     events: Seq[NodeChangeEvent],
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = false
 
   /** Called when one of the sub-queries delivers a new result
@@ -102,7 +102,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     */
   def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = false
 
   /** Read the current results for this SQ state.
@@ -199,7 +199,7 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
   private val result = Some(QueryContext.empty :: Nil)
 
   override def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   ): Unit =
     // this state is more similar to an local event driven state than a subquery-driven state,
     // so we report an initial result (per the scaladoc on [[super]])
@@ -219,7 +219,7 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
   * @param queryPartId the ID of the cross-product query with this State
   */
 final case class CrossState(
-  queryPartId: MultipleValuesStandingQueryPartId
+  queryPartId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   type StateOf = MultipleValuesStandingQuery.Cross
@@ -237,7 +237,7 @@ final case class CrossState(
     * `def onNewSubscriptionResult`.
     */
   override def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   ): Unit =
     for (sq <- if (query.emitSubscriptionsLazily) query.queries.view.take(1) else query.queries.view) {
       // In a `Cross`, `createSubscription` always ends up going to the same node as the Cross itself,
@@ -260,15 +260,15 @@ final case class CrossState(
 
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean =
     resultsAccumulator.get(result.queryPartId) match {
       case None =>
         logger.error(
           log"${this.toString} received subscription result: $result not in the list of subscriptions: ${Safe(
             resultsAccumulator.keys
-              .mkString("[", ",", "]")
-          )}"
+              .mkString("[", ",", "]"),
+          )}",
         )
         false
       case Some(previousResultsFromChild) =>
@@ -311,7 +311,7 @@ final case class CrossState(
       resultsFromAllChildren.foldLeft(
         // Before considering any subqueries, but knowing we want to emit a match,
         // start with a single, empty row
-        List(QueryContext.empty)
+        List(QueryContext.empty),
       ) { case (allRowsFromCombiningEarlierChildQueries, nextResultGroup) =>
         // We're working through the child queries one by one, accumulating the cross product into the first argument.
         // One by one, each child query's results gets a turn being the `nextResultGroup`, at which time, we
@@ -363,7 +363,7 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     */
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     val somePropertyChanged = events.exists {
       case _: PropertyEvent => true
@@ -392,17 +392,17 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
 
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     logger.warn(
       log"""MVSQ state: ${this.toString} for Part ID: ${Safe(queryPartId)} received subscription
-           |result it didn't subscribe to: $result""".cleanLines
+           |result it didn't subscribe to: $result""".cleanLines,
     )
     false
   }
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(
-    (QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(localProperties))) :: Nil
+    (QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(localProperties))) :: Nil,
   )
 }
 
@@ -414,7 +414,7 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
   * @param queryPartId the ID of the local property query with this State
   */
 final case class LocalPropertyState(
-  queryPartId: MultipleValuesStandingQueryPartId
+  queryPartId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   type StateOf = MultipleValuesStandingQuery.LocalProperty
@@ -447,13 +447,13 @@ final case class LocalPropertyState(
   var lastReportWasAMatch: Boolean = false
 
   override def relevantEventTypes: Seq[WatchableEventType.PropertyChange] = Seq(
-    WatchableEventType.PropertyChange(query.propKey)
+    WatchableEventType.PropertyChange(query.propKey),
   )
 
   //noinspection MapGetOrElseBoolean
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     // this check can be uncommented for debugging purposes
 //    require(
@@ -485,7 +485,7 @@ final case class LocalPropertyState(
                 currentProperty
                   .map(pv =>
                     // assume the value is a QuineValue
-                    pv.deserialized.map(Expr.fromQuineValue).get
+                    pv.deserialized.map(Expr.fromQuineValue).get,
                   )
                   .getOrElse(Expr.Null)
               val result = QueryContext.empty + (alias -> currentPropertyExpr)
@@ -557,11 +557,11 @@ final case class LocalPropertyState(
 
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     logger.warn(
       log"""MVSQ state: ${this.toString} for Part ID: ${Safe(queryPartId)} received subscription
-           |result it didn't subscribe to: $result""".cleanLines
+           |result it didn't subscribe to: $result""".cleanLines,
     )
     false
   }
@@ -594,7 +594,7 @@ final case class LocalPropertyState(
   * @param queryPartId the ID of the localId query with this State
   */
 final case class LocalIdState(
-  queryPartId: MultipleValuesStandingQueryPartId
+  queryPartId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   type StateOf = MultipleValuesStandingQuery.LocalId
@@ -627,7 +627,7 @@ final case class LocalIdState(
   * @param queryPartId the ID of the subscribe-across-edge query with this State
   */
 final case class SubscribeAcrossEdgeState(
-  queryPartId: MultipleValuesStandingQueryPartId
+  queryPartId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   type StateOf = MultipleValuesStandingQuery.SubscribeAcrossEdge
@@ -649,7 +649,7 @@ final case class SubscribeAcrossEdgeState(
 
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     var somethingChanged = false
     events.foreach {
@@ -658,7 +658,7 @@ final case class SubscribeAcrossEdgeState(
         val freshEdgeQuery = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(
           halfEdge.reflect(effectHandler.executingNodeId),
           query.andThen.queryPartId,
-          query.columns
+          query.columns,
         )
         effectHandler.createSubscription(halfEdge.other, freshEdgeQuery)
         // Record that the subscription has been made, but no result (from the andThen via the reciprocal) yet.
@@ -680,7 +680,7 @@ final case class SubscribeAcrossEdgeState(
 
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     // Silently drop the result (with an empty `needsUpdate`) if we aren't expecting a result from `result.other`.
     // This can happen if the edge is removed (here first) then the other side reports no longer matching the reciprocal
@@ -734,14 +734,14 @@ final case class SubscribeAcrossEdgeState(
 final case class EdgeSubscriptionReciprocalState(
   queryPartId: MultipleValuesStandingQueryPartId,
   halfEdge: HalfEdge,
-  andThenId: MultipleValuesStandingQueryPartId
+  andThenId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   require(
     queryPartId != andThenId,
     """Invariant violated: EdgeSubscriptionReciprocal had a matching andThen queryPartId and [self] queryPartId.
       |An EdgeSubscriptionReciprocal's original query should not also be that query's andThen.
-      |""".stripMargin.replace('\n', ' ')
+      |""".stripMargin.replace('\n', ' '),
   )
 
   type StateOf = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
@@ -758,7 +758,7 @@ final case class EdgeSubscriptionReciprocalState(
   private[this] var andThen: MultipleValuesStandingQuery = _
 
   override def rehydrate(
-    effectHandler: MultipleValuesStandingQueryLookupInfo
+    effectHandler: MultipleValuesStandingQueryLookupInfo,
   )(implicit logConfig: LogConfig): Unit =
     // Do not call `super.preStart(effectHandler)` here because this `EdgeSubscriptionReciprocalState` is synthesized
     // and its `queryPartId` is not in the global registry.
@@ -766,13 +766,13 @@ final case class EdgeSubscriptionReciprocalState(
 
   override def relevantEventTypes: Seq[WatchableEventType.EdgeChange] = Seq(
     WatchableEventType.EdgeChange(
-      Some(halfEdge.edgeType)
-    )
+      Some(halfEdge.edgeType),
+    ),
   )
 
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     var somethingChanged = false
     events.foreach {
@@ -796,7 +796,7 @@ final case class EdgeSubscriptionReciprocalState(
 
   override def onNewSubscriptionResult( // Happens when the subscription for the `andThen` returns a result
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     val resultIsUpdate = !cachedResult.contains(result.resultGroup)
     cachedResult = Some(result.resultGroup)
@@ -818,7 +818,7 @@ final case class EdgeSubscriptionReciprocalState(
   * @param queryPartId the ID of the filter/map query with this State
   */
 final case class FilterMapState(
-  queryPartId: MultipleValuesStandingQueryPartId
+  queryPartId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
 
   type StateOf = MultipleValuesStandingQuery.FilterMap
@@ -841,14 +841,14 @@ final case class FilterMapState(
         acc + (aliasedAs -> exprToAdd.eval(row)(
           effectHandler.idProvider,
           Parameters.empty,
-          logConfig
+          logConfig,
         ))
       }
   }
 
   override def onNewSubscriptionResult(
     result: NewMultipleValuesStateResult,
-    effectHandler: MultipleValuesStandingQueryEffects
+    effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     val newResults = result.resultGroup.collect {
       case row if condition(row) => mapper(row)

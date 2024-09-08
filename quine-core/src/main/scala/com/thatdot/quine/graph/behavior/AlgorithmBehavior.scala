@@ -19,7 +19,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
   /** Dependency: run a cypher query on this node (implemented by [[CypherBehavior.runQuery]]) */
   def runQuery(
     query: CompiledQuery[Location.OnNode],
-    parameters: Map[String, cypher.Value]
+    parameters: Map[String, cypher.Value],
   )(implicit logConfig: LogConfig): RunningCypherQuery
 
   protected def algorithmBehavior(command: AlgorithmCommand): Unit = command match {
@@ -35,8 +35,8 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
           Nil,
           None,
           Set.empty,
-          replyTo
-        )
+          replyTo,
+        ),
       )
 
     case m @ AccumulateRandomWalk(
@@ -49,7 +49,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
           prependAcc,
           validateHalfEdge,
           excludeOther,
-          reportTo
+          reportTo,
         ) =>
       val edgeIsValidated = validateHalfEdge.fold(true)(he => edges.contains(he))
       var weightSum = 0d
@@ -126,7 +126,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
               strings.reverse ++ prependAcc,
               Some(chosenEdge.reflect(qid)),
               Set.empty,
-              reportTo
+              reportTo,
             )
             qidAtTime.copy(id = chosenEdge.other) ! msg
           case Failure(e) =>

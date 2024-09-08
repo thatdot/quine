@@ -104,7 +104,7 @@ trait QueryUiRoutesImpl
   private def queryUiNode(
     id: QuineId,
     namespace: NamespaceId,
-    atTime: AtTime
+    atTime: AtTime,
   ): Future[UiNode[QuineId]] =
     graph
       .literalOps(namespace)
@@ -113,7 +113,7 @@ trait QueryUiRoutesImpl
         val parsedProperties = props.map { case (propKey, pickledValue) =>
           val unpickledValue = pickledValue.deserialized.fold[Any](
             _ => pickledValue.serialized,
-            _.underlyingJvmValue
+            _.underlyingJvmValue,
           )
           propKey.name -> writeGremlinValue(unpickledValue)
         }
@@ -128,7 +128,7 @@ trait QueryUiRoutesImpl
           id = id,
           hostIndex = hostIndex(id),
           label = nodeLabel,
-          properties = parsedProperties
+          properties = parsedProperties,
         )
       }(graph.shardDispatcherEC)
 
@@ -151,14 +151,14 @@ trait QueryUiRoutesImpl
   final def queryGremlinNodes(
     query: GremlinQuery,
     namespace: NamespaceId,
-    atTime: AtTime
+    atTime: AtTime,
   ): Source[UiNode[QuineId], NotUsed] =
     gremlin
       .queryExpecting[Vertex](
         query.text,
         guessGremlinParameters(query.parameters),
         namespace,
-        atTime
+        atTime,
       )
       .mapAsync(parallelism = 4)((vertex: Vertex) => queryUiNode(vertex.id, namespace, atTime))
       .map(transformUiNode)
@@ -174,14 +174,14 @@ trait QueryUiRoutesImpl
   final def queryGremlinEdges(
     query: GremlinQuery,
     namespace: NamespaceId,
-    atTime: AtTime
+    atTime: AtTime,
   ): Source[UiEdge[QuineId], NotUsed] =
     gremlin
       .queryExpecting[Edge](
         query.text,
         guessGremlinParameters(query.parameters),
         namespace,
-        atTime
+        atTime,
       )
       .map { case Edge(src, lbl, tgt) => UiEdge(from = src, to = tgt, edgeType = lbl.name) }
 
@@ -200,7 +200,7 @@ trait QueryUiRoutesImpl
   // This could be made more general, but the dependency on ClientErrors makes it get "stuck in the cake" here and some
   // other route implementation traits that share similar private methods.
   final private def ifNamespaceFound[A](namespaceId: NamespaceId)(
-    ifFound: => Future[Either[ClientErrors, A]]
+    ifFound: => Future[Either[ClientErrors, A]],
   ): Future[Either[ClientErrors, Option[A]]] =
     if (!graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
     else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)

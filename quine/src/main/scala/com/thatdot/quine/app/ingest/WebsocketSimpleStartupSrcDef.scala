@@ -37,7 +37,7 @@ final case class WebsocketSimpleStartupSrcDef(
   keepaliveProtocol: KeepaliveProtocol,
   parallelism: Int,
   encoding: String,
-  initialSwitchMode: SwitchMode
+  initialSwitchMode: SwitchMode,
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
     extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, Seq(), s"$name (WS ingest)") {
 
@@ -56,13 +56,13 @@ final case class WebsocketSimpleStartupSrcDef(
   val httpClientSettings: ClientConnectionSettings = keepaliveProtocol match {
     case WebsocketSimpleStartupIngest.PingPongInterval(intervalMillis) =>
       baseHttpClientSettings.withWebsocketSettings(
-        baseHttpClientSettings.websocketSettings.withPeriodicKeepAliveMaxIdle(intervalMillis.millis)
+        baseHttpClientSettings.websocketSettings.withPeriodicKeepAliveMaxIdle(intervalMillis.millis),
       )
     case WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis) =>
       baseHttpClientSettings.withWebsocketSettings(
         baseHttpClientSettings.websocketSettings
           .withPeriodicKeepAliveMaxIdle(intervalMillis.millis)
-          .withPeriodicKeepAliveData(() => ByteString(message, charset))
+          .withPeriodicKeepAliveData(() => ByteString(message, charset)),
       )
     case WebsocketSimpleStartupIngest.NoKeepalive => baseHttpClientSettings
   }
@@ -79,7 +79,7 @@ final case class WebsocketSimpleStartupSrcDef(
   val wsFlow: Flow[Message, Message, Future[WebSocketUpgradeResponse]] = Http()
     .webSocketClientFlow(
       WebSocketRequest(wsUrl),
-      settings = httpClientSettings
+      settings = httpClientSettings,
     )
     .named("websocket-ingest-client")
 

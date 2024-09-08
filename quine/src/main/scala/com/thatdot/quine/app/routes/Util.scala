@@ -21,7 +21,7 @@ object Util {
   def sseRoute(events: Source[ServerSentEvent, NotUsed]): server.Route =
     respondWithHeaders(
       `Cache-Control`(CacheDirectives.`no-cache`),
-      RawHeader("X-Accel-Buffering", "no")
+      RawHeader("X-Accel-Buffering", "no"),
     ) { // reverse proxy friendly headers
       // this implicit allows marshalling a Source[ServerSentEvent] to an SSE endpoint
       import org.apache.pekko.http.scaladsl.marshalling.sse.EventStreamMarshalling.toEventStream
@@ -63,13 +63,13 @@ object Util {
             "default-src" -> Vector(self), // in general, allow resources when they match the same origin policy
             "script-src" -> Vector( // only allow scripts that match the same origin policy... and allow eval() for plotly and vis-network
               self,
-              eval
+              eval,
             ),
             "object-src" -> Vector(none), // don't allow <object>, <embed>, or <applet>
             "style-src" -> Vector(self, inline), // allow scripts that match same origin or are provided inline
             "img-src" -> Vector( // allow images that match same origin or are provided as data: blobs
               self,
-              anyDataBlob
+              anyDataBlob,
             ),
             "media-src" -> Vector(none), // don't allow <video>, <audio>, <source>, or <track>
             "frame-src" -> Vector(none), // don't allow <frame> or <iframe> on this page
@@ -77,13 +77,13 @@ object Util {
             "connect-src" -> Vector( // allow HTTP requests to be sent by other (allowed) resources only if the destinations of those requests match the same origin policy
               self,
               anyWs, // NB this is way more permissive than we want. this allows connection to arbitrary websockets APIs, not just our own.
-              anyWss // However, connect-src 'self' doesn't include websockets on some browsers. See https://github.com/w3c/webappsec-csp/issues/7
-            )
+              anyWss, // However, connect-src 'self' doesn't include websockets on some browsers. See https://github.com/w3c/webappsec-csp/issues/7
+            ),
           )
 
           Csp.toSeq.map { case (k, vs) => (k + vs.mkString(" ", " ", "")) }.mkString("; ")
-        }
-      )
+        },
+      ),
     )(underlying)
 
   /** Flow that will timeout after some fixed duration, provided that duration

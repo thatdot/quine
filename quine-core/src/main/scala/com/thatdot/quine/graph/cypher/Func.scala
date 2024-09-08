@@ -14,7 +14,7 @@ import scala.math.BigDecimal.RoundingMode.{
   HALF_UP,
   RoundingMode,
   UNNECESSARY,
-  UP
+  UP,
 }
 
 import com.thatdot.quine.model.QuineIdProvider
@@ -61,7 +61,7 @@ sealed abstract class BuiltinFunc(
   val name: String,
   val isPure: Boolean,
   val description: String,
-  val signature: String
+  val signature: String,
 ) extends Func {
 
   /** Construct a wrong signature error based on the first signature in [[signatures]]

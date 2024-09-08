@@ -14,7 +14,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
 
   private[this] def writeNodeEventUnion(
     builder: FlatBufferBuilder,
-    event: NodeChangeEvent
+    event: NodeChangeEvent,
   ): TypeAndOffset =
     event match {
       case EdgeEvent.EdgeAdded(HalfEdge(edgeType, dir, other)) =>
@@ -22,7 +22,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
           builder,
           builder.createString(edgeType.name),
           edgeDirection2Byte(dir),
-          builder.createByteVector(other.array)
+          builder.createByteVector(other.array),
         )
         TypeAndOffset(persistence.NodeEventUnion.AddEdge, event)
 
@@ -31,7 +31,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
           builder,
           builder.createString(edgeType.name),
           edgeDirection2Byte(dir),
-          builder.createByteVector(other.array)
+          builder.createByteVector(other.array),
         )
         TypeAndOffset(persistence.NodeEventUnion.RemoveEdge, event)
 
@@ -39,7 +39,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
         val event = persistence.AddProperty.createAddProperty(
           builder,
           builder.createString(propKey.name),
-          builder.createByteVector(value.serialized)
+          builder.createByteVector(value.serialized),
         )
         TypeAndOffset(persistence.NodeEventUnion.AddProperty, event)
 
@@ -47,7 +47,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
         val event = persistence.RemoveProperty.createRemoveProperty(
           builder,
           builder.createString(propKey.name),
-          builder.createByteVector(value.serialized)
+          builder.createByteVector(value.serialized),
         )
         TypeAndOffset(persistence.NodeEventUnion.RemoveProperty, event)
 
@@ -57,7 +57,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
     }
   private[this] def readNodeChangeEventUnion(
     typ: Byte,
-    makeEvent: Table => Table
+    makeEvent: Table => Table,
   ): NodeChangeEvent =
     typ match {
       case persistence.NodeEventUnion.AddEdge =>
@@ -65,7 +65,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
         val halfEdge = HalfEdge(
           Symbol(event.edgeType),
           byte2EdgeDirection(event.direction),
-          QuineId(event.otherIdAsByteBuffer.remainingBytes)
+          QuineId(event.otherIdAsByteBuffer.remainingBytes),
         )
         EdgeEvent.EdgeAdded(halfEdge)
 
@@ -74,7 +74,7 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
         val halfEdge = HalfEdge(
           Symbol(event.edgeType),
           byte2EdgeDirection(event.direction),
-          QuineId(event.otherIdAsByteBuffer.remainingBytes)
+          QuineId(event.otherIdAsByteBuffer.remainingBytes),
         )
         EdgeEvent.EdgeRemoved(halfEdge)
 
@@ -96,14 +96,14 @@ object NodeChangeEventCodec extends PersistenceCodec[NodeChangeEvent] {
 
   private[this] def writeNodeChangeEvent(
     builder: FlatBufferBuilder,
-    event: NodeChangeEvent
+    event: NodeChangeEvent,
   ): Offset = {
     val TypeAndOffset(eventTyp, eventOff) = writeNodeEventUnion(builder, event)
     persistence.NodeEvent.createNodeEvent(builder, eventTyp, eventOff)
   }
 
   private[this] def readNodeEvent(
-    event: persistence.NodeEvent
+    event: persistence.NodeEvent,
   ): NodeChangeEvent =
     readNodeChangeEventUnion(event.eventType, event.event)
 

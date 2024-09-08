@@ -17,7 +17,7 @@ object EntryPoint {
     * @param ids nodes with these IDs will be returned
     */
   final case class NodeById(
-    ids: Vector[QuineId]
+    ids: Vector[QuineId],
   ) extends EntryPoint
 
   /* TODO: consider adding this back if/when we add support for scans on labels
@@ -156,7 +156,7 @@ object Query {
   /** Like [[Apply]], but applies some peephole optimizations */
   def apply[Start <: Location](
     startWithThis: Query[Start],
-    thenCrossWithThis: Query[Start]
+    thenCrossWithThis: Query[Start],
   ): Query[Start] = startWithThis match {
     // Apply(Unit, q) ==> q
     case Unit(_) => thenCrossWithThis
@@ -180,7 +180,7 @@ object Query {
   def adjustContext[Start <: Location](
     dropExisting: Boolean,
     toAdd: Vector[(Symbol, Expr)],
-    adjustThis: Query[Start]
+    adjustThis: Query[Start],
   ): Query[Start] =
     adjustThis match {
       // Nested AdjustContext
@@ -215,7 +215,7 @@ object Query {
   /** Like [[Filter]], but applies from peephole optimizations */
   def filter[Start <: Location](
     condition: Expr,
-    toFilter: Query[Start]
+    toFilter: Query[Start],
   ): Query[Start] = condition match {
     case Expr.True => toFilter
     case Expr.And(Vector()) => toFilter
@@ -225,7 +225,7 @@ object Query {
 
   /** An empty query - always returns no results */
   final case class Empty(
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
     def cannotFail: Boolean = true
@@ -238,7 +238,7 @@ object Query {
 
   /** A unit query - returns exactly the input */
   final case class Unit(
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
     def cannotFail: Boolean = true
@@ -257,7 +257,7 @@ object Query {
   final case class AnchoredEntry(
     entry: EntryPoint,
     andThen: Query[Location.OnNode],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = andThen.isReadOnly
     def cannotFail: Boolean = andThen.cannotFail
@@ -281,7 +281,7 @@ object Query {
   final case class ArgumentEntry(
     node: Expr,
     andThen: Query[Location.OnNode],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = andThen.isReadOnly
     def cannotFail: Boolean = node.cannotFail && andThen.cannotFail
@@ -303,7 +303,7 @@ object Query {
     edgeName: Option[Symbol],
     direction: EdgeDirection,
     bindName: Symbol,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = true
     def cannotFail: Boolean = true
@@ -332,7 +332,7 @@ object Query {
     range: Option[(Option[Long], Option[Long])] = None,
     visited: VisitedVariableEdgeMatches = VisitedVariableEdgeMatches.empty,
     andThen: Query[Location.OnNode],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = andThen.isReadOnly
     def cannotFail: Boolean = toNode.isEmpty && range.isEmpty && andThen.cannotFail
@@ -357,7 +357,7 @@ object Query {
     labelsOpt: Option[Seq[Symbol]],
     propertiesOpt: Option[Expr],
     bindName: Option[Symbol],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = true
     def cannotFail: Boolean = propertiesOpt.isEmpty
@@ -382,7 +382,7 @@ object Query {
     urlString: Expr,
     variable: Symbol,
     fieldTerminator: Char = ',',
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = true
     def cannotFail: Boolean = false // URL might lead nowhere
@@ -402,7 +402,7 @@ object Query {
   final case class Union[+Start <: Location](
     unionLhs: Query[Start],
     unionRhs: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = unionLhs.isReadOnly && unionRhs.isReadOnly
     def cannotFail: Boolean = unionLhs.cannotFail && unionRhs.cannotFail
@@ -423,7 +423,7 @@ object Query {
   final case class Or[+Start <: Location](
     tryFirst: Query[Start],
     trySecond: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = tryFirst.isReadOnly && trySecond.isReadOnly
     def cannotFail: Boolean = tryFirst.cannotFail && trySecond.cannotFail
@@ -456,7 +456,7 @@ object Query {
     joinRhs: Query[Start],
     lhsProperty: Expr,
     rhsProperty: Expr,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = joinLhs.isReadOnly && joinRhs.isReadOnly
     def cannotFail: Boolean =
@@ -469,7 +469,7 @@ object Query {
       joinLhs = joinLhs.substitute(parameters),
       joinRhs = joinRhs.substitute(parameters),
       lhsProperty = lhsProperty.substitute(parameters),
-      rhsProperty = rhsProperty.substitute(parameters)
+      rhsProperty = rhsProperty.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(joinLhs, joinRhs)
   }
@@ -484,7 +484,7 @@ object Query {
   final case class SemiApply[+Start <: Location](
     acceptIfThisSucceeds: Query[Start],
     inverted: Boolean = false,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = acceptIfThisSucceeds.isReadOnly
     def cannotFail: Boolean = acceptIfThisSucceeds.cannotFail
@@ -509,7 +509,7 @@ object Query {
   final case class Apply[+Start <: Location](
     startWithThis: Query[Start],
     thenCrossWithThis: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = startWithThis.isReadOnly && thenCrossWithThis.isReadOnly
     def cannotFail: Boolean = startWithThis.cannotFail && thenCrossWithThis.cannotFail
@@ -519,7 +519,7 @@ object Query {
     def substitute(parameters: Map[Expr.Parameter, Value]): Apply[Start] =
       copy(
         startWithThis = startWithThis.substitute(parameters),
-        thenCrossWithThis = thenCrossWithThis.substitute(parameters)
+        thenCrossWithThis = thenCrossWithThis.substitute(parameters),
       )
     def children: Seq[Query[Location]] = Seq(startWithThis, thenCrossWithThis)
   }
@@ -531,7 +531,7 @@ object Query {
     */
   final case class Optional[+Start <: Location](
     query: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = query.isReadOnly
     def cannotFail: Boolean = query.cannotFail
@@ -551,7 +551,7 @@ object Query {
   final case class Filter[+Start <: Location](
     condition: Expr,
     toFilter: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toFilter.isReadOnly
     def cannotFail: Boolean = condition.cannotFail && toFilter.cannotFail
@@ -560,7 +560,7 @@ object Query {
     def canContainAllNodeScan: Boolean = toFilter.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Filter[Start] = copy(
       condition = condition.substitute(parameters),
-      toFilter = toFilter.substitute(parameters)
+      toFilter = toFilter.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toFilter)
   }
@@ -573,7 +573,7 @@ object Query {
   final case class Skip[+Start <: Location](
     drop: Skip.Drop,
     toSkip: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toSkip.isReadOnly
     def cannotFail: Boolean = false // non-number skip
@@ -582,7 +582,7 @@ object Query {
     def canContainAllNodeScan: Boolean = toSkip.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Skip[Start] = copy(
       drop = drop.substitute(parameters),
-      toSkip = toSkip.substitute(parameters)
+      toSkip = toSkip.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toSkip)
   }
@@ -603,7 +603,7 @@ object Query {
   final case class Limit[+Start <: Location](
     take: Limit.Take,
     toLimit: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toLimit.isReadOnly
     def cannotFail: Boolean = false // non-number limit
@@ -612,7 +612,7 @@ object Query {
     def canContainAllNodeScan: Boolean = toLimit.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Limit[Start] = copy(
       take = take.substitute(parameters),
-      toLimit = toLimit.substitute(parameters)
+      toLimit = toLimit.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toLimit)
   }
@@ -632,7 +632,7 @@ object Query {
   final case class Sort[+Start <: Location](
     by: Sort.SortBy,
     toSort: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toSort.isReadOnly
     def cannotFail: Boolean = by.forall(_._1.cannotFail) && toSort.cannotFail
@@ -641,7 +641,7 @@ object Query {
     def canContainAllNodeScan: Boolean = toSort.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Sort[Start] = copy(
       by = by.map { case (expr, bool) => expr.substitute(parameters) -> bool },
-      toSort = toSort.substitute(parameters)
+      toSort = toSort.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toSort)
   }
@@ -676,7 +676,7 @@ object Query {
     distinctBy: Option[Distinct.DistinctBy],
     drop: Option[Skip.Drop],
     take: Option[Limit.Take],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     private[cypher] object delegates {
       def sort[S >: Start <: Location](query: Query[S]): Option[Sort[S]] =
@@ -704,7 +704,7 @@ object Query {
       orderBy = orderBy.map(_.map { case (expr, bool) => expr.substitute(parameters) -> bool }),
       distinctBy = distinctBy.map(_.map(_.substitute(parameters))),
       drop = drop.map(_.substitute(parameters)),
-      take = take.map(_.substitute(parameters))
+      take = take.map(_.substitute(parameters)),
     )
     def children: Seq[Query[Location]] = Seq(toReturn)
   }
@@ -717,7 +717,7 @@ object Query {
   final case class Distinct[+Start <: Location](
     by: Distinct.DistinctBy,
     toDedup: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toDedup.isReadOnly
     def cannotFail: Boolean = by.forall(_.cannotFail) && toDedup.cannotFail
@@ -726,7 +726,7 @@ object Query {
     def canContainAllNodeScan: Boolean = toDedup.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Distinct[Start] = copy(
       by = by.map(_.substitute(parameters)),
-      toDedup = toDedup.substitute(parameters)
+      toDedup = toDedup.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toDedup)
   }
@@ -752,7 +752,7 @@ object Query {
     listExpr: Expr,
     as: Symbol,
     unwindFrom: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = unwindFrom.isReadOnly
     def cannotFail: Boolean = listExpr.cannotFail && unwindFrom.cannotFail
@@ -761,7 +761,7 @@ object Query {
     def canContainAllNodeScan: Boolean = unwindFrom.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): Unwind[Start] = copy(
       listExpr = listExpr.substitute(parameters),
-      unwindFrom = unwindFrom.substitute(parameters)
+      unwindFrom = unwindFrom.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(unwindFrom)
   }
@@ -776,7 +776,7 @@ object Query {
     dropExisting: Boolean,
     toAdd: Vector[(Symbol, Expr)],
     adjustThis: Query[Start],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = adjustThis.isReadOnly
     def cannotFail: Boolean = toAdd.forall(_._2.cannotFail) && adjustThis.cannotFail
@@ -785,7 +785,7 @@ object Query {
     def canContainAllNodeScan: Boolean = adjustThis.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): AdjustContext[Start] = copy(
       toAdd = toAdd.map { case (sym, expr) => sym -> expr.substitute(parameters) },
-      adjustThis = adjustThis.substitute(parameters)
+      adjustThis = adjustThis.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(adjustThis)
   }
@@ -801,7 +801,7 @@ object Query {
     nodeVar: Symbol,
     key: Symbol,
     newValue: Option[Expr],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Trying to set a non-property value
@@ -829,7 +829,7 @@ object Query {
     nodeVar: Symbol,
     properties: Expr,
     includeExisting: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Trying to set non-property values
@@ -857,7 +857,7 @@ object Query {
   final case class Delete(
     toDelete: Expr,
     detach: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Trying to delete non-deletable entity
@@ -885,7 +885,7 @@ object Query {
     target: Expr,
     add: Boolean,
     andThen: Query[Location.OnNode],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = false // Target is not node-like
@@ -894,7 +894,7 @@ object Query {
     def canContainAllNodeScan: Boolean = andThen.canContainAllNodeScan
     def substitute(parameters: Map[Expr.Parameter, Value]): SetEdge = copy(
       target = target.substitute(parameters),
-      andThen = andThen.substitute(parameters)
+      andThen = andThen.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(andThen)
   }
@@ -910,7 +910,7 @@ object Query {
     nodeVar: Symbol,
     labels: Seq[Symbol],
     add: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.OnNode] {
     def isReadOnly: Boolean = false
     def cannotFail: Boolean = true
@@ -938,7 +938,7 @@ object Query {
     aggregateWith: Vector[(Symbol, Aggregator)],
     toAggregate: Query[Start],
     keepExisting: Boolean,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = toAggregate.isReadOnly
     def cannotFail: Boolean =
@@ -950,7 +950,7 @@ object Query {
     def substitute(parameters: Map[Expr.Parameter, Value]): EagerAggregation[Start] = copy(
       aggregateAlong = aggregateAlong.map { case (sym, expr) => sym -> expr.substitute(parameters) },
       aggregateWith = aggregateWith.map { case (sym, aggregator) => sym -> aggregator.substitute(parameters) },
-      toAggregate = toAggregate.substitute(parameters)
+      toAggregate = toAggregate.substitute(parameters),
     )
     def children: Seq[Query[Location]] = Seq(toAggregate)
   }
@@ -967,7 +967,7 @@ object Query {
     procedure: Proc,
     arguments: Seq[Expr],
     returns: Option[Map[Symbol, Symbol]],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Location.Anywhere] {
     def isReadOnly: Boolean = !procedure.canContainUpdates
     def cannotFail: Boolean = false
@@ -988,7 +988,7 @@ object Query {
   final case class SubQuery[+Start <: Location](
     subQuery: Query[Start],
     importedVariables: Vector[Symbol],
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     def isReadOnly: Boolean = subQuery.isReadOnly
     def cannotFail: Boolean = subQuery.cannotFail
@@ -1021,11 +1021,11 @@ object Query {
     initialVariables: RecursiveSubQuery.VariableInitializers[Start],
     variableMappings: RecursiveSubQuery.VariableMappings,
     doneExpression: Expr,
-    columns: Columns = Columns.Omitted
+    columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
     require(
       initialVariables.initialValues.keySet == variableMappings.inputToPlain.keySet,
-      "All input variables must have initializers"
+      "All input variables must have initializers",
     )
 
     /** The recursive variables used by this query.
@@ -1040,7 +1040,7 @@ object Query {
     def substitute(parameters: Map[Expr.Parameter, Value]): Query[Start] =
       copy(
         innerQuery = innerQuery.substitute(parameters),
-        doneExpression = doneExpression.substitute(parameters)
+        doneExpression = doneExpression.substitute(parameters),
       )
     def children: Seq[Query[Location]] = Seq(innerQuery)
   }
@@ -1069,17 +1069,17 @@ object Query {
     case class VariableMappings(inputToPlain: Map[Symbol, Symbol], outputToPlain: Map[Symbol, Symbol]) {
       require(
         inputToPlain.values.toSet.size == inputToPlain.size,
-        "input variable mappings in a recursive subquery must be bijective"
+        "input variable mappings in a recursive subquery must be bijective",
       )
       require(
         outputToPlain.values.toSet.size == outputToPlain.size,
-        "output variable mappings in a recursive subquery must be bijective"
+        "output variable mappings in a recursive subquery must be bijective",
       )
       require(
         inputToPlain.values.toSet.subsetOf(
-          outputToPlain.values.toSet
+          outputToPlain.values.toSet,
         ),
-        "all recursive variables must be returned by the inner query"
+        "all recursive variables must be returned by the inner query",
       )
 
       val plainToOutput: Map[Symbol, Symbol] = outputToPlain.map(_.swap)

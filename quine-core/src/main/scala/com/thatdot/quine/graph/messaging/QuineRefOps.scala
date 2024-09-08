@@ -33,14 +33,14 @@ trait QuineRefOps {
     def ?[A](unattributedMessage: QuineRef => QuineMessage with AskableQuineMessage[A])(implicit
       timeout: Timeout,
       originalSender: ActorRef,
-      resultHandler: ResultHandler[A]
+      resultHandler: ResultHandler[A],
     ): Future[A] =
       graph.relayAsk[A](quineRef, unattributedMessage, originalSender)
   }
 
   /** Support replying to a message */
   implicit final class RichAttributableQuineMessage[A: ResultHandler](
-    message: QuineMessage with AskableQuineMessage[A]
+    message: QuineMessage with AskableQuineMessage[A],
   ) {
     def ?!(response: A)(implicit resultHandler: ResultHandler[A], mat: Materializer): Unit = {
       val messageStaysInJvm = graph.isOnThisHost(message.replyTo)
@@ -48,7 +48,7 @@ trait QuineRefOps {
         message.replyTo,
         response,
         graph,
-        messageStaysInJvm
+        messageStaysInJvm,
       )
     }
   }

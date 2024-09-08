@@ -51,7 +51,7 @@ trait ActorClock extends ActorSafeLogging with PriorityStashingBehavior {
         safe"""No more operations are available on node: ${Safe(qid.pretty)} during the millisecond:
               |${Safe(systemMillis)}  This can occur because of high traffic to a single node (which
               |will slow the stream slightly), or because the system clock has moved backwards. Previous
-              |time record was: ${Safe(previousMillis)}""".cleanLines
+              |time record was: ${Safe(previousMillis)}""".cleanLines,
       )
 
       // Re-enqueue this message. We'll process it when time has caught up
@@ -62,7 +62,7 @@ trait ActorClock extends ActorSafeLogging with PriorityStashingBehavior {
       context.system.scheduler
         .scheduleOnce(
           delay = (previousMillis - systemMillis + 1).millis,
-          runnable = (() => timeHasProbablyCaughtUp.success(())): Runnable
+          runnable = (() => timeHasProbablyCaughtUp.success(())): Runnable,
         )(context.system.dispatcher)
 
       // Pause message processing until system time has likely caught up to local actor millis
@@ -79,13 +79,13 @@ trait ActorClock extends ActorSafeLogging with PriorityStashingBehavior {
           context.system.scheduler
             .scheduleOnce(
               delay = (diff + 1).millis,
-              runnable = (() => self.tell(StashedMessage(message), sender())): Runnable
+              runnable = (() => self.tell(StashedMessage(message), sender())): Runnable,
             )(context.system.dispatcher)
           ()
         case _ =>
           currentTime = currentTime.tick(
             mustAdvanceLogicalTime = eventOccurred,
-            newMillis = systemMillis
+            newMillis = systemMillis,
           )
           eventOccurred = false
           inner(message)

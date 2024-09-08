@@ -30,7 +30,7 @@ import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{
   DomainGraphNodeStandingQueryPattern,
   MultipleValuesQueryPattern,
-  QuinePatternQueryPattern
+  QuinePatternQueryPattern,
 }
 import com.thatdot.quine.graph.{
   GraphService,
@@ -42,7 +42,7 @@ import com.thatdot.quine.graph.{
   StandingQueryInfo,
   defaultNamespaceId,
   namespaceFromString,
-  namespaceToString
+  namespaceToString,
 }
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
@@ -164,7 +164,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   def addStandingQuery(
     queryName: FriendlySQName,
     inNamespace: NamespaceId,
-    query: StandingQueryDefinition
+    query: StandingQueryDefinition,
   ): Future[Boolean] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       standingQueryOutputTargets.get(inNamespace).fold(Future.successful(false)) { namespaceTargets =>
@@ -192,7 +192,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                     returnColumn.formatAsString,
                     returnColumn.aliasedAs,
                     query.includeCancellations,
-                    origin
+                    origin,
                   )
                   (dgnPattern, Some(dgnPackage))
                 case StandingQueryMode.MultipleValues =>
@@ -229,7 +229,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   outputs = sqResultsConsumers,
                   queueBackpressureThreshold = query.inputBufferSize,
                   shouldCalculateResultHashCode = query.shouldCalculateResultHashCode,
-                  sqId = sqId
+                  sqId = sqId,
                 )
                 val outputsWithKillSwitches = query.outputs.map { case (name, out) =>
                   name -> (out -> killSwitches(name))
@@ -252,7 +252,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     */
   def cancelStandingQuery(
     queryName: String,
-    inNamespace: NamespaceId
+    inNamespace: NamespaceId,
   ): Future[Option[RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val cancelledSqState: Option[Future[RegisteredStandingQuery]] = for {
@@ -268,7 +268,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             outputs.fmap(_._1),
             startTime,
             bufferSize,
-            graph.metrics
+            graph.metrics,
           )
         }(graph.system.dispatcher)
       }
@@ -288,7 +288,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     queryName: String,
     outputName: String,
     inNamespace: NamespaceId,
-    sqResultOutput: StandingQueryResultOutputUserDef
+    sqResultOutput: StandingQueryResultOutputUserDef,
   ): Future[Option[Boolean]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val optionFut = for {
@@ -303,8 +303,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             .via(
               StandingQueryResultOutput.resultHandlingFlow(outputName, inNamespace, sqResultOutput, graph)(
                 protobufSchemaCache,
-                logConfig
-              )
+                logConfig,
+              ),
             )
           val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
           val updatedInnerMap = standingQueryOutputTargets(inNamespace) +
@@ -327,7 +327,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   def removeStandingQueryOutput(
     queryName: String,
     outputName: String,
-    inNamespace: NamespaceId
+    inNamespace: NamespaceId,
   ): Future[Option[StandingQueryResultOutputUserDef]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val outputOpt = for {
@@ -360,7 +360,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     */
   private def getStandingQueriesWithNames(
     queryNames: List[String],
-    inNamespace: NamespaceId
+    inNamespace: NamespaceId,
   ): Future[List[RegisteredStandingQuery]] = onlyIfNamespaceExists(inNamespace) {
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val matchingInfo = for {
@@ -378,7 +378,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         outputs.fmap(_._1),
         startTime,
         bufferSize,
-        graph.metrics
+        graph.metrics,
       )
       Future.successful(matchingInfo.toList)
     }
@@ -396,13 +396,13 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           val now = Instant.now
           metrics.stop(now)
           logger.error(
-            log"Ingest stream '${Safe(name)}' has failed after ${Safe(metrics.millisSinceStart(now))}ms" withException err
+            log"Ingest stream '${Safe(name)}' has failed after ${Safe(metrics.millisSinceStart(now))}ms" withException err,
           )
         case Success(_) =>
           val now = Instant.now
           metrics.stop(now)
           logger.info(
-            log"Ingest stream '${Safe(name)}' successfully completed after ${Safe(metrics.millisSinceStart(now))}ms"
+            log"Ingest stream '${Safe(name)}' successfully completed after ${Safe(metrics.millisSinceStart(now))}ms",
           )
       }(ec)
   }
@@ -418,7 +418,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
-    useV2Ingest: Boolean
+    useV2Ingest: Boolean,
   ): Try[Boolean] = failIfNoNamespace(intoNamespace) {
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(intoNamespace) match {
@@ -443,7 +443,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               DecodedSource.quineIngestSource(name, settings, intoNamespace, initialValveSwitchMode)(
                 graph,
                 protobufSchemaCache,
-                logConfig
+                logConfig,
               )
             } else {
 
@@ -452,7 +452,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   name,
                   intoNamespace,
                   settings,
-                  initialValveSwitchMode
+                  initialValveSwitchMode,
                 )(graph, protobufSchemaCache, logConfig)
             }
 
@@ -463,7 +463,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               val metrics = IngestMetrics(Instant.now, None, ingestSrcDef.meter)
               val ingestSrc = ingestSrcDef.stream(
                 intoNamespace,
-                registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC)
+                registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
               )
 
               val streamDefWithControl = IngestStreamWithControl(
@@ -475,7 +475,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   ingestSrcDef.getControl.flatMap(c => c.terminate())(ExecutionContext.parasitic)
                   () // Intentional fire and forget
                 },
-                initialStatus
+                initialStatus,
               )
 
               val newNamespaceIngests = ingests + (name -> streamDefWithControl)
@@ -486,7 +486,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               if (shouldSaveMetadata)
                 Await.result(
                   syncIngestStreamsMetaData(thisMemberIdx),
-                  timeout.duration
+                  timeout.duration,
                 )
 
               true
@@ -524,17 +524,17 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             res <- storeLocalMetaData[Map[String, IngestStreamWithStatus]](
               makeNamespaceMetaDataKey(namespace, IngestStreamsKey),
               thisMemberId,
-              streamsWithStatus
+              streamsWithStatus,
             )
-          } yield res
-        )
+          } yield res,
+        ),
       )
       .map(_ => ())
   }
 
   def removeIngestStream(
     name: String,
-    namespace: NamespaceId
+    namespace: NamespaceId,
   ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = noneIfNoNamespace(namespace) {
     Try {
       blocking(ingestStreamsLock.synchronized {
@@ -542,7 +542,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           ingestStreams += namespace -> (ingestStreams(namespace) - name)
           Await.result(
             syncIngestStreamsMetaData(thisMemberIdx),
-            QuineApp.ConfigApiTimeout
+            QuineApp.ConfigApiTimeout,
           )
           stream
         }
@@ -602,13 +602,13 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     // Register all user-defined procedures that require app/graph information (the rest will be loaded
     // when the first query is compiled by the [[resolveCalls]] step of the Cypher compilation pipeline)
     registerUserDefinedProcedure(
-      new CypherParseProtobuf(protobufSchemaCache)
+      new CypherParseProtobuf(protobufSchemaCache),
     )
     registerUserDefinedProcedure(
-      new CypherToProtobuf(protobufSchemaCache)
+      new CypherToProtobuf(protobufSchemaCache),
     )
     registerUserDefinedProcedure(
-      new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace))
+      new CypherStandingWiretap((queryName, namespace) => getStandingQueryId(queryName, namespace)),
     )
 
     val standingQueryOutputsFut = Future
@@ -616,9 +616,9 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         getNamespaces.map(ns =>
           getOrDefaultGlobalMetaData(
             makeNamespaceMetaDataKey(ns, StandingQueryOutputsKey),
-            Map.empty: Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
-          ).map(ns -> _)
-        )
+            Map.empty: Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])],
+          ).map(ns -> _),
+        ),
       )
       .map(_.toMap)
 
@@ -627,14 +627,14 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         getNamespaces.map(ns =>
           getOrDefaultLocalMetaDataWithFallback[Map[IngestName, IngestStreamWithStatus], Map[
             IngestName,
-            IngestStreamConfiguration
+            IngestStreamConfiguration,
           ]](
             makeNamespaceMetaDataKey(ns, IngestStreamsKey),
             thisMemberIdx,
             Map.empty[IngestName, IngestStreamWithStatus],
-            _.view.mapValues(i => IngestStreamWithStatus(config = i, status = None)).toMap
-          ).map(v => ns -> v)
-        )
+            _.view.mapValues(i => IngestStreamWithStatus(config = i, status = None)).toMap,
+          ).map(v => ns -> v),
+        ),
       )
       .map(_.toMap)
 
@@ -664,8 +664,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                     .via(
                       StandingQueryResultOutput.resultHandlingFlow(outputName, namespace, sqResultOutput, graph)(
                         protobufSchemaCache,
-                        logConfig
-                      )
+                        logConfig,
+                      ),
                     )
                   // ^^ Attach the SQ result source to each consumer and backpressure with the masterStream vv
                   val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
@@ -688,16 +688,16 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             shouldResumeIngest,
             timeout,
             shouldSaveMetadata = false, // We're restoring what was saved.
-            Some(thisMemberIdx)
+            Some(thisMemberIdx),
           ) match {
             case Success(true) => ()
             case Success(false) =>
               logger.error(
-                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}"
+                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}",
               )
             case Failure(e) =>
               logger.error(
-                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e,
               )
           }
         }
@@ -706,7 +706,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   }
 
   implicit private[this] val standingQueriesSchema: JsonSchema[
-    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
+    Map[FriendlySQName, (StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])],
   ] = {
     implicit val sqIdSchema = genericRecord[StandingQueryId]
     implicit val tupSchema = genericRecord[(StandingQueryId, Map[SQOutputName, StandingQueryResultOutputUserDef])]
@@ -721,7 +721,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           makeNamespaceMetaDataKey(ns, StandingQueryOutputsKey),
           targets.map { case (name, (id, outputsMap)) =>
             name -> (id -> outputsMap.view.mapValues(_._1).toMap)
-          }
+          },
         )
       })
       .map(_ => ())(ExecutionContext.parasitic)
@@ -762,8 +762,8 @@ object QuineApp {
     */
   private[app] def synchronizedFakeFuture[T](lock: AnyRef)(synchronizeMe: => Future[T]): Future[T] = blocking(
     lock.synchronized(
-      Await.ready(synchronizeMe: Future[T], QuineApp.ConfigApiTimeout)
-    )
+      Await.ready(synchronizeMe: Future[T], QuineApp.ConfigApiTimeout),
+    ),
   )
 
   /** Version to track schemas saved by Quine app state
@@ -777,7 +777,7 @@ object QuineApp {
     val metaDataKeys =
       List(SampleQueriesKey, QuickQueriesKey, NodeAppearancesKey, StandingQueryOutputsKey, IngestStreamsKey)
     Future.foldLeft(
-      metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)(ExecutionContext.parasitic))
+      metaDataKeys.map(k => persistenceAgent.getMetaData(k).map(_.isEmpty)(ExecutionContext.parasitic)),
     )(true)(_ && _)(ExecutionContext.parasitic)
   }
 
@@ -798,7 +798,7 @@ object QuineApp {
     outputs: Map[String, StandingQueryResultOutputUserDef],
     startTime: Instant,
     bufferSize: Int,
-    metrics: HostQuineMetrics
+    metrics: HostQuineMetrics,
   ): RegisteredStandingQuery = {
     val mode = internal.queryPattern match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
@@ -829,14 +829,14 @@ object QuineApp {
             oneMinute = meter.getOneMinuteRate,
             fiveMinute = meter.getFiveMinuteRate,
             fifteenMinute = meter.getFifteenMinuteRate,
-            overall = meter.getMeanRate
+            overall = meter.getMeanRate,
           ),
           startTime,
           MILLIS.between(startTime, Instant.now()),
           bufferSize,
-          outputHashCode.sum
-        )
-      )
+          outputHashCode.sum,
+        ),
+      ),
     )
   }
 }

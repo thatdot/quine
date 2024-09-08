@@ -52,7 +52,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
   val dgnRegistry: DomainGraphNodeRegistry = new DomainGraphNodeRegistry(
     metrics.registerGaugeDomainGraphNodeCount,
     namespacePersistor.persistDomainGraphNodes,
-    namespacePersistor.removeDomainGraphNodes
+    namespacePersistor.removeDomainGraphNodes,
   )
 
   class NamespaceStandingQueries(namespace: NamespaceId) {
@@ -82,10 +82,10 @@ trait StandingQueryOpsGraph extends BaseGraph {
       .weakValues()
       .build(new CacheLoader[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] {
         override def loadAll(
-          keys: lang.Iterable[_ <: MultipleValuesStandingQueryPartId]
+          keys: lang.Iterable[_ <: MultipleValuesStandingQueryPartId],
         ): util.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery] = {
           logger.info(
-            safe"Performing a full update of the standingQueryPartIndex because of query for part IDs ${Safe(keys.asScala.toList.toString)}"
+            safe"Performing a full update of the standingQueryPartIndex because of query for part IDs ${Safe(keys.asScala.toList.toString)}",
           )
           val runningSqs = runningStandingQueries.values
             .map(_.query.queryPattern)
@@ -93,7 +93,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
             .toVector
           val runningSqParts = runningSqs.toSet
             .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
-              MultipleValuesStandingQuery.indexableSubqueries(sq, acc)
+              MultipleValuesStandingQuery.indexableSubqueries(sq, acc),
             )
             .map(sq => sq.queryPartId -> sq)
             .toMap
@@ -129,7 +129,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
     def shutdownStandingQueries(): Future[Unit] = Future
       .traverse(runningStandingQueries.values)((query: RunningStandingQuery) => query.terminateOutputQueue())(
         implicitly,
-        shardDispatcherEC
+        shardDispatcherEC,
       )
       .map(_ => ())(ExecutionContext.parasitic)
 
@@ -152,7 +152,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       queueMaxSize: Int = StandingQueryInfo.DefaultQueueMaxSize,
       shouldCalculateResultHashCode: Boolean = false,
       skipPersistor: Boolean = false,
-      sqId: StandingQueryId
+      sqId: StandingQueryId,
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
       requireCompatibleNodeType()
       val rsqAndOutputs =
@@ -163,14 +163,14 @@ trait StandingQueryOpsGraph extends BaseGraph {
           outputs,
           queueBackpressureThreshold,
           queueMaxSize,
-          shouldCalculateResultHashCode
+          shouldCalculateResultHashCode,
         )
       if (!skipPersistor) {
         namespacePersistor(namespace)
           .getOrElse(
             throw new IllegalArgumentException(
-              s"Could not persist standing query because namespace: $namespace does not exist."
-            )
+              s"Could not persist standing query because namespace: $namespace does not exist.",
+            ),
           )
           .persistStandingQuery(rsqAndOutputs._1.query)
       }
@@ -188,7 +188,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
       queueBackpressureThreshold: Int,
       queueMaxSize: Int,
-      shouldCalculateResultHashCode: Boolean
+      shouldCalculateResultHashCode: Boolean,
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
       val sq =
         StandingQueryInfo(name, sqId, pattern, queueBackpressureThreshold, queueMaxSize, shouldCalculateResultHashCode)
@@ -204,7 +204,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
               .view
               .map(sq => sq.queryPartId -> sq)
               .toMap
-              .asJava
+              .asJava,
           )
         case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
         case _: StandingQueryPattern.QuinePatternQueryPattern =>
@@ -222,7 +222,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
       */
     def cancelStandingQuery(
       standingQueryId: StandingQueryId,
-      skipPersistor: Boolean = false
+      skipPersistor: Boolean = false,
     ): Option[Future[(StandingQueryInfo, Instant, Int)]] = {
       requireCompatibleNodeType()
       // Removing from the `standingQueries` map is the authoritative decision. Absence == cancellation.
@@ -272,14 +272,14 @@ trait StandingQueryOpsGraph extends BaseGraph {
       * @return future that completes when all the messages have been fired off
       */
     def propagateStandingQueries(parallelism: Option[Int])(implicit
-      timeout: Timeout
+      timeout: Timeout,
     ): Future[Unit] = {
       requireCompatibleNodeType()
       parallelism match {
         case Some(par) =>
           enumerateAllNodeIds(namespace)
             .mapAsyncUnordered(par)(qid =>
-              relayAsk(SpaceTimeQuineId(qid, namespace, None), UpdateStandingQueriesWake(_))
+              relayAsk(SpaceTimeQuineId(qid, namespace, None), UpdateStandingQueriesWake(_)),
             )
             .run()
             .map(_ => ())(ExecutionContext.parasitic)
@@ -302,7 +302,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
     private def runStandingQuery(
       sq: StandingQueryInfo,
-      outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]]
+      outputs: Map[String, Flow[StandingQueryResult, SqResultsExecToken, NotUsed]],
     ): (RunningStandingQuery, Map[String, UniqueKillSwitch]) = {
 
       /* Counter for how many elements are in the queue
@@ -320,7 +320,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
       val ((queue, term), resultsHub: Source[StandingQueryResult, NotUsed]) = Source
         .queue[StandingQueryResult](
-          sq.queueMaxSize // Queue of top-level results for this StandingQueryId on this member
+          sq.queueMaxSize, // Queue of top-level results for this StandingQueryId on this member
         )
         .watchTermination() { (mat, done) =>
           done.onComplete { (_: Try[Done]) =>
@@ -338,7 +338,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         }
         .named(s"sq-results-for-${sq.name}")
         .toMat(
-          BroadcastHub.sink[StandingQueryResult](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}")
+          BroadcastHub.sink[StandingQueryResult](bufferSize = 8).named(s"sq-results-hub-for-${sq.name}"),
         )(Keep.both)
         // bufferSize = 8 ensures all consumers attached to the hub are kept within 8 elements of each other
         .run()
@@ -379,7 +379,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         namespace,
         resultsHub = resultsHub,
         outputTermination = term,
-        metrics = metrics
+        metrics = metrics,
       )
       (runningStandingQuery, killSwitches)
     }

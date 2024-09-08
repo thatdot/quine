@@ -11,12 +11,12 @@ import com.thatdot.quine.graph.cypher.{
   MultipleValuesResultsReporter,
   MultipleValuesStandingQuery,
   MultipleValuesStandingQueryEffects,
-  MultipleValuesStandingQueryState
+  MultipleValuesStandingQueryState,
 }
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.{
   GlobalSubscriber,
-  NodeSubscriber
+  NodeSubscriber,
 }
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   CancelMultipleValuesSubscription,
@@ -26,7 +26,7 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   NewMultipleValuesStateResult,
   UpdateStandingQueriesCommand,
   UpdateStandingQueriesNoWake,
-  UpdateStandingQueriesWake
+  UpdateStandingQueriesWake,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{
@@ -38,7 +38,7 @@ import com.thatdot.quine.graph.{
   StandingQueryPattern,
   TimeFuture,
   WatchableEventType,
-  cypher
+  cypher,
 }
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
@@ -122,7 +122,7 @@ trait MultipleValuesStandingQueryBehavior
       } else {
         logger.info(
           safe"""Declining to process MultipleValues cancellation message on node: ${Safe(onNode)}
-                |for deleted Standing Query with ID ${Safe(subs.globalId)}""".cleanLines
+                |for deleted Standing Query with ID ${Safe(subs.globalId)}""".cleanLines,
         )
       }
     }
@@ -137,7 +137,7 @@ trait MultipleValuesStandingQueryBehavior
               subs.forQuery,
               subs.globalId,
               Some(upstreamPartId),
-              resultGroup
+              resultGroup,
             )
           case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
             val reporter = multipleValuesResultReporters(sqId)
@@ -165,7 +165,7 @@ trait MultipleValuesStandingQueryBehavior
     */
   protected def multipleValuesStandingQueries: mutable.Map[
     (StandingQueryId, MultipleValuesStandingQueryPartId),
-    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)
+    (MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState),
   ]
 
   /** Reporters for global subscribers to standing queries. These are used to accumulate results and send them as diffs
@@ -185,7 +185,7 @@ trait MultipleValuesStandingQueryBehavior
     */
   final protected def updateMultipleValuesSqs(
     events: Seq[NodeChangeEvent],
-    subscriber: StandingQueryWithId
+    subscriber: StandingQueryWithId,
   )(implicit logConfig: LogConfig): Future[Unit] = {
 
     val persisted: Option[Future[Unit]] = for {
@@ -231,7 +231,7 @@ trait MultipleValuesStandingQueryBehavior
               EventSubscriber(combinedId),
               eventType,
               properties,
-              edges
+              edges,
             )
 
             // Notify the standing query of events for pre-existing node state
@@ -240,7 +240,7 @@ trait MultipleValuesStandingQueryBehavior
           val _ = persistMultipleValuesStandingQueryState(
             subscriber.globalId,
             query.queryPartId,
-            Some(subscription -> sqState)
+            Some(subscription -> sqState),
           ) // TODO: don't ignore the returned future!
 
         // SQ is already running on the node
@@ -270,7 +270,7 @@ trait MultipleValuesStandingQueryBehavior
                     query.queryPartId,
                     sqId,
                     Some(upstreamPartId),
-                    resultGroup
+                    resultGroup,
                   )
                 case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
                   val reporter = multipleValuesResultReporters(sqId)
@@ -315,7 +315,7 @@ trait MultipleValuesStandingQueryBehavior
           queryPartId @ _,
           globalId,
           forQueryPartIdOpt,
-          result @ _
+          result @ _,
         ) =>
       val queryPartIdForResult = forQueryPartIdOpt.get // this is never `None` for node subscribers
       // Deliver the result to interested standing query state
@@ -328,12 +328,12 @@ trait MultipleValuesStandingQueryBehavior
               graph
                 .standingQueries(namespace)
                 .get
-                .getStandingQueryPart(queryPartIdForResult)
+                .getStandingQueryPart(queryPartIdForResult),
             ).fold(_ => "deleted SQ part", part => s"$part")
             log.warn(
               log"""Got a result from: ${Safe(fromQid.pretty)} for: ${Safe(queryPartIdForResult)},
                    |but this node does not track: ${Safe(queryPartIdForResult)} ($relevantSqPartStr)
-                   |""".cleanLines
+                   |""".cleanLines,
             )
           }
         // Possible if local shutdown happens right before a result is received
@@ -358,12 +358,12 @@ trait MultipleValuesStandingQueryBehavior
   private[this] def persistMultipleValuesStandingQueryState(
     globalId: StandingQueryId,
     localId: MultipleValuesStandingQueryPartId,
-    state: Option[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)]
+    state: Option[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)],
   ): Future[Unit] =
     persistenceConfig.standingQuerySchedule match {
       case PersistenceSchedule.OnNodeUpdate =>
         val serialized = state.map(
-          MultipleValuesStandingQueryStateCodec.format.write
+          MultipleValuesStandingQueryStateCodec.format.write,
         )
         serialized.foreach(arr => metrics.standingQueryStateSize(namespace, globalId).update(arr.length))
         new TimeFuture(metrics.persistorSetStandingQueryStateTimer).time[Unit](
@@ -371,8 +371,8 @@ trait MultipleValuesStandingQueryBehavior
             globalId,
             qid,
             localId,
-            serialized
-          )
+            serialized,
+          ),
         )
 
       // Don't save now, but record the fact this will need to be saved on sleep
@@ -399,5 +399,5 @@ trait MultipleValuesStandingQueryBehavior
 final case class MultipleValuesStandingQueryPartSubscription(
   forQuery: MultipleValuesStandingQueryPartId,
   globalId: StandingQueryId,
-  subscribers: mutable.Set[MultipleValuesStandingQuerySubscriber]
+  subscribers: mutable.Set[MultipleValuesStandingQuerySubscriber],
 )

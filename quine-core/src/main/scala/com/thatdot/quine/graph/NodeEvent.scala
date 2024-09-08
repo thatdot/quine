@@ -14,7 +14,7 @@ object NodeEvent {
     */
   final case class WithTime[+E <: NodeEvent](
     event: E,
-    atTime: EventTime
+    atTime: EventTime,
   )
 }
 
@@ -59,23 +59,23 @@ object DomainIndexEvent {
   final case class CreateDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
     replyTo: QuineId,
-    relatedQueries: Set[StandingQueryId]
+    relatedQueries: Set[StandingQueryId],
   ) extends DomainIndexEvent
 
   final case class CreateDomainStandingQuerySubscription(
     dgnId: DomainGraphNodeId,
     replyTo: StandingQueryId,
-    relatedQueries: Set[StandingQueryId]
+    relatedQueries: Set[StandingQueryId],
   ) extends DomainIndexEvent
 
   final case class DomainNodeSubscriptionResult(
     from: QuineId,
     dgnId: DomainGraphNodeId,
-    result: Boolean
+    result: Boolean,
   ) extends DomainIndexEvent
 
   final case class CancelDomainNodeSubscription(
     dgnId: DomainGraphNodeId,
-    alreadyCancelledSubscriber: QuineId
+    alreadyCancelledSubscriber: QuineId,
   ) extends DomainIndexEvent
 }

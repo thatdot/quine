@@ -54,7 +54,7 @@ object Aggregator {
     computeOnEveryRow: Expr,
     distinct: Boolean,
     combine: (Acc, Value) => Acc,
-    extractOutput: Acc => Value
+    extractOutput: Acc => Value,
   ): AggregateState = new AggregateState {
     private var state: Acc = initial
     private val seen = collection.mutable.HashSet.empty[Value]
@@ -78,7 +78,7 @@ object Aggregator {
       computeOnEveryRow = Expr.Null,
       distinct = false,
       combine = (n: Long, _val: Value) => n + 1,
-      extractOutput = Expr.Integer(_: Long)
+      extractOutput = Expr.Integer(_: Long),
     )
     val isPure = true
     def cannotFail = true
@@ -92,7 +92,7 @@ object Aggregator {
       computeOnEveryRow = expr,
       distinct,
       combine = (n: Long, value: Value) => if (value != Expr.Null) n + 1 else n,
-      extractOutput = Expr.Integer(_: Long)
+      extractOutput = Expr.Integer(_: Long),
     )
     def isPure = expr.isPure
     def cannotFail = expr.cannotFail
@@ -106,7 +106,7 @@ object Aggregator {
       computeOnEveryRow = expr,
       distinct,
       combine = (prev: List[Value], value: Value) => if (value != Expr.Null) value :: prev else prev,
-      extractOutput = (l: List[Value]) => Expr.List(l.reverse.toVector)
+      extractOutput = (l: List[Value]) => Expr.List(l.reverse.toVector),
     )
     def isPure = expr.isPure
     def cannotFail = expr.cannotFail
@@ -140,7 +140,7 @@ object Aggregator {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number),
               actualValue = other,
-              context = "average of values"
+              context = "average of values",
             )
         },
       extractOutput = (acc: Option[(Long, Value)]) =>
@@ -152,9 +152,9 @@ object Aggregator {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number, Type.Duration),
               actualValue = wrongTypeValue,
-              context = "average of values"
+              context = "average of values",
             )
-        }
+        },
     )
 
     def isPure: Boolean = expr.isPure
@@ -187,7 +187,7 @@ object Aggregator {
                 throw CypherException.TypeMismatch(
                   expected = Seq(Type.Number),
                   actualValue = other,
-                  context = "sum of values"
+                  context = "sum of values",
                 )
               case None => Expr.Integer(0L)
             }
@@ -199,10 +199,10 @@ object Aggregator {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number),
               actualValue = other,
-              context = "sum of values"
+              context = "sum of values",
             )
         },
-      extractOutput = acc => acc.getOrElse(Expr.Integer(0L))
+      extractOutput = acc => acc.getOrElse(Expr.Integer(0L)),
     )
 
     def isPure: Boolean = expr.isPure
@@ -230,7 +230,7 @@ object Aggregator {
           case other if prev.forall(Value.ordering.gt(other, _)) => Some(other)
           case _ => prev
         },
-      extractOutput = _.getOrElse(Expr.Null)
+      extractOutput = _.getOrElse(Expr.Null),
     )
 
     def isPure: Boolean = expr.isPure
@@ -257,7 +257,7 @@ object Aggregator {
           case other if prev.forall(Value.ordering.lt(other, _)) => Some(other)
           case _ => prev
         },
-      extractOutput = (acc: Option[Value]) => acc.getOrElse(Expr.Null)
+      extractOutput = (acc: Option[Value]) => acc.getOrElse(Expr.Null),
     )
 
     def isPure: Boolean = expr.isPure
@@ -292,7 +292,7 @@ object Aggregator {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number),
               actualValue = other,
-              context = "standard deviation of values"
+              context = "standard deviation of values",
             )
         }
 
@@ -344,7 +344,7 @@ object Aggregator {
             throw CypherException.TypeMismatch(
               expected = Seq(Type.Number),
               actualValue = other,
-              context = "percentile of values"
+              context = "percentile of values",
             )
         }
 
@@ -362,7 +362,7 @@ object Aggregator {
               throw CypherException.TypeMismatch(
                 expected = Seq(Type.Number),
                 actualValue = other,
-                context = "percentile of values"
+                context = "percentile of values",
               )
           }
         }
@@ -398,7 +398,7 @@ object Aggregator {
 
     def substitute(parameters: Map[Expr.Parameter, Value]): Percentile = copy(
       expr = expr.substitute(parameters),
-      percentileExpr = percentileExpr.substitute(parameters)
+      percentileExpr = percentileExpr.substitute(parameters),
     )
   }
 }
