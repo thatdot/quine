@@ -14,6 +14,7 @@ import com.thatdot.quine.routes.{
   IngestStreamInfoWithName,
   IngestStreamStatus,
 }
+import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.util.SwitchMode
 
 object IngestApiEntities {
@@ -46,10 +47,10 @@ trait IngestApiMethods {
     name: String,
     namespace: NamespaceId,
     newState: SwitchMode,
-  ): Future[Option[IngestStreamInfoWithName]] =
-    quineApp.getIngestStream(name, namespace) match {
+  )(implicit logConfig: LogConfig): Future[Option[IngestStreamInfoWithName]] =
+    quineApp.getIngestStreamFromState(name, namespace) match {
       case None => Future.successful(None)
-      case Some(ingest: IngestStreamWithControl[IngestStreamConfiguration]) =>
+      case Some(ingest: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
         ingest.initialStatus match {
           case IngestStreamStatus.Completed => Future.failed(PauseOperationException.Completed)
           case IngestStreamStatus.Terminated => Future.failed(PauseOperationException.Terminated)
@@ -61,7 +62,7 @@ trait IngestApiMethods {
               // when the valve is closed but the stream is not terminated. However, this assignment is not threadsafe,
               // and this directly violates the semantics of `initialStatus`. This should be fixed in a future refactor.
               ingest.initialStatus = IngestStreamStatus.Paused
-              stream2Info(ingest)
+              stream2Info(ingest.copy(settings = ingest.settings.asV1Config))
             }(graph.nodeDispatcherEC)
             ingestStatus.map(status => Some(status.withName(name)))(ExecutionContext.parasitic)
         }

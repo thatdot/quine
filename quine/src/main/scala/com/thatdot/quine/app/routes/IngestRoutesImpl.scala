@@ -25,10 +25,17 @@ import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
-trait IngestStreamState {
+/** Store ingests allowing for either v1 or v2 types. */
+case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration])(implicit
+  logConfig: LogConfig,
+) {
+  def asV1Config: IngestStreamConfiguration = config match {
+    case Left(v2) => v2.asV1IngestStreamConfiguration
+    case Right(v1) => v1
+  }
+}
 
-  /** Store ingests allowing for either v1 or v2 types. */
-  type UnifiedIngestConfiguration = Either[V2IngestConfiguration, IngestStreamConfiguration]
+trait IngestStreamState {
 
   type IngestName = String
   @volatile
@@ -72,23 +79,26 @@ trait IngestStreamState {
   def getIngestStream(
     name: String,
     namespace: NamespaceId,
-  ): Option[IngestStreamWithControl[IngestStreamConfiguration]] = getIngestStreams(namespace).get(name)
+  )(implicit logConfig: LogConfig): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
+    getIngestStreamFromState(name, namespace).map(isc => isc.copy(settings = isc.settings.asV1Config))
+
+  /** Get the unified ingest stream stored in memory. The value returned here will _not_ be a copy.
+    * Note: Once v1 and v2 ingests are no longer both supported, distinguishing this method from
+    * [[getIngestStream]] should no longer be necessary.
+    */
+  def getIngestStreamFromState(
+    name: String,
+    namespace: NamespaceId,
+  ): Option[IngestStreamWithControl[UnifiedIngestConfiguration]] =
+    ingestStreams.getOrElse(namespace, Map.empty).get(name)
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
 
   protected def getIngestStreamsFromState(
     namespace: NamespaceId,
-  )(implicit logConfig: LogConfig): Map[IngestName, IngestStreamWithControl[IngestStreamConfiguration]] =
+  ): Map[IngestName, IngestStreamWithControl[UnifiedIngestConfiguration]] =
     ingestStreams
       .getOrElse(namespace, Map.empty)
-      .view
-      .mapValues((isc: IngestStreamWithControl[UnifiedIngestConfiguration]) =>
-        isc.settings match {
-          case Left(v1) => isc.copy(settings = v1.asV1IngestStreamConfiguration)
-          case Right(v2) => isc.copy(settings = v2)
-        },
-      )
-      .toMap
 
   protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[String, IngestStreamWithStatus]]
 

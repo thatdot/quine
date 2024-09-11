@@ -18,6 +18,7 @@ import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.routes.KafkaSecurityProtocol.{PlainText, Ssl}
 import com.thatdot.quine.routes.StreamedRecordFormat.{CypherProtobuf, CypherRaw, Drop}
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.{routes => v1}
 class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks with ArbitraryInstances {
 
@@ -109,6 +110,7 @@ class IngestVersionsTest extends AnyFunSuite with ScalaCheckDrivenPropertyChecks
   )
 
   def legalEncoding: String = Gen.oneOf[String](Charset.availableCharsets().keySet().asScala).sample.getOrElse("UTF-8")
+  implicit def logConfig: LogConfig = LogConfig.testing
 
   implicit val arbFile: Arbitrary[FileIngest] =
     Arbitrary(Gen.resultOf(v1.FileIngest).map(_.copy(encoding = legalEncoding)))

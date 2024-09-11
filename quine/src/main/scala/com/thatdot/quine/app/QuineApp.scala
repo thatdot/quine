@@ -466,8 +466,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                 registerTerminationHooks = registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
               )
 
-              val streamDefWithControl = IngestStreamWithControl(
-                Right(settings),
+              val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] = IngestStreamWithControl(
+                UnifiedIngestConfiguration(Right(settings)),
                 metrics,
                 () => ingestSrcDef.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
                 () => ingestSrcDef.getControl.map(_.termSignal)(ExecutionContext.parasitic),
@@ -499,17 +499,19 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
     if (getNamespaces.contains(namespace))
-      getIngestStreamsFromState(namespace)
+      getIngestStreamsFromState(namespace).view
+        .mapValues(isc => isc.copy(settings = isc.settings.asV1Config))
+        .toMap
     else Map.empty
 
   protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[IngestName, IngestStreamWithStatus]] =
     onlyIfNamespaceExists(namespace) {
       implicit val ec: ExecutionContext = graph.nodeDispatcherEC
       getIngestStreamsFromState(namespace).toList
-        .traverse { case (name, stream) =>
+        .traverse { case (name, isc) =>
           for {
-            status <- stream.status(graph.materializer)
-          } yield (name, IngestStreamWithStatus(stream.settings, Some(status)))
+            status <- isc.status(graph.materializer)
+          } yield (name, IngestStreamWithStatus(isc.settings.asV1Config, Some(status)))
         }
         .map(_.toMap)(ExecutionContext.parasitic)
     }
@@ -547,12 +549,8 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           stream
         }
       })
-    }.toOption.flatten.map { ingestStreamConfiguration =>
-      ingestStreamConfiguration.settings match {
-        case Left(v1) => ingestStreamConfiguration.copy(settings = v1.asV1IngestStreamConfiguration)
-        case Right(v2) => ingestStreamConfiguration.copy(settings = v2)
-      }
-    }
+    }.toOption.flatten.map(isc => isc.copy(settings = isc.settings.asV1Config))
+
   }
 
   /** == Utilities == */

@@ -2,6 +2,8 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import java.nio.charset.Charset
 
+import scala.util.{Failure, Success, Try}
+
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.routes.StreamedRecordFormat.{CypherJson, CypherProtobuf, CypherRaw}
@@ -28,7 +30,7 @@ import com.thatdot.quine.routes.{
   StreamedRecordFormat,
   WebsocketSimpleStartupIngest,
 }
-
+import com.thatdot.quine.util.Log._
 object V2IngestEntities {
 
   /** Ingest supports charset specification. */
@@ -228,92 +230,109 @@ object V2IngestEntities {
     format: IngestFormat,
     onRecordError: OnRecordErrorHandler,
     onStreamError: OnStreamErrorHandler,
-  ) {
+  ) extends LazySafeLogging {
 
-    def asV1IngestStreamConfiguration: IngestStreamConfiguration = {
+    /** This returns a Try since there will be some v2 configurations that will not be representable as V1 ingests,
+      * e.g. for decoders like Avro that have no V1 representation.
+      */
+    def asV1IngestStreamConfiguration(implicit logConfig: LogConfig): IngestStreamConfiguration = {
 
-      def asV1StreamedRecordFormat(format: IngestFormat): StreamedRecordFormat = format match {
-        case JsonIngestFormat => CypherJson(query, parameter)
-        case ProtobufIngestFormat(schemaUrl, typeName) => CypherProtobuf(query, parameter, schemaUrl, typeName)
-        case RawIngestFormat => CypherRaw(query, parameter)
-        case DropFormat => StreamedRecordFormat.Drop
+      def asV1StreamedRecordFormat(format: IngestFormat): Try[StreamedRecordFormat] = format match {
+        case JsonIngestFormat => Success(CypherJson(query, parameter))
+        case ProtobufIngestFormat(schemaUrl, typeName) => Success(CypherProtobuf(query, parameter, schemaUrl, typeName))
+        case RawIngestFormat => Success(CypherRaw(query, parameter))
+        case DropFormat => Success(StreamedRecordFormat.Drop)
         case other => //csv, string - not representable as v1 streaming ingest formats
-          throw new UnsupportedOperationException(s"$other not convertable to a StreamedRecordFormat")
+          Failure(new UnsupportedOperationException(s"$other not convertable to a StreamedRecordFormat"))
       }
 
-      def asV1FileIngestFormat(format: IngestFormat): FileIngestFormat = format match {
-        case JsonIngestFormat => FileIngestFormat.CypherJson(query, parameter)
+      def asV1FileIngestFormat(format: IngestFormat): Try[FileIngestFormat] = format match {
+        case JsonIngestFormat => Success(FileIngestFormat.CypherJson(query, parameter))
         case CsvIngestFormat(headers, delimiter, quoteChar, escapeChar) =>
-          FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar)
-        case StringIngestFormat => FileIngestFormat.CypherLine(query, parameter)
+          Success(FileIngestFormat.CypherCsv(query, parameter, headers, delimiter, quoteChar, escapeChar))
+        case StringIngestFormat => Success(FileIngestFormat.CypherLine(query, parameter))
         case other => //protobuf, raw, drop - not representable as v1 file ingest formats
-          throw new UnsupportedOperationException(s"$other not convertable to a FileIngestFormat")
+          Failure(new UnsupportedOperationException(s"$other not convertable to a FileIngestFormat"))
       }
 
-      source match {
+      val tryConfig: Try[IngestStreamConfiguration] = source match {
         case V2FileIngest(path, fileIngestMode, maximumLineSize, startOffset, limit, charset, _) =>
-          V1FileIngest(
-            asV1FileIngestFormat(format),
-            path,
-            charset.name(),
-            parallelism,
-            maximumLineSize.getOrElse(Integer.MAX_VALUE),
-            startOffset,
-            limit,
-            maxPerSecond,
-            fileIngestMode,
-          )
+          asV1FileIngestFormat(format).map { fmt =>
+            V1FileIngest(
+              fmt,
+              path,
+              charset.name(),
+              parallelism,
+              maximumLineSize.getOrElse(Integer.MAX_VALUE),
+              startOffset,
+              limit,
+              maxPerSecond,
+              fileIngestMode,
+            )
+          }
         case V2S3Ingest(bucket, key, credentials, maximumLineSize, startOffset, limit, charset, _) =>
           // last param recordDecoders unsupported in V1
-          V1S3Ingest(
-            asV1FileIngestFormat(format),
-            bucket,
-            key,
-            charset.name(),
-            parallelism,
-            credentials,
-            maximumLineSize.getOrElse(Integer.MAX_VALUE),
-            startOffset,
-            limit,
-            maxPerSecond,
-          )
+          asV1FileIngestFormat(format).map { fmt =>
+            V1S3Ingest(
+              fmt,
+              bucket,
+              key,
+              charset.name(),
+              parallelism,
+              credentials,
+              maximumLineSize.getOrElse(Integer.MAX_VALUE),
+              startOffset,
+              limit,
+              maxPerSecond,
+            )
+          }
         case V2StdInputIngest(maximumLineSize, characterEncoding) =>
-          StandardInputIngest(
-            asV1FileIngestFormat(format),
-            characterEncoding.name(),
-            parallelism,
-            maximumLineSize.getOrElse(Integer.MAX_VALUE),
-            maxPerSecond,
-          )
+          asV1FileIngestFormat(format).map { fmt =>
+            StandardInputIngest(
+              fmt,
+              characterEncoding.name(),
+              parallelism,
+              maximumLineSize.getOrElse(Integer.MAX_VALUE),
+              maxPerSecond,
+            )
+          }
         case V2NumberIteratorIngest(startOffset, limit) =>
-          V1NumberIteratorIngest(asV1FileIngestFormat(format), startOffset, limit, maxPerSecond, parallelism)
+          asV1FileIngestFormat(format).map { fmt =>
+            V1NumberIteratorIngest(fmt, startOffset, limit, maxPerSecond, parallelism)
+          }
         case V2WebsocketIngest(url, initMessages, keepAlive, charset) =>
-          WebsocketSimpleStartupIngest(
-            asV1StreamedRecordFormat(format),
-            url,
-            initMessages,
-            keepAlive,
-            parallelism,
-            charset.name(),
-          )
+          asV1StreamedRecordFormat(format).map { fmt =>
+            WebsocketSimpleStartupIngest(
+              fmt,
+              url,
+              initMessages,
+              keepAlive,
+              parallelism,
+              charset.name(),
+            )
+          }
         case V2KinesisIngest(streamName, shardIds, credentials, region, iteratorType, numRetries, recordDecoders) =>
           //Note V1 checkpoint settings don't appear to be used.
-          val optionKinesisCheckpointSettings = None
-          V1KinesisIngest(
-            asV1StreamedRecordFormat(format),
-            streamName,
-            shardIds,
-            parallelism,
-            credentials,
-            region,
-            iteratorType,
-            numRetries,
-            maxPerSecond,
-            recordDecoders,
-            optionKinesisCheckpointSettings,
-          )
+          asV1StreamedRecordFormat(format).map { fmt =>
+            val optionKinesisCheckpointSettings = None
+            V1KinesisIngest(
+              fmt,
+              streamName,
+              shardIds,
+              parallelism,
+              credentials,
+              region,
+              iteratorType,
+              numRetries,
+              maxPerSecond,
+              recordDecoders,
+              optionKinesisCheckpointSettings,
+            )
+          }
         case V2ServerSentEventIngest(url, recordDecoders) =>
-          ServerSentEventsIngest(asV1StreamedRecordFormat(format), url, parallelism, maxPerSecond, recordDecoders)
+          asV1StreamedRecordFormat(format).map { fmt =>
+            ServerSentEventsIngest(fmt, url, parallelism, maxPerSecond, recordDecoders)
+          }
         case V2SQSIngest(
               queueUrl,
               readParallelism,
@@ -323,17 +342,19 @@ object V2IngestEntities {
               deleteReadMessages,
               recordDecoders,
             ) =>
-          SQSIngest(
-            asV1StreamedRecordFormat(format),
-            queueUrl,
-            readParallelism,
-            writeParallelism,
-            credentials,
-            region,
-            deleteReadMessages,
-            maxPerSecond,
-            recordDecoders,
-          )
+          asV1StreamedRecordFormat(format).map { fmt =>
+            SQSIngest(
+              fmt,
+              queueUrl,
+              readParallelism,
+              writeParallelism,
+              credentials,
+              region,
+              deleteReadMessages,
+              maxPerSecond,
+              recordDecoders,
+            )
+          }
         case V2KafkaIngest(
               topics,
               bootstrapServers,
@@ -345,21 +366,44 @@ object V2IngestEntities {
               endingOffset,
               recordDecoders,
             ) =>
-          KafkaIngest(
-            asV1StreamedRecordFormat(format),
-            topics,
-            parallelism,
-            bootstrapServers,
-            groupId,
-            securityProtocol,
-            offsetCommitting,
-            autoOffsetReset,
-            kafkaProperties,
-            endingOffset,
-            maxPerSecond,
-            recordDecoders,
+          asV1StreamedRecordFormat(format).map { fmt =>
+            KafkaIngest(
+              fmt,
+              topics,
+              parallelism,
+              bootstrapServers,
+              groupId,
+              securityProtocol,
+              offsetCommitting,
+              autoOffsetReset,
+              kafkaProperties,
+              endingOffset,
+              maxPerSecond,
+              recordDecoders,
+            )
+          }
+      }
+      tryConfig match {
+        case Success(v1Config) => v1Config
+        case Failure(_) =>
+          /*
+          Note: This value is only here in the case that we're trying to render v2 ingests in the v1 api where we
+          need to convert them to the v1 format. In these cases if we've created a v2 ingest that's not render-able
+          as a v1 configuration this returns an empty placeholder object so that the api doesn't throw a 500.
+
+          Note that creating this situation is only possible by creating an ingest in the v2 api and then trying
+          to view it via the v1 api.
+           */
+          logger.warn(log"Could not render  ${Safe(this.toString)} as a v1 ingest")
+          StandardInputIngest(
+            FileIngestFormat.CypherLine("Unrenderable", "Unrenderable"),
+            "UTF-8",
+            0,
+            0,
+            None,
           )
       }
+
     }
   }
 
