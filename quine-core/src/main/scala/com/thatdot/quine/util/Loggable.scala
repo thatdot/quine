@@ -382,7 +382,9 @@ object Log {
     implicit val LogSqResultLike: Loggable[SqResultLike] = toStringLoggable[SqResultLike]
     implicit val LogMultipleValuesStandingQueryPartId: AlwaysSafeLoggable[MultipleValuesStandingQueryPartId] =
       Loggable.alwaysSafe[MultipleValuesStandingQueryPartId](_.toString)
-    implicit val LogActorRef: Loggable[ActorRef] = toStringLoggable[ActorRef]
+    implicit val LogActorRef: AlwaysSafeLoggable[ActorRef] =
+      // not just _.toString because ActorRefs can be null (notably, ActorRef.noSender)
+      String.valueOf(_)
     implicit val LogSymbol: Loggable[Symbol] = toStringLoggable[Symbol]
     implicit val LogVersion: AlwaysSafeLoggable[com.thatdot.quine.persistor.Version] =
       Loggable.alwaysSafe[com.thatdot.quine.persistor.Version](_.toString)
