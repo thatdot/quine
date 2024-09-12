@@ -97,6 +97,11 @@ private[graph] class NodeActor(
 
   { // here be the side-effects performed by the constructor
 
+    // initialize relevant histograms
+    metrics.nodeEdgesCounter(namespace).bucketContaining(edges.size).inc()
+    metrics.nodePropertyCounter(namespace).bucketContaining(properties.size).inc()
+
+    // replay journal
     initialJournal foreach {
       case event: PropertyEvent => applyPropertyEffect(event)
       case event: EdgeEvent => edges.updateEdgeCollection(event)

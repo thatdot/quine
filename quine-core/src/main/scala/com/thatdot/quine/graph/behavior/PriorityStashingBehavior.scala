@@ -56,11 +56,11 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
   def enqueueCallback(callback: Pending[_]): Unit =
     pendingCallbacks.append(callback)
 
-  def addResultToCallback[A](findId: Int, result: Try[A], isResultSafe: Boolean): Unit =
+  def addResultToCallback[A](findId: Int, result: Try[A], isResultLogSafe: Boolean): Unit =
     pendingCallbacks.indexWhere(_.id == findId) match {
       case -1 =>
         log.warn(
-          log"Received a result on node: ${Safe(qid.pretty)} for unknown callback ID: ${Safe(findId)}. Result was ${if (isResultSafe) Safe(result.toString)
+          log"Received a result on node: ${Safe(qid.pretty)} for unknown callback ID: ${Safe(findId)}. Result was ${if (isResultLogSafe) Safe(result.toString)
           else result.toString}",
         )
       case i =>
@@ -126,7 +126,7 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
   final protected def pauseMessageProcessingUntil[A](
     until: Future[A],
     onComplete: Try[A] => Unit,
-    isResultSafe: Boolean,
+    isResultLogSafe: Boolean,
   ): Future[Unit] = if (until.isCompleted && pendingCallbacks.isEmpty) {
     // If the future is already completed and no other callbacks are enqueued ahead of it, apply effects immediately
     Future.successful(onComplete(until.value.get))
@@ -152,7 +152,7 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
             log.trace(
               log"Result delivery for: ${Safe(id)} with payload: ${result.toString} on node: ${Safe(qid.pretty)}",
             )
-            addResultToCallback(id, result, isResultSafe)
+            addResultToCallback(id, result, isResultLogSafe)
             // Every time a result is delivered, iterate through zero or more results to apply callback effects.
             processReadyCallbacks()
 

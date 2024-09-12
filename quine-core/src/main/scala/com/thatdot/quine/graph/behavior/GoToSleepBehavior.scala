@@ -14,6 +14,7 @@ import org.apache.pekko
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
+import com.thatdot.quine.graph.edges.EdgeProcessor
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig}
@@ -21,6 +22,8 @@ import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
+
+  protected def edges: EdgeProcessor
 
   protected def persistenceConfig: PersistenceConfig
 
@@ -73,8 +76,11 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       // promise tracking updates to shard in-memory map of nodes (completed by the shard)
       val shardPromise = Promise[Unit]()
 
-      def reportSleepSuccess(qidAtTime: SpaceTimeQuineId): Unit =
+      def reportSleepSuccess(qidAtTime: SpaceTimeQuineId): Unit = {
+        metrics.nodePropertyCounter(namespace).bucketContaining(properties.size).dec()
+        edges.onSleep()
         shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
+      }
 
       // Transition out of a `ConsideringSleep` state (if it is still state)
 

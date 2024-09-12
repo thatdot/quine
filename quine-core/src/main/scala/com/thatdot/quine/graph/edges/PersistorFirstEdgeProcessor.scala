@@ -33,7 +33,7 @@ class PersistorFirstEdgeProcessor(
         case Success(_) =>
           // Instead of unwrapping the WithTimes here, maybe just take the raw EdgeEvents and () => EventTime here, and only wrap them on the line above?
           val events = effectingEvents.toList
-          events.foreach(applyEdgeEffect)
+          events.foreach(updateEdgeCollection)
           updateSnapshotTimestamp()
           runPostActions(events)
         case Failure(err) =>

@@ -54,7 +54,7 @@ class MemoryFirstEdgeProcessor(
           },
         )(nodeDispatcher)
 
-    effectingEvents.toList.foreach(applyEdgeEffect)
+    effectingEvents.toList.foreach(updateEdgeCollection)
     updateSnapshotTimestamp()
     runPostActions(effectingEvents.toList)
 

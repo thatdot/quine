@@ -12,6 +12,11 @@ import com.thatdot.quine.util.Log.implicits._
 
 //abstract class DontCareWrapper(edges: AbstractEdgeCollectionView[F forSome { type F[_] }, S forSome { type S[_] }])
 //    extends EdgeProcessor(edges)
+
+/** A processor for edge events that can be applied to a node.
+  * Responsible for maintaining the node's edge collection and derived metadata such as metrics and cost to sleep, when
+  * affected by a change to the state of edges.
+  */
 abstract class EdgeProcessor(
   edges: AbstractEdgeCollectionView,
 ) extends EdgeCollectionView {
@@ -34,8 +39,7 @@ abstract class EdgeProcessor(
     atTime: () => EventTime,
   )(implicit logConfig: LogConfig): Future[Unit]
 
-  /** Apply a single edge event to the edge collection without causing any other side effects (SQs, metrics
-    * upkeep, etc).
+  /** Apply a single edge event to the edge collection without triggering standing queries
     */
   def updateEdgeCollection(event: EdgeEvent)(implicit logConfig: LogConfig): Unit
 
@@ -75,6 +79,11 @@ abstract class EdgeProcessor(
 
   def hasUniqueGenEdges(requiredEdges: Set[DomainEdge], thisQid: QuineId): Boolean =
     toSyncFuture(edges.hasUniqueGenEdges(requiredEdges))
+
+  /** Callback for actions to be performed when the node successfully goes to sleep. May be called from any thread.
+    * The implementation should update any relevant metrics to reflect the node's sleep state.
+    */
+  def onSleep(): Unit
 }
 
 abstract class SynchronousEdgeProcessor(
@@ -107,29 +116,25 @@ abstract class SynchronousEdgeProcessor(
       case None => Future.unit
     }
 
-  def updateEdgeCollection(event: EdgeEvent)(implicit logConfig: LogConfig): Unit = event match {
-    case EdgeEvent.EdgeAdded(edge) =>
-      edgeCollection.addEdge(edge)
-    case EdgeEvent.EdgeRemoved(edge) =>
-      edgeCollection.removeEdge(edge)
-  }
+  def updateEdgeCollection(event: EdgeEvent)(implicit logConfig: LogConfig): Unit = {
 
-  /** Apply all effects (see [[processEdgeEvents]]) of a single edge event
-    */
-  protected[this] def applyEdgeEffect(event: EdgeEvent): Unit = {
-    val oldSize = edgeCollection.size.toInt
-    updateEdgeCollection(event)
+    val oldSize = edgeCollection.size
     event match {
-      case EdgeEvent.EdgeAdded(_) =>
+      case EdgeEvent.EdgeAdded(edge) =>
+        edgeCollection.addEdge(edge)
         if (oldSize > 7 && isPowerOfTwo(oldSize)) costToSleep.incrementAndGet()
 
         val edgeCollectionSizeWarningInterval = 10000
         if ((oldSize + 1) % edgeCollectionSizeWarningInterval == 0)
           logger.warn(log"Node ${Safe(qid.pretty)} has: ${Safe(oldSize + 1)} edges")
         nodeEdgesCounter.increment(previousCount = oldSize)
-      case EdgeEvent.EdgeRemoved(_) =>
+      case EdgeEvent.EdgeRemoved(edge) =>
+        edgeCollection.removeEdge(edge)
         nodeEdgesCounter.decrement(previousCount = oldSize)
     }
   }
+
+  final def onSleep(): Unit =
+    nodeEdgesCounter.bucketContaining(edgeCollection.size).dec()
 
 }
