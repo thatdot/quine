@@ -11,6 +11,7 @@ import org.apache.pekko.{Done, NotUsed}
 import com.codahale.metrics.{Counter, Meter}
 
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._

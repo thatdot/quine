@@ -15,6 +15,7 @@ import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import com.thatdot.quine.graph.edges.{ReverseOrderedEdgeCollection, SyncEdgeCollection}
 import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace}
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PrimePersistor}
 import com.thatdot.quine.util.Log._

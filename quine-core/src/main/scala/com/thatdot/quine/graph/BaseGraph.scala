@@ -25,6 +25,7 @@ import com.thatdot.quine.graph.messaging.{
   ShardRef,
   SpaceTimeQuineId,
 }
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
 import com.thatdot.quine.util.Log._

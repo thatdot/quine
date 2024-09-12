@@ -43,6 +43,8 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   SqStateResults,
 }
 import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdOps, QuineRefOps, SpaceTimeQuineId}
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}

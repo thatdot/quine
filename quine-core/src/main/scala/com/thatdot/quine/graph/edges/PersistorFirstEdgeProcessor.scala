@@ -6,7 +6,8 @@ import scala.util.{Failure, Success, Try}
 import cats.data.NonEmptyList
 
 import com.thatdot.quine.graph.NodeEvent.WithTime
-import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime, NodeChangeEvent, NodeEvent}
+import com.thatdot.quine.graph.metrics.BinaryHistogramCounter
+import com.thatdot.quine.graph.{CostToSleep, EdgeEvent, EventTime, NodeChangeEvent, NodeEvent}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._

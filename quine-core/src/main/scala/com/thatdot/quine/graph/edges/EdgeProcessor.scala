@@ -5,7 +5,8 @@ import scala.concurrent.Future
 import cats.data.NonEmptyList
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
-import com.thatdot.quine.graph.{BinaryHistogramCounter, CostToSleep, EdgeEvent, EventTime}
+import com.thatdot.quine.graph.metrics.BinaryHistogramCounter
+import com.thatdot.quine.graph.{CostToSleep, EdgeEvent, EventTime}
 import com.thatdot.quine.model._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._

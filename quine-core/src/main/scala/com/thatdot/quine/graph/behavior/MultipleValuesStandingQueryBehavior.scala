@@ -29,6 +29,7 @@ import com.thatdot.quine.graph.messaging.StandingQueryMessage.{
   UpdateStandingQueriesWake,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
+import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{
   BaseNodeActor,
   MultipleValuesStandingQueryPartId,
@@ -36,7 +37,6 @@ import com.thatdot.quine.graph.{
   RunningStandingQuery,
   StandingQueryId,
   StandingQueryPattern,
-  TimeFuture,
   WatchableEventType,
   cypher,
 }

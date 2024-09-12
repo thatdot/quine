@@ -16,7 +16,7 @@ import com.google.common.cache.{Cache, CacheBuilder}
 import com.typesafe.config.{Config => TypesafeConfig, ConfigException, ConfigRenderOptions}
 import pureconfig.ConfigWriter
 
-import com.thatdot.quine.graph.HostQuineMetrics
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 

@@ -13,7 +13,8 @@ import com.typesafe.config.Config
 
 import com.thatdot.quine.graph.behavior.StashedMessage
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.CancelDomainNodeSubscription
-import com.thatdot.quine.graph.{BinaryHistogramCounter, GoToSleep, HostQuineMetrics, ProcessMessages, WakeUp}
+import com.thatdot.quine.graph.metrics.{BinaryHistogramCounter, HostQuineMetrics}
+import com.thatdot.quine.graph.{GoToSleep, ProcessMessages, WakeUp}
 
 /** Mailbox used for node actors
   *

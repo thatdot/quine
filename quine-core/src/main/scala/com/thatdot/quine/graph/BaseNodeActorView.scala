@@ -5,6 +5,7 @@ import org.apache.pekko.stream.Materializer
 
 import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 
 /** Read-only view of a node actor */

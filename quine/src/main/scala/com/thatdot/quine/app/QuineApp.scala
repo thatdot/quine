@@ -32,9 +32,9 @@ import com.thatdot.quine.graph.StandingQueryPattern.{
   MultipleValuesQueryPattern,
   QuinePatternQueryPattern,
 }
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.{
   GraphService,
-  HostQuineMetrics,
   MemberIdx,
   NamespaceId,
   PatternOrigin,
