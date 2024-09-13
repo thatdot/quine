@@ -9,15 +9,10 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Endpoint, EndpointInput, Schema, path}
 
 import com.thatdot.quine.app.v2api.definitions._
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.routes.{
-  IngestStreamConfiguration,
-  IngestStreamInfo,
-  IngestStreamInfoWithName,
-  IngestStreamStatus,
-}
-
-trait V2IngestEndpoints extends V2EndpointDefinitions {
+import com.thatdot.quine.routes.{IngestStreamInfo, IngestStreamInfoWithName, IngestStreamStatus}
+trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas {
 
   implicit val ingestStreamStatusEncoder: Encoder[IngestStreamStatus] = Encoder.encodeString.contramap(_.toString)
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
@@ -42,13 +37,13 @@ trait V2IngestEndpoints extends V2EndpointDefinitions {
                    |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[IngestStreamConfiguration])
+    .in(jsonOrYamlBody[V2IngestConfiguration])
     .post
     .serverLogic { case (memberIdx, ingestStreamName, ns, ingestStreamConfig) =>
-      runServerLogicWithError[(String, NamespaceId, IngestStreamConfiguration), Unit](
+      runServerLogicWithError[(String, V2IngestConfiguration, NamespaceId), Unit](
         CreateIngestApiCmd,
         memberIdx,
-        (ingestStreamName, namespaceFromParam(ns), ingestStreamConfig),
+        (ingestStreamName, ingestStreamConfig, namespaceFromParam(ns)),
         t => Future.successful(app.createIngestStream(t._1, t._2, t._3)),
       )
     }

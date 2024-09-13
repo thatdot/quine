@@ -6,6 +6,8 @@ import scala.util.Try
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.IngestConfiguration
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
@@ -47,6 +49,13 @@ case object QuineDropIngestQuery extends QuineIngestQuery {
 }
 
 object QuineValueIngestQuery extends LazyLogging {
+
+  def apply(config: IngestConfiguration, graph: CypherOpsGraph, namespaceId: NamespaceId)(implicit
+    logConfig: LogConfig,
+  ): QuineIngestQuery = config.format match {
+    case V2IngestEntities.DropFormat => QuineDropIngestQuery
+    case _ => QuineValueIngestQuery.build(graph, config.query, config.parameter, namespaceId).get
+  }
 
   def apply(
     config: IngestStreamConfiguration,

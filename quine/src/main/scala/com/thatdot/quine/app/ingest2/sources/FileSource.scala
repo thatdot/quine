@@ -13,7 +13,7 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest.NamedPipeSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
-import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, JsonDecoder}
+import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
@@ -50,7 +50,7 @@ case class FramedFileSource(
       .via(boundingFlow(ingestBounds))
       .via(metered(ingestMeter, _.size))
 
-  def framedSource: FramedSource =
+  private def framedSource: FramedSource =
     new FramedSource {
 
       type SrcFrame = ByteString
@@ -60,6 +60,9 @@ case class FramedFileSource(
       def content(input: SrcFrame): Array[Byte] = input.toArrayUnsafe()
 
     }
+
+  def decodedSource[A](decoder: FrameDecoder[A]): DecodedSource = framedSource.toDecoded(decoder)
+
 }
 
 object FileSource extends LazyLogging {
@@ -94,7 +97,7 @@ object FileSource extends LazyLogging {
           bounds,
           decoders,
           meter,
-        ).framedSource.toDecoded(CypherStringDecoder)
+        ).decodedSource(CypherStringDecoder)
       case _: CypherJson =>
         FramedFileSource(
           fileSource,
@@ -103,7 +106,8 @@ object FileSource extends LazyLogging {
           bounds,
           decoders,
           meter,
-        ).framedSource.toDecoded(JsonDecoder)
+        ).decodedSource(JsonDecoder)
+
       case CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
           fileSource,

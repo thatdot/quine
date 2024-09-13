@@ -9,6 +9,7 @@ import org.apache.pekko.util.ByteString
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
+import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestFormat
 
@@ -20,15 +21,8 @@ case class StandardInputSource(
   decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
-  val meteredDecompressedSource: Source[ByteString, NotUsed] =
-    StreamConverters
-      .fromInputStream(() => System.in)
-      .mapMaterializedValue(_ => NotUsed)
-      .via(metered(meter, _.size))
-      .via(decompressingFlow(decoders))
-
   def decodedSource: DecodedSource = decodedSourceFromFileStream(
-    meteredDecompressedSource,
+    stdInSource,
     format,
     charset,
     maximumLineSize,
@@ -37,4 +31,11 @@ case class StandardInputSource(
     decoders,
   )
 
+}
+
+object StandardInputSource {
+  def stdInSource: Source[ByteString, NotUsed] =
+    StreamConverters
+      .fromInputStream(() => System.in)
+      .mapMaterializedValue(_ => NotUsed)
 }

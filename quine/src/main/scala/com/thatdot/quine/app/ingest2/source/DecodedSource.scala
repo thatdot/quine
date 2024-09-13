@@ -16,6 +16,8 @@ import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
+import com.thatdot.quine.app.ingest2.sources.S3Source.s3Source
+import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
@@ -216,8 +218,8 @@ object DecodedSource extends LazySafeLogging {
           maximumLineSize,
           IngestBounds(startAtOffset, ingestLimit),
           meter,
-          Seq(),
-        ) //compression not yet supported
+          Seq(), // V1 file ingest does not define recordDecoders
+        )
 
       case S3Ingest(
             format,
@@ -303,7 +305,8 @@ object DecodedSource extends LazySafeLogging {
           deleteReadMessages,
           meter,
           recordEncodings.map(ContentDecoder(_)),
-        ).framedSource.toDecoded(FrameDecoder(format))
+        ).framedSource
+          .toDecoded(FrameDecoder(format))
 
       case ServerSentEventsIngest(
             format,
@@ -328,4 +331,108 @@ object DecodedSource extends LazySafeLogging {
     }
   }
 
+  import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
+
+  //V2 configuration
+  def apply(src: FramedSource, format: IngestFormat)(implicit protobufCache: ProtobufSchemaCache): DecodedSource =
+    src.toDecoded(FrameDecoder(format))
+
+  def apply(
+    name: String,
+    config: IngestConfiguration,
+    meter: IngestMeter,
+    system: ActorSystem,
+  )(implicit protobufCache: ProtobufSchemaCache, ec: ExecutionContext, logConfig: LogConfig): DecodedSource =
+    config.source match {
+      case FileIngest(path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
+        FileSource.decodedSourceFromFileStream(
+          FileSource.srcFromIngest(path, mode),
+          config.format.asInstanceOf[FileIngestFormat], //TODO
+          charset,
+          maximumLineSize.getOrElse(1000000), //TODO
+          IngestBounds(startOffset, limit),
+          meter,
+          recordDecoders.map(ContentDecoder(_)),
+        )
+
+      case StdInputIngest(maximumLineSize, charset) =>
+        FileSource.decodedSourceFromFileStream(
+          stdInSource,
+          config.format.asInstanceOf[FileIngestFormat], //TODO
+          charset,
+          maximumLineSize.getOrElse(1000000), //TODO
+          IngestBounds(),
+          meter,
+          Seq(),
+        )
+
+      case S3Ingest(bucketName, key, creds, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
+        FileSource.decodedSourceFromFileStream(
+          s3Source(bucketName, key, creds)(system),
+          config.format.asInstanceOf[FileIngestFormat],
+          charset,
+          maximumLineSize.getOrElse(1000000), //TODO
+          IngestBounds(startOffset, limit),
+          meter,
+          recordDecoders.map(ContentDecoder(_)),
+        )
+
+      case NumberIteratorIngest(startAtOffset, ingestLimit) =>
+        NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource
+
+      case WebsocketIngest(wsUrl, initMessages, keepAliveProtocol, charset) =>
+        WebsocketSource(wsUrl, initMessages, keepAliveProtocol, charset, meter)(system).framedSource
+          .toDecoded(FrameDecoder(config.format))
+
+      case KinesisIngest(streamName, shardIds, creds, region, iteratorType, numRetries, recordDecoders) =>
+        KinesisSource(
+          streamName,
+          shardIds,
+          creds,
+          region,
+          iteratorType,
+          numRetries, //TODO not currently supported
+          meter,
+          recordDecoders.map(ContentDecoder(_)),
+        ).framedSource.toDecoded(FrameDecoder(config.format))
+
+      case ServerSentEventIngest(url, recordDecoders) =>
+        ServerSentEventSource(url, meter, recordDecoders.map(ContentDecoder(_)))(system).framedSource
+          .toDecoded(FrameDecoder(config.format))
+
+      case SQSIngest(queueUrl, readParallelism, credentialsOpt, regionOpt, deleteReadMessages, recordDecoders) =>
+        SqsSource(
+          queueUrl,
+          readParallelism,
+          credentialsOpt,
+          regionOpt,
+          deleteReadMessages,
+          meter,
+          recordDecoders.map(ContentDecoder(_)),
+        ).framedSource.toDecoded(FrameDecoder(config.format))
+      case KafkaIngest(
+            topics,
+            bootstrapServers,
+            groupId,
+            securityProtocol,
+            maybeExplicitCommit,
+            autoOffsetReset,
+            kafkaProperties,
+            endingOffset,
+            recordDecoders,
+          ) =>
+        KafkaSource(
+          topics,
+          bootstrapServers,
+          groupId.getOrElse(name),
+          securityProtocol,
+          maybeExplicitCommit,
+          autoOffsetReset,
+          kafkaProperties,
+          endingOffset,
+          recordDecoders.map(ContentDecoder(_)),
+          meter,
+          system,
+        ).framedSource.toDecoded(FrameDecoder(config.format))
+    }
 }

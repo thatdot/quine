@@ -23,6 +23,7 @@ import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.ingest2.source.DecodedSource
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
@@ -496,6 +497,52 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
       }
     })
   }
+
+  def addV2IngestStream(
+    name: String,
+    settings: V2IngestConfiguration,
+    intoNamespace: NamespaceId,
+    previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
+    shouldResumeRestoredIngests: Boolean,
+    timeout: Timeout,
+    shouldSaveMetadata: Boolean = true,
+    memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
+  )(implicit logConfig: LogConfig): Try[Boolean] =
+    failIfNoNamespace(intoNamespace) {
+
+      blocking(ingestStreamsLock.synchronized {
+
+        val meter = IngestMetered.ingestMeter(intoNamespace, name)
+        val metrics = IngestMetrics(Instant.now, None, meter)
+
+        val trySource: Try[QuineIngestSource] = createV2IngestSource(
+          name,
+          settings,
+          intoNamespace,
+          previousStatus,
+          shouldResumeRestoredIngests,
+          metrics,
+          meter,
+          graph,
+        )(protobufSchemaCache, logConfig)
+
+        trySource.map { quineIngestSrc =>
+          val streamSource = quineIngestSrc.stream(
+            intoNamespace,
+            registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
+          )
+          graph.masterStream.addIngestSrc(streamSource)
+
+          if (shouldSaveMetadata)
+            Await.result(
+              syncIngestStreamsMetaData(thisMemberIdx),
+              timeout.duration,
+            )
+
+          true
+        }
+      })
+    }
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
     if (getNamespaces.contains(namespace))

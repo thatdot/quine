@@ -25,8 +25,8 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, NamespaceNotFoundException}
-import com.thatdot.quine.graph.EventTime.logConfig
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   AlgorithmGraph,
@@ -43,6 +43,7 @@ import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineId, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model}
 
@@ -51,6 +52,8 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
   val graph: BaseGraph with LiteralOpsGraph with StandingQueryOpsGraph with CypherOpsGraph with AlgorithmGraph
 
   implicit def timeout: Timeout
+
+  implicit val logConfig: LogConfig
 
   implicit def materializer: Materializer = graph.materializer
 
@@ -484,54 +487,24 @@ trait ApplicationApiInterface extends AlgorithmMethods with IngestApiMethods {
 
   def createIngestStream(
     ingestName: String,
+    settings: V2IngestConfiguration,
     namespaceId: NamespaceId,
-    ingestConfig: IngestStreamConfiguration,
-  ): Either[CustomError, Unit] = {
-
-    // return an error on failure. None on success.
-    def addSettings(
-      name: String,
-      intoNamespace: NamespaceId,
-      settings: IngestStreamConfiguration,
-    ): Either[CustomError, Unit] = quineApp.addIngestStream(
-      name,
+  ): Either[CustomError, Unit] =
+    quineApp.addV2IngestStream(
+      ingestName,
       settings,
-      intoNamespace,
-      previousStatus = None, // this ingest is being created, not restored, so it has no previous status
-      shouldResumeRestoredIngests = false,
+      namespaceId,
+      None, // this ingest is being created, not restored, so it has no previous status
+      true,
       timeout,
-      memberIdx = None,
+      true,
+      Some(thisMemberIdx),
     ) match {
+      //TODO replace with better output!
       case Success(true) => Right(())
-      case Success(false) =>
-        Left(
-          BadRequest(
-            s"Cannot create ingest stream `$name` (a stream with this name already exists)",
-          ),
-        )
-      case Failure(_: NamespaceNotFoundException) => Left(NotFound(""))
-      case Failure(err) => Left(BadRequest(s"Failed to create ingest stream `$name`: ${err.getMessage}"))
+      case Success(false) => Left(BadRequest("SOme kind of failure"))
+      case Failure(e) => Left(ServerError(e.getMessage))
     }
-
-    graph.requiredGraphIsReady()
-    //TODO check if ingest stream already exists => 400  s"Cannot create ingest stream `$name` (a stream with this name already exists)"
-
-    ingestConfig match {
-      case kafkaSettings: KafkaIngest =>
-        KafkaSettingsValidator.validateInput(
-          kafkaSettings.kafkaProperties,
-          kafkaSettings.groupId,
-          kafkaSettings.offsetCommitting,
-        ) match {
-          case Some(errors) =>
-            Left(BadRequest(s"Cannot create ingest stream `$ingestName`: ${errors.toList.mkString(",")}"))
-
-          case None => addSettings(ingestName, namespaceId, kafkaSettings)
-        }
-      case otherSettings: IngestStreamConfiguration =>
-        addSettings(ingestName, namespaceId, otherSettings)
-    }
-  }
 
   def deleteIngestStream(ingestName: String, namespaceId: NamespaceId): Future[Option[IngestStreamInfoWithName]] =
     graph.requiredGraphIsReadyFuture {

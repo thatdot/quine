@@ -2,12 +2,10 @@ package com.thatdot.quine.app.ingest2.sources
 
 import java.nio.charset.Charset
 
-import scala.concurrent.Future
-
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.connectors.s3.scaladsl.S3
-import org.apache.pekko.stream.connectors.s3.{ObjectMetadata, S3Attributes, S3Ext, S3Settings}
+import org.apache.pekko.stream.connectors.s3.{S3Attributes, S3Ext, S3Settings}
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 
@@ -29,19 +27,10 @@ case class S3Source(
   meter: IngestMeter,
   decoders: Seq[ContentDecoder] = Seq(),
 )(implicit system: ActorSystem) {
-  val src: Source[ByteString, Future[ObjectMetadata]] = credentials match {
-    case None =>
-      S3.getObject(bucket, key)
-    case creds @ Some(_) =>
-      val settings: S3Settings =
-        S3Ext(system).settings.withCredentialsProvider(AwsOps.staticCredentialsProvider(creds))
-      val attributes = S3Attributes.settings(settings)
-      S3.getObject(bucket, key).withAttributes(attributes)
-  }
 
   def decodedSource: DecodedSource =
     decodedSourceFromFileStream(
-      src.mapMaterializedValue(_ => NotUsed),
+      S3Source.s3Source(bucket, key, credentials),
       format,
       charset,
       maximumLineSize,
@@ -50,4 +39,23 @@ case class S3Source(
       decoders,
     )
 
+}
+
+object S3Source {
+
+  def s3Source(bucket: String, key: String, credentials: Option[AwsCredentials])(implicit
+    system: ActorSystem,
+  ): Source[ByteString, NotUsed] = {
+    val src = credentials match {
+      case None =>
+        S3.getObject(bucket, key)
+      case creds @ Some(_) =>
+        // TODO: See example: https://stackoverflow.com/questions/61938052/alpakka-s3-connection-issue
+        val settings: S3Settings =
+          S3Ext(system).settings.withCredentialsProvider(AwsOps.staticCredentialsProvider(creds))
+        val attributes = S3Attributes.settings(settings)
+        S3.getObject(bucket, key).withAttributes(attributes)
+    }
+    src.mapMaterializedValue(_ => NotUsed)
+  }
 }

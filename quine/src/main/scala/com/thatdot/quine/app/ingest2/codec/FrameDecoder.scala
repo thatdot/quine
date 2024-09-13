@@ -15,6 +15,8 @@ import org.apache.commons.csv.CSVFormat
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestFormat => V2IngestFormat}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
@@ -129,6 +131,28 @@ case class CsvMapDecoder(
 
 }
 object FrameDecoder {
+
+  def apply(format: V2IngestFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] = format match {
+    case V2IngestEntities.JsonIngestFormat => JsonDecoder
+    case V2IngestEntities.CsvIngestFormat(headers, delimiter, quote, escape) =>
+      headers match {
+        case Left(false) => CsvVecDecoder(delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // no headers
+        case Left(true) =>
+          CsvMapDecoder(None, delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // first line as header
+        case Right(values) =>
+          CsvMapDecoder(
+            Some(values),
+            delimiter.byte.toChar,
+            quote.byte.toChar,
+            escape.byte.toChar,
+          ) // map values provided
+      }
+    case V2IngestEntities.StringIngestFormat => CypherStringDecoder
+    case V2IngestEntities.ProtobufIngestFormat(schemaUrl, typeName) =>
+      ProtobufDecoder("query TBD", "paramter TBD", schemaUrl, typeName) //Query,Parameter tbd
+    case V2IngestEntities.RawIngestFormat => CypherRawDecoder
+    case V2IngestEntities.DropFormat => DropDecoder
+  }
 
   def apply(format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
     format match {

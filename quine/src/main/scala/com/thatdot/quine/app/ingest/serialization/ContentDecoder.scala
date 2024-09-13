@@ -46,7 +46,7 @@ object ContentDecoder {
       finally is.close()
     }
     override def encode(bytes: Array[Byte]): Array[Byte] = {
-      val out = new ByteArrayOutputStream(bytes.length);
+      val out = new ByteArrayOutputStream(bytes.length)
       val gzOut = new GZIPOutputStream(out)
       gzOut.write(bytes)
       gzOut.close()
@@ -64,7 +64,7 @@ object ContentDecoder {
       finally is.close()
     }
     override def encode(bytes: Array[Byte]): Array[Byte] = {
-      val out = new ByteArrayOutputStream();
+      val out = new ByteArrayOutputStream()
       val zOut = new InflaterOutputStream(out)
       zOut.write(bytes)
       zOut.flush()
@@ -76,6 +76,7 @@ object ContentDecoder {
     def encoderFlow: Flow[ByteString, ByteString, NotUsed] = Coders.Deflate.encoderFlow
   }
 
+  /** V1 entities. */
   def apply(encodingType: RecordDecodingType): ContentDecoder = encodingType match {
     case RecordDecodingType.Base64 => Base64Decoder
     case RecordDecodingType.Gzip => GzipDecoder
