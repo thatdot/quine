@@ -21,6 +21,12 @@ import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
+  CsvIngestFormat,
+  IngestFormat,
+  JsonIngestFormat,
+  StringIngestFormat,
+}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
@@ -164,6 +170,14 @@ object DecodedSource extends LazySafeLogging {
       .valid
   }
 
+  def asV2IngestFormat(format: FileIngestFormat): IngestFormat =
+    format match {
+      case FileIngestFormat.CypherLine(_, _) => StringIngestFormat
+      case FileIngestFormat.CypherJson(_, _) => JsonIngestFormat
+      case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quote, escape) =>
+        CsvIngestFormat(headers, delimiter, quote, escape)
+    }
+
   def apply(
     name: String,
     config: IngestStreamConfiguration,
@@ -213,7 +227,7 @@ object DecodedSource extends LazySafeLogging {
           ) =>
         FileSource.decodedSourceFromFileStream(
           FileSource.srcFromIngest(path, fileIngestMode),
-          format,
+          asV2IngestFormat(format),
           Charset.forName(encoding),
           maximumLineSize,
           IngestBounds(startAtOffset, ingestLimit),
@@ -234,7 +248,7 @@ object DecodedSource extends LazySafeLogging {
             _,
           ) =>
         S3Source(
-          format,
+          asV2IngestFormat(format),
           bucketName,
           key,
           credsOpt,
@@ -253,7 +267,7 @@ object DecodedSource extends LazySafeLogging {
             _,
           ) =>
         StandardInputSource(
-          format,
+          asV2IngestFormat(format),
           maximumLineSize,
           Charset.forName(encoding),
           meter,
@@ -347,7 +361,7 @@ object DecodedSource extends LazySafeLogging {
       case FileIngest(path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(
           FileSource.srcFromIngest(path, mode),
-          config.format.asInstanceOf[FileIngestFormat], //TODO
+          config.format,
           charset,
           maximumLineSize.getOrElse(1000000), //TODO
           IngestBounds(startOffset, limit),
@@ -358,7 +372,7 @@ object DecodedSource extends LazySafeLogging {
       case StdInputIngest(maximumLineSize, charset) =>
         FileSource.decodedSourceFromFileStream(
           stdInSource,
-          config.format.asInstanceOf[FileIngestFormat], //TODO
+          config.format,
           charset,
           maximumLineSize.getOrElse(1000000), //TODO
           IngestBounds(),
@@ -369,7 +383,7 @@ object DecodedSource extends LazySafeLogging {
       case S3Ingest(bucketName, key, creds, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(
           s3Source(bucketName, key, creds)(system),
-          config.format.asInstanceOf[FileIngestFormat],
+          config.format,
           charset,
           maximumLineSize.getOrElse(1000000), //TODO
           IngestBounds(startOffset, limit),

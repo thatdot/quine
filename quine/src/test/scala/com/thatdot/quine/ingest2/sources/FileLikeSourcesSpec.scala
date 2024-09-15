@@ -20,10 +20,15 @@ import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
+  CsvIngestFormat,
+  IngestFormat,
+  JsonIngestFormat,
+  StringIngestFormat,
+}
 import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{randomString, srcFromString, streamedCypherValues}
-import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
-import com.thatdot.quine.routes.{CsvCharacter, FileIngestFormat}
+import com.thatdot.quine.routes.CsvCharacter
 
 class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll {
 
@@ -45,7 +50,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
   private def generateValues(
     sample: String,
-    format: FileIngestFormat,
+    format: IngestFormat,
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
     contentDecoders: Seq[ContentDecoder] = Seq(),
@@ -68,7 +73,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
   private def generateCsvValues(
     sample: String,
-    format: CypherCsv,
+    format: CsvIngestFormat,
     bounds: IngestBounds = IngestBounds(),
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
     contentDecoders: Seq[ContentDecoder] = Seq(),
@@ -93,10 +98,8 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
   describe("CypherJson Stream") {
     val jsonSample = generateJsonSample(50)
 
-    val format = CypherJson("MATCH (p) RETURN (p)")
-
     it("reads all values") {
-      val (meter, values) = generateValues(jsonSample, format)
+      val (meter, values) = generateValues(jsonSample, JsonIngestFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -110,7 +113,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("reads all values w/o line delimiter") {
       val undelimitedSample = generateJsonSample(50, "")
-      val (meter, values) = generateValues(undelimitedSample, format)
+      val (meter, values) = generateValues(undelimitedSample, JsonIngestFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -125,7 +128,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("respects value bounds") {
       val resultCount = 11 + Random.nextInt(30)
       val bounds = IngestBounds(10, Some(resultCount.longValue()))
-      val (meter, values) = generateValues(jsonSample, format, bounds)
+      val (meter, values) = generateValues(jsonSample, JsonIngestFormat, bounds)
       values.length shouldEqual resultCount
       values.head shouldEqual Expr.Map(
         TreeMap(
@@ -140,7 +143,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses gzip,base64 decoders") {
       val (meter, values) = generateValues(
         jsonSample,
-        format,
+        JsonIngestFormat,
         contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
@@ -157,7 +160,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses zlib,base64 decoders") {
       val (meter, values) = generateValues(
         jsonSample,
-        format,
+        JsonIngestFormat,
         contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
@@ -177,11 +180,9 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
   describe("CypherLine Stream") {
     val lineSample = generateLineSample(50)
 
-    val format = CypherLine("MATCH (p) RETURN (p)")
-
     it("reads all values") {
 
-      val (meter, values) = generateValues(lineSample, format)
+      val (meter, values) = generateValues(lineSample, StringIngestFormat)
       values.length shouldEqual 50
       values.head shouldEqual Expr.Str("ABCDEFG_1")
 
@@ -192,7 +193,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("respects value bounds") {
       val resultCount = 11 + Random.nextInt(30)
       val bounds = IngestBounds(10, Some(resultCount.longValue()))
-      val (meter, values) = generateValues(lineSample, format, bounds)
+      val (meter, values) = generateValues(lineSample, StringIngestFormat, bounds)
       values.length shouldEqual resultCount
       values.head shouldEqual Expr.Str("ABCDEFG_11")
 
@@ -204,7 +205,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       val testValues = List("ABC", "ABCDEFGHIJK", "ABCDEF").mkString("\n")
       //this will generate a FramingException: "Read 8 bytes which is more than 7 without seeing a line terminator"
       val v = Try {
-        generateValues(testValues, format, maximumLineSize = 7)
+        generateValues(testValues, StringIngestFormat, maximumLineSize = 7)
       }
       v shouldBe a[Failure[_]]
     }
@@ -212,7 +213,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses gzip,base64 decoders") {
       val (meter, values) = generateValues(
         lineSample,
-        format,
+        StringIngestFormat,
         contentDecoders = Seq(ContentDecoder.GzipDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
@@ -225,7 +226,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("uses zlib,base64 decoders") {
       val (meter, values) = generateValues(
         lineSample,
-        format,
+        StringIngestFormat,
         contentDecoders = Seq(ContentDecoder.ZlibDecoder, ContentDecoder.Base64Decoder),
       )
       values.length shouldEqual 50
@@ -251,7 +252,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     it("reads a stream of values w/o headers") {
 
       val format =
-        CypherCsv("", "that", Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+        CsvIngestFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
       val (meter, values) = generateCsvValues(csvSample, format)
 
       values.length shouldEqual 3
@@ -264,7 +265,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("reads a stream of values with first line as headers") {
       val format =
-        CypherCsv("", "that", Left(true), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+        CsvIngestFormat(Left(true), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
       val (meter, values) = generateCsvValues(csvSample, format)
 
       values.length shouldEqual 2
@@ -277,9 +278,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     }
 
     it("reads a stream of values with specified headers") {
-      val format = CypherCsv(
-        "",
-        "that",
+      val format = CsvIngestFormat(
         Right(List("X", "Y", "Z")),
         CsvCharacter.Comma,
         CsvCharacter.DoubleQuote,
@@ -297,7 +296,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("respects value bounds") {
       val format =
-        CypherCsv("", "that", Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+        CsvIngestFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
 
       val bounds = IngestBounds(1, Some(1L))
       val (meter, values) = generateValues(csvSample, format, bounds)
@@ -312,7 +311,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("exceeding maxLineBounds fails the stream") {
       val format =
-        CypherCsv("", "that", Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+        CsvIngestFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
 
       val v = Try {
         generateCsvValues(csvSample, format, maximumLineSize = 7)
@@ -322,7 +321,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
 
     it("uses gzip,base64 decoders") {
       val format =
-        CypherCsv("", "that", Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
+        CsvIngestFormat(Left(false), CsvCharacter.Comma, CsvCharacter.DoubleQuote, CsvCharacter.Backslash)
 
       val (meter, values) = generateCsvValues(
         csvSample,

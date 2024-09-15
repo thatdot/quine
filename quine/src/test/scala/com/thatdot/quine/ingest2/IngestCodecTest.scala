@@ -204,7 +204,6 @@ class IngestCodecTest
 
   test("V2 Ingest configuration encode/decode") {
     forAll { ic: IngestConfiguration =>
-
       val j: Json = ic.asJson
       val r: Result[V2IngestEntities.IngestConfiguration] = j.as[V2IngestEntities.IngestConfiguration]
       //Config rehydrated from json
