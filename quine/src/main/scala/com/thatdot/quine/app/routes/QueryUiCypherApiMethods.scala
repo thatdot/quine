@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.routes
 
 import scala.concurrent.duration.Duration
+import scala.util.matching.Regex
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
@@ -8,6 +9,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import io.circe.Json
 
 import com.thatdot.quine.compiler.cypher
+import com.thatdot.quine.compiler.cypher.CypherProcedures
 import com.thatdot.quine.graph.cypher.{
   CypherException,
   Expr => CypherExpr,
@@ -21,6 +23,7 @@ import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 
 trait QueryUiCypherApiMethods extends LazySafeLogging {
+  import QueryUiCypherApiMethods._
   implicit def graph: LiteralOpsGraph with CypherOpsGraph
   implicit def idProvider: QuineIdProvider
   implicit protected def logConfig: LogConfig
@@ -137,39 +140,74 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     * @param query Cypher query
     * @param namespace the namespace in which to run this query
     * @param atTime possibly historical time to query
-    * @return data produced by the query formatted as JSON
+    * @return tuple of:
+    *         - columns of the result
+    *         - rows of the result as a Source (each row is a sequence of JSON values whose length matches the
+    *           length of the columns)
+    *         - boolean isReadOnly
+    *         - boolean canContainAllNodeScan
     */
   def queryCypherGeneric(
     query: CypherQuery,
     namespace: NamespaceId,
     atTime: Option[Milliseconds],
-  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) = {
+  ): (Seq[String], Source[Seq[Json], NotUsed], Boolean, Boolean) =
+    query.text match {
+      case Explain(toExplain) =>
+        val compiledQuery = cypher
+          .compile(queryText = toExplain, unfixedParameters = query.parameters.keys.toSeq)
+          .query
+        val plan = cypher.Plan.fromQuery(
+          compiledQuery,
+        )
+        logger.debug(log"User requested EXPLAIN of query: ${compiledQuery.toString}")
+        (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan.toValue))), true, false)
+      // rewrite "SHOW PROCEDURES" to an equivalent `help.procedures` call, if possible
+      case ShowProcedures(rewritten, warning) =>
+        warning.foreach(logger.warn(_))
+        queryCypherGeneric(CypherQuery(rewritten, query.parameters), namespace, atTime)
 
-    // TODO: remove `PROFILE` here too
-    val ExplainedQuery = raw"(?is)\s*explain\s+(.*)".r
-    val (explainQuery, queryText) = query.text match {
-      case ExplainedQuery(toExplain) => true -> toExplain
-      case other => false -> other
+      // TODO add support for PROFILE statement
+
+      case queryText =>
+        val runnableQuery = cypher.queryCypherValues(
+          queryText,
+          parameters = guessCypherParameters(query.parameters),
+          namespace = namespace,
+          atTime = atTime,
+        )
+        val columns = runnableQuery.columns.map(_.name)
+        val bodyRows = runnableQuery.results.map(row => row.map(CypherValue.toJson))
+        (columns, bodyRows, runnableQuery.compiled.isReadOnly, runnableQuery.compiled.canContainAllNodeScan)
     }
 
-    val res: CypherRunningQuery = cypher.queryCypherValues(
-      queryText,
-      parameters = guessCypherParameters(query.parameters),
-      namespace = namespace,
-      atTime = atTime,
-    )
+}
+object QueryUiCypherApiMethods extends LazySafeLogging {
+  // EXPLAIN <query> (1 argument: query)
+  private val Explain: Regex = raw"(?is)\s*explain\s+(.*)".r
+  // SHOW PROCEDURES matcher. Matches return 2 values: a converted query using `help.procedures` and an optional
+  // SafeInterpolator with a warning to log back to the user
+  private object ShowProcedures {
+    private val cypherProceduresInvocation = s"CALL ${CypherProcedures.name}()"
 
-    if (!explainQuery) {
-      val columns = res.columns.map(_.name)
-      val bodyRows = res.results.map(row => row.map(CypherValue.toJson))
-      (columns, bodyRows, res.compiled.isReadOnly, res.compiled.canContainAllNodeScan)
-    } else {
-      logger.debug(log"User requested EXPLAIN of query: ${res.compiled.query.toString}")
-      val plan = cypher.Plan.fromQuery(res.compiled.query).toValue
-      (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan))), true, false)
+    // see https://regex101.com/r/CwK80x/1
+    // SHOW PROCEDURES [executable-by filter] [query suffix] (2 arguments).
+    // The first argument is unsupported and used only for warnings.
+    // The second is usable in-place on the procedure call.
+    private val ShowProceduresStatement = raw"(?is)(?:\h*)show\h+procedures?\h*(executable(?: by \S+)?)?\h*(.*)".r
+
+    def unapply(s: String): Option[(String, Option[SafeInterpolator])] = s match {
+      case ShowProceduresStatement(ignoredArgs, querySuffix) =>
+        val rewritten = s"$cypherProceduresInvocation $querySuffix".trim
+        val warning =
+          Option(ignoredArgs).filter(_.nonEmpty).map { args =>
+            log"Ignoring unsupported arguments to SHOW PROCEDURES: `$args`"
+          }
+        Some(rewritten -> warning)
+      case _ =>
+        None
     }
   }
-
 }
 
 class OSSQueryUiCypherMethods(quineGraph: LiteralOpsGraph with CypherOpsGraph)(implicit

@@ -508,7 +508,7 @@ import com.thatdot.{visnetwork => vis}
   }
 
   private val cypherQueryRegex = js.RegExp(
-    raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain)[^a-z]",
+    raw"^\s*(optional|match|return|unwind|create|foreach|merge|call|load|with|explain|show|profile)[^a-z]",
     flags = "i",
   )
 
