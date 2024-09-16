@@ -55,7 +55,7 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
       val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, graph)
       val ingestStream: Source[MasterStream.IngestSrcExecToken, NotUsed] = ingestSource.stream(None, _ => ())
-      graph.masterStream.addIngestSrc(ingestStream)
+      ingestStream.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
       Thread.sleep(1000)
 
       val queryFuture: RunningCypherQuery = cyComp.queryCypherValues("match (n) return count(n.foo)", None)(graph)

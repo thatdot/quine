@@ -8,7 +8,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.stream.{BoundedSourceQueue, QueueOfferResult}
 import org.apache.pekko.{Done, NotUsed}
 
-import com.codahale.metrics.{Counter, Meter}
+import com.codahale.metrics.{Counter, Meter, Timer}
 
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
@@ -144,17 +144,18 @@ object StandingQueryPattern {
   * @param startTime when the query was started (or restarted) running
   */
 final class RunningStandingQuery(
-  private val resultsQueue: BoundedSourceQueue[StandingQueryResult],
+  private val resultsQueue: BoundedSourceQueue[StandingQueryResult.WithQueueTimer],
   val query: StandingQueryInfo,
   val resultsHub: Source[StandingQueryResult, NotUsed],
   outputTermination: Future[Done],
+  val queueTimer: Timer,
   val resultMeter: Meter,
   val droppedCounter: Counter,
   val startTime: Instant,
 ) extends LazySafeLogging {
 
   def this(
-    resultsQueue: BoundedSourceQueue[StandingQueryResult],
+    resultsQueue: BoundedSourceQueue[StandingQueryResult.WithQueueTimer],
     query: StandingQueryInfo,
     inNamespace: NamespaceId,
     resultsHub: Source[StandingQueryResult, NotUsed],
@@ -168,6 +169,7 @@ final class RunningStandingQuery(
       outputTermination,
       resultMeter = metrics.standingQueryResultMeter(inNamespace, query.name),
       droppedCounter = metrics.standingQueryDroppedCounter(inNamespace, query.name),
+      queueTimer = metrics.standingQueryResultQueueTimer(inNamespace, query.name),
       startTime = Instant.now(),
     )
 
@@ -186,7 +188,9 @@ final class RunningStandingQuery(
   /** Enqueue a result, returning true if the result was successfully enqueued, false otherwise
     */
   def offerResult(result: StandingQueryResult)(implicit logConfig: LogConfig): Boolean = {
-    val success = resultsQueue.offer(result) match {
+    val timerCtx = queueTimer.time()
+
+    val success = resultsQueue.offer(result.withQueueTimer(timerCtx)) match {
       case QueueOfferResult.Enqueued =>
         true
       case QueueOfferResult.Failure(err) =>

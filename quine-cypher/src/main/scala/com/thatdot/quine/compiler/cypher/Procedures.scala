@@ -1570,7 +1570,7 @@ class CypherStandingWiretap(lookupByName: (String, NamespaceId) => Option[Standi
     graph
       .standingQueries(location.namespace)
       .flatMap(
-        _.wireTapStandingQuery(standingQueryId),
+        _.standingResultsHub(standingQueryId),
       )
       .getOrElse(throw CypherException.Runtime(s"Cannot find standing query with id `$standingQueryId`"))
       .map { case StandingQueryResult(meta, data) =>

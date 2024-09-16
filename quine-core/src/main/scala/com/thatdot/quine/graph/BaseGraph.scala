@@ -64,7 +64,7 @@ trait BaseGraph extends StrictSafeLogging {
   val ingestValve: SharedValve = new SharedValve("ingest")
   metrics.registerGaugeValve(ingestValve)
 
-  val masterStream: MasterStream = new MasterStream(materializer)(logConfig)
+  val masterStream: MasterStream = new MasterStream
 
   def ingestThrottleFlow[A]: Flow[A, A, NotUsed] = Flow.fromGraph(new ValveFlow[A](ingestValve))
 

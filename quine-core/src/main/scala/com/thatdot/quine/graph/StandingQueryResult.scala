@@ -2,6 +2,7 @@ package com.thatdot.quine.graph
 
 import scala.jdk.CollectionConverters._
 
+import com.codahale.metrics.Timer
 import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 import io.circe.Json
@@ -131,6 +132,9 @@ final case class StandingQueryResult(
 
   def dataHashCode: Long =
     putUnordered[(String, QuineValue)](data, newHasher, putQuineValueMapKeyValue(_, newHasher).hash).hash().asLong()
+
+  def withQueueTimer(timerContext: Timer.Context): StandingQueryResult.WithQueueTimer =
+    StandingQueryResult.WithQueueTimer(this, timerContext)
 }
 
 object StandingQueryResult {
@@ -169,6 +173,8 @@ object StandingQueryResult {
       data = Map(aliasedAs -> idValue),
     )
   }
+
+  final case class WithQueueTimer(result: StandingQueryResult, timerContext: Timer.Context)
 
   /** Metadata associated with a standing query result
     *

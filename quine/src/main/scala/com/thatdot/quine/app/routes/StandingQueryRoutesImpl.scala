@@ -145,7 +145,7 @@ trait StandingQueryRoutesImpl
             graph
               .standingQueries(namespaceFromParam(namespaceParam))
               // Silently ignores SQs in any absent namespace, returning `None`
-              .flatMap(_.wireTapStandingQuery(sqid)),
+              .flatMap(_.standingResultsHub(sqid)),
           ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
@@ -172,7 +172,7 @@ trait StandingQueryRoutesImpl
         quineApp
           .getStandingQueryId(name, namespaceFromParam(namespaceParam))
           .flatMap(sqid => // Silently ignores any SQs in an absent namespace, returning `None`
-            graph.standingQueries(namespaceFromParam(namespaceParam)).flatMap(_.wireTapStandingQuery(sqid)),
+            graph.standingQueries(namespaceFromParam(namespaceParam)).flatMap(_.standingResultsHub(sqid)),
           ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>

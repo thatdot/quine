@@ -8,8 +8,7 @@ import scala.concurrent.{Await, ExecutionContext, Future, blocking}
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.Done
-import org.apache.pekko.stream.scaladsl.Keep
-import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
+import org.apache.pekko.stream.UniqueKillSwitch
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
@@ -27,7 +26,6 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfigurati
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
-import com.thatdot.quine.graph.MasterStream.SqResultsSrcType
 import com.thatdot.quine.graph.StandingQueryPattern.{
   DomainGraphNodeStandingQueryPattern,
   MultipleValuesQueryPattern,
@@ -172,8 +170,9 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         if (namespaceTargets.contains(queryName)) Future.successful(false)
         else {
           val sqId = StandingQueryId.fresh()
-          val sqResultsConsumers = query.outputs.map { case (k, v) =>
-            k -> StandingQueryResultOutput.resultHandlingFlow(k, inNamespace, v, graph)(protobufSchemaCache, logConfig)
+          val sqResultsConsumers = query.outputs.map { case (outputName, outputDefinition) =>
+            outputName -> StandingQueryResultOutput
+              .resultHandlingSink(outputName, inNamespace, outputDefinition, graph)(protobufSchemaCache, logConfig)
           }
           val (pattern, dgnPackage) = query.pattern match {
             case StandingQueryPattern.Cypher(cypherQuery, mode) =>
@@ -294,20 +293,18 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     synchronizedFakeFuture(standingQueryOutputTargetsLock) {
       val optionFut = for {
         (sqId, outputs) <- standingQueryOutputTargets.get(inNamespace).flatMap(_.get(queryName))
-        sqResultSource <- graph.standingQueries(inNamespace).flatMap(_.wireTapStandingQuery(sqId))
+        sqResultsHub <- graph.standingQueries(inNamespace).flatMap(_.standingResultsHub(sqId))
       } yield
         if (outputs.contains(outputName)) {
           Future.successful(false)
         } else {
-          val sqResultSrc: SqResultsSrcType = sqResultSource
-            .viaMat(KillSwitches.single)(Keep.right)
-            .via(
-              StandingQueryResultOutput.resultHandlingFlow(outputName, inNamespace, sqResultOutput, graph)(
-                protobufSchemaCache,
-                logConfig,
-              ),
-            )
-          val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
+          // Materialize the new output stream
+          val killSwitch = sqResultsHub.runWith(
+            StandingQueryResultOutput.resultHandlingSink(outputName, inNamespace, sqResultOutput, graph)(
+              protobufSchemaCache,
+              logConfig,
+            ),
+          )(graph.materializer)
           val updatedInnerMap = standingQueryOutputTargets(inNamespace) +
             (queryName -> (sqId -> (outputs + (outputName -> (sqResultOutput -> killSwitch)))))
           standingQueryOutputTargets += inNamespace -> updatedInnerMap
@@ -482,7 +479,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
               val newNamespaceIngests = ingests + (name -> streamDefWithControl)
               ingestStreams += intoNamespace -> newNamespaceIngests
 
-              graph.masterStream.addIngestSrc(ingestSrc)
+              ingestSrc.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
 
               if (shouldSaveMetadata)
                 Await.result(
@@ -531,7 +528,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             intoNamespace,
             registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
           )
-          graph.masterStream.addIngestSrc(streamSource)
+          streamSource.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
 
           if (shouldSaveMetadata)
             Await.result(
@@ -702,18 +699,15 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             val existingSqs = sqns.listStandingQueries
             val restoredOutputTargets = outputTarget.collect {
               case (sqName, (sqId, outputsStored)) if existingSqs.contains(sqId) =>
-                val sqResultSource = sqns.wireTapStandingQuery(sqId).get // we just checked that the SQ exists
+                val sqResultSource = sqns.standingResultsHub(sqId).get // we just checked that the SQ exists
                 val outputs = outputsStored.map { case (outputName, sqResultOutput) =>
-                  val sqResultSrc: SqResultsSrcType = sqResultSource
-                    .viaMat(KillSwitches.single)(Keep.right)
-                    .via(
-                      StandingQueryResultOutput.resultHandlingFlow(outputName, namespace, sqResultOutput, graph)(
-                        protobufSchemaCache,
-                        logConfig,
-                      ),
-                    )
-                  // ^^ Attach the SQ result source to each consumer and backpressure with the masterStream vv
-                  val killSwitch = graph.masterStream.addSqResultsSrc(sqResultSrc)
+                  // Attach the SQ result source to each consumer and track completion tokens in the masterStream
+                  val killSwitch = sqResultSource.runWith(
+                    StandingQueryResultOutput.resultHandlingSink(outputName, namespace, sqResultOutput, graph)(
+                      protobufSchemaCache,
+                      logConfig,
+                    ),
+                  )(graph.materializer)
                   outputName -> (sqResultOutput -> killSwitch)
                 }
                 sqName -> (sqId -> outputs)

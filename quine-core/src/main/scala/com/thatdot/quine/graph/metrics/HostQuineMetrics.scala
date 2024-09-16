@@ -130,6 +130,14 @@ final case class HostQuineMetrics(
       metricName(namespaceId, List("standing-queries", "dropped", sqName))
     }
 
+  /** Tracks how long SQ results spend in the result queue on this host before being accepted by each output
+    * for processing. Due to the fan-out nature of the SQ results queue, a single publish to the results queue may
+    * result in multiple measurements being counted against this timer (one for each sink on the SQ results hub, both
+    * via declared outputs and via other sinks that are dynamically added like SSE and standing.wiretap).
+    */
+  def standingQueryResultQueueTimer(namespaceId: NamespaceId, name: String): Timer =
+    metricRegistry.timer(metricName(namespaceId, List("standing-queries", "queue-time", name)))
+
   /** Histogram of size (in bytes) of persisted standing query states */
   def standingQueryStateSize(namespaceId: NamespaceId, sqId: StandingQueryId): Histogram =
     metricRegistry.histogram(metricName(namespaceId, List("standing-queries", "states", sqId.uuid.toString)))

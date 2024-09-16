@@ -19,7 +19,8 @@ import org.apache.pekko.kafka.{ProducerMessage, ProducerSettings}
 import org.apache.pekko.stream.connectors.kinesis.KinesisFlowSettings
 import org.apache.pekko.stream.connectors.kinesis.scaladsl.KinesisFlow
 import org.apache.pekko.stream.connectors.sns.scaladsl.SnsPublisher
-import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep, Source}
+import org.apache.pekko.stream.scaladsl.{FileIO, Flow, Keep, Sink, Source}
+import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import org.apache.pekko.util.ByteString
 
 import cats.syntax.either._
@@ -55,14 +56,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
   private val printLogger = SafeLogger("thatdot.StandingQueryResults")
   private val printLoggerNonBlocking = SafeLogger("thatdot.StandingQueryResultsSampled")
 
-  /** Construct a destination to which results are output
-    *
-    * @param name        name of the Standing Query Output
-    * @param inNamespace the namespace running this standing query
-    * @param output      configuration for handling the results
-    * @param graph       reference to the graph
-    */
-  def resultHandlingFlow(
+  private def resultHandlingFlow(
     name: String,
     inNamespace: NamespaceId,
     output: StandingQueryResultOutputUserDef,
@@ -389,6 +383,28 @@ object StandingQueryResultOutput extends LazySafeLogging {
           .via(andThenFlow)
     }
   }.named(s"sq-output-$name")
+
+  /** Construct a destination to which results are output. Results will flow through one or more
+    * chained [[resultHandlingFlow]]s before emitting a completion token to the master stream
+    *
+    * @param name        name of the Standing Query Output
+    * @param inNamespace the namespace running this standing query
+    * @param output      configuration for handling the results
+    * @param graph       reference to the graph
+    */
+  def resultHandlingSink(
+    name: String,
+    inNamespace: NamespaceId,
+    output: StandingQueryResultOutputUserDef,
+    graph: CypherOpsGraph,
+  )(implicit
+    protobufSchemaCache: ProtobufSchemaCache,
+    logConfig: LogConfig,
+  ): Sink[StandingQueryResult, UniqueKillSwitch] =
+    Flow[StandingQueryResult]
+      .viaMat(KillSwitches.single)(Keep.right)
+      .via(resultHandlingFlow(name, inNamespace, output, graph))
+      .to(graph.masterStream.standingOutputsCompletionSink)
 
   private def serialized(
     name: String,
