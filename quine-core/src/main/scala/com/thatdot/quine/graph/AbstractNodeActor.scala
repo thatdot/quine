@@ -127,7 +127,7 @@ abstract private[graph] class AbstractNodeActor(
           edges = edgeCollection,
           persistToJournal = persistEventsToJournal,
           pauseMessageProcessingUntil = pauseMessageProcessingUntil,
-          updateSnapshotTimestamp = () => updateLasttWriteAfterSnapshot(),
+          updateSnapshotTimestamp = () => updateLastWriteAfterSnapshot(),
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
@@ -137,7 +137,7 @@ abstract private[graph] class AbstractNodeActor(
         new MemoryFirstEdgeProcessor(
           edges = edgeCollection,
           persistToJournal = persistEventsToJournal,
-          updateSnapshotTimestamp = () => updateLasttWriteAfterSnapshot(),
+          updateSnapshotTimestamp = () => updateLastWriteAfterSnapshot(),
           runPostActions = runPostActions,
           qid = qid,
           costToSleep = costToSleep,
@@ -242,7 +242,18 @@ abstract private[graph] class AbstractNodeActor(
       persistAndApplyEventsEffectsInMemory[PropertyEvent](
         _,
         persistor.persistNodeChangeEvents(qid, _),
-        events => events.toList.foreach(applyPropertyEffect),
+        events =>
+          events.toList.foreach { e =>
+            e match {
+              case PropertySet(_, value) =>
+                // Record the size of the property to the appropriate histogram. NB while this may cause the property to be
+                // serialized, it is not an _extra_ serialization, because PropertyValues cache their serialized form. Any
+                // later persistence will simply reuse the serialization performed here.
+                metrics.propertySizes(namespace).update(value.serialized.length)
+              case PropertyRemoved(_, _) => // no relevant metric updates
+            }
+            applyPropertyEffect(e)
+          },
       ),
     )
 
@@ -396,14 +407,13 @@ abstract private[graph] class AbstractNodeActor(
     log.debug(safe"persistSnapshot called on historical node: This indicates programmer error.")
   }
 
-  /** The folling two methods apply effects of the provided events to the node state.
-    * For [[PropertyEvent]], and [[DomainIndexEvent]], respectively
-    * @param event                 thee event to apply
+  /** Apply a [[PropertyEvent]] to the node's properties map and update aggregate metrics on node property counts,
+    * if applicable
+    * @param event the event to apply
     */
-
   protected[this] def applyPropertyEffect(event: PropertyEvent): Unit = event match {
     case PropertySet(key, value) =>
-      if (value == PropertyValue(QuineValue.Null)) {
+      if (value.deserializedReady && value == PropertyValue(QuineValue.Null)) {
         // Should be impossible. If it's not, we'd like to know and fix it.
         logger.warn(log"Setting a null property on key: $key. This should have been a property removal.")
       }
@@ -415,8 +425,9 @@ abstract private[graph] class AbstractNodeActor(
       properties = properties - key
   }
 
-  /** Apply a [[DomainIndexEvent]] to the node state
-    * @param event the event to apply
+  /** Apply a [[DomainIndexEvent]] to the node state, updating its DGB bookkeeping and potentially (only if
+    * shouldCauseSideEffects) messaging other nodes with any relevant updates.
+    * @param event                  the event to apply
     * @param shouldCauseSideEffects whether the application of this event should cause off-node side effects, such
     *                               as Standing Query results. This value should be false when restoring
     *                               events from a journal.
@@ -439,7 +450,7 @@ abstract private[graph] class AbstractNodeActor(
     }
   }
 
-  protected[this] def updateLasttWriteAfterSnapshot(): Unit = {
+  protected[this] def updateLastWriteAfterSnapshot(): Unit = {
     latestUpdateAfterSnapshot = Some(peekEventSequence())
     lastWriteMillis = previousMessageMillis()
     if (persistenceConfig.snapshotOnUpdate) persistSnapshot()
@@ -451,7 +462,7 @@ abstract private[graph] class AbstractNodeActor(
     * @param events
     */
   protected[this] def notifyNodeUpdate(events: List[NodeChangeEvent]): Unit = {
-    updateLasttWriteAfterSnapshot()
+    updateLastWriteAfterSnapshot()
     runPostActions(events)
   }
 

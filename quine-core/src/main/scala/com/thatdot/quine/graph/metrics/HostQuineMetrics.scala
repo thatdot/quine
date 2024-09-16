@@ -51,6 +51,14 @@ final case class HostQuineMetrics(
   def nodeEdgesCounter(namespaceId: NamespaceId): BinaryHistogramCounter =
     BinaryHistogramCounter(metricRegistry, metricName(namespaceId, List("node", "edge-counts")))
 
+  /** Histogram tracking sizes of properties (in bytes) seen since startup. Unlike the node.property-counts
+    * and node.edge-counts metrics, this metric does not attempt to track the current state of the system,
+    * but rather aggregates statistics about the properties updates that have been seen, whether those properties
+    * are currently in-memory or not.
+    */
+  def propertySizes(namespaceId: NamespaceId): Histogram =
+    metricRegistry.histogram(metricName(namespaceId, List("node", "property-sizes")))
+
   val persistorPersistEventTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "persist-event"))
   val persistorPersistSnapshotTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "persist-snapshot"))
   val persistorGetJournalTimer: Timer = metricRegistry.timer(MetricRegistry.name("persistor", "get-journal"))
