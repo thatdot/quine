@@ -303,7 +303,20 @@ trait OnNodeInterpreter
     val other: QuineId = getQuineId(evaled) match {
       case Some(other) => other
       case None =>
-        logger.error(log"Tried to use expression as QuineId: ${query.node}, but evaluates to ${evaled}")
+        val becauseNullSuffix =
+          if (evaled == Expr.Null)
+            // If the expression evaluates to null, we can take a guess at why.
+            Safe(
+              " This is likely due to a null value being passed as an argument to idFrom() or locIdFrom().",
+            )
+          else {
+            // The user probably just did something silly like `WHERE id(n) = { areMapsIds: false }`
+            Safe("")
+          }
+        logger.warn(
+          log"""Tried to use expression as QuineId: ${query.node}, but evaluates to: ${evaled}.
+               |Aborting query and returning 0 rows.$becauseNullSuffix""".cleanLines,
+        )
         return Source.empty
     }
 
