@@ -1355,9 +1355,14 @@ object CypherSleep extends UserDefinedProcedure {
       case other => throw wrongSignature(other)
     }
 
-    Source
-      .single(Vector.empty[Value])
-      .initialDelay(sleepMillis.milliseconds)
+    if (sleepMillis > 0)
+      Source
+        .single(Vector.empty[Value])
+        .initialDelay(sleepMillis.milliseconds)
+    else if (sleepMillis == 0)
+      Source.single(Vector.empty[Value])
+    else
+      throw CypherException.Runtime(s"Cannot sleep for negative duration: $sleepMillis ms")
   }
 }
 

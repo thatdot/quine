@@ -188,10 +188,13 @@ object QueryPart {
 
               // Compile the subquery
               subQuery <- compileClauses(sq.clausesExceptLeadingImportWith, avng, isEntireQuery)
+              isUnitSubquery = !sq.isReturning
 
+              // If this is a unit subquery, clear the columns
+              _ <- if (isUnitSubquery) CompM.clearColumns else CompM.pure(())
               // Update the columns by appending back all of the initial columns
               () <- initialColumns.traverse_(CompM.addColumn)
-            } yield cypher.Query.SubQuery(subQuery, importedVariables)
+            } yield cypher.Query.SubQuery(subQuery, isUnitSubquery, importedVariables)
         }
 
       case union: ast.ProjectingUnion =>

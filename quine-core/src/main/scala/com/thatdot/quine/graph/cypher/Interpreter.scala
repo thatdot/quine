@@ -1324,11 +1324,20 @@ trait CypherInterpreter[-Start <: Location] extends ProcedureExecutionLocation {
     /* Variable scoping here is tricky:
      *
      *   - subquery runs against only the imported subcontext
-     *   - subquery output columns get _prepended_ to existing columns (unlike `with` or `unwind`)
+     *   - for non-unit subqueries, subquery output columns get _prepended_ to existing columns
+     *     (unlike `with` or `unwind`)
+     *   - for unit subqueries, the subquery outputs exactly the same columns (and the same rows)
+     *     as it receives -- i.e., each call to `interpret` produces a singleton Source of only the
+     *     parent context
      *
      * Collisions between subquery column outputs and existing columns are ruled out statically.
      */
-    interpret(query.subQuery, context.subcontext(query.importedVariables)).map(_ ++ context)
+    if (query.isUnitSubquery) {
+      interpret(query.subQuery, context.subcontext(query.importedVariables))
+        .fold(context)((_, originalContext) => originalContext)
+    } else {
+      interpret(query.subQuery, context.subcontext(query.importedVariables)).map(_ ++ context)
+    }
 
   final private[quine] def interpretRecursiveSubquery(query: RecursiveSubQuery[Start], context: QueryContext)(implicit
     parameters: Parameters,

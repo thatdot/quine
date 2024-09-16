@@ -987,6 +987,7 @@ object Query {
     */
   final case class SubQuery[+Start <: Location](
     subQuery: Query[Start],
+    isUnitSubquery: Boolean,
     importedVariables: Vector[Symbol],
     columns: Columns = Columns.Omitted,
   ) extends Query[Start] {
