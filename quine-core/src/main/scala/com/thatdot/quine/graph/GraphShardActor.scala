@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.{AtomicLong, AtomicReference}
 import java.util.concurrent.locks.StampedLock
 
-import scala.collection.{concurrent, mutable}
+import scala.collection.concurrent
 import scala.concurrent.duration.{Deadline, DurationDouble, DurationInt, FiniteDuration}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters.ConcurrentMapHasAsScala
@@ -66,7 +66,7 @@ import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 final private[quine] class GraphShardActor(
   val graph: BaseGraph,
   shardId: Int,
-  namespacedNodes: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]],
+  namespacedNodes: concurrent.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]],
   private var inMemoryLimit: Option[InMemoryNodeLimit],
 )(implicit val logConfig: LogConfig)
     extends Actor
@@ -530,6 +530,8 @@ final private[quine] class GraphShardActor(
                     case Success(nodeArgs) =>
                       self.tell(NodeStateRehydrated(id, nodeArgs, remaining, errorCount), self)
                     case Failure(error) => // Some persistor error, likely
+                      // NB this `remove` is accessing actor state from off-thread. However, the actor state
+                      // is a concurrent map, so this is safe.
                       nodeMap.remove(id)
                       unlikelyUnexpectedWakeUpErrCounter(id.namespace).inc()
                       if (remaining == 1)

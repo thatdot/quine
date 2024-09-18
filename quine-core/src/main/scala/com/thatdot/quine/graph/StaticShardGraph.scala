@@ -2,8 +2,8 @@ package com.thatdot.quine.graph
 
 import java.util.concurrent.ConcurrentHashMap
 
+import scala.collection.concurrent
 import scala.collection.immutable.ArraySeq
-import scala.collection.{concurrent, mutable}
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters.ConcurrentMapHasAsScala
@@ -58,17 +58,27 @@ trait StaticShardGraph extends BaseGraph {
     ArraySeq.unsafeWrapArray(Array.tabulate(shardCount) { (shardId: Int) =>
       logger.info(safe"Adding a new local shard at idx: ${Safe(shardId)}")
 
-      val nodeMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]] =
-        mutable.Map(defaultNamespaceId -> new ConcurrentHashMap[SpaceTimeQuineId, NodeState]().asScala)
+      val nodesMap: concurrent.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]] = {
+        val m =
+          new ConcurrentHashMap[NamespaceId, concurrent.Map[SpaceTimeQuineId, GraphShardActor.NodeState]]().asScala
+        m.put(
+          defaultNamespaceId,
+          new ConcurrentHashMap[
+            SpaceTimeQuineId,
+            NodeState,
+          ]().asScala,
+        )
+        m
+      }
 
       val localRef: ActorRef = system.actorOf(
-        Props(new GraphShardActor(this, shardId, nodeMap, initialShardInMemoryLimit))
+        Props(new GraphShardActor(this, shardId, nodesMap, initialShardInMemoryLimit))
           .withMailbox("pekko.quine.shard-mailbox")
           .withDispatcher(QuineDispatchers.shardDispatcherName),
         name = GraphShardActor.name(shardId),
       )
 
-      new LocalShardRef(localRef, shardId, nodeMap)
+      new LocalShardRef(localRef, shardId, nodesMap)
     })
 
   def relayTell(

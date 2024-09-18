@@ -1,6 +1,6 @@
 package com.thatdot.quine.graph.messaging
 
-import scala.collection.{concurrent, mutable}
+import scala.collection.concurrent
 
 import org.apache.pekko.actor.ActorRef
 
@@ -11,12 +11,13 @@ import com.thatdot.quine.graph.NamespaceId
   *
   * @param localShard the shard actor reference to the [[GraphShardActor]]
   * @param shardId index of the shard in the graph
-  * @param nodesMap nodes awake on the shard (which only the shard should modify - keep `private`!!)
+  * @param nodesMap Reference to the shard's internal bookkeeping of nodes (which only the shard should modify - keep
+  *                 `private`!!). Used to determine node liveness.
   */
 final class LocalShardRef(
   val localRef: ActorRef,
   val shardId: Int,
-  nodesMap: mutable.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, NodeState]],
+  private val nodesMap: concurrent.Map[NamespaceId, concurrent.Map[SpaceTimeQuineId, NodeState]],
 ) extends ShardRef {
   val isLocal: Boolean = true
 
@@ -41,7 +42,7 @@ final class LocalShardRef(
     */
   def withLiveActorRef(id: SpaceTimeQuineId, withActorRef: ActorRef => Unit): Boolean =
     nodesMap
-      .get(id.namespace)
+      .get(id.namespace) // Accessing ShardActor state from off-actor for an optimization
       .flatMap(_.get(id))
       .exists { // if the node is absent (ie, fully asleep), return false. Otherwise:
         case NodeState.LiveNode(_, actorRef, actorRefLock, _) =>
