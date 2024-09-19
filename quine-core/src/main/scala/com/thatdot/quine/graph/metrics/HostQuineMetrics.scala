@@ -89,18 +89,30 @@ final case class HostQuineMetrics(
   val relayAskMetrics: RelayAskMetric =
     if (enableDebugMetrics) new DefaultRelayAskMetrics(metricRegistry) else NoOpMessageMetric
 
-  // Counters that track the sleep cycle (in aggregate) of nodes on the shard
+  // Metrics that track the sleep cycle (in aggregate) of nodes on the shard
+  /** Counter of nodes that have been woken up on a shard, per-namespace */
   def shardNodesWokenUpCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "sleep-counters", "woken")))
 
+  /** Counter of nodes that have been put to sleep on a shard, per-namespace */
   def shardNodesSleptSuccessCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "sleep-counters", "slept-success")))
 
+  /** Counter of nodes that have failed to be put to sleep on a shard, per-namespace */
   def shardNodesSleptFailureCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "sleep-counters", "slept-failure")))
 
+  /** Counter of nodes that have been removed from a shard (per-namespace) without a full sleep protocol */
   def shardNodesRemovedCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "sleep-counters", "removed")))
+
+  /** Timer of how long it has taken to successfully sleep nodes on this shard, per-namespace */
+  def shardNodesSleptTimer(namespace: NamespaceId, name: String): Timer =
+    metricRegistry.timer(metricName(namespace, List("shard", name, "sleep-timers", "slept")))
+
+  /** Timer of how long it has taken to successfully wake nodes on this shard, per-namespace */
+  def shardNodesWokenTimer(namespace: NamespaceId, name: String): Timer =
+    metricRegistry.timer(metricName(namespace, List("shard", name, "sleep-timers", "woken")))
 
   // Counters that track occurrences of supposedly unlikely (and generally bad) code paths
   def shardUnlikelyWakeupFailed(namespaceId: NamespaceId, shardName: String): Counter =
@@ -167,6 +179,7 @@ final case class HostQuineMetrics(
     metricRegistry.registerGauge(MetricRegistry.name("shared", "valve", valve.name), () => valve.getClosedCount)
     ()
   }
+
 }
 
 object HostQuineMetrics {
@@ -233,8 +246,9 @@ object HostQuineMetrics {
       extends DefaultMessagingMetric(metricRegistry, "relayAsk")
       with RelayAskMetric
 
+  val noOpTimer: Timer = new NoopMetricRegistry().timer("unused-timer-name")
+
   final object NoOpMessageMetric extends MessagingMetric with RelayAskMetric with RelayTellMetric {
-    val noOpTimer: Timer = new com.codahale.metrics.NoopMetricRegistry().timer("unused-timer-name")
     def markLocal(): Unit = ()
 
     def markRemote(): Unit = ()

@@ -15,6 +15,8 @@ import org.apache.pekko.actor.{Actor, ActorRef, InvalidActorNameException, Props
 import org.apache.pekko.dispatch.Envelope
 import org.apache.pekko.stream.scaladsl.Source
 
+import com.codahale.metrics.Timer
+
 import com.thatdot.quine.graph.GraphShardActor.{LivenessStatus, NodeState}
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
 import com.thatdot.quine.graph.messaging.ShardMessage.{
@@ -100,41 +102,10 @@ final private[quine] class GraphShardActor(
     ShardShutdownProgress(namespacedNodes.map(_._2.size).sum)
   }
 
-  /** == Metrics Counters ==
-    */
-  private[this] val name = self.path.name
-
-  /** Meter tracking instances of nodes being evicted from the shard's in-memory cache (this should closely
-    * match the node sleep counters). Does NOT include nodes evicted manually via `removeNodesIf`
-    */
-  private[this] def nodeEvictionsMeter(namespaceId: NamespaceId) =
-    graph.metrics.shardNodeEvictionsMeter(namespaceId, name)
-
-  private[this] val messagesDeduplicatedCounter = graph.metrics.shardMessagesDeduplicatedCounter(name)
-
-  // Counters that track the sleep cycle (in aggregate) of nodes on the shard
-  private[this] def nodesWokenUpCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardNodesWokenUpCounter(namespaceId, name)
-  private[this] def nodesSleptSuccessCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardNodesSleptSuccessCounter(namespaceId, name)
-  private[this] def nodesSleptFailureCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardNodesSleptFailureCounter(namespaceId, name)
-  private[this] def nodesRemovedCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardNodesRemovedCounter(namespaceId, name)
-
-  // Counters that track occurrences of supposedly unlikely (and generally bad) code paths
-  private[this] def unlikelyWakeupFailed(namespaceId: NamespaceId) =
-    graph.metrics.shardUnlikelyWakeupFailed(namespaceId, name)
-  private[this] def unlikelyIncompleteShdnCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardUnlikelyIncompleteShdnCounter(namespaceId, name)
-  private[this] def unlikelyActorNameRsvdCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardUnlikelyActorNameRsvdCounter(namespaceId, name)
-  private[this] def unlikelyHardLimitReachedCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardUnlikelyHardLimitReachedCounter(namespaceId, name)
-  private[this] def unlikelyUnexpectedWakeUpErrCounter(namespaceId: NamespaceId) =
-    graph.metrics.shardUnlikelyUnexpectedWakeUpErrCounter(namespaceId, name)
+  private[this] val shardName = self.path.name
 
   /** Remove all nodes from this shard which match a predicate on their QuineIdAtTime
+    *
     * @param predicate a function on the node's QuineIdAtTime to determine if we should remove the node
     * @return true if all matching nodes were removed. false if there are still pending nodes waking that we didn't remove
     */
@@ -152,7 +123,7 @@ final private[quine] class GraphShardActor(
         context.stop(actorRef)
         inMemoryActorList.remove(nodeId)
         mailboxSystemExtension.removeMessageQueueAndDropMessages(nodeId)
-        nodesRemovedCounter(namespace).inc()
+        graph.metrics.shardNodesRemovedCounter(namespace, shardName).inc()
     }
     noWakingNodesExist
   }
@@ -192,7 +163,7 @@ final private[quine] class GraphShardActor(
           }
 
         def expiryListener(cause: ExpiringLruSet.RemovalCause, namespacedId: SpaceTimeQuineId): Unit = {
-          nodeEvictionsMeter(namespacedId.namespace).mark()
+          graph.metrics.shardNodeEvictionsMeter(namespacedId.namespace, shardName).mark()
           sleepActor(namespacedId)
         }
       }
@@ -209,18 +180,31 @@ final private[quine] class GraphShardActor(
     namespacedNodes.get(target.namespace).flatMap(_.get(target)) match {
       case Some(NodeState.LiveNode(_, actorRef, _, state)) =>
         // Start/extend a deadline if the node isn't already going to sleep
-        val previous = state.getAndUpdate {
-          case WakefulState.Awake | _: WakefulState.ConsideringSleep =>
-            WakefulState.ConsideringSleep(GraphShardActor.SleepDeadlineDelay.fromNow)
-          case goingToSleep: WakefulState.GoingToSleep => goingToSleep
+        val previousState = state.getAndUpdate {
+          case WakefulState.Awake(wakeTimer) => // If the node was not already considering sleep, tell it to
+            // First, start the timer to measure how long it takes to sleep the node.
+            val sleepTimer: Timer.Context = graph.metrics.shardNodesSleptTimer(target.namespace, shardName).time()
+
+            log.trace(safe"sleepActor: sent GoToSleep request to: $target")
+            // See INV below on `previousState match`
+            WakefulState.ConsideringSleep(GraphShardActor.SleepDeadlineDelay.fromNow, sleepTimer, wakeTimer)
+          case consideringSleep @ WakefulState.ConsideringSleep(oldDeadline @ _, sleepTimer @ _, wakeTimer @ _) =>
+            log.trace(safe"sleepActor: target is already: $consideringSleep. Renewing deadline.")
+            consideringSleep.copy(deadline = GraphShardActor.SleepDeadlineDelay.fromNow)
+          case goingToSleep: WakefulState.GoingToSleep =>
+            log.trace(safe"sleepActor: target is already: $goingToSleep")
+            goingToSleep
         }
 
-        // If the node was not already considering sleep, tell it to
-        if (previous == WakefulState.Awake) {
-          log.trace(safe"sleepActor: sent GoToSleep request to: $target")
-          actorRef ! GoToSleep
-        } else {
-          log.trace(safe"sleepActor: target is already: $previous")
+        previousState match {
+          // INV: this pattern must match the `updateAndGet` above. Put another way: if the shard has decided the node
+          //      should go to sleep, it must update the AtomicReference and tell the node to check the updated
+          //      reference (via a GoToSleep message) -- these side effects must happen *in that order*, because
+          //      the handler for GoToSleep relies on checking the (shared) AtomicReference's value.
+          case WakefulState.Awake(_) =>
+            // The shard just started trying to sleep the node, so clue the node in to that decision
+            actorRef ! GoToSleep
+          case _ => ()
         }
 
       case Some(NodeState.WakingNode) =>
@@ -261,7 +245,7 @@ final private[quine] class GraphShardActor(
         nodesAwake += 1 // Count these separately? This would've formerly been counted as awake nodes.
       case NodeState.LiveNode(_, _, _, wakefulState) =>
         wakefulState.get match {
-          case WakefulState.Awake => nodesAwake += 1
+          case _: WakefulState.Awake => nodesAwake += 1
           case _: WakefulState.ConsideringSleep => nodesAskedToSleep += 1
           case _: WakefulState.GoingToSleep => nodesSleeping += 1
         }
@@ -279,20 +263,21 @@ final private[quine] class GraphShardActor(
             // Re-awake nodes in the process of going to sleep
             val newState =
               wakefulState.updateAndGet {
-                case WakefulState.ConsideringSleep(_) => WakefulState.Awake
+                case WakefulState.ConsideringSleep(_, _, wakeTimer) =>
+                  WakefulState.Awake(wakeTimer)
                 case other => other
               }
             newState match {
-              case WakefulState.Awake =>
+              case WakefulState.Awake(_) =>
                 inMemoryActorList.update(qid)
                 // No lock needed because the actor cannot be shutting down
                 LivenessStatus.AlreadyAwake(actorRef)
-              case WakefulState.GoingToSleep(shardPromise) =>
-                unlikelyIncompleteShdnCounter(qid.namespace).inc()
+              case WakefulState.GoingToSleep(shardPromise, sleepTimer @ _) =>
+                graph.metrics.shardUnlikelyIncompleteShdnCounter(qid.namespace, shardName).inc()
                 // Keep track of the side effects as a result of shutting down the node
                 LivenessStatus.IncompleteActorShutdown(shardPromise.future)
               // Impossible - the `updateAndGet` above rules this case out
-              case WakefulState.ConsideringSleep(_) =>
+              case WakefulState.ConsideringSleep(_, sleepTimer @ _, wakeTimer @ _) =>
                 throw new IllegalStateException("wakeUpActor: unexpectedly still in ConsideringSleep state")
             }
         }
@@ -359,20 +344,20 @@ final private[quine] class GraphShardActor(
       if (needsAck) sender() ! Ack
       Option(msgDedupCache.put(dedupId, None)) match { // `.put` returns `null` if key is not present
         case None => this.receive(msg) // Not a duplicate
-        case Some(_) => messagesDeduplicatedCounter.inc() // It is a duplicate. Ignore.
+        case Some(_) => graph.metrics.shardMessagesDeduplicatedCounter(shardName).inc() // It is a duplicate. Ignore.
       }
 
     case LocalMessageDelivery(msg, target, originalSender) =>
       // Note: This does nothing with the sender of this `LocalMessageDelivery`
       deliverLocalMessage(msg, target, originalSender)
 
-    case NodeStateRehydrated(id, nodeArgs, remaining, errorCount) =>
+    case NodeStateRehydrated(id, nodeArgs, remaining, errorCount, wakeTimer) =>
       namespacedNodes.get(id.namespace) match {
         case None => // This is not an error but a no-op because the namespace could have just been deleted.
           log.info(log"Tried to rehydrate a node at: ${Safe(id)} but its namespace was absent")
         case Some(nodesMap) =>
           val costToSleep = new CostToSleep(0L) // Will be re-calculated from edge count later.
-          val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake)
+          val wakefulState = new AtomicReference[WakefulState](WakefulState.Awake(wakeTimer))
           val actorRefLock = new StampedLock()
           val finalNodeArgs = id :: graph :: costToSleep :: wakefulState :: actorRefLock ::
             nodeArgs.productIterator.toList ++ List(logConfig)
@@ -385,7 +370,7 @@ final private[quine] class GraphShardActor(
             val actorRef: ActorRef = context.actorOf(props, name = id.toInternalString)
             nodesMap.put(id, NodeState.LiveNode(costToSleep, actorRef, actorRefLock, wakefulState))
             inMemoryActorList.update(id)
-            nodesWokenUpCounter(id.namespace).inc()
+            graph.metrics.shardNodesWokenUpCounter(id.namespace, shardName).inc()
           } catch {
             // Pekko may not have finished freeing the name even if the actor is shut down.
             // InvalidActorNameException is thrown for a variety of different reasons, see
@@ -396,7 +381,7 @@ final private[quine] class GraphShardActor(
             // https://github.com/apache/incubator-pekko/blob/58fa510455190bd62d04f92a83c9506a7588d29c/actor/src/main/scala/org/apache/pekko/actor/dungeon/ChildrenContainer.scala#L144
             case InvalidActorNameException(msg) if msg endsWith "is not unique!" =>
               nodesMap.remove(id)
-              unlikelyActorNameRsvdCounter(id.namespace).inc()
+              graph.metrics.shardUnlikelyActorNameRsvdCounter(id.namespace, shardName).inc()
               val eKey = WakeUpErrorStates.ActorNameStillReserved
               val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
               val msgToDeliver = WakeUp(id, None, remaining - 1, newErrorCount)
@@ -425,19 +410,22 @@ final private[quine] class GraphShardActor(
 
     // This is a ping sent from a node to ensure it is still in the LRU
     case StillAwake(id) =>
-      // Should a waking node be counted, too?
+      object AtomicState { // helper object to pattern match on the AtomicReference-wrapped WakefulState
+        def unapply(r: AtomicReference[WakefulState]): Option[WakefulState] = Some(r.get)
+      }
       val isAwake =
-        namespacedNodes.get(id.namespace).flatMap(_.get(id)).collect { case NodeState.LiveNode(_, _, _, wakefulState) =>
-          wakefulState.get == WakefulState.Awake
-        } getOrElse false
+        namespacedNodes.get(id.namespace).flatMap(_.get(id)) match {
+          case Some(NodeState.LiveNode(_, _, _, AtomicState(WakefulState.Awake(_)))) => true
+          case _ => false
+        }
+
       if (isAwake) inMemoryActorList.update(id)
 
     // Actor shut down completely
-    case SleepOutcome.SleepSuccess(id, shardPromise) =>
+    case SleepOutcome.SleepSuccess(id, shardPromise, sleepTimer) =>
       log.trace(safe"Sleep succeeded for ${Safe(id.pretty)}")
       namespacedNodes.get(id.namespace).foreach(_.remove(id))
       inMemoryActorList.remove(id)
-      nodesSleptSuccessCounter(id.namespace).inc()
       val promiseCompletedUniquely = shardPromise.trySuccess(())
       if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
         shardPromise.future.value.get match {
@@ -449,6 +437,10 @@ final private[quine] class GraphShardActor(
                     |but that node already reported a failure for the same sleep request""".cleanLines,
             )
         }
+      } else {
+        // This is the first time the node was successfully slept under this promise; update the appropriate metrics.
+        graph.metrics.shardNodesSleptSuccessCounter(id.namespace, shardName).inc()
+        sleepTimer.stop()
       }
 
       // Remove the message queue if empty, or else wake up the node
@@ -469,7 +461,6 @@ final private[quine] class GraphShardActor(
       )
       namespacedNodes.get(id.namespace).foreach(_.remove(id)) // Remove it to be added again by WakeUp below.
       inMemoryActorList.remove(id)
-      nodesSleptFailureCounter(id.namespace).inc()
       val promiseCompletedUniquely = shardPromise.tryFailure(exception)
       if (!promiseCompletedUniquely) { // Promise was already completed -- log an appropriate message
         shardPromise.future.value.get match {
@@ -484,6 +475,9 @@ final private[quine] class GraphShardActor(
                    |multiple times""".cleanLines withException e,
             )
         }
+      } else {
+        // This is the first time the node failed to sleep under this promise; update the appropriate metrics.
+        graph.metrics.shardNodesSleptFailureCounter(id.namespace, shardName).inc()
       }
 
       // wake the node back up
@@ -498,7 +492,7 @@ final private[quine] class GraphShardActor(
         case LivenessStatus.AlreadyAwake(nodeActor) => nodeActor.tell(ProcessMessages, ActorRef.noSender)
         case LivenessStatus.WakingUp => ()
         case badOutcome if remaining <= 0 =>
-          unlikelyWakeupFailed(id.namespace).inc()
+          graph.metrics.shardUnlikelyWakeupFailed(id.namespace, shardName).inc()
           val stats = shardStats
           log.error(
             safe"No more retries waking up: ${Safe(id.pretty)} " +
@@ -523,17 +517,20 @@ final private[quine] class GraphShardActor(
                   safe"Tried to wake a node at: ${Safe(id)} but its namespace was absent from: ${Safe(namespacedNodes.keySet)}",
                 )
               case Some(nodeMap) =>
+                // First, start the timer to measure how long it takes to wake up the node. This may be shared across
+                // threads safely (as in the onComplete below).
+                val wakeTimer: Timer.Context = graph.metrics.shardNodesWokenTimer(id.namespace, shardName).time()
                 nodeMap(id) = NodeState.WakingNode
                 graph.nodeStaticSupport
                   .readConstructorRecord(id, snapshotOpt, graph)
                   .onComplete {
                     case Success(nodeArgs) =>
-                      self.tell(NodeStateRehydrated(id, nodeArgs, remaining, errorCount), self)
+                      self.tell(NodeStateRehydrated(id, nodeArgs, remaining, errorCount, wakeTimer), self)
                     case Failure(error) => // Some persistor error, likely
                       // NB this `remove` is accessing actor state from off-thread. However, the actor state
                       // is a concurrent map, so this is safe.
                       nodeMap.remove(id)
-                      unlikelyUnexpectedWakeUpErrCounter(id.namespace).inc()
+                      graph.metrics.shardUnlikelyUnexpectedWakeUpErrCounter(id.namespace, shardName).inc()
                       if (remaining == 1)
                         log.error(log"Failed to wake up ${Safe(id.pretty)} on the last retry." withException error)
                       else
@@ -553,7 +550,7 @@ final private[quine] class GraphShardActor(
                   }(graph.nodeDispatcherEC)
             }
           } else {
-            unlikelyHardLimitReachedCounter(id.namespace).inc()
+            graph.metrics.shardUnlikelyHardLimitReachedCounter(id.namespace, shardName).inc()
             val eKey = WakeUpErrorStates.InMemoryNodeCountHardLimitReached
             val newErrorCount = errorCount.updated(eKey, errorCount.getOrElse(eKey, 0) + 1)
             val msgToDeliver = WakeUp(id, snapshotOpt, remaining - 1, newErrorCount)
@@ -669,6 +666,9 @@ object GraphShardActor {
   sealed abstract private[quine] class NodeState
   private[quine] object NodeState {
 
+    // The state of a node from the time the shard decides to wake it to the time there is an actor backing that node
+    // INV: The node state is LiveNode IFF an actor is serving the node
+    // INV: a node in state WakingNode is never removed from the namespacedNodes, only replaced
     case object WakingNode extends NodeState
 
     /** This is what the shard tracks for each node it manages
@@ -761,9 +761,22 @@ object InMemoryNodeLimit {
  */
 sealed abstract private[quine] class WakefulState
 private[quine] object WakefulState {
-  case object Awake extends WakefulState
-  final case class ConsideringSleep(deadline: Deadline) extends WakefulState
-  final case class GoingToSleep(shard: Promise[Unit]) extends WakefulState
+
+  /** @param wakeTimer A timer to be completed by the node at the end of its initialization during wake-up */
+  final case class Awake(wakeTimer: Timer.Context) extends WakefulState
+
+  /** @param deadline
+    * @param sleepTimer A timer to be completed by the shard if/when the node is successfully slept
+    * @param wakeTimer  Timer for the node to complete when it finishes waking, if it has not yet done so.
+    *                   This is only practically used when a node is requested to sleep before it finishes waking
+    */
+  final case class ConsideringSleep(deadline: Deadline, sleepTimer: Timer.Context, wakeTimer: Timer.Context)
+      extends WakefulState
+
+  /** @param shard      A promise to be completed by the shard when the node is slept or fails to sleep
+    * @param sleepTimer A timer to be completed by the shard if/when the node is successfully slept
+    */
+  final case class GoingToSleep(shard: Promise[Unit], sleepTimer: Timer.Context) extends WakefulState
 }
 
 sealed abstract class ControlMessages
@@ -802,12 +815,14 @@ object SleepOutcome {
 
   /** Node is asleep and fine
     *
-    * @param id node that slept
+    * @param id                    node that slept
     * @param nodeMapUpdatedPromise [[SleepOutcome.nodeMapUpdatedPromise]]
+    * @param sleepTimer            a timer to be completed when the node is fully-slept
     */
   final private[quine] case class SleepSuccess(
     id: SpaceTimeQuineId,
     nodeMapUpdatedPromise: Promise[Unit],
+    sleepTimer: Timer.Context,
   ) extends SleepOutcome
 
   /** Node is stopped, but the saving of data failed
@@ -855,12 +870,15 @@ final private[quine] case class WakeUp(
   errorCount: Map[WakeUpErrorStates, Int] = Map.empty,
 ) extends ShardControlMessage
 
-/** Sent to a shard to tell it the state for a waking Node has been read from persistence */
+/** Sent to a shard to tell it the state for a waking Node has been read from persistence
+  * INV: for as long as this message exists, the shard's nodesMap contains `id` with a value of `NodeState.WakingNode`
+  */
 final private[quine] case class NodeStateRehydrated[NodeConstructorRecord <: Product](
   id: SpaceTimeQuineId,
   nodeArgs: NodeConstructorRecord,
   remainingRetries: Int,
   errorCount: Map[WakeUpErrorStates, Int],
+  wakeTimer: Timer.Context,
 ) extends ShardControlMessage
 
 /** Possible failures encountered when waking up nodes. Tracking how often these errors occur can aid understanding

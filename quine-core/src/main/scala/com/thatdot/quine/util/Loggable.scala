@@ -395,8 +395,8 @@ object Log {
     implicit val LogShardRef: Loggable[ShardRef] = toStringLoggable[ShardRef]
     implicit val LogSpaceTimeQuineId: AlwaysSafeLoggable[com.thatdot.quine.graph.messaging.SpaceTimeQuineId] =
       Loggable.alwaysSafe[com.thatdot.quine.graph.messaging.SpaceTimeQuineId](_.toString)
-    implicit val LogWakefulState: AlwaysSafeLoggable[com.thatdot.quine.graph.WakefulState] =
-      Loggable.alwaysSafe(_.toString)
+    implicit def LogWakefulState[W <: com.thatdot.quine.graph.WakefulState]: AlwaysSafeLoggable[W] =
+      _.toString
     implicit val LogActorSelection: Loggable[org.apache.pekko.actor.ActorSelection] =
       toStringLoggable[org.apache.pekko.actor.ActorSelection]
     // Option[Symbol] is too generic a type for which to confidently have an implicit instance

@@ -77,36 +77,39 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
       // promise tracking updates to shard in-memory map of nodes (completed by the shard)
       val shardPromise = Promise[Unit]()
 
-      def reportSleepSuccess(qidAtTime: SpaceTimeQuineId): Unit = {
+      def reportSleepSuccess(qidAtTime: SpaceTimeQuineId, timer: Timer.Context): Unit = {
         metrics.nodePropertyCounter(namespace).bucketContaining(properties.size).dec()
         edges.onSleep()
-        shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise)
+        shardActor ! SleepOutcome.SleepSuccess(qidAtTime, shardPromise, timer)
       }
 
       // Transition out of a `ConsideringSleep` state (if it is still state)
-
-      val newState: WakefulState = wakefulState.updateAndGet {
-        case WakefulState.ConsideringSleep(deadline) =>
+      // Invariant: `newState` is NOT `WakefulState.ConsideringSleep`
+      val newState = wakefulState.updateAndGet {
+        case WakefulState.ConsideringSleep(deadline, sleepTimer, wakeTimer) =>
           val millisNow = System.currentTimeMillis()
           val tooRecentAccess = graph.declineSleepWhenAccessWithinMillis > 0 &&
             graph.declineSleepWhenAccessWithinMillis > millisNow - previousMessageMillis()
           val tooRecentWrite = graph.declineSleepWhenWriteWithinMillis > 0 &&
             graph.declineSleepWhenWriteWithinMillis > millisNow - lastWriteMillis
           if (deadline.hasTimeLeft() && !tooRecentAccess && !tooRecentWrite) {
-            WakefulState.GoingToSleep(shardPromise)
+            WakefulState.GoingToSleep(shardPromise, sleepTimer)
           } else {
-            WakefulState.Awake
+            WakefulState.Awake(wakeTimer)
           }
-        case other => other
+        case goingToSleep: WakefulState.GoingToSleep =>
+          goingToSleep
+
+        case awake: WakefulState.Awake => awake
       }
 
       newState match {
         // Node may just have refused sleep, so the shard must add it back to `inMemoryActorList`
-        case WakefulState.Awake =>
+        case _: WakefulState.Awake =>
           shardActor ! StillAwake(qidAtTime)
 
         // We must've just set this
-        case _: WakefulState.GoingToSleep =>
+        case WakefulState.GoingToSleep(shardPromise @ _, sleepTimer) =>
           // Log something if this (bad) case occurs
           if (latestUpdateAfterSnapshot.isDefined && atTime.nonEmpty) {
             log.error(
@@ -148,7 +151,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
 
               // Schedule an update to the shard
               persistenceFuture.onComplete {
-                case Success(_) => reportSleepSuccess(qidAtTime)
+                case Success(_) => reportSleepSuccess(qidAtTime, sleepTimer)
                 case Failure(err) =>
                   shardActor ! SleepOutcome.SleepFailed(
                     qidAtTime,
@@ -161,7 +164,7 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
               }(context.dispatcher)
 
             case _ =>
-              reportSleepSuccess(qidAtTime)
+              reportSleepSuccess(qidAtTime, sleepTimer)
           }
 
           /* Block waiting for the write lock to the ActorRef
@@ -175,7 +178,11 @@ trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {
           context.stop(self)
 
         // The state hasn't changed
-        case _ =>
+        case _: WakefulState.ConsideringSleep =>
+          // If this is hit, this is a bug because the invariant above (on the definition of `newState`) was violated
+          log.warn(
+            log"Node $qid is still considering sleep after it should have decided whether to sleep.",
+          )
       }
   }
 }

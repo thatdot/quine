@@ -200,6 +200,19 @@ private[graph] class NodeActor(
       updateMultipleValuesStandingQueriesOnNode()
       updateQuinePatternsOnNode()
     }
+
+    // Node is done waking up, stop the wakeup timer (if it's running)
+    wakefulState.get match {
+      case WakefulState.Awake(wakeTimer) => wakeTimer.stop()
+      case WakefulState.ConsideringSleep(_, _, wakeTimer) => wakeTimer.stop()
+      case _: WakefulState.GoingToSleep =>
+        // This is impossible, because only the node itself (GoToSleepBehavior) can update its wakeful state to
+        // `GoingToSleep`, and only in response to a message -- this node hasn't had a chance to receive any messages
+        // yet, it's still being constructed!
+        throw new IllegalStateException(
+          s"The node: ${qid.pretty} is going to sleep before it has woken up enough to decide to go back to sleep",
+        )
+    }
   }
 }
 
