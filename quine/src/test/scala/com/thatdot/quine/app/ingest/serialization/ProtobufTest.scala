@@ -9,6 +9,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 import scala.util.{Try, Using}
 
+import cats.implicits._
 import com.google.common.io.ByteStreams
 import com.google.protobuf.Descriptors
 import org.scalatest.EitherValues
@@ -39,8 +40,9 @@ import com.thatdot.quine.app.serialization.ProtobufSchemaError.{
 }
 import com.thatdot.quine.app.serialization.{ProtobufSchemaCache, ProtobufSchemaError, QuineValueToProtobuf}
 import com.thatdot.quine.graph.cypher.Expr.toQuineValue
-import com.thatdot.quine.graph.cypher.{Expr, Value}
+import com.thatdot.quine.graph.cypher.{CypherException, Expr, Value}
 import com.thatdot.quine.model.QuineValue
+import com.thatdot.quine.util.MonadHelpers._
 
 // See also [[CypherParseProtobufTest]] for the UDP interface to this functionality
 class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
@@ -185,8 +187,8 @@ class ProtobufTest extends AnyFunSpecLike with Matchers with EitherValues {
       val asCypherValue: Value = foldableFrom.fold(message, DataFolderTo.cypherValueFolder)
 
       testPerson.foreach { case (k, v) =>
-        val folded: Value = asCypherValue.getField("")(k)
-        toQuineValue(folded) shouldBe v
+        val folded: Value = asCypherValue.getField("")(k).getOrThrow
+        toQuineValue(folded) shouldBe v.asRight[CypherException]
       }
     }
   }

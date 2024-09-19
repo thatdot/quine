@@ -77,6 +77,7 @@ final case class CompiledQuery[+Start <: Location](
 
     val results = initialInterpreter
       .interpret(query, initialContext)(params, logConfig)
+      .unsafeSource
       .mapMaterializedValue(_ => NotUsed)
       .named(
         "cypher-query-namespace-" + namespaceToString(

@@ -834,11 +834,11 @@ final case class FilterMapState(
   override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit = {
     super.rehydrate(effectHandler)
     condition = query.condition.fold((r: QueryContext) => true) { (cond: Expr) => (r: QueryContext) =>
-      cond.eval(r)(effectHandler.idProvider, Parameters.empty, logConfig) == Expr.True
+      cond.evalUnsafe(r)(effectHandler.idProvider, Parameters.empty, logConfig) == Expr.True
     }
     mapper = (row: QueryContext) =>
       query.toAdd.foldLeft(if (query.dropExisting) QueryContext.empty else row) { case (acc, (aliasedAs, exprToAdd)) =>
-        acc + (aliasedAs -> exprToAdd.eval(row)(
+        acc + (aliasedAs -> exprToAdd.evalUnsafe(row)(
           effectHandler.idProvider,
           Parameters.empty,
           logConfig,

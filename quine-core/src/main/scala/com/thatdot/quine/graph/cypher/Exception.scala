@@ -2,8 +2,10 @@ package com.thatdot.quine.graph.cypher
 
 import scala.jdk.CollectionConverters._
 
+import com.thatdot.quine.util.QuineError
+
 /** Generic trait for all sorts of Cypher-related exceptions */
-sealed abstract class CypherException extends Exception with Product {
+sealed abstract class CypherException extends Exception with Product with QuineError {
   val position: Option[Position]
 
   def positionStr: String = position

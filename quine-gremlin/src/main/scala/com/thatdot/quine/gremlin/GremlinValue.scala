@@ -9,6 +9,7 @@ import org.apache.commons.text.StringEscapeUtils
 import com.thatdot.quine.graph.{BaseGraph, cypher, idFrom}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 /** A Gremlin vertex object. This is what gets returned from a query like `g.V().has("foo")`.
   *
@@ -52,7 +53,7 @@ sealed abstract class GremlinExpression extends Positional {
     case TypedValue(qv) => qv.underlyingJvmValue
 
     case IdFromFunc(xs) =>
-      val hashed: QuineId = idFrom(xs.map(expr => cypher.Value.fromAny(expr.eval())): _*)
+      val hashed: QuineId = idFrom(xs.map(expr => cypher.Value.fromAny(expr.eval()).getOrThrow): _*)
       idProvider.customIdFromQid(hashed).get
 
     case RawArr(xs) => xs.map(_.eval())

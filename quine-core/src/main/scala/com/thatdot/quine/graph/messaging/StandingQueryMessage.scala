@@ -12,6 +12,7 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 /** Top-level type of all SQ-related messages relayed through the graph
   *
@@ -89,7 +90,7 @@ object StandingQueryMessage {
     def standingQueryResults(sq: StandingQueryInfo, idProvider: QuineIdProvider): Seq[StandingQueryResult] =
       resultGroup.map { r =>
         val qvResult = r.environment.map { case (col, value) =>
-          col.name -> cypher.Expr.toQuineValue(value)
+          col.name -> cypher.Expr.toQuineValue(value).getOrThrow
         }
         StandingQueryResult(isPositiveMatch = isPositive, data = qvResult)
       }

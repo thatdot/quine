@@ -22,6 +22,7 @@ import com.thatdot.quine.graph.cypher.{
 }
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefinedProcedure with LazySafeLogging {
@@ -40,7 +41,7 @@ class CypherToProtobuf(private val cache: ProtobufSchemaCache) extends UserDefin
   ): Source[Vector[Value], _] = {
     val (value, schemaUrl, typeName): (Map[String, QuineValue], URL, String) = arguments match {
       case Seq(Expr.Map(value), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
-        (value.fmap(Expr.toQuineValue), filenameOrUrl(schemaUrl), typeName)
+        (value.fmap(Expr.toQuineValue(_).getOrThrow), filenameOrUrl(schemaUrl), typeName)
       case _ =>
         throw wrongSignature(arguments)
     }

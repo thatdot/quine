@@ -1,9 +1,9 @@
 package com.thatdot.quine.graph.messaging
 
-import scala.concurrent.Future
-
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
+
+import com.thatdot.quine.util.{AnyError, BaseError, FutureResult, InterpM}
 
 sealed abstract class QuineResponse
 
@@ -24,11 +24,20 @@ object QuineResponse {
   /** A wrapper for sending a failure as something serializable. This gets used
     * to represent failures when remotely sending a [[Future]] or a [[Source]]
     */
-  final case class Failure(err: Throwable) extends QuineResponse
+  final case class Failure(err: BaseError) extends QuineResponse
+
+  final case class ExceptionalFailure(err: AnyError) extends QuineResponse
+
+  /** Not meant to be serialized - used for a [[FutureResult]] sent within the JVM */
+  final case class LocalFutureResult(future: FutureResult[_, _]) extends QuineResponse
 
   /** Not meant to be serialized - used for a [[Future]] sent within the JVM */
-  final case class LocalFuture(future: Future[_]) extends QuineResponse
+  final case class LocalFuture(future: scala.concurrent.Future[_]) extends QuineResponse
+//  def localFuture(future : scala.concurrent.Future[_]) :LocalFutureT = LocalFutureT(FutureT.(future))
 
   /** Not meant to be serialized - used for a [[Source]] sent within the JVM */
   final case class LocalSource(source: Source[_, NotUsed]) extends QuineResponse
+
+  /** Not meant to be serialized - used for a [[ConcurrentM]] sent within the JVM */
+  final case class LocalInterpM(c: InterpM[_, _]) extends QuineResponse
 }

@@ -102,8 +102,8 @@ class SkipOptimizingActor(
     context: QueryContext,
     parameters: Parameters,
   ): Either[SkipOptimizationError.InvalidSkipLimit, (Long, Option[Long])] = {
-    val skipVal = query.drop.map(_.eval(context)(graph.idProvider, parameters, logConfig))
-    val limitVal = query.take.map(_.eval(context)(graph.idProvider, parameters, logConfig))
+    val skipVal = query.drop.map(_.evalUnsafe(context)(graph.idProvider, parameters, logConfig))
+    val limitVal = query.take.map(_.evalUnsafe(context)(graph.idProvider, parameters, logConfig))
     for {
       skip <- skipVal match {
         case Some(Expr.Integer(skipCount)) => Right(skipCount)

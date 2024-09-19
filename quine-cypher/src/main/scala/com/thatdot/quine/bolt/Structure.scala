@@ -6,6 +6,7 @@ import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
+import com.thatdot.quine.util.MonadHelpers._
 
 /** The Bolt protocol talks about how to serialize arbitrary structures,
   * and uses this to describe the format of nodes, relationships, paths, etc.
@@ -68,7 +69,7 @@ object Structured extends LazySafeLogging {
               Expr.List(lbls),
               Expr.Map(props),
             ) =>
-          val nodeQid = idp.valueToQid(Expr.toQuineValue(nodeId)).getOrElse {
+          val nodeQid = idp.valueToQid(Expr.toQuineValue(nodeId).getOrThrow).getOrElse {
             throw new IllegalArgumentException(
               s"Cannot deserialize node $structure whose ID cannot be read",
             )
@@ -133,14 +134,14 @@ object Structured extends LazySafeLogging {
               Expr.Map(props),
             ) =>
           Expr.Relationship(
-            idp.valueToQid(Expr.toQuineValue(startId)).getOrElse {
+            idp.valueToQid(Expr.toQuineValue(startId).getOrThrow).getOrElse {
               throw new IllegalArgumentException(
                 s"Cannot deserialize edge $structure whose start cannot be read as an ID",
               )
             },
             Symbol(typ),
             props.map(kv => Symbol(kv._1) -> kv._2),
-            idp.valueToQid(Expr.toQuineValue(endId)).getOrElse {
+            idp.valueToQid(Expr.toQuineValue(endId).getOrThrow).getOrElse {
               throw new IllegalArgumentException(
                 s"Cannot deserialize edge $structure whose end cannot be read as an ID",
               )

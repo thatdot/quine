@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.implicitConversions
-import scala.util.{Failure, Random, Success, Try}
+import scala.util.{Failure, Random, Success}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorSystem
@@ -339,7 +339,7 @@ object StandingQueryResultOutput extends LazySafeLogging {
               Flow[(StandingQueryResult.Meta, cypher.QueryContext)]
                 .map { case (meta: StandingQueryResult.Meta, qc: cypher.QueryContext) =>
                   val newData = qc.environment.map { case (keySym, cypherVal) =>
-                    keySym.name -> Try(cypher.Expr.toQuineValue(cypherVal)).getOrElse {
+                    keySym.name -> cypher.Expr.toQuineValue(cypherVal).getOrElse {
                       logger.warn(
                         log"""Cypher Value: ${cypherVal.toString} could not be represented as a Quine value in Standing
                              |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,

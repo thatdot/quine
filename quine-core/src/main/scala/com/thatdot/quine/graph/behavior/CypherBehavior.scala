@@ -15,6 +15,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
+import com.thatdot.quine.util.InterpM
 import com.thatdot.quine.util.Log._
 
 trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with QuineIdOps with QuineRefOps {
@@ -32,7 +33,7 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
 
   def cypherBehavior(instruction: CypherQueryInstruction)(implicit logConfig: LogConfig): Unit = instruction match {
     case qp @ QueryPackage(query, parameters, qc, _) =>
-      qp ?! interpret(query, qc)(parameters, logConfig)
+      qp ?! interpret(query, qc)(parameters, logConfig).unsafeSource
         .mapMaterializedValue(_ => NotUsed)
         .map(QueryContextResult)
     case ce @ CheckOtherHalfEdge(halfEdge, action, query, parameters, qc, _) =>
@@ -44,8 +45,9 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         case Some(true) =>
           val edgeAdded = processEdgeEvents(EdgeAdded(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters, logConfig)
-          ce ?! Source
-            .futureSource(edgeAdded.map(_ => interpreted)(ExecutionContext.parasitic))
+          ce ?! InterpM
+            .futureInterpMUnsafe(edgeAdded.map(_ => interpreted)(ExecutionContext.parasitic))
+            .unsafeSource
             .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
 
@@ -53,8 +55,9 @@ trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with Qu
         case Some(false) =>
           val edgeRemoved = processEdgeEvents(EdgeRemoved(halfEdge) :: Nil)
           val interpreted = interpret(query, qc)(parameters, logConfig)
-          ce ?! Source
-            .futureSource(edgeRemoved.map(_ => interpreted)(ExecutionContext.parasitic))
+          ce ?! InterpM
+            .futureInterpMUnsafe(edgeRemoved.map(_ => interpreted)(ExecutionContext.parasitic))
+            .unsafeSource
             .map(QueryContextResult)
             .mapMaterializedValue(_ => NotUsed)
       }

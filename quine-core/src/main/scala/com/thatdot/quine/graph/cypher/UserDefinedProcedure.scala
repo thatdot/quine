@@ -1,7 +1,6 @@
 package com.thatdot.quine.graph.cypher
 
 import scala.concurrent.Future
-import scala.util.Try
 
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
@@ -98,7 +97,7 @@ object UserDefinedProcedure {
 
     object ValueQid {
       def unapply(value: Value): Option[QuineId] = for {
-        quineValue <- Try(Expr.toQuineValue(value)).toOption
+        quineValue <- Expr.toQuineValue(value).toOption
         quineId <- idProvider.valueToQid(quineValue)
       } yield quineId
     }

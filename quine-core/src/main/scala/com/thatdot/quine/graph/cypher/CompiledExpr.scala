@@ -57,6 +57,6 @@ final case class CompiledExpr(
       )
     }
 
-    expr.eval(initialContext)(idProvider, params, logConfig)
+    expr.evalUnsafe(initialContext)(idProvider, params, logConfig)
   }
 }

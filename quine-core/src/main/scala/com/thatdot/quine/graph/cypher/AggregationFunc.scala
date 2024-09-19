@@ -4,8 +4,11 @@ import java.time.Duration
 
 import scala.collection.mutable.ArrayBuffer
 
+import cats.implicits.catsSyntaxEitherId
+
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 sealed abstract class Aggregator {
 
@@ -61,7 +64,7 @@ object Aggregator {
 
     /** Aggregate results over a fresh row */
     def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit = {
-      val newValue: Value = computeOnEveryRow.eval(qc)
+      val newValue: Value = computeOnEveryRow.eval(qc).getOrThrow
       if (!distinct || seen.add(newValue))
         state = combine(state, newValue)
     }
@@ -191,7 +194,7 @@ object Aggregator {
                 )
               case None => Expr.Integer(0L)
             }
-            Some(n + p)
+            Some((n + p).getOrThrow)
           case d: Expr.Duration =>
             val p = prev.map(_.asDuration("sum of values")).getOrElse(Duration.ZERO)
             Some(Expr.Duration(d.duration.plus(p)))
@@ -280,7 +283,7 @@ object Aggregator {
       val original = ArrayBuffer.empty[Double]
 
       def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit =
-        expr.eval(qc) match {
+        expr.evalUnsafe(qc) match {
           // Skip null values
           case Expr.Null =>
 
@@ -333,7 +336,7 @@ object Aggregator {
       var percentileOpt: Option[Double] = None
 
       def visitRow(qc: QueryContext)(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Unit = {
-        expr.eval(qc) match {
+        expr.evalUnsafe(qc) match {
           // Skip null values
           case Expr.Null =>
 
@@ -350,7 +353,7 @@ object Aggregator {
 
         // Fill in the percentile with the first row
         if (percentileOpt.isEmpty) {
-          percentileExpr.eval(qc) match {
+          percentileExpr.evalUnsafe(qc) match {
             case Expr.Number(dbl) =>
               if (0.0d <= dbl && dbl <= 1.0d) {
                 percentileOpt = Some(dbl)
@@ -380,10 +383,11 @@ object Aggregator {
               val indexLhs = math.floor(indexDbl).toInt
               val indexRhs = math.ceil(indexDbl).toInt
               val mult: Double = indexDbl - indexLhs
-              val valueLhs = sorted(indexLhs)
-              val valueRhs = sorted(indexRhs)
-              valueLhs + Expr.Floating(mult) * (valueRhs - valueLhs)
-            } else {
+              val valueLhs = sorted(indexLhs).asRight
+              val valueRhs = sorted(indexRhs).asRight
+              valueLhs + (Expr.Floating(mult).asRight[CypherException]) * (valueRhs - valueLhs)
+            }.getOrThrow
+            else {
               val index = math.round(indexDbl).toInt
               sorted(index)
             }

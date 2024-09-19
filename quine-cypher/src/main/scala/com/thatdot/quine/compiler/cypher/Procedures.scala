@@ -48,6 +48,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 /** Like [[UnresolvedCall]] but where the procedure has been resolved
   *
@@ -558,7 +559,7 @@ object InsertToSet extends UserDefinedProcedure with LazySafeLogging {
       .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
     // Pull out the arguments
     val (propertyKey, newElements) = arguments match {
-      case Seq(_, Expr.Str(key), elem) => (key, QuineValue.List(Vector(Expr.toQuineValue(elem))))
+      case Seq(_, Expr.Str(key), elem) => (key, QuineValue.List(Vector(Expr.toQuineValue(elem).getOrThrow)))
       case other => throw wrongSignature(other)
     }
 
@@ -623,7 +624,8 @@ object UnionToSet extends UserDefinedProcedure with LazySafeLogging {
       .getOrElse(throw CypherException.Runtime(s"`$name` expects a node or node ID as its first argument"))
     // Pull out the arguments
     val (propertyKey, newElements) = arguments match {
-      case Seq(_, Expr.Str(key), Expr.List(cypherElems)) => (key, QuineValue.List(cypherElems.map(Expr.toQuineValue)))
+      case Seq(_, Expr.Str(key), Expr.List(cypherElems)) =>
+        (key, QuineValue.List(cypherElems.map(Expr.toQuineValue(_).getOrThrow)))
       case other => throw wrongSignature(other)
     }
 
@@ -1434,7 +1436,7 @@ object CypherCreateSetProperty extends UserDefinedProcedure {
     }
 
     Source
-      .lazyFuture(() => node ? (SetPropertyCommand(Symbol(key), PropertyValue(toQuineValue(value)), _)))
+      .lazyFuture(() => node ? (SetPropertyCommand(Symbol(key), PropertyValue(toQuineValue(value).getOrThrow), _)))
       .map(_ => Vector.empty[Value])
   }
 }

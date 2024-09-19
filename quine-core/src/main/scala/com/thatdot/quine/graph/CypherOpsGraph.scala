@@ -125,8 +125,9 @@ trait CypherOpsGraph extends BaseGraph {
 
       interpreter
         .interpret(query, context)(parameters, logConfig)
-        .mapMaterializedValue(_ => NotUsed)
         .named(s"cypher-query-atTime-${atTime.fold("none")(_.millis.toString)}")
+        .unsafeSource
+        .mapMaterializedValue(_ => NotUsed)
     }
 
     /** Issue a query against the graph, allowing the graph to pick an interpreter

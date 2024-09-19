@@ -17,7 +17,7 @@ import java.util.regex.PatternSyntaxException
 import java.util.{Locale, TimeZone}
 
 import scala.collection.concurrent
-import scala.util.{Random, Try}
+import scala.util.Random
 
 import cats.syntax.either._
 import com.google.common.hash.Hashing
@@ -1694,7 +1694,7 @@ object CypherGenFroms {
       (hash: Long, size: Long) => Expr.Node(QuineId(Array.emptyByteArray), Set.empty, Map.empty),
     ) {
       override def call(arguments: Vector[Value])(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Value = {
-        val size = Try(arguments(1).asLong("").toInt).getOrElse(4)
+        val size = arguments.lift(1).flatMap(_.asLong("").toOption).map(_.toInt).getOrElse(4)
         val rand = new Random(arguments.head.hash.asLong())
         val props = (0 until size)
           .map(i => Symbol(i.toString) -> Expr.Str(rand.alphanumeric.take(size * 2).mkString))

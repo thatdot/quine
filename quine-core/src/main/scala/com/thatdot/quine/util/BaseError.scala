@@ -1,24 +1,33 @@
 package com.thatdot.quine.util
 
+import scala.util.control.NoStackTrace
+
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{GraphNotReadyException, QuineRuntimeFutureException, ShardNotAvailableException}
 import com.thatdot.quine.persistor.WrappedPersistorException
 
 // Represents either a BaseError or a generic Error
-sealed trait AnyError {
-  def toThrowable: Throwable
-}
+sealed trait AnyError extends Throwable {}
 
 // A base for a finite set of enumerable errors.
 // Excludes GenericError for cases where we want to be able to know the exact error
 sealed trait BaseError extends AnyError
 
 // The base for all errors that originate in Quine
-sealed trait QuineError extends BaseError
+trait QuineError extends BaseError with NoStackTrace
 
 // The base for all errors that originate outside of Quine
-sealed trait ExternalError extends BaseError
+trait ExternalError extends BaseError {
+  def ofError: Throwable
+
+  override def fillInStackTrace(): Throwable = {
+    ofError.fillInStackTrace()
+    this
+  }
+
+  override def getStackTrace: Array[StackTraceElement] = ofError.getStackTrace
+}
 
 object AnyError {
   def fromThrowable(e: Throwable): AnyError = BaseError
@@ -32,12 +41,10 @@ object AnyError {
     message: String,
     stack: Array[StackTraceElement],
     cause: Option[AnyError],
-  ) extends AnyError {
-    def toThrowable: Throwable = {
-      val e = new Throwable(message, cause.map(_.toThrowable).orNull)
-      e.setStackTrace(stack.toArray)
-      e
-    }
+  ) extends Throwable(message, cause.orNull)
+      with AnyError {
+    override def fillInStackTrace(): Throwable = this
+    override def getStackTrace: Array[StackTraceElement] = stack
   }
 }
 
@@ -57,30 +64,23 @@ object ExternalError {
   }
 
   final case class RemoteStreamRefActorTerminatedError(
-    toThrowable: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException,
+    ofError: org.apache.pekko.stream.RemoteStreamRefActorTerminatedException,
   ) extends ExternalError
   final case class StreamRefSubscriptionTimeoutError(
-    toThrowable: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException,
+    ofError: org.apache.pekko.stream.StreamRefSubscriptionTimeoutException,
   ) extends ExternalError
-  final case class InvalidSequenceNumberError(toThrowable: org.apache.pekko.stream.InvalidSequenceNumberException)
+  final case class InvalidSequenceNumberError(ofError: org.apache.pekko.stream.InvalidSequenceNumberException)
       extends ExternalError
 }
 
 object QuineError {
   def fromThrowable(e: Throwable): Option[QuineError] = e match {
-    case e: ExactlyOnceTimeoutException => Some(ExactlyOnceTimeoutError(e))
-    case e: CypherException => Some(CypherError(e))
-    case e: QuineRuntimeFutureException => Some(QuineRuntimeFutureError(e))
-    case e: GraphNotReadyException => Some(GraphNotReadyError(e))
-    case e: ShardNotAvailableException => Some(ShardNotAvailableError(e))
-    case e: WrappedPersistorException => Some(WrappedPersisterError(e))
+    case e: ExactlyOnceTimeoutException => Some(e)
+    case e: CypherException => Some(e)
+    case e: QuineRuntimeFutureException => Some(e)
+    case e: GraphNotReadyException => Some(e)
+    case e: ShardNotAvailableException => Some(e)
+    case e: WrappedPersistorException => Some(e)
     case _ => None
   }
-
-  final case class CypherError(toThrowable: CypherException) extends QuineError
-  final case class QuineRuntimeFutureError(toThrowable: QuineRuntimeFutureException) extends QuineError
-  final case class GraphNotReadyError(toThrowable: GraphNotReadyException) extends QuineError
-  final case class ShardNotAvailableError(toThrowable: ShardNotAvailableException) extends QuineError
-  final case class ExactlyOnceTimeoutError(toThrowable: ExactlyOnceTimeoutException) extends QuineError
-  final case class WrappedPersisterError(toThrowable: WrappedPersistorException) extends QuineError
 }

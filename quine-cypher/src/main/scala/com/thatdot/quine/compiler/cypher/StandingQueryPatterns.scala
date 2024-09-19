@@ -18,6 +18,7 @@ import com.thatdot.quine.graph.cypher.Expr.toQuineValue
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Query, SourceText, UserDefinedFunction}
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 object StandingQueryPatterns extends LazySafeLogging {
 
@@ -629,7 +630,7 @@ object StandingQueryPatterns extends LazySafeLogging {
         }
         // Convert the computed cypher ID value to a QuineId (must be kept in sync with [[Expr.toQuineValue]])
         returnValue.flatMap { result =>
-          val parsedViaIdProvider = idProvider.valueToQid(toQuineValue(result))
+          val parsedViaIdProvider = idProvider.valueToQid(toQuineValue(result).getOrThrow)
 
           // NB the below cases indicate a bad return value from (ie, a bug in) [[CypherIdFrom]] or [[CypherLocIdFrom]]
           // or somewhere the QuineValue<->cypher.Value<->QuineId<->customIdType conversions are losing information

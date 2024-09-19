@@ -1,6 +1,5 @@
 package com.thatdot.quine.persistor
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.control.NoStackTrace
 import scala.util.{Failure, Success}
 
 import org.apache.pekko.NotUsed
@@ -23,6 +22,7 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.QuineError
 
 /** Reified version of persistor call for logging purposes
   */
@@ -63,7 +63,7 @@ case class RemoveDomainIndexEventsByDgnId(dgnId: DomainGraphNodeId) extends Pers
 
 class WrappedPersistorException(val persistorCall: String, val wrapped: Throwable)
     extends Exception("Error calling " + persistorCall, wrapped)
-    with NoStackTrace
+    with QuineError
 
 trait ExceptionWrapper extends StrictSafeLogging {
   implicit protected def logConfig: LogConfig

@@ -32,6 +32,7 @@ import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 package object cypher {
 
@@ -121,7 +122,7 @@ package object cypher {
 
       val paramArray = IndexedSeq.newBuilder[Value]
       for ((paramName, paramJavaValue) <- astState.extractedParams()) {
-        val paramValue = Value.fromAny(paramJavaValue)
+        val paramValue = Value.fromAny(paramJavaValue).getOrThrow
         paramsIdxMap += (paramName -> idx)
         paramArray += paramValue
         idx += 1

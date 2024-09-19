@@ -4,6 +4,7 @@ import org.scalatest.funspec.AnyFunSpecLike
 import org.scalatest.matchers.should
 
 import com.thatdot.quine.graph.StandingQueryResult
+import com.thatdot.quine.util.MonadHelpers._
 
 class MultipleValuesResultsReporterTest extends AnyFunSpecLike with should.Matchers {
   val queryContext1: QueryContext = QueryContext(Map(Symbol("foo") -> Expr.Integer(1L)))
@@ -11,7 +12,10 @@ class MultipleValuesResultsReporterTest extends AnyFunSpecLike with should.Match
   val queryContext3: QueryContext = QueryContext(Map(Symbol("baz") -> Expr.Integer(3L)))
 
   def queryContextToResult(isPositive: Boolean, queryContext: QueryContext): StandingQueryResult =
-    StandingQueryResult(isPositive, queryContext.environment.map(kv => kv._1.name -> Expr.toQuineValue(kv._2)))
+    StandingQueryResult(
+      isPositive,
+      queryContext.environment.map(kv => kv._1.name -> Expr.toQuineValue(kv._2).getOrThrow),
+    )
 
   describe("MultipleValuesResultsReporter.generateResultReports") {
     it("includes all non-duplicate reports") {

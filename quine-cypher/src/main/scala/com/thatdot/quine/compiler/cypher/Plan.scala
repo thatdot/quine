@@ -93,9 +93,7 @@ object Plan {
         case ("columns", _) => // Ignore the columns, they get pulled out at the end of `fromQuery`
         case (field, value) =>
           // TODO: pretty-print expressions in the AST
-          val cypherVal =
-            try Value.fromAny(value)
-            catch { case _: Throwable => Expr.Str(value.toString) }
+          val cypherVal = Value.fromAny(value).getOrElse(Expr.Str(value.toString))
           arguments += field -> cypherVal
       }
 

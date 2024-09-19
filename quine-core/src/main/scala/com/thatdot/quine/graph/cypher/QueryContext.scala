@@ -54,6 +54,8 @@ object QueryContext {
 
   /** Compare query contexts along an ordered list of criteria, each of which
     * can be be inverted (ie. descending instead of ascending)
+    * This uses Expr.evalUnsafe so if the ordering is used with an expression that has an error,
+    * an exception will be thrown.
     *
     * @param exprs ranked criteria along which to order query contexts
     * @return an ordering of query contexts
@@ -62,7 +64,7 @@ object QueryContext {
     exprs: Seq[(Expr, Boolean)],
   )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Ordering[QueryContext] =
     exprs.foldRight[Ordering[QueryContext]](Ordering.by(_ => ())) { case ((by, isAscending), tieBreaker) =>
-      val evaluated = Ordering.by[QueryContext, Value](by.eval(_))(Value.ordering)
+      val evaluated = Ordering.by[QueryContext, Value](by.evalUnsafe(_))(Value.ordering)
       val directed = if (isAscending) evaluated.reverse else evaluated
 
       // Use just `directed.orElse(tieBreaker)` when dropping support for 2.12

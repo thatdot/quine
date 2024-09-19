@@ -14,6 +14,7 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.Properties
 import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.MonadHelpers._
 
 /** This class manages a stateful flatmap operation for SQ results reporting. Effectively, this is a node's
   * representation / proxy to the GlobalSubscriber for a given SQ. Because MVSQ results are reported in groups
@@ -68,7 +69,7 @@ object MultipleValuesResultsReporter {
         StandingQueryResult(
           isPositiveMatch,
           values.environment.map { case (k, v) =>
-            k.name -> Expr.toQuineValue(v)
+            k.name -> Expr.toQuineValue(v).getOrThrow
           },
         )
     }

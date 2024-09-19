@@ -11,6 +11,7 @@ import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRef
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.MonadHelpers._
 
 trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazySafeLogging {
 
@@ -72,8 +73,8 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
         runQuery(query, Map("n" -> Expr.Bytes(qid))).results
           .mapConcat { row =>
             row.flatMap {
-              case Expr.List(v) => v.toList.map(x => Expr.toQuineValue(x).pretty)
-              case value => List(Expr.toQuineValue(value).pretty)
+              case Expr.List(v) => v.toList.map(x => Expr.toQuineValue(x).getOrThrow.pretty)
+              case value => List(Expr.toQuineValue(value).getOrThrow.pretty)
             }
           }
           .runWith(Sink.seq[String])
