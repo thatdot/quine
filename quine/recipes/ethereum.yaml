@@ -45,6 +45,7 @@ ingestStreams:
     type: ServerSentEventsIngest
   - format:
       query: |-
+        WITH true AS validTransactionRecord WHERE $that.to IS NOT NULL AND $that.from IS NOT NULL
         MATCH (BA), (toAcc), (fromAcc), (tx)
         WHERE
           id(BA) = idFrom('block_assoc', toLower($that.blockHash))
