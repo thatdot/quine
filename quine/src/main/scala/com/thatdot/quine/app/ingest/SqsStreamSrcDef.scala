@@ -55,6 +55,7 @@ final case class SqsStreamSrcDef(
       maxPerSecond,
       decoders,
       s"$name (SQS ingest)",
+      intoNamespace,
     ) {
 
   type InputType = Message

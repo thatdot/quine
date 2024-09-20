@@ -63,6 +63,7 @@ final case class KinesisSrcDef(
       maxPerSecond,
       decoders,
       s"$name (Kinesis ingest)",
+      intoNamespace,
     ) {
 
   type InputType = kinesisModel.Record

@@ -30,6 +30,7 @@ final case class ServerSentEventsSrcDef(
       maxPerSecond,
       decoders,
       s"$name (SSE ingest)",
+      intoNamespace,
     ) {
 
   type InputType = ServerSentEvent

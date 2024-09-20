@@ -39,7 +39,15 @@ final case class WebsocketSimpleStartupSrcDef(
   encoding: String,
   initialSwitchMode: SwitchMode,
 )(implicit val graph: CypherOpsGraph, protected val logConfig: LogConfig)
-    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, None, Seq(), s"$name (WS ingest)") {
+    extends RawValuesIngestSrcDef(
+      format,
+      initialSwitchMode,
+      parallelism,
+      None,
+      Seq(),
+      s"$name (WS ingest)",
+      intoNamespace,
+    ) {
 
   type InputType = ByteString
 

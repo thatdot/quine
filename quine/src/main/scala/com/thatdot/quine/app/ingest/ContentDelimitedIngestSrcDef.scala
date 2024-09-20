@@ -32,8 +32,9 @@ abstract class ContentDelimitedIngestSrcDef(
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   name: String,
+  intoNamespace: NamespaceId,
 )(implicit graph: CypherOpsGraph)
-    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, Seq(), name) {
+    extends RawValuesIngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, Seq(), name, intoNamespace) {
 
   val (charset, transcode) = IngestSrcDef.getTranscoder(encodingString)
 
@@ -56,6 +57,7 @@ abstract class LineDelimitedIngestSrcDef(
   ingestLimit: Option[Long],
   maxPerSecond: Option[Int],
   name: String,
+  intoNamespace: NamespaceId,
 )(implicit graph: CypherOpsGraph)
     extends ContentDelimitedIngestSrcDef(
       initialSwitchMode,
@@ -67,6 +69,7 @@ abstract class LineDelimitedIngestSrcDef(
       ingestLimit,
       maxPerSecond,
       name,
+      intoNamespace,
     ) {
 
   type InputType = ByteString
@@ -101,6 +104,7 @@ case class CsvIngestSrcDef(
       ingestLimit,
       maxPerSecond,
       name,
+      intoNamespace,
     ) {
 
   type InputType = List[ByteString] // csv row
@@ -179,6 +183,7 @@ case class StringIngestSrcDef(
       ingestLimit,
       maxPerSecond,
       name,
+      intoNamespace,
     ) {
 
   def source(): Source[ByteString, NotUsed] = src
@@ -212,6 +217,7 @@ case class JsonLinesIngestSrcDef(
       ingestLimit,
       maxPerSecond,
       name,
+      intoNamespace,
     ) {
 
   def source(): Source[ByteString, NotUsed] = src

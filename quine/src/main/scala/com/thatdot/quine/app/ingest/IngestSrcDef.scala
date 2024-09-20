@@ -136,13 +136,13 @@ abstract class IngestSrcDef(
   parallelism: Int,
   maxPerSecond: Option[Int],
   val name: String,
+  val intoNamespace: NamespaceId,
 )(implicit graph: CypherOpsGraph)
     extends QuineIngestSource
     with LazySafeLogging {
   implicit protected def logConfig: LogConfig
   implicit val system: ActorSystem = graph.system
   val isSingleHost: Boolean = graph.isSingleHost
-  val intoNamespace: NamespaceId
 
   /** The type of a single value to be ingested. Data sources will be defined
     * as suppliers of this type.
@@ -156,9 +156,7 @@ abstract class IngestSrcDef(
     */
   type TryDeserialized = (Try[CypherValue], InputType)
 
-  // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
-  // to thread a constructor parameter through every level.
-  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
+  final val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
 
   /** A source of deserialized values along with a control. Ingest types
     * that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
@@ -236,11 +234,11 @@ abstract class RawValuesIngestSrcDef(
   maxPerSecond: Option[Int],
   decoders: Seq[ContentDecoder],
   name: String,
+  intoNamespace: NamespaceId,
 )(implicit graph: CypherOpsGraph)
-    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
+    extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name, intoNamespace) {
 
-  // depends on lazy val metrics, which depends on not-yet-initialized val intoNamespace, so must be lazy itself
-  private lazy val deserializationTimer: Timer = meter.unmanagedDeserializationTimer
+  private val deserializationTimer: Timer = meter.unmanagedDeserializationTimer
 
   /** Try to deserialize a value of InputType into a CypherValue.  This method
     * also meters the raw byte length of the input.
