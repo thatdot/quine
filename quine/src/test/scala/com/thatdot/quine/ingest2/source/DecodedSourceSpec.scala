@@ -50,7 +50,8 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
         fileIngestMode = None,
       )
 
-      val decodedSource = DecodedSource.apply("test", fileIngest, IngestMetered.ingestMeter(None, "test"), graph.system)
+      val decodedSource =
+        DecodedSource.apply("test", fileIngest, IngestMetered.ingestMeter(None, "test", graph.metrics), graph.system)
       val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", None).get
 
       val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, graph)

@@ -29,6 +29,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
 }
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
+import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
@@ -105,9 +106,13 @@ abstract class DecodedSource(val meter: IngestMeter) {
           // TODO this is slower than mapAsyncUnordered and is only necessary for Kafka acking case
           .mapAsync(parallelism) {
             case Success(t) =>
-              ingestQuery.apply {
-                foldable.fold(t, DataFolderTo.cypherValueFolder)
-              }
+              graph.metrics
+                .ingestQueryTimer(intoNamespace, name)
+                .time(
+                  ingestQuery.apply {
+                    foldable.fold(t, DataFolderTo.cypherValueFolder)
+                  },
+                )
             case Failure(e) => Future.failed(e)
           }
           .asSource
@@ -155,7 +160,7 @@ object DecodedSource extends LazySafeLogging {
     logConfig: LogConfig,
   ): ValidatedNel[String, QuineIngestSource] = {
     logger.info(safe"using v2 ingest to create ingest ${Safe(name)}")
-    val meter = IngestMetered.ingestMeter(intoNamespace, name)
+    val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
     val query = QuineValueIngestQuery(settings, graph, intoNamespace)
     val decodedSource = DecodedSource(name, settings, meter, graph.system)(protobufSchemaCache, logConfig)
     decodedSource

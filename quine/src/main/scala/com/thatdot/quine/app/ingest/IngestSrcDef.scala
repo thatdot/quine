@@ -18,6 +18,7 @@ import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.{NonEmptyList, Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
+import com.codahale.metrics.Timer
 import org.apache.kafka.common.KafkaException
 
 import com.thatdot.quine.app.ingest.serialization._
@@ -27,6 +28,7 @@ import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.{ControlSwitches, PekkoKillSwitch, QuineAppIngestControl, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.{Value => CypherValue}
+import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
@@ -156,7 +158,7 @@ abstract class IngestSrcDef(
 
   // Lazy since this is a base class, and intoNamespace won't be set until the subclass initializes. This avoids having
   // to thread a constructor parameter through every level.
-  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name)
+  lazy val meter: IngestMeter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
 
   /** A source of deserialized values along with a control. Ingest types
     * that provide a source of raw types should extend [[RawValuesIngestSrcDef]]
@@ -178,9 +180,13 @@ abstract class IngestSrcDef(
   protected def writeSuccessValues(intoNamespace: NamespaceId)(record: TryDeserialized): Future[TryDeserialized] =
     record match {
       case (Success(deserializedRecord), _) =>
-        format
-          .writeValueToGraph(graph, intoNamespace, deserializedRecord)
-          .map(_ => record)(ExecutionContext.parasitic)
+        graph.metrics
+          .ingestQueryTimer(intoNamespace, name)
+          .time(
+            format
+              .writeValueToGraph(graph, intoNamespace, deserializedRecord)
+              .map(_ => record)(ExecutionContext.parasitic),
+          )
       case failedAttempt @ (Failure(deserializationError), sourceRecord @ _) =>
         // TODO QU-1379 make this behavior configurable between "Log and keep consuming" vs
         //  "halt the stream on corrupted records"
@@ -233,6 +239,9 @@ abstract class RawValuesIngestSrcDef(
 )(implicit graph: CypherOpsGraph)
     extends IngestSrcDef(format, initialSwitchMode, parallelism, maxPerSecond, name) {
 
+  // depends on lazy val metrics, which depends on not-yet-initialized val intoNamespace, so must be lazy itself
+  private lazy val deserializationTimer: Timer = meter.unmanagedDeserializationTimer
+
   /** Try to deserialize a value of InputType into a CypherValue.  This method
     * also meters the raw byte length of the input.
     */
@@ -241,7 +250,14 @@ abstract class RawValuesIngestSrcDef(
       val bytes = rawBytes(input)
       meter.mark(bytes.length)
       val decoded = ContentDecoder.decode(decoders, bytes)
-      (format.importMessageSafeBytes(decoded, graph.isSingleHost), input)
+      (
+        format.importMessageSafeBytes(
+          decoded,
+          graph.isSingleHost,
+          deserializationTimer,
+        ),
+        input,
+      )
     }
 
   /** Define a way to extract raw bytes from a single input event */

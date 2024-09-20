@@ -235,7 +235,7 @@ object GraphService {
         maxCatchUpSleepMillis,
         labelsProperty,
         edgeCollectionFactory,
-        HostQuineMetrics(enableDebugMetrics, metricRegistry),
+        HostQuineMetrics(enableDebugMetrics, metricRegistry, omitDefaultNamespace = true),
       )
     } catch {
       case NonFatal(e) => Future.failed(e)

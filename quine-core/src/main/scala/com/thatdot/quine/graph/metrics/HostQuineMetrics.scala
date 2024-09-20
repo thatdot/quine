@@ -16,29 +16,28 @@ import com.thatdot.quine.util.SharedValve
 /** A MetricRegistry, wrapped with canonical accessors for common Quine metrics
   * @param enableDebugMetrics whether debugging-focused metrics should be included that have
   *                           a noticeable impact on runtime performance.
-  * @param isEnterprise       Is this an enterprise instance? Used to determine naming conventions.
+  * @param omitDefaultNamespace       Is this an enterprise instance? Used to determine naming conventions.
   * @param metricRegistry     the registry to wrap
   */
 final case class HostQuineMetrics(
   enableDebugMetrics: Boolean,
   metricRegistry: MetricRegistry,
-  isEnterprise: Boolean = false,
+  omitDefaultNamespace: Boolean,
 ) {
   import HostQuineMetrics._
 
   lazy val noOpRegistry: NoopMetricRegistry = new NoopMetricRegistry
 
-  // Elide the default namespace, and add the namespace as a prefix for all other namespaces (currently not used).
-  private def standardName(namespaceId: NamespaceId, components: List[String]): String =
-    namespaceId.fold(components)(ns => ns.name :: components).mkString(".")
-
-  // Universally prefix namespaced metrics with the namespace name.
-  private def enterpriseName(namespaceId: NamespaceId, components: List[String]): String =
-    (namespaceToString(namespaceId) :: components).mkString(".")
-
   // TODO either remove this or use it universally. Customers using Grafana will need consideration.
   // Which convention should be used for metrics that are split by namespace?
-  val metricName: (NamespaceId, List[String]) => String = if (isEnterprise) enterpriseName else standardName
+  def metricName(namespaceId: NamespaceId, components: List[String]): String =
+    if (omitDefaultNamespace) {
+      // here, the namespace "default" is omitted from the metric name, while all others are included.
+      (namespaceId ++ components).mkString(".")
+    } else {
+      // here, the namespace is universally included in the metric name
+      (namespaceToString(namespaceId) :: components).mkString(".")
+    }
 
   /** Histogram tracking number of in-memory properties on nodes.
     */
@@ -130,6 +129,30 @@ final case class HostQuineMetrics(
   def shardUnlikelyUnexpectedWakeUpErrCounter(namespaceId: NamespaceId, shardName: String): Counter =
     metricRegistry.counter(metricName(namespaceId, List("shard", shardName, "unlikely", "wake-up-error")))
 
+  /** A timer tracking ingest query executions.
+    * CAUTION: Unlike the other ingest-related metrics, this timer is not paused when the ingest is completed/failed.
+    * This means its `Metered`-implementing metrics (pretty much anything with "rate" or "count" in the name) will
+    * stale once ingest has stopped. Similarly, the metric will never be removed from the registry, so it may
+    * accumulate stale data across namespace and other resets (IngestMeter is the exception to this, not the rule).
+    * This metric also uses the naming scheme consistent with other metrics, NOT the naming scheme used for ingest
+    * metrics.
+    * @see [[com.thatdot.quine.app.routes.IngestMeter]]
+    */
+  def ingestQueryTimer(namespaceId: NamespaceId, ingestName: String): Timer =
+    metricRegistry.timer(metricName(namespaceId, List("ingest", ingestName, "query")))
+
+  /** A timer tracking ingest record deserialization time.
+    * CAUTION: Unlike the other ingest-related metrics, this timer is not paused when the ingest is completed/failed.
+    * This means its `Metered`-implementing metrics (pretty much anything with "rate" or "count" in the name) will
+    * stale once ingest has stopped. Similarly, the metric will never be removed from the registry, so it may
+    * accumulate stale data across namespace and other resets (IngestMeter is the exception to this, not the rule).
+    * This metric also uses the naming scheme consistent with other metrics, NOT the naming scheme used for ingest
+    * metrics.
+    * @see [[com.thatdot.quine.app.routes.IngestMeter]]
+    */
+  def ingestDeserializationTimer(namespaceId: NamespaceId, ingestName: String): Timer =
+    metricRegistry.timer(metricName(namespaceId, List("ingest", ingestName, "deserialization")))
+
   /** Meter of results that were produced for a named standing query on this host */
   def standingQueryResultMeter(namespaceId: NamespaceId, sqName: String): Meter =
     metricRegistry.meter {
@@ -198,7 +221,8 @@ object HostQuineMetrics {
   sealed trait RelayAskMetric extends MessagingMetric
   sealed trait RelayTellMetric extends MessagingMetric
 
-  sealed abstract class DefaultMessagingMetric(metricRegistry: MetricRegistry, val messageProtocol: String) {
+  sealed abstract class DefaultMessagingMetric(metricRegistry: MetricRegistry, val messageProtocol: String)
+      extends MessagingMetric {
     protected[this] val totalMeter: Meter =
       metricRegistry.meter(MetricRegistry.name("messaging", messageProtocol, "sent"))
     protected[this] val localMeter: Meter =

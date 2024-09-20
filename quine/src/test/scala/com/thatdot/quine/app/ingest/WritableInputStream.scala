@@ -9,7 +9,6 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
-import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.graph.{GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 import com.thatdot.quine.util.Log._
@@ -44,12 +43,6 @@ class StdInStream extends WritableInputStream() {
 }
 
 object IngestTestGraph {
-
-  def meter(): IngestMeter = IngestMeter(
-    "test",
-    Metrics.meter("test_ct"),
-    Metrics.meter("test_bytes"),
-  )
 
   def makeGraph(graphName: String = "test-service"): GraphService = Await.result(
     GraphService(

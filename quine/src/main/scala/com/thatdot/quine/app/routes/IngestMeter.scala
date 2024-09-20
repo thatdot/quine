@@ -1,9 +1,9 @@
 package com.thatdot.quine.app.routes
 
-import com.codahale.metrics.{Meter, Metered, MetricRegistry}
+import com.codahale.metrics.{Meter, Metered, MetricRegistry, Timer}
 
-import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.graph.NamespaceId
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 
 /** Like [[Metered]], but maintains multiple counters relevant to ingest
   */
@@ -28,35 +28,39 @@ object IngestMetered {
   /** Returns an ingest meter with meters retrieved or created based on the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#meter
     */
-  def ingestMeter(namespaceId: NamespaceId, name: String): IngestMeter =
+  def ingestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): IngestMeter =
     IngestMeter(
       name,
-      Metrics.meter(mkCountMeterName(namespaceId, name)),
-      Metrics.meter(mkBytesMeterName(namespaceId, name)),
+      namespaceId,
+      metrics.metricRegistry.meter(mkCountMeterName(namespaceId, name)),
+      metrics.metricRegistry.meter(mkBytesMeterName(namespaceId, name)),
+      metrics,
     )
 
   /** Removes any meters used in ingest meters for the provided ingest name
     * @see com.codahale.metrics.MetricRegistry#remove
     */
-  def removeIngestMeter(namespaceId: NamespaceId, name: String): Boolean =
-    Metrics.remove(mkCountMeterName(namespaceId, name)) &&
-    Metrics.remove(mkBytesMeterName(namespaceId, name))
-
-  private def ingestMeterName(namespaceId: NamespaceId, name: String, attribute: String): String =
-    namespaceId.fold(MetricRegistry.name("ingest", name, attribute))(ns =>
-      MetricRegistry.name("ns", ns.name, "ingest", name, attribute),
-    )
+  def removeIngestMeter(namespaceId: NamespaceId, name: String, metrics: HostQuineMetrics): Boolean =
+    metrics.metricRegistry.remove(mkCountMeterName(namespaceId, name)) &&
+    metrics.metricRegistry.remove(mkBytesMeterName(namespaceId, name))
 
   private def mkCountMeterName(namespaceId: NamespaceId, name: String): String =
-    ingestMeterName(namespaceId, name, attribute = "count")
+    namespaceId.fold(MetricRegistry.name("ingest", name, "count"))(ns =>
+      MetricRegistry.name("ns", ns.name, "ingest", name, "count"),
+    )
+
   private def mkBytesMeterName(namespaceId: NamespaceId, name: String): String =
-    ingestMeterName(namespaceId, name, attribute = "bytes")
+    namespaceId.fold(MetricRegistry.name("ingest", name, "bytes"))(ns =>
+      MetricRegistry.name("ns", ns.name, "ingest", name, "bytes"),
+    )
 }
 
 final case class IngestMeter private[routes] (
   name: String,
+  namespaceId: NamespaceId,
   countMeter: Meter, // mutable
   bytesMeter: Meter, // mutable
+  private val metrics: HostQuineMetrics,
 ) extends IngestMetered {
   def mark(bytes: Int): Unit = {
     countMeter.mark()
@@ -64,6 +68,14 @@ final case class IngestMeter private[routes] (
   }
   override def counts: Metered = countMeter
   override def bytes: Metered = bytesMeter
+
+  /** Returns a timer that can be used to track deserializations.
+    * CAUTION this timer has different lifecycle behavior than the other metrics in this class.
+    * See [[metrics.ingestDeserializationTimer]] for more information.
+    * Note that not all ingest types use this timer.
+    */
+  def unmanagedDeserializationTimer: Timer =
+    metrics.ingestDeserializationTimer(namespaceId, name)
 }
 
 /** Meter that has been halted (so its rates/counts are no longer changing)

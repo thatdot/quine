@@ -8,17 +8,24 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.ingest2.source.IngestBounds
 import com.thatdot.quine.app.ingest2.sources.NumberIteratorSource
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.graph.cypher.Expr
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.streamedCypherValues
 
 class DelimitedSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll {
 
   implicit val actorSystem: ActorSystem = ActorSystem("StreamDecodersSpec")
   implicit val ec: ExecutionContext = actorSystem.getDispatcher
-  val meter: IngestMeter = IngestMetered.ingestMeter(None, "test")
+  val meter: IngestMeter =
+    IngestMetered.ingestMeter(
+      None,
+      "test",
+      HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
+    )
 
   override def afterAll(): Unit =
     actorSystem.terminate().foreach(_ => ())

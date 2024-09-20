@@ -17,6 +17,7 @@ import org.apache.pekko.{Done, NotUsed}
 
 import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxOption
+import com.codahale.metrics.Timer
 import org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerConfig.AUTO_OFFSET_RESET_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -49,11 +50,12 @@ object KafkaSrcDef {
     kafkaProperties: KafkaIngest.KafkaProperties,
     securityProtocol: KafkaSecurityProtocol,
     decoders: Seq[ContentDecoder],
+    deserializationTimer: Timer,
   )(implicit graph: CypherOpsGraph): ConsumerSettings[Array[Byte], Try[Value]] = {
 
     val deserializer: Deserializer[Try[Value]] =
       (_: String, data: Array[Byte]) =>
-        format.importMessageSafeBytes(ContentDecoder.decode(decoders, data), isSingleHost)
+        format.importMessageSafeBytes(ContentDecoder.decode(decoders, data), isSingleHost, deserializationTimer)
 
     val keyDeserializer: ByteArrayDeserializer = new ByteArrayDeserializer() //NO-OP
 
@@ -122,6 +124,7 @@ object KafkaSrcDef {
         kafkaProperties,
         securityProtocol,
         decoders,
+        graph.metrics.ingestDeserializationTimer(intoNamespace, name),
       )
 
     val complaintsFromValidator: ValidatedNel[String, Unit] =

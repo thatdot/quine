@@ -509,7 +509,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
 
       blocking(ingestStreamsLock.synchronized {
 
-        val meter = IngestMetered.ingestMeter(intoNamespace, name)
+        val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
         val metrics = IngestMetrics(Instant.now, None, meter)
 
         val trySource: Try[QuineIngestSource] = createV2IngestSource(
@@ -604,7 +604,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     Future
       .traverse(ingestStreams.toList) { case (ns, ingestMap) =>
         Future.sequence(ingestMap.map { case (name, ingest) =>
-          IngestMetered.removeIngestMeter(ns, name)
+          IngestMetered.removeIngestMeter(ns, name, graph.metrics)
           ingest.close()
           ingest.terminated().recover { case _ => Future.successful(Done) }
         })

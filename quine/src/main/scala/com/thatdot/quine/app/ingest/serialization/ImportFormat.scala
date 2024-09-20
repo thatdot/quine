@@ -6,6 +6,7 @@ import scala.util.{Failure, Success, Try}
 import org.apache.pekko.Done
 import org.apache.pekko.stream.scaladsl.Sink
 
+import com.codahale.metrics.Timer
 import com.typesafe.config.ConfigFactory
 import io.circe.jawn.CirceSupportParser
 
@@ -36,14 +37,23 @@ trait ImportFormat {
     * @param isSingleHost is the cluster just one host (in which case there is no risk of oversize payloads)
     * @return
     */
-  final def importMessageSafeBytes(data: Array[Byte], isSingleHost: Boolean): Try[cypher.Value] =
+  final def importMessageSafeBytes(
+    data: Array[Byte],
+    isSingleHost: Boolean,
+    deserializationTimer: Timer,
+  ): Try[cypher.Value] =
     if (!isSingleHost && data.length > pekkoMessageSizeLimit)
       Failure(
         new Exception(
           s"Attempted to decode ${data.length} bytes, but records larger than $pekkoMessageSizeLimit bytes are prohibited.",
         ),
       )
-    else importBytes(data)
+    else {
+      val timer = deserializationTimer.time()
+      val deserialized = importBytes(data)
+      deserialized.foreach(_ => timer.stop()) // only time successful deserializations
+      deserialized
+    }
 
   /** A description of the import format.
     */

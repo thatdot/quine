@@ -92,10 +92,13 @@ object MeteredExecutors extends LazySafeLogging {
           false
       }
 
+    // TODO the invariant below is violated by hard-coding the application here in otherwise shared code
     HostQuineMetrics(
       useEnhancedMetrics,
       Metrics,
+      omitDefaultNamespace = true,
     ) // INV the metrics instance here matches the one used by the app's Main
+
   }
 
   /** An Executor that delegates execution to a Pekko [[ThreadPoolExecutorConfigurator]], wrapped in an

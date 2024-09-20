@@ -68,8 +68,15 @@ trait FramedSource {
       type Frame = SrcFrame
       val foldable: DataFoldableFrom[Decoded] = decoder.foldable
 
+      private val deserializationTimer = this.meter.unmanagedDeserializationTimer
+
       def stream: Source[(Try[Decoded], Frame), ShutdownSwitch] =
-        FramedSource.this.stream.map(envelope => (decoder.decode(content(envelope)), envelope))
+        FramedSource.this.stream.map { envelope =>
+          val timer = deserializationTimer.time()
+          val decoded = decoder.decode(content(envelope))
+          decoded.foreach(_ => timer.stop()) // only time successful deserializations
+          decoded -> envelope
+        }
 
       override def ack: Flow[SrcFrame, Done, NotUsed] = FramedSource.this.ack
 
