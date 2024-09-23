@@ -37,7 +37,7 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
-    - run: sbt -v test quine/assembly quine-docs/makeSite 'scalafixAll --check'
+    - run: sbt -v test quine/assembly quine-docs/generateDocs 'scalafixAll --check'
 
   scalafmt:
     name: Scalafmt

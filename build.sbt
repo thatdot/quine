@@ -325,99 +325,49 @@ lazy val `quine`: Project = project
     buildInfoPackage := "com.thatdot.quine.app",
   )
 
-// Files under quine-docs/src/main/paradox/lib have been manually added. When we moved from
-// the  sbt-paradox-material-theme (see plugins.sbt) to a fork, the
-// forked library omitted this directory, so those files have been
-// copied from the original plugin library, however, they should _not_ be
-// included in the paradox theme.
 lazy val `quine-docs`: Project = {
-  val docJson = Def.task((Compile / paradox / sourceManaged).value / "reference" / "openapi.json")
-  val cypherTable1 = Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
+  val docJson = Def.setting((Compile / sourceManaged).value / "reference" / "openapi.json")
+  val cypherTable1 = Def.setting((Compile / sourceManaged).value / "reference" / "cypher-builtin-functions.md")
   val cypherTable2 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
+    Def.setting((Compile / sourceManaged).value / "reference" / "cypher-user-defined-functions.md")
   val cypherTable3 =
-    Def.task((Compile / paradox / sourceManaged).value / "reference" / "cypher-user-defined-procedures.md")
-  val recipesFolder =
-    Def.task((Compile / paradox / sourceManaged).value / "recipes")
+    Def.setting((Compile / sourceManaged).value / "reference" / "cypher-user-defined-procedures.md")
+
+  val generateDocs = TaskKey[Unit]("generateDocs", "Generate documentation tables for the Quine (Mkdocs) project")
+
   Project("quine-docs", file("quine-docs"))
     .dependsOn(`quine`)
     .settings(commonSettings)
-    .enablePlugins(ParadoxThatdot, GhpagesPlugin)
     .settings(
-      projectName := "Quine",
-      git.remoteRepo := "git@github.com:thatdot/quine.io.git",
-      ghpagesBranch := "main",
-      ghpagesCleanSite / excludeFilter := { (f: File) =>
-        (ghpagesRepository.value / "CNAME").getCanonicalPath == f.getCanonicalPath
-      },
-      // Same as `paradox` itself
+      generateDocs := Def
+        .sequential(
+          Def.task {
+            (Compile / runMain)
+              .toTask(
+                List(
+                  " com.thatdot.quine.docs.GenerateCypherTables",
+                  cypherTable1.value.getAbsolutePath,
+                  cypherTable2.value.getAbsolutePath,
+                  cypherTable3.value.getAbsolutePath,
+                ).mkString(" "),
+              )
+          },
+          Def.taskDyn {
+            (Compile / runMain)
+              .toTask(s" com.thatdot.quine.docs.GenerateOpenApi ${docJson.value.getAbsolutePath}")
+          },
+        )
+        .value,
+    )
+    .settings(
       libraryDependencies ++= Seq(
         "org.pegdown" % "pegdown" % pegdownV,
         "org.parboiled" % "parboiled-java" % parboiledV,
         "org.scalatest" %% "scalatest" % scalaTestV % Test,
       ),
-      Compile / paradoxProperties ++= Map(
-        "snip.github_link" -> "false",
-        "snip.quine.base_dir" -> (`quine` / baseDirectory).value.getAbsolutePath,
-        "material.repo" -> "https://github.com/thatdot/quine",
-        "material.repo.type" -> "github",
-        "material.social" -> "https://that.re/quine-slack",
-        "material.social.type" -> "slack",
-        "include.generated.base_dir" -> (Compile / paradox / sourceManaged).value.toString,
-        "project.name" -> projectName.value,
-        "logo.link.title" -> "Quine",
-        "quine.jar" -> s"quine-${version.value}.jar",
-      ),
-      description := "Quine is a streaming graph interpreter meant to trigger actions in real-time based on complex patterns pulled from high-volume streaming data",
-      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
-        (Compile / runMain)
-          .toTask(s" com.thatdot.quine.docs.GenerateOpenApi ${docJson.value.getAbsolutePath}")
-          .map(_ => Seq()) // return no files because files returned are supposed to be markdown
-      },
-      // Register the `openapi.json` file here
-      Compile / paradox / mappings ++= List(
-        docJson.value -> "reference/openapi.json",
-      ),
-      // ---
-      // Uncomment to build the recipe template pages
-      // then add * @ref:[Recipes](recipes/index.md) into docs.md
-      // ---
-      //Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
-      //  val inDir: File = (quine / baseDirectory).value / "recipes"
-      //  val outDir: File = (Compile / paradox / sourceManaged).value / "recipes"
-      //  (Compile / runMain)
-      //    .toTask(s" com.thatdot.quine.docs.GenerateRecipeDirectory ${inDir.getAbsolutePath} ${outDir.getAbsolutePath}")
-      //    .map(_ => (outDir * "*.md").get)
-      //},
-      Compile / paradoxNavigationDepth := 3,
-      Compile / paradoxNavigationExpandDepth := Some(3),
-      paradoxRoots := List("index.html", "docs.html", "about.html", "download.html"),
-      Compile / paradoxMarkdownToHtml / sourceGenerators += Def.taskDyn {
-        (Compile / runMain)
-          .toTask(
-            List(
-              " com.thatdot.quine.docs.GenerateCypherTables",
-              cypherTable1.value.getAbsolutePath,
-              cypherTable2.value.getAbsolutePath,
-              cypherTable3.value.getAbsolutePath,
-            ).mkString(" "),
-          )
-          .map(_ => Nil) // files returned are included, not top-level
-      },
-      Compile / paradoxMaterialTheme ~= {
-        _.withCustomStylesheet("assets/quine.css")
-          .withLogo("assets/images/quine_logo.svg")
-          .withColor("white", "quine-blue")
-          .withFavicon("assets/images/favicon.svg")
-      },
-      Compile / overlayDirectory := (`paradox-overlay` / baseDirectory).value,
     )
 }
 
-lazy val `paradox-overlay`: Project = project
-
 // Spurious warnings
-Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationExpandDepth
-Global / excludeLintKeys += `quine-docs` / Paradox / paradoxNavigationDepth
 Global / excludeLintKeys += `quine-browser` / webpackNodeArgs
 Global / excludeLintKeys += `quine-browser` / webpackExtraArgs

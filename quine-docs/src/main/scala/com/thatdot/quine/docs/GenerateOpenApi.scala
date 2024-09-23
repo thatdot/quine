@@ -13,17 +13,16 @@ import com.thatdot.quine.util.Log._
 object GenerateOpenApi extends App {
   val logConfig: LogConfig = LogConfig()
 
-  private val (outputPath: Path, isEnterprise: Boolean) = args match {
-    case Array(stringPath) => (Paths.get(stringPath), false)
-    case Array(stringPath, isEnterprise) => (Paths.get(stringPath), isEnterprise == "true")
+  val outputPath: Path = args match {
+    case Array(stringPath) => Paths.get(stringPath)
     case _ =>
-      println(s"GenerateOpenApi expected a path and optional isEnterprise argument but got: ${args.mkString(",")}")
+      println(this.getClass.getSimpleName + " expected one path argument but got: " + args.mkString("[", ", ", "]"))
       sys.exit(1)
   }
 
   val openApiRoutes: OpenApi = new QuineAppOpenApiDocs(QuineUUIDProvider)(logConfig).api
   val openApiDocumentationJson: String =
-    OpenApiRenderer(isEnterprise).stringEncoder.encode(openApiRoutes)
+    OpenApiRenderer(isEnterprise = false).stringEncoder.encode(openApiRoutes)
 
   Files.createDirectories(outputPath.getParent())
   Files.write(
