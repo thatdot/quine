@@ -18,7 +18,7 @@ import com.thatdot.quine.util.Log._
 
 /** Gathering of Quine OSS tapir-defined routes.
   */
-class V2OssRoutes(val app: OssApiInterface)(implicit protected val logConfig: LogConfig)
+class V2OssRoutes(val appMethods: OssApiMethods)(implicit protected val logConfig: LogConfig)
     extends TapirRoutes
     with V2AdministrationEndpoints
     with V2StandingEndpoints

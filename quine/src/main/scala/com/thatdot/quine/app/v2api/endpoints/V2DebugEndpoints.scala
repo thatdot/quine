@@ -71,7 +71,7 @@ the two nodes at the edge's endpoints contain half edges that:
 
 }
 
-trait V2DebugEndpoints extends V2EndpointDefinitions {
+trait V2DebugEndpoints extends V2QuineEndpointDefinitions {
   val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node id")
   val propKeyParameter: EndpointInput.Query[String] =
     query[String]("key").description(
@@ -124,7 +124,7 @@ closely as possible to how they would be emitted by
           DebugOpsPropertygetApiCmd,
           memberIdx,
           (id, propKey, atime, namespaceFromParam(ns)),
-          t => app.debugOpsPropertyGet(t._1, t._2, t._3, t._4),
+          t => appMethods.debugOpsPropertyGet(t._1, t._2, t._3, t._4),
         )
       }
 
@@ -144,7 +144,7 @@ closely as possible to how they would be emitted by
           DebugOpsGetApiCmd,
           memberIdx,
           (id, atime, namespaceFromParam(ns)),
-          t => app.debugOpsGet(t._1, t._2, t._3),
+          t => appMethods.debugOpsGet(t._1, t._2, t._3),
         )
       }
 
@@ -162,7 +162,7 @@ closely as possible to how they would be emitted by
         DebugVerboseApiCmd,
         memberIdx,
         (id, atime, namespaceFromParam(ns)),
-        t => app.debugOpsVerbose(t._1, t._2, t._3),
+        t => appMethods.debugOpsVerbose(t._1, t._2, t._3),
       )
     }
 
@@ -188,7 +188,7 @@ closely as possible to how they would be emitted by
           DebugEdgesGetApiCmd,
           memberIdx,
           (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
+          t => appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
         )
       }
 
@@ -214,7 +214,7 @@ closely as possible to how they would be emitted by
           DebugHalfEdgesGetApiCmd,
           memberIdx,
           (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => app.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
+          t => appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
         )
       }
 

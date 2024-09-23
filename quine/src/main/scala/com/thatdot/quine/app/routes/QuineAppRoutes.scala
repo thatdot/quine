@@ -13,7 +13,7 @@ import org.webjars.WebJarAssetLocator
 
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
-import com.thatdot.quine.app.v2api.{OssApiInterface, V2OssRoutes}
+import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, QuineApp}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
@@ -140,7 +140,7 @@ class QuineAppRoutes(
 
     if (apiV2Enabled) {
       val v2Route = new V2OssRoutes(
-        new OssApiInterface(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
+        new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
       ).v2Routes
       logger.warn(safe"Starting with Api V2 endpoints enabled")
       v1Routes ~ v2Route

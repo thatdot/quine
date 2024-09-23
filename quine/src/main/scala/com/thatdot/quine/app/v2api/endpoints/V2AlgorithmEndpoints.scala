@@ -106,7 +106,7 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
 
 }
 
-trait V2AlgorithmEndpoints extends V2EndpointDefinitions {
+trait V2AlgorithmEndpoints extends V2QuineEndpointDefinitions {
 
   import V2AlgorithmEndpointEntities._
 
@@ -210,7 +210,9 @@ concatenated to produce the final file name:
             saveLocation,
           ),
           t =>
-            Future.successful(app.algorithmSaveRandomWalks(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10)),
+            Future.successful(
+              appMethods.algorithmSaveRandomWalks(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8, t._9, t._10),
+            ),
         )
     }
 
@@ -245,7 +247,7 @@ concatenated to produce the final file name:
           GenerateRandomWalkApiCmd,
           memberIdx,
           (id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespaceFromParam(namespace), atTimeOpt),
-          t => app.algorithmRandomWalk(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8),
+          t => appMethods.algorithmRandomWalk(t._1, t._2, t._3, t._4, t._5, t._6, t._7, t._8),
         )
 
     }

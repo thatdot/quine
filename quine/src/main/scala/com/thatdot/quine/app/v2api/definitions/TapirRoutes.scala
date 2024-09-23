@@ -20,7 +20,7 @@ abstract class TapirRoutes {
   /** List of endpoints that should not appear in api docs. */
   protected val hiddenEndpoints: Set[ServerEndpoint[Any, Future]]
 
-  val app: ApplicationApiInterface
+  val appMethods: ApplicationApiMethods
   private def docEndpoints: Seq[ServerEndpoint[Any, Future]] =
     RedocInterpreter(redocUIOptions = RedocUIOptions.default.copy(pathPrefix = List("v2docs")))
       .fromServerEndpoints[Future](apiEndpoints.filterNot(hiddenEndpoints.contains(_)), "thatdot-api-v2", "1.0.0")

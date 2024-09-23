@@ -125,7 +125,7 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2AdministrationEndpoints extends V2EndpointDefinitions {
+trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions {
 
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
@@ -175,12 +175,14 @@ trait V2AdministrationEndpoints extends V2EndpointDefinitions {
     .description("Returns a JSON object containing information about how Quine was built")
     .get
     .serverLogic { memberIdx =>
-      runServerLogic[Unit, TQuineInfo](GetBuildInfoApiCmd, memberIdx, (), _ => Future.successful(app.buildInfo))
+      runServerLogic[Unit, TQuineInfo](GetBuildInfoApiCmd, memberIdx, (), _ => Future.successful(appMethods.buildInfo))
     }
 
   private val configEndpoint = {
     implicit val configSchema: Schema[ObjectEnvelope[Json]] =
-      Schema.derived[ObjectEnvelope[Json]].encodedExample(Json.obj(("data", app.emptyConfigExample.loadedConfigJson)))
+      Schema
+        .derived[ObjectEnvelope[Json]]
+        .encodedExample(Json.obj(("data", appMethods.emptyConfigExample.loadedConfigJson)))
 
     adminEndpoint[Json]("config")
       .name("Running Configuration")
@@ -194,7 +196,12 @@ server request timeout of this REST API, but it won't show up in the response of
 endpoint.
 """).get
       .serverLogic { memberIdx =>
-        runServerLogic[Unit, Json](GetConfigApiCmd, memberIdx, (), _ => Future.successful(app.config.loadedConfigJson))
+        runServerLogic[Unit, Json](
+          GetConfigApiCmd,
+          memberIdx,
+          (),
+          _ => Future.successful(appMethods.config.loadedConfigJson),
+        )
       }
   }
 
@@ -220,7 +227,7 @@ endpoint.
         GraphHashCodeApiCmd,
         memberIdx,
         (atime, namespaceFromParam(ns)),
-        t => app.graphHashCode(t._1, t._2),
+        t => appMethods.graphHashCode(t._1, t._2),
       )
     }
 
@@ -246,7 +253,7 @@ up ready and start routing user requests to it.
         GetReadinessApiCmd,
         memberIdx,
         (),
-        _ => Future.successful(Either.cond(app.isReady, true, ServiceUnavailable("System is not ready"))),
+        _ => Future.successful(Either.cond(appMethods.isReady, true, ServiceUnavailable("System is not ready"))),
       )
     }
 
@@ -259,7 +266,7 @@ up ready and start routing user requests to it.
         ShutdownApiCmd,
         memberIdx,
         (),
-        _ => app.performShutdown(),
+        _ => appMethods.performShutdown(),
       )
     }
 
@@ -273,7 +280,7 @@ up ready and start routing user requests to it.
           GetMetaDataApiCmd,
           memberIdx,
           (),
-          _ => app.metaData,
+          _ => appMethods.metaData,
         )
       }
 
@@ -314,7 +321,7 @@ up ready and start routing user requests to it.
         GetMetricsApiCmd,
         memberIdx,
         (),
-        _ => Future.successful(metricsReportFromV1Metrics(app.metrics)),
+        _ => Future.successful(metricsReportFromV1Metrics(appMethods.metrics)),
       )
     }
 
@@ -335,7 +342,7 @@ up ready and start routing user requests to it.
         memberIdx,
         resizes,
         r =>
-          app
+          appMethods
             .shardSizes(r.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
             .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
       )
@@ -354,7 +361,7 @@ up ready and start routing user requests to it.
         SleepNodeApiCmd,
         memberIdx,
         (nodeId, namespaceFromParam(namespace)),
-        t => app.requestNodeSleep(t._1, t._2),
+        t => appMethods.requestNodeSleep(t._1, t._2),
       )
     }
 

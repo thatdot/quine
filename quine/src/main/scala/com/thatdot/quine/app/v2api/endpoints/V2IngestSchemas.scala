@@ -21,7 +21,7 @@ import sttp.tapir.{Codec, DecodeResult, Schema}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestFormat, _}
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
-trait V2IngestEntitySchemas extends TapirJsonCirce {
+trait V2IngestSchemas extends TapirJsonCirce {
   implicit val csvCharacterSchema: Schema[CsvCharacter] = Schema.derived[CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
@@ -118,5 +118,5 @@ trait V2IngestEntitySchemas extends TapirJsonCirce {
     implicit val config = ingestSourceTypeConfig
     deriveConfiguredDecoder[OnStreamErrorHandler]
   }
-
+  implicit val ingestStreamStatusEncoder: Encoder[IngestStreamStatus] = Encoder.encodeString.contramap(_.toString)
 }

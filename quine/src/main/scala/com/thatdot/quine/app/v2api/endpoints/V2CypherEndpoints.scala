@@ -45,7 +45,7 @@ object V2CypherEndpointEntities extends TapirJsonCirce {
     .schemaForMap[String, Json](identity)
 
 }
-trait V2CypherEndpoints extends V2EndpointDefinitions {
+trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
 
   implicit val cypherQueryResultDecoder: Decoder[CypherQueryResult] = deriveDecoder[CypherQueryResult]
   implicit val cypherQueryResultEncoder: Encoder[CypherQueryResult] = deriveEncoder[CypherQueryResult]
@@ -84,7 +84,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
           CypherPostApiCmd,
           memberIdx,
           (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-          t => app.cypherPost(t._1, toConcreteDuration(t._2), t._3, t._4),
+          t => appMethods.cypherPost(t._1, toConcreteDuration(t._2), t._3, t._4),
         )
       }
 
@@ -103,7 +103,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
         CypherNodesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-        t => app.cypherNodesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
+        t => appMethods.cypherNodesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
       )
     }
 
@@ -122,7 +122,7 @@ trait V2CypherEndpoints extends V2EndpointDefinitions {
         CypherEdgesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
-        t => app.cypherEdgesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
+        t => appMethods.cypherEdgesPost(t._1, toConcreteDuration(t._2), t._3, t._4),
       )
     }
 

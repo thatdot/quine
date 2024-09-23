@@ -11,10 +11,9 @@ import sttp.tapir.{Endpoint, EndpointInput, Schema, path}
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.routes.{IngestStreamInfo, IngestStreamInfoWithName, IngestStreamStatus}
-trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas {
+import com.thatdot.quine.routes.{IngestStreamInfo, IngestStreamInfoWithName}
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas {
 
-  implicit val ingestStreamStatusEncoder: Encoder[IngestStreamStatus] = Encoder.encodeString.contramap(_.toString)
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
     path[String]("name").description("Ingest stream name")
 
@@ -44,7 +43,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, ingestStreamConfig, namespaceFromParam(ns)),
-        t => Future.successful(app.createIngestStream(t._1, t._2, t._3)),
+        t => Future.successful(appMethods.createIngestStream(t._1, t._2, t._3)),
       )
     }
 
@@ -60,7 +59,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         PauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.pauseIngestStream(t._1, t._2),
+        t => appMethods.pauseIngestStream(t._1, t._2),
       )
     }
 
@@ -76,7 +75,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         UnpauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.unpauseIngestStream(t._1, t._2),
+        t => appMethods.unpauseIngestStream(t._1, t._2),
       )
     }
 
@@ -94,7 +93,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.deleteIngestStream(t._1, t._2),
+        t => appMethods.deleteIngestStream(t._1, t._2),
       )
     }
 
@@ -109,7 +108,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         IngestStatusApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
-        t => app.ingestStreamStatus(t._1, t._2),
+        t => appMethods.ingestStreamStatus(t._1, t._2),
       )
     }
 
@@ -126,7 +125,7 @@ trait V2IngestEndpoints extends V2EndpointDefinitions with V2IngestEntitySchemas
         IngestStatusApiCmd,
         memberIdx,
         namespaceFromParam(ns),
-        ns => app.listIngestStreams(ns),
+        ns => appMethods.listIngestStreams(ns),
       )
     }
 

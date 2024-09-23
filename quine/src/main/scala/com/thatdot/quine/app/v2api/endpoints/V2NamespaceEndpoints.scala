@@ -10,7 +10,7 @@ import sttp.tapir.{Schema, path}
 import com.thatdot.quine.app.v2api.definitions._
 
 /** Placeholder route to demonstrate V2. Not intended to represent a final endpoint. */
-trait V2NamespaceEndpoints extends V2EndpointDefinitions {
+trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions {
 
   private def namespaceEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
@@ -23,7 +23,7 @@ trait V2NamespaceEndpoints extends V2EndpointDefinitions {
   ], ObjectEnvelope[List[String]], Any, Future] =
     namespaceEndpoint[List[String]].get
       .serverLogic(memberIdx =>
-        runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => app.getNamespaces),
+        runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => appMethods.getNamespaces),
       )
 
   val createNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
@@ -33,7 +33,7 @@ trait V2NamespaceEndpoints extends V2EndpointDefinitions {
       .in(path[String]("namespace"))
       .put
       .serverLogic { case (memberIdx, namespace) =>
-        runServerLogic[String, Boolean](CreateNamespace, memberIdx, namespace, app.createNamespace)
+        runServerLogic[String, Boolean](CreateNamespace, memberIdx, namespace, appMethods.createNamespace)
       }
 
   val deleteNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], String), ErrorEnvelope[
@@ -43,6 +43,6 @@ trait V2NamespaceEndpoints extends V2EndpointDefinitions {
       .in(path[String]("namespace"))
       .delete
       .serverLogic { case (memberIdx, namespace) =>
-        runServerLogic(DeleteNamespace, memberIdx, namespace, app.deleteNamespace)
+        runServerLogic(DeleteNamespace, memberIdx, namespace, appMethods.deleteNamespace)
       }
 }

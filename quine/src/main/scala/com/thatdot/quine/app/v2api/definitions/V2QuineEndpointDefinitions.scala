@@ -3,7 +3,6 @@ package com.thatdot.quine.app.v2api.definitions
 import java.nio.charset.{Charset, StandardCharsets}
 import java.util.concurrent.TimeUnit
 
-import scala.annotation.unused
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
@@ -15,7 +14,7 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
 import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.json.circe.TapirJsonCirce
-import sttp.tapir.{EndpointOutput, _}
+import sttp.tapir.{EndpointOutput, endpoint, _}
 
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
 import com.thatdot.quine.graph.NamespaceId
@@ -32,6 +31,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
 
   implicit protected def logConfig: LogConfig
 
+  val appMethods: ApplicationApiMethods
   // ------- parallelism -----------
   val parallelismParameter: EndpointInput.Query[Option[Int]] = query[Option[Int]](name = "parallelism")
     .description(s"Operations to execute simultaneously. Default: `${IngestRoutes.defaultWriteParallelism}`")
@@ -65,7 +65,8 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     }
 
   //TODO Use Tapir Validator IdProvider.validate
-  val idProvider: QuineIdProvider = app.graph.idProvider
+
+  val idProvider: QuineIdProvider = appMethods.graph.idProvider
 
   implicit val quineIdCodec: Codec[String, QuineId, TextPlain] =
     Codec.string.mapDecode(toQuineId)(idProvider.qidToPrettyString)
@@ -82,28 +83,10 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
 
   type EndpointOutput[T] = Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T]]
 
-  /** OSS Specific behavior defined in [[com.thatdot.quine.v2api.V2OssRoutes]]. */
-  def memberIdxParameter: EndpointInput[Option[Int]]
-
-  /** OSS Specific behavior defined in [[V2OssRoutes]]. */
-  def namespaceParameter: EndpointInput[Option[String]]
-
-  //TODO port logic from QuineEndpoints NamespaceParameter
-  def namespaceFromParam(ns: Option[String]): NamespaceId =
-    ns.flatMap(t => Option.when(t != "default")(Symbol(t)))
-
-  def ifNamespaceFound[A](namespaceId: NamespaceId)(
-    ifFound: => Future[Either[CustomError, A]],
-  ): Future[Either[CustomError, Option[A]]] =
-    if (!app.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
-    else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
-
-  val app: ApplicationApiInterface
-
   /** Matching error types to api-rendered error outputs. Api Status codes are returned by matching the type of the
     * custom error to the status code matched here
     */
-  private val commonErrorOutput
+  protected val commonErrorOutput
     : EndpointOutput.OneOf[ErrorEnvelope[_ <: CustomError], ErrorEnvelope[_ <: CustomError]] =
     oneOf[ErrorEnvelope[_ <: CustomError]](
       oneOfVariantFromMatchType(
@@ -128,10 +111,53 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
       ),
     )
 
-  private def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] = (a: ObjectEnvelope[T]) =>
+  protected def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] = (a: ObjectEnvelope[T]) =>
     Json.fromFields(Seq(("data", encoder.apply(a.data))))
-  private def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
+
+  protected def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
     c => decoder.apply(c.downField("data").root).map(ObjectEnvelope(_))
+
+  def yamlBody[T]()(implicit
+    schema: Schema[T],
+    encoder: Encoder[T],
+    decoder: Decoder[T],
+  ): EndpointIO.Body[String, T] = stringBodyAnyFormat(YamlCodec.createCodec[T](), StandardCharsets.UTF_8)
+
+  def jsonOrYamlBody[T](implicit
+    schema: Schema[T],
+    encoder: Encoder[T],
+    decoder: Decoder[T],
+  ): EndpointIO.OneOfBody[T, T] =
+    oneOfBody[T](jsonBody[T], yamlBody[T]())
+
+  def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
+    stringBodyAnyFormat(codec, Charset.defaultCharset())
+
+  /** Wrap output types in their corresponding envelopes. */
+  protected def wrapOutput[OUT](value: Either[CustomError, OUT]): EndpointOutput[OUT] =
+    value.fold(t => Left(ErrorEnvelope(t)), v => Right(ObjectEnvelope(v)))
+}
+
+/** Component definitions for Tapir quine endpoints. */
+trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
+
+  val appMethods: QuineApiMethods
+
+  /** OSS Specific behavior defined in [[com.thatdot.quine.v2api.V2OssRoutes]]. */
+  def memberIdxParameter: EndpointInput[Option[Int]]
+
+  /** OSS Specific behavior defined in [[V2OssRoutes]]. */
+  def namespaceParameter: EndpointInput[Option[String]]
+
+  //TODO port logic from QuineEndpoints NamespaceParameter
+  def namespaceFromParam(ns: Option[String]): NamespaceId =
+    ns.flatMap(t => Option.when(t != "default")(Symbol(t)))
+
+  def ifNamespaceFound[A](namespaceId: NamespaceId)(
+    ifFound: => Future[Either[CustomError, A]],
+  ): Future[Either[CustomError, Option[A]]] =
+    if (!appMethods.graph.getNamespaces.contains(namespaceId)) Future.successful(Right(None))
+    else ifFound.map(_.map(Some(_)))(ExecutionContext.parasitic)
 
   type EndpointBase = Endpoint[Unit, Option[Int], Unit, Unit, Any]
 
@@ -170,23 +196,6 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     withOutput[T](rawEndpoint(basePaths: _*))
 
-  def yamlBody[T]()(implicit
-    schema: Schema[T],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): EndpointIO.Body[String, T] = stringBodyAnyFormat(YamlCodec.createCodec[T](), StandardCharsets.UTF_8)
-
-  @unused
-  def jsonOrYamlBody[T](implicit
-    schema: Schema[T],
-    encoder: Encoder[T],
-    decoder: Decoder[T],
-  ): EndpointIO.OneOfBody[T, T] =
-    oneOfBody[T](jsonBody[T], yamlBody[T]())
-
-  def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
-    stringBodyAnyFormat(codec, Charset.defaultCharset())
-
   //TODO split into definitions in extensions of [[TapirRoutes]] that support specific platforms.
   /** Wrap server responses in their respective output envelopes. */
   def runServerLogic[IN, OUT: Decoder](
@@ -214,7 +223,4 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
   }
 
-  /** Wrap output types in their corresponding envelopes. */
-  protected def wrapOutput[OUT](value: Either[CustomError, OUT]): EndpointOutput[OUT] =
-    value.fold(t => Left(ErrorEnvelope(t)), v => Right(ObjectEnvelope(v)))
 }

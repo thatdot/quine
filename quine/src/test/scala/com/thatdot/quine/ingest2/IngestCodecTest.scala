@@ -15,7 +15,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
   IngestConfiguration,
   ProtobufIngestFormat,
 }
-import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestEntitySchemas}
+import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestSchemas}
 import com.thatdot.quine.routes.FileIngestMode.Regular
 import com.thatdot.quine.routes.KafkaAutoOffsetReset.Latest
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
@@ -28,7 +28,7 @@ class IngestCodecTest
     extends AnyFunSuite
     with ScalaCheckDrivenPropertyChecks
     with ArbitraryIngests
-    with V2IngestEntitySchemas {
+    with V2IngestSchemas {
 
   def testJsonEncodeDecode[V: Encoder: Decoder](v: V): Assertion = {
     val json = v.asJson

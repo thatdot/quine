@@ -15,7 +15,7 @@ import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes.{RegisteredStandingQuery, StandingQueryDefinition, StandingQueryResultOutputUserDef}
 
-trait V2StandingEndpoints extends V2EndpointDefinitions {
+trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
 
   private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => (s.toString -> s)).toMap
   implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
@@ -58,7 +58,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           ListSQsApiCmd,
           memberIdx,
           namespaceFromParam(namespace),
-          ns => app.listStandingQueries(ns),
+          ns => appMethods.listStandingQueries(ns),
         )
       }
 
@@ -90,7 +90,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           PropagateSQsApiCmd,
           memberIdx,
           (includeSleeping, namespaceFromParam(namespace), wakeUpParallelism.getOrElse(4)),
-          t => app.propagateStandingQuery(t._1, t._2, t._3),
+          t => appMethods.propagateStandingQuery(t._1, t._2, t._3),
         )
       }
 
@@ -114,7 +114,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
         CreateSQOutputApiCmd,
         memberIdx,
         (sqName, sqOutputName, namespaceFromParam(namespace), outputDef),
-        t => app.addSQOutput(t._1, t._2, t._3, t._4),
+        t => appMethods.addSQOutput(t._1, t._2, t._3, t._4),
       )
     }
 
@@ -143,7 +143,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
         CreateSQApiCmd,
         memberIdx,
         (sqName, namespaceFromParam(namespace), definition),
-        t => app.createSQ(t._1, t._2, t._3),
+        t => appMethods.createSQ(t._1, t._2, t._3),
       )
     }
 
@@ -161,7 +161,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           DeleteSQOutputApiCmd,
           memberIdx,
           (standingQueryName, namespaceFromParam(namespace)),
-          t => app.deleteSQ(t._1, t._2),
+          t => appMethods.deleteSQ(t._1, t._2),
         )
       }
 
@@ -181,7 +181,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           DeleteSQOutputApiCmd,
           memberIdx,
           (sqName, sqOutputName, namespaceFromParam(namespace)),
-          t => app.deleteSQOutput(t._1, t._2, t._3),
+          t => appMethods.deleteSQOutput(t._1, t._2, t._3),
         )
       }
 
@@ -199,7 +199,7 @@ trait V2StandingEndpoints extends V2EndpointDefinitions {
           GetSQApiCmd,
           memberIdx,
           (sqName, namespaceFromParam(namespace)),
-          t => app.getSQ(t._1, t._2),
+          t => appMethods.getSQ(t._1, t._2),
         )
       }
 
