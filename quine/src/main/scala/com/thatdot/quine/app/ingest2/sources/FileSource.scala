@@ -129,8 +129,8 @@ object FileSource extends LazyLogging {
         ).decodedSource
 
       // TODO Protobuf, Raw, Drop not supported on file types since there is no way to delimit them:
-      case V2IngestEntities.ProtobufIngestFormat(_, _) | V2IngestEntities.RawIngestFormat |
-          V2IngestEntities.DropFormat =>
+      case V2IngestEntities.AvroIngestFormat(_) | V2IngestEntities.ProtobufIngestFormat(_, _) |
+          V2IngestEntities.RawIngestFormat | V2IngestEntities.DropFormat =>
         throw new UnsupportedOperationException(s"Ingest format $format not supported on file-like sources")
 
     }

@@ -20,7 +20,7 @@ import com.thatdot.quine.app.ingest2.sources.S3Source.s3Source
 import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
   CsvIngestFormat,
   IngestFormat,
@@ -353,7 +353,10 @@ object DecodedSource extends LazySafeLogging {
   import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
 
   //V2 configuration
-  def apply(src: FramedSource, format: IngestFormat)(implicit protobufCache: ProtobufSchemaCache): DecodedSource =
+  def apply(src: FramedSource, format: IngestFormat)(implicit
+    protobufCache: ProtobufSchemaCache,
+    avroCache: AvroSchemaCache,
+  ): DecodedSource =
     src.toDecoded(FrameDecoder(format))
 
   def apply(
@@ -361,7 +364,12 @@ object DecodedSource extends LazySafeLogging {
     config: IngestConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
-  )(implicit protobufCache: ProtobufSchemaCache, ec: ExecutionContext, logConfig: LogConfig): DecodedSource =
+  )(implicit
+    protobufCache: ProtobufSchemaCache,
+    avroCache: AvroSchemaCache,
+    ec: ExecutionContext,
+    logConfig: LogConfig,
+  ): DecodedSource =
     config.source match {
       case FileIngest(path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(

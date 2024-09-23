@@ -3,8 +3,19 @@ package com.thatdot.quine.app.serialization
 import java.net.URL
 
 sealed trait ProtobufSchemaError extends IllegalArgumentException
+sealed trait AvroSchemaError extends IllegalArgumentException
 sealed trait ProtobufSchemaMessageTypeException extends ProtobufSchemaError {
   def typeName: String
+}
+
+object AvroSchemaError {
+  class UnreachableAvroSchema(val fileUri: URL, cause: java.io.IOException)
+      extends IllegalArgumentException(s"Unreachable avro schema file: $fileUri", cause)
+      with AvroSchemaError
+  class InvalidAvroSchema(val fileUri: URL, cause: Throwable)
+      extends IllegalArgumentException(s"Invalid avro schema file: $fileUri", cause)
+      with AvroSchemaError
+
 }
 
 object ProtobufSchemaError {

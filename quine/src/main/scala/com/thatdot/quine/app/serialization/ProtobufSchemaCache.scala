@@ -61,7 +61,8 @@ object ProtobufSchemaCache {
       * to re-parse the schema. This may be desirable when, for example, a message type lookup fails, even if the
       * schema lookup succeeds (so that the user can update their schema file to include the missing type).
       */
-    def flush(uri: URL): Unit = parsedDescriptorCache.put(uri, Future.successful(null))
+    def flush(uri: URL): Unit =
+      parsedDescriptorCache.put(uri, Future.successful(null))
 
     def getSchema(schemaUrl: URL): Future[DynamicSchema] =
       parsedDescriptorCache.get(schemaUrl)
@@ -108,5 +109,4 @@ object ProtobufSchemaCache {
         new AmbiguousMessageType(messageType, messagesFoundByShortName)
       }
     }
-
 }

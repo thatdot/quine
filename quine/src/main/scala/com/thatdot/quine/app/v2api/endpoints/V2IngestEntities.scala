@@ -222,6 +222,14 @@ object V2IngestEntities {
     typeName: String,
   ) extends IngestFormat
 
+  @title("Avro format")
+  case class AvroIngestFormat(
+    @description(
+      "URL (or local filename) of the file to load to parse the avro schema.",
+    )
+    schemaUrl: String,
+  ) extends IngestFormat
+
   case object RawIngestFormat extends IngestFormat
 
   case object DropFormat extends IngestFormat

@@ -725,6 +725,7 @@ object FileIngestFormat {
     require(delimiter != escapeChar, "Different characters must be used for `delimiter` and `escapeChar`.")
     require(quoteChar != escapeChar, "Different characters must be used for `quoteChar` and `escapeChar`.")
   }
+
 }
 
 @title("File Ingest Mode")

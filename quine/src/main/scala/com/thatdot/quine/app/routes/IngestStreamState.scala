@@ -7,7 +7,7 @@ import org.apache.pekko.util.Timeout
 import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
@@ -121,7 +121,11 @@ trait IngestStreamState {
     metrics: IngestMetrics,
     meter: IngestMeter,
     graph: CypherOpsGraph,
-  )(implicit protobufCache: ProtobufSchemaCache, logConfig: LogConfig): Try[QuineIngestSource] =
+  )(implicit
+    protobufCache: ProtobufSchemaCache,
+    avroCache: AvroSchemaCache,
+    logConfig: LogConfig,
+  ): Try[QuineIngestSource] =
     ingestStreams.get(intoNamespace) match {
       // TODO Note for review comparison: v1 version fails silently here.
       // TODO Also, shouldn't this just add the namespace if it's not found?
@@ -138,6 +142,7 @@ trait IngestStreamState {
           //TODO should return  ValidatedNel[IngestName, DecodedSource]
           val decodedSource: DecodedSource = DecodedSource.apply(name, settings, meter, graph.system)(
             protobufCache,
+            avroCache,
             graph.materializer.executionContext,
             logConfig,
           )

@@ -83,4 +83,5 @@ object Dependencies {
   val circeOpticsV = "0.15.0"
   val visNetworkV = "8.2.0"
   val webjarsLocatorV = "0.52"
+  val avroV = "1.12.0"
 }

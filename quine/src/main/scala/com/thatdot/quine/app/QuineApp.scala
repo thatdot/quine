@@ -21,7 +21,7 @@ import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherTo
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.ingest2.source.DecodedSource
 import com.thatdot.quine.app.routes._
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
@@ -406,6 +406,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
   }
 
   private[this] val protobufSchemaCache: ProtobufSchemaCache = new ProtobufSchemaCache.AsyncLoading(graph.dispatchers)
+  private[this] val avroSchemaCache: AvroSchemaCache = new AvroSchemaCache.AsyncLoading(graph.dispatchers)
 
   def addIngestStream(
     name: String,
@@ -521,7 +522,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           metrics,
           meter,
           graph,
-        )(protobufSchemaCache, logConfig)
+        )(protobufSchemaCache, avroSchemaCache, logConfig)
 
         trySource.map { quineIngestSrc =>
           val streamSource = quineIngestSrc.stream(

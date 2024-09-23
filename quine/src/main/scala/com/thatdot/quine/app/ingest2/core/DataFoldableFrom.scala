@@ -3,6 +3,7 @@ package com.thatdot.quine.app.ingest2.core
 import scala.collection.{SeqView, View, mutable}
 
 import io.circe.{Json, JsonNumber, JsonObject}
+import org.apache.avro.generic.{GenericArray, GenericEnumSymbol, GenericFixed, GenericRecord}
 
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.util.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
@@ -211,6 +212,48 @@ object DataFoldableFrom {
       }
       mapBuilder.finish()
     }
+  }
+
+  implicit val avroDataFoldable: DataFoldableFrom[GenericRecord] = new DataFoldableFrom[GenericRecord] {
+
+    private def foldMapLike[B](kv: Iterable[(String, Any)], folder: DataFolderTo[B]): B = {
+      val mapBuilder = folder.mapBuilder()
+      kv.foreach { case (k, v) => mapBuilder.add(k, foldField(v, folder)) }
+      mapBuilder.finish()
+    }
+
+    //All of the underlying types for avro were taken from here: https://stackoverflow.com/questions/34070028/get-a-typed-value-from-an-avro-genericrecord/34234039#34234039
+    private def foldField[B](field: Any, folder: DataFolderTo[B]): B = field match {
+      case b: java.lang.Boolean if b => folder.trueValue
+      case b: java.lang.Boolean if !b => folder.falseValue
+      case i: java.lang.Integer => folder.integer(i.longValue)
+      case i: java.lang.Long => folder.integer(i)
+      case f: java.lang.Float => folder.floating(f.doubleValue)
+      case d: java.lang.Double => folder.floating(d)
+      case bytes: java.nio.ByteBuffer => folder.bytes(bytes.array)
+      case str: CharSequence => folder.string(str.toString)
+      case record: GenericRecord =>
+        foldMapLike(
+          record.getSchema.getFields.asScala.collect {
+            case k if record.hasField(k.name) => (k.name, record.get(k.name))
+          },
+          folder,
+        )
+      case map: java.util.Map[_, _] => foldMapLike(map.asScala.map { case (k, v) => (k.toString, v) }, folder)
+      case symbol: GenericEnumSymbol[_] => folder.string(symbol.toString)
+      case array: GenericArray[_] =>
+        val vector = folder.vectorBuilder()
+        array.forEach(elem => vector.add(foldField(elem, folder)))
+        vector.finish()
+      case fixed: GenericFixed => folder.bytes(fixed.bytes)
+      case n if n == null => folder.nullValue
+      case other =>
+        throw new IllegalArgumentException(
+          s"Got an unexpected value: ${other} of type: ${other.getClass.getName} from avro. This shouldn't happen...",
+        )
+    }
+
+    override def fold[B](record: GenericRecord, folder: DataFolderTo[B]): B = foldField(record, folder)
   }
 
 }

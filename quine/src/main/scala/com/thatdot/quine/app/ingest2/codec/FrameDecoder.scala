@@ -10,11 +10,15 @@ import scala.util.{Success, Try}
 
 import com.google.protobuf.{Descriptors, DynamicMessage}
 import io.circe.{Json, parser}
+import org.apache.avro.Schema
+import org.apache.avro.file.SeekableByteArrayInput
+import org.apache.avro.generic.{GenericDatumReader, GenericRecord}
+import org.apache.avro.io.DecoderFactory
 import org.apache.commons.csv.CSVFormat
 
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
-import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestFormat => V2IngestFormat}
 import com.thatdot.quine.graph.cypher
@@ -88,6 +92,32 @@ case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl:
 
 }
 
+case class AvroDecoder(schemaUrl: String)(implicit schemaCache: AvroSchemaCache) extends FrameDecoder[GenericRecord] {
+
+  // this is a blocking call, but it should only actually block until the first time a type is successfully
+  // loaded.
+  //
+  // This was left as blocking because lifting the effect to a broader context would mean either:
+  // - making ingest startup async, which would require extensive changes to QuineApp, startup, and potentially
+  //   clustering protocols, OR
+  // - making the decode bytes step of ingest async, which violates the Kafka APIs expectation that a
+  //   `org.apache.kafka.common.serialization.Deserializer` is synchronous.
+  val schema: Schema = Await.result(
+    schemaCache.getSchema(filenameOrUrl(schemaUrl)),
+    Duration.Inf,
+  )
+
+  val foldable: DataFoldableFrom[GenericRecord] = DataFoldableFrom.avroDataFoldable
+
+  def decode(bytes: Array[Byte]): Try[GenericRecord] = Try {
+    val datumReader = new GenericDatumReader[GenericRecord](schema)
+    val inputStream = new SeekableByteArrayInput(bytes)
+    val decoder = DecoderFactory.get.binaryDecoder(inputStream, null)
+    datumReader.read(null, decoder)
+  }
+
+}
+
 case class CsvVecDecoder(delimiterChar: Char, quoteChar: Char, escapeChar: Char, charset: Charset = DEFAULT_CHARSET)
     extends FrameDecoder[Iterable[String]] {
 
@@ -132,7 +162,9 @@ case class CsvMapDecoder(
 }
 object FrameDecoder {
 
-  def apply(format: V2IngestFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] = format match {
+  def apply(
+    format: V2IngestFormat,
+  )(implicit protobufCache: ProtobufSchemaCache, avroCache: AvroSchemaCache): FrameDecoder[_] = format match {
     case V2IngestEntities.JsonIngestFormat => JsonDecoder
     case V2IngestEntities.CsvIngestFormat(headers, delimiter, quote, escape) =>
       headers match {
@@ -152,6 +184,7 @@ object FrameDecoder {
       ProtobufDecoder("query TBD", "paramter TBD", schemaUrl, typeName) //Query,Parameter tbd
     case V2IngestEntities.RawIngestFormat => CypherRawDecoder
     case V2IngestEntities.DropFormat => DropDecoder
+    case V2IngestEntities.AvroIngestFormat(schemaUrl) => AvroDecoder(schemaUrl = schemaUrl)
   }
 
   def apply(format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
