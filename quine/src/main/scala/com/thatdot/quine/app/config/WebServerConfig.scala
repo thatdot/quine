@@ -7,7 +7,7 @@ import org.apache.pekko.http.scaladsl.model.Uri
 
 import com.thatdot.quine.util.{Host, Port}
 
-final case class SslConfig(path: File, password: Array[Char])
+final case class SslConfig(path: File, password: String)
 
 trait WebServerConfig {
   def address: Host
@@ -20,7 +20,7 @@ final case class WebServerBindConfig(
   enabled: Boolean = true,
   ssl: Option[SslConfig] = (sys.env.get("SSL_KEYSTORE_PATH"), sys.env.get("SSL_KEYSTORE_PASSWORD")) match {
     case (None, None) => None
-    case (Some(path), Some(password)) => Some(SslConfig(new File(path), password.toCharArray))
+    case (Some(path), Some(password)) => Some(SslConfig(new File(path), password))
     case (Some(_), None) => sys.error("'SSL_KEYSTORE_PATH' was specified but 'SSL_KEYSTORE_PASSWORD' was not")
     case (None, Some(_)) => sys.error("'SSL_KEYSTORE_PASSWORD' was specified but 'SSL_KEYSTORE_PATH'  was not")
   },

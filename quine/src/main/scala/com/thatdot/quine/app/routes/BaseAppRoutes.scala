@@ -91,7 +91,7 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
     ssl
       .fold(serverBuilder) { ssl =>
         serverBuilder.enableHttps(
-          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password)),
+          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password.toCharArray())),
         )
       }
       .bind(
