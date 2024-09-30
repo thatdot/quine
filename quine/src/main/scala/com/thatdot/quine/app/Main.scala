@@ -248,19 +248,6 @@ object Main extends App with LazySafeLogging {
     interpreter
   }
 
-  // report telemetry only if the user has opted in.
-  if (config.helpMakeQuineBetter) {
-    val iq = new ImproveQuine(
-      service = "Quine",
-      version = BuildInfo.version,
-      persistor = config.store.label,
-      app = Some(quineApp),
-      recipeUsed = recipe.isDefined,
-      recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None,
-    )
-    iq.startTelemetry()
-  }
-
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
     new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled)(
       ExecutionContext.parasitic,
@@ -273,6 +260,20 @@ object Main extends App with LazySafeLogging {
           statusLines.info(log"Quine web server available at ${Safe(resolvableUrl.toString)}")
           if (config.api2Enabled) {
             statusLines.info(log"Api v2 enabled")
+          }
+          // report telemetry only if the user has opted in.
+          // This needs to be loaded after the webserver is started; if not, the initial telemetry
+          // startup message may not get sent.
+          if (config.helpMakeQuineBetter) {
+            val iq = new ImproveQuine(
+              service = "Quine",
+              version = BuildInfo.version,
+              persistor = config.store.label,
+              app = Some(quineApp),
+              recipeUsed = recipe.isDefined,
+              recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None,
+            )
+            iq.startTelemetry()
           }
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
