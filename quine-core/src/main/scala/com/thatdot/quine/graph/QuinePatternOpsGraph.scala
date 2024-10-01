@@ -9,8 +9,16 @@ trait QuinePatternOpsGraph extends BaseGraph {
 
   private[this] val registryActor: ActorRef = system.actorOf(Props(classOf[QuinePatternRegistry], namespacePersistor))
 
+  private[this] val loaderActor: ActorRef = system.actorOf(Props(classOf[QuinePatternLoader], this))
+
   def getRegistry: ActorRef = {
     requireCompatibleNodeType()
     registryActor
   }
+
+  def getLoader: ActorRef = {
+    requireCompatibleNodeType()
+    loaderActor
+  }
+
 }
