@@ -1,8 +1,10 @@
 package com.thatdot.quine.app.routes
 
+import scala.annotation.unused
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
 import org.apache.pekko.NotUsed
+import org.apache.pekko.http.scaladsl.model.HttpHeader
 import org.apache.pekko.http.scaladsl.model.headers.{CacheDirectives, RawHeader, `Cache-Control`}
 import org.apache.pekko.http.scaladsl.model.sse.ServerSentEvent
 import org.apache.pekko.http.scaladsl.server
@@ -36,6 +38,44 @@ object Util {
       }
     }
 
+  /** Constant values for use in Content Security Policy (CSP) headers. Abstracted to mitigate the
+    * risk of introducing a security issue due to a silly typo.
+    */
+  private case object CspConstants {
+    val self = "'self'"
+    val none = "'none'"
+    val inline = "'unsafe-inline'"
+    val eval = "'unsafe-eval'"
+
+    @unused val any = "'*'"
+    val anyDataBlob = "data:"
+    @unused val anyHttp = "http:"
+    @unused val anyHttps = "https:"
+    val anyWs = "ws:"
+    val anyWss = "wss:"
+  }
+
+  /** Constants describing the frame embedding settings (to mitigate the risk of clickjacking attacks).
+    * These should be kept in sync with one another.
+    * When both X-Frame-Options and a CSP directive for `frame-ancestors` are set, modern browsers should,
+    * per specification, prefer the CSP setting -- but older browsers may not have full CSP support.
+    *
+    * The current implementation encodes a same-origin embed policy -- that is, the UI pages may be embedded
+    * only by a page served at the same domain, port, and protocol. This allows for embedding of the UI in
+    * environments serving simple reverse proxies, without requiring the reverse proxy to manage manipulating
+    * the CSP or X-Frames-Options headers.
+    *
+    * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options
+    * @see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors
+    * @see https://caniuse.com/mdn-http_headers_content-security-policy_frame-ancestors
+    */
+  private case object FrameEmbedSettings {
+    import CspConstants._
+    val legacyFrameOptionsHeader: HttpHeader =
+      RawHeader(com.google.common.net.HttpHeaders.X_FRAME_OPTIONS, "SAMEORIGIN")
+    val modernCspSetting: (String, Vector[String]) = "frame-ancestors" -> Vector(self)
+  }
+
   /** Harden the underlying route against XSS by providing a Content Security Policy
     * @param underlying the route to protect
     * @return the augmented route
@@ -46,18 +86,8 @@ object Util {
   def xssHarden(underlying: server.Route): server.Route =
     respondWithHeader(
       RawHeader(
-        "Content-Security-Policy", {
-          val self = "'self'"
-          val none = "'none'"
-          val inline = "'unsafe-inline'"
-          val eval = "'unsafe-eval'"
-
-//        val any = "'*'"
-          val anyDataBlob = "data:"
-//        val anyHttp = "http:"
-//        val anyHttps = "https:"
-          val anyWs = "ws:"
-          val anyWss = "wss:"
+        com.google.common.net.HttpHeaders.CONTENT_SECURITY_POLICY, {
+          import CspConstants._
 
           val Csp = Map(
             "default-src" -> Vector(self), // in general, allow resources when they match the same origin policy
@@ -79,12 +109,16 @@ object Util {
               anyWs, // NB this is way more permissive than we want. this allows connection to arbitrary websockets APIs, not just our own.
               anyWss, // However, connect-src 'self' doesn't include websockets on some browsers. See https://github.com/w3c/webappsec-csp/issues/7
             ),
+            FrameEmbedSettings.modernCspSetting,
           )
 
           Csp.toSeq.map { case (k, vs) => (k + vs.mkString(" ", " ", "")) }.mkString("; ")
         },
       ),
     )(underlying)
+
+  def frameEmbedHarden(underlying: server.Route): server.Route =
+    respondWithHeader(FrameEmbedSettings.legacyFrameOptionsHeader)(underlying)
 
   /** Flow that will timeout after some fixed duration, provided that duration
     * is finite and the boolean override is not set
