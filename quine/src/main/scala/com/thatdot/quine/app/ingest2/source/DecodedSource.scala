@@ -25,6 +25,7 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
   CsvIngestFormat,
   IngestFormat,
   JsonIngestFormat,
+  LogRecordErrorHandler,
   StringIngestFormat,
 }
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
@@ -93,7 +94,7 @@ abstract class DecodedSource(val meter: IngestMeter) {
 
       val token = IngestSrcExecToken(name)
       // TODO error handler should be settable from a config, e.g. DeadLetterErrorHandler
-      val decodeErrorHandler = LogOnSingleRecordFailure
+      val decodeErrorHandler = LogRecordErrorHandler
       val ingestStream =
         DecodedSource.this.stream
           .wireTap(v => decodeErrorHandler.handleError[Decoded, Frame](v))
@@ -183,6 +184,7 @@ object DecodedSource extends LazySafeLogging {
         CsvIngestFormat(headers, delimiter, quote, escape)
     }
 
+  // build from v1 configuration
   def apply(
     name: String,
     config: IngestStreamConfiguration,
@@ -359,6 +361,7 @@ object DecodedSource extends LazySafeLogging {
   ): DecodedSource =
     src.toDecoded(FrameDecoder(format))
 
+  // build from v2 configuration
   def apply(
     name: String,
     config: IngestConfiguration,

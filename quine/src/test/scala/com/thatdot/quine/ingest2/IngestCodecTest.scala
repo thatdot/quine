@@ -30,7 +30,7 @@ class IngestCodecTest
     with ArbitraryIngests
     with V2IngestSchemas {
 
-  def testJsonEncodeDecode[V: Encoder: Decoder](v: V): Assertion = {
+  def testJsonEncodeDecode[V: Encoder: Decoder](v: V, debug: Boolean = false): Assertion = {
     val json = v.asJson
     val i2: Result[V] = json.as[V]
     assert(i2 == Right(v))
@@ -88,6 +88,7 @@ class IngestCodecTest
   test("file json encode/decode") {
     testJsonEncodeDecode(
       V2IngestEntities.FileIngest("/a", Some(Regular), Some(10), 10, Some(20), Charset.forName("UTF-16"), Seq(Zlib)),
+      true,
     )
   }
 
@@ -198,7 +199,7 @@ class IngestCodecTest
       Some(2L),
       Seq(Base64, Zlib),
     )
-    testJsonEncodeDecode(IngestConfiguration(kafka, format = ProtobufIngestFormat("url", "typename")))
+    testJsonEncodeDecode(IngestConfiguration(kafka, format = ProtobufIngestFormat("url", "typename")), true)
 
   }
 
@@ -210,4 +211,5 @@ class IngestCodecTest
       r.foreach(config => assert(config == ic))
     }
   }
+
 }

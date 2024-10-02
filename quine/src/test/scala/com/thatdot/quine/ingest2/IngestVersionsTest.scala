@@ -17,6 +17,7 @@ import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.routes.KafkaSecurityProtocol.{PlainText, Ssl}
+import com.thatdot.quine.routes.RecordDecodingType
 import com.thatdot.quine.routes.StreamedRecordFormat.{CypherProtobuf, CypherRaw, Drop}
 import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.{routes => v1}
@@ -39,6 +40,9 @@ trait ArbitraryIngests {
     ),
   )
 
+  implicit val decoderSeqGen: Gen[Seq[RecordDecodingType]] =
+    Gen.someOf(RecordDecodingType.Zlib, RecordDecodingType.Gzip, RecordDecodingType.Base64)
+
   implicit val arbF: Arbitrary[v1.FileIngestMode] = Arbitrary(Gen.oneOf(Regular, NamedPipe))
   implicit val arbAWS: Arbitrary[Option[v1.AwsCredentials]] = Arbitrary(
     Gen.option(Gen.const(v1.AwsCredentials(randomString(), randomString()))),
@@ -51,7 +55,7 @@ trait ArbitraryIngests {
       Gen.oneOf(v1.RecordDecodingType.Gzip, v1.RecordDecodingType.Base64, v1.RecordDecodingType.Zlib),
     ),
   )
-  implicit val optionSet: Gen[Option[Set[String]]] = Gen.option(Gen.containerOf[Set, String](Gen.asciiStr))
+  implicit val optionSet: Gen[Option[Set[String]]] = Gen.option(Gen.containerOfN[Set, String](3, Gen.asciiStr))
   implicit val optionPosInt: Gen[Option[Int]] = Gen.option(Gen.posNum[Int])
 
   implicit val iterType: Arbitrary[v1.KinesisIngest.IteratorType] = Arbitrary(
@@ -66,7 +70,8 @@ trait ArbitraryIngests {
   implicit val v1StdInGen: Gen[v1.StandardInputIngest] =
     Gen.resultOf(v1.StandardInputIngest).map(_.copy(encoding = legalEncoding))
   implicit val v1NumInGen: Gen[v1.NumberIteratorIngest] = Gen.resultOf(v1.NumberIteratorIngest)
-  implicit val v1SseInGen: Gen[v1.ServerSentEventsIngest] = Gen.resultOf(v1.ServerSentEventsIngest)
+  implicit val v1SseInGen: Gen[v1.ServerSentEventsIngest] =
+    Gen.resultOf(v1.ServerSentEventsIngest).map(_.copy(recordDecoders = decoderSeqGen.sample.get))
   implicit val v1SqsInGen: Gen[v1.SQSIngest] = Gen.resultOf(v1.SQSIngest)
 
   implicit val v1KinesisGen: Gen[v1.KinesisIngest] = for {
@@ -75,7 +80,7 @@ trait ArbitraryIngests {
     creds: Option[v1.AwsCredentials] <- arbAWS.arbitrary
     region: Option[v1.AwsRegion] <- arbReg.arbitrary
     iter: v1.KinesisIngest.IteratorType <- iterType.arbitrary
-    decoders <- arbRec.arbitrary
+    decoders <- decoderSeqGen
     maxPerSec <- optionPosInt
   } yield v1.KinesisIngest(
     format,
@@ -93,10 +98,10 @@ trait ArbitraryIngests {
 
   implicit val v1KafkaGen: Gen[v1.KafkaIngest] = for {
     format: v1.StreamedRecordFormat <- arbV1StreamedFormat.arbitrary
-    topics <- Gen.containerOf[Set, String](Gen.asciiStr)
+    topics <- Gen.containerOfN[Set, String](3, Gen.asciiStr)
     groupId <- Gen.option(Gen.asciiStr)
     securityProtocol <- Gen.oneOf(PlainText, Ssl)
-    decoders <- arbRec.arbitrary
+    decoders <- decoderSeqGen
     offsetCommitting <- Gen.option(genOffset)
     offsetReset: v1.KafkaAutoOffsetReset <- Gen.oneOf(
       v1.KafkaAutoOffsetReset.Latest,

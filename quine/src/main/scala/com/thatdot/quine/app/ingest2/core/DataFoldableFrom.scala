@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.ingest2.core
 
 import scala.collection.{SeqView, View, mutable}
+import scala.util.Try
 
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.avro.generic.{GenericArray, GenericEnumSymbol, GenericFixed, GenericRecord}
@@ -10,6 +11,10 @@ import com.thatdot.quine.util.Log.{LazySafeLogging, Safe, SafeLoggableInterpolat
 
 trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
+
+  def fold[B, Frame](t: (Try[A], Frame), folder: DataFolderTo[B]): (Try[B], Frame) =
+    (t._1.map(a => fold(a, folder)), t._2)
+
 }
 
 object DataFoldableFrom {

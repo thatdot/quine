@@ -4,6 +4,7 @@ import java.nio.charset.Charset
 
 import scala.util.{Failure, Success, Try}
 
+import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.routes.StreamedRecordFormat.{CypherJson, CypherProtobuf, CypherRaw}
@@ -14,6 +15,7 @@ import com.thatdot.quine.routes.{
   FileIngest => V1FileIngest,
   FileIngestFormat,
   FileIngestMode,
+  IngestRoutes,
   IngestStreamConfiguration,
   KafkaAutoOffsetReset,
   KafkaIngest => V1KafkaIngest,
@@ -246,19 +248,34 @@ object V2IngestEntities {
   // --------------------
   // Stream Error Handler
   // --------------------
-  sealed trait OnRecordErrorHandler
+  /** Error handler defined for errors that affect only a single record. This is intended to handle errors in
+    * a configurable way distinct from stream-level errors, where the entire stream fails - e.g. handling
+    * a single corrupt record rather than a failure in the stream communication.
+    */
+  sealed trait OnRecordErrorHandler {
+    def handleError[A, Frame](processRecordAttempt: (Try[A], Frame)): Unit =
+      processRecordAttempt match {
+        case (Failure(e), frame) => onError(e, frame)
+        case _ => ()
+      }
 
-  case class DeadLetterErrorHandler(
-    destination: String, //TODO placeholder parameter
-  ) extends OnRecordErrorHandler
+    def onError[Frame](e: Throwable, frame: Frame): Unit
+  }
 
-  case object LogRecordErrorHandler extends OnRecordErrorHandler
+  case object LogRecordErrorHandler extends OnRecordErrorHandler with LazyLogging {
+    def onError[Frame](e: Throwable, frame: Frame): Unit =
+      logger.warn(s"error decoding: $frame: ${e.getMessage}")
+  }
+
+  case object DeadLetterErrorHandler extends OnRecordErrorHandler {
+    override def onError[Frame](e: Throwable, frame: Frame): Unit = ()
+  }
 
   case class IngestConfiguration(
     source: IngestSourceType,
     query: String = "CREATE ($that)",
     parameter: String = "that",
-    parallelism: Int = 1,
+    parallelism: Int = IngestRoutes.defaultWriteParallelism,
     maxPerSecond: Option[Int] = None,
     format: IngestFormat,
     onRecordError: OnRecordErrorHandler = LogRecordErrorHandler,
