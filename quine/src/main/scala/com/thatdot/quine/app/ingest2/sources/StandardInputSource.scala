@@ -11,10 +11,10 @@ import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.IngestFormat
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 
 case class StandardInputSource(
-  format: IngestFormat,
+  format: FileFormat,
   maximumLineSize: Int,
   charset: Charset = DEFAULT_CHARSET,
   meter: IngestMeter,

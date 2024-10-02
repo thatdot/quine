@@ -19,10 +19,9 @@ import cats.syntax.all._
 import com.thatdot.cypher.phases._
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
-import com.thatdot.quine.app.ingest2.source.DecodedSource
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.QuineIngestConfiguration
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
@@ -417,7 +416,6 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
-    useV2Ingest: Boolean,
   ): Try[Boolean] = failIfNoNamespace(intoNamespace) {
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(intoNamespace) match {
@@ -438,22 +436,13 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           }
 
           val src: ValidatedNel[IngestName, QuineIngestSource] =
-            if (useV2Ingest) {
-              DecodedSource.quineIngestSource(name, settings, intoNamespace, initialValveSwitchMode)(
-                graph,
-                protobufSchemaCache,
-                logConfig,
-              )
-            } else {
-
-              IngestSrcDef
-                .createIngestSrcDef(
-                  name,
-                  intoNamespace,
-                  settings,
-                  initialValveSwitchMode,
-                )(graph, protobufSchemaCache, logConfig)
-            }
+            IngestSrcDef
+              .createIngestSrcDef(
+                name,
+                intoNamespace,
+                settings,
+                initialValveSwitchMode,
+              )(graph, protobufSchemaCache, logConfig)
 
           src
             .leftMap(errs => IngestStreamConfiguration.InvalidStreamConfiguration(errs))
@@ -498,7 +487,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
 
   def addV2IngestStream(
     name: String,
-    settings: V2IngestConfiguration,
+    settings: QuineIngestConfiguration,
     intoNamespace: NamespaceId,
     previousStatus: Option[IngestStreamStatus], // previousStatus is None if stream was not restored at all
     shouldResumeRestoredIngests: Boolean,

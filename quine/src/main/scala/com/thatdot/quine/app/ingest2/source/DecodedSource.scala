@@ -22,11 +22,9 @@ import com.thatdot.quine.app.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  CsvIngestFormat,
-  IngestFormat,
-  JsonIngestFormat,
+  FileFormat,
   LogRecordErrorHandler,
-  StringIngestFormat,
+  QuineIngestConfiguration,
 }
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
@@ -152,37 +150,31 @@ object DecodedSource extends LazySafeLogging {
 
   def quineIngestSource(
     name: String,
-    settings: IngestStreamConfiguration,
+    settings: QuineIngestConfiguration,
     intoNamespace: NamespaceId,
     valveSwitchMode: SwitchMode,
   )(implicit
     graph: CypherOpsGraph,
     protobufSchemaCache: ProtobufSchemaCache,
+    avroSchemaCache: AvroSchemaCache,
     logConfig: LogConfig,
   ): ValidatedNel[String, QuineIngestSource] = {
     logger.info(safe"using v2 ingest to create ingest ${Safe(name)}")
     val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
     val query = QuineValueIngestQuery(settings, graph, intoNamespace)
-    val decodedSource = DecodedSource(name, settings, meter, graph.system)(protobufSchemaCache, logConfig)
+    val decodedSource =
+      DecodedSource(name, settings, meter, graph.system)(protobufSchemaCache, avroSchemaCache, logConfig)
     decodedSource
       .toQuineIngestSource(
         name,
         query,
         graph,
         valveSwitchMode,
-        DecodedSource.parallelism(settings),
-        settings.maximumPerSecond,
+        settings.parallelism,
+        settings.maxPerSecond,
       )
       .valid
   }
-
-  def asV2IngestFormat(format: FileIngestFormat): IngestFormat =
-    format match {
-      case FileIngestFormat.CypherLine(_, _) => StringIngestFormat
-      case FileIngestFormat.CypherJson(_, _) => JsonIngestFormat
-      case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quote, escape) =>
-        CsvIngestFormat(headers, delimiter, quote, escape)
-    }
 
   // build from v1 configuration
   def apply(
@@ -190,7 +182,10 @@ object DecodedSource extends LazySafeLogging {
     config: IngestStreamConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
-  )(implicit protobufCache: ProtobufSchemaCache, logConfig: LogConfig): DecodedSource = {
+  )(implicit
+    protobufCache: ProtobufSchemaCache,
+    logConfig: LogConfig,
+  ): DecodedSource = {
 
     config match {
       case KafkaIngest(
@@ -234,7 +229,7 @@ object DecodedSource extends LazySafeLogging {
           ) =>
         FileSource.decodedSourceFromFileStream(
           FileSource.srcFromIngest(path, fileIngestMode),
-          asV2IngestFormat(format),
+          FileFormat(format),
           Charset.forName(encoding),
           maximumLineSize,
           IngestBounds(startAtOffset, ingestLimit),
@@ -255,7 +250,7 @@ object DecodedSource extends LazySafeLogging {
             _,
           ) =>
         S3Source(
-          asV2IngestFormat(format),
+          FileFormat(format),
           bucketName,
           key,
           credsOpt,
@@ -274,7 +269,7 @@ object DecodedSource extends LazySafeLogging {
             _,
           ) =>
         StandardInputSource(
-          asV2IngestFormat(format),
+          FileFormat(format),
           maximumLineSize,
           Charset.forName(encoding),
           meter,
@@ -364,31 +359,30 @@ object DecodedSource extends LazySafeLogging {
   // build from v2 configuration
   def apply(
     name: String,
-    config: IngestConfiguration,
+    config: V2IngestConfiguration,
     meter: IngestMeter,
     system: ActorSystem,
   )(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
-    ec: ExecutionContext,
     logConfig: LogConfig,
   ): DecodedSource =
     config.source match {
-      case FileIngest(path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
+      case FileIngest(format, path, mode, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(
           FileSource.srcFromIngest(path, mode),
-          config.format,
+          format,
           charset,
-          maximumLineSize.getOrElse(1000000), //TODO
+          maximumLineSize.getOrElse(1000000), //TODO - To optional
           IngestBounds(startOffset, limit),
           meter,
           recordDecoders.map(ContentDecoder(_)),
         )
 
-      case StdInputIngest(maximumLineSize, charset) =>
+      case StdInputIngest(format, maximumLineSize, charset) =>
         FileSource.decodedSourceFromFileStream(
           stdInSource,
-          config.format,
+          format,
           charset,
           maximumLineSize.getOrElse(1000000), //TODO
           IngestBounds(),
@@ -396,10 +390,10 @@ object DecodedSource extends LazySafeLogging {
           Seq(),
         )
 
-      case S3Ingest(bucketName, key, creds, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
+      case S3Ingest(format, bucketName, key, creds, maximumLineSize, startOffset, limit, charset, recordDecoders) =>
         FileSource.decodedSourceFromFileStream(
           s3Source(bucketName, key, creds)(system),
-          config.format,
+          format,
           charset,
           maximumLineSize.getOrElse(1000000), //TODO
           IngestBounds(startOffset, limit),
@@ -407,14 +401,14 @@ object DecodedSource extends LazySafeLogging {
           recordDecoders.map(ContentDecoder(_)),
         )
 
-      case NumberIteratorIngest(startAtOffset, ingestLimit) =>
+      case NumberIteratorIngest(_, startAtOffset, ingestLimit) =>
         NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource
 
-      case WebsocketIngest(wsUrl, initMessages, keepAliveProtocol, charset) =>
+      case WebsocketIngest(format, wsUrl, initMessages, keepAliveProtocol, charset) =>
         WebsocketSource(wsUrl, initMessages, keepAliveProtocol, charset, meter)(system).framedSource
-          .toDecoded(FrameDecoder(config.format))
+          .toDecoded(FrameDecoder(format))
 
-      case KinesisIngest(streamName, shardIds, creds, region, iteratorType, numRetries, recordDecoders) =>
+      case KinesisIngest(format, streamName, shardIds, creds, region, iteratorType, numRetries, recordDecoders) =>
         KinesisSource(
           streamName,
           shardIds,
@@ -424,13 +418,21 @@ object DecodedSource extends LazySafeLogging {
           numRetries, //TODO not currently supported
           meter,
           recordDecoders.map(ContentDecoder(_)),
-        ).framedSource.toDecoded(FrameDecoder(config.format))
+        )(ExecutionContext.parasitic).framedSource.toDecoded(FrameDecoder(format))
 
-      case ServerSentEventIngest(url, recordDecoders) =>
+      case ServerSentEventIngest(format, url, recordDecoders) =>
         ServerSentEventSource(url, meter, recordDecoders.map(ContentDecoder(_)))(system).framedSource
-          .toDecoded(FrameDecoder(config.format))
+          .toDecoded(FrameDecoder(format))
 
-      case SQSIngest(queueUrl, readParallelism, credentialsOpt, regionOpt, deleteReadMessages, recordDecoders) =>
+      case SQSIngest(
+            format,
+            queueUrl,
+            readParallelism,
+            credentialsOpt,
+            regionOpt,
+            deleteReadMessages,
+            recordDecoders,
+          ) =>
         SqsSource(
           queueUrl,
           readParallelism,
@@ -439,8 +441,9 @@ object DecodedSource extends LazySafeLogging {
           deleteReadMessages,
           meter,
           recordDecoders.map(ContentDecoder(_)),
-        ).framedSource.toDecoded(FrameDecoder(config.format))
+        ).framedSource.toDecoded(FrameDecoder(format))
       case KafkaIngest(
+            format,
             topics,
             bootstrapServers,
             groupId,
@@ -463,6 +466,8 @@ object DecodedSource extends LazySafeLogging {
           recordDecoders.map(ContentDecoder(_)),
           meter,
           system,
-        ).framedSource.toDecoded(FrameDecoder(config.format))
+        ).framedSource.toDecoded(FrameDecoder(format))
+
     }
+
 }

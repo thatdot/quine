@@ -9,7 +9,7 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Endpoint, EndpointInput, Schema, path}
 
 import com.thatdot.quine.app.v2api.definitions._
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes.{IngestStreamInfo, IngestStreamInfoWithName}
 trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas {

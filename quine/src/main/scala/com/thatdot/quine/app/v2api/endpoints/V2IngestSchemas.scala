@@ -18,7 +18,9 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestFormat, _}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.CsvFormat
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
 trait V2IngestSchemas extends TapirJsonCirce {
@@ -32,10 +34,9 @@ trait V2IngestSchemas extends TapirJsonCirce {
   implicit val onStreamErrorHandlerSchema: Schema[OnStreamErrorHandler] =
     Schema.derived[OnStreamErrorHandler].description("Action to take on stream error")
   implicit val ingestFormatTypeSchema: Schema[IngestFormat] =
-    Schema
-      .derived[IngestFormat]
+    Schema.derived
       .description("Ingest format")
-      .encodedExample(CsvIngestFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson)
+      .encodedExample(CsvFormat(Right(List("header1", "header2")), Comma, DoubleQuote, Backslash).asJson)
 
   implicit val charsetCodec: Codec[String, Charset, TextPlain] = Codec.string.mapDecode(s =>
     scala.util.Try(Charset.forName(s)) match {
@@ -56,12 +57,15 @@ trait V2IngestSchemas extends TapirJsonCirce {
   implicit lazy val kinesisIteratorSchema: Schema[V1KinesisIngest.IteratorType] = Schema.derived
   implicit lazy val awsRegionSchema: Schema[AwsRegion] = Schema.derived
   implicit lazy val keepaliveProtocolSchema: Schema[WebsocketSimpleStartupIngest.KeepaliveProtocol] = Schema.derived
-  implicit lazy val csvIngestFormatSchema: Schema[CsvIngestFormat] = Schema.derived
-  implicit lazy val protobufIngestFormatSchema: Schema[ProtobufIngestFormat] = Schema.derived
+  implicit lazy val csvIngestFormatSchema: Schema[CsvFormat] = Schema.derived
+  implicit lazy val protobufIngestFormatSchema: Schema[ProtobufFormat] = Schema.derived
   implicit lazy val recordDecoderSeqSchema: Schema[Seq[RecordDecodingType]] =
     Schema.schemaForArray(recordDecodingTypeSchema).map(a => Some(a.toSeq))(s => s.toArray)
-  implicit lazy val ingestSourceTypeSchema: Schema[IngestSourceType] = Schema.derived
-  implicit lazy val ingestSchema: Schema[IngestConfiguration] = Schema.derived[IngestConfiguration]
+  implicit lazy val fileFormatTypeSchema: Schema[FileFormat] = Schema.derived
+  implicit lazy val streamingFormatTypeSchema: Schema[StreamingFormat] = Schema.derived
+  implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived[IngestSource]
+
+  implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
 
   implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)
   implicit val charsetDecoder: Decoder[Charset] = Decoder.decodeString.map(s => Charset.forName(s))
@@ -82,24 +86,31 @@ trait V2IngestSchemas extends TapirJsonCirce {
 
   val ingestSourceTypeConfig: Configuration = Configuration.default.withDiscriminator("type")
 
-  implicit lazy val IngestFormatEncoder: Encoder[IngestFormat] = {
+  implicit lazy val ingestSourceTypeEncoder: Encoder[IngestSource] = {
     implicit val config = ingestSourceTypeConfig
-    deriveConfiguredEncoder[IngestFormat]
+    deriveConfiguredEncoder[IngestSource]
+  }
+  implicit lazy val ingestSourceTypeDecoder: Decoder[IngestSource] = {
+    implicit val config = ingestSourceTypeConfig
+    deriveConfiguredDecoder[IngestSource]
+  }
+  implicit lazy val FileFormatEncoder: Encoder[FileFormat] = {
+    implicit val config = ingestSourceTypeConfig
+    deriveConfiguredEncoder[FileFormat]
   }
 
-  implicit lazy val IngestFormatDecoder: Decoder[IngestFormat] = {
+  implicit lazy val FileFormatDecoder: Decoder[FileFormat] = {
     implicit val config = ingestSourceTypeConfig
-    deriveConfiguredDecoder[IngestFormat]
+    deriveConfiguredDecoder[FileFormat]
+  }
+  implicit lazy val StreamingFormatEncoder: Encoder[StreamingFormat] = {
+    implicit val config = ingestSourceTypeConfig
+    deriveConfiguredEncoder[StreamingFormat]
   }
 
-  implicit lazy val IngestSourceTypeEncoder: Encoder[IngestSourceType] = {
+  implicit lazy val StreamingFormatDecoder: Decoder[StreamingFormat] = {
     implicit val config = ingestSourceTypeConfig
-    deriveConfiguredEncoder[IngestSourceType]
-  }
-
-  implicit lazy val IngestSourceTypeDecoder: Decoder[IngestSourceType] = {
-    implicit val config = ingestSourceTypeConfig
-    deriveConfiguredDecoder[IngestSourceType]
+    deriveConfiguredDecoder[StreamingFormat]
   }
 
   implicit lazy val onRecordErrorHandlerEncoder: Encoder[OnRecordErrorHandler] = {

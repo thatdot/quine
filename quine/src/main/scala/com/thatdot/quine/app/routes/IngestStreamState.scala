@@ -8,16 +8,14 @@ import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** Store ingests allowing for either v1 or v2 types. */
-case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration])(implicit
-  logConfig: LogConfig,
-) {
+case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration]) {
   def asV1Config: IngestStreamConfiguration = config match {
     case Left(v2) => v2.asV1IngestStreamConfiguration
     case Right(v1) => v1
@@ -64,10 +62,6 @@ trait IngestStreamState {
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = None,
-    // support switching between v1 and v2 ingest. This will only be true when
-    // called from the v2 api when starting quine with the v2 enabled flag set.
-    // This should be removed when v1 api is removed.
-    useV2Ingest: Boolean = false,
   ): Try[Boolean]
 
   /** Create ingest stream using updated V2 Ingest api. */
@@ -143,7 +137,6 @@ trait IngestStreamState {
           val decodedSource: DecodedSource = DecodedSource.apply(name, settings, meter, graph.system)(
             protobufCache,
             avroCache,
-            graph.materializer.executionContext,
             logConfig,
           )
           val quineIngestSource: QuineIngestSource = decodedSource.toQuineIngestSource(

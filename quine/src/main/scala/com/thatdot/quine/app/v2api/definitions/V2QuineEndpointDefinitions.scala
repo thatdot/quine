@@ -112,7 +112,9 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     )
 
   protected def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] = (a: ObjectEnvelope[T]) =>
-    Json.fromFields(Seq(("data", encoder.apply(a.data))))
+    Json.fromFields(
+      Seq(("data", encoder.apply(a.data).deepDropNullValues)),
+    ) // always drop null values from output json.
 
   protected def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
     c => decoder.apply(c.downField("data").root).map(ObjectEnvelope(_))

@@ -14,11 +14,11 @@ import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.IngestFormat
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes._
 
 case class S3Source(
-  format: IngestFormat,
+  format: FileFormat,
   bucket: String,
   key: String,
   credentials: Option[AwsCredentials],

@@ -10,11 +10,9 @@ import org.scalatest.Assertion
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  CsvIngestFormat,
-  IngestConfiguration,
-  ProtobufIngestFormat,
-}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration, StreamingFormat}
 import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestSchemas}
 import com.thatdot.quine.routes.FileIngestMode.Regular
 import com.thatdot.quine.routes.KafkaAutoOffsetReset.Latest
@@ -27,8 +25,8 @@ import com.thatdot.quine.routes._
 class IngestCodecTest
     extends AnyFunSuite
     with ScalaCheckDrivenPropertyChecks
-    with ArbitraryIngests
-    with V2IngestSchemas {
+    with V2IngestSchemas
+    with ArbitraryIngests {
 
   def testJsonEncodeDecode[V: Encoder: Decoder](v: V, debug: Boolean = false): Assertion = {
     val json = v.asJson
@@ -36,58 +34,19 @@ class IngestCodecTest
     assert(i2 == Right(v))
   }
 
-  def testConfigurationConvertv1v2[A <: IngestStreamConfiguration](v1: A): Unit = {
-    val asV2 = V2IngestEntities.fromV1Ingest(v1)
-    val j: Json = asV2.asJson
-    val r: Result[V2IngestEntities.IngestConfiguration] = j.as[V2IngestEntities.IngestConfiguration]
-    //Config rehydrated from json
-    r.foreach(config => assert(config == asV2))
-  }
-
-  test("num ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: NumberIteratorIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("file ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: FileIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("S3 ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: S3Ingest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("Stdin ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: StandardInputIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("sse ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: ServerSentEventsIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("sqs ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: SQSIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("kinesis ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: KinesisIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
-  test("kafka ingest v1 -> v2 -> v1") {
-    forAll { originalV1Ingest: KafkaIngest => testConfigurationConvertv1v2(originalV1Ingest) }
-  }
-
   test("num ingest json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.NumberIteratorIngest(2, Some(3)))
+    testJsonEncodeDecode(V2IngestEntities.NumberIteratorIngest(StreamingFormat.JsonFormat, 2, Some(3)))
   }
 
   test("csv format json encode/decode") {
-    testJsonEncodeDecode(CsvIngestFormat(Left(true)))
-    testJsonEncodeDecode(CsvIngestFormat(Right(List("A", "B"))))
+    testJsonEncodeDecode(CsvFormat(Left(true)))
+    testJsonEncodeDecode(CsvFormat(Right(List("A", "B"))))
   }
 
   test("file json encode/decode") {
     testJsonEncodeDecode(
-      V2IngestEntities.FileIngest("/a", Some(Regular), Some(10), 10, Some(20), Charset.forName("UTF-16"), Seq(Zlib)),
+      V2IngestEntities
+        .FileIngest(JsonFormat, "/a", Some(Regular), Some(10), 10, Some(20), Charset.forName("UTF-16"), Seq(Zlib)),
       true,
     )
   }
@@ -95,6 +54,7 @@ class IngestCodecTest
   test("s3 json encode/decode") {
     testJsonEncodeDecode(
       V2IngestEntities.S3Ingest(
+        JsonFormat,
         "bucket",
         "key",
         Some(AwsCredentials("A", "B")),
@@ -108,12 +68,13 @@ class IngestCodecTest
   }
 
   test("stdin json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.StdInputIngest(Some(10), Charset.forName("UTF-16")))
+    testJsonEncodeDecode(V2IngestEntities.StdInputIngest(JsonFormat, Some(10), Charset.forName("UTF-16")))
   }
 
   test("websocket json encode/decode") {
     testJsonEncodeDecode(
       V2IngestEntities.WebsocketIngest(
+        StreamingFormat.JsonFormat,
         "url",
         Seq("A", "B", "C"),
         SendMessageInterval("message", 5001),
@@ -126,6 +87,7 @@ class IngestCodecTest
 
     testJsonEncodeDecode(
       V2IngestEntities.KinesisIngest(
+        StreamingFormat.JsonFormat,
         "streamName",
         Some(Set("A", "B", "C")),
         Some(AwsCredentials("A", "B")),
@@ -138,12 +100,13 @@ class IngestCodecTest
   }
 
   test("sse json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.ServerSentEventIngest("url", Seq(Base64, Zlib)))
+    testJsonEncodeDecode(V2IngestEntities.ServerSentEventIngest(StreamingFormat.JsonFormat, "url", Seq(Base64, Zlib)))
   }
 
   test("sqs json encode/decode") {
     testJsonEncodeDecode(
       V2IngestEntities.SQSIngest(
+        StreamingFormat.JsonFormat,
         "queueUrl",
         12,
         Some(AwsCredentials("A", "B")),
@@ -165,6 +128,7 @@ class IngestCodecTest
       ),
     )
     V2IngestEntities.KafkaIngest(
+      StreamingFormat.JsonFormat,
       topics,
       "bootstrapServers",
       Some("groupId"),
@@ -189,6 +153,7 @@ class IngestCodecTest
       ),
     )
     val kafka = V2IngestEntities.KafkaIngest(
+      ProtobufFormat("url", "typename"),
       topics,
       "bootstrapServers",
       Some("groupId"),
@@ -199,14 +164,14 @@ class IngestCodecTest
       Some(2L),
       Seq(Base64, Zlib),
     )
-    testJsonEncodeDecode(IngestConfiguration(kafka, format = ProtobufIngestFormat("url", "typename")), true)
+    testJsonEncodeDecode(QuineIngestConfiguration(kafka), true)
 
   }
 
   test("V2 Ingest configuration encode/decode") {
-    forAll { ic: IngestConfiguration =>
-      val j: Json = ic.asJson
-      val r: Result[V2IngestEntities.IngestConfiguration] = j.as[V2IngestEntities.IngestConfiguration]
+    forAll { ic: QuineIngestConfiguration =>
+      val j: Json = ic.asJson.deepDropNullValues
+      val r: Result[V2IngestEntities.QuineIngestConfiguration] = j.as[V2IngestEntities.QuineIngestConfiguration]
       //Config rehydrated from json
       r.foreach(config => assert(config == ic))
     }

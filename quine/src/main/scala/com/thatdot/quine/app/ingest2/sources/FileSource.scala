@@ -16,13 +16,7 @@ import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  CsvIngestFormat,
-  IngestFormat,
-  JsonIngestFormat,
-  StringIngestFormat,
-}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.util.Log.LogConfig
 
@@ -87,7 +81,7 @@ object FileSource extends LazyLogging {
 
   def decodedSourceFromFileStream(
     fileSource: Source[ByteString, NotUsed],
-    format: IngestFormat,
+    format: FileFormat,
     charset: Charset,
     maximumLineSize: Int,
     bounds: IngestBounds = IngestBounds(),
@@ -95,7 +89,7 @@ object FileSource extends LazyLogging {
     decoders: Seq[ContentDecoder] = Seq(),
   ): DecodedSource =
     format match {
-      case StringIngestFormat =>
+      case FileFormat.LineFormat =>
         FramedFileSource(
           fileSource,
           charset,
@@ -104,7 +98,7 @@ object FileSource extends LazyLogging {
           decoders,
           meter,
         ).decodedSource(CypherStringDecoder)
-      case JsonIngestFormat =>
+      case FileFormat.JsonFormat =>
         FramedFileSource(
           fileSource,
           charset,
@@ -114,7 +108,7 @@ object FileSource extends LazyLogging {
           meter,
         ).decodedSource(JsonDecoder)
 
-      case CsvIngestFormat(headers, delimiter, quoteChar, escapeChar) =>
+      case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
           fileSource,
           bounds,
@@ -129,9 +123,11 @@ object FileSource extends LazyLogging {
         ).decodedSource
 
       // TODO Protobuf, Raw, Drop not supported on file types since there is no way to delimit them:
-      case V2IngestEntities.AvroIngestFormat(_) | V2IngestEntities.ProtobufIngestFormat(_, _) |
-          V2IngestEntities.RawIngestFormat | V2IngestEntities.DropFormat =>
-        throw new UnsupportedOperationException(s"Ingest format $format not supported on file-like sources")
+
+      case other =>
+        throw new UnsupportedOperationException(
+          s"Ingest format ${other.getClass.getSimpleName} not supported on file-like sources",
+        )
 
     }
 

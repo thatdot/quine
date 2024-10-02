@@ -19,8 +19,11 @@ import org.apache.commons.csv.CSVFormat
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestFormat => V2IngestFormat}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
+  FileFormat,
+  IngestFormat => V2IngestFormat,
+  StreamingFormat,
+}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
@@ -69,7 +72,7 @@ object DropDecoder extends FrameDecoder[Any] {
   def decode(bytes: Array[Byte]): Success[Any] = Success(())
 }
 
-case class ProtobufDecoder(query: String, parameter: String = "that", schemaUrl: String, typeName: String)(implicit
+case class ProtobufDecoder(schemaUrl: String, typeName: String)(implicit
   protobufSchemaCache: ProtobufSchemaCache,
 ) extends FrameDecoder[DynamicMessage] {
 
@@ -164,40 +167,50 @@ object FrameDecoder {
 
   def apply(
     format: V2IngestFormat,
-  )(implicit protobufCache: ProtobufSchemaCache, avroCache: AvroSchemaCache): FrameDecoder[_] = format match {
-    case V2IngestEntities.JsonIngestFormat => JsonDecoder
-    case V2IngestEntities.CsvIngestFormat(headers, delimiter, quote, escape) =>
+  )(implicit protobufCache: ProtobufSchemaCache, avroSchemaCache: AvroSchemaCache): FrameDecoder[_] = format match {
+    case FileFormat.LineFormat => CypherStringDecoder
+    case FileFormat.JsonFormat | StreamingFormat.JsonFormat => JsonDecoder
+    case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
       headers match {
-        case Left(false) => CsvVecDecoder(delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // no headers
+        case Left(false) =>
+          CsvVecDecoder(delimiter.byte.toChar, quoteChar.byte.toChar, escapeChar.byte.toChar) // no headers
         case Left(true) =>
-          CsvMapDecoder(None, delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // first line as header
+          CsvMapDecoder(
+            None,
+            delimiter.byte.toChar,
+            quoteChar.byte.toChar,
+            escapeChar.byte.toChar,
+          ) // first line as header
         case Right(values) =>
           CsvMapDecoder(
             Some(values),
             delimiter.byte.toChar,
-            quote.byte.toChar,
-            escape.byte.toChar,
-          ) // map values provided
+            quoteChar.byte.toChar,
+            escapeChar.byte.toChar,
+          )
       }
-    case V2IngestEntities.StringIngestFormat => CypherStringDecoder
-    case V2IngestEntities.ProtobufIngestFormat(schemaUrl, typeName) =>
-      ProtobufDecoder("query TBD", "paramter TBD", schemaUrl, typeName) //Query,Parameter tbd
-    case V2IngestEntities.RawIngestFormat => CypherRawDecoder
-    case V2IngestEntities.DropFormat => DropDecoder
-    case V2IngestEntities.AvroIngestFormat(schemaUrl) => AvroDecoder(schemaUrl = schemaUrl)
+
+    case StreamingFormat.RawFormat => CypherRawDecoder
+    case StreamingFormat.ProtobufFormat(schemaUrl, typeName) =>
+      ProtobufDecoder(schemaUrl, typeName)
+    case StreamingFormat.AvroFormat(schemaUrl) =>
+      AvroDecoder(schemaUrl)
+    case StreamingFormat.DropFormat => DropDecoder
+
   }
 
-  def apply(format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
-    format match {
+  def apply(v1Format: StreamedRecordFormat)(implicit protobufCache: ProtobufSchemaCache): FrameDecoder[_] =
+    v1Format match {
       case StreamedRecordFormat.CypherJson(_, _) => JsonDecoder
       case StreamedRecordFormat.CypherRaw(_, _) => CypherRawDecoder
-      case StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName) =>
-        ProtobufDecoder(query, parameter, schemaUrl, typeName)
+      case StreamedRecordFormat.CypherProtobuf(_, _, schemaUrl, typeName) =>
+        ProtobufDecoder(schemaUrl, typeName)
       case StreamedRecordFormat.Drop => DropDecoder
+      //note: V1 format does not support avro
     }
 
-  def apply(format: FileIngestFormat): FrameDecoder[_] =
-    format match {
+  def apply(v1Format: FileIngestFormat): FrameDecoder[_] =
+    v1Format match {
       case FileIngestFormat.CypherLine(_, _) => CypherStringDecoder
       case FileIngestFormat.CypherJson(_, _) => JsonDecoder
       case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quote, escape) =>

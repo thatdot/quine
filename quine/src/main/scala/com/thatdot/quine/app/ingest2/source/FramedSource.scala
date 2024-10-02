@@ -1,20 +1,14 @@
 package com.thatdot.quine.app.ingest2.source
 
-import java.nio.charset.{Charset, StandardCharsets}
-
 import scala.util.Try
 
-import org.apache.pekko.stream.connectors.text.scaladsl.TextFlow
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
-import org.apache.pekko.util.ByteString
 import org.apache.pekko.{Done, NotUsed}
 
 import com.thatdot.quine.app.ShutdownSwitch
-import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.util.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
 
 /** Define a source in terms of Frames it can return.
   *
@@ -112,40 +106,4 @@ object FramedSource {
 
     }
 
-}
-
-trait IngestBoundsSupportA {
-
-  val ingestBounds: IngestBounds
-
-  def boundingFlow[A]: Flow[A, A, NotUsed] =
-    ingestBounds.ingestLimit.fold(Flow[A].drop(ingestBounds.startAtOffset))(limit =>
-      Flow[A].drop(ingestBounds.startAtOffset).take(limit),
-    )
-
-}
-
-trait CharEncodingSupportA extends LazySafeLogging {
-
-  val charset: Charset
-
-  val transcodingFlow: Flow[ByteString, ByteString, NotUsed] = charset match {
-    //TODO this is direct from the pre-existing code in IngestSrcDef. It's not clear if we can or
-    // have any reason to support additional character sets such as UTF-16 or Windows-1252.
-    case StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII =>
-      Flow[ByteString]
-    case otherCharset =>
-      logger.warn(
-        safe"Charset-sensitive ingest does not directly support ${Safe(otherCharset.toString)} - transcoding through UTF-8 first",
-      )
-      TextFlow.transcoding(otherCharset, StandardCharsets.UTF_8)
-  }
-}
-
-trait CompressionSupportA {
-
-  val decoders: Seq[ContentDecoder]
-
-  val decompressingFlow: Flow[ByteString, ByteString, NotUsed] =
-    ContentDecoder.decoderFlow(decoders)
 }

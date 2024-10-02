@@ -26,7 +26,7 @@ import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, NamespaceNotFoundException}
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{

@@ -1,6 +1,8 @@
 *.db
 *.data
 *.class
+
+# likely binaries
 quine-*.jar
 novelty-*.jar
 
@@ -48,6 +50,10 @@ bin/
 
 # python test
 public/quine/src/test/resources/ingest_test_script/venv/
+quine/src/test/resources/ingest_test_script/venv/
+
+# file mirroring management
+public/project/
 
 # vim
 *.swp
