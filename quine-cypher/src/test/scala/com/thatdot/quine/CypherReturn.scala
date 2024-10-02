@@ -1,6 +1,5 @@
 package com.thatdot.quine.compiler.cypher
 
-import scala.annotation.nowarn
 import scala.util.Try
 
 import org.apache.pekko.stream.scaladsl.Sink
@@ -30,9 +29,10 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
 
 // disable warnings raised by giving names to parts of pattern matches to make the large pattern matches more readable
-@nowarn(
-  "msg=pattern var .+ in method .+ is never used",
-)
+// Commented out rather than removed -- if still unnecessary in scala 2.13.16+, OK to remove
+//@nowarn(
+//  "msg=pattern var .+ in method .+ is never used",
+//)
 class CypherReturn extends CypherHarness("cypher-return-tests") with Matchers with AppendedClues {
   val XSym: Symbol = Symbol("x")
   val SumXSym: Symbol = Symbol("sum(x)")

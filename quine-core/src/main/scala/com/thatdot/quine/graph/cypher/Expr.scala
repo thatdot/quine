@@ -6,6 +6,7 @@ import java.time.temporal._
 import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, ZonedDateTime => JavaZonedDateTime}
 import java.util.Base64
 
+import scala.annotation.nowarn
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.Try
 import scala.util.hashing.MurmurHash3
@@ -1017,7 +1018,7 @@ object Expr {
             )
             .merge
         case List(elems) =>
-          for {
+          (for {
             keyVal <- keyExpr.eval(qc)
             key <- keyVal.asLong("index into list")
             keyMod = if (key < 0) elems.length + key else key
@@ -1026,7 +1027,7 @@ object Expr {
                 CypherException.InvalidIndex(keyVal).asLeft
               else
                 elems.applyOrElse(keyMod.toInt, (_: Int) => Null).asRight
-          } yield result
+          } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
 
         case Null => Null.asRight
 
@@ -1078,7 +1079,7 @@ object Expr {
         case List(elems) =>
           for {
             fromVal <- from.map { (fromExpr: Expr) =>
-              for {
+              (for {
                 idx <- fromExpr.eval(qc)
                 key <- idx.asLong("index into list")
                 keyMod = if (key < 0) elems.length + key else key
@@ -1086,11 +1087,11 @@ object Expr {
                   if (!keyMod.isValidInt)
                     CypherException.InvalidIndex(idx).asLeft
                   else keyMod.toInt.asRight
-              } yield result
+              } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
             }.sequence
 
             toVal <- to.map { (toExpr: Expr) =>
-              for {
+              (for {
                 idx <- toExpr.eval(qc)
                 key <- idx.asLong("index into list")
                 keyMod = if (key < 0) elems.length + key else key
@@ -1098,7 +1099,7 @@ object Expr {
                   if (!keyMod.isValidInt)
                     CypherException.InvalidIndex(idx).asLeft
                   else keyMod.toInt.asRight
-              } yield result
+              } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
             }.sequence
 
           } yield List(elems.slice(fromVal.getOrElse(0), toVal.getOrElse(elems.length)))

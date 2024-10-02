@@ -9,7 +9,7 @@ import scala.util.Try
 
 object QuineSettings {
 
-  val scalaV = "2.13.14"
+  val scalaV = "2.13.15"
 
   val nodeLegacySslArg = "--openssl-legacy-provider"
   // See if node accepts this arg. Give it an expression to evaluate {} so it returns instead of entering the repl
