@@ -22,7 +22,10 @@ abstract class TapirRoutes {
 
   val appMethods: ApplicationApiMethods
   private def docEndpoints: Seq[ServerEndpoint[Any, Future]] =
-    RedocInterpreter(redocUIOptions = RedocUIOptions.default.copy(pathPrefix = List("v2docs")))
+    RedocInterpreter(
+      customiseDocsModel = openAPI => openAPI.openapi("3.0.3"), // set OpenAPI spec version
+      redocUIOptions = RedocUIOptions.default.copy(pathPrefix = List("v2docs")),
+    )
       .fromServerEndpoints[Future](apiEndpoints.filterNot(hiddenEndpoints.contains(_)), "thatdot-api-v2", "1.0.0")
 
   private def serverOptions(implicit ec: ExecutionContext): PekkoHttpServerOptions = PekkoHttpServerOptions.default

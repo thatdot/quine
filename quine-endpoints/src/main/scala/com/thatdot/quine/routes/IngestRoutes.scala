@@ -7,6 +7,7 @@ import scala.util.control.NoStackTrace
 import cats.data.NonEmptyList
 import endpoints4s.algebra.Tag
 import endpoints4s.generic.{docs, title, unnamed}
+import sttp.tapir.Schema.annotations.{description, title => ttitle}
 
 import com.thatdot.quine.routes.exts.{EndpointsWithCustomErrorText, NamespaceParameter}
 
@@ -41,23 +42,35 @@ object IngestStreamStatus {
   sealed abstract class TerminalStatus extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
 
   @docs("The stream is currently actively running, and possibly waiting for new records to become available upstream.")
+  @description(
+    "The stream is currently actively running, and possibly waiting for new records to become available upstream.",
+  )
   case object Running extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Open)
 
   @docs("The stream has been paused by a user.")
+  @description("The stream has been paused by a user.")
   case object Paused extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs(
     "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application.",
   )
+  @description(
+    "The stream has been restored from a saved state, but is not yet running: For example, after restarting the application.",
+  )
   case object Restored extends IngestStreamStatus(isTerminal = false, position = ValvePosition.Closed)
 
   @docs("The stream has processed all records, and the upstream data source will not make more records available.")
+  @description(
+    "The stream has processed all records, and the upstream data source will not make more records available.",
+  )
   case object Completed extends TerminalStatus
 
   @docs("The stream has been stopped by a user.")
+  @description("The stream has been stopped by a user.")
   case object Terminated extends TerminalStatus
 
   @docs("The stream has been stopped by a failure during processing.")
+  @description("The stream has been stopped by a failure during processing.")
   case object Failed extends TerminalStatus
 
   val states: Seq[IngestStreamStatus] = Seq(Running, Paused, Restored, Completed, Terminated, Failed)
@@ -111,11 +124,16 @@ final case class IngestStreamInfo(
 @unnamed
 final case class IngestStreamStats(
   // NB this is duplicated by rates.count -- maybe remove one?
-  @docs("Number of source records (or lines) ingested so far") ingestedCount: Long,
-  @docs("Records/second over different time periods") rates: RatesSummary,
-  @docs("Bytes/second over different time periods") byteRates: RatesSummary,
-  @docs("Time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
-  @docs("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long,
+  @docs("Number of source records (or lines) ingested so far")
+  @description("Number of source records (or lines) ingested so far") ingestedCount: Long,
+  @docs("Records/second over different time periods")
+  @description("Records/second over different time periods") rates: RatesSummary,
+  @docs("Bytes/second over different time periods")
+  @description("Bytes/second over different time periods") byteRates: RatesSummary,
+  @docs("Time (in ISO-8601 UTC time) when the ingestion was started")
+  @description("Time (in ISO-8601 UTC time) when the ingestion was started") startTime: Instant,
+  @docs("Time (in milliseconds) that that the ingest has been running")
+  @description("Time (in milliseconds) that that the ingest has been running") totalRuntime: Long,
 )
 object IngestStreamStats {
   val example: IngestStreamStats = IngestStreamStats(
@@ -157,14 +175,22 @@ trait MetricsSummarySchemas extends endpoints4s.generic.JsonSchemas {
 
 @unnamed
 @title("AWS Credentials")
+@ttitle("AWS Credentials")
 @docs(
+  "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
+)
+@description(
   "Explicit AWS access key and secret to use. If not provided, defaults to environmental credentials according to the default AWS credential chain. See: <https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-default>.",
 )
 final case class AwsCredentials(accessKeyId: String, secretAccessKey: String)
 
 @unnamed
 @title("AWS Region")
+@ttitle("AWS Region")
 @docs(
+  "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
+)
+@description(
   "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
 )
 final case class AwsRegion(region: String)
@@ -176,7 +202,11 @@ trait AwsConfigurationSchemas extends endpoints4s.generic.JsonSchemas {
 
 @unnamed
 @title("Kafka Auto Offset Reset")
+@ttitle("Kafka Auto Offset Reset")
 @docs(
+  "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).",
+)
+@description(
   "See [`auto.offset.reset` in the Kafka documentation](https://docs.confluent.io/current/installation/configuration/consumer-configs.html#auto.offset.reset).",
 )
 sealed abstract class KafkaAutoOffsetReset(val name: String)
@@ -189,7 +219,11 @@ object KafkaAutoOffsetReset {
 
 @unnamed
 @title("Kafka Security Protocol")
+@ttitle("Kafka Security Protocol")
 @docs(
+  "See [`security.protocol` in the Kafka documentation](https://kafka.apache.org/24/javadoc/org/apache/kafka/common/security/auth/SecurityProtocol.html).",
+)
+@description(
   "See [`security.protocol` in the Kafka documentation](https://kafka.apache.org/24/javadoc/org/apache/kafka/common/security/auth/SecurityProtocol.html).",
 )
 sealed abstract class KafkaSecurityProtocol(val name: String)
@@ -203,7 +237,13 @@ object KafkaSecurityProtocol {
 
 @unnamed
 @title("Kafka offset tracking mechanism")
+@ttitle("Kafka offset tracking mechanism")
 @docs(
+  "How to keep track of current offset when consuming from Kafka, if at all. " +
+  """You could alternatively set "enable.auto.commit": "true" in kafkaProperties  for this ingest, """ +
+  "but in that case messages will be lost if the ingest is stopped while processing messages",
+)
+@description(
   "How to keep track of current offset when consuming from Kafka, if at all. " +
   """You could alternatively set "enable.auto.commit": "true" in kafkaProperties  for this ingest, """ +
   "but in that case messages will be lost if the ingest is stopped while processing messages",
@@ -212,27 +252,39 @@ sealed abstract class KafkaOffsetCommitting
 object KafkaOffsetCommitting {
   @unnamed
   @title("Explicit Commit")
+  @ttitle("Explicit Commit")
   @docs(
+    "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record.",
+  )
+  @description(
     "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record.",
   )
   final case class ExplicitCommit(
     @docs("Maximum number of messages in a single commit batch.")
+    @description("Maximum number of messages in a single commit batch.")
     maxBatch: Long = 1000,
     @docs("Maximum interval between commits in milliseconds.")
+    @description("Maximum interval between commits in milliseconds.")
     maxIntervalMillis: Int = 10000,
     @docs("Parallelism for async committing.")
+    @description("Parallelism for async committing.")
     parallelism: Int = 100,
     @docs("Wait for a confirmation from Kafka on ack.")
+    @description("Wait for a confirmation from Kafka on ack.")
     waitForCommitConfirmation: Boolean = true,
   ) extends KafkaOffsetCommitting
 }
 @title("Scheduler Checkpoint Settings")
+@ttitle("Scheduler Checkpoint Settings")
 @docs("Settings for batch configuration for Kinesis stream checkpointing.")
+@description("Settings for batch configuration for Kinesis stream checkpointing.")
 @unnamed
 final case class KinesisCheckpointSettings(
   @docs("Maximum checkpoint batch size.")
+  @description("Maximum checkpoint batch size.")
   maxBatchSize: Int,
   @docs("Maximum checkpoint batch wait time in ms.")
+  @description("Maximum checkpoint batch wait time in ms.")
   maxBatchWait: Long,
 )
 @title("Ingest Stream Configuration")
@@ -267,14 +319,19 @@ object KafkaIngest {
   type KafkaProperties = Map[String, String]
 }
 @title("Record encoding")
+@ttitle("Record encoding")
 @docs("Record encoding format")
+@description("Record encoding format")
 sealed abstract class RecordDecodingType
 object RecordDecodingType {
   @docs("Zlib compression")
+  @description("Zlib compression")
   case object Zlib extends RecordDecodingType
   @docs("Gzip compression")
+  @description("Gzip compression")
   case object Gzip extends RecordDecodingType
   @docs("Base64 encoding")
+  @description("Base64 encoding")
   case object Base64 extends RecordDecodingType
 
   val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
@@ -334,7 +391,9 @@ final case class KafkaIngest(
 object KinesisIngest {
 
   @title("Kinesis Shard Iterator Type")
+  @ttitle("Kinesis Shard Iterator Type")
   @docs("See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.")
+  @description("See <https://docs.aws.amazon.com/kinesis/latest/APIReference/API_StartingPosition.html>.")
   sealed abstract class IteratorType
 
   object IteratorType {
@@ -347,27 +406,37 @@ object KinesisIngest {
 
     @title("Latest")
     @docs("All records added to the shard since subscribing.")
+    @ttitle("Latest")
+    @description("All records added to the shard since subscribing.")
     @unnamed
     case object Latest extends Unparameterized
 
     @title("TrimHorizon")
     @docs("All records in the shard.")
+    @ttitle("TrimHorizon")
+    @description("All records in the shard.")
     @unnamed
     case object TrimHorizon extends Unparameterized
 
     @title("AtSequenceNumber")
     @docs("All records starting from the provided sequence number.")
+    @ttitle("AtSequenceNumber")
+    @description("All records starting from the provided sequence number.")
     @unnamed
     final case class AtSequenceNumber(sequenceNumber: String) extends Parameterized
 
     @title("AfterSequenceNumber")
     @docs("All records starting after the provided sequence number.")
+    @ttitle("AfterSequenceNumber")
+    @description("All records starting after the provided sequence number.")
     @unnamed
     final case class AfterSequenceNumber(sequenceNumber: String) extends Parameterized
 
     // JS-safe long gives ms until the year 287396-ish
     @title("AtTimestamp")
     @docs("All records starting from the provided unix millisecond timestamp.")
+    @ttitle("AtTimestamp")
+    @description("All records starting from the provided unix millisecond timestamp.")
     @unnamed
     final case class AtTimestamp(millisSinceEpoch: Long) extends Parameterized
   }

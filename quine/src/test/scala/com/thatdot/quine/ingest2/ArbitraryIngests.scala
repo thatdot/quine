@@ -94,6 +94,7 @@ trait ArbitraryIngests {
   implicit val arbInbestSource: Arbitrary[IngestSource] = Arbitrary(v2IngestSourceGen)
   implicit val v2IngestConfigurationGen: Gen[QuineIngestConfiguration] = for {
     source <- v2IngestSourceGen
-  } yield QuineIngestConfiguration(source)
+  } yield QuineIngestConfiguration(source, "CREATE $(that)")
+
   implicit val arbIngest: Arbitrary[QuineIngestConfiguration] = Arbitrary(v2IngestConfigurationGen)
 }

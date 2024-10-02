@@ -65,15 +65,30 @@ object V2IngestEntities {
   }
 
   @title("File Ingest")
-  @description("An active stream of data being ingested from a file.")
+  @description("An active stream of data being ingested from a file on this Quine host.")
   case class FileIngest(
+    @description("format used to decode each incoming line from a file")
     format: FileFormat,
+    @description("Local file path.")
     path: String,
     fileIngestMode: Option[FileIngestMode],
+    @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
+    @description(
+      s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
+         |resuming ingest from a partially consumed file.""".stripMargin,
+    )
     startOffset: Long,
+    @description(s"Optionally limit how many records are ingested from this file.")
     limit: Option[Long],
+    @description(
+      "The text encoding scheme for the file. UTF-8, US-ASCII and ISO-8859-1 are " +
+      "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
+    )
     characterEncoding: Charset,
+    @description(
+      "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends FileIngestSource
       with IngestCharsetSupport
@@ -88,14 +103,30 @@ object V2IngestEntities {
       .replace('\n', ' '),
   )
   case class S3Ingest(
+    @description("format used to decode each incoming line from a file in S3")
     format: FileFormat,
     bucket: String,
+    @description("S3 file name")
     key: String,
+    @description("AWS credentials to apply to this request")
     credentials: Option[AwsCredentials],
+    @description("Maximum size (in bytes) of any line in the file.")
     maximumLineSize: Option[Int] = None,
+    @description(
+      s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
+                                                    |resuming ingest from a partially consumed file.""".stripMargin,
+    )
     startOffset: Long,
+    @description(s"Optionally limit how many records are ingested from this file.")
     limit: Option[Long],
+    @description(
+      "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
+      "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
+    )
     characterEncoding: Charset,
+    @description(
+      "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends FileIngestSource
       with IngestCharsetSupport
@@ -104,8 +135,17 @@ object V2IngestEntities {
 
   @title("Standard Input Ingest Stream")
   @description("An active stream of data being ingested from standard input to this Quine process.")
-  case class StdInputIngest(format: FileFormat, maximumLineSize: Option[Int] = None, characterEncoding: Charset)
-      extends FileIngestSource
+  case class StdInputIngest(
+    @description("format used to decode each incoming line from stdIn")
+    format: FileFormat,
+    @description("Maximum size (in bytes) of any line in the file.")
+    maximumLineSize: Option[Int] = None,
+    @description(
+      "text encoding used to read the file. Only UTF-8, US-ASCII and ISO-8859-1 are directly " +
+      "supported -- other encodings will transcoded to UTF-8 on the fly (and ingest may be slower).",
+    )
+    characterEncoding: Charset,
+  ) extends FileIngestSource
       with IngestCharsetSupport
 
   @title("Number Iterator Ingest")
@@ -113,16 +153,25 @@ object V2IngestEntities {
     "An infinite ingest stream which requires no data source and just produces new sequential numbers" +
     " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value.",
   )
-  case class NumberIteratorIngest(format: StreamingFormat, startOffset: Long, limit: Option[Long])
-      extends StreamingIngestSource
+  case class NumberIteratorIngest(
+    format: StreamingFormat,
+    @description("Begin the stream with this number.")
+    startOffset: Long = 0L,
+    @description("Optionally end the stream after consuming this many items.")
+    limit: Option[Long],
+  ) extends StreamingIngestSource
       with IngestBoundingSupport
 
   @title("Websockets Ingest Stream (Simple Startup)")
   @description("A websocket stream started after a sequence of text messages.")
   case class WebsocketIngest(
+    @description("Format used to decode each incoming message.")
     format: StreamingFormat,
+    @description("Websocket (ws: or wss:) url to connect to.")
     url: String,
+    @description("Initial messages to send to the server on connecting.")
     initMessages: Seq[String],
+    @description("Strategy to use for sending keepalive messages, if any.")
     keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
     characterEncoding: Charset,
   ) extends StreamingIngestSource
@@ -131,13 +180,24 @@ object V2IngestEntities {
   @title("Kinesis Data Stream")
   @description("A stream of data being ingested from Kinesis.")
   case class KinesisIngest(
+    @description("The format used to decode each Kinesis record.")
     format: StreamingFormat,
+    @description("Name of the Kinesis stream to ingest.")
     streamName: String,
+    @description(
+      "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed.",
+    )
     shardIds: Option[Set[String]],
+    @description("AWS credentials for this Kinesis stream")
     credentials: Option[AwsCredentials],
+    @description("AWS region for this Kinesis stream")
     region: Option[AwsRegion],
-    iteratorType: V1KinesisIngest.IteratorType = V1KinesisIngest.IteratorType.Latest,
-    numRetries: Int = 3,
+    @description("Shard iterator type.") iteratorType: V1KinesisIngest.IteratorType =
+      V1KinesisIngest.IteratorType.Latest,
+    @description("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
+    @description(
+      "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
@@ -147,8 +207,13 @@ object V2IngestEntities {
     "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event.",
   )
   case class ServerSentEventIngest(
+    @description("Format used to decode each event's `data`.")
     format: StreamingFormat,
+    @description("URL of the server sent event stream.")
     url: String,
+    @description(
+      "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
@@ -163,6 +228,9 @@ object V2IngestEntities {
     region: Option[AwsRegion],
     @description("Whether the queue consumer should acknowledge receipt of in-flight messages.")
     deleteReadMessages: Boolean = true,
+    @description(
+      "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
@@ -193,6 +261,9 @@ object V2IngestEntities {
     @description(
       "The offset at which this stream should complete; offsets are sequential integers starting at 0.",
     ) endingOffset: Option[Long],
+    @description(
+      "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
+    )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
@@ -209,17 +280,17 @@ object V2IngestEntities {
 
   object StreamingFormat {
 
-    @title("JSON")
+    @title("Json")
     @description("""Records are JSON values. For every record received, the
-                   |given Cypher query will be re-executed with the parameter in the query set
-                   |equal to the new JSON value.
+        |given Cypher query will be re-executed with the parameter in the query set
+        |equal to the new JSON value.
   """.stripMargin)
     case object JsonFormat extends StreamingFormat
 
     @title("Raw Bytes")
     @description("""Records may have any format. For every record received, the
-                   |given Cypher query will be re-executed with the parameter in the query set
-                   |equal to the new value as a Cypher byte array.
+        |given Cypher query will be re-executed with the parameter in the query set
+        |equal to the new value as a Cypher byte array.
   """.stripMargin)
     case object RawFormat extends StreamingFormat
 
@@ -264,27 +335,26 @@ object V2IngestEntities {
   @title("File Ingest Format")
   @description("Format by which a file will be interpreted as a stream of elements for ingest.")
   sealed trait FileFormat extends IngestFormat
-
   object FileFormat {
 
     /** Create using a cypher query, passing each line in as a string */
     @title("Line")
     @description("""For every line (LF/CRLF delimited) in the source, the given Cypher query will be
-                   |re-executed with the parameter in the query set equal to a string matching
-                   |the new line value. The newline is not included in this string.
+        |re-executed with the parameter in the query set equal to a string matching
+        |the new line value. The newline is not included in this string.
   """.stripMargin.replace('\n', ' '))
     case object LineFormat extends FileFormat
 
     /** Create using a cypher query, expecting each line to be a JSON record */
     @title("Json")
     @description("""Lines in the file should be JSON values. For every value received, the
-                   |given Cypher query will be re-executed with the parameter in the query set
-                   |equal to the new JSON value.
+        |given Cypher query will be re-executed with the parameter in the query set
+        |equal to the new JSON value.
   """.stripMargin.replace('\n', ' '))
     case object JsonFormat extends FileFormat
 
     /** Create using a cypher query, expecting each line to be a single row CSV record */
-    @title("CypherCSV")
+    @title("CSV")
     @description(
       """For every row in a CSV file, the given Cypher query will be re-executed with the parameter in the query set
         |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
@@ -292,18 +362,18 @@ object V2IngestEntities {
     )
     case class CsvFormat(
       @description("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
-                                         |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-                                         |type available to the Cypher query will be a List of strings with values accessible by index. When
-                                         |headers are available (supplied or read from the file), the resulting type available to the Cypher
-                                         |query will be a Map[String, String], with values accessible using the corresponding header string.
-                                         |CSV rows containing more records than the `headers` will have items that don't match a header column
-                                         |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-                                         |Default: `false`.""".stripMargin)
+                                    |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+                                    |type available to the Cypher query will be a List of strings with values accessible by index. When
+                                    |headers are available (supplied or read from the file), the resulting type available to the Cypher
+                                    |query will be a Map[String, String], with values accessible using the corresponding header string.
+                                    |CSV rows containing more records than the `headers` will have items that don't match a header column
+                                    |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+                                    |Default: `false`.""".stripMargin)
       headers: Either[Boolean, List[String]] = Left(false),
       @description("CSV row delimiter character.")
       delimiter: CsvCharacter = CsvCharacter.Comma,
       @description("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
-                                         |section will be a part of the CSV value.""".stripMargin)
+                                    |section will be a part of the CSV value.""".stripMargin)
       quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
       @description("Character used to escape special characters.")
       escapeChar: CsvCharacter = CsvCharacter.Backslash,
@@ -326,8 +396,12 @@ object V2IngestEntities {
   // --------------------
   sealed trait OnStreamErrorHandler
 
+  @title("Retry Stream Error Handler")
+  @description("Retry the stream on failure")
   case class RetryStreamError(retryCount: Int) extends OnStreamErrorHandler
 
+  @title("Log Stream Error Handler")
+  @description("If the stream fails log a message but do not retry.")
   case object LogStreamError extends OnStreamErrorHandler
 
   // --------------------
@@ -347,11 +421,17 @@ object V2IngestEntities {
     def onError[Frame](e: Throwable, frame: Frame): Unit
   }
 
+  @title("Log Record Error Handler")
+  @description("Log a message for each message that encounters an error in processing")
   case object LogRecordErrorHandler extends OnRecordErrorHandler with LazyLogging {
     def onError[Frame](e: Throwable, frame: Frame): Unit =
       logger.warn(s"error decoding: $frame: ${e.getMessage}")
   }
 
+  @title("Dead-letter Record Error Handler")
+  @description(
+    "Preserve records that encounter an error in processing by forwarding them to a specified dead-letter destination (TBD)",
+  )
   case object DeadLetterErrorHandler extends OnRecordErrorHandler {
     override def onError[Frame](e: Throwable, frame: Frame): Unit = ()
   }
@@ -368,13 +448,21 @@ object V2IngestEntities {
     val onStreamError: OnStreamErrorHandler
   }
 
+  @title("Ingest Configuration")
+  @description("A specification of a data source and rules for consuming data from that source.")
   case class QuineIngestConfiguration(
     source: IngestSource,
-    query: String = "CREATE ($that)",
+    @description("Cypher query to execute on each record.")
+    query: String,
+    @description("Name of the Cypher parameter to populate with the JSON value.")
     parameter: String = "that",
+    @description("Maximum number of records to process at once.")
     parallelism: Int = IngestRoutes.defaultWriteParallelism,
+    @description("Maximum number of records to process per second.")
     maxPerSecond: Option[Int] = None,
+    @description("Action to take on a single failed record")
     onRecordError: OnRecordErrorHandler = LogRecordErrorHandler,
+    @description("Action to take on a failure of the input stream")
     onStreamError: OnStreamErrorHandler = LogStreamError,
   ) extends V2IngestConfiguration
       with LazySafeLogging {

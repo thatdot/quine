@@ -187,6 +187,7 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
       "com.lihaoyi" %% "ujson-circe" % ujsonV, // For the OpenAPI rendering
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
+      "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV, // For tapir annotations
     ),
   )
   .jsSettings(
