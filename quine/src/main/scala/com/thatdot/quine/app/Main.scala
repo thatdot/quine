@@ -1,6 +1,7 @@
 package com.thatdot.quine.app
 
 import java.io.File
+import java.net.URL
 import java.nio.charset.{Charset, StandardCharsets}
 import java.text.NumberFormat
 
@@ -11,7 +12,6 @@ import scala.util.{Failure, Success}
 
 import org.apache.pekko.Done
 import org.apache.pekko.actor.{ActorSystem, Cancellable, CoordinatedShutdown}
-import org.apache.pekko.http.scaladsl.model.Uri
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
-import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerConfig}
+import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerBindConfig}
 import com.thatdot.quine.app.migrations.QuineMigrations
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.graph._
@@ -229,13 +229,12 @@ object Main extends App with LazySafeLogging {
 
   statusLines.info(log"Graph is ready")
 
-  // The web service is started unless it was disabled.
-  val bindAndResolvableAddresses: Option[(WebServerConfig, Uri)] = Option.when(config.webserver.enabled) {
-    import config.webserver
+  // Determine the bind address and resolvable URL for the web server, if enabled
+  val bindAndResolvableAddresses: Option[(WebServerBindConfig, URL)] = Option.when(config.webserver.enabled) {
     // if a canonical URL is configured, use that for presentation (eg logging) purposes. Otherwise, infer
     // from the bind URL
-    webserver -> config.webserverAdvertise.fold(webserver.asResolveableUrl)(
-      _.overrideHostAndPort(webserver.asResolveableUrl),
+    config.webserver -> config.webserverAdvertise.fold(config.webserver.guessResolvableUrl)(
+      _.url(config.webserver.protocol),
     )
   }
 
@@ -253,7 +252,11 @@ object Main extends App with LazySafeLogging {
       ExecutionContext.parasitic,
       logConfig,
     )
-      .bindWebServer(bindAddress.address.asString, bindAddress.port.asInt, bindAddress.ssl)
+      .bindWebServer(
+        bindAddress.address.asString,
+        bindAddress.port.asInt,
+        bindAddress.useTls,
+      )
       .onComplete {
         case Success(binding) =>
           binding.addToCoordinatedShutdown(hardTerminationDeadline = 30.seconds)

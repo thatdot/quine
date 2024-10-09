@@ -1,6 +1,7 @@
 package com.thatdot.quine.app.routes
 
-import org.apache.pekko.http.scaladsl.model.Uri
+import java.net.URL
+
 import org.apache.pekko.http.scaladsl.server.Route
 
 import endpoints4s.openapi.model._
@@ -106,7 +107,7 @@ final class QuineAppOpenApiDocs(val idProvider: QuineIdProvider)(implicit protec
   *
   * @param graph the Quine graph
   */
-final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: Uri)(implicit protected val logConfig: LogConfig)
+final case class QuineAppOpenApiDocsRoutes(graph: BaseGraph, url: URL)(implicit protected val logConfig: LogConfig)
     extends endpoints4s.pekkohttp.server.Endpoints
     with endpoints4s.pekkohttp.server.JsonEntitiesFromEncodersAndDecoders {
 

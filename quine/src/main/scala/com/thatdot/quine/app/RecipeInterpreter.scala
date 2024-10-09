@@ -1,6 +1,7 @@
 package com.thatdot.quine.app
 
 import java.lang.System.lineSeparator
+import java.net.URL
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -38,7 +39,7 @@ case class RecipeInterpreter(
   recipe: Recipe,
   appState: RecipeState,
   graphService: CypherOpsGraph,
-  quineWebserverUri: Option[Uri],
+  quineWebserverUri: Option[URL],
 )(implicit idProvider: QuineIdProvider)
     extends Cancellable {
 
@@ -125,7 +126,19 @@ case class RecipeInterpreter(
       } {
         for {
           url <- quineWebserverUri
-        } statusLines.info(log"Status query URL is ${url.withFragment(cypherQuery).toString}")
+        } statusLines.info(
+          log"Status query URL is ${Uri
+            .from(
+              scheme = url.getProtocol,
+              userinfo = url.getUserInfo,
+              host = url.getHost,
+              port = url.getPort,
+              path = url.getPath,
+              queryString = None,
+              fragment = Some(cypherQuery),
+            )
+            .toString}",
+        )
         tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
       }
     }

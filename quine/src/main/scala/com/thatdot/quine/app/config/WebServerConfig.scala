@@ -1,32 +1,24 @@
 package com.thatdot.quine.app.config
 
 import java.io.File
-import java.net.InetAddress
+import java.net.{InetAddress, URL}
 
 import org.apache.pekko.http.scaladsl.model.Uri
 
+import com.thatdot.quine.app.config.WebServerBindConfig.{KeystorePasswordEnvVar, KeystorePathEnvVar}
 import com.thatdot.quine.util.{Host, Port}
 
 final case class SslConfig(path: File, password: Array[Char])
 
-trait WebServerConfig {
-  def address: Host
-  def port: Port
-  def ssl: Option[SslConfig]
-}
 final case class WebServerBindConfig(
   address: Host = Host("0.0.0.0"),
   port: Port = Port(8080),
   enabled: Boolean = true,
-  ssl: Option[SslConfig] = (sys.env.get("SSL_KEYSTORE_PATH"), sys.env.get("SSL_KEYSTORE_PASSWORD")) match {
-    case (None, None) => None
-    case (Some(path), Some(password)) => Some(SslConfig(new File(path), password.toCharArray))
-    case (Some(_), None) => sys.error("'SSL_KEYSTORE_PATH' was specified but 'SSL_KEYSTORE_PASSWORD' was not")
-    case (None, Some(_)) => sys.error("'SSL_KEYSTORE_PASSWORD' was specified but 'SSL_KEYSTORE_PATH'  was not")
-  },
-) extends WebServerConfig {
+  useTls: Boolean = sys.env.contains(KeystorePathEnvVar) && sys.env.contains(KeystorePasswordEnvVar),
+) {
+  def protocol: String = if (useTls) "https" else "http"
 
-  val asResolveableUrl: Uri = {
+  def guessResolvableUrl: URL = {
     val bindHost: Uri.Host = Uri.Host(address.asString)
     // If the host of the bindUri is set to wildcard (INADDR_ANY and IN6ADDR_ANY) - i.e. "0.0.0.0" or "::"
     // present the URL as "localhost" to the user. This is necessary because while
@@ -38,12 +30,17 @@ final case class WebServerBindConfig(
       else
         bindHost
 
-    Uri(if (ssl.isDefined) "https" else "http", Uri.Authority(resolveableHost, port.asInt))
+    new URL(protocol, resolveableHost.address, port.asInt, "")
   }
+
+}
+object WebServerBindConfig {
+  val KeystorePathEnvVar = "SSL_KEYSTORE_PATH"
+  val KeystorePasswordEnvVar = "SSL_KEYSTORE_PASSWORD"
 }
 final case class WebserverAdvertiseConfig(
   address: Host,
   port: Port,
 ) {
-  def overrideHostAndPort(uri: Uri): Uri = uri.withHost(address.asString).withPort(port.asInt)
+  def url(protocol: String): URL = new URL(protocol, address.asString, port.asInt, "")
 }

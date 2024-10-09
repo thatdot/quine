@@ -74,8 +74,9 @@ object Dependencies {
   // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
   // vulnerabilities.
   val snappyV = "1.1.10.6"
-  val sugarV = "2.0.6"
+  val sslContextKickstartV = "8.3.6"
   val stoplightElementsV = "7.12.0"
+  val sugarV = "2.0.6"
   val tapirRecdocV = "1.10.15"
   val tapirV = "1.10.15"
   val ujsonV = "1.6.0"

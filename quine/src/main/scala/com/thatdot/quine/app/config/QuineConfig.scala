@@ -26,8 +26,7 @@ final case class QuineConfig(
   declineSleepWhenWriteWithin: FiniteDuration = 100.millis,
   declineSleepWhenAccessWithin: FiniteDuration = Duration.Zero,
   maxCatchUpSleep: FiniteDuration = 2000.millis,
-  webserver: WebServerBindConfig = // TODO consider renaming to webserverBind
-    WebServerBindConfig(),
+  webserver: WebServerBindConfig = WebServerBindConfig(),
   webserverAdvertise: Option[WebserverAdvertiseConfig] = None,
   shouldResumeIngest: Boolean = false,
   shardCount: Int = 4,

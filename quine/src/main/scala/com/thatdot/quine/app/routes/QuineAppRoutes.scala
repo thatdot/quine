@@ -1,10 +1,12 @@
 package com.thatdot.quine.app.routes
 
+import java.net.URL
+
 import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.ActorSystem
-import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes, Uri}
+import org.apache.pekko.http.scaladsl.model.{HttpEntity, StatusCodes}
 import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.{Directives, Route}
 import org.apache.pekko.util.Timeout
@@ -38,7 +40,7 @@ class QuineAppRoutes(
     with StandingQueryStore
     with IngestStreamState,
   val config: BaseConfig,
-  val uri: Uri,
+  val uri: URL,
   val timeout: Timeout,
   val apiV2Enabled: Boolean,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)

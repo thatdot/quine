@@ -1,12 +1,7 @@
 package com.thatdot.quine.app.routes
 
-import java.io.{File, FileInputStream}
-import java.security.{KeyStore, SecureRandom}
-import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
-
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.Using
 
 import org.apache.pekko.http.scaladsl.model.headers._
 import org.apache.pekko.http.scaladsl.model.{HttpCharsets, HttpEntity, MediaType, StatusCodes}
@@ -16,34 +11,18 @@ import org.apache.pekko.http.scaladsl.{ConnectionContext, Http}
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
-import com.thatdot.quine.app.config.SslConfig
+import nl.altindag.ssl.SSLFactory
+
+import com.thatdot.quine.app.config.WebServerBindConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Tls.SSLFactoryBuilderOps
 
 object MediaTypes {
   val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
 }
 
-object SslHelper {
-
-  /** Create an SSL context given the path to a Java keystore and its password
-    * @param path
-    * @param password
-    * @return
-    */
-  def sslContextFromKeystore(path: File, password: Array[Char]): SSLContext = {
-    val keystore = KeyStore.getInstance(KeyStore.getDefaultType)
-    Using.resource(new FileInputStream(path))(keystoreFile => keystore.load(keystoreFile, password))
-    val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
-    keyManagerFactory.init(keystore, password)
-    val trustManagerFacotry = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
-    trustManagerFacotry.init(keystore)
-    val sslContext = SSLContext.getInstance("TLS")
-    sslContext.init(keyManagerFactory.getKeyManagers, trustManagerFacotry.getTrustManagers, new SecureRandom)
-    sslContext
-  }
-}
 trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.Endpoints {
 
   val graph: BaseGraph
@@ -75,7 +54,7 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
     }
 
   /** Bind a webserver to server up the main route */
-  def bindWebServer(interface: String, port: Int, ssl: Option[SslConfig]): Future[Http.ServerBinding] = {
+  def bindWebServer(interface: String, port: Int, useTls: Boolean): Future[Http.ServerBinding] = {
     import graph.system
     val serverBuilder = Http()(system)
       .newServerAt(interface, port)
@@ -88,14 +67,44 @@ trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.En
     //capture unknown addresses with a 404
     val routeWithDefault =
       mainRoute ~ complete(StatusCodes.NotFound, HttpEntity("The requested resource could not be found."))
-    ssl
-      .fold(serverBuilder) { ssl =>
-        serverBuilder.enableHttps(
-          ConnectionContext.httpsServer(SslHelper.sslContextFromKeystore(ssl.path, ssl.password)),
-        )
+
+    val sslFactory: Option[SSLFactory] = Option.when(useTls) {
+      val keystoreOverride =
+        (sys.env.get(WebServerBindConfig.KeystorePathEnvVar) -> sys.env.get(
+          WebServerBindConfig.KeystorePasswordEnvVar,
+        )) match {
+          case (Some(keystorePath), Some(password)) => Some(keystorePath -> password.toCharArray)
+          case (Some(_), None) =>
+            logger.warn(
+              safe"""'${Safe(WebServerBindConfig.KeystorePathEnvVar)}' was specified but
+                    |'${Safe(WebServerBindConfig.KeystorePasswordEnvVar)}' was not. Ignoring.
+                    |""".cleanLines,
+            )
+            None
+          case (None, Some(_)) =>
+            logger.warn(
+              safe"""'${Safe(WebServerBindConfig.KeystorePasswordEnvVar)}' was specified but
+                    |'${Safe(WebServerBindConfig.KeystorePathEnvVar)}' was not. Ignoring.
+                    |""".cleanLines,
+            )
+            None
+          case (None, None) => None
+        }
+      val baseBuilder = SSLFactory
+        .builder()
+        .withSystemPropertyDerivedIdentityMaterial()
+        .withSystemPropertyDerivedCiphersSafe()
+        .withSystemPropertyDerivedProtocolsSafe()
+      val builderWithOverride = keystoreOverride.fold(baseBuilder) { case (file, password) =>
+        baseBuilder.withIdentityMaterial(file, password)
       }
-      .bind(
-        Route.toFunction(routeWithDefault)(system),
+      builderWithOverride.build()
+    }
+
+    sslFactory
+      .fold(serverBuilder)(sslFactory =>
+        serverBuilder.enableHttps(ConnectionContext.httpsServer(sslFactory.getSslContext)),
       )
+      .bind(Route.toFunction(routeWithDefault)(system))
   }
 }

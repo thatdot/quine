@@ -28,6 +28,7 @@ lazy val `quine-core`: Project = project
       "org.apache.commons" % "commons-text" % commonsTextV,
       "com.47deg" %% "memeid4s" % memeIdV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
+      "io.github.hakky54" % "sslcontext-kickstart" % sslContextKickstartV,
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
