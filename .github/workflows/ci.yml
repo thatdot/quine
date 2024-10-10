@@ -33,10 +33,12 @@ jobs:
     - uses: coursier/cache-action@v6
       with:
         extraKey: '2.13'
-    - uses: actions/setup-java@v3
+    - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'
+        java-version: '21'
+    - name: Set up scala
+      uses: sbt/setup-sbt@159bc2bcdce6cc8f23f9faa80a0efc07632b17b9
     - run: sbt -v test quine/assembly quine-docs/generateDocs 'scalafixAll --check'
 
   scalafmt:
@@ -48,9 +50,11 @@ jobs:
     - uses: coursier/cache-action@v6
       with:
         extraKey: 'fmt'
-    - uses: actions/setup-java@v3
+    - uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '17'
+        java-version: '21'
+    - name: Set up scala
+      uses: sbt/setup-sbt@159bc2bcdce6cc8f23f9faa80a0efc07632b17b9
     - run: sbt -v scalafmtCheckAll scalafmtSbtCheck
 
