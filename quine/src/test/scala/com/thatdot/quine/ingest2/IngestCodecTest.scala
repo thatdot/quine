@@ -2,6 +2,7 @@ package com.thatdot.quine.ingest2
 
 import java.nio.charset.Charset
 
+import cats.implicits._
 import io.circe.Decoder.Result
 import io.circe.generic.auto._
 import io.circe.syntax.EncoderOps
@@ -12,7 +13,7 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration, StreamingFormat}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestSource, QuineIngestConfiguration, StreamingFormat}
 import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestSchemas}
 import com.thatdot.quine.routes.FileIngestMode.Regular
 import com.thatdot.quine.routes.KafkaAutoOffsetReset.Latest
@@ -173,6 +174,63 @@ class IngestCodecTest
       val r: Result[V2IngestEntities.QuineIngestConfiguration] = j.as[V2IngestEntities.QuineIngestConfiguration]
       //Config rehydrated from json
       r.foreach(config => assert(config == ic))
+    }
+  }
+
+  /** Checks to see if a json encoding produces any "ugly" values.
+    * Any time a "Left" or "Right" appears as a key, we probably have an Either that was encoded wrong.
+    * Any class that encodes to an empty object is also probably wrong.
+    * @param json The json to recursively check
+    * @param allowedToBeEmpty Since we cannot tell from the json alone whether an empty object came from
+    *                         a case class or just a map, allowedToBeEmpty indicates that a value is allowed to be empty
+    *                         (i.e. it came from a map rather than a case class)
+    * @return Left(error) if there is an ugly value in the json otherwise Right(())
+    */
+  def checkForUglyJson(
+    json: Json,
+    allowedToBeEmpty: Vector[String] => Boolean,
+    path: Vector[String] = Vector.empty,
+  ): Either[String, Unit] =
+    json.fold[Either[String, Unit]](
+      Right(()),
+      (_ => Right(())),
+      (_ => Right(())),
+      (_ => Right(())),
+      (
+        _.zipWithIndex
+          .traverse { case (innerJson, index) =>
+            checkForUglyJson(innerJson, allowedToBeEmpty, path.appended(index.toString))
+          }
+          .map(_ => ()),
+      ),
+      (obj => {
+        val map = obj.toMap
+        for {
+          _ <- if (map.contains("Left")) Left(s"Json contained a left value at ${path.mkString(".")}") else Right(())
+          _ <- if (map.contains("Right")) Left(s"Json contained a right value at ${path.mkString(".")}") else Right(())
+          _ <-
+            if (map.isEmpty && !allowedToBeEmpty(path)) Left(s"Json object was empty at ${path.mkString(".")}")
+            else Right(())
+          _ <- map.toList.traverse { case (k, innerJson) =>
+            checkForUglyJson(innerJson, allowedToBeEmpty, path.appended(k))
+          }
+        } yield ()
+      }),
+    )
+
+  test("Checking for ugly IngestSource encodings") {
+    forAll { ic: IngestSource =>
+      val j: Json = ic.asJson.deepDropNullValues
+      val r: Result[IngestSource] = j.as[IngestSource]
+      r.foreach(config => assert(config == ic))
+      assert(r.isRight)
+      val allowedEmpty: Vector[String] => Boolean = {
+        case Vector("KafkaIngest", "topics") => true
+        case Vector("KafkaIngest", "kafkaProperties") => true
+        case _ => false
+      }
+      val ugly = checkForUglyJson(j, allowedEmpty)
+      assert(ugly.isRight, ugly)
     }
   }
 

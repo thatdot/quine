@@ -11,12 +11,28 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
 import com.thatdot.quine.routes.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
-import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaSecurityProtocol, RecordDecodingType}
+import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
+import com.thatdot.quine.routes.{
+  KafkaAutoOffsetReset,
+  KafkaSecurityProtocol,
+  RecordDecodingType,
+  WebsocketSimpleStartupIngest,
+}
 import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.{routes => v1}
 trait ArbitraryIngests {
+
   implicit val genCharset: Gen[Charset] =
     Gen.oneOf[String](Charset.availableCharsets().keySet().asScala).map(Charset.forName)
+
+  implicit val keepAliveProtocolGen: Gen[KeepaliveProtocol] =
+    Gen.oneOf[KeepaliveProtocol](
+      Gen.posNum[Int].map(WebsocketSimpleStartupIngest.PingPongInterval(_)),
+      Gen.zip(Gen.asciiPrintableStr, Gen.posNum[Int]) map { case (message, intervalMillis) =>
+        WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
+      },
+      Gen.const(WebsocketSimpleStartupIngest.NoKeepalive),
+    )
 
   implicit val decoderSeqGen: Gen[Seq[RecordDecodingType]] =
     Gen.someOf(RecordDecodingType.Zlib, RecordDecodingType.Gzip, RecordDecodingType.Base64)
@@ -33,12 +49,20 @@ trait ArbitraryIngests {
       Gen.oneOf(v1.RecordDecodingType.Gzip, v1.RecordDecodingType.Base64, v1.RecordDecodingType.Zlib),
     ),
   )
+
   implicit val optionSet: Gen[Option[Set[String]]] = Gen.option(Gen.containerOfN[Set, String](3, Gen.asciiStr))
   implicit val optionPosInt: Gen[Option[Int]] = Gen.option(Gen.posNum[Int])
 
   implicit val iterType: Arbitrary[v1.KinesisIngest.IteratorType] = Arbitrary(
-    Gen.oneOf(v1.KinesisIngest.IteratorType.Latest, v1.KinesisIngest.IteratorType.TrimHorizon),
+    Gen.oneOf(
+      Gen.const(v1.KinesisIngest.IteratorType.Latest),
+      Gen.const(v1.KinesisIngest.IteratorType.TrimHorizon),
+      Gen.numStr.map(v1.KinesisIngest.IteratorType.AtSequenceNumber(_)),
+      Gen.numStr.map(v1.KinesisIngest.IteratorType.AfterSequenceNumber(_)),
+      Gen.posNum[Long].map(v1.KinesisIngest.IteratorType.AtTimestamp(_)),
+    ),
   )
+
   implicit val genKafkaOffset: Gen[v1.KafkaOffsetCommitting] = Gen.resultOf(ExplicitCommit)
   implicit val arbKafkaOffset: Arbitrary[v1.KafkaOffsetCommitting] = Arbitrary(genKafkaOffset)
   implicit val genSecProtocol: Gen[KafkaSecurityProtocol] = Gen.oneOf(KafkaSecurityProtocol.values)
@@ -70,10 +94,15 @@ trait ArbitraryIngests {
   //
   implicit val arbStreamingFormat: Arbitrary[StreamingFormat] = Arbitrary(streamingFormatGen)
   implicit val arbCharset: Arbitrary[Charset] = Arbitrary(genCharset)
+  implicit val arbKeepAliveProtocol: Arbitrary[WebsocketSimpleStartupIngest.KeepaliveProtocol] = Arbitrary(
+    keepAliveProtocolGen,
+  )
+
   implicit val fileGen: Gen[FileIngest] = Gen.resultOf(FileIngest)
   implicit val s3Gen: Gen[S3Ingest] = Gen.resultOf(S3Ingest)
   implicit val stdInGen: Gen[StdInputIngest] = Gen.resultOf(StdInputIngest)
   implicit val numInGen: Gen[NumberIteratorIngest] = Gen.resultOf(NumberIteratorIngest)
+  implicit val webSocketGen: Gen[WebsocketIngest] = Gen.resultOf(WebsocketIngest)
   implicit val sseInGen: Gen[ServerSentEventIngest] =
     Gen.resultOf(ServerSentEventIngest)
   implicit val sqsInGen: Gen[SQSIngest] = Gen.resultOf(SQSIngest)
@@ -84,13 +113,14 @@ trait ArbitraryIngests {
 
   implicit val arbStdIn: Arbitrary[StdInputIngest] = Arbitrary(stdInGen)
   implicit val arbNum: Arbitrary[NumberIteratorIngest] = Arbitrary(numInGen)
+  implicit val arbWeb: Arbitrary[WebsocketIngest] = Arbitrary(webSocketGen)
   implicit val arbSse: Arbitrary[ServerSentEventIngest] = Arbitrary(sseInGen)
   implicit val arbSQS: Arbitrary[SQSIngest] = Arbitrary(sqsInGen)
   implicit val arbKinesis: Arbitrary[KinesisIngest] = Arbitrary(kinesisGen)
   implicit val arbKafka: Arbitrary[KafkaIngest] = Arbitrary(kafkaGen)
 
   implicit val v2IngestSourceGen: Gen[IngestSource] =
-    Gen.oneOf(fileGen, s3Gen, stdInGen, numInGen, sseInGen, sqsInGen, kinesisGen, kafkaGen)
+    Gen.oneOf(fileGen, s3Gen, stdInGen, numInGen, webSocketGen, sseInGen, sqsInGen, kinesisGen, kafkaGen)
   implicit val arbInbestSource: Arbitrary[IngestSource] = Arbitrary(v2IngestSourceGen)
   implicit val v2IngestConfigurationGen: Gen[QuineIngestConfiguration] = for {
     source <- v2IngestSourceGen
