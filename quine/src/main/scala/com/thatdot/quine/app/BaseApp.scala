@@ -2,12 +2,14 @@ package com.thatdot.quine.app
 
 import java.nio.charset.StandardCharsets.UTF_8
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Try}
 
 import endpoints4s.{Invalid, Valid, Validated}
-import io.circe.jawn
+import io.circe.{Encoder, jawn}
 
+import com.thatdot.quine.app.QuineApp.{V2IngestStreamsKey, makeNamespaceMetaDataKey}
+import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
 
 /** Applications running over top of Quine should define an application state that extends this.
@@ -16,7 +18,7 @@ import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
   *
   * @param graph reference to the underlying graph
   */
-abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
+abstract class BaseApp(graph: BaseGraph) {
 
   /** Store a key-value pair that is relevant only for one particular app instance (i.e. "local")
     *
@@ -24,7 +26,11 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param key name of the setting
     * @param value setting value
     */
-  final protected def storeLocalMetaData[A: JsonSchema](key: String, localMemberId: MemberIdx, value: A): Future[Unit] =
+  final protected def storeLocalMetaData[A: EncoderDecoder](
+    key: String,
+    localMemberId: MemberIdx,
+    value: A,
+  ): Future[Unit] =
     graph.namespacePersistor.setLocalMetaData(key, localMemberId, Some(encodeMetaData(value)))
 
   /** Store a key-value pair that is relevant for the entire graph
@@ -33,7 +39,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param key name of the setting
     * @param value setting value
     */
-  final protected def storeGlobalMetaData[A: JsonSchema](key: String, value: A): Future[Unit] =
+  final protected def storeGlobalMetaData[A: EncoderDecoder](key: String, value: A): Future[Unit] =
     graph.namespacePersistor.setMetaData(key, Some(encodeMetaData(value)))
 
   final protected def deleteGlobalMetaData(key: String): Future[Unit] =
@@ -46,8 +52,10 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @tparam A The type of the value to be encoded
     * @return The encoded value as a byte array
     */
-  final protected def encodeMetaData[A](value: A)(implicit schema: JsonSchema[A]): Array[Byte] =
-    schema.encoder(value).noSpaces.getBytes(UTF_8)
+  final protected def encodeMetaData[A](value: A)(implicit encoderDecoder: EncoderDecoder[A]): Array[Byte] =
+    encoderDecoder.encoder(value).noSpaces.getBytes(UTF_8)
+  final protected def encodeMetaData[A](value: A, encoder: Encoder[A]): Array[Byte] =
+    encoder(value).noSpaces.getBytes(UTF_8)
 
   /** Retrieve a value associated with a key which was stored for the local app
     *
@@ -56,13 +64,13 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @return the value, if found
     */
   final protected def getLocalMetaData[A](key: String, localMemberId: MemberIdx)(implicit
-    schema: JsonSchema[A],
+    encoderDecoder: EncoderDecoder[A],
   ): Future[Option[A]] =
     graph.namespacePersistor
       .getLocalMetaData(key, localMemberId)
       .map {
         _.flatMap { jsonBytes =>
-          Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
+          Some(validateMetaData(decodeMetaData(jsonBytes)(encoderDecoder))) // throws to fail the future
         }
       }(graph.system.dispatcher)
 
@@ -72,12 +80,12 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param key name of the setting
     * @return the value, if found
     */
-  final protected def getGlobalMetaData[A](key: String)(implicit schema: JsonSchema[A]): Future[Option[A]] =
+  final protected def getGlobalMetaData[A](key: String)(implicit encoderDecoder: EncoderDecoder[A]): Future[Option[A]] =
     graph.namespacePersistor
       .getMetaData(key)
       .map {
         _.flatMap { jsonBytes =>
-          Some(validateMetaData(decodeMetaData(jsonBytes)(schema))) // throws to fail the future
+          Some(validateMetaData(decodeMetaData(jsonBytes)(encoderDecoder))) // throws to fail the future
         }
       }(graph.system.dispatcher)
 
@@ -88,8 +96,10 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @tparam A The type of the value to be encoded
     * @return The encoded value as a byte array
     */
-  final protected def decodeMetaData[A](jsonBytes: Array[Byte])(implicit schema: JsonSchema[A]): Validated[A] =
-    Validated.fromEither(jawn.decodeByteArray(jsonBytes)(schema.decoder).left.map(err => Seq(err.toString)))
+  final protected def decodeMetaData[A](jsonBytes: Array[Byte])(implicit
+    encoderDecoder: EncoderDecoder[A],
+  ): Validated[A] =
+    Validated.fromEither(jawn.decodeByteArray(jsonBytes)(encoderDecoder.decoder).left.map(err => Seq(err.toString)))
   //Codec.sequentially(BaseApp.utf8Codec)(schema.stringCodec).decode(jsonBytes)
 
   /** A convenience method for unwrapping the decoded (validated) deserialized value. Throws an exception if invalid.
@@ -113,7 +123,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param defaultValue default setting value
     * @return the (possibly updated) value
     */
-  final protected def getOrDefaultLocalMetaData[A: JsonSchema](
+  final protected def getOrDefaultLocalMetaData[A: EncoderDecoder](
     key: String,
     localMemberId: MemberIdx,
     defaultValue: => A,
@@ -124,6 +134,33 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
         val defaulted = defaultValue
         storeLocalMetaData(key, localMemberId, defaulted).map(_ => defaulted)(graph.system.dispatcher)
     }(graph.system.dispatcher)
+
+  protected def saveV2IngestsToPersistor[IngestWithStatusType: EncoderDecoder](
+    namespace: NamespaceId,
+    thisMemberIdx: Int,
+    ingests: Map[String, IngestWithStatusType],
+    key: String = V2IngestStreamsKey,
+  ): Future[Unit] =
+    storeLocalMetaData[Map[String, IngestWithStatusType]](
+      makeNamespaceMetaDataKey(namespace, key),
+      thisMemberIdx,
+      ingests,
+    )(EncoderDecoder.ofMap)
+
+  protected def loadV2IngestsFromPersistor[IngestWithStatusType: EncoderDecoder](
+    thisMemberIdx: Int,
+    key: String = V2IngestStreamsKey,
+  )(implicit ex: ExecutionContext): Future[Map[NamespaceId, Map[String, IngestWithStatusType]]] = Future
+    .sequence(
+      getNamespaces.map(ns =>
+        getOrDefaultLocalMetaData[Map[String, IngestWithStatusType]](
+          makeNamespaceMetaDataKey(ns, key),
+          thisMemberIdx,
+          Map.empty[String, IngestWithStatusType],
+        )(EncoderDecoder.ofMap).map(v => ns -> v),
+      ),
+    )
+    .map(_.toMap)
 
   /** Retrieve a value associated with a key stored for this local app, but write and return in a default value
     * if the key is not already defined for the local app. Upon encountering an unrecognized value, will attempt
@@ -136,7 +173,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param recovery     a function converting a value from the fallback schema to the desired schema
     * @return the (possibly updated) value
     */
-  final protected def getOrDefaultLocalMetaDataWithFallback[A: JsonSchema, B: JsonSchema](
+  final protected def getOrDefaultLocalMetaDataWithFallback[A: EncoderDecoder, B: EncoderDecoder](
     key: String,
     localMemberId: MemberIdx,
     defaultValue: => A,
@@ -169,7 +206,7 @@ abstract class BaseApp(graph: BaseGraph) extends endpoints4s.circe.JsonSchemas {
     * @param defaultValue default setting value
     * @return the (possibly updated) value
     */
-  final protected def getOrDefaultGlobalMetaData[A: JsonSchema](key: String, defaultValue: => A): Future[A] =
+  final protected def getOrDefaultGlobalMetaData[A: EncoderDecoder](key: String, defaultValue: => A): Future[A] =
     getGlobalMetaData[A](key).flatMap {
       case Some(value) => Future.successful(value)
       case None =>

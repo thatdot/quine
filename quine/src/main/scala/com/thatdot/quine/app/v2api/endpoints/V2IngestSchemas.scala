@@ -20,17 +20,32 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
+import com.thatdot.quine.app.serialization.EncoderDecoder
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
 
+object V2IngestEncoderDecoders extends V2IngestSchemas {
+
+  // Importing V2IngestEncoderDecoders.implicits._ imports all of the  EncoderDecoders without
+  // importing anything related to Tapir Schemas
+  // This allows selectively importing the EncoderDecoders for V2 ingests without importing the entire
+  // V2IngestSchemas, which is necessary for working with EncoderDecoders in an environment where
+  // the implicits are already defined using Endpoints4s for V1 ingests
+  object implicits {
+    implicit def quineIngestStreamWithStatusSchema: EncoderDecoder[QuineIngestStreamWithStatus] =
+      EncoderDecoder.ofEncodeDecode
+    implicit val quineIngestConfigurationSchema: EncoderDecoder[QuineIngestConfiguration] =
+      EncoderDecoder.ofEncodeDecode
+  }
+}
+
 trait V2IngestSchemas extends TapirJsonCirce {
   implicit val csvCharacterSchema: Schema[CsvCharacter] = Schema.derived[CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
-
   implicit val onRecordErrorHandlerSchema: Schema[OnRecordErrorHandler] =
     Schema.derived[OnRecordErrorHandler].description("Action to take on record error")
 
@@ -203,5 +218,4 @@ trait V2IngestSchemas extends TapirJsonCirce {
     implicit val config = ingestSourceTypeConfig
     deriveConfiguredDecoder[OnStreamErrorHandler]
   }
-  implicit val ingestStreamStatusEncoder: Encoder[IngestStreamStatus] = Encoder.encodeString.contramap(_.toString)
 }

@@ -13,8 +13,13 @@ import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{IngestSource, QuineIngestConfiguration, StreamingFormat}
-import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestSchemas}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
+  IngestSource,
+  QuineIngestConfiguration,
+  QuineIngestStreamWithStatus,
+  StreamingFormat,
+}
+import com.thatdot.quine.app.v2api.endpoints.{V2IngestEncoderDecoders, V2IngestEntities, V2IngestSchemas}
 import com.thatdot.quine.routes.FileIngestMode.Regular
 import com.thatdot.quine.routes.KafkaAutoOffsetReset.Latest
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
@@ -174,6 +179,13 @@ class IngestCodecTest
       val r: Result[V2IngestEntities.QuineIngestConfiguration] = j.as[V2IngestEntities.QuineIngestConfiguration]
       //Config rehydrated from json
       r.foreach(config => assert(config == ic))
+    }
+  }
+  test("Ingest Stream With Status Encoder Decoder") {
+    forAll { is: QuineIngestStreamWithStatus =>
+      val encoded = V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema.encoder(is)
+      val decoded = V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema.decoder.decodeJson(encoded)
+      assert(decoded == Right(is))
     }
   }
 

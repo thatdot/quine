@@ -19,6 +19,7 @@ import com.thatdot.quine.routes.{
   FileIngestMode,
   IngestRoutes,
   IngestStreamConfiguration,
+  IngestStreamStatus,
   KafkaAutoOffsetReset,
   KafkaIngest => V1KafkaIngest,
   KafkaOffsetCommitting,
@@ -34,7 +35,13 @@ import com.thatdot.quine.routes.{
   WebsocketSimpleStartupIngest,
 }
 import com.thatdot.quine.util.Log._
+
 object V2IngestEntities {
+
+  final case class QuineIngestStreamWithStatus(
+    config: QuineIngestConfiguration,
+    status: Option[IngestStreamStatus],
+  )
 
   /** Ingest supports charset specification. */
   trait IngestCharsetSupport {

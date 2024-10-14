@@ -8,7 +8,10 @@ import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
+  QuineIngestConfiguration => V2IngestConfiguration,
+  QuineIngestStreamWithStatus,
+}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
@@ -188,7 +191,9 @@ trait IngestStreamState {
     ingestStreams
       .getOrElse(namespace, Map.empty)
 
-  protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[String, IngestStreamWithStatus]]
+  protected def getIngestStreamsWithStatus(
+    namespace: NamespaceId,
+  ): Future[Map[String, Either[IngestStreamWithStatus, QuineIngestStreamWithStatus]]]
 
   def removeIngestStream(
     name: String,

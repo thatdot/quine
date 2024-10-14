@@ -127,4 +127,20 @@ trait ArbitraryIngests {
   } yield QuineIngestConfiguration(source, "CREATE $(that)")
 
   implicit val arbIngest: Arbitrary[QuineIngestConfiguration] = Arbitrary(v2IngestConfigurationGen)
+  implicit val v1IngestStreamStatusGen: Gen[v1.IngestStreamStatus] = Gen.oneOf(
+    Gen.const(v1.IngestStreamStatus.Running),
+    Gen.const(v1.IngestStreamStatus.Paused),
+    Gen.const(v1.IngestStreamStatus.Restored),
+    Gen.const(v1.IngestStreamStatus.Completed),
+    Gen.const(v1.IngestStreamStatus.Terminated),
+    Gen.const(v1.IngestStreamStatus.Failed),
+  )
+  implicit val arbV1IngestStreamStatus: Arbitrary[v1.IngestStreamStatus] = Arbitrary(v1IngestStreamStatusGen)
+
+  implicit val v2IngestWithStatusGen: Gen[QuineIngestStreamWithStatus] = for {
+    ingest <- v2IngestConfigurationGen
+    status <- Gen.option(v1IngestStreamStatusGen)
+  } yield QuineIngestStreamWithStatus(ingest, status)
+  implicit val arbV2IngestWithStatus: Arbitrary[QuineIngestStreamWithStatus] = Arbitrary(v2IngestWithStatusGen)
+
 }

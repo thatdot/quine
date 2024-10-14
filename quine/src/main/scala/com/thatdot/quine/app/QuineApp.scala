@@ -20,8 +20,9 @@ import com.thatdot.cypher.phases._
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.routes._
-import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.QuineIngestConfiguration
+import com.thatdot.quine.app.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEncoderDecoders
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
@@ -63,10 +64,13 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     with QueryUiConfigurationSchemas
     with StandingQuerySchemas
     with IngestSchemas
+    with EncoderDecoder.DeriveEndpoints4s
     with com.thatdot.quine.routes.exts.CirceJsonAnySchema
     with LazySafeLogging {
 
   import QuineApp._
+
+  import com.thatdot.quine.app.v2api.endpoints.V2IngestEncoderDecoders.implicits._
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
 
@@ -518,6 +522,26 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             intoNamespace,
             registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
           )
+          ingestStreams.get(intoNamespace) map { ingests =>
+            val initialStatus = previousStatus.fold[IngestStreamStatus] {
+              IngestStreamStatus.Running
+            } { lastKnownStatus =>
+              IngestStreamStatus.decideRestoredStatus(lastKnownStatus, shouldResumeRestoredIngests)
+            }
+            val streamDefWithControl: IngestStreamWithControl[UnifiedIngestConfiguration] = IngestStreamWithControl(
+              UnifiedIngestConfiguration(Left(settings)),
+              metrics,
+              () => quineIngestSrc.getControl.map(_.valveHandle)(ExecutionContext.parasitic),
+              () => quineIngestSrc.getControl.map(_.termSignal)(ExecutionContext.parasitic),
+              close = () => {
+                quineIngestSrc.getControl.flatMap(c => c.terminate())(ExecutionContext.parasitic)
+                () // Intentional fire and forget
+              },
+              initialStatus,
+            )
+            val newNamespaceIngests = ingests + (name -> streamDefWithControl)
+            ingestStreams += intoNamespace -> newNamespaceIngests
+          }
           streamSource.runWith(graph.masterStream.ingestCompletionsSink)(graph.materializer)
 
           if (shouldSaveMetadata)
@@ -538,14 +562,23 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         .toMap
     else Map.empty
 
-  protected def getIngestStreamsWithStatus(namespace: NamespaceId): Future[Map[IngestName, IngestStreamWithStatus]] =
+  protected def getIngestStreamsWithStatus(
+    namespace: NamespaceId,
+  ): Future[Map[IngestName, Either[IngestStreamWithStatus, QuineIngestStreamWithStatus]]] =
     onlyIfNamespaceExists(namespace) {
       implicit val ec: ExecutionContext = graph.nodeDispatcherEC
       getIngestStreamsFromState(namespace).toList
         .traverse { case (name, isc) =>
           for {
             status <- isc.status(graph.materializer)
-          } yield (name, IngestStreamWithStatus(isc.settings.asV1Config, Some(status)))
+          } yield (
+            name, {
+              isc.settings.config match {
+                case Left(v2Settings) => Right(QuineIngestStreamWithStatus(v2Settings, Some(status)))
+                case Right(v1Settings) => Left(IngestStreamWithStatus(v1Settings, Some(status)))
+              }
+            },
+          )
         }
         .map(_.toMap)(ExecutionContext.parasitic)
     }
@@ -557,12 +590,21 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         getNamespaces.map(namespace =>
           for {
             streamsWithStatus <- getIngestStreamsWithStatus(namespace)
-            res <- storeLocalMetaData[Map[String, IngestStreamWithStatus]](
+            (v1StreamsWithStatus, v2StreamsWithStatus) = streamsWithStatus.partitionMap {
+              case (name, Left(v1)) => Left((name, v1))
+              case (name, Right(v2)) => Right((name, v2))
+            }
+            _ <- storeLocalMetaData[Map[String, IngestStreamWithStatus]](
               makeNamespaceMetaDataKey(namespace, IngestStreamsKey),
               thisMemberId,
-              streamsWithStatus,
+              v1StreamsWithStatus.toMap,
             )
-          } yield res,
+            _ <- saveV2IngestsToPersistor(
+              namespace,
+              thisMemberId,
+              v2StreamsWithStatus.toMap,
+            )
+          } yield (),
         ),
       )
       .map(_ => ())
@@ -669,13 +711,17 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         ),
       )
       .map(_.toMap)
-
+    val v2IngestStreamFut = loadV2IngestsFromPersistor(thisMemberIdx)(
+      V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema,
+      implicitly,
+    )
     for {
       sq <- sampleQueriesFut
       qq <- quickQueriesFut
       na <- nodeAppearancesFut
       so <- standingQueryOutputsFut
       is <- ingestStreamFut
+      is2 <- v2IngestStreamFut
     } yield {
       sampleQueries = sq
       quickQueries = qq
@@ -731,6 +777,30 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           }
         }
       }
+      is2.foreach { case (namespace, ingestMap) =>
+        ingestMap.foreach { case (name, ingest) =>
+          addV2IngestStream(
+            name,
+            ingest.config,
+            namespace,
+            previousStatus = ingest.status,
+            shouldResumeIngest,
+            timeout,
+            shouldSaveMetadata = false, // We're restoring what was saved.
+            Some(thisMemberIdx),
+          ) match {
+            case Success(true) => ()
+            case Success(false) =>
+              logger.error(
+                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}",
+              )
+            case Failure(e) =>
+              logger.error(
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e,
+              )
+          }
+        }
+      }
     }
   }
 
@@ -765,6 +835,7 @@ object QuineApp {
   final val NodeAppearancesKey = "node_appearances"
   final val StandingQueryOutputsKey = "standing_query_outputs"
   final val IngestStreamsKey = "ingest_streams"
+  final val V2IngestStreamsKey = "v2_ingest_streams"
   final val NonDefaultNamespacesKey = "live_namespaces"
 
   /** Maps the default namespace to the bare metadata key and other namespaces to that key concatenated with a hyphen
