@@ -364,6 +364,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
       val runningStandingQuery = new RunningStandingQuery(
         resultsQueue = new BoundedSourceQueue[StandingQueryResult.WithQueueTimer] {
+          def isCompleted: Boolean = queue.isCompleted
           def complete() = queue.complete()
           def fail(ex: Throwable) = queue.fail(ex)
           def size() = queue.size()
