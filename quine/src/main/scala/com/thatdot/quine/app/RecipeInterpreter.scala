@@ -130,7 +130,7 @@ case class RecipeInterpreter(
           log"Status query URL is ${Uri
             .from(
               scheme = url.getProtocol,
-              userinfo = url.getUserInfo,
+              userinfo = Option(url.getUserInfo).getOrElse(""),
               host = url.getHost,
               port = url.getPort,
               path = url.getPath,
