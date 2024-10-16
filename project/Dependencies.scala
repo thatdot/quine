@@ -21,7 +21,7 @@ object Dependencies {
   val circeYamlV = "0.16.0"
   val commonsCodecV = "1.17.1"
   val commonsTextV = "1.12.0"
-  val commonsIoV = "2.16.1"
+  val commonsIoV = "2.17.0"
   val dropwizardMetricsV = "4.2.27"
   val embeddedCassandraV = "5.0.0"
   val endpoints4sDefaultV = "1.11.1"
