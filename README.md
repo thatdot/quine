@@ -91,7 +91,7 @@ The [quick start](https://quine.io/getting-started/quick-start/) guide will get 
 
 ## Quine Recipes
 
-Quine recipes are a great way to get started developing with Quine. A recipe is a document that contains all the information necessary for Quine to execute any data processing task. Ingest data from batch sources like `.json` or `.csv` files hosted locally, or connect streaming data from Kafka or Kinesis. 
+Quine recipes are a great way to get started developing with Quine. A recipe is a document that contains all the information necessary for Quine to execute any data processing task. Ingest data from batch sources like `.json` or `.csv` files hosted locally, or connect to streaming data sources from Kafka or Kinesis. 
 
 [Recipes](https://quine.io/components/recipe-ref-manual/) are `yaml` documents containing the configuration for components including:
 
