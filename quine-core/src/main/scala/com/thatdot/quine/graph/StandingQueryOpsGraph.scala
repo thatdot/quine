@@ -25,6 +25,7 @@ import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** Functionality for namespaced standing queries. */
 trait StandingQueryOpsGraph extends BaseGraph {
@@ -94,14 +95,23 @@ trait StandingQueryOpsGraph extends BaseGraph {
             .foldLeft(Set.empty[MultipleValuesStandingQuery])((acc, sq) =>
               MultipleValuesStandingQuery.indexableSubqueries(sq, acc),
             )
-            .map(sq => sq.queryPartId -> sq)
-            .toMap
-          val runningPartsKeys = runningSqParts.keySet
+          val runningSqPartsMap = runningSqParts.groupBy(_.queryPartId).map { case (partId, sqs) =>
+            if (sqs.size > 1)
+              logger.error(
+                log"""While re-indexing MultipleValues Standing Query parts, found multiple queries with
+                     |the same part ID: $partId. This is a bug in MultipleValuesStandingQueryPartId
+                     |generation, and nodes that register multiple of the query parts may cause loss of results.
+                     |Queries are: ${sqs.toList.toString}
+                     |""".cleanLines,
+              )
+            partId -> sqs.last // There is no right choice here, so we just pick one.
+          }
+          val runningPartsKeys = runningSqPartsMap.keySet
           keys.asScala.collectFirst {
             case partId if !runningPartsKeys.contains(partId) =>
               logger.warn(safe"Unable to find running Standing Query part: ${Safe(partId.toString)}")
           }
-          runningSqParts.asJava
+          runningSqPartsMap.asJava
         }
         def load(k: MultipleValuesStandingQueryPartId): MultipleValuesStandingQuery = loadAll(Seq(k).asJava).get(k)
       })
@@ -197,13 +207,61 @@ trait StandingQueryOpsGraph extends BaseGraph {
       // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
       pattern match {
         case runsAsCypher: StandingQueryPattern.MultipleValuesQueryPattern =>
+          val partsToAdd = MultipleValuesStandingQuery
+            .indexableSubqueries(runsAsCypher.compiledQuery)
+            .map(sq => sq.queryPartId -> sq)
+            .foldLeft(Map.empty[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery]) {
+              case (newPartsAcc, (partId, newPart)) =>
+                // The part already registered with the graph for this PartId
+                val previouslyRegisteredPart = Option(standingQueryPartIndex.getIfPresent(partId))
+                // The part already registered within this `startStandingQuery` for this PartId
+                val alreadyInBatchPart = newPartsAcc.get(partId)
+
+                // Decide what to do with the new part -- register it if it's a new part, log an error and ignore
+                // it if it conflicts with another part, or ignore it if we've already registered the part
+                val newPartRegistration =
+                  if (previouslyRegisteredPart.exists(_ != newPart)) {
+                    // conflict with already-registered part
+                    logger.error(
+                      log"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
+                           |query ${Safe(name)} (id $sqId), found that graph has already registered part ID $partId
+                           |as a different query [part]: ${previouslyRegisteredPart.get}. This is a bug in the
+                           |MultipleValuesStandingQueryPartId generation, and nodes that register both queries may
+                           |miss results. Ignoring the new query part. Results for ID $partId will continue to go to
+                           |already-registered part ${previouslyRegisteredPart.get}
+                           |""".cleanLines,
+                    )
+                    None
+                  } else if (alreadyInBatchPart.exists(_ != newPart)) {
+                    // conflict within registration batch
+                    logger.error(
+                      log"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
+                           |query ${Safe(name)} (id $sqId), found that the query also defines another part with the same
+                           |ID: ${previouslyRegisteredPart.get}. This is a bug in the MultipleValuesStandingQueryPartId
+                           |generation, and nodes that register both queries may miss results. Ignoring the new query
+                           |part. Results for ID $partId will go to first-seen part ${previouslyRegisteredPart.get}
+                           |""".cleanLines,
+                    )
+                    None
+                  } else if (alreadyInBatchPart.contains(newPart) || previouslyRegisteredPart.contains(newPart)) {
+                    // already registered, no benefit to re-registering
+                    logger.debug(
+                      log"While registering $newPart as $partId, found that it was already registered. Skipping.",
+                    )
+                    None
+                  } else {
+                    // not yet registered
+                    logger.trace(
+                      log"Registering MVSQ part $newPart as $partId",
+                    )
+                    Some(partId -> newPart)
+                  }
+
+                newPartsAcc ++ newPartRegistration
+            }
+
           standingQueryPartIndex.putAll(
-            MultipleValuesStandingQuery
-              .indexableSubqueries(runsAsCypher.compiledQuery)
-              .view
-              .map(sq => sq.queryPartId -> sq)
-              .toMap
-              .asJava,
+            partsToAdd.asJava,
           )
         case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
         case _: StandingQueryPattern.QuinePatternQueryPattern =>

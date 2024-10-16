@@ -243,6 +243,16 @@ trait MultipleValuesStandingQueryBehavior
             Some(subscription -> sqState),
           ) // TODO: don't ignore the returned future!
 
+        case Some((_, oldState)) if oldState.query != query =>
+          log.warn(
+            log"""While creating subscription for MultipleValues Standing Query [part] $query, detected
+                 |that MultipleValuesStandingQuery part identified by $combinedId is ambiguous.
+                 |Refusing to register query. Continuing to provide results for ID ${combinedId._2}
+                 |to ${oldState.query: MultipleValuesStandingQuery}. New query may miss results. This is a bug in
+                 |MultipleValuesStandingQueryPartId generation.
+                 |""".cleanLines,
+          )
+
         // SQ is already running on the node
         case Some(tup @ (subscription, sqState)) =>
           // Check if this is already an existing subscriber (if so, it's a no-op)

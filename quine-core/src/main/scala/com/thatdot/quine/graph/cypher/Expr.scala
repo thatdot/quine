@@ -2662,6 +2662,10 @@ sealed abstract class Value extends Expr {
 
   /** Hash of the value, using Guava's implementation of 128-bit murmur3 hash.
     *
+    * This should be stable across product versions and JVMs, including dependency updates.
+    * Where implementation uses `hashCode`, it does so on strings (which have very stable hashes)
+    * or ZoneIds, which delegate to hashing their string representations
+    *
     * TODO: re-consider whether this should work on [[Expr.Node]], [[Expr.Path]],
     * and [[Expr.Relationship]]
     *
@@ -2670,6 +2674,8 @@ sealed abstract class Value extends Expr {
   def hash: HashCode =
     addToHasher(Hashing.murmur3_128().newHasher()).hash()
 
+  /** @see [[hash]]
+    */
   def addToHasher(hasher: Hasher): Hasher
 
   /** Turn a value into its usual Java value.

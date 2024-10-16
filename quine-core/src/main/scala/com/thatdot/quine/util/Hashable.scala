@@ -4,11 +4,15 @@ import java.nio.ByteBuffer
 import java.time.{Duration, Instant, LocalDate, LocalDateTime, LocalTime, OffsetTime, ZonedDateTime}
 import java.util.UUID
 
+import scala.annotation.unused
 import scala.collection.immutable.{ArraySeq, SortedMap}
+import scala.jdk.CollectionConverters.IterableHasAsJava
 import scala.reflect.ClassTag
 
-import com.google.common.hash.{HashFunction, Hasher}
+import com.google.common.hash.{HashFunction, Hasher, Hashing}
 import shapeless._
+
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty
 
 /** Class of types that can be converted to a hash value */
 trait Hashable[A] {
@@ -117,6 +121,39 @@ trait BasicHashables {
       hasher.putLong(value.getMostSignificantBits)
       hasher.putLong(value.getLeastSignificantBits)
     }
+  }
+
+  {
+    // LocalProperty.ValueConstraint is known to induce hash collisions when hashed
+    // structurally. However, changing the hashing algorithm introduces a compatibility concern.
+    // For the immediate, we have defined, but not linked, an alternative hasher that disambiguates
+    // ValueConstraint instances. If we choose to adopt this, we should apply a similar pattern to
+    // the rest of the Hashable instances, including the shapeless-derived ones (which in turn
+    // introduces a stability concern if class names / declaration order / packaging rules change)
+    @unused val valueConstraint: Hashable[LocalProperty.ValueConstraint] = (hasher, constraint) =>
+      constraint match {
+        case LocalProperty.Equal(equalTo) =>
+          hasher.putByte(1)
+          hasher.putBytes(equalTo.hash.asBytes)
+        case LocalProperty.NotEqual(notEqualTo) =>
+          hasher.putByte(2)
+          hasher.putBytes(notEqualTo.hash.asBytes)
+        case LocalProperty.Unconditional =>
+          hasher.putByte(3)
+        case LocalProperty.Any =>
+          hasher.putByte(4)
+        case LocalProperty.None =>
+          hasher.putByte(5)
+        case LocalProperty.Regex(pattern) =>
+          hasher.putByte(6)
+          hasher.putUnencodedChars(pattern)
+        case LocalProperty.ListContains(mustContain) =>
+          hasher.putByte(7)
+          if (mustContain.nonEmpty) {
+            val mustContainHashes = mustContain.map(_.hash)
+            hasher.putBytes(Hashing.combineUnordered(mustContainHashes.asJava).asBytes)
+          } else hasher
+      }
   }
 }
 
