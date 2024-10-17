@@ -5,7 +5,6 @@ import cats.implicits._
 import com.google.common.collect.Interners
 
 import com.thatdot.cypher.phases.SymbolAnalysisModule.SymbolTable
-import com.thatdot.language.ast.Identifier.{UnqualifiedIdentifier, toList}
 import com.thatdot.language.ast._
 
 sealed trait BinOp
@@ -24,12 +23,12 @@ object QuinePattern {
 
   case object QuineUnit extends QuinePattern
 
-  case class Node(binding: Identifier.UnqualifiedIdentifier) extends QuinePattern
+  case class Node(binding: Identifier) extends QuinePattern
   case class Edge(edgeLabel: Symbol, remotePattern: QuinePattern) extends QuinePattern
 
   case class Fold(init: QuinePattern, over: List[QuinePattern], f: BinOp, output: Output) extends QuinePattern
 
-  def mkNode(binding: Identifier.UnqualifiedIdentifier): QuinePattern =
+  def mkNode(binding: Identifier): QuinePattern =
     interner.intern(Node(binding))
 
   def mkEdge(edgeLabel: Symbol, remotePattern: QuinePattern): QuinePattern =
@@ -42,23 +41,15 @@ object QuinePattern {
 object Compiler {
 
   def expressionFromDesc(exp: com.thatdot.language.ast.Expression): Expr = exp match {
-    case Expression.Apply(_, name, args) =>
+    case Expression.Apply(_, name, args, _) =>
       val f = Func.builtinFunctions.find(_.name == name.name).get
       Expr.Function(f, args.map(expressionFromDesc).toVector)
-    case Expression.BinOp(_, op, lhs, rhs) =>
+    case Expression.BinOp(_, op, lhs, rhs, _) =>
       op match {
         case Operator.Plus => Expr.Add(expressionFromDesc(lhs), expressionFromDesc(rhs))
         case _ => ???
       }
-    case com.thatdot.language.ast.Expression.Ident(_, name) =>
-      name.toList
-        .foldLeft(Option.empty[Expr]) { (e, n) =>
-          e match {
-            case Some(value) => Some(Expr.Property(value, n))
-            case None => Some(Expr.Variable(n))
-          }
-        }
-        .get
+    case com.thatdot.language.ast.Expression.Ident(_, name, _) => Expr.Variable(name.name)
     case _ =>
       println(exp)
       ???
@@ -77,7 +68,7 @@ object Compiler {
 
   case class DependencyGraphState(
     graph: DependencyGraph,
-    deferred: List[(Set[UnqualifiedIdentifier], Instruction)],
+    deferred: List[(Set[Identifier], Instruction)],
     symbolTable: SymbolTable,
   )
 
@@ -89,27 +80,23 @@ object Compiler {
     State.modify(update)
   def noop: DependencyGraphProgram[Unit] = pure(())
 
-  def analyzeExpressionDeps(expression: Expression): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+  def analyzeExpressionDeps(expression: Expression): DependencyGraphProgram[Set[Identifier]] =
     expression match {
       case apply: Expression.Apply =>
-        apply.args.foldM(Set.empty[UnqualifiedIdentifier])((deps, exp) => analyzeExpressionDeps(exp).map(deps union _))
-      case _: Expression.AtomicLiteral => pure(Set.empty[UnqualifiedIdentifier])
+        apply.args.foldM(Set.empty[Identifier])((deps, exp) => analyzeExpressionDeps(exp).map(deps union _))
+      case _: Expression.AtomicLiteral => pure(Set.empty[Identifier])
       case binary: Expression.BinOp =>
         for {
           leftDeps <- analyzeExpressionDeps(binary.lhs)
           rightDeps <- analyzeExpressionDeps(binary.rhs)
         } yield leftDeps union rightDeps
-      case id: Expression.Ident =>
-        id.identifier match {
-          case uid: UnqualifiedIdentifier => pure(Set(uid))
-          case qid: Identifier.QualifiedIdentifier => pure(Set(UnqualifiedIdentifier(qid.qualifier)))
-        }
+      case id: Expression.Ident => pure(Set(id.identifier))
       case _ =>
         println(expression)
         ???
     }
 
-  def analyzeInstructionDeps(instruction: Instruction): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+  def analyzeInstructionDeps(instruction: Instruction): DependencyGraphProgram[Set[Identifier]] =
     instruction match {
       case _: Instruction.LocalNode => pure(Set.empty)
       case proj: Instruction.Proj => analyzeExpressionDeps(proj.expression)
@@ -119,7 +106,7 @@ object Compiler {
         ???
     }
 
-  def analyzeInstructionIntros(instruction: Instruction): Set[UnqualifiedIdentifier] = instruction match {
+  def analyzeInstructionIntros(instruction: Instruction): Set[Identifier] = instruction match {
     case local: Instruction.LocalNode => Set(local.binding)
     case _: Instruction.Proj => Set.empty
     case _ =>
@@ -130,7 +117,7 @@ object Compiler {
   val tryDeferred: DependencyGraphProgram[Unit] =
     inspect(_.deferred) >>= (deferred => deferred.sortBy(_._1.size).traverse_(p => insertIntoGraph(p._2)))
 
-  def defer(instruction: Instruction, deps: Set[UnqualifiedIdentifier]): DependencyGraphProgram[Unit] =
+  def defer(instruction: Instruction, deps: Set[Identifier]): DependencyGraphProgram[Unit] =
     mod(st => st.copy(deferred = st.deferred :+ (deps -> instruction)))
 
   def reduceDeps(
@@ -138,8 +125,8 @@ object Compiler {
     steps: List[DependencyGraph],
     unused: List[DependencyGraph],
     used: List[DependencyGraph],
-    deps: Set[UnqualifiedIdentifier],
-  ): (Set[UnqualifiedIdentifier], DependencyGraph) =
+    deps: Set[Identifier],
+  ): (Set[Identifier], DependencyGraph) =
     steps match {
       case Nil =>
         deps -> (if (unused.isEmpty) DependencyGraph.Empty
@@ -151,7 +138,7 @@ object Compiler {
           val comesFirst = DependencyGraph.Independent(NonEmptyList.fromListUnsafe(used))
           val depStep = DependencyGraph.Dependent(comesFirst, tryInsertAtHead._2)
           val resultStep = DependencyGraph.Independent(NonEmptyList.fromListUnsafe(independentSteps :+ depStep))
-          Set.empty[UnqualifiedIdentifier] -> resultStep
+          Set.empty[Identifier] -> resultStep
         } else {
           if (tryInsertAtHead._1.size < deps.size) {
             reduceDeps(instruction, t, unused, h :: used, tryInsertAtHead._1)
@@ -164,8 +151,8 @@ object Compiler {
   def depthFirstInsertPure(
     instruction: Instruction,
     graph: DependencyGraph,
-    deps: Set[UnqualifiedIdentifier],
-  ): (Set[UnqualifiedIdentifier], DependencyGraph) =
+    deps: Set[Identifier],
+  ): (Set[Identifier], DependencyGraph) =
     graph match {
       case ind: DependencyGraph.Independent =>
         if (deps.isEmpty) {
@@ -179,7 +166,7 @@ object Compiler {
         } else {
           val tryInsertFirst = depthFirstInsertPure(instruction, dep.first, deps)
           if (tryInsertFirst._1.isEmpty) {
-            Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
+            Set.empty[Identifier] -> DependencyGraph.Dependent(
               dep.first,
               DependencyGraph.Independent(NonEmptyList.of(dep.second, tryInsertFirst._2)),
             )
@@ -187,7 +174,7 @@ object Compiler {
             val unmet = tryInsertFirst._1
             val tryInsertSecond = depthFirstInsertPure(instruction, dep.second, unmet)
             if (tryInsertSecond._1.isEmpty) {
-              Set.empty[UnqualifiedIdentifier] -> DependencyGraph.Dependent(
+              Set.empty[Identifier] -> DependencyGraph.Dependent(
                 dep.first,
                 DependencyGraph.Dependent(dep.second, tryInsertSecond._2),
               )
@@ -214,8 +201,8 @@ object Compiler {
 
   def depthFirstInsert(
     instruction: Instruction,
-    deps: Set[UnqualifiedIdentifier],
-  ): DependencyGraphProgram[Set[UnqualifiedIdentifier]] =
+    deps: Set[Identifier],
+  ): DependencyGraphProgram[Set[Identifier]] =
     for {
       graph <- inspect(_.graph)
       insertResult = depthFirstInsertPure(instruction, graph, deps)
