@@ -3,7 +3,7 @@ object Dependencies {
   val pekkoHttpV = "1.0.1"
   val pekkoManagementV = "1.0.0"
   val pekkoStreamV = "1.1.1"
-  val pekkoKafkaV = "1.0.0"
+  val pekkoKafkaV = "1.1.0"
   val pekkoConnectorsV = "1.0.2"
   val apacheCommonsCompressV = "1.27.1"
   val apacheCommonsCsvV = "1.12.0"
@@ -70,10 +70,6 @@ object Dependencies {
   val scoptV = "4.1.0"
   val shapelessV = "2.3.12"
   val slinkyV = "0.7.4"
-// pekko-connectors-kafka 1.0.0 depends on an older but compatible version with vulnerabilities CVE-2023-34453,
-  // CVE-2023-34454, CVE-2023-34455. Pin this until the indirect dependency version is changed to not have these
-  // vulnerabilities.
-  val snappyV = "1.1.10.6"
   val sslContextKickstartV = "8.3.6"
   val stoplightElementsV = "7.12.0"
   val sugarV = "2.0.6"
