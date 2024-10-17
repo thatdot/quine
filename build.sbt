@@ -183,10 +183,10 @@ lazy val `quine-endpoints` = crossProject(JSPlatform, JVMPlatform)
   .settings(
     libraryDependencies ++= Seq(
       "org.endpoints4s" %%% "json-schema-generic" % endpoints4sDefaultV,
-      "org.endpoints4s" %%% "json-schema-circe" % "2.3.0",
+      "org.endpoints4s" %%% "json-schema-circe" % "2.6.1",
       "io.circe" %% "circe-core" % circeV,
       "org.endpoints4s" %%% "openapi" % endpoints4sOpenapiV,
-      "com.lihaoyi" %% "ujson-circe" % ujsonV, // For the OpenAPI rendering
+      "com.lihaoyi" %% "ujson-circe" % ujsonCirceV, // For the OpenAPI rendering
       "org.scalacheck" %%% "scalacheck" % scalaCheckV % Test,
       "com.softwaremill.sttp.tapir" %% "tapir-core" % tapirV, // For tapir annotations
     ),

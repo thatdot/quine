@@ -1,30 +1,12 @@
-// Copied from https://github.com/endpoints4s/endpoints4s/blob/f9ac4c66e83ae2b38c8c538ca5caba8524afc1a4/openapi/openapi/src/main/scala/endpoints4s/openapi/model/OpenApi.scala
+// Copied from https://github.com/endpoints4s/endpoints4s/blob/7045cd4cbcfd2a623b5749e9f21f20411b73377c/openapi/openapi/src/main/scala/endpoints4s/openapi/model/OpenApi.scala
 // Changes we have applied intentionally are marked with "FORK DIFFERENCE" comments.
 // Other changes should be kept in sync with upstream updates as time allows
+// This file is excluded from scalafmt formatting in order to make diffing against the upstream code easier
 package com.thatdot.quine.app.util
-
-import scala.collection.mutable
 
 import endpoints4s.Encoder
 import endpoints4s.algebra.{ExternalDocumentationObject, Tag}
-import endpoints4s.openapi.model.{
-  Components,
-  In,
-  Info,
-  MediaType,
-  OpenApi,
-  Operation,
-  Parameter,
-  PathItem,
-  RequestBody,
-  Response,
-  ResponseHeader,
-  Schema,
-  SecurityRequirement,
-  SecurityScheme,
-  Server,
-  ServerVariable,
-}
+import endpoints4s.openapi.model.{Components, In, Info, MediaType, OpenApi, Operation, Parameter, PathItem, RequestBody, Response, ResponseHeader, Schema, SecurityRequirement, SecurityScheme, Server, ServerVariable}
 import io.circe.yaml.v12.syntax._
 import ujson.circe.CirceJson
 
@@ -33,108 +15,121 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   val openApiVersion = "3.0.0"
 
-  private def mapJson[A](map: collection.Map[String, A])(f: A => ujson.Value): ujson.Obj =
-    new ujson.Obj(mutable.LinkedHashMap(map.iterator.map { case (k, v) =>
-      (k, f(v))
-    }.toSeq: _*))
+
+  // FORK DIFFERENCE: mapJson that accepts keys in function
+  private def mapJsonUsingKeys[A](map: collection.Map[String, A])(f: (String, A) => ujson.Value): ujson.Obj = {
+    val result = ujson.Obj()
+    //preserve order defined by user or sort by key to minimize diff
+    val stableMap = map match {
+      case map: collection.mutable.LinkedHashMap[String, A] => map
+      case map: collection.immutable.ListMap[String, A]     => map
+      case map                                              => map.toSeq.sortBy(_._1)
+    }
+    stableMap.foreach { case (k, v) => result.value.put(k, f(k, v)) }
+    result
+  }
+  private def mapJson[A](map: collection.Map[String, A])(f: A => ujson.Value): ujson.Obj = {
+    mapJsonUsingKeys(map)((_, v) => f(v))
+  }
 
   private[util] def schemaJson(schema: Schema): ujson.Obj = {
-    val fields = mutable.LinkedHashMap.empty[String, ujson.Value]
+    val result = ujson.Obj()
 
-    for (description <- schema.description)
-      fields += "description" -> ujson.Str(description)
-    for (example <- schema.example)
-      fields += "example" -> example
-    for (title <- schema.title)
-      fields += "title" -> title
-    for (default <- schema.default)
-      fields += "default" -> default
+    for (description <- schema.description) {
+      result.value.put("description", ujson.Str(description))
+    }
+    for (example <- schema.example) {
+      result.value.put("example", example)
+    }
+    for (title <- schema.title) {
+      result.value.put("title", title)
+    }
+    for (default <- schema.default) {
+      result.value.put("default", default)
+    }
 
     schema match {
       case primitive: Schema.Primitive =>
-        fields += "type" -> ujson.Str(primitive.name)
-        primitive.format.foreach(s => fields += "format" -> ujson.Str(s))
-        primitive.minimum.foreach(d => fields += "minimum" -> ujson.Num(d))
-        primitive.exclusiveMinimum.foreach(b => fields += "exclusiveMinimum" -> ujson.Bool(b))
-        primitive.maximum.foreach(d => fields += "maximum" -> ujson.Num(d))
-        primitive.exclusiveMaximum.foreach(b => fields += "exclusiveMaximum" -> ujson.Bool(b))
-        primitive.multipleOf.foreach(d => fields += "multipleOf" -> ujson.Num(d))
+        result.value.put("type", ujson.Str(primitive.name))
+        primitive.format.foreach(s => result.value.put("format", ujson.Str(s)))
+        primitive.minimum.foreach(d => result.value.put("minimum", ujson.Num(d)))
+        primitive.exclusiveMinimum.foreach(b => result.value.put("exclusiveMinimum", ujson.Bool(b)))
+        primitive.maximum.foreach(d => result.value.put("maximum", ujson.Num(d)))
+        primitive.exclusiveMaximum.foreach(b => result.value.put("exclusiveMaximum", ujson.Bool(b)))
+        primitive.multipleOf.foreach(d => result.value.put("multipleOf", ujson.Num(d)))
       case obj: Schema.Object =>
-        fields ++= List(
-          "type" -> "object",
-          "properties" -> new ujson.Obj(
-            mutable.LinkedHashMap(
-              obj.properties.map { (p: Schema.Property) =>
+        result.value.put("type", "object")
+        val properties = ujson.Obj()
+        obj.properties.foreach { (p: Schema.Property) =>
                 val schema = p.schema
                   .withDefinedDescription(p.description)
                   .withDefinedDefault(p.defaultValue)
-                p.name -> schemaJson(schema)
-              }: _*,
-            ),
-          ),
-        )
+          properties.value.put(p.name, schemaJson(schema))
+        }
+        result.value.put("properties", properties)
+
         val required = obj.properties.filter(_.isRequired).map(_.name)
         if (required.nonEmpty) {
-          fields += "required" -> ujson.Arr(required.map(ujson.Str): _*)
+          result.value.put("required", ujson.Arr.from(required))
         }
-        obj.additionalProperties.foreach(p => fields += "additionalProperties" -> schemaJson(p))
+        obj.additionalProperties.foreach(p =>
+          result.value.put("additionalProperties", schemaJson(p))
+        )
       case array: Schema.Array =>
-        fields += "type" -> "array"
+        result.value.put("type", "array")
         array.elementType match {
           case Left(value) =>
-            fields += "items" -> schemaJson(value)
+            result.value.put("items", schemaJson(value))
           case Right(value) =>
             // Best effort (not 100% accurate) to represent the heterogeneous array in OpenAPI 3.0
             // This should be changed with OpenAPI 3.1 and more idiomatic representation using `prefixItems`
-            fields ++= List(
+            result.value ++= List(
               "items" -> schemaJson(
                 Schema.OneOf(
                   alternatives = Schema.EnumeratedAlternatives(value),
                   description = None,
                   example = None,
-                  title = None,
-                ),
+                  title = None
+                )
               ),
               "minItems" -> ujson.Num(value.length.toDouble),
-              "maxItems" -> ujson.Num(value.length.toDouble),
+              "maxItems" -> ujson.Num(value.length.toDouble)
             )
         }
       case enm: Schema.Enum =>
-        fields ++= schemaJson(
-          enm.elementType.withDefinedDescription(enm.description),
+        result.value ++= schemaJson(
+          enm.elementType.withDefinedDescription(enm.description)
         ).value
-        fields += "enum" -> ujson.Arr(enm.values: _*)
+        result.value.put("enum", ujson.Arr.from(enm.values))
       case oneOf: Schema.OneOf =>
-        fields ++=
+        result.value ++=
           (oneOf.alternatives match {
             case discAlternatives: Schema.DiscriminatedAlternatives =>
-              val mappingFields: mutable.LinkedHashMap[String, ujson.Value] =
-                mutable.LinkedHashMap(discAlternatives.alternatives.collect { case (tag, ref: Schema.Reference) =>
-                  tag -> ujson.Str(Schema.Reference.toRefPath(ref.name))
-                }: _*)
-              val discFields = mutable.LinkedHashMap.empty[String, ujson.Value]
-              discFields += "propertyName" -> ujson.Str(
-                discAlternatives.discriminatorFieldName,
+              val mapping = ujson.Obj()
+              discAlternatives.alternatives.foreach {
+                case (tag, ref: Schema.Reference) =>
+                  mapping.value.put(tag, ujson.Str(Schema.Reference.toRefPath(ref.name)))
+                case _ =>
+              }
+              val discriminator = ujson.Obj()
+              discriminator.value += "propertyName" -> ujson.Str(
+                discAlternatives.discriminatorFieldName
               )
-              if (mappingFields.nonEmpty) {
-                discFields += "mapping" -> new ujson.Obj(mappingFields)
+              if (mapping.value.nonEmpty) {
+                discriminator.value += "mapping" -> mapping
               }
               List(
-                "oneOf" -> ujson
-                  .Arr(
-                    discAlternatives.alternatives
-                      .map(kv => schemaJson(kv._2)): _*,
-                  ),
-                "discriminator" -> ujson.Obj(discFields),
+                "oneOf" ->
+                  ujson.Arr.from(discAlternatives.alternatives.map(kv => schemaJson(kv._2))),
+                "discriminator" -> discriminator
               )
             case enumAlternatives: Schema.EnumeratedAlternatives =>
               List(
-                "oneOf" -> ujson
-                  .Arr(enumAlternatives.alternatives.map(schemaJson): _*),
+                "oneOf" -> ujson.Arr.from(enumAlternatives.alternatives.map(schemaJson))
               )
           })
       case allOf: Schema.AllOf =>
-        fields += "allOf" -> ujson.Arr(allOf.schemas.map(schemaJson): _*)
+        result.value.put("allOf", ujson.Arr.from(allOf.schemas.map(schemaJson)))
       case reference: Schema.Reference =>
         /* In OpenAPI 3.0 (and 2.0), reference schemas are special in that all
          * their sibling values are ignored!
@@ -148,77 +143,78 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
          * See <https://stackoverflow.com/a/41752575/3072788>.
          */
         val refSchemaName = ujson.Str(Schema.Reference.toRefPath(reference.name))
-        if (fields.isEmpty) {
-          fields += "$ref" -> refSchemaName
+        if (result.value.isEmpty) {
+          result.value.put("$ref", refSchemaName)
         } else {
-          fields += "anyOf" -> ujson.Arr(ujson.Obj("$ref" -> refSchemaName))
+          result.value.put("anyOf", ujson.Arr(ujson.Obj("$ref" -> refSchemaName)))
         }
     }
 
-    new ujson.Obj(fields)
+    result
   }
 
   private def securitySchemeJson(securityScheme: SecurityScheme): ujson.Obj = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "type" -> ujson.Str(securityScheme.`type`),
-    )
-    for (description <- securityScheme.description)
-      fields += "description" -> ujson.Str(description)
-    for (name <- securityScheme.name)
-      fields += "name" -> ujson.Str(name)
-    for (in <- securityScheme.in)
-      fields += "in" -> ujson.Str(in)
-    for (scheme <- securityScheme.scheme)
-      fields += "scheme" -> ujson.Str(scheme)
-    for (bearerFormat <- securityScheme.bearerFormat)
-      fields += "bearerFormat" -> ujson.Str(bearerFormat)
-    new ujson.Obj(fields)
+    val result = ujson.Obj()
+    result.value.put("type", ujson.Str(securityScheme.`type`))
+    for (description <- securityScheme.description) {
+      result.value.put("description", ujson.Str(description))
+    }
+    for (name <- securityScheme.name) {
+      result.value.put("name", ujson.Str(name))
+    }
+    for (in <- securityScheme.in) {
+      result.value.put("in", ujson.Str(in))
+    }
+    for (scheme <- securityScheme.scheme) {
+      result.value.put("scheme", ujson.Str(scheme))
+    }
+    for (bearerFormat <- securityScheme.bearerFormat) {
+      result.value.put("bearerFormat", ujson.Str(bearerFormat))
+    }
+    result
   }
 
   private def infoJson(info: Info): ujson.Obj = {
-    val fields: mutable.LinkedHashMap[String, ujson.Value] =
-      mutable.LinkedHashMap(
-        "title" -> ujson.Str(info.title),
-        "version" -> ujson.Str(info.version),
-      )
-    info.description.foreach(description => fields += "description" -> ujson.Str(description))
-    ujson.Obj(fields)
+    val result = ujson.Obj()
+    result.value.put("title", ujson.Str(info.title))
+    result.value.put("version", ujson.Str(info.version))
+    info.description.foreach(description => result.value.put("description", ujson.Str(description)))
+    result
   }
 
   private def componentsJson(components: Components): ujson.Obj =
     ujson.Obj(
       "schemas" -> mapJson(components.schemas)(schemaJson),
       "securitySchemes" -> mapJson(components.securitySchemes)(
-        securitySchemeJson,
-      ),
+        securitySchemeJson
+      )
     )
 
   private def responseJson(response: Response): ujson.Obj = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "description" -> ujson.Str(response.description),
-    )
+    val result = ujson.Obj()
+    result.value.put("description", ujson.Str(response.description))
     if (response.headers.nonEmpty) {
-      fields += "headers" -> mapJson(response.headers)(responseHeaderJson)
+      result.value.put("headers", mapJson(response.headers)(responseHeaderJson))
     }
     if (response.content.nonEmpty) {
-      fields += "content" -> mapJson(response.content)(mediaTypeJson)
+      result.value.put("content", mapJson(response.content)(mediaTypeJson))
     }
-    new ujson.Obj(fields)
+    result
   }
 
   def responseHeaderJson(responseHeader: ResponseHeader): ujson.Value = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "schema" -> schemaJson(responseHeader.schema),
-    )
+    val result = ujson.Obj()
+    result.value.put("schema", schemaJson(responseHeader.schema))
     if (responseHeader.required) {
-      fields += "required" -> ujson.True
+      result.value.put("required", ujson.True)
     }
     responseHeader.description.foreach { description =>
-      fields += "description" -> ujson.Str(description)
+      result.value.put("description", ujson.Str(description))
     }
-    new ujson.Obj(fields)
+    result
   }
 
+  // FORK DIFFERENCE Returns an Obj rather than Value
   def mediaTypeJson(mediaType: MediaType): ujson.Obj =
     mediaType.schema match {
       case Some(schema) => ujson.Obj("schema" -> schemaJson(schema))
@@ -226,61 +222,63 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     }
 
   private def operationJson(operation: Operation): ujson.Obj = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "responses" -> mapJson(operation.responses)(responseJson),
-    )
+    val obj = ujson.Obj()
+    obj.value.put("responses", mapJson(operation.responses)(responseJson))
     operation.operationId.foreach { id =>
-      fields += "operationId" -> ujson.Str(id)
+      obj.value.put("operationId", ujson.Str(id))
     }
     operation.summary.foreach { summary =>
-      fields += "summary" -> ujson.Str(summary)
+      obj.value.put("summary", ujson.Str(summary))
     }
     operation.description.foreach { description =>
-      fields += "description" -> ujson.Str(description)
+      obj.value.put("description", ujson.Str(description))
     }
     if (operation.parameters.nonEmpty) {
-      fields += "parameters" -> ujson.Arr(
-        // FORK DIFFERENCE
-        operation.parameters
-          .filter(param => isEnterprise || !enterpriseParams.contains(param.name))
-          .map(parameterJson): _*,
+      obj.value.put(
+        "parameters",
+        ujson.Arr.from(
+          // FORK DIFFERENCE
+          operation.parameters
+            .filter(param => isEnterprise || !enterpriseParams.contains(param.name))
+            .map(parameterJson),
+        )
       )
     }
     operation.requestBody.foreach { requestBody =>
-      fields += "requestBody" -> requestBodyJson(requestBody)
+      obj.value.put("requestBody", requestBodyJson(requestBody))
     }
     if (operation.tags.nonEmpty) {
-      fields += "tags" -> ujson.Arr(
-        operation.tags.map(tag => ujson.Str(tag.name)): _*,
-      )
+      val tags = ujson.Arr()
+      operation.tags.foreach(tag => tags.value += ujson.Str(tag.name))
+      obj.value.put("tags", tags)
     }
     if (operation.security.nonEmpty) {
-      fields += "security" -> ujson.Arr(
-        operation.security.map(securityRequirementJson): _*,
-      )
+      val security = ujson.Arr()
+      operation.security.foreach(item => security.value += securityRequirementJson(item))
+      obj.value.put("security", security)
     }
     if (operation.callbacks.nonEmpty) {
-      fields += "callbacks" -> mapJson(operation.callbacks)(pathsJson)
+      obj.value.put("callbacks", mapJson(operation.callbacks)(pathsJson))
     }
     if (operation.deprecated) {
-      fields += "deprecated" -> ujson.True
+      obj.value.put("deprecated", ujson.True)
     }
-    new ujson.Obj(fields)
+    obj
   }
 
   private def parameterJson(parameter: Parameter): ujson.Value = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
+    val result = ujson.Obj(
       "name" -> ujson.Str(parameter.name),
       "in" -> inJson(parameter.in),
-      "schema" -> schemaJson(parameter.schema),
+      "schema" -> schemaJson(parameter.schema)
     )
     parameter.description.foreach { description =>
-      fields += "description" -> ujson.Str(description)
+      result.value.put("description", ujson.Str(description))
     }
     if (parameter.required) {
-      fields += "required" -> ujson.True
+      result.value.put("required", ujson.True)
     }
-    new ujson.Obj(fields)
+    result
   }
 
   private def inJson(in: In): ujson.Value =
@@ -297,87 +295,80 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
     case other => other.example
   }
   private def requestBodyJson(body: RequestBody): ujson.Value = {
-    val fields = mutable.LinkedHashMap[String, ujson.Value](
-      "content" -> ujson.Obj.from(body.content map { case (k, v) =>
-        val schemaJson = mediaTypeJson(v)
-        // FORK DIFFERENCE yaml example support
-        // TODO: Add support for an optional example field to endpoints4s.openapi.model.MediaType upstream,
-        // besides just its current schema field. That way we can do this in `def yamlRequest` and the `mediaTypeJson`
-        // method, instead of special-casing "application/yaml" here.
-        if (k == "application/yaml") {
-          schemaJson.value ++= v.schema
-            .flatMap(getExample)
-            .map(ex => "example" -> ujson.Str(ex.transform(CirceJson).asYaml.spaces2))
-        }
-        k -> schemaJson
-      }),
-    )
+    val result = ujson.Obj()
+    result.value.put("required", ujson.True)
+    result.value.put("content", mapJsonUsingKeys(body.content){(mediaType, schema) =>
+      val schemaJson = mediaTypeJson(schema)
+      if (mediaType == "application/yaml") {
+        val exampleOpt = schema.schema.flatMap(getExample)
+        .map(ex => "example" -> ujson.Str(ex.transform(CirceJson).asYaml.spaces2))
+        exampleOpt.foreach(Function.tupled(schemaJson.value.put))
+      }
+      schemaJson
+    })
     body.description.foreach { description =>
-      fields += "description" -> ujson.Str(description)
+      result.value.put("description", ujson.Str(description))
     }
-    new ujson.Obj(fields)
+    result
   }
 
   private def tagJson(tag: Tag): ujson.Value = {
-    val fields: mutable.LinkedHashMap[String, ujson.Value] =
-      mutable.LinkedHashMap(
-        "name" -> ujson.Str(tag.name),
-      )
+    val result = ujson.Obj()
+    result.value.put("name", ujson.Str(tag.name))
 
-    if (tag.description.nonEmpty) {
-      fields += "description" -> tag.description.get
+    for (description <- tag.description) {
+      result.value.put("description", description)
     }
-    if (tag.externalDocs.nonEmpty) {
-      fields += "externalDocs" -> externalDocumentationObjectJson(
-        tag.externalDocs.get,
-      )
+    for (externalDocs <- tag.externalDocs) {
+      result.value.put("externalDocs", externalDocumentationObjectJson(externalDocs))
     }
-    new ujson.Obj(fields)
+    result
   }
 
   private def serverJson(server: Server): ujson.Value = {
-    val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-      "url" -> ujson.Str(server.url),
-    )
-    for (description <- server.description)
-      fields += "description" -> ujson.Str(description)
-    if (server.variables.nonEmpty) {
-      fields += "variables" -> mapJson(server.variables)(serverVariableJson)
+    val result = ujson.Obj()
+    result.value.put("url", ujson.Str(server.url))
+    for (description <- server.description) {
+      result.value.put("description", ujson.Str(description))
     }
-    ujson.Obj(fields)
+    if (server.variables.nonEmpty) {
+      result.value.put("variables", mapJson(server.variables)(serverVariableJson))
+    }
+    result
   }
 
   private def serverVariableJson(variable: ServerVariable): ujson.Value = {
-    val fields: mutable.LinkedHashMap[String, ujson.Value] = mutable.LinkedHashMap(
-      "default" -> ujson.Str(variable.default),
+    val result = ujson.Obj()
+    result.value.put("default", ujson.Str(variable.default))
+    for (description <- variable.description) {
+      result.value.put("description", ujson.Str(description))
+    }
+    for (alternatives <- variable.`enum`) {
+      result.value.put(
+        "enum",
+        ujson.Arr.from(alternatives.map(alternative => ujson.Str(alternative)))
     )
-    for (description <- variable.description)
-      fields += "description" -> ujson.Str(description)
-    for (alternatives <- variable.`enum`)
-      fields += "enum" -> ujson.Arr(alternatives.map(alternative => ujson.Str(alternative)): _*)
-    ujson.Obj(fields)
+    }
+    result
   }
 
   private def externalDocumentationObjectJson(
-    externalDoc: ExternalDocumentationObject,
+      externalDoc: ExternalDocumentationObject
   ): ujson.Value = {
-    val fields: mutable.LinkedHashMap[String, ujson.Value] =
-      mutable.LinkedHashMap(
-        "url" -> ujson.Str(externalDoc.url),
+    val result = ujson.Obj(
+        "url" -> ujson.Str(externalDoc.url)
       )
-
-    if (externalDoc.description.nonEmpty)
-      fields += "description" -> externalDoc.description.get
-    new ujson.Obj(fields)
+    for (description <- externalDoc.description) {
+      result.value.put("description", description)
+    }
+    result
   }
 
   private def securityRequirementJson(
-    securityRequirement: SecurityRequirement,
+      securityRequirement: SecurityRequirement
   ): ujson.Value =
     ujson.Obj(
-      securityRequirement.name -> ujson.Arr(
-        securityRequirement.scopes.map(ujson.Str): _*,
-      ),
+      securityRequirement.name -> ujson.Arr.from(securityRequirement.scopes.map(ujson.Str))
     )
 
   private def pathsJson(paths: collection.Map[String, PathItem]): ujson.Obj =
@@ -385,24 +376,24 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   private val jsonEncoder: Encoder[OpenApi, ujson.Value] =
     openApi => {
-      val fields: mutable.LinkedHashMap[String, ujson.Value] =
-        mutable.LinkedHashMap(
-          "openapi" -> ujson.Str(openApiVersion),
-          "info" -> infoJson(openApi.info),
-          "paths" -> pathsJson(openApi.paths),
-        )
+      val result = ujson.Obj()
+      result.value.put("openapi", ujson.Str(openApiVersion))
+      result.value.put("info", infoJson(openApi.info))
+      result.value.put("paths", pathsJson(openApi.paths))
+
       if (openApi.servers.nonEmpty) {
-        val serversAsJson = openApi.servers.map(server => serverJson(server))
-        fields += "servers" -> ujson.Arr(serversAsJson: _*)
+        val servers = ujson.Arr()
+        openApi.servers.foreach(server => servers.value += serverJson(server))
+        result.value.put("servers", servers)
       }
       if (openApi.tags.nonEmpty) {
         val tagsAsJson = openApi.tags.map(tag => tagJson(tag)).toList
-        fields += "tags" -> ujson.Arr(tagsAsJson: _*)
+        result.value.put("tags", ujson.Arr.from(tagsAsJson))
       }
       if (openApi.components.schemas.nonEmpty || openApi.components.securitySchemes.nonEmpty) {
-        fields += "components" -> componentsJson(openApi.components)
+        result.value.put("components", componentsJson(openApi.components))
       }
-      new ujson.Obj(fields)
+      result.value
     }
 
   implicit val stringEncoder: Encoder[OpenApi, String] =
