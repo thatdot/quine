@@ -71,7 +71,7 @@ object Dependencies {
   val scoptV = "4.1.0"
   val shapelessV = "2.3.12"
   val slinkyV = "0.7.4"
-  val sslContextKickstartV = "8.3.6"
+  val sslContextKickstartV = "8.3.7"
   val stoplightElementsV = "7.12.0"
   val sugarV = "2.0.6"
   val tapirRecdocV = "1.10.15"
