@@ -1,6 +1,7 @@
 object Dependencies {
   val pekkoV = "1.1.1"
-  val pekkoHttpV = "1.0.1"
+  val pekkoHttpV = "1.1.0"
+  val pekkoHttpCirceV = "3.0.0"
   val pekkoManagementV = "1.0.0"
   val pekkoStreamV = "1.1.1"
   val pekkoKafkaV = "1.1.0"
