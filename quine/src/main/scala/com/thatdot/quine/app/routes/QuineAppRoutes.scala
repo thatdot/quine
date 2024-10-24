@@ -43,6 +43,7 @@ class QuineAppRoutes(
   val uri: URL,
   val timeout: Timeout,
   val apiV2Enabled: Boolean,
+  val v2IngestEnabled: Boolean,
 )(implicit val ec: ExecutionContext, protected val logConfig: LogConfig)
     extends BaseAppRoutes
     with QueryUiRoutesImpl
@@ -143,8 +144,14 @@ class QuineAppRoutes(
     if (apiV2Enabled) {
       val v2Route = new V2OssRoutes(
         new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
-      ).v2Routes
+      ).v2Routes(ingestOnly = false)
       logger.warn(safe"Starting with Api V2 endpoints enabled")
+      v1Routes ~ v2Route
+    } else if (v2IngestEnabled) {
+      val v2Route = new V2OssRoutes(
+        new OssApiMethods(graph.asInstanceOf[GraphService], quineApp.asInstanceOf[QuineApp], config, timeout),
+      ).v2Routes(ingestOnly = true)
+      logger.warn(safe"Starting with V2 ingest enabled")
       v1Routes ~ v2Route
     } else {
       v1Routes

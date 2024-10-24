@@ -248,7 +248,7 @@ object Main extends App with LazySafeLogging {
   }
 
   bindAndResolvableAddresses foreach { case (bindAddress, resolvableUrl) =>
-    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled)(
+    new QuineAppRoutes(graph, quineApp, config, resolvableUrl, timeout, config.api2Enabled, config.ingest2Enabled)(
       ExecutionContext.parasitic,
       logConfig,
     )
