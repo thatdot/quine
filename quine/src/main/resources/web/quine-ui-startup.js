@@ -27,6 +27,7 @@ window.onload = function() {
             network = n;
         },
         documentationUrl: document.baseURI + "docs/openapi.json?relative=true",
+        documentationV2Url: document.baseURI + "api/v2/openapi.json",
         baseURI: document.baseURI,
         serverUrl: document.baseURI.replace(/\/$/, ""),
         isQuineOSS: true,

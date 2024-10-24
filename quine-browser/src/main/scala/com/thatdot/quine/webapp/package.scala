@@ -81,6 +81,17 @@ package object webapp {
           ),
           options.baseURI,
         ),
+        Tab(
+          DocumentationIcon,
+          "Interactive Docs v2",
+          "/v2docs",
+          StoplightElements(
+            options.documentationV2Url,
+            logo = options.baseURI + (if (options.isQuineOSS) "favicon.ico" else "thatdot-t.ico"),
+          ),
+          options.baseURI,
+          hidden = true,
+        ),
         Tab(DashboardIcon, "System Dashboard", "/dashboard", MetricsDashboard(clientRoutes), options.baseURI),
         // Tab(ExplorerIcon, "Interactive Client - TS", "/client-ts", InteractiveClient(), options.baseURI)
       )
@@ -95,8 +106,11 @@ package webapp {
   /** Configuration for making an instance of the Quine UI */
   trait QuineUiOptions extends QueryUiOptions {
 
-    /** URL for loading the OpenAPI documentation */
+    /** URL for loading the OpenAPI documentation API v1 */
     val documentationUrl: String
+
+    /** URL for loading the OpenAPI documentation for API v2 */
+    val documentationV2Url: String
 
     /** Initial baseURI of page */
     val baseURI: String

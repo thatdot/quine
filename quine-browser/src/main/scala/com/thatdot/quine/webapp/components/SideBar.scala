@@ -26,6 +26,7 @@ final case class Tab(
   page: facade.ReactElement,
   baseURI: String,
   mountFunction: Option[() => Unit] = None,
+  hidden: Boolean = false,
 )
 
 /** Page which has a (fixed) side bar on the left. The side bar can be used to
@@ -100,6 +101,7 @@ final case class Tab(
         ),
         className := cls,
         key := s"item-$idx",
+        hidden := tab.hidden,
       )(
         td(style := js.Dynamic.literal(textAlign = "center", padding = ".5em 0"), key := "tab-icon")(
           i(
