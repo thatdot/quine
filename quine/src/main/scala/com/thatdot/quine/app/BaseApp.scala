@@ -5,12 +5,17 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Try}
 
+import cats.data.Validated.invalidNel
+import cats.data.ValidatedNel
 import endpoints4s.{Invalid, Valid, Validated}
 import io.circe.{Encoder, jawn}
 
 import com.thatdot.quine.app.QuineApp.{V2IngestStreamsKey, makeNamespaceMetaDataKey}
 import com.thatdot.quine.app.serialization.EncoderDecoder
+import com.thatdot.quine.exceptions
+import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId}
+import com.thatdot.quine.util.BaseError
 
 /** Applications running over top of Quine should define an application state that extends this.
   * Then, individual settings can be stored here (for easy persistence, reset, etc). Under the hood,
@@ -242,7 +247,11 @@ abstract class BaseApp(graph: BaseGraph) {
 
   def failIfNoNamespace[A](namespace: NamespaceId)(f: => Try[A]): Try[A] =
     if (getNamespaces.contains(namespace)) f
-    else Failure(NamespaceNotFoundException(namespace))
+    else Failure(exceptions.NamespaceNotFoundException(namespace))
+
+  def invalidIfNoNamespace[A](namespace: NamespaceId)(f: => ValidatedNel[BaseError, A]): ValidatedNel[BaseError, A] =
+    if (getNamespaces.contains(namespace)) f
+    else invalidNel(exceptions.NamespaceNotFoundException(namespace))
 }
 
 class MetaDataDeserializationException(msg: String) extends RuntimeException(msg)

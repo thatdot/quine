@@ -5,6 +5,8 @@ import org.apache.pekko.stream.connectors.sqs.{MessageAction, SqsSourceSettings}
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.{Done, NotUsed}
 
+import cats.data.ValidatedNel
+import cats.implicits.catsSyntaxValidatedId
 import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sqs.SqsAsyncClient
 import software.amazon.awssdk.services.sqs.model.Message
@@ -16,6 +18,7 @@ import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
+import com.thatdot.quine.util.BaseError
 
 case class SqsSource(
   queueURL: String,
@@ -25,7 +28,7 @@ case class SqsSource(
   deleteReadMessages: Boolean,
   meter: IngestMeter,
   decoders: Seq[ContentDecoder] = Seq(),
-) {
+) extends FramedSourceProvider {
   // Available settings: see https://pekko.apache.org/docs/pekko-connectors/current/sqs.html
   implicit val client: SqsAsyncClient = SqsAsyncClient
     .builder()
@@ -44,7 +47,7 @@ case class SqsSource(
     ).via(metered[Message](meter, m => m.body().length)),
   )
 
-  def framedSource: FramedSource = {
+  def framedSource: ValidatedNel[BaseError, FramedSource] = {
 
     def ack: Flow[Message, Done, NotUsed] = if (deleteReadMessages)
       Flow[Message].map(MessageAction.delete).via(SqsAckFlow.apply(queueURL)).map {
@@ -60,7 +63,7 @@ case class SqsSource(
       message => ContentDecoder.decode(decoders, message.body().getBytes()),
       ack,
       () => onTermination(),
-    )
+    ).valid
   }
 
 }

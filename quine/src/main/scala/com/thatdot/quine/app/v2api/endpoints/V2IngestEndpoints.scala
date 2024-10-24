@@ -26,7 +26,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
 
-  private val createIngestEndpoint = ingestEndpoint[Unit]
+  private val createIngestEndpoint = ingestEndpoint[Boolean]
     .name("Create Ingest Stream")
     .description("""Create an [ingest stream](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
                    |that connects a streaming event source to Quine and loads data into the graph.
@@ -39,7 +39,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(jsonOrYamlBody[V2IngestConfiguration])
     .post
     .serverLogic { case (memberIdx, ingestStreamName, ns, ingestStreamConfig) =>
-      runServerLogicWithError[(String, V2IngestConfiguration, NamespaceId), Unit](
+      runServerLogicFromEither[(String, V2IngestConfiguration, NamespaceId), Boolean](
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, ingestStreamConfig, namespaceFromParam(ns)),
@@ -55,7 +55,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .put
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicWithError[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogicFromEither[(String, NamespaceId), Option[IngestStreamInfoWithName]](
         PauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
@@ -71,7 +71,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .put
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicWithError[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogicFromEither[(String, NamespaceId), Option[IngestStreamInfoWithName]](
         UnpauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),

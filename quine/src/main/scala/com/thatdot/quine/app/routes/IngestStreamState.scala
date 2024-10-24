@@ -1,10 +1,12 @@
 package com.thatdot.quine.app.routes
 import scala.concurrent.Future
-import scala.util.{Failure, Try}
+import scala.util.Try
 
 import org.apache.pekko.util.Timeout
 
-import com.thatdot.quine.app.NamespaceNotFoundException
+import cats.data.Validated.invalidNel
+import cats.data.ValidatedNel
+
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
@@ -12,10 +14,11 @@ import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
   QuineIngestConfiguration => V2IngestConfiguration,
   QuineIngestStreamWithStatus,
 }
+import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
-import com.thatdot.quine.util.SwitchMode
+import com.thatdot.quine.util.{BaseError, SwitchMode}
 
 /** Store ingests allowing for either v1 or v2 types. */
 case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration]) {
@@ -50,10 +53,6 @@ trait IngestStreamState {
     *                                    This should be false when restoring from persistence (i.e., from the metadata
     *                                    table) and true otherwise.
     * @param memberIdx                   The cluster member index on which this ingest is being created
-    * @param useV2Ingest                 While this method adds V1 ingest streams, this flag is a _temporary_ addition that
-    *                                     uses the v2 code path to create ingests. Since this is created from the V1 config
-    *                                     [[IngestStreamConfiguration]] there are some V2 constructs and variations that
-    *                                     are unavailable.
     * @return Success(true) when the operation was successful, or a Failure otherwise
     */
   def addIngestStream(
@@ -77,7 +76,7 @@ trait IngestStreamState {
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx],
-  )(implicit logConfig: LogConfig): Try[Boolean]
+  )(implicit logConfig: LogConfig): ValidatedNel[BaseError, Boolean]
 
   private def determineSwitchModeAndStatus(
     previousStatus: Option[IngestStreamStatus],
@@ -122,27 +121,28 @@ trait IngestStreamState {
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,
     logConfig: LogConfig,
-  ): Try[QuineIngestSource] =
+  ): ValidatedNel[BaseError, QuineIngestSource] =
     ingestStreams.get(intoNamespace) match {
       // TODO Note for review comparison: v1 version fails silently here.
       // TODO Also, shouldn't this just add the namespace if it's not found?
-      case None => Failure(NamespaceNotFoundException(intoNamespace))
+      case None => invalidNel(NamespaceNotFoundException(intoNamespace))
+      // Ingest already exists.
       case Some(ingests) if ingests.contains(name) =>
-        Failure(
-          new Exception(s"Ingest $name already exists in namespace ${namespaceToString(intoNamespace)}"),
-        ) // Ingest already exists.
+        invalidNel(DuplicateIngestException(name, Some(namespaceToString(intoNamespace))))
       case Some(ingests) =>
-        Try {
-          val (initialValveSwitchMode, initialStatus) =
-            determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)
+        val (initialValveSwitchMode, initialStatus) =
+          determineSwitchModeAndStatus(previousStatus, shouldResumeRestoredIngests)
 
-          //TODO should return  ValidatedNel[IngestName, DecodedSource]
-          val decodedSource: DecodedSource = DecodedSource.apply(name, settings, meter, graph.system)(
+        val decodedSourceNel: ValidatedNel[BaseError, DecodedSource] =
+          DecodedSource.apply(name, settings, meter, graph.system)(
             protobufCache,
             avroCache,
             logConfig,
           )
-          val quineIngestSource: QuineIngestSource = decodedSource.toQuineIngestSource(
+
+        decodedSourceNel.map { (s: DecodedSource) =>
+
+          val quineIngestSource: QuineIngestSource = s.toQuineIngestSource(
             name,
             QuineValueIngestQuery.apply(settings, graph, intoNamespace),
             graph,

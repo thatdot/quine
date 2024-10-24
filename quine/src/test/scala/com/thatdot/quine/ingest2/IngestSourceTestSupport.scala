@@ -10,9 +10,16 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.ByteString
 
+import com.thatdot.quine.app.Metrics
+import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.core.DataFolderTo
-import com.thatdot.quine.app.ingest2.source.DecodedSource
+import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
+import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
+import com.thatdot.quine.app.routes.IngestMetered
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.graph.cypher.Value
+import com.thatdot.quine.graph.metrics.HostQuineMetrics
 
 object IngestSourceTestSupport {
 
@@ -32,4 +39,28 @@ object IngestSourceTestSupport {
 
   def randomString(length: Int = 10): String = Random.alphanumeric.take(length).mkString("")
 
+  def buildDecodedSource(
+    source: Source[ByteString, NotUsed],
+    format: FileFormat,
+    bounds: IngestBounds = IngestBounds(),
+    maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
+    contentDecoders: Seq[ContentDecoder] = Seq(),
+  ): DecodedSource = {
+    val meter = IngestMetered.ingestMeter(
+      None,
+      randomString(),
+      HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
+    )
+
+    decodedSourceFromFileStream(
+      source,
+      format,
+      DEFAULT_CHARSET,
+      maximumLineSize,
+      bounds,
+      meter,
+      contentDecoders,
+    ).toOption.get
+
+  }
 }

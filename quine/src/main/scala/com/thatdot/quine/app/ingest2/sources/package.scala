@@ -43,4 +43,5 @@ package object sources extends LazyLogging {
     ingestBounds.ingestLimit.fold(Flow[A].drop(ingestBounds.startAtOffset))(limit =>
       Flow[A].drop(ingestBounds.startAtOffset).take(limit),
     )
+
 }

@@ -14,6 +14,7 @@ import io.circe.generic.extras.semiauto.{
   deriveEnumerationDecoder,
   deriveEnumerationEncoder,
 }
+import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import sttp.tapir.CodecFormat.TextPlain
@@ -218,4 +219,7 @@ trait V2IngestSchemas extends TapirJsonCirce {
     implicit val config = ingestSourceTypeConfig
     deriveConfiguredDecoder[OnStreamErrorHandler]
   }
+
+  implicit val encoder: Encoder.AsObject[QuineIngestConfiguration] = deriveEncoder[QuineIngestConfiguration]
+  implicit val decoder: Decoder[QuineIngestConfiguration] = deriveDecoder[QuineIngestConfiguration]
 }

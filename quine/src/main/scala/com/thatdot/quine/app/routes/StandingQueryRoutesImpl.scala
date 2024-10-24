@@ -13,9 +13,9 @@ import org.apache.pekko.util.Timeout
 import cats.data.NonEmptyList
 import endpoints4s.{Invalid, Valid}
 
-import com.thatdot.quine.app.NamespaceNotFoundException
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
+import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   InvalidQueryPattern,

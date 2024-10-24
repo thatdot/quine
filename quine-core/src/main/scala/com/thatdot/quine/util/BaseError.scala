@@ -2,6 +2,12 @@ package com.thatdot.quine.util
 
 import scala.util.control.NoStackTrace
 
+import com.thatdot.quine.exceptions.{
+  DuplicateIngestException,
+  KafkaValidationException,
+  NamespaceNotFoundException,
+  ShardIterationException,
+}
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{GraphNotReadyException, QuineRuntimeFutureException, ShardNotAvailableException}
@@ -12,6 +18,8 @@ sealed trait AnyError extends Throwable {}
 
 // A base for a finite set of enumerable errors.
 // Excludes GenericError for cases where we want to be able to know the exact error
+// Any new class that extends QuineError or External Error should be added to the corresponding fromThrowable
+// and the pickler
 sealed trait BaseError extends AnyError
 
 // The base for all errors that originate in Quine
@@ -81,6 +89,10 @@ object QuineError {
     case e: GraphNotReadyException => Some(e)
     case e: ShardNotAvailableException => Some(e)
     case e: WrappedPersistorException => Some(e)
+    case e: NamespaceNotFoundException => Some(e)
+    case e: DuplicateIngestException => Some(e)
+    case e: ShardIterationException => Some(e)
+    case e: KafkaValidationException => Some(e)
     case _ => None
   }
 }

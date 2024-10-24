@@ -107,7 +107,7 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
       ),
       oneOfVariantFromMatchType(statusCode(StatusCode.NoContent).and(emptyOutputAs(ErrorEnvelope(NoContent)))),
       oneOfDefaultVariant(
-        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[Unknown]].description("server error")),
+        statusCode(StatusCode.InternalServerError).and(jsonBody[ErrorEnvelope[ServerError]].description("server error")),
       ),
     )
 
@@ -209,12 +209,12 @@ trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
     implicit val ctx = ExecutionContext.parasitic
     val g: Future[OUT] => Future[Either[CustomError, OUT]] = gin =>
       gin.map(Right(_)).recover(t => Left(toCustomError(t)))
-    runServerLogicWithError(cmd, idx, in, f.andThen(g))
+    runServerLogicFromEither(cmd, idx, in, f.andThen(g))
 
   }
 
   /** Run server logic, defining some future values as custom error returns. */
-  def runServerLogicWithError[IN, OUT: Decoder](
+  def runServerLogicFromEither[IN, OUT: Decoder](
     cmd: ApiCommand,
     idx: Option[Int],
     in: IN,
@@ -222,7 +222,10 @@ trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
   ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
     logger.debug(log"Received arguments for API call ${Safe(cmd.toString)}: ${in.toString}")
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
-    f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+    try f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
+    catch {
+      case t: Throwable => Future.successful(Left(ErrorEnvelope(toCustomError(t))))
+    }
   }
 
 }

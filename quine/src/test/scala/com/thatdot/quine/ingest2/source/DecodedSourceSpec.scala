@@ -13,13 +13,14 @@ import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app.IngestTestGraph
-import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
-import com.thatdot.quine.app.routes.IngestMetered
+import com.thatdot.quine.app.ingest2.source.{IngestBounds, QuineValueIngestQuery}
+import com.thatdot.quine.app.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
+import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.JsonFormat
 import com.thatdot.quine.compiler.{cypher => cyComp}
 import com.thatdot.quine.graph.cypher.RunningCypherQuery
 import com.thatdot.quine.graph.{GraphService, MasterStream, cypher}
-import com.thatdot.quine.routes._
+import com.thatdot.quine.ingest2.IngestSourceTestSupport.{buildDecodedSource, srcFromString}
 import com.thatdot.quine.util.Log.LogConfig
 
 class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
@@ -41,17 +42,9 @@ class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
     it("runs one supported configuration") {
       val graph: GraphService = IngestTestGraph.makeGraph()
       val rawJson = 1.to(5).map(i => s"""{ "foo":$i }""").mkString("\n")
-      val tempFile = fileFromString(rawJson)
-      val fileIngest = FileIngest(
-        format = FileIngestFormat.CypherJson("CREATE ($that)"),
-        path = tempFile.getAbsolutePath,
-        ingestLimit = None,
-        maximumPerSecond = None,
-        fileIngestMode = None,
-      )
-
       val decodedSource =
-        DecodedSource.apply("test", fileIngest, IngestMetered.ingestMeter(None, "test", graph.metrics), graph.system)
+        buildDecodedSource(srcFromString(rawJson), JsonFormat, IngestBounds(), DEFAULT_MAXIMUM_LINE_SIZE, Seq())
+
       val ingestQuery = QuineValueIngestQuery.build(graph, "CREATE ($that)", "that", None).get
 
       val ingestSource = decodedSource.toQuineIngestSource("test", ingestQuery, graph)

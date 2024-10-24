@@ -12,7 +12,7 @@ import org.apache.pekko.stream.UniqueKillSwitch
 import org.apache.pekko.util.Timeout
 
 import cats.Applicative
-import cats.data.ValidatedNel
+import cats.data.{Validated, ValidatedNel}
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 
@@ -49,7 +49,7 @@ import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
-import com.thatdot.quine.util.SwitchMode
+import com.thatdot.quine.util.{BaseError, SwitchMode}
 
 /** The Quine application state
   *
@@ -498,15 +498,15 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     timeout: Timeout,
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
-  )(implicit logConfig: LogConfig): Try[Boolean] =
-    failIfNoNamespace(intoNamespace) {
+  )(implicit logConfig: LogConfig): ValidatedNel[BaseError, Boolean] =
+    invalidIfNoNamespace(intoNamespace) {
 
       blocking(ingestStreamsLock.synchronized {
 
         val meter = IngestMetered.ingestMeter(intoNamespace, name, graph.metrics)
         val metrics = IngestMetrics(Instant.now, None, meter)
 
-        val trySource: Try[QuineIngestSource] = createV2IngestSource(
+        val validatedSrc = createV2IngestSource(
           name,
           settings,
           intoNamespace,
@@ -517,7 +517,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           graph,
         )(protobufSchemaCache, avroSchemaCache, logConfig)
 
-        trySource.map { quineIngestSrc =>
+        validatedSrc.map { quineIngestSrc =>
           val streamSource = quineIngestSrc.stream(
             intoNamespace,
             registerTerminationHooks(name, metrics)(graph.nodeDispatcherEC),
@@ -553,6 +553,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           true
         }
       })
+
     }
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]] =
@@ -789,14 +790,14 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             shouldSaveMetadata = false, // We're restoring what was saved.
             Some(thisMemberIdx),
           ) match {
-            case Success(true) => ()
-            case Success(false) =>
+            case Validated.Valid(true) => ()
+            case Validated.Valid(false) =>
               logger.error(
                 log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}",
               )
-            case Failure(e) =>
+            case Validated.Invalid(e) =>
               logger.error(
-                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e,
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e.head,
               )
           }
         }

@@ -14,11 +14,15 @@ import org.apache.pekko.http.scaladsl.settings.ClientConnectionSettings
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
+import cats.data.ValidatedNel
+import cats.implicits.catsSyntaxValidatedId
+
 import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
+import com.thatdot.quine.util.BaseError
 
 case class WebsocketSource(
   wsUrl: String,
@@ -26,11 +30,12 @@ case class WebsocketSource(
   keepaliveProtocol: KeepaliveProtocol,
   charset: Charset = DEFAULT_CHARSET,
   meter: IngestMeter,
-)(implicit system: ActorSystem) {
+)(implicit system: ActorSystem)
+    extends FramedSourceProvider {
 
   val baseHttpClientSettings: ClientConnectionSettings = ClientConnectionSettings(system)
 
-  def framedSource: FramedSource = {
+  def framedSource: ValidatedNel[BaseError, FramedSource] = {
 
     // Copy (and potentially tweak) baseHttpClientSettings for websockets usage
     val httpClientSettings: ClientConnectionSettings = keepaliveProtocol match {
@@ -91,7 +96,7 @@ case class WebsocketSource(
       withKillSwitches(source.via(transcodingFlow(charset))),
       meter,
       bs => bs.toArrayUnsafe(),
-    )
+    ).valid
   }
 
 }

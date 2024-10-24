@@ -10,10 +10,12 @@ import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.connectors.kinesis.ShardIterator._
-import org.apache.pekko.stream.connectors.kinesis.ShardSettings
 import org.apache.pekko.stream.connectors.kinesis.scaladsl.{KinesisSource => PekkoKinesisSource}
+import org.apache.pekko.stream.connectors.kinesis.{ShardIterator, ShardSettings}
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
+import cats.data.Validated.{Valid, invalidNel}
+import cats.data.ValidatedNel
 import software.amazon.awssdk.awscore.retry.AwsRetryStrategy
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.http.async.SdkAsyncHttpClient
@@ -28,7 +30,9 @@ import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.ingest2.sources.KinesisSource.buildAsyncClient
 import com.thatdot.quine.app.routes.IngestMeter
+import com.thatdot.quine.exceptions.ShardIterationException
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
+import com.thatdot.quine.util.BaseError
 
 object KinesisSource {
 
@@ -71,24 +75,25 @@ case class KinesisSource(
   numRetries: Int,
   meter: IngestMeter,
   decoders: Seq[ContentDecoder] = Seq(),
-)(implicit val ec: ExecutionContext) {
+)(implicit val ec: ExecutionContext)
+    extends FramedSourceProvider {
 
   val kinesisClient: KinesisAsyncClient = buildAsyncClient(credentialsOpt, regionOpt, numRetries)
+  import KinesisIngest.IteratorType
+  private val shardIterator: ValidatedNel[BaseError, ShardIterator] = iteratorType match {
+    case IteratorType.Latest => Valid(Latest)
+    case IteratorType.TrimHorizon => Valid(TrimHorizon)
+    case IteratorType.AtTimestamp(ms) => Valid(AtTimestamp(Instant.ofEpochMilli(ms)))
+    case IteratorType.AtSequenceNumber(_) | IteratorType.AfterSequenceNumber(_) if shardIds.fold(true)(_.size != 1) =>
+      invalidNel[BaseError, ShardIterator](
+        ShardIterationException("To use AtSequenceNumber or AfterSequenceNumber, exactly 1 shard must be specified"),
+      )
+    // will be caught as an "Invalid" (400) below
+    case IteratorType.AtSequenceNumber(seqNo) => Valid(AtSequenceNumber(seqNo))
+    case IteratorType.AfterSequenceNumber(seqNo) => Valid(AfterSequenceNumber(seqNo))
+  }
 
-  private def kinesisStream: Source[kinesisModel.Record, NotUsed] = {
-
-    import KinesisIngest.IteratorType
-    val shardIterator = iteratorType match {
-      case IteratorType.Latest => Latest
-      case IteratorType.TrimHorizon => TrimHorizon
-      case IteratorType.AtTimestamp(ms) => AtTimestamp(Instant.ofEpochMilli(ms))
-      case IteratorType.AtSequenceNumber(_) | IteratorType.AfterSequenceNumber(_) if shardIds.fold(true)(_.size != 1) =>
-        throw new IllegalArgumentException(
-          "To use AtSequenceNumber or AfterSequenceNumber, exactly 1 shard must be specified",
-        ) // will be caught as an "Invalid" (400) below
-      case IteratorType.AtSequenceNumber(seqNo) => AtSequenceNumber(seqNo)
-      case IteratorType.AfterSequenceNumber(seqNo) => AfterSequenceNumber(seqNo)
-    }
+  private def kinesisStream(shardIterator: ShardIterator): Source[kinesisModel.Record, NotUsed] = {
 
     // a Future yielding the shard IDs to read from
     val shardSettingsFut: Future[List[ShardSettings]] =
@@ -143,11 +148,13 @@ case class KinesisSource(
       .via(kinesisRateLimiter)
   }
 
-  def framedSource: FramedSource =
-    FramedSource[kinesisModel.Record](
-      withKillSwitches(kinesisStream),
-      meter,
-      record => ContentDecoder.decode(decoders, record.data().asByteArrayUnsafe()),
-      terminationHook = () => kinesisClient.close(),
-    )
+  def framedSource: ValidatedNel[BaseError, FramedSource] =
+    shardIterator.map { si =>
+      FramedSource[kinesisModel.Record](
+        withKillSwitches(kinesisStream(si)),
+        meter,
+        record => ContentDecoder.decode(decoders, record.data().asByteArrayUnsafe()),
+        terminationHook = () => kinesisClient.close(),
+      )
+    }
 }

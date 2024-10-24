@@ -180,7 +180,7 @@ concatenated to produce the final file name:
             parallelismOpt,
             saveLocation,
           ) =>
-        runServerLogicWithError[
+        runServerLogicFromEither[
           (
             Option[Int],
             Option[Int],
@@ -231,7 +231,7 @@ concatenated to produce the final file name:
     .in(atTimeParameter)
     .serverLogic {
       case (memberIdx, id, walkLengthOpt, queryOpt, returnOpt, inOutOpt, randomSeedOpt, namespace, atTimeOpt) =>
-        runServerLogicWithError[
+        runServerLogicFromEither[
           (
             QuineId,
             Option[Int],

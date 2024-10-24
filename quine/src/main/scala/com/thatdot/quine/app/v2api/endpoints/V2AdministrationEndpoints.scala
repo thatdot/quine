@@ -249,7 +249,7 @@ The intended use is for a load balancer to use this to know when the instance is
 up ready and start routing user requests to it.
 """).get
     .serverLogic { memberIdx =>
-      runServerLogicWithError[Unit, Boolean](
+      runServerLogicFromEither[Unit, Boolean](
         GetReadinessApiCmd,
         memberIdx,
         (),

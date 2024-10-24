@@ -266,6 +266,7 @@ lazy val `quine`: Project = project
       "com.softwaremill.sttp.tapir" %% "tapir-openapi-docs" % tapirV,
       "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % tapirV,
       "com.softwaremill.sttp.apispec" %% "openapi-circe-yaml" % openApiCirceYamlV exclude ("io.circe", "circe-yaml"),
+      "org.apache.pekko" %% "pekko-http-testkit" % pekkoHttpV % Test,
       "io.circe" %% "circe-yaml" % circeYamlV,
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "ch.qos.logback" % "logback-classic" % logbackV,

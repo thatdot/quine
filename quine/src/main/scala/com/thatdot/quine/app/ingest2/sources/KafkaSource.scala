@@ -30,8 +30,10 @@ import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.ingest2.source.FramedSource
 import com.thatdot.quine.app.ingest2.sources.KafkaSource._
 import com.thatdot.quine.app.routes.IngestMeter
+import com.thatdot.quine.exceptions.KafkaValidationException
 import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.BaseError
 
 object KafkaSource {
 
@@ -132,9 +134,9 @@ case class KafkaSource(
   decoders: Seq[ContentDecoder],
   meter: IngestMeter,
   system: ActorSystem,
-) {
+) extends FramedSourceProvider {
 
-  def framedSource: FramedSource = {
+  def framedSource: ValidatedNel[BaseError, FramedSource] = {
     val subs = subscription(topics)
     val consumerSettings: ConsumerSettings[Array[Byte], Array[Byte]] =
       buildConsumerSettings(
@@ -147,9 +149,10 @@ case class KafkaSource(
         system,
       )
 
-    val complaintsFromValidator: ValidatedNel[String, Unit] =
+    val complaintsFromValidator: ValidatedNel[BaseError, Unit] =
       KafkaSettingsValidator
         .validateInput(consumerSettings.properties, assumeConfigIsFinal = true)
+        .map(_.map(KafkaValidationException.apply))
         .toInvalid(())
 
     maybeExplicitCommit match {
@@ -181,6 +184,6 @@ case class KafkaSource(
           FramedSource[NoOffset](source, meter, noOffset => noOffset.value())
         }
     }
-  }.toOption.get //TODO From ValidateNel
+  }
 
 }

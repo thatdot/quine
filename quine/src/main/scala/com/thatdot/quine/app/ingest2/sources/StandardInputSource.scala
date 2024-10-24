@@ -6,12 +6,15 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 import org.apache.pekko.util.ByteString
 
+import cats.data.ValidatedNel
+
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
+import com.thatdot.quine.util.BaseError
 
 case class StandardInputSource(
   format: FileFormat,
@@ -21,7 +24,7 @@ case class StandardInputSource(
   decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
-  def decodedSource: DecodedSource = decodedSourceFromFileStream(
+  def decodedSource: ValidatedNel[BaseError, DecodedSource] = decodedSourceFromFileStream(
     stdInSource,
     format,
     charset,

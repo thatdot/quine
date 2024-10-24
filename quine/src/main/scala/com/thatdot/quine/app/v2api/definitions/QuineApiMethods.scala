@@ -27,7 +27,8 @@ import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{T
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
-import com.thatdot.quine.app.{BaseApp, BuildInfo, NamespaceNotFoundException}
+import com.thatdot.quine.app.{BaseApp, BuildInfo}
+import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{
   AlgorithmGraph,
@@ -105,15 +106,14 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
         }
     }
 
-  private def mkPauseOperationError[ERROR_TYPE](
+  private def mkPauseOperationError(
     operation: String,
-    toError: String => ERROR_TYPE,
-  ): PartialFunction[Throwable, Either[ERROR_TYPE, Nothing]] = {
+  ): PartialFunction[Throwable, Either[BadRequest, Nothing]] = {
     case _: StreamDetachedException =>
       // A StreamDetachedException always occurs when the ingest has failed
-      Left(toError(s"Cannot $operation a failed ingest."))
+      Left(BadRequest.apply(s"Cannot $operation a failed ingest."))
     case e: PauseOperationException =>
-      Left(toError(s"Cannot $operation a ${e.statusMsg} ingest."))
+      Left(BadRequest.apply(s"Cannot $operation a ${e.statusMsg} ingest."))
   }
 
   def thisMemberIdx: Int
@@ -542,22 +542,21 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     ingestName: String,
     settings: V2IngestConfiguration,
     namespaceId: NamespaceId,
-  ): Either[CustomError, Unit] =
-    app.addV2IngestStream(
-      ingestName,
-      settings,
-      namespaceId,
-      None, // this ingest is being created, not restored, so it has no previous status
-      true,
-      timeout,
-      true,
-      Some(thisMemberIdx),
-    ) match {
-      //TODO replace with better output!
-      case Success(true) => Right(())
-      case Success(false) => Left(BadRequest("SOme kind of failure"))
-      case Failure(e) => Left(ServerError(e.getMessage))
-    }
+  ): Either[CustomError, Boolean] =
+    app
+      .addV2IngestStream(
+        ingestName,
+        settings,
+        namespaceId,
+        None, // this ingest is being created, not restored, so it has no previous status
+        true,
+        timeout,
+        true,
+        Some(thisMemberIdx),
+      )
+      .toEither
+      .left
+      .map(s => BadRequest.ofErrors(s.toList))
 
   def deleteIngestStream(ingestName: String, namespaceId: NamespaceId): Future[Option[IngestStreamInfoWithName]] =
     graph.requiredGraphIsReadyFuture {
@@ -612,7 +611,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Close)
         .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("pause", BadRequest))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("pause"))(ExecutionContext.parasitic)
     }
 
   def unpauseIngestStream(
@@ -622,7 +621,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     graph.requiredGraphIsReadyFuture {
       setIngestStreamPauseState(ingestName, namespaceId, SwitchMode.Open)
         .map(Right(_))(ExecutionContext.parasitic)
-        .recover(mkPauseOperationError("resume", BadRequest))(ExecutionContext.parasitic)
+        .recover(mkPauseOperationError("resume"))(ExecutionContext.parasitic)
     }
 
   def ingestStreamStatus(ingestName: String, namespaceId: NamespaceId): Future[Option[IngestStreamInfoWithName]] =

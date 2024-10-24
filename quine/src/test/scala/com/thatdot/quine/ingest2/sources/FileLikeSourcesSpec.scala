@@ -18,14 +18,19 @@ import org.scalatest.matchers.should.Matchers
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
-import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat, LineFormat}
 import com.thatdot.quine.graph.cypher.{Expr, Value}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
-import com.thatdot.quine.ingest2.IngestSourceTestSupport.{randomString, srcFromString, streamedCypherValues}
+import com.thatdot.quine.ingest2.IngestSourceTestSupport.{
+  buildDecodedSource,
+  randomString,
+  srcFromString,
+  streamedCypherValues,
+}
 import com.thatdot.quine.routes.CsvCharacter
 
 class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAll {
@@ -53,24 +58,18 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
     maximumLineSize: Int = DEFAULT_MAXIMUM_LINE_SIZE,
     contentDecoders: Seq[ContentDecoder] = Seq(),
   ): TestResult = {
-    val meter = IngestMetered.ingestMeter(
-      None,
-      randomString(),
-      HostQuineMetrics(enableDebugMetrics = false, metricRegistry = Metrics, omitDefaultNamespace = true),
-    )
 
     val src: Source[ByteString, NotUsed] = srcFromString(sample).via(ContentDecoder.encoderFlow(contentDecoders))
-    val decodedSource = decodedSourceFromFileStream(
+
+    val decodedSource = buildDecodedSource(
       src,
       format,
-      DEFAULT_CHARSET,
-      maximumLineSize,
       bounds,
-      meter,
+      maximumLineSize,
       contentDecoders,
     )
 
-    (meter, streamedCypherValues(decodedSource).toList)
+    (decodedSource.meter, streamedCypherValues(decodedSource).toList)
   }
 
   private def generateCsvValues(
@@ -95,7 +94,7 @@ class FileLikeSourcesSpec extends AnyFunSpec with Matchers with BeforeAndAfterAl
       bounds,
       meter: IngestMeter,
       contentDecoders,
-    )
+    ).toOption.get
 
     (meter, streamedCypherValues(decodedSource).toList)
 

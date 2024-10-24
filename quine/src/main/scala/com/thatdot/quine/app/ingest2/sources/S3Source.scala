@@ -9,6 +9,8 @@ import org.apache.pekko.stream.connectors.s3.{S3Attributes, S3Ext, S3Settings}
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.ByteString
 
+import cats.data.ValidatedNel
+
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest2.source._
@@ -16,6 +18,7 @@ import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStr
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes._
+import com.thatdot.quine.util.BaseError
 
 case class S3Source(
   format: FileFormat,
@@ -29,7 +32,7 @@ case class S3Source(
   decoders: Seq[ContentDecoder] = Seq(),
 )(implicit system: ActorSystem) {
 
-  def decodedSource: DecodedSource =
+  def decodedSource: ValidatedNel[BaseError, DecodedSource] =
     decodedSourceFromFileStream(
       S3Source.s3Source(bucket, key, credentials),
       format,

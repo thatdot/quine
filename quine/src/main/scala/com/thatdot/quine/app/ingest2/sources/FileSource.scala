@@ -8,6 +8,8 @@ import org.apache.pekko.http.scaladsl.common.EntityStreamingSupport
 import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
 import org.apache.pekko.util.ByteString
 
+import cats.data.ValidatedNel
+import cats.implicits.catsSyntaxValidatedId
 import com.typesafe.scalalogging.LazyLogging
 
 import com.thatdot.quine.app.ShutdownSwitch
@@ -18,6 +20,7 @@ import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes.FileIngestMode
+import com.thatdot.quine.util.BaseError
 import com.thatdot.quine.util.Log.LogConfig
 
 /** Build a framed source from a file-like stream of ByteStrings. In practice this
@@ -87,7 +90,7 @@ object FileSource extends LazyLogging {
     bounds: IngestBounds = IngestBounds(),
     meter: IngestMeter,
     decoders: Seq[ContentDecoder] = Seq(),
-  ): DecodedSource =
+  ): ValidatedNel[BaseError, DecodedSource] =
     format match {
       case FileFormat.LineFormat =>
         FramedFileSource(
@@ -97,7 +100,7 @@ object FileSource extends LazyLogging {
           bounds,
           decoders,
           meter,
-        ).decodedSource(CypherStringDecoder)
+        ).decodedSource(CypherStringDecoder).valid
       case FileFormat.JsonFormat =>
         FramedFileSource(
           fileSource,
@@ -106,7 +109,7 @@ object FileSource extends LazyLogging {
           bounds,
           decoders,
           meter,
-        ).decodedSource(JsonDecoder)
+        ).decodedSource(JsonDecoder).valid
 
       case FileFormat.CsvFormat(headers, delimiter, quoteChar, escapeChar) =>
         CsvFileSource(
@@ -120,15 +123,7 @@ object FileSource extends LazyLogging {
           escapeChar.byte,
           maximumLineSize,
           decoders,
-        ).decodedSource
-
-      // TODO Protobuf, Raw, Drop not supported on file types since there is no way to delimit them:
-
-      case other =>
-        throw new UnsupportedOperationException(
-          s"Ingest format ${other.getClass.getSimpleName} not supported on file-like sources",
-        )
+        ).decodedSource.valid
 
     }
-
 }

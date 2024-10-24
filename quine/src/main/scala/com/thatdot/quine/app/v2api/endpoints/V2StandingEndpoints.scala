@@ -110,7 +110,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
     .out(statusCode(StatusCode.Created))
     .post
     .serverLogic { case (memberIdx, sqName, sqOutputName, namespace, outputDef) =>
-      runServerLogicWithError[(String, String, NamespaceId, StandingQueryResultOutputUserDef), Unit](
+      runServerLogicFromEither[(String, String, NamespaceId, StandingQueryResultOutputUserDef), Unit](
         CreateSQOutputApiCmd,
         memberIdx,
         (sqName, sqOutputName, namespaceFromParam(namespace), outputDef),
@@ -139,7 +139,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
     .post
     .out(statusCode(StatusCode.Created))
     .serverLogic { case (memberIdx, sqName, namespace, definition) =>
-      runServerLogicWithError[(String, NamespaceId, StandingQueryDefinition), Option[Unit]](
+      runServerLogicFromEither[(String, NamespaceId, StandingQueryDefinition), Option[Unit]](
         CreateSQApiCmd,
         memberIdx,
         (sqName, namespaceFromParam(namespace), definition),

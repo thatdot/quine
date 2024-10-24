@@ -80,7 +80,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
       .in(queryBody)
       .post
       .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-        runServerLogicWithError[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), CypherQueryResult](
+        runServerLogicFromEither[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), CypherQueryResult](
           CypherPostApiCmd,
           memberIdx,
           (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
@@ -99,7 +99,9 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     .in(queryBody)
     .post
     .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-      runServerLogicWithError[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), Seq[UiNode[QuineId]]](
+      runServerLogicFromEither[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), Seq[
+        UiNode[QuineId],
+      ]](
         CypherNodesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
@@ -118,7 +120,9 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     .in(queryBody)
     .post
     .serverLogic { case (memberIdx, atTime, timeout, namespace, query) =>
-      runServerLogicWithError[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), Seq[UiEdge[QuineId]]](
+      runServerLogicFromEither[(Option[AtTime], Option[FiniteDuration], NamespaceId, CypherQuery), Seq[
+        UiEdge[QuineId],
+      ]](
         CypherEdgesPostApiCmd,
         memberIdx,
         (atTime, timeout, namespaceFromParam(namespace), CypherQuery(query.text, query.parameters)),
