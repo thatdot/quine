@@ -10,6 +10,7 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpReques
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.Flow
 
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
@@ -63,14 +64,14 @@ class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logC
                     case Failure(err) =>
                       logger.error(
                         log"""Failed to deserialize error response from POST $result to ${Safe(url)}.
-                               |Response status was ${Safe(response.status.value)}""".cleanLines
+                             |Response status was ${response.status}""".cleanLines
                         withException err,
                       )
                     case Success(responseBody) =>
                       logger.error(
                         log"""Failed to POST $result to ${Safe(url)}.
-                               |Response was ${Safe(response.status.value)}
-                               |""".cleanLines + log": ${Safe(responseBody)}",
+                             |Response was ${response.status}
+                             |""".cleanLines + log": ${Safe(responseBody)}",
                       )
                   }(system.dispatcher)
               },

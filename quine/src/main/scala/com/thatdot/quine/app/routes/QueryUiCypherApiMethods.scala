@@ -21,6 +21,7 @@ import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 trait QueryUiCypherApiMethods extends LazySafeLogging {
   import QueryUiCypherApiMethods._
@@ -160,7 +161,7 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
         val plan = cypher.Plan.fromQuery(
           compiledQuery,
         )
-        logger.debug(log"User requested EXPLAIN of query: ${compiledQuery.toString}")
+        logger.debug(safe"User requested EXPLAIN of query: $compiledQuery")
         (Vector("plan"), Source.single(Seq(CypherValue.toJson(plan.toValue))), true, false)
       // rewrite "SHOW PROCEDURES" to an equivalent `help.procedures` call, if possible
       case ShowProcedures(rewritten, warning) =>
@@ -196,12 +197,12 @@ object QueryUiCypherApiMethods extends LazySafeLogging {
     // The second is usable in-place on the procedure call.
     private val ShowProceduresStatement = raw"(?is)(?:\h*)show\h+procedures?\h*(executable(?: by \S+)?)?\h*(.*)".r
 
-    def unapply(s: String): Option[(String, Option[SafeInterpolator])] = s match {
+    def unapply(s: String): Option[(String, Option[OnlySafeStringInterpolator])] = s match {
       case ShowProceduresStatement(ignoredArgs, querySuffix) =>
         val rewritten = s"$cypherProceduresInvocation $querySuffix".trim
         val warning =
           Option(ignoredArgs).filter(_.nonEmpty).map { args =>
-            log"Ignoring unsupported arguments to SHOW PROCEDURES: `$args`"
+            safe"Ignoring unsupported arguments to SHOW PROCEDURES: `${Safe(args)}`"
           }
         Some(rewritten -> warning)
       case _ =>

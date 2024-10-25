@@ -181,7 +181,7 @@ trait WebSocketQueryProtocolServer
       case iae: IllegalArgumentException => iae.getMessage
       case other =>
         val message = s"Query failed with log ID: ${Random.alphanumeric.take(10).mkString}"
-        logger.error(log"$message" withException other)
+        logger.error(log"${Safe(message)}" withException other)
         message
     }
 

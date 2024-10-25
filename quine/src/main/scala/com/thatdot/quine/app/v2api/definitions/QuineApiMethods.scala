@@ -23,6 +23,7 @@ import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
@@ -45,7 +46,7 @@ import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineId, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model}
 trait ApplicationApiMethods {

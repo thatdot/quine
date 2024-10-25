@@ -40,7 +40,7 @@ final case class QuineConfig(
   helpMakeQuineBetter: Boolean = true,
   api2Enabled: Boolean = false,
   ingest2Enabled: Boolean = false,
-  logConfig: LogConfig = LogConfig.strictest,
+  logConfig: LogConfig = LogConfig.permissive,
 ) extends BaseConfig {
 
   def configVal: Config = ConfigWriter[QuineConfig].to(this).asInstanceOf[ConfigObject].toConfig

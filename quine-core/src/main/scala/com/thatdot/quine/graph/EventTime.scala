@@ -121,7 +121,7 @@ object EventTime extends LazySafeLogging {
   final private val MillisBits: Int = 42
   final private val MillisMax: Long = 1L << MillisBits
 
-  implicit val logConfig: LogConfig = LogConfig.strictest
+  implicit val logConfig: LogConfig = LogConfig.strict
 
   /** Create a new actor event timestamp
     *
@@ -146,14 +146,14 @@ object EventTime extends LazySafeLogging {
     // Warn on various overflows
     if (milliseconds < 0L || MillisMax <= milliseconds) {
       logger.error(
-        log"Milliseconds: ${Safe(milliseconds)} in: ${Safe(time)} needs to be between 0 and ${Safe(MillisMax)}",
+        safe"Milliseconds: ${Safe(milliseconds)} in: $time needs to be between 0 and ${Safe(MillisMax)}",
       )
     }
     if (timestampSequence < 0L || TimestampSequenceMax <= timestampSequence) {
-      logger.warn(log"Timestamp sequence number: ${Safe(timestampSequence)} in: ${Safe(time)} overflowed")
+      logger.warn(safe"Timestamp sequence number: ${Safe(timestampSequence)} in: $time overflowed")
     }
     if (eventSequence < 0L || EventSequenceMax <= eventSequence) {
-      logger.warn(log"Event sequence number: ${Safe(eventSequence)} in: ${Safe(time)} overflowed")
+      logger.warn(safe"Event sequence number: ${Safe(eventSequence)} in: $time overflowed")
     }
 
     time

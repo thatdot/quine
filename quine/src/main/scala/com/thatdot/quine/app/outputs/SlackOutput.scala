@@ -12,6 +12,7 @@ import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.Flow
 
 import com.thatdot.quine.app.StandingQueryResultOutput.SlackSerializable
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
@@ -63,15 +64,15 @@ class SlackOutput(val config: PostToSlack)(implicit private val logConfig: LogCo
                   case Failure(err) =>
                     logger.error(
                       log"""Failed to deserialize error response from POST ${result.slackJson} to slack webhook.
-                             |Response status was ${Safe(response.status.value)}
+                             |Response status was ${response.status}
                              |""".cleanLines
                       withException err,
                     )
                   case Success(responseBody) =>
                     logger.error(
-                      log"Failed to POST ${result.slackJson} to slack webhook. " +
-                      log"Response status was ${Safe(response.status.value)}: " +
-                      log"${Safe(responseBody)}",
+                      log"""Failed to POST ${result.slackJson} to slack webhook.
+                           |Response status was ${response.status}
+                           |""".cleanLines + log": ${Safe(responseBody)}",
                     )
                 }(system.dispatcher)
             }

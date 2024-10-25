@@ -10,6 +10,7 @@ import cats.data.ValidatedNel
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
   QuineIngestConfiguration => V2IngestConfiguration,
   QuineIngestStreamWithStatus,

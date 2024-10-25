@@ -18,7 +18,7 @@ import com.thatdot.quine.util.Log.LogConfig
 
 class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfterAll {
 
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
   implicit val timeout: Timeout = Timeout(10.seconds)
   implicit val idProv: QuineUUIDProvider.type = QuineUUIDProvider
   implicit val graph: LiteralOpsGraph = Await.result(

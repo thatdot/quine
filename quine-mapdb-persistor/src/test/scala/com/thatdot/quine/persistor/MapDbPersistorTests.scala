@@ -9,7 +9,7 @@ import com.thatdot.quine.graph.HistoricalQueryTests
 import com.thatdot.quine.util.FromSingleExecutionContext
 import com.thatdot.quine.util.Log._
 
-class MapDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
+class MapDbPersistorTests extends HistoricalQueryTests()(LogConfig.permissive) {
 
   override def makePersistor(system: ActorSystem): PrimePersistor = new StatelessPrimePersistor(
     PersistenceConfig(),

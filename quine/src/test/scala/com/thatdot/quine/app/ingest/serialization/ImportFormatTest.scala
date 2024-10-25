@@ -11,7 +11,7 @@ class ImportFormatTest extends AnyFunSuite {
 
   test("Json import properly deserializes large numbers") {
 
-    val format = new CypherJsonInputFormat("MATCH (n) WHERE id(n) = 1 RETURN n", "n")(LogConfig.testing)
+    val format = new CypherJsonInputFormat("MATCH (n) WHERE id(n) = 1 RETURN n", "n")(LogConfig.permissive)
     def testInput(jsonString: String) = format.importBytes(jsonString.getBytes("UTF-8"))
 
     val l = Long.MaxValue - 1

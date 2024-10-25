@@ -13,6 +13,7 @@ import memeid.{UUID => UUID4s}
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineGraphLocation, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.ByteConversions.uuidToBytes
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 
 /** This provider is special: it is a no-op provider in the sense that none of the
   * conversions do any work. [[com.thatdot.quine.model.QuineId]] is the ID type.
@@ -300,12 +301,13 @@ final case class WithExplicitPositions private (underlying: QuineIdProvider)(imp
 
   override def nodeLocation(qid: QuineId): QuineGraphLocation = customIdFromBytes(qid.array) match {
     case Failure(exception) =>
-      logger.warn(
+      logger.warn {
+        implicit val idProvider: QuineIdProvider = this
+
         log"""Couldn't parse out an explicitly-positioned QuineId from provided id
-            |${Safe(qid.pretty(this))}. Falling back to the underlying node
-            |location algorithm""".cleanLines
-        withException exception,
-      )
+             |$qid. Falling back to the underlying node
+             |location algorithm""".cleanLines withException exception
+      }
       underlying.nodeLocation(qid)
     case Success(id) =>
       QuineGraphLocation(Some(id.positionIdx), underlying.nodeLocation(qid).shardIdx)

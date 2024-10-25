@@ -16,6 +16,7 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{EndpointOutput, endpoint, _}
 
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
@@ -220,7 +221,7 @@ trait V2QuineEndpointDefinitions extends V2EndpointDefinitions {
     in: IN,
     f: IN => Future[Either[CustomError, OUT]],
   ): Future[Either[ErrorEnvelope[_ <: CustomError], ObjectEnvelope[OUT]]] = {
-    logger.debug(log"Received arguments for API call ${Safe(cmd.toString)}: ${in.toString}")
+    logger.debug(log"Received arguments for API call $cmd: ${in.toString}")
     implicit val ec: ExecutionContext = ExecutionContext.parasitic
     try f(in).map(wrapOutput).recover(t => Left(ErrorEnvelope(toCustomError(t))))
     catch {

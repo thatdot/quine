@@ -12,14 +12,7 @@ sealed private[migrations] trait ExceptionMigrationError extends MigrationError 
 }
 
 object MigrationError {
-  class UserInterventionRequired private (val message: String) extends MigrationError {
-    override def toString(): String = s"UserInterventionRequired($message)"
-    override def hashCode(): Int = message.hashCode()
-    override def equals(obj: Any): Boolean = obj match {
-      case error: UserInterventionRequired => message == error.message
-      case _ => false
-    }
-  }
+  case class UserInterventionRequired private (message: String) extends MigrationError
   object UserInterventionRequired {
     def apply(message: OnlySafeStringInterpolator) = new UserInterventionRequired(message.safeString())
     def unapply(error: UserInterventionRequired): Option[String] = Some(error.message)

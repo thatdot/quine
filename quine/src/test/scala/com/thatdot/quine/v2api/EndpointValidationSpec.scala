@@ -25,7 +25,7 @@ import com.thatdot.quine.routes.RecordDecodingType
 import com.thatdot.quine.util.Log.LogConfig
 
 object EndpointValidationSupport {
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
   private val graph = IngestTestGraph.makeGraph("endpoint-test")
   private val quineApp = new QuineApp(graph)
   private val app = new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(5.seconds))

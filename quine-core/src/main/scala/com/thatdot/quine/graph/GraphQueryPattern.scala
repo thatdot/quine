@@ -169,7 +169,7 @@ final case class GraphQueryPattern(
   def compiledMultipleValuesStandingQuery(
     labelsProperty: Symbol,
     idProvider: QuineIdProvider,
-  )(implicit logConfig: LogConfig): MultipleValuesStandingQuery = {
+  ): MultipleValuesStandingQuery = {
 
     val watchedProperties: Map[NodePatternId, Map[Symbol, Symbol]] = toExtract
       .collect { case p: ReturnColumn.Property => p }
@@ -334,7 +334,7 @@ final case class GraphQueryPattern(
       )
     } else query
 
-    logger.debug(log"Compiled MVSQ: ${pprint(query).toString}")
+    logger.debug(safe"Compiled MVSQ: ${Safe(pprint(query).toString)}")
 
     if (remainingNodes.nonEmpty) {
       throw NotConnected

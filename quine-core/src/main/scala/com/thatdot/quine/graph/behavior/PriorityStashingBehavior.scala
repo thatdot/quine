@@ -73,16 +73,16 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
   @tailrec
   private def processReadyCallbacks()(implicit logConfig: LogConfig): Unit = {
     log.trace(
-      log"""pendingCallbacks on node: ${Safe(qid.pretty)} size: ${Safe(pendingCallbacks.size)} first is:
+      log"""pendingCallbacks on node: $qid size: ${Safe(pendingCallbacks.size)} first is:
            |${pendingCallbacks.headOption.toString} Stashed size: ${Safe(messageBuffer.size)}""".cleanLines,
     )
     pendingCallbacks.headOption match {
       case Some(_: Pending[_]) =>
         () // wait for this result to complete before more processing to maintain effect order
-        log.trace(safe"Pending item is next on node ${Safe(qid.pretty)}. Size is: ${Safe(pendingCallbacks.size)}")
+        log.trace(safe"Pending item is next on node $qid. Size is: ${Safe(pendingCallbacks.size)}")
       case Some(r: Ready[_]) =>
         log.trace(
-          safe"Ready item: ${Safe(r.id)} is next on node: ${Safe(qid.pretty)}. Remaining after removal: ${Safe(pendingCallbacks.size - 1)}",
+          safe"Ready item: ${Safe(r.id)} is next on node: $qid. Remaining after removal: ${Safe(pendingCallbacks.size - 1)}",
         )
         val _ = pendingCallbacks.remove(0)
         r.runCallback()
@@ -91,12 +91,12 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
         /* Go back to the regular behaviour and enqueue stashed messages back into the actor mailbox. The
          * `StashedMessage` wrapper ensures that re-enqueued messages get processed as if they had arrived first. */
         log.trace(
-          safe"Unbecoming on: ${Safe(qid.pretty)} Remaining size: ${Safe(pendingCallbacks.size)} stashed size: ${Safe(messageBuffer.size)}",
+          safe"Unbecoming on: $qid Remaining size: ${Safe(pendingCallbacks.size)} stashed size: ${Safe(messageBuffer.size)}",
         )
         context.unbecome()
         messageBuffer.foreach { e =>
           log.trace(
-            log"Unstashing message: ${e.message.toString} on node: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}",
+            log"Unstashing message: ${e.message.toString} on node: $qid stashed size: ${Safe(messageBuffer.size)}",
           )
           self.tell(StashedMessage(e.message), e.sender)
         }
@@ -144,13 +144,13 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
     // Temporarily change the actor behavior to only buffer messages
     if (pendingCallbacks.size == 1) {
       log.trace(
-        log"Becoming PriorityStashingBehavior on: ${Safe(qid.pretty)} stashed size: ${Safe(messageBuffer.size)}",
+        log"Becoming PriorityStashingBehavior on: $qid stashed size: ${Safe(messageBuffer.size)}",
       )
       context.become(
         {
           case StashedResultDelivery(id, result) =>
             log.trace(
-              log"Result delivery for: ${Safe(id)} with payload: ${result.toString} on node: ${Safe(qid.pretty)}",
+              log"Result delivery for: ${Safe(id)} with payload: ${result.toString} on node: $qid",
             )
             addResultToCallback(id, result, isResultLogSafe)
             // Every time a result is delivered, iterate through zero or more results to apply callback effects.
@@ -160,13 +160,13 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
           case StashedMessage(msg) =>
             messageBuffer += Envelope(msg, sender())
             log.trace(
-              log"Restashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}",
+              log"Restashed message: ${msg.toString} on node: $qid size: ${Safe(messageBuffer.size)}",
             )
 
           case msg =>
             messageBuffer += Envelope(msg, sender())
             log.trace(
-              log"Stashed message: ${msg.toString} on node: ${Safe(qid.pretty)} size: ${Safe(messageBuffer.size)}",
+              log"Stashed message: ${msg.toString} on node: $qid size: ${Safe(messageBuffer.size)}",
             )
         },
         discardOld = false,
@@ -177,7 +177,7 @@ trait PriorityStashingBehavior extends Actor with ActorSafeLogging {
     until.onComplete { (done: Try[_]) =>
       done.toEither.left.foreach(err =>
         log.debug(
-          safe"pauseMessageProcessingUntil: future for: ${Safe(thisFutureId)} failed on node ${Safe(qid.pretty)}",
+          safe"pauseMessageProcessingUntil: future for: ${Safe(thisFutureId)} failed on node $qid",
         ),
       )
       self ! StashedResultDelivery(thisFutureId, done)

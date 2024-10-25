@@ -7,7 +7,7 @@ import com.thatdot.quine.util.Log._
 
 class LocalIdStateTests extends AnyFunSuite {
 
-  implicit protected val logConfig: LogConfig = LogConfig.testing
+  implicit protected val logConfig: LogConfig = LogConfig.permissive
 
   test("local id state") {
 

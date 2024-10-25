@@ -11,6 +11,7 @@ import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRef
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.MonadHelpers._
 
 trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps with LazySafeLogging {
@@ -91,7 +92,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
               RandomWalkResult((strings.reverse ++ prependAcc).reverse, didComplete = true)
           case Failure(e) =>
-            logger.error(log"Getting walk values on node: ${Safe(qid.pretty)} failed" withException e)
+            logger.error(log"Getting walk values on node: $qid failed" withException e)
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
             RandomWalkResult(prependAcc.reverse, didComplete = false)
         }(graph.nodeDispatcherEC)
@@ -132,7 +133,7 @@ trait AlgorithmBehavior extends BaseNodeActor with QuineIdOps with QuineRefOps w
             qidAtTime.copy(id = chosenEdge.other) ! msg
           case Failure(e) =>
             // If collecting values fails, conclude/truncate the walk and return the results accumulated so far.
-            logger.error(log"Getting walk values on node: ${Safe(qid.pretty)} failed" withException e)
+            logger.error(log"Getting walk values on node: $qid failed" withException e)
             GetRandomWalk(collectQuery, 0, 0d, 0d, None, reportTo) ?!
             RandomWalkResult(prependAcc.reverse, didComplete = false)
         }(graph.nodeDispatcherEC)

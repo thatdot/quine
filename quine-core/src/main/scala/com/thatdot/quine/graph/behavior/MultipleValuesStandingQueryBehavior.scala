@@ -245,7 +245,7 @@ trait MultipleValuesStandingQueryBehavior
 
         case Some((_, oldState)) if oldState.query != query =>
           log.warn(
-            log"""While creating subscription for MultipleValues Standing Query [part] $query, detected
+            safe"""While creating subscription for MultipleValues Standing Query [part] $query, detected
                  |that MultipleValuesStandingQuery part identified by $combinedId is ambiguous.
                  |Refusing to register query. Continuing to provide results for ID ${combinedId._2}
                  |to ${oldState.query: MultipleValuesStandingQuery}. New query may miss results. This is a bug in
@@ -341,8 +341,8 @@ trait MultipleValuesStandingQueryBehavior
                 .getStandingQueryPart(queryPartIdForResult),
             ).fold(_ => "deleted SQ part", part => s"$part")
             log.warn(
-              log"""Got a result from: ${Safe(fromQid.pretty)} for: ${Safe(queryPartIdForResult)},
-                   |but this node does not track: ${Safe(queryPartIdForResult)} ($relevantSqPartStr)
+              log"""Got a result from: $fromQid for: ${Safe(queryPartIdForResult)},
+                   |but this node does not track: ${Safe(queryPartIdForResult)} (${Safe(relevantSqPartStr)})
                    |""".cleanLines,
             )
           }

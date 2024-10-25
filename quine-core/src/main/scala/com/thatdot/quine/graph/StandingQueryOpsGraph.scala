@@ -223,7 +223,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
                   if (previouslyRegisteredPart.exists(_ != newPart)) {
                     // conflict with already-registered part
                     logger.error(
-                      log"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
+                      safe"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
                            |query ${Safe(name)} (id $sqId), found that graph has already registered part ID $partId
                            |as a different query [part]: ${previouslyRegisteredPart.get}. This is a bug in the
                            |MultipleValuesStandingQueryPartId generation, and nodes that register both queries may
@@ -235,7 +235,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
                   } else if (alreadyInBatchPart.exists(_ != newPart)) {
                     // conflict within registration batch
                     logger.error(
-                      log"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
+                      safe"""While indexing MultipleValues Standing Query [part] $newPart (Part ID $partId) for standing
                            |query ${Safe(name)} (id $sqId), found that the query also defines another part with the same
                            |ID: ${previouslyRegisteredPart.get}. This is a bug in the MultipleValuesStandingQueryPartId
                            |generation, and nodes that register both queries may miss results. Ignoring the new query
@@ -246,13 +246,13 @@ trait StandingQueryOpsGraph extends BaseGraph {
                   } else if (alreadyInBatchPart.contains(newPart) || previouslyRegisteredPart.contains(newPart)) {
                     // already registered, no benefit to re-registering
                     logger.debug(
-                      log"While registering $newPart as $partId, found that it was already registered. Skipping.",
+                      safe"While registering $newPart as $partId, found that it was already registered. Skipping.",
                     )
                     None
                   } else {
                     // not yet registered
                     logger.trace(
-                      log"Registering MVSQ part $newPart as $partId",
+                      safe"Registering MVSQ part $newPart as $partId",
                     )
                     Some(partId -> newPart)
                   }

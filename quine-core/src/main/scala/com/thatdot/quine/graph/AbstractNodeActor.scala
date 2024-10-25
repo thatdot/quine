@@ -327,7 +327,7 @@ abstract private[graph] class AbstractNodeActor(
             (e: Throwable) => {
               val attemptCount = persistAttempts.getAndIncrement()
               log.info(
-                log"""Retrying persistence from node: ${Safe(qid.pretty)} with events:
+                log"""Retrying persistence from node: $qid with events:
                      |${effectingEvents.toString} after: ${Safe(attemptCount)} attempts
                      |""".cleanLines withException e,
               )
@@ -361,7 +361,7 @@ abstract private[graph] class AbstractNodeActor(
               notifyNodeUpdate(events collect { case e: NodeChangeEvent => e })
             case Failure(e) =>
               log.info(
-                log"Persistor error occurred when writing events to journal on node: ${Safe(qid.pretty)} Will not apply " +
+                log"Persistor error occurred when writing events to journal on node: $qid Will not apply " +
                 log"events: ${effectingEvents.toString} to in-memory state. Returning failed result" withException e,
               )
           },
@@ -388,7 +388,7 @@ abstract private[graph] class AbstractNodeActor(
 
     def infinitePersisting(logFunc: SafeInterpolator => Unit, f: => Future[Unit]): Future[Unit] =
       f.recoverWith { case NonFatal(e) =>
-        logFunc(log"Persisting snapshot for: ${Safe(occurredAt)} is being retried after the error:" withException e)
+        logFunc(log"Persisting snapshot for: $occurredAt is being retried after the error:" withException e)
         infinitePersisting(logFunc, f)
       }(cypherEc)
 
@@ -415,7 +415,7 @@ abstract private[graph] class AbstractNodeActor(
     case PropertySet(key, value) =>
       if (value.deserializedReady && value == PropertyValue(QuineValue.Null)) {
         // Should be impossible. If it's not, we'd like to know and fix it.
-        logger.warn(log"Setting a null property on key: $key. This should have been a property removal.")
+        logger.warn(safe"Setting a null property on key: ${Safe(key.name)}. This should have been a property removal.")
       }
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
@@ -580,7 +580,7 @@ abstract private[graph] class AbstractNodeActor(
         includeDomainIndexEvents = false,
       )
       .recover { case err =>
-        log.error(log"failed to get journal for node: ${Safe(qidAtTime.pretty)}" withException err)
+        log.error(log"failed to get journal for node: $qidAtTime" withException err)
         Iterable.empty
       }(context.dispatcher)
       .map { journal =>

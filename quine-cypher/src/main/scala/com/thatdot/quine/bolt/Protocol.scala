@@ -12,6 +12,7 @@ import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.utils.CypherLoggables._
 
 object Protocol extends LazySafeLogging {
@@ -85,7 +86,7 @@ object Protocol extends LazySafeLogging {
             val resultAvailableAfter = 1L // milliseconds after which results may be requested
 
             if (explained) {
-              logger.debug(log"User requested EXPLAIN of query: ${queryResult.compiled.query.toString}")
+              logger.debug(safe"User requested EXPLAIN of query: ${queryResult.compiled.query}")
               // EXPLAIN'ed results do not get executed
               (
                 Success(

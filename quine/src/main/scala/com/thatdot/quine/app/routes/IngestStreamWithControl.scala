@@ -47,7 +47,7 @@ import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
   * @param optWs         HACK: opaque stash of additional information for Novelty websocket streams. This should be
   *                      refactored out of this class.
   */
-final case class IngestStreamWithControl[+Conf](
+final case class IngestStreamWithControl[+Conf: Loggable](
   settings: Conf,
   metrics: IngestMetrics,
   valve: () => Future[ValveSwitch],
@@ -66,7 +66,7 @@ final case class IngestStreamWithControl[+Conf](
         case Some(Success(Done)) => IngestStreamStatus.Completed
         case Some(Failure(e)) =>
           // If exception occurs, it means that the ingest stream has failed
-          logger.warn(log"Ingest stream: ${settings.toString} failed." withException e)
+          logger.warn(log"Ingest stream failed: $settings" withException e)
           IngestStreamStatus.Failed
         case None => IngestStreamStatus.Running
       },
@@ -126,7 +126,7 @@ final case class IngestStreamWithControl[+Conf](
 }
 
 object IngestStreamWithControl {
-  def apply[Conf](
+  def apply[Conf: Loggable](
     conf: Conf,
     metrics: IngestMetrics,
     quineIngestSource: QuineIngestSource,

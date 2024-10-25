@@ -52,7 +52,7 @@ class SkipOptimizingActor(
 
   private def startQuery() = {
     log.debug(
-      log"SkipOptimizingActor is beginning execution of query. AtTime: ${Safe(atTime)}; query: ${QueryFamily.toString}",
+      safe"""SkipOptimizingActor is beginning execution of query. AtTime: $atTime; query: $QueryFamily""",
     )
     graph.cypherOps
       .continueQuery(QueryFamily, parameters = Parameters.empty, namespace = namespace, atTime = atTime)
@@ -71,7 +71,9 @@ class SkipOptimizingActor(
           */
         completesWithStream.onComplete { status =>
           log.debug(
-            log"SkipOptimizingActor finished execution of query (cleanly: ${Safe(status.isSuccess)}) and will terminate: ${QueryFamily.toString}",
+            safe"""SkipOptimizingActor finished execution of query (cleanly: ${Safe(status.isSuccess)}) and
+                  |will terminate: $QueryFamily
+                  |""".cleanLines,
           )
           decommission()
         }(ExecutionContext.parasitic)

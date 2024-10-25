@@ -179,7 +179,7 @@ private class BloomFilteredPersistor(
         case Success(_) =>
           val d = System.currentTimeMillis - t0
           val c = bloomFilter.approximateElementCount()
-          logger.info(log"Finished loading in duration: ${Safe(d)} ms; node set size ~ ${Safe(c)} QuineIDs)")
+          logger.info(safe"Finished loading in duration: ${Safe(d)} ms; node set size ~ ${Safe(c)} QuineIDs)")
           mightContain = bloomFilter.mightContain
         case Failure(ex) =>
           logger.warn(log"Error loading; continuing to run in degraded state" withException ex)

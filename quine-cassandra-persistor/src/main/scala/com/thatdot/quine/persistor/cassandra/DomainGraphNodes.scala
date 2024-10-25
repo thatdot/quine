@@ -49,7 +49,7 @@ object DomainGraphNodesDefinition
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
     shouldCreateTables: Boolean,
-  )(implicit mat: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[DomainGraphNodes] = {
+  )(implicit mat: Materializer, futureInstance: Applicative[Future]): Future[DomainGraphNodes] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 

@@ -89,7 +89,7 @@ private[graph] class NodeActor(
         val pr = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]
         publishResults(pr.pid, pr.results)
       } else {
-        log.error(log"Node received an unknown message (from ${Safe(sender())}): ${msg.toString}")
+        log.error(log"Node received an unknown message (from ${sender()}): ${msg.toString}")
       }
   }
 

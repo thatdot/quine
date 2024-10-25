@@ -11,7 +11,7 @@ import com.thatdot.quine.model._
 import com.thatdot.quine.util.Log.LogConfig
 
 class GraphQueryPatternTest extends AnyFunSuite {
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
 
   val labelsProp: Symbol = Symbol("_LABEL")
 

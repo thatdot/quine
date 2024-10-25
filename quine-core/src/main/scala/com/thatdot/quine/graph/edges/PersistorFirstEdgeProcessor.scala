@@ -39,7 +39,7 @@ class PersistorFirstEdgeProcessor(
           runPostActions(events)
         case Failure(err) =>
           logger.error(
-            log"""Persistor error occurred when writing events to journal on node: ${qid.pretty} Will not apply
+            log"""Persistor error occurred when writing events to journal on node: $qid Will not apply
                  |events: $effectingEvents to in-memory state. Returning failed result.""".cleanLines
             withException err,
           )

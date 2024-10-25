@@ -64,7 +64,7 @@ object PekkoStreams extends LazySafeLogging {
           .recoverWith { err =>
             logger.error(
               log"""Detected stream-killing error (${Safe(err.getClass.getName)}) from pekko stream feeding
-                 |into MergeHub ${Safe(mergeHubName)}""".cleanLines withException err,
+                   |into MergeHub ${Safe(mergeHubName)}""".cleanLines withException err,
             )
             Source.empty
           }

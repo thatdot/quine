@@ -17,6 +17,7 @@ import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import com.thatdot.quine.app.RecipeInterpreter.RecipeState
 import com.thatdot.quine.app.routes.{IngestStreamState, QueryUiConfigurationState, StandingQueryStore}
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.cypher.{RunningCypherQuery, Value}
 import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, MemberIdx, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
@@ -61,11 +62,11 @@ case class RecipeInterpreter(
       appState.setNodeAppearances(recipe.nodeAppearances.toVector)
     }
     if (recipe.quickQueries.nonEmpty) {
-      statusLines.info(log"Using ${Safe(recipe.quickQueries.length)} quick queries ")
+      statusLines.info(log"Using ${Safe(recipe.quickQueries.length)} quick queries")
       appState.setQuickQueries(recipe.quickQueries.toVector)
     }
     if (recipe.sampleQueries.nonEmpty) {
-      statusLines.info(log"Using ${Safe(recipe.sampleQueries.length)} sample queries ")
+      statusLines.info(log"Using ${Safe(recipe.sampleQueries.length)} sample queries")
       appState.setSampleQueries(recipe.sampleQueries.toVector)
     }
 
@@ -87,7 +88,7 @@ case class RecipeInterpreter(
       } catch {
         case NonFatal(ex) =>
           statusLines.error(
-            log"Failed creating Standing Query ${Safe(standingQueryName)}: ${standingQueryDefinition.toString}",
+            log"Failed creating Standing Query ${Safe(standingQueryName)}: ${standingQueryDefinition}",
             ex,
           )
       }
@@ -110,7 +111,7 @@ case class RecipeInterpreter(
       ) match {
         case Failure(ex) =>
           statusLines.error(
-            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}\n${ingestStream.toString}",
+            log"Failed creating Ingest Stream ${Safe(ingestStreamName)}\n${ingestStream}",
             ex,
           )
         case Success(false) =>
@@ -127,17 +128,19 @@ case class RecipeInterpreter(
         for {
           url <- quineWebserverUri
         } statusLines.info(
-          log"Status query URL is ${Uri
-            .from(
-              scheme = url.getProtocol,
-              userinfo = Option(url.getUserInfo).getOrElse(""),
-              host = url.getHost,
-              port = url.getPort,
-              path = url.getPath,
-              queryString = None,
-              fragment = Some(cypherQuery),
-            )
-            .toString}",
+          log"Status query URL is ${Safe(
+            Uri
+              .from(
+                scheme = url.getProtocol,
+                userinfo = Option(url.getUserInfo).getOrElse(""),
+                host = url.getHost,
+                port = url.getPort,
+                path = url.getPath,
+                queryString = None,
+                fragment = Some(cypherQuery),
+              )
+              .toString,
+          )}",
         )
         tasks +:= statusQueryProgressReporter(statusLines, graphService, statusQuery)
       }
@@ -250,7 +253,11 @@ case class RecipeInterpreter(
               .run()(graphService.materializer),
             5 seconds,
           )
-        changed(queryResultToString(queryResults, resultContent))(s => statusLines.info(log"$s"))
+        changed(queryResultToString(queryResults, resultContent))(s =>
+          // s is a query result, and therefore PII, but the entire point of a status query is to repeatedly log
+          // this value, so we'll treat that as implied consent to log.
+          statusLines.info(log"${Safe(s)}"),
+        )
       } catch {
         case _: TimeoutException => statusLines.warn(log"Status query timed out")
       }

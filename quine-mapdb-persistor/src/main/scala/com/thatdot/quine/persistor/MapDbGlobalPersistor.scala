@@ -87,7 +87,7 @@ class PersistedMapDbPrimePersistor(
 
   if (createParentDir)
     if (parentDir.mkdirs())
-      logger.warn(log"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created")
+      logger.warn(safe"Parent directory: ${Safe(parentDir)} of requested persistence location did not exist; created")
     else if (!parentDir.isDirectory)
       sys.error(s"$parentDir is not a directory")
 

@@ -166,7 +166,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
             .isEqualTo(literal(keyspace))
             .build
           while (!sess.execute(keyspaceExistsQuery).iterator.hasNext) {
-            logger.info(log"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
+            logger.info(safe"Keyspace ${Safe(keyspace)} does not yet exist, re-checking in 4s")
             Thread.sleep(4000)
           }
           sess.close()
@@ -192,7 +192,7 @@ abstract class AbstractGlobalKeyspacesPersistor[C <: PrimeKeyspacesPersistor](
           .map(rs => Option(rs.one()).map(_.getString("status")))(ExecutionContext.parasitic),
         (status: Option[String]) =>
           (status contains "ACTIVE") || {
-            logger.info(log"${Safe(tableName.toString)} status is ${Safe(status)}; polling status again")
+            logger.info(safe"${Safe(tableName.toString)} status is ${Safe(status)}; polling status again")
             false
           },
         15,

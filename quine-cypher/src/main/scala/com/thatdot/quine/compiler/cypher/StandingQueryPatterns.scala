@@ -650,8 +650,8 @@ object StandingQueryPatterns extends LazySafeLogging {
                 Some(QuineId(qidBytes))
               case cantBeUsedAsId =>
                 logger.warn(
-                  log"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom).
-                        |Precomputing the ID predicate produced a constraint (${cantBeUsedAsId.toString}) with type:
+                  safe"""ID predicates in Standing Queries must use functions returning IDs (eg idFrom, locIdFrom).
+                        |Precomputing the ID predicate produced a constraint (${Safe(cantBeUsedAsId.toString)}) with type:
                         |${Safe(cantBeUsedAsId.typ.toString)}""".cleanLines,
                 )
                 None

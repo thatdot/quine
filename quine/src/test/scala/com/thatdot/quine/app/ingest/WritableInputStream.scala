@@ -50,7 +50,7 @@ object IngestTestGraph {
       effectOrder = EventEffectOrder.PersistorFirst,
       persistorMaker = InMemoryPersistor.persistorMaker,
       idProvider = QuineIdLongProvider(),
-    )(LogConfig.testing),
+    )(LogConfig.permissive),
     5.seconds,
   )
 

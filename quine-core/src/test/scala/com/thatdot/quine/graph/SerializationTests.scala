@@ -16,7 +16,7 @@ class SerializationTests
     with ArbitraryInstances
     with should.Matchers {
 
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
 
   // This doubles the default size and minimum successful tests
   implicit override val generatorDrivenConfig: PropertyCheckConfiguration =

@@ -100,7 +100,7 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
   final val effects: MultipleValuesStandingQueryEffectsTester =
     MultipleValuesStandingQueryEffectsTester.empty(query, knownQueries)
 
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
 
   def testInvariants()(implicit pos: Position): Unit = ()
 

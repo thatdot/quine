@@ -589,11 +589,12 @@ trait DomainNodeIndexBehavior
 
         case wrongNodesRemoved =>
           // indicates a bug in [[subscribers.remove]]: we removed more nodes than the one we intended to
-          log.info(
+          log.info {
+            implicit val dgnIdSafe: AlwaysSafeLoggable[DomainGraphNodeId] = _.toString
             log"""Expected to clear a specific DGN from this node, instead started deleting multiple. Re-subscribing the
-               |inadvertently removed DGNs. Expected: ${dgn.toString} but found: ${Safe(wrongNodesRemoved.size)} node[s]:
-               |${wrongNodesRemoved.toList.toString}""".cleanLines,
-          )
+               |inadvertently removed DGNs. Expected: $dgn but found: ${Safe(wrongNodesRemoved.size)} subscription[s]:
+               |$wrongNodesRemoved""".cleanLines
+          }
           // re-subscribe any extra nodes removed
           (wrongNodesRemoved - dgnId).foreach {
             case (
@@ -811,22 +812,21 @@ trait DomainNodeIndexBehavior
           // [[NodeParentIndex.reconstruct]] (or any combination thereof).
           if (shouldSendReplies)
             log.error(
-              log"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+              safe"""While propagating a result of a DGN match, found no upstream subscribers that might care about
                  |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
                  |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
                  |${Safe(downstreamNode)}
-                 |""".trim.stripMargin.replaceNewline(' '),
+                 |""".cleanLines,
             )
           else {
             // if shouldSendReplies == false, we're probably restoring a node from sleep via journals. In this case,
             // an incomplete nodeParentIndex is not surprising
             log.debug(
-              log"""While propagating a result of a DGN match, found no upstream subscribers that might care about
-                 |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
-                 |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
-                 |${Safe(downstreamNode)}.
-                 |However, this is expected during initial journal replay on a node after wake when snapshots are
-                 |disabled or otherwise missing.""".stripMargin.replaceNewline(' '),
+              safe"""While propagating a result of a DGN match, found no upstream subscribers that might care about
+                    |an update in the provided downstream node. This may indicate a bug in the DGN registration/indexing
+                    |logic. Falling back to trying all locally-tracked DGNs. Orphan (downstream) DGN ID is:
+                    |${Safe(downstreamNode)}. This is expected during initial journal replay on a node after wake when
+                    |snapshots are disabled or otherwise missing.""".cleanLines,
             )
           }
           updateAnswerAndNotifySubscribersInefficiently(shouldSendReplies): @nowarn

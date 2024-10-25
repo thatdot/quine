@@ -42,10 +42,10 @@ abstract class TableDefinition[A](unqualifiedTableName: String, namespace: Names
 
   protected def prepare(session: AsyncCqlSession, settings: CassandraStatementSettings)(
     statement: SimpleStatement,
-  )(implicit logConfig: LogConfig): Future[PreparedStatement] = {
+  ): Future[PreparedStatement] = {
     // NB the PII these statements use is not yet bound, so the statement itself is safe (using placeholder
     // variables where the PII *will* go)
-    logger.trace(log"Preparing ${Safe(statement.getQuery)}")
+    logger.trace(safe"Preparing ${Safe(statement.getQuery)}")
     session.prepareAsync(settings(statement)).asScala
   }
 

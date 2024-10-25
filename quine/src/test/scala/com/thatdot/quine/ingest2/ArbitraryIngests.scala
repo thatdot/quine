@@ -109,7 +109,7 @@ trait ArbitraryIngests {
   implicit val kinesisGen: Gen[KinesisIngest] = Gen.resultOf(KinesisIngest)
   implicit val kafkaGen: Gen[KafkaIngest] = Gen.resultOf(KafkaIngest)
 
-  implicit def logConfig: LogConfig = LogConfig.testing
+  implicit def logConfig: LogConfig = LogConfig.permissive
 
   implicit val arbStdIn: Arbitrary[StdInputIngest] = Arbitrary(stdInGen)
   implicit val arbNum: Arbitrary[NumberIteratorIngest] = Arbitrary(numInGen)

@@ -36,7 +36,7 @@ class KafkaOutput(val config: WriteToKafka)(implicit
       new ByteArraySerializer,
     ).withBootstrapServers(bootstrapServers)
       .withProperties(properties)
-    logger.info(log"Writing to kafka with properties ${properties}")
+    logger.info(safe"Writing to kafka with properties ${Safe(properties)}")
     serialized(name, format, graph)
       .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
       .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))

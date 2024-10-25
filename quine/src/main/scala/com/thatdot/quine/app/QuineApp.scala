@@ -21,6 +21,7 @@ import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherTo
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
+import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEncoderDecoders
 import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.compiler.cypher
@@ -403,7 +404,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
           val now = Instant.now
           metrics.stop(now)
           logger.info(
-            log"Ingest stream '${Safe(name)}' successfully completed after ${Safe(metrics.millisSinceStart(now))}ms",
+            safe"Ingest stream '${Safe(name)}' successfully completed after ${Safe(metrics.millisSinceStart(now))}ms",
           )
       }(ec)
   }
@@ -769,11 +770,11 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             case Success(true) => ()
             case Success(false) =>
               logger.error(
-                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}",
+                safe"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config}",
               )
             case Failure(e) =>
               logger.error(
-                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e,
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config}" withException e,
               )
           }
         }
@@ -793,11 +794,11 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
             case Validated.Valid(true) => ()
             case Validated.Valid(false) =>
               logger.error(
-                log"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config.toString}",
+                safe"Duplicate ingest stream attempted to start with name: ${Safe(name)} and settings: ${ingest.config}",
               )
             case Validated.Invalid(e) =>
               logger.error(
-                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config.toString}" withException e.head,
+                log"Error when restoring ingest stream: ${Safe(name)} with settings: ${ingest.config}" withException e.head,
               )
           }
         }

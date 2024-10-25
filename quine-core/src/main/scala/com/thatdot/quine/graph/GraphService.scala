@@ -90,9 +90,9 @@ class GraphService(
                       logger.warn(
                         cypherOriginal match {
                           case Some(cypherQuery) =>
-                            log"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '${cypherQuery}'"
+                            safe"Read a GraphPattern for a MultipleValues query with a DISTINCT clause. This is not yet supported. Query was: '${Safe(cypherQuery)}'"
                           case None =>
-                            log"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: ${pattern.toString}"
+                            safe"Read a GraphPattern for a MultipleValues query that specifies `distinct`. This is not yet supported. Query pattern was: $pattern"
                         },
                       )
                     case StandingQueryPattern
@@ -117,7 +117,7 @@ class GraphService(
               val dgnsLen = domainGraphNodes.size
               val sqsLen = sqs.size
               if (dgnsLen + sqsLen > 0)
-                logger.info(log"Restored ${Safe(dgnsLen)} domain graph nodes and ${Safe(sqsLen)} standing queries")
+                logger.info(safe"Restored ${Safe(dgnsLen)} domain graph nodes and ${Safe(sqsLen)} standing queries")
             }
           }(shardDispatcherEC)
       }(shardDispatcherEC),

@@ -15,7 +15,7 @@ class StandingQueryPatternsTest extends AnyFunSpec {
   import GraphQueryPattern._
 
   implicit val idProvider: QuineIdRandomLongProvider.type = QuineIdRandomLongProvider
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
 
   def testQuery(
     queryText: String,

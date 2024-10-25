@@ -70,7 +70,7 @@ trait CypherOpsGraph extends BaseGraph {
               notification.getValue ! PoisonPill
             else
               logger.info(
-                log"""SkipOptimizingActor at ${Safe(notification.getValue)} is being replaced in the Cypher
+                log"""SkipOptimizingActor at ${notification.getValue} is being replaced in the Cypher
                      |skipOptimizerCache without removing. This is expected in tests, but not in production. Shutdown
                      |protocol will not be initiated on the actor.""".cleanLines,
               )

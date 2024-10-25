@@ -43,7 +43,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         new CypherJsonInputFormat(
           s"""MATCH (p) WHERE id(p) = idFrom('test','$label', $$that.$label) SET p.value = $$that RETURN (p)""",
           "that",
-        )(LogConfig.testing),
+        )(LogConfig.permissive),
         SwitchMode.Open,
         10,
         maxPerSecond,
@@ -52,7 +52,7 @@ class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
         intoNamespace = None,
       ) {
 
-    implicit protected val logConfig: LogConfig = LogConfig.testing
+    implicit protected val logConfig: LogConfig = LogConfig.permissive
 
     type InputType = ByteString
 

@@ -55,9 +55,9 @@ class CypherQueryOutput(
     }
     if (!queryAst.isIdempotent && shouldRetry) {
       logger.warn(
-        log"""Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
-             |occur, query execution may be retried and duplicate data may be created. To avoid this
-             |set shouldRetry = false in the Standing Query output""".cleanLines,
+        safe"""Could not verify that the provided Cypher query is idempotent. If timeouts or external system errors
+              |occur, query execution may be retried and duplicate data may be created. To avoid this
+              |set shouldRetry = false in the Standing Query output""".cleanLines,
       )
     }
 
@@ -78,7 +78,7 @@ class CypherQueryOutput(
               val newData = qc.environment.map { case (keySym, cypherVal) =>
                 keySym.name -> cypher.Expr.toQuineValue(cypherVal).getOrElse {
                   logger.warn(
-                    log"""Cypher Value: ${cypherVal.toString} could not be represented as a Quine value in Standing
+                    log"""Cypher Value: ${cypherVal} could not be represented as a Quine value in Standing
                          |Query output: ${Safe(name)}. Using `null` instead.""".cleanLines,
                   )
                   QuineValue.Null

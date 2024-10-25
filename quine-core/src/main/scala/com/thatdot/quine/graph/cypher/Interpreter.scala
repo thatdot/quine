@@ -321,7 +321,7 @@ trait OnNodeInterpreter
             Safe("")
           }
         logger.warn(
-          log"""Tried to use expression as QuineId: ${query.node}, but evaluates to: ${evaled}.
+          log"""Tried to use expression as QuineId: ${query.node}, but evaluates to: $evaled.
                |Aborting query and returning 0 rows.$becauseNullSuffix""".cleanLines,
         )
         return InterpM.empty

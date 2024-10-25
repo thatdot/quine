@@ -48,7 +48,7 @@ class MemoryFirstEdgeProcessor(
           (e: Throwable) => {
             val attemptCount = persistAttempts.getAndIncrement()
             logger.info(
-              log"""Retrying persistence from node: ${Safe(qid.pretty)} with events: $effectingEvents after:
+              log"""Retrying persistence from node: $qid with events: $effectingEvents after:
                    |${Safe(attemptCount)} attempts""".cleanLines withException e,
             )
             e

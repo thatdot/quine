@@ -890,14 +890,14 @@ object CypherTextUrlDecode extends UserDefinedFunction with LazySafeLogging {
         Expr.Str(new String(decodedBytes, StandardCharsets.UTF_8))
       } catch {
         case err: DecoderException =>
-          logger.info(log"""$name unable to URL-decode provided string: "$str"""" withException err)
+          logger.info(log"""${Safe(name)} unable to URL-decode provided string: "$str"""" withException err)
           Expr.Null
       }
     } else {
       try Expr.Str(java.net.URLDecoder.decode(str, StandardCharsets.UTF_8))
       catch {
         case err: IllegalArgumentException =>
-          logger.info(log"""$name unable to URL-decode provided string: "$str"""" withException err)
+          logger.info(log"""${Safe(name)} unable to URL-decode provided string: "$str"""" withException err)
           Expr.Null
       }
     }
@@ -1384,8 +1384,8 @@ object CypherDuration extends UserDefinedFunction with LazySafeLogging {
               val nanoSeconds = unit.getDuration.getNano
               val nanoSecondsMessage = Safe(if (nanoSeconds == 0) "" else s" and $nanoSeconds nanoseconds")
               logger.warn(
-                log"""Adding: ${unitQuantity.toString} $unit to a duration. Note that $unit is an estimated unit,
-                   |so a value of ${unit.getDuration.getSeconds.toString} seconds$nanoSecondsMessage will be added
+                log"""Adding: $unitQuantity $unit to a duration. Note that $unit is an estimated unit,
+                   |so a value of ${unit.getDuration.getSeconds} seconds$nanoSecondsMessage will be added
                    |as an approximation.""".cleanLines,
               )
             }
@@ -1591,7 +1591,7 @@ object CypherCasts {
         case Vector(expr) if expr.typ == cType => expr
         case Vector(expr) =>
           logger.debug(
-            log"""Failed to cast value: ${expr.toString} to a: ${Safe(cType.toString)},
+            log"""Failed to cast value: $expr to a: ${Safe(cType.toString)},
                  |returning `null` instead from: ${Safe(name)}""".cleanLines,
           )
           Expr.Null

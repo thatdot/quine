@@ -23,7 +23,7 @@ class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   def toHex(str: String): ByteString = ByteString(ByteConversions.parseHexBinary(str.filter(_ != ' ')))
 
   implicit val timeout: Timeout = Timeout(3600 seconds)
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
   implicit val graph: CypherOpsGraph = Await.result(
     GraphService(
       "bolt-protocol-test-system",

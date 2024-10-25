@@ -53,7 +53,6 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
   )(implicit
     mat: Materializer,
     futureInstance: Applicative[Future],
-    logConfig: LogConfig,
   ): Future[MetaData] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")

@@ -11,12 +11,12 @@ import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.cypher.Func.UserDefined
 import com.thatdot.quine.model.{QuineId, QuineValue}
 
-import Log.implicits.{LogExpr, LogQuineValue}
+import Log.implicits.{logExpr, logQuineValue, LogQuineIdRaw}
 
 class LoggableTest extends AnyFunSpecLike {
   describe("cypher.Expr") {
-    def asLog(expr: Expr): String = LogExpr.unsafe(expr, _ => "*")
-    def asSafeLog(expr: Expr): String = LogExpr.safe(expr)
+    def asLog(expr: Expr): String = logExpr.unsafe(expr, _ => "*")
+    def asSafeLog(expr: Expr): String = logExpr.safe(expr)
     def noWhitespace(str: String): String = str.replaceAll(raw"\s", "")
 
     it("formats a boolean") {
@@ -123,8 +123,8 @@ class LoggableTest extends AnyFunSpecLike {
   }
 
   describe("QuineValue") {
-    def asLog(qv: QuineValue): String = LogQuineValue.unsafe(qv, _ => "*")
-    def asSafeLog(qv: QuineValue): String = LogQuineValue.safe(qv)
+    def asLog(qv: QuineValue): String = logQuineValue.unsafe(qv, _ => "*")
+    def asSafeLog(qv: QuineValue): String = logQuineValue.safe(qv)
 
     it("formats a Str") {
       withClue("without revealing its value") {

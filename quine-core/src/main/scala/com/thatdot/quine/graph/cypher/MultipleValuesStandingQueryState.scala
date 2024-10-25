@@ -264,12 +264,12 @@ final case class CrossState(
   )(implicit logConfig: LogConfig): Boolean =
     resultsAccumulator.get(result.queryPartId) match {
       case None =>
-        logger.error(
-          log"${this.toString} received subscription result: $result not in the list of subscriptions: ${Safe(
-            resultsAccumulator.keys
-              .mkString("[", ",", "]"),
-          )}",
-        )
+        logger.error {
+          val subscriptions = resultsAccumulator.keys
+            .mkString("[", ",", "]")
+          log"""MVSQ CrossState: ${this.toString} for SQ part: $query received subscription result: $result not
+               |in the list of subscriptions: ${Safe(subscriptions)}""".cleanLines
+        }
         false
       case Some(previousResultsFromChild) =>
         if (subscriptionsEmittedCount != query.queries.length) {
@@ -560,7 +560,7 @@ final case class LocalPropertyState(
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     logger.warn(
-      log"""MVSQ state: ${this.toString} for Part ID: ${Safe(queryPartId)} received subscription
+      log"""MVSQ LocalPropertyState: ${this.toString} for SQ part: $query received subscription
            |result it didn't subscribe to: $result""".cleanLines,
     )
     false

@@ -127,7 +127,7 @@ abstract class SynchronousEdgeProcessor(
 
         val edgeCollectionSizeWarningInterval = 10000
         if ((oldSize + 1) % edgeCollectionSizeWarningInterval == 0)
-          logger.warn(log"Node ${Safe(qid.pretty)} has: ${Safe(oldSize + 1)} edges")
+          logger.warn(safe"Node $qid has: ${Safe(oldSize + 1)} edges")
         nodeEdgesCounter.increment(previousCount = oldSize)
       case EdgeEvent.EdgeRemoved(edge) =>
         edgeCollection.removeEdge(edge)

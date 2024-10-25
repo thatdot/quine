@@ -268,13 +268,13 @@ class InMemoryPersistor(
 object InMemoryPersistor {
 
   /** Create a new empty in-memory persistor */
-  def empty() = new InMemoryPersistor()(LogConfig.strictest)
+  def empty() = new InMemoryPersistor()(LogConfig.strict)
 
   def namespacePersistor: PrimePersistor = new StatelessPrimePersistor(
     PersistenceConfig(),
     None,
-    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strictest),
-  )(null, LogConfig.strictest) // Materializer is never used if bloomFilterSize is set to none
+    (pc, ns) => new InMemoryPersistor(persistenceConfig = pc, namespace = ns)(LogConfig.strict),
+  )(null, LogConfig.strict) // Materializer is never used if bloomFilterSize is set to none
   def persistorMaker: ActorSystem => PrimePersistor =
     _ => namespacePersistor
 }

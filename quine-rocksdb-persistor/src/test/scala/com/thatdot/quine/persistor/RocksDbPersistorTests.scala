@@ -13,7 +13,7 @@ import org.apache.commons.io.FileUtils
 import com.thatdot.quine.graph.HistoricalQueryTests
 import com.thatdot.quine.util.Log._
 
-class RocksDbPersistorTests extends HistoricalQueryTests()(LogConfig.testing) {
+class RocksDbPersistorTests extends HistoricalQueryTests()(LogConfig.permissive) {
 
   override val runnable: Boolean = RocksDbPersistor.loadRocksDbLibrary()
 

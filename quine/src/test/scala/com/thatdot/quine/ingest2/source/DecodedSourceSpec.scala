@@ -25,7 +25,7 @@ import com.thatdot.quine.util.Log.LogConfig
 
 class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
-  implicit val logConfig: LogConfig = LogConfig.testing
+  implicit val logConfig: LogConfig = LogConfig.permissive
   @nowarn implicit val protobufSchemaCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking
 
   def fileFromString(s: String): File = {
