@@ -1,11 +1,9 @@
 package com.thatdot.quine.compiler
 
-import scala.concurrent.ExecutionException
 import scala.util.control.NonFatal
 
 import cats.implicits._
-import com.google.common.cache.{Cache, CacheBuilder}
-import com.google.common.util.concurrent.UncheckedExecutionException
+import com.github.blemale.scaffeine.{Cache, Scaffeine}
 import org.opencypher.v9_0.ast.semantics
 import org.opencypher.v9_0.ast.semantics.SemanticFeature
 import org.opencypher.v9_0.expressions.LabelExpression
@@ -84,8 +82,7 @@ package object cypher {
 
   // Guava (thread-safe) cache
   private[this] val compiledQueryCache: Cache[UncompiledQueryIdentity, (Query[Location.Anywhere], Parameters)] =
-    CacheBuilder
-      .newBuilder()
+    Scaffeine()
       .maximumSize(1024) // TODO parameterize -- 1024 is 100% arbitrary
       .build()
 
@@ -159,14 +156,27 @@ package object cypher {
   ): (Query[Location.Anywhere], Parameters) =
     try compiledQueryCache.get(
       queryIdentity,
-      () => compileFresh(queryIdentity, customParsingContext),
+      newQueryIdentity => compileFresh(newQueryIdentity, customParsingContext),
     )
     catch {
-      case e: ExecutionException =>
-        e.getCause match {
+      case _: IllegalArgumentException =>
+        throw CypherException.Compile(
+          s"""Attempting to compile query by way of cache caused an infinite loop. Retry compilation with
+             |caching disabled. Query was: ${queryIdentity.queryText}
+             |""".stripMargin.replace('\n', ' ').trim,
+          position = None,
+        )
+      case runtimeException: RuntimeException =>
+        runtimeException.getCause match {
           case ce: CypherException => throw ce
-          case other => throw new UncheckedExecutionException(other)
+          case _ =>
+            throw CypherException.Compile(
+              s"Unexpected error while compiling query: ${runtimeException.getClass.getSimpleName} ${runtimeException.getMessage}",
+              position = None,
+            )
         }
+      case ce: CypherException =>
+        throw ce
     }
 
   /** Compile a query

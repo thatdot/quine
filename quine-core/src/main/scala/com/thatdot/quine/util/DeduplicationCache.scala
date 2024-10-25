@@ -2,7 +2,7 @@ package com.thatdot.quine.util
 
 import scala.concurrent.Future
 
-import com.google.common.cache.{Cache, CacheBuilder}
+import com.github.blemale.scaffeine.{Cache, Scaffeine}
 
 // TODO consider typeclassing for extensibility into things like "resettable cache" or "persistable cache"
 
@@ -18,12 +18,13 @@ import com.google.common.cache.{Cache, CacheBuilder}
   */
 trait DeduplicationCache[E] {
 
-  /** Check if an element is present in the cache. This should not expire any contents of the cache
+  /** Check if an element is present in the cache.
     * @return true when the element is present, false otherwise
     */
   def contains(elem: E): Future[Boolean]
 
-  /** Insert an element into the cache. Depending on the cache implementation, this may expire one or more entries.
+  /** Insert an element into the cache. Depending on the cache implementation, this may expire one or more entries,
+    * including the element being inserted.
     * @return true if the element is new to the cache, false otherwise. Regardless of the
     *         returned value, the cache will be updated
     */
@@ -50,34 +51,36 @@ object DisabledCache {
   def apply[E](): DisabledCache[E] = new DisabledCache[E]()
 }
 
-/** Threadsafe implementation of [[DeduplicationCache]] backed by a [[Cache]] with perfect LRU expiry.
+/** Threadsafe implementation of [[DeduplicationCache]] backed by a Caffeine [[Cache]] with tinyLFU expiry.
+  * This can be considered effectively a probabilistic implementation that trades memory for precision. That is,
+  * the larger the cache size is, the fewer false negatives will occur.
+  * @see https://arxiv.org/pdf/1512.00727
   */
 class InMemoryDeduplicationCache[E](size: Long) extends DeduplicationCache[E] {
   val cache: Cache[E, Unit] =
-    CacheBuilder
-      .newBuilder()
-      .asInstanceOf[CacheBuilder[E, Unit]]
+    Scaffeine()
       .maximumSize(size)
       .build()
 
-  /** Check if an element is present in the cache. This will not expire any contents of the cache, but is considered a
-    * "usage" for the sake of the LRU expiry scheme.
+  /** Check if an element is present in the cache. If the cache is oversized, this may expire elements from the cache
     *
     * @param elem
     * @return true when the element is present, false otherwise
     */
   def contains(elem: E): Future[Boolean] = Future.successful(
-    Option(cache.getIfPresent(elem)).isDefined,
+    cache.getIfPresent(elem).isDefined,
   )
 
   /** Insert an element into the cache. If the cache already contains at least `size` elements, and this element is not
-    * among them, the least-recently-used element will be dropped.
+    * among them, one or more elements may be expired, including the one being inserted (that is, this method may not
+    * actually insert the element if the current elements in the cache are deemed more valuable).
     *
-    * @return true if the element was already present in the cache, false otherwise. Regardless of the
-    *         returned value, the cache will be updated
+    * @return true if the element is new to the cache, false otherwise
     */
   def insert(elem: E): Future[Boolean] = Future.successful {
-    Option(cache.asMap().put(elem, ())).isEmpty
+    val isNewElement = cache.getIfPresent(elem).isEmpty
+    cache.put(elem, ())
+    isNewElement
   }
 
   val recommendedParallelism: Int = 256 // Very arbitrary

@@ -2,8 +2,6 @@ package com.thatdot.quine.model
 
 import java.util.regex.{Pattern, PatternSyntaxException}
 
-import com.google.common.cache.{Cache, CacheBuilder}
-
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
@@ -53,13 +51,6 @@ object DomainGraphBranch {
     NodeLocalComparisonFunctions.Wildcard,
   )
 
-  /** Cache domainGraphBranch values for re-use. */
-  private val domainGraphBranchCache: Cache[DomainGraphNodeId, Option[DomainGraphBranch]] = CacheBuilder
-    .newBuilder()
-    .asInstanceOf[CacheBuilder[Any, Any]]
-    .weakKeys()
-    .build[DomainGraphNodeId, Option[DomainGraphBranch]]()
-
   /** Produces a [[DomainGraphBranch]] from the provided [[DomainGraphNodeId]]. */
   def fromDomainGraphNodeId(
     dgnId: DomainGraphNodeId,
@@ -70,12 +61,15 @@ object DomainGraphBranch {
       dgnId: DomainGraphNodeId,
       getDomainGraphNode: DomainGraphNodeId => Option[DomainGraphNode],
     ): Option[DomainGraphBranch] = {
-      val f = fromDomainGraphNodeId(_, getDomainGraphNode)
+
+      def recurse(dgnId: DomainGraphNodeId): Option[DomainGraphBranch] =
+        fromDomainGraphNodeId(dgnId, getDomainGraphNode)
+
       getDomainGraphNode(dgnId) flatMap {
         case DomainGraphNode.Single(domainNodeEquiv, identification, nextNodes, comparisonFunc) =>
           val edges = nextNodes.toList.flatMap {
             case DomainGraphEdge(edge, depDirection, edgeDgnId, circularMatchAllowed, constraints) =>
-              f(edgeDgnId).map {
+              recurse(edgeDgnId).map {
                 model.DomainEdge(edge, depDirection, _, circularMatchAllowed, constraints)
               }
           }
@@ -83,27 +77,21 @@ object DomainGraphBranch {
             model.SingleBranch(domainNodeEquiv, identification, edges, comparisonFunc),
           )
         case DomainGraphNode.Or(disjuncts) =>
-          val disjunctDgbs = disjuncts.flatMap(f(_))
+          val disjunctDgbs = disjuncts.flatMap(recurse)
           Option.when(disjunctDgbs.size == disjuncts.size)(model.Or(disjunctDgbs.toList))
         case DomainGraphNode.And(conjuncts) =>
-          val conjunctsDgbs = conjuncts.flatMap(f(_))
+          val conjunctsDgbs = conjuncts.flatMap(recurse)
           Option.when(conjunctsDgbs.size == conjuncts.size)(model.And(conjunctsDgbs.toList))
         case DomainGraphNode.Not(negated) =>
-          f(negated) map model.Not
+          recurse(negated) map model.Not
         case DomainGraphNode.Mu(variable, dgnId) =>
-          f(dgnId) map (model.Mu(variable, _))
+          recurse(dgnId) map (model.Mu(variable, _))
         case DomainGraphNode.MuVar(variable) =>
           Some(model.MuVar(variable))
       }
     }
 
-    domainGraphBranchCache.getIfPresent(dgnId) match {
-      case b @ Some(_) => b
-      case _ =>
-        val branch = retrieveValue(dgnId, getDomainGraphNode)
-        domainGraphBranchCache.put(dgnId, branch)
-        branch
-    }
+    retrieveValue(dgnId, getDomainGraphNode)
   }
 }
 

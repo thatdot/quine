@@ -7,7 +7,8 @@ import org.apache.pekko.actor.{ActorRef, PoisonPill}
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
-import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache, RemovalCause, RemovalNotification}
+import com.github.benmanes.caffeine.cache.RemovalCause
+import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import org.apache.pekko
 
 import com.thatdot.quine.graph.cypher._
@@ -49,33 +50,30 @@ trait CypherOpsGraph extends BaseGraph {
 
   object cypherOps {
 
-    private val loader: CacheLoader[SkipOptimizerKey, ActorRef] =
-      new CacheLoader[SkipOptimizerKey, ActorRef] {
-        def load(key: SkipOptimizerKey): ActorRef =
-          system.actorOf(
-            pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key.location, key.namespace, key.atTime)),
-          )
-      }
-
     // INV queries used as keys must have no Parameters
     val skipOptimizerCache: LoadingCache[SkipOptimizerKey, ActorRef] =
-      CacheBuilder.newBuilder
+      Scaffeine()
         .maximumSize(100) // TODO arbitrary
-        .removalListener { // NB invoked semi-manually via [[SkipOptimizingActor.decommission]]
-          (notification: RemovalNotification[SkipOptimizerKey, ActorRef]) =>
+        .removalListener[SkipOptimizerKey, ActorRef] {
+          (_, removedRef, cause) => // NB invoked semi-manually via [[SkipOptimizingActor.decommission]]
+
             /** allow REPLACED actors to live on (eg, as happens when calling [[skipOptimizerCache.refresh]].
               * Otherwise, remove the actor from the actor system as soon as it has burnt down its mailbox
               */
-            if (notification.getCause != RemovalCause.REPLACED)
-              notification.getValue ! PoisonPill
+            if (cause != RemovalCause.REPLACED)
+              removedRef ! PoisonPill
             else
               logger.info(
-                log"""SkipOptimizingActor at ${notification.getValue} is being replaced in the Cypher
+                log"""SkipOptimizingActor at $removedRef is being replaced in the Cypher
                      |skipOptimizerCache without removing. This is expected in tests, but not in production. Shutdown
                      |protocol will not be initiated on the actor.""".cleanLines,
               )
         }
-        .build(loader)
+        .build(loader = { (key: SkipOptimizerKey) =>
+          system.actorOf(
+            pekko.actor.Props(new SkipOptimizingActor(CypherOpsGraph.this, key.location, key.namespace, key.atTime)),
+          )
+        })
 
     /* We do a lot of queries on the thoroughgoing present, so cache an instance
      * of an anchored interpreter.

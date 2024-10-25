@@ -12,7 +12,7 @@ import org.apache.pekko.dispatch.{
 }
 
 import com.codahale.metrics.InstrumentedExecutorService
-import com.google.common.cache.{Cache, CacheBuilder}
+import com.github.blemale.scaffeine.{Cache, Scaffeine}
 import com.typesafe.config.{Config => TypesafeConfig, ConfigException, ConfigRenderOptions}
 import pureconfig.ConfigWriter
 
@@ -26,7 +26,7 @@ import com.thatdot.quine.util.Log.implicits._
   */
 object MeteredExecutors extends LazySafeLogging {
 
-  private val instrumentedExecutors: Cache[String, InstrumentedExecutorService] = CacheBuilder.newBuilder().build()
+  private val instrumentedExecutors: Cache[String, InstrumentedExecutorService] = Scaffeine().build()
 
   sealed abstract class Configurator(
     config: TypesafeConfig,
@@ -60,11 +60,11 @@ object MeteredExecutors extends LazySafeLogging {
           // threadFactory changes so that the `underlying` delegate is always using the "latest" threadFactory
           instrumentedExecutors.get(
             id,
-            () =>
+            executorId =>
               new InstrumentedExecutorService(
-                underlying.createExecutorServiceFactory(id, threadFactory).createExecutorService,
+                underlying.createExecutorServiceFactory(executorId, threadFactory).createExecutorService,
                 registry.metricRegistry,
-                id,
+                executorId,
               ),
           )
       }

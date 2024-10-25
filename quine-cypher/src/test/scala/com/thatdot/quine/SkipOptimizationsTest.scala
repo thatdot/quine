@@ -1,6 +1,7 @@
 package com.thatdot.quine;
 
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorRef
@@ -38,14 +39,17 @@ class SkipOptimizationsTest
   )
   val atTime: Some[Milliseconds] = Some(Milliseconds(1586631600L))
 
-  def freshSkipActor(): ActorRef = {
-    graph.cypherOps.skipOptimizerCache.refresh(SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime))
-    graph.cypherOps.skipOptimizerCache.get(SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime))
-  }
+  def freshSkipActor(): ActorRef =
+    Await.result(
+      graph.cypherOps.skipOptimizerCache.refresh(SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime)),
+      2.seconds,
+    )
   def actorIsPresentInCache: Boolean =
-    graph.cypherOps.skipOptimizerCache.getIfPresent(
-      SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime),
-    ) != null
+    graph.cypherOps.skipOptimizerCache
+      .getIfPresent(
+        SkipOptimizerKey(queryFamily, cypherHarnessNamespace, atTime),
+      )
+      .isDefined
 
   /** Executes a query in [[queryFamily]] according to the provided projection rules
     */
