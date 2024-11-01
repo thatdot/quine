@@ -128,11 +128,13 @@ class QuineAppRoutes(
   /** Rest API route */
   lazy val apiRoute: Route = {
 
+    val enableLanguageServerRoute: Boolean = sys.props.get("ls.enabled").flatMap(_.toBooleanOption).getOrElse(false)
+
     val v1Routes = {
       namespacesUnsupportedRoute ~
       queryUiRoutes ~
       queryProtocolWS ~
-      webSocketQuinePatternServer.languageServerWebsocketRoute ~
+      (if (enableLanguageServerRoute) webSocketQuinePatternServer.languageServerWebsocketRoute else reject) ~
       queryUiConfigurationRoutes ~
       debugRoutes ~
       algorithmRoutes ~
