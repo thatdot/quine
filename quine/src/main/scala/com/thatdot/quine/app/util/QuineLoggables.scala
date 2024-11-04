@@ -1,9 +1,9 @@
 package com.thatdot.quine.app.util
 
+import com.thatdot.quine.app.ingest2.V2IngestEntities
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.app.serialization.ConversionFailure
-import com.thatdot.quine.app.v2api.definitions.ApiCommand
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.QuineIngestConfiguration
+import com.thatdot.quine.app.v2api.definitions.{ApiCommand, ApiIngest}
 import com.thatdot.quine.routes.{IngestStreamConfiguration, SampleQuery, UiNodeAppearance}
 import com.thatdot.quine.util.Log._
 
@@ -12,9 +12,14 @@ object QuineLoggables {
   // implicit val logIngestStreamStatus : Loggable[IngestStreamStatus] = toStringLoggable[IngestStreamStatus]
   implicit val logIngestStreamConfiguration: AlwaysSafeLoggable[IngestStreamConfiguration] =
     _.toString
-  implicit val logQuineIngestConfiguration: AlwaysSafeLoggable[QuineIngestConfiguration] =
+  implicit val logQuineIngestConfigurationApi: AlwaysSafeLoggable[ApiIngest.Oss.QuineIngestConfiguration] =
     _.toString
-  // implicit val logCqlIdentifier: Loggable[com.datastax.oss.driver.api.core.CqlIdentifier] = toStringLoggable[com.datastax.oss.driver.api.core.CqlIdentifier]
+  implicit val logQuineIngestSourceApi: AlwaysSafeLoggable[ApiIngest.IngestSource] =
+    _.toString
+  implicit val logQuineIngestConfiguration: AlwaysSafeLoggable[V2IngestEntities.QuineIngestConfiguration] =
+    _.toString
+  implicit val logQuineIngestSource: AlwaysSafeLoggable[V2IngestEntities.IngestSource] =
+    _.toString
 
   implicit val logUnifiedIngestStreamConfiguration: AlwaysSafeLoggable[UnifiedIngestConfiguration] =
     _.config.fold(_.toString, _.toString)

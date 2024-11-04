@@ -1,5 +1,7 @@
 package com.thatdot.quine.app.ingest2.source
 
+import java.nio.charset.Charset
+
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -7,11 +9,12 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, RestartSource, Source, SourceWithContext}
 import org.apache.pekko.{Done, NotUsed}
 
-import cats.data.ValidatedNel
+import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, LogRecordErrorHandler, QuineIngestConfiguration}
 import com.thatdot.quine.app.ingest2.codec.FrameDecoder
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.S3Source.s3Source
@@ -19,7 +22,6 @@ import com.thatdot.quine.app.ingest2.sources.StandardInputSource.stdInSource
 import com.thatdot.quine.app.ingest2.sources._
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{LogRecordErrorHandler, QuineIngestConfiguration}
 import com.thatdot.quine.app.{ControlSwitches, ShutdownSwitch}
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
@@ -170,8 +172,180 @@ object DecodedSource extends LazySafeLogging {
     )
   }
 
-  import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
+  // build from v1 configuration
+  def apply(
+    name: String,
+    config: IngestStreamConfiguration,
+    meter: IngestMeter,
+    system: ActorSystem,
+  )(implicit
+    protobufCache: ProtobufSchemaCache,
+    logConfig: LogConfig,
+  ): ValidatedNel[BaseError, DecodedSource] = {
 
+    config match {
+      case KafkaIngest(
+            format,
+            topics,
+            _,
+            bootstrapServers,
+            groupId,
+            securityProtocol,
+            maybeExplicitCommit,
+            autoOffsetReset,
+            kafkaProperties,
+            endingOffset,
+            _,
+            recordDecoders,
+          ) =>
+        KafkaSource(
+          topics,
+          bootstrapServers,
+          groupId.getOrElse(name),
+          securityProtocol,
+          maybeExplicitCommit,
+          autoOffsetReset,
+          kafkaProperties,
+          endingOffset,
+          recordDecoders.map(ContentDecoder(_)),
+          meter,
+          system,
+        ).framedSource.map(_.toDecoded(FrameDecoder(format)))
+
+      case FileIngest(
+            format,
+            path,
+            encoding,
+            _,
+            maximumLineSize,
+            startAtOffset,
+            ingestLimit,
+            _,
+            fileIngestMode,
+          ) =>
+        FileSource.decodedSourceFromFileStream(
+          FileSource.srcFromIngest(path, fileIngestMode),
+          FileFormat(format),
+          Charset.forName(encoding),
+          maximumLineSize,
+          IngestBounds(startAtOffset, ingestLimit),
+          meter,
+          Seq(), // V1 file ingest does not define recordDecoders
+        )
+
+      case S3Ingest(
+            format,
+            bucketName,
+            key,
+            encoding,
+            _,
+            credsOpt,
+            maxLineSize,
+            startAtOffset,
+            ingestLimit,
+            _,
+          ) =>
+        S3Source(
+          FileFormat(format),
+          bucketName,
+          key,
+          credsOpt,
+          maxLineSize,
+          Charset.forName(encoding),
+          IngestBounds(startAtOffset, ingestLimit),
+          meter,
+          Seq(), // There is no compression support in the v1 configuration object.
+        )(system).decodedSource
+
+      case StandardInputIngest(
+            format,
+            encoding,
+            _,
+            maximumLineSize,
+            _,
+          ) =>
+        StandardInputSource(
+          FileFormat(format),
+          maximumLineSize,
+          Charset.forName(encoding),
+          meter,
+          Seq(),
+        ).decodedSource
+
+      case KinesisIngest(
+            streamedRecordFormat,
+            streamName,
+            shardIds,
+            _,
+            creds,
+            region,
+            iteratorType,
+            numRetries,
+            _,
+            recordEncodings,
+            _,
+          ) =>
+        KinesisSource(
+          streamName,
+          shardIds,
+          creds,
+          region,
+          iteratorType,
+          numRetries, // TODO not currently supported
+          meter,
+          recordEncodings.map(ContentDecoder(_)),
+        )(system.getDispatcher).framedSource.map(_.toDecoded(FrameDecoder(streamedRecordFormat)))
+      case NumberIteratorIngest(_, startAtOffset, ingestLimit, _, _) =>
+        Validated.valid(NumberIteratorSource(IngestBounds(startAtOffset, ingestLimit), meter).decodedSource)
+
+      case SQSIngest(
+            format,
+            queueURL,
+            readParallelism,
+            _,
+            credentialsOpt,
+            regionOpt,
+            deleteReadMessages,
+            _,
+            recordEncodings,
+          ) =>
+        SqsSource(
+          queueURL,
+          readParallelism,
+          credentialsOpt,
+          regionOpt,
+          deleteReadMessages,
+          meter,
+          recordEncodings.map(ContentDecoder(_)),
+        ).framedSource
+          .map(_.toDecoded(FrameDecoder(format)))
+
+      case ServerSentEventsIngest(
+            format,
+            url,
+            _,
+            _,
+            recordEncodings,
+          ) =>
+        ServerSentEventSource(url, meter, recordEncodings.map(ContentDecoder(_)))(system).framedSource
+          .map(_.toDecoded(FrameDecoder(format)))
+
+      case WebsocketSimpleStartupIngest(
+            format,
+            wsUrl,
+            initMessages,
+            keepAliveProtocol,
+            _,
+            encoding,
+          ) =>
+        WebsocketSource(wsUrl, initMessages, keepAliveProtocol, Charset.forName(encoding), meter)(system).framedSource
+          .map(_.toDecoded(FrameDecoder(format)))
+    }
+  }
+
+  import com.thatdot.quine.app.ingest2.V2IngestEntities._
+
+  //V2 configuration
   def apply(src: FramedSource, format: IngestFormat)(implicit
     protobufCache: ProtobufSchemaCache,
     avroCache: AvroSchemaCache,

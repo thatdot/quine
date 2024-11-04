@@ -15,13 +15,13 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
 import com.thatdot.quine.app.config.QuineConfig
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.QuineIngestConfiguration
-import com.thatdot.quine.app.v2api.endpoints.{V2IngestEntities, V2IngestSchemas}
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.{Oss, RecordDecodingType}
+import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
+import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
 import com.thatdot.quine.ingest2.ArbitraryIngests
-import com.thatdot.quine.routes.KinesisIngest.IteratorType
-import com.thatdot.quine.routes.RecordDecodingType
 import com.thatdot.quine.util.Log.LogConfig
 
 object EndpointValidationSupport {
@@ -50,7 +50,7 @@ class EndpointValidationSpec
     with Matchers
     with ScalatestRouteTest
     with ArbitraryIngests
-    with V2IngestSchemas {
+    with IngestApiSchemas {
   import EndpointValidationSupport._
   val baseUrl = "/api/v2"
 
@@ -64,7 +64,8 @@ class EndpointValidationSpec
         Seq(RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip, RecordDecodingType.Gzip),
     )
 
-    val quineIngestConfiguration: QuineIngestConfiguration = arbIngest.arbitrary.sample.get.copy(source = kinesisIngest)
+    val quineIngestConfiguration: Api.Oss.QuineIngestConfiguration =
+      arbIngest.arbitrary.sample.get.copy(source = kinesisIngest)
     // tests:
     post(url, quineIngestConfiguration) ~> routes ~> check {
 
@@ -77,14 +78,15 @@ class EndpointValidationSpec
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
     val url = s"$baseUrl/ingest/foo"
-    val kafkaIngest: V2IngestEntities.KafkaIngest = kafkaGen.sample.get.copy(kafkaProperties =
+    val kafkaIngest: Api.KafkaIngest = kafkaGen.sample.get.copy(kafkaProperties =
       Map(
         "Unrecognized.property.name" -> "anything",
         "bootstrap.servers" -> "this is an illegal field and should not be used",
       ),
     )
 
-    val quineIngestConfiguration: QuineIngestConfiguration = arbIngest.arbitrary.sample.get.copy(source = kafkaIngest)
+    val quineIngestConfiguration: Oss.QuineIngestConfiguration =
+      arbIngest.arbitrary.sample.get.copy(source = kafkaIngest)
     // tests:
     post(url, quineIngestConfiguration) ~> routes ~> check {
       status.intValue() shouldEqual 400

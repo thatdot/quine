@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.endpoints
+package com.thatdot.quine.app.ingest2
 
 import java.nio.charset.Charset
 
@@ -7,6 +7,7 @@ import scala.util.{Failure, Success, Try}
 import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.IngestRoutes.defaultNumberFormat
 import com.thatdot.quine.routes.StreamedRecordFormat.{CypherJson, CypherProtobuf, CypherRaw, Drop}
@@ -35,6 +36,7 @@ import com.thatdot.quine.routes.{
   WebsocketSimpleStartupIngest,
 }
 import com.thatdot.quine.util.Log._
+import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntities {
 
@@ -646,6 +648,99 @@ object V2IngestEntities {
             None,
           )
       }
+    }
+  }
+
+  object IngestSource {
+
+    def apply(config: UnifiedIngestConfiguration): IngestSource = config.config match {
+      case Left(v2) => v2.source
+      case Right(v1) => IngestSource(v1)
+    }
+    def apply(ingest: V1.IngestStreamConfiguration): IngestSource = ingest match {
+      case ingest: V1.KafkaIngest =>
+        KafkaIngest(
+          StreamingFormat(ingest.format),
+          ingest.topics,
+          ingest.bootstrapServers,
+          ingest.groupId,
+          ingest.securityProtocol,
+          ingest.offsetCommitting,
+          ingest.autoOffsetReset,
+          ingest.kafkaProperties,
+          ingest.endingOffset,
+          ingest.recordDecoders,
+        )
+      case ingest: V1KinesisIngest =>
+        KinesisIngest(
+          StreamingFormat(ingest.format),
+          ingest.streamName,
+          ingest.shardIds,
+          ingest.credentials,
+          ingest.region,
+          ingest.iteratorType,
+          ingest.numRetries,
+          ingest.recordDecoders,
+        )
+      case ingest: ServerSentEventsIngest =>
+        ServerSentEventIngest(
+          StreamingFormat(ingest.format),
+          ingest.url,
+          ingest.recordDecoders,
+        )
+      case ingest: V1SQSIngest =>
+        SQSIngest(
+          StreamingFormat(ingest.format),
+          ingest.queueUrl,
+          ingest.readParallelism,
+          ingest.credentials,
+          ingest.region,
+          ingest.deleteReadMessages,
+          ingest.recordDecoders,
+        )
+      case ingest: WebsocketSimpleStartupIngest =>
+        WebsocketIngest(
+          StreamingFormat(ingest.format),
+          ingest.url,
+          ingest.initMessages,
+          ingest.keepAlive,
+          Charset.forName(ingest.encoding),
+        )
+      case ingest: V1FileIngest =>
+        FileIngest(
+          FileFormat(ingest.format),
+          ingest.path,
+          ingest.fileIngestMode,
+          Some(ingest.maximumLineSize),
+          ingest.startAtOffset,
+          ingest.ingestLimit,
+          Charset.forName(ingest.encoding),
+        )
+      case ingest: V1S3Ingest =>
+        S3Ingest(
+          FileFormat(ingest.format),
+          ingest.bucket,
+          ingest.key,
+          ingest.credentials,
+          Some(ingest.maximumLineSize),
+          ingest.startAtOffset,
+          ingest.ingestLimit,
+          Charset.forName(ingest.encoding),
+        )
+      case ingest: StandardInputIngest =>
+        StdInputIngest(
+          FileFormat(ingest.format),
+          Some(ingest.maximumLineSize),
+          Charset.forName(ingest.encoding),
+        )
+      case ingest: V1NumberIteratorIngest =>
+        NumberIteratorIngest(
+          // Can't convert from a FileFormat to a StreamingFormat,
+          // but a format doesn't makes sense for NumberIteratorIngest anyway
+          StreamingFormat.RawFormat,
+          ingest.startAtOffset,
+          ingest.ingestLimit,
+        )
     }
   }
 

@@ -5,9 +5,9 @@ import scala.util.Try
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.quine.app.ingest2.V2IngestEntities.QuineIngestConfiguration
+import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.DropFormat
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.QuineIngestConfiguration
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.DropFormat
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}

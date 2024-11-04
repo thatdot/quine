@@ -15,10 +15,10 @@ import com.typesafe.scalalogging.LazyLogging
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest.NamedPipeSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat
 import com.thatdot.quine.app.ingest2.codec.{CypherStringDecoder, FrameDecoder, JsonDecoder}
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.util.BaseError
 import com.thatdot.quine.util.Log.LogConfig

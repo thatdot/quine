@@ -11,27 +11,18 @@ import org.scalatest.Assertion
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.{CsvFormat, JsonFormat}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  IngestSource,
-  QuineIngestConfiguration,
-  QuineIngestStreamWithStatus,
-  StreamingFormat,
-}
-import com.thatdot.quine.app.v2api.endpoints.{V2IngestEncoderDecoders, V2IngestEntities, V2IngestSchemas}
-import com.thatdot.quine.routes.FileIngestMode.Regular
-import com.thatdot.quine.routes.KafkaAutoOffsetReset.Latest
-import com.thatdot.quine.routes.KafkaOffsetCommitting.ExplicitCommit
-import com.thatdot.quine.routes.KafkaSecurityProtocol.Sasl_Plaintext
-import com.thatdot.quine.routes.KinesisIngest.IteratorType.AfterSequenceNumber
-import com.thatdot.quine.routes.RecordDecodingType.{Base64, Zlib}
-import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.SendMessageInterval
-import com.thatdot.quine.routes._
+import com.thatdot.quine.app.v2api.definitions.ApiIngest
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileFormat.{CsvFormat, JsonFormat}
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorType
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.RecordDecodingType._
+import com.thatdot.quine.app.v2api.definitions.ApiIngest.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.v2api.definitions.ApiIngest._
+import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
+
 class IngestCodecTest
     extends AnyFunSuite
     with ScalaCheckDrivenPropertyChecks
-    with V2IngestSchemas
+    with IngestApiSchemas
     with ArbitraryIngests {
 
   def testJsonEncodeDecode[V: Encoder: Decoder](v: V): Assertion = {
@@ -41,7 +32,7 @@ class IngestCodecTest
   }
 
   test("num ingest json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.NumberIteratorIngest(StreamingFormat.JsonFormat, 2, Some(3)))
+    testJsonEncodeDecode(NumberIteratorIngest(2, Some(3)))
   }
 
   test("csv format json encode/decode") {
@@ -51,14 +42,23 @@ class IngestCodecTest
 
   test("file json encode/decode") {
     testJsonEncodeDecode(
-      V2IngestEntities
-        .FileIngest(JsonFormat, "/a", Some(Regular), Some(10), 10, Some(20), Charset.forName("UTF-16"), Seq(Zlib)),
+      ApiIngest
+        .FileIngest(
+          JsonFormat,
+          "/a",
+          Some(FileIngestMode.Regular),
+          Some(10),
+          10,
+          Some(20),
+          Charset.forName("UTF-16"),
+          Seq(Zlib),
+        ),
     )
   }
 
   test("s3 json encode/decode") {
     testJsonEncodeDecode(
-      V2IngestEntities.S3Ingest(
+      ApiIngest.S3Ingest(
         JsonFormat,
         "bucket",
         "key",
@@ -73,16 +73,16 @@ class IngestCodecTest
   }
 
   test("stdin json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.StdInputIngest(JsonFormat, Some(10), Charset.forName("UTF-16")))
+    testJsonEncodeDecode(ApiIngest.StdInputIngest(JsonFormat, Some(10), Charset.forName("UTF-16")))
   }
 
   test("websocket json encode/decode") {
     testJsonEncodeDecode(
-      V2IngestEntities.WebsocketIngest(
+      ApiIngest.WebsocketIngest(
         StreamingFormat.JsonFormat,
         "url",
         Seq("A", "B", "C"),
-        SendMessageInterval("message", 5001),
+        WebsocketSimpleStartupIngest.SendMessageInterval("message", 5001),
         Charset.forName("UTF-16"),
       ),
     )
@@ -91,13 +91,13 @@ class IngestCodecTest
   test("kinesis json encode/decode") {
 
     testJsonEncodeDecode(
-      V2IngestEntities.KinesisIngest(
+      ApiIngest.KinesisIngest(
         StreamingFormat.JsonFormat,
         "streamName",
         Some(Set("A", "B", "C")),
         Some(AwsCredentials("A", "B")),
         Some(AwsRegion.apply("us-east-1")),
-        AfterSequenceNumber("sequenceNumber"),
+        IteratorType.AfterSequenceNumber("sequenceNumber"),
         2,
         Seq(Base64, Zlib),
       ),
@@ -105,12 +105,12 @@ class IngestCodecTest
   }
 
   test("sse json encode/decode") {
-    testJsonEncodeDecode(V2IngestEntities.ServerSentEventIngest(StreamingFormat.JsonFormat, "url", Seq(Base64, Zlib)))
+    testJsonEncodeDecode(ApiIngest.ServerSentEventIngest(StreamingFormat.JsonFormat, "url", Seq(Base64, Zlib)))
   }
 
   test("sqs json encode/decode") {
     testJsonEncodeDecode(
-      V2IngestEntities.SQSIngest(
+      ApiIngest.SQSIngest(
         StreamingFormat.JsonFormat,
         "queueUrl",
         12,
@@ -125,21 +125,21 @@ class IngestCodecTest
 
     val topics = Left(Set("topic1", "topic2"))
     val offsetCommitting = Some(
-      ExplicitCommit(
+      KafkaOffsetCommitting.ExplicitCommit(
         1001,
         10001,
         101,
         false,
       ),
     )
-    V2IngestEntities.KafkaIngest(
+    ApiIngest.KafkaIngest(
       StreamingFormat.JsonFormat,
       topics,
       "bootstrapServers",
       Some("groupId"),
-      Sasl_Plaintext,
+      KafkaSecurityProtocol.Sasl_Plaintext,
       offsetCommitting,
-      Latest,
+      KafkaAutoOffsetReset.Latest,
       Map("A" -> "B", "C" -> "D"),
       Some(2L),
       Seq(Base64, Zlib),
@@ -150,42 +150,35 @@ class IngestCodecTest
   test("file ingest") {
     val topics = Right(Map("A" -> Set(1, 2), "B" -> Set(3, 4)))
     val offsetCommitting = Some(
-      ExplicitCommit(
+      KafkaOffsetCommitting.ExplicitCommit(
         1001,
         10001,
         101,
         false,
       ),
     )
-    val kafka = V2IngestEntities.KafkaIngest(
+    val kafka = ApiIngest.KafkaIngest(
       ProtobufFormat("url", "typename"),
       topics,
       "bootstrapServers",
       Some("groupId"),
-      Sasl_Plaintext,
+      KafkaSecurityProtocol.Sasl_Plaintext,
       offsetCommitting,
-      Latest,
+      KafkaAutoOffsetReset.Latest,
       Map("A" -> "B", "C" -> "D"),
       Some(2L),
       Seq(Base64, Zlib),
     )
-    testJsonEncodeDecode(QuineIngestConfiguration(kafka, "CREATE $(that)"))
+    testJsonEncodeDecode(Oss.QuineIngestConfiguration(kafka, "CREATE $(that)"))
 
   }
 
   test("V2 Ingest configuration encode/decode") {
-    forAll { ic: QuineIngestConfiguration =>
+    forAll { ic: Oss.QuineIngestConfiguration =>
       val j: Json = ic.asJson.deepDropNullValues
-      val r: Result[V2IngestEntities.QuineIngestConfiguration] = j.as[V2IngestEntities.QuineIngestConfiguration]
+      val r: Result[Oss.QuineIngestConfiguration] = j.as[Oss.QuineIngestConfiguration]
       //Config rehydrated from json
       r.foreach(config => assert(config == ic))
-    }
-  }
-  test("Ingest Stream With Status Encoder Decoder") {
-    forAll { is: QuineIngestStreamWithStatus =>
-      val encoded = V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema.encoder(is)
-      val decoded = V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema.decoder.decodeJson(encoded)
-      assert(decoded == Right(is))
     }
   }
 

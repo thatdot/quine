@@ -337,7 +337,7 @@ object StandingQueryResultOutputUserDef {
     * a hack to work around the type checker.
     */
   @unnamed
-  @title("Internal Queue") // TODO: Keep this unpublished (or ideally, unavailable) in OpenAPI docs/REST API.
+  @title("Internal Queue")
   final case class InternalQueue() extends StandingQueryResultOutputUserDef {
     var results: AtomicReference[_] = _
 

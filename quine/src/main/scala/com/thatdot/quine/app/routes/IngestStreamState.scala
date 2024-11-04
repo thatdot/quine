@@ -8,18 +8,17 @@ import cats.data.Validated.invalidNel
 import cats.data.ValidatedNel
 
 import com.thatdot.quine.app.ingest.QuineIngestSource
+import com.thatdot.quine.app.ingest2.V2IngestEntities
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  QuineIngestConfiguration => V2IngestConfiguration,
-  QuineIngestStreamWithStatus,
-}
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{BaseError, SwitchMode}
+
+import V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration, QuineIngestStreamWithStatus}
 
 /** Store ingests allowing for either v1 or v2 types. */
 case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration]) {
@@ -174,6 +173,14 @@ trait IngestStreamState {
   )(implicit logConfig: LogConfig): Option[IngestStreamWithControl[IngestStreamConfiguration]] =
     getIngestStreamFromState(name, namespace).map(isc => isc.copy(settings = isc.settings.asV1Config))
 
+  def getV2IngestStream(
+    name: String,
+    namespace: NamespaceId,
+  )(implicit logConfig: LogConfig): Option[IngestStreamWithControl[V2IngestEntities.IngestSource]] =
+    getIngestStreamFromState(name, namespace).map(isc =>
+      isc.copy(settings = V2IngestEntities.IngestSource(isc.settings)),
+    )
+
   /** Get the unified ingest stream stored in memory. The value returned here will _not_ be a copy.
     * Note: Once v1 and v2 ingests are no longer both supported, distinguishing this method from
     * [[getIngestStream]] should no longer be necessary.
@@ -185,6 +192,7 @@ trait IngestStreamState {
     ingestStreams.getOrElse(namespace, Map.empty).get(name)
 
   def getIngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[IngestStreamConfiguration]]
+  def getV2IngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[V2IngestEntities.IngestSource]]
 
   protected def getIngestStreamsFromState(
     namespace: NamespaceId,

@@ -16,14 +16,10 @@ import org.apache.avro.generic.{GenericDatumReader, GenericRecord}
 import org.apache.avro.io.DecoderFactory
 import org.apache.commons.csv.CSVFormat
 
+import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, IngestFormat => V2IngestFormat, StreamingFormat}
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, ProtobufSchemaCache}
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{
-  FileFormat,
-  IngestFormat => V2IngestFormat,
-  StreamingFormat,
-}
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._

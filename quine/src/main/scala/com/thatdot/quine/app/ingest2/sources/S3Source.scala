@@ -13,10 +13,10 @@ import cats.data.ValidatedNel
 
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest.util.AwsOps
+import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat
 import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.routes.IngestMeter
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.BaseError
 

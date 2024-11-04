@@ -13,10 +13,10 @@ import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.should.Matchers
 
 import com.thatdot.quine.app.IngestTestGraph
+import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat.JsonFormat
 import com.thatdot.quine.app.ingest2.source.{IngestBounds, QuineValueIngestQuery}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_MAXIMUM_LINE_SIZE
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.JsonFormat
 import com.thatdot.quine.compiler.{cypher => cyComp}
 import com.thatdot.quine.graph.cypher.RunningCypherQuery
 import com.thatdot.quine.graph.{GraphService, MasterStream, cypher}

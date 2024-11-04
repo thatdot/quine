@@ -10,10 +10,21 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, Schema, path, query, statusCode}
 
-import com.thatdot.quine.app.v2api.definitions._
+import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern._
+import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries._
+import com.thatdot.quine.app.v2api.definitions.{
+  CreateSQApiCmd,
+  CreateSQOutputApiCmd,
+  CustomError,
+  DeleteSQOutputApiCmd,
+  ErrorEnvelope,
+  GetSQApiCmd,
+  ListSQsApiCmd,
+  ObjectEnvelope,
+  PropagateSQsApiCmd,
+  V2QuineEndpointDefinitions,
+}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
-import com.thatdot.quine.routes.{RegisteredStandingQuery, StandingQueryDefinition, StandingQueryResultOutputUserDef}
 
 trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
 

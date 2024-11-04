@@ -1,4 +1,4 @@
-package com.thatdot.quine.app.v2api.endpoints
+package com.thatdot.quine.app.ingest2
 
 import java.nio.charset.Charset
 
@@ -21,14 +21,14 @@ import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
+import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat.CsvFormat
+import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
+import com.thatdot.quine.app.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.serialization.EncoderDecoder
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat.CsvFormat
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.StreamingFormat.ProtobufFormat
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities._
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
 
-object V2IngestEncoderDecoders extends V2IngestSchemas {
+object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
 
   // Importing V2IngestEncoderDecoders.implicits._ imports all of the  EncoderDecoders without
   // importing anything related to Tapir Schemas
@@ -43,7 +43,7 @@ object V2IngestEncoderDecoders extends V2IngestSchemas {
   }
 }
 
-trait V2IngestSchemas extends TapirJsonCirce {
+trait V2IngestEntitySchemas extends TapirJsonCirce {
   implicit val csvCharacterSchema: Schema[CsvCharacter] = Schema.derived[CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
@@ -67,7 +67,7 @@ trait V2IngestSchemas extends TapirJsonCirce {
   implicit val charsetSchema: Schema[Charset] = charsetCodec.schema
 
   implicit val fileIngestModeSchema: Schema[FileIngestMode] =
-    Schema.derived //TODO this is a V1 object and only has endpoints4s docs
+    Schema.derived
 
   implicit lazy val kafkaSecurityProtocolSchema: Schema[KafkaSecurityProtocol] = Schema.derived
   implicit lazy val kafkaAutoOffsetResetSchema: Schema[KafkaAutoOffsetReset] = Schema.derived

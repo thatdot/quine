@@ -19,11 +19,11 @@ import cats.syntax.all._
 import com.thatdot.cypher.phases._
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
+import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
+import com.thatdot.quine.app.ingest2.{V2IngestEntities, V2IngestEntityEncoderDecoders}
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.serialization.{AvroSchemaCache, EncoderDecoder, ProtobufSchemaCache}
 import com.thatdot.quine.app.util.QuineLoggables._
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEncoderDecoders
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
@@ -71,7 +71,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
 
   import QuineApp._
 
-  import com.thatdot.quine.app.v2api.endpoints.V2IngestEncoderDecoders.implicits._
+  import com.thatdot.quine.app.ingest2.V2IngestEntityEncoderDecoders.implicits._
 
   implicit private[this] val idProvider: QuineIdProvider = graph.idProvider
 
@@ -564,6 +564,13 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
         .toMap
     else Map.empty
 
+  def getV2IngestStreams(namespace: NamespaceId): Map[String, IngestStreamWithControl[V2IngestEntities.IngestSource]] =
+    if (getNamespaces.contains(namespace))
+      getIngestStreamsFromState(namespace).view
+        .mapValues(isc => isc.copy(settings = V2IngestEntities.IngestSource(isc.settings)))
+        .toMap
+    else Map.empty
+
   protected def getIngestStreamsWithStatus(
     namespace: NamespaceId,
   ): Future[Map[IngestName, Either[IngestStreamWithStatus, QuineIngestStreamWithStatus]]] =
@@ -714,7 +721,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
       )
       .map(_.toMap)
     val v2IngestStreamFut = loadV2IngestsFromPersistor(thisMemberIdx)(
-      V2IngestEncoderDecoders.implicits.quineIngestStreamWithStatusSchema,
+      V2IngestEntityEncoderDecoders.implicits.quineIngestStreamWithStatusSchema,
       implicitly,
     )
     for {

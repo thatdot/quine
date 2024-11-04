@@ -8,11 +8,21 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Endpoint, EndpointInput, Schema, path}
 
-import com.thatdot.quine.app.v2api.definitions._
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
+import com.thatdot.quine.app.v2api.definitions.{
+  ApiIngest,
+  CreateIngestApiCmd,
+  CustomError,
+  ErrorEnvelope,
+  IngestStatusApiCmd,
+  ObjectEnvelope,
+  PauseIngestApiCmd,
+  UnpauseIngestApiCmd,
+  V2QuineEndpointDefinitions,
+}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.routes.{IngestStreamInfo, IngestStreamInfoWithName}
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas {
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas {
+
+  import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OssConversions._
 
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
     path[String]("name").description("Ingest stream name")
@@ -36,10 +46,10 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
                    |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[V2IngestConfiguration])
+    .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration])
     .post
     .serverLogic { case (memberIdx, ingestStreamName, ns, ingestStreamConfig) =>
-      runServerLogicFromEither[(String, V2IngestConfiguration, NamespaceId), Boolean](
+      runServerLogicFromEither[(String, ApiIngest.Oss.QuineIngestConfiguration, NamespaceId), Boolean](
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, ingestStreamConfig, namespaceFromParam(ns)),
@@ -47,7 +57,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       )
     }
 
-  private val pauseIngestEndpoint = ingestEndpoint[Option[IngestStreamInfoWithName]]
+  private val pauseIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
     .name("Pause Ingest Stream")
     .description("Temporarily pause processing new events by the named ingest stream.")
     .in(ingestStreamNameElement)
@@ -55,7 +65,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .put
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicFromEither[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         PauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
@@ -63,7 +73,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       )
     }
 
-  private val unpauseIngestEndpoint = ingestEndpoint[Option[IngestStreamInfoWithName]]
+  private val unpauseIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
     .name("Unpause Ingest Stream")
     .description("Resume processing new events by the named ingest stream.")
     .in(ingestStreamNameElement)
@@ -71,7 +81,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .put
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogicFromEither[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         UnpauseIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
@@ -79,7 +89,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       )
     }
 
-  private val deleteIngestEndpoint = ingestEndpoint[Option[IngestStreamInfoWithName]]
+  private val deleteIngestEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
     .name("Delete Ingest Stream")
     .description("""Immediately halt and remove the named ingest stream from Quine.
                     |
@@ -89,7 +99,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .delete
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogic[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogic[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         CreateIngestApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
@@ -97,14 +107,14 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       )
     }
 
-  private val ingestStatusEndpoint = ingestEndpoint[Option[IngestStreamInfoWithName]]
+  private val ingestStatusEndpoint = ingestEndpoint[Option[ApiIngest.IngestStreamInfoWithName]]
     .name("Ingest Stream Status")
     .description("Return the ingest stream status information for a configured ingest stream by name.")
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
     .get
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
-      runServerLogic[(String, NamespaceId), Option[IngestStreamInfoWithName]](
+      runServerLogic[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         IngestStatusApiCmd,
         memberIdx,
         (ingestStreamName, namespaceFromParam(ns)),
@@ -112,7 +122,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
       )
     }
 
-  private val listIngestEndpoint = ingestEndpoint[Map[String, IngestStreamInfo]]
+  private val listIngestEndpoint = ingestEndpoint[Map[String, ApiIngest.IngestStreamInfo]]
     .name("List Ingest Streams")
     .description(
       """Return a JSON object containing the configured [ingest streams](https://docs.quine.io/components/ingest-sources/ingest-sources.html)
@@ -121,7 +131,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with V2IngestSchemas 
     .in(namespaceParameter)
     .get
     .serverLogic { case (memberIdx, ns) =>
-      runServerLogic[NamespaceId, Map[String, IngestStreamInfo]](
+      runServerLogic[NamespaceId, Map[String, ApiIngest.IngestStreamInfo]](
         IngestStatusApiCmd,
         memberIdx,
         namespaceFromParam(ns),

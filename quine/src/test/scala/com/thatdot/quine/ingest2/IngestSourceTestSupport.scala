@@ -12,12 +12,12 @@ import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
+import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat
 import com.thatdot.quine.app.ingest2.core.DataFolderTo
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
 import com.thatdot.quine.app.ingest2.sources.FileSource.decodedSourceFromFileStream
 import com.thatdot.quine.app.ingest2.sources.{DEFAULT_CHARSET, DEFAULT_MAXIMUM_LINE_SIZE}
 import com.thatdot.quine.app.routes.IngestMetered
-import com.thatdot.quine.app.v2api.endpoints.V2IngestEntities.FileFormat
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 
