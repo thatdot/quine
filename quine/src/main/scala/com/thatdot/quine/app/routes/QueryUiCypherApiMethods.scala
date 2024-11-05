@@ -64,8 +64,8 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     )
 
     val results = res.results
-      .mapConcat(identity)
-      .map[UiNode[QuineId]] {
+      .mapConcat(identity) // this function returns all columns from all rows as 1 sequence without any grouping
+      .mapConcat[UiNode[QuineId]] {
         case CypherExpr.Node(qid, labels, properties) =>
           val nodeLabel = if (labels.nonEmpty) {
             labels.map(_.name).mkString(":")
@@ -73,14 +73,24 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
             "ID: " + qid.pretty
           }
 
-          UiNode(
-            id = qid,
-            hostIndex = hostIndex(qid),
-            label = nodeLabel,
-            properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) },
+          Some(
+            UiNode(
+              id = qid,
+              hostIndex = hostIndex(qid),
+              label = nodeLabel,
+              properties = properties.map { case (k, v) => (k.name, CypherValue.toJson(v)) },
+            ),
           )
 
+        case CypherExpr.Null =>
+          // node-typed values that are null are just ignored rather than generating an error, because they are easily
+          // introduced with eg `OPTIONAL MATCH`
+          None
+
         case other =>
+          // non-null, non-node values cannot be handled by the pre-UI post-query processing logic, so we need
+          // to drop or error on them. Since the usage contract for this functionality is "I have a query that
+          // returns nodes", we consider this case as bad user input and return an error.
           throw CypherException.TypeMismatch(
             expected = Seq(CypherType.Node),
             actualValue = other,
@@ -116,10 +126,12 @@ trait QueryUiCypherApiMethods extends LazySafeLogging {
     )
 
     val results = res.results
-      .mapConcat(identity)
-      .map[UiEdge[QuineId]] {
+      .mapConcat(identity) // this function returns all columns from all rows as 1 sequence without any grouping
+      .mapConcat[UiEdge[QuineId]] {
         case CypherExpr.Relationship(src, lbl, _, tgt) =>
-          UiEdge(from = src, to = tgt, edgeType = lbl.name)
+          Some(UiEdge(from = src, to = tgt, edgeType = lbl.name))
+
+        case CypherExpr.Null => None // possibly from OPTIONAL MATCH, see comments in [[queryCypherNodes]]
 
         case other =>
           throw CypherException.TypeMismatch(
