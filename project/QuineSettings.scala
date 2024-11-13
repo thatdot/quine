@@ -18,6 +18,10 @@ object QuineSettings {
       Seq(nodeLegacySslArg)
     else Seq()
 
+  val integrationTestTag = "com.thatdot.quine.test.tags.IntegrationTest"
+
+  lazy val Integration = config("integration").extend(Test)
+
   val commonSettings: Seq[Setting[_]] = Seq(
     organization := "com.thatdot",
     organizationName := "thatDot Inc.",
@@ -53,6 +57,7 @@ object QuineSettings {
       //Include a report at the end of a test run with details on any failed tests:
       //  use oG for full stack traces, oT for short ones
       Tests.Argument(TestFrameworks.ScalaTest, "-oT"),
+      Tests.Argument(TestFrameworks.ScalaTest, "-l", integrationTestTag),
     ),
     excludeDependencies ++= Seq(
       ExclusionRule("commons-logging", "commons-logging"),
@@ -61,6 +66,13 @@ object QuineSettings {
       "org.slf4j" % "jcl-over-slf4j" % "2.0.16",
     ),
   )
+
+  /* Settings for projects with integrationTests */
+  val integrationSettings: Seq[Setting[_]] = Seq(
+    Integration / testOptions -= Tests.Argument(TestFrameworks.ScalaTest, "-l", integrationTestTag),
+    Integration / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-n", integrationTestTag),
+  ) ++ inConfig(Integration)(Defaults.testTasks)
+
   /* Settings for building a Scala.js/React webapp using Slinky
    *
    * See the docs at <https://slinky.dev/docs/installation/>

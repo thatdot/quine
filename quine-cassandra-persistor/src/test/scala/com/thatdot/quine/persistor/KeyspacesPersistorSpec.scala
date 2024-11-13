@@ -1,13 +1,16 @@
 package com.thatdot.quine.persistor
 
+import scala.concurrent.Await
 import scala.concurrent.duration._
+
 import com.datastax.oss.driver.api.core.ConsistencyLevel
+
 import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-
-import scala.concurrent.Await
+import com.thatdot.quine.test.tags.IntegrationTest
 import com.thatdot.quine.util.Log._
 
+@IntegrationTest
 class KeyspacesPersistorSpec(implicit protected val logConfig: LogConfig) extends PersistenceAgentSpec {
 
   private val statementSettings = CassandraStatementSettings(ConsistencyLevel.LOCAL_QUORUM, 1.second)

@@ -2,24 +2,29 @@ package com.thatdot.quine.persistor
 
 import java.net.{InetSocketAddress, Socket}
 import java.time.Duration
-import scala.util.Using
-import org.apache.pekko.actor.ActorSystem
-import com.datastax.oss.driver.api.core.ConsistencyLevel
-import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
-import com.thatdot.quine.persistor.cassandra
-import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
-import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
-import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
 import scala.concurrent.Await
 import scala.jdk.CollectionConverters._
+import scala.util.Using
 import scala.util.control.NonFatal
+
+import org.apache.pekko.actor.ActorSystem
+
+import com.datastax.oss.driver.api.core.ConsistencyLevel
+import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
+import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
+
+import com.thatdot.quine.persistor.cassandra
+import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
+import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
+import com.thatdot.quine.test.tags.IntegrationTest
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
+@IntegrationTest
 class CassandraPersistorSpec()(implicit val logConfig: LogConfig) extends PersistenceAgentSpec {
 
-  val statementSettings = CassandraStatementSettings(ConsistencyLevel.ONE, 1.second)
+  val statementSettings: CassandraStatementSettings = CassandraStatementSettings(ConsistencyLevel.ONE, 1.second)
   val cassandraWrapper: CassandraInstanceWrapper[PrimeCassandraPersistor] =
     new CassandraInstanceWrapper[PrimeCassandraPersistor](inetSocketAddress =>
       Await.result(

@@ -8,7 +8,6 @@ ThisBuild / scalaVersion := scalaV
 addCommandAlias("fmtall", "; scalafmtAll; scalafmtSbt")
 addCommandAlias("fixall", "; scalafixAll; fmtall")
 
-//ThisBuild / evictionErrorLevel := Level.Warn
 ThisBuild / evictionErrorLevel := Level.Info
 
 // Core streaming graph interpreter
@@ -94,10 +93,9 @@ lazy val `quine-rocksdb-persistor`: Project = project
 
 // Cassandra implementation of a Quine persistor
 lazy val `quine-cassandra-persistor`: Project = project
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings)
-  .settings(commonSettings)
-  .dependsOn(`quine-core` % "compile->compile;it->test")
+  .configs(Integration)
+  .settings(commonSettings, integrationSettings)
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .enablePlugins(spray.boilerplate.BoilerplatePlugin)
   .settings(
     libraryDependencies ++= Seq(
@@ -109,7 +107,7 @@ lazy val `quine-cassandra-persistor`: Project = project
       // at the sbt-assembly step (because they both have the same package names internally).
       "software.aws.mcs" % "aws-sigv4-auth-cassandra-java-driver-plugin" % "4.0.9" exclude ("com.datastax.oss", "java-driver-core"),
       "software.amazon.awssdk" % "sts" % awsSdkV,
-      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % IntegrationTest,
+      "com.github.nosan" % "embedded-cassandra" % embeddedCassandraV % Test,
     ),
   )
 
