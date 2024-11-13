@@ -157,12 +157,18 @@ private[graph] class NodeActor(
 
     // Now that we have a comprehensive diff of the SQs added/removed, debug-log that diff.
     log.whenDebugEnabled {
-      // serializing DGN collections is potentially nontrivial work, so only do it when the target log level is enabled
-      log.debug(
-        safe"""Detected Standing Query changes while asleep. Removed DGN IDs:
-              |${Safe((propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
-              |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines,
-      )
+      if (
+        ((propogationDgnsToRemove: Iterable[_]) ++
+        (locallyWatchedDgnsToRemove: Iterable[_]) ++
+        (newDistinctIdSqDgns: Iterable[_])).nonEmpty
+      ) {
+        // serializing DGN collections is potentially nontrivial work, so only do it when the target log level is enabled
+        log.trace(
+          safe"""Detected Standing Query changes while asleep. Removed DGN IDs:
+                |${Safe((propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
+                |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines,
+        )
+      }
     }
 
     // TODO ensure replay related to a dgn is no-op when that dgn is absent

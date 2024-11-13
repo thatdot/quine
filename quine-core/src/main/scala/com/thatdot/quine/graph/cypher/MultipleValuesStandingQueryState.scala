@@ -111,6 +111,9 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     *       this will return results according to the properties that are passed in -- which may differ from the
     *       properties returned by `effectHandler.currentProperties`
     *
+    * INV: this returns the same rows as the last call to `effectHandler.reportUpdatedResults` made by either
+    *      `onNewSubscriptionResult` or `onNodeEvents`.
+    *
     * @param localProperties current local node properties, as seen by the ad-hoc cypher interpreter
     * @return Accumulated results at this moment.
     *         `None` when the internal state has not yet received/produced a result (e.g. still waiting for subqueries).
@@ -193,23 +196,24 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
 
   def queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQuery.UnitSq.instance.queryPartId
 
-  /** There is only one possible result. It represents a positive result with zero data. It should not be only `Nil`
-    * because it should be able to be combined with other results in `Cross` with no effect.
+  /** There is only one possible result. It represents a positive result (1 row) with no data. It should not be only
+    * `Nil` because it should be able to be combined with other results in `Cross` with no effect.
+    * Not persisted.
     */
-  private val result = Some(QueryContext.empty :: Nil)
+  private val resultGroup = Seq(QueryContext.empty)
 
   override def onInitialize(
     effectHandler: MultipleValuesStandingQueryEffects,
   ): Unit =
     // this state is more similar to an local event driven state than a subquery-driven state,
     // so we report an initial result (per the scaladoc on [[super]])
-    effectHandler.reportUpdatedResults(result.get)
+    effectHandler.reportUpdatedResults(resultGroup)
 
   /** There is only one unit query, and we don't need to do a lookup to know its value. */
   override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit =
     _query = MultipleValuesStandingQuery.UnitSq.instance
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = result
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(resultGroup)
 }
 
 /** Produce a Cartesian product from a sequence of subqueries. The subscriptions for subqueries might be emitted lazily.
@@ -224,7 +228,7 @@ final case class CrossState(
 
   type StateOf = MultipleValuesStandingQuery.Cross
 
-  /** Internally cached state accumulated by this SQ State component. */
+  /** Internally cached state accumulated by this SQ State component. Persisted. */
   val resultsAccumulator: mutable.Map[MultipleValuesStandingQueryPartId, Option[Seq[QueryContext]]] = mutable.Map.empty
 
   private def subscriptionsEmittedCount: Int = resultsAccumulator.size
@@ -438,11 +442,15 @@ final case class LocalPropertyState(
     * will duplicate the last result set reported. This is okay, as the event will be
     * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
     * the [[MultipleValuesResultsReporter]] will deduplicate it).
+    *
+    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
     */
   var valueAtLastReport: Option[Option[model.PropertyValue]] = None
 
   /** Whether we have affirmatively matched based on [[valueAtLastReport]].
     * If we haven't yet reported since registering, this is false.
+    *
+    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
     */
   var lastReportWasAMatch: Boolean = false
 
@@ -455,11 +463,10 @@ final case class LocalPropertyState(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
-    // this check can be uncommented for debugging purposes
-//    require(
-//      events.collect { case pe: PropertyEvent if pe.key == query.propKey => pe }.size <= 1,
-//      "Invariant violated: MVSQ received multiple events for the same property key in the same batch"
-//    )
+    require(
+      events.collect { case pe: PropertyEvent if pe.key == query.propKey => pe }.drop(1).isEmpty,
+      "Invariant violated: MVSQ received multiple events for the same property key in the same batch",
+    )
 
     // NB by the scaladoc on [[super]], there is only one (or zero) property event that will affect [[query.propKey]]
     val relevantChange: Option[PropertyEvent] = events.collectFirst {
@@ -539,8 +546,9 @@ final case class LocalPropertyState(
       }
       .getOrElse {
         // there was no relevant change. We only have something to do if the query wants results for null values.
-        // As an optimization, we only do this if we haven't yet reported a result.
-        if (query.propConstraint.satisfiedByNone && readResults(effectHandler.currentProperties).isEmpty) {
+        // As an optimization, we only do this if we haven't yet reported a result since waking. If this node is
+        // waking up, this may be a duplicate event, but that will be deduplicated by the subscriber / result reporter.
+        if (query.propConstraint.satisfiedByNone && valueAtLastReport.isEmpty) {
           val alwaysReportedPart: QueryContext = QueryContext.empty
           val aliasedPart: Iterable[(Symbol, Value)] = query.aliasedAs.map(_ -> Expr.Null)
           val result = Seq(alwaysReportedPart ++ aliasedPart)
@@ -566,22 +574,24 @@ final case class LocalPropertyState(
     false
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
-    if (!lastReportWasAMatch) valueAtLastReport.map(_ => Nil)
-    else {
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some {
+    val theProperty: Option[Value] =
+      localProperties
+        .get(query.propKey)
+        .map(_.deserialized.get) // Assume the value is a valid QuineValue
+        .map(Expr.fromQuineValue)
+    val currentPropertyValueMatches: Option[Boolean] = theProperty.map(query.propConstraint.apply)
+
+    val currentPropertyStateMatches: Boolean =
+      currentPropertyValueMatches.getOrElse(query.propConstraint.satisfiedByNone)
+
+    if (!currentPropertyStateMatches) Nil
+    else
       query.aliasedAs match {
-        case Some(alias) =>
-          // we know the last report was a match, so we can `get` the last reported value
-          val lastCypherValue = valueAtLastReport.get match {
-            case Some(value) =>
-              // assume the value is a QuineValue
-              value.deserialized.map(Expr.fromQuineValue).get
-            case None => Expr.Null
-          }
-          Some(Seq(QueryContext.empty + (alias -> lastCypherValue)))
-        case None => Some(Seq(QueryContext.empty))
+        case Some(alias) => Seq(QueryContext(Map(alias -> theProperty.getOrElse(Expr.Null))))
+        case None => Seq(QueryContext.empty)
       }
-    }
+  }
 }
 
 /** Returns the ID of the node receiving this. It completes immediately, always succeeds, and behaves essentially
@@ -637,6 +647,8 @@ final case class SubscribeAcrossEdgeState(
     * received from the node at `_.other` on the HalfEdge key.
     *
     * The keys in this map are always a subset of what's in the node's `EdgeCollection`.
+    *
+    * Persisted.
     */
   val edgeResults: mutable.Map[HalfEdge, Option[Seq[QueryContext]]] = mutable.Map.empty
 
@@ -702,8 +714,8 @@ final case class SubscribeAcrossEdgeState(
 
   def readResults(localProperties: Properties): Option[Seq[QueryContext]] = {
     // the result set of a SubscribeAcrossEdge is the concatenation of all the result rows
-    // from the edges that could match the query's edge (because a MVSQ should report a row
-    // for each way by which it matches)
+    // from the all edges that could match the query's edge (because a MVSQ should report a
+    // row for each way by which it matches)
     val results = edgeResults
       .collect {
         case (he @ _, Some(rows)) => rows
@@ -736,7 +748,6 @@ final case class EdgeSubscriptionReciprocalState(
   halfEdge: HalfEdge,
   andThenId: MultipleValuesStandingQueryPartId,
 ) extends MultipleValuesStandingQueryState {
-
   require(
     queryPartId != andThenId,
     """Invariant violated: EdgeSubscriptionReciprocal had a matching andThen queryPartId and [self] queryPartId.
@@ -746,12 +757,10 @@ final case class EdgeSubscriptionReciprocalState(
 
   type StateOf = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal
 
-  /** Boolean to indicate whether there is currently a locally-matching reciprocal half edge */
+  /** Boolean to indicate whether there is currently a locally-matching reciprocal half edge. Persisted */
   var currentlyMatching: Boolean = false
 
-  // TODO: Should this track whether it did previously match, and if it then _changes_ to false, then cancel itself...?
-
-  /** Saved state from `andThen` query */
+  /** Saved state from `andThen` query. Persisted. */
   var cachedResult: Option[Seq[QueryContext]] = None // Result from the `andThen` query cached here.
 
   /** The subquery to run when the reciprocal edge has been verified. */
@@ -823,6 +832,8 @@ final case class FilterMapState(
 
   type StateOf = MultipleValuesStandingQuery.FilterMap
 
+  /** The results of this query state are cached here. Persisted.
+    */
   var keptResults: Option[Seq[QueryContext]] = None
 
   override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
