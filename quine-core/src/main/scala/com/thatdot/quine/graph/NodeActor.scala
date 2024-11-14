@@ -30,7 +30,7 @@ case class NodeConstructorArgs(
 )
 
 /** The fundamental graph unit for both data storage (eg [[com.thatdot.quine.graph.NodeActor#properties()]]) and
-  * computation (as an Pekko actor).
+  * computation (as a Pekko actor).
   * At most one [[NodeActor]] exists in the actor system ([[graph.system]]) per node per moment in
   * time (see [[atTime]]).
   *
@@ -45,7 +45,7 @@ case class NodeConstructorArgs(
   */
 private[graph] class NodeActor(
   qidAtTime: SpaceTimeQuineId,
-  graph: StandingQueryOpsGraph with CypherOpsGraph,
+  graph: QuinePatternOpsGraph with StandingQueryOpsGraph with CypherOpsGraph,
   costToSleep: CostToSleep,
   wakefulState: AtomicReference[WakefulState],
   actorRefLock: StampedLock,
@@ -84,10 +84,7 @@ private[graph] class NodeActor(
     case msg =>
       if (msg.isInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]) {
         val rp = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]
-        updateQuinePatternOnNode(rp.quinePattern, rp.pid, Some(rp.reportTo))
-      } else if (msg.isInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]) {
-        val pr = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.NewResults]
-        publishResults(pr.pid, pr.results)
+        updateQuinePatternOnNode(rp.quinePattern, rp.pid, rp.queryStream)
       } else {
         log.error(log"Node received an unknown message (from ${sender()}): ${msg.toString}")
       }

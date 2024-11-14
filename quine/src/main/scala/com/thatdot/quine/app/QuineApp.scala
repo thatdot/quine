@@ -16,7 +16,6 @@ import cats.data.{Validated, ValidatedNel}
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 
-import com.thatdot.cypher.phases._
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
@@ -30,7 +29,7 @@ import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.StandingQueryPattern.{
   DomainGraphNodeStandingQueryPattern,
   MultipleValuesQueryPattern,
-  QuinePatternQueryPattern,
+  //QuinePatternQueryPattern,
 }
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.{
@@ -207,14 +206,7 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                 case StandingQueryMode.QuinePattern =>
                   val isEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
                   if (isEnabled) {
-                    import com.thatdot.language.phases.UpgradeModule._
-
-                    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen ProgramPhase
-                    val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
-                    val qp = com.thatdot.quine.graph.cypher.Compiler.compile(result.get, state.symbolTable)
-                    val qpPattern =
-                      QuinePatternQueryPattern(qp, query.includeCancellations, PatternOrigin.QuinePatternOrigin)
-                    (qpPattern, None)
+                    sys.error("Oops, broke")
                   } else {
                     sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
                   }
@@ -422,6 +414,25 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
     shouldSaveMetadata: Boolean = true,
     memberIdx: Option[MemberIdx] = Some(thisMemberIdx),
   ): Try[Boolean] = failIfNoNamespace(intoNamespace) {
+
+    val isQPEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
+
+    settings match {
+      case fileIngest: FileIngest =>
+        fileIngest.format match {
+          case _: FileIngestFormat.QuinePatternLine =>
+            if (!isQPEnabled) {
+              sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
+            }
+          case _: FileIngestFormat.QuinePatternJson =>
+            if (!isQPEnabled) {
+              sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
+            }
+          case _ => logger.trace(safe"Not using QuinePattern")
+        }
+      case _ => logger.trace(safe"Not using QuinePattern")
+    }
+
     blocking(ingestStreamsLock.synchronized {
       ingestStreams.get(intoNamespace) match {
         case None => Success(false)

@@ -42,7 +42,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
   SqStateResult,
   SqStateResults,
 }
-import com.thatdot.quine.graph.messaging.{BaseMessage, QuineIdOps, QuineRefOps, SpaceTimeQuineId}
+import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
@@ -74,7 +74,7 @@ import com.thatdot.quine.util.Log.implicits._
   */
 abstract private[graph] class AbstractNodeActor(
   val qidAtTime: SpaceTimeQuineId,
-  val graph: StandingQueryOpsGraph with CypherOpsGraph,
+  val graph: QuinePatternOpsGraph with StandingQueryOpsGraph with CypherOpsGraph,
   costToSleep: CostToSleep,
   protected val wakefulState: AtomicReference[WakefulState],
   protected val actorRefLock: StampedLock,
@@ -274,12 +274,6 @@ abstract private[graph] class AbstractNodeActor(
     events: List[EdgeEvent],
   ): Future[Done.type] =
     edgeEvents(events, None)
-      .flatMap(_ =>
-        Future.traverse[HalfEdge => Unit, Unit, Iterable](edgePatterns.values)(f =>
-          Future.apply(events.foreach(e => f(e.edge)))(ExecutionContext.parasitic),
-        )(implicitly, ExecutionContext.parasitic),
-      )(ExecutionContext.parasitic)
-      .map(_ => BaseMessage.Done)(ExecutionContext.parasitic)
 
   protected def processEdgeEvent(
     event: EdgeEvent,
@@ -419,7 +413,6 @@ abstract private[graph] class AbstractNodeActor(
       }
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
-      selfPatterns.foreach(p => p._2())
     case PropertyRemoved(key, _) =>
       metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)
       properties = properties - key

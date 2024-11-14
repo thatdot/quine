@@ -165,7 +165,7 @@ abstract class IngestSrcDef(
   def sourceWithShutdown(): Source[TryDeserialized, ShutdownSwitch]
 
   /** MaxPerSecond rate limiting. */
-  def throttle[A](): Flow[A, A, NotUsed] = throttle[A](graph, maxPerSecond)
+  def throttle[B](): Flow[B, B, NotUsed] = throttle[B](graph, maxPerSecond)
     .via(graph.ingestThrottleFlow)
 
   /** Default no-op implementation */
@@ -227,7 +227,7 @@ abstract class IngestSrcDef(
 }
 
 /** Define an ingest from a the definition of a Source of InputType. */
-abstract class RawValuesIngestSrcDef(
+abstract class RawValuesIngestSrcDef[A](
   format: ImportFormat,
   initialSwitchMode: SwitchMode,
   parallelism: Int,

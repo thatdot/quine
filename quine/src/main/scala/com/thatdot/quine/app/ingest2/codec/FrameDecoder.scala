@@ -16,6 +16,7 @@ import org.apache.avro.generic.{GenericDatumReader, GenericRecord}
 import org.apache.avro.io.DecoderFactory
 import org.apache.commons.csv.CSVFormat
 
+import com.thatdot.language.ast
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, IngestFormat => V2IngestFormat, StreamingFormat}
 import com.thatdot.quine.app.ingest2.core.{DataFoldableFrom, DataFolderTo}
 import com.thatdot.quine.app.ingest2.sources.DEFAULT_CHARSET
@@ -24,6 +25,7 @@ import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.routes._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
+
 trait FrameDecoder[A] {
   val foldable: DataFoldableFrom[A]
 
@@ -35,6 +37,26 @@ object CypherStringDecoder extends FrameDecoder[cypher.Value] {
 
   def decode(bytes: Array[Byte]): Try[cypher.Value] =
     Success(cypher.Expr.Str(new String(bytes, StandardCharsets.UTF_8)))
+}
+
+object QuinePatternStringDecoder extends FrameDecoder[ast.Value] {
+  val foldable: DataFoldableFrom[com.thatdot.language.ast.Value] = new DataFoldableFrom[ast.Value] {
+    override def fold[B](value: ast.Value, folder: DataFolderTo[B]): B =
+      value match {
+        case ast.Value.Null => folder.nullValue
+        case ast.Value.True => folder.trueValue
+        case ast.Value.False => folder.falseValue
+        case ast.Value.Integer(n) => folder.integer(n)
+        case ast.Value.Real(d) => folder.floating(d)
+        case ast.Value.Text(str) => folder.string(str)
+        case ast.Value.DateTime(zdt) => folder.zonedDateTime(zdt)
+        case ast.Value.List(values) => ???
+        case ast.Value.Map(values) => ???
+      }
+  }
+
+  def decode(bytes: Array[Byte]): Try[com.thatdot.language.ast.Value] =
+    Success(ast.Value.Text(new String(bytes, StandardCharsets.UTF_8)))
 }
 
 object StringDecoder extends FrameDecoder[String] {
@@ -208,7 +230,9 @@ object FrameDecoder {
   def apply(v1Format: FileIngestFormat): FrameDecoder[_] =
     v1Format match {
       case FileIngestFormat.CypherLine(_, _) => CypherStringDecoder
+      case FileIngestFormat.QuinePatternLine(_, _) => QuinePatternStringDecoder
       case FileIngestFormat.CypherJson(_, _) => JsonDecoder
+      case FileIngestFormat.QuinePatternJson(_, _) => JsonDecoder
       case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quote, escape) =>
         headers match {
           case Left(false) => CsvVecDecoder(delimiter.byte.toChar, quote.byte.toChar, escape.byte.toChar) // no headers

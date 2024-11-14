@@ -394,7 +394,9 @@ object V2IngestEntities {
 
     def apply(v1Format: FileIngestFormat): FileFormat = v1Format match {
       case FileIngestFormat.CypherLine(_, _) => LineFormat
+      case FileIngestFormat.QuinePatternLine(_, _) => ???
       case FileIngestFormat.CypherJson(_, _) => JsonFormat
+      case FileIngestFormat.QuinePatternJson(_, _) => JsonFormat
       case FileIngestFormat.CypherCsv(_, _, headers, delimiter, quoteChar, escapeChar) =>
         CsvFormat(headers, delimiter, quoteChar, escapeChar)
     }

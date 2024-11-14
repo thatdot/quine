@@ -8,15 +8,17 @@ import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
 import org.apache.pekko.util.ByteString
 
 import com.thatdot.quine.app.ingest.serialization.{
-  CypherImportFormat,
   CypherJsonInputFormat,
   CypherRawInputFormat,
   CypherStringInputFormat,
+  ImportFormat,
+  QuinePatternJsonInputFormat,
+  QuinePatternStringInputFormat,
 }
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
-import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine}
+import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine, QuinePatternJson, QuinePatternLine}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
@@ -24,7 +26,7 @@ import com.thatdot.quine.util.SwitchMode
   */
 abstract class ContentDelimitedIngestSrcDef(
   initialSwitchMode: SwitchMode,
-  format: CypherImportFormat,
+  format: ImportFormat,
   src: Source[ByteString, NotUsed],
   encodingString: String,
   parallelism: Int,
@@ -46,9 +48,9 @@ abstract class ContentDelimitedIngestSrcDef(
 
 /** Ingest source runtime that delimits its records by newline characters in the input stream
   */
-abstract class LineDelimitedIngestSrcDef(
+abstract class LineDelimitedIngestSrcDef[A](
   initialSwitchMode: SwitchMode,
-  format: CypherImportFormat,
+  format: ImportFormat,
   src: Source[ByteString, NotUsed],
   encodingString: String,
   parallelism: Int,
@@ -172,7 +174,7 @@ case class StringIngestSrcDef(
   override val name: String,
   override val intoNamespace: NamespaceId,
 )(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
-    extends LineDelimitedIngestSrcDef(
+    extends LineDelimitedIngestSrcDef[cypher.Value](
       initialSwitchMode,
       format,
       src,
@@ -191,6 +193,39 @@ case class StringIngestSrcDef(
     .via(newLineDelimited)
     .via(bounded)
 
+}
+
+case class QPStringIngestSrcDef(
+  initialSwitchMode: SwitchMode,
+  format: QuinePatternStringInputFormat,
+  src: Source[ByteString, NotUsed],
+  encodingString: String,
+  parallelism: Int,
+  maximumLineSize: Int,
+  startAtOffset: Long,
+  ingestLimit: Option[Long],
+  maxPerSecond: Option[Int],
+  override val name: String,
+  override val intoNamespace: NamespaceId,
+)(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
+    extends LineDelimitedIngestSrcDef(
+      initialSwitchMode,
+      format,
+      src,
+      encodingString,
+      parallelism,
+      maximumLineSize,
+      startAtOffset,
+      ingestLimit,
+      maxPerSecond,
+      name,
+      intoNamespace,
+    ) {
+
+  def source(): Source[ByteString, NotUsed] = src
+    .via(transcode)
+    .via(newLineDelimited)
+    .via(bounded)
 }
 
 case class JsonLinesIngestSrcDef(
@@ -229,9 +264,43 @@ case class JsonLinesIngestSrcDef(
 
 }
 
+case class QPJsonLinesIngestSrcDef(
+  initialSwitchMode: SwitchMode,
+  format: QuinePatternJsonInputFormat,
+  src: Source[ByteString, NotUsed],
+  encodingString: String,
+  parallelism: Int,
+  maximumLineSize: Int,
+  startAtOffset: Long,
+  ingestLimit: Option[Long],
+  maxPerSecond: Option[Int],
+  override val name: String,
+  override val intoNamespace: NamespaceId,
+)(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
+    extends LineDelimitedIngestSrcDef(
+      initialSwitchMode,
+      format,
+      src,
+      encodingString,
+      parallelism,
+      maximumLineSize,
+      startAtOffset,
+      ingestLimit,
+      maxPerSecond,
+      name,
+      intoNamespace,
+    ) {
+  def source(): Source[ByteString, NotUsed] = src
+    .via(transcode)
+    .via(newLineDelimited)
+    .via(bounded)
+
+  override def rawBytes(value: ByteString): Array[Byte] = value.toArray
+}
+
 object ContentDelimitedIngestSrcDef {
 
-  def apply(
+  def apply[A](
     initialSwitchMode: SwitchMode,
     format: FileIngestFormat,
     src: Source[ByteString, NotUsed],
@@ -259,6 +328,20 @@ object ContentDelimitedIngestSrcDef {
           name,
           intoNamespace,
         )
+      case QuinePatternLine(query, parameter) =>
+        QPStringIngestSrcDef(
+          initialSwitchMode,
+          new QuinePatternStringInputFormat(query, parameter, encodingString),
+          src,
+          encodingString,
+          parallelism,
+          maximumLineSize,
+          startAtOffset,
+          ingestLimit,
+          maxPerSecond,
+          name,
+          intoNamespace,
+        )
       case CypherJson(query, parameter) =>
         JsonLinesIngestSrcDef(
           initialSwitchMode,
@@ -273,7 +356,20 @@ object ContentDelimitedIngestSrcDef {
           name,
           intoNamespace,
         )
-
+      case QuinePatternJson(query, parameter) =>
+        QPJsonLinesIngestSrcDef(
+          initialSwitchMode,
+          new QuinePatternJsonInputFormat(query, parameter),
+          src,
+          encodingString,
+          parallelism,
+          maximumLineSize,
+          startAtOffset,
+          ingestLimit,
+          maxPerSecond,
+          name,
+          intoNamespace,
+        )
       case cv @ CypherCsv(_, _, _, _, _, _) =>
         CsvIngestSrcDef(
           initialSwitchMode,

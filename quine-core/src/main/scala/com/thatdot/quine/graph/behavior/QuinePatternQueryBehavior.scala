@@ -1,20 +1,39 @@
 package com.thatdot.quine.graph.behavior
 
-import org.apache.pekko.actor.Actor
+import scala.concurrent.Promise
 
-import com.thatdot.quine.graph.cypher.{BinOp, Expr, QueryContext, QuinePattern}
+import org.apache.pekko.NotUsed
+import org.apache.pekko.actor.Actor
+import org.apache.pekko.stream.scaladsl.{BroadcastHub, Flow, Keep, Source}
+
+import com.thatdot.quine.graph.cypher.{QueryContext, QuinePattern}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
-import com.thatdot.quine.graph.{BaseNodeActor, RunningStandingQuery, StandingQueryId, StandingQueryPattern}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId, QuineValue}
+import com.thatdot.quine.graph.{
+  BaseNodeActor,
+  QuinePatternLoaderMessage,
+  QuinePatternOpsGraph,
+  RunningStandingQuery,
+  StandingQueryId,
+  StandingQueryOpsGraph,
+  StandingQueryPattern,
+}
 
 object ExampleMessages {
   sealed trait QuinePatternMessages extends QuineMessage
 
   object QuinePatternMessages {
-    case class RegisterPattern(quinePattern: QuinePattern, pid: StandingQueryId, reportTo: QuineId)
-        extends QuinePatternMessages
+    case class RegisterPattern(
+      quinePattern: QuinePattern,
+      pid: StandingQueryId,
+      queryStream: Source[QueryContext, NotUsed],
+    ) extends QuinePatternMessages
 
-    case class NewResults(results: List[QueryContext], pid: StandingQueryId) extends QuinePatternMessages
+    case class RunPattern(
+      pid: StandingQueryId,
+      quinePattern: QuinePattern,
+      currentEnv: QueryContext,
+      result: Promise[QueryContext],
+    ) extends QuinePatternMessages
   }
 }
 
@@ -25,157 +44,42 @@ trait QuinePatternQueryBehavior
     with QuineRefOps
     with StandingQueryBehavior {
 
-  var output: Map[StandingQueryId, List[QueryContext]] = Map.empty
+  protected def graph: QuinePatternOpsGraph with StandingQueryOpsGraph
 
-  var selfPatterns: Map[StandingQueryId, () => Unit] = Map.empty
-  var edgePatterns: Map[StandingQueryId, HalfEdge => Unit] = Map.empty
-  var resultPatterns: Map[StandingQueryId, List[QueryContext] => Unit] = Map.empty
-
-  case class Effects(
-    selfEffect: Map[StandingQueryId, () => Unit],
-    edgeEffect: Map[StandingQueryId, HalfEdge => Unit],
-    resultEffect: Map[StandingQueryId, List[QueryContext] => Unit],
-  )
-
-  def publishResults(id: StandingQueryId, results: List[QueryContext]): Unit =
-    resultPatterns.get(id).foreach(f => f(results))
-
-  def patternToEffect(qp: QuinePattern, id: StandingQueryId, sendTo: Option[QuineId]): Effects = {
+  private def patternToEffect(
+    qp: QuinePattern,
+    id: StandingQueryId,
+    outputStream: Source[QueryContext, NotUsed],
+  ): Source[QueryContext, NotUsed] =
     qp match {
-      case QuinePattern.QuineUnit =>
-        Effects(
-          selfEffect = Map(id -> (() => publishResults(id, List.empty[QueryContext]))),
-          edgeEffect = Map(),
-          resultEffect = Map(),
-        )
-      case QuinePattern.Node(name) =>
-        Effects(
-          selfEffect = Map(id -> (() => {
-            val propMap: Iterable[(String, QuineValue)] =
-              properties.map(p => p._1.name -> p._2.deserialized.get)
-            val qv: QuineValue = QuineValue.Map.apply(propMap)
-            val result = List(QueryContext.empty + (name.name -> Expr.fromQuineValue(qv)))
-            publishResults(id, result)
-          })),
-          edgeEffect = Map(),
-          resultEffect = Map(),
-        )
-      case QuinePattern.Edge(edge, pattern) =>
-        Effects(
-          selfEffect = Map(),
-          edgeEffect = Map(id -> (he => {
-            he.direction match {
-              case EdgeDirection.Outgoing =>
-                if (he.edgeType == edge) {
-                  he.other ! ExampleMessages.QuinePatternMessages.RegisterPattern(pattern, id, this.qid)
-                }
-              case EdgeDirection.Incoming => ()
-              case EdgeDirection.Undirected => ()
-            }
-          })),
-          resultEffect = Map(),
-        )
-      case QuinePattern.Fold(init, over, f, _) =>
-        val binOpEffect = (results: List[QueryContext]) => {
-          val ids = (0 to over.size).map(n => StandingQueryId.fresh())
-          val result = f match {
-            case BinOp.Merge =>
-              ids.foldRight(List.empty[QueryContext]) { (rid, fresult) =>
-                val previous = output.getOrElse(rid, List.empty[QueryContext])
-                if (previous.isEmpty) {
-                  fresult
-                } else if (fresult.isEmpty) {
-                  previous
-                } else {
-                  for {
-                    lr <- previous
-                    rr <- fresult
-                  } yield lr ++ rr
-                }
-              }
-            case BinOp.Append =>
-              ids.foldRight(List.empty[QueryContext]) { (rid, fresult) =>
-                output.getOrElse(rid, List.empty[QueryContext]) ++ fresult
-              }
-          }
-          val prevResult = output.getOrElse(id, List.empty[QueryContext])
-          println("**************************************")
-          println(s"Triggering binop $id on ${this.qid} for pattern $qp")
-          println(s"Here are the part ids: $ids")
-          println(s"Here's the local cache: $output")
-          println(s"Old results were $prevResult")
-          println(s"New results are $result")
-          println("**************************************")
-          if (result != prevResult) {
-            output += (id -> result)
-            sendTo match {
-              case Some(subscriberId) => subscriberId ! ExampleMessages.QuinePatternMessages.NewResults(result, id)
-              case None => ()
-            }
-          }
+      case QuinePattern.QuineUnit => outputStream
+      case node: QuinePattern.Node =>
+        outputStream.via(Flow[QueryContext].mapAsync(1) { qc =>
+          val resultPromise = Promise[QueryContext]()
+
+          self ! ExampleMessages.QuinePatternMessages.RunPattern(id, node, qc, resultPromise)
+
+          resultPromise.future
+        })
+      case edge: QuinePattern.Edge =>
+        val broadcastHub = BroadcastHub.sink[QueryContext]
+        val newSrc = outputStream.toMat(broadcastHub)(Keep.right).run()
+        this.edges.matching(edge.edgeLabel).toList.foreach { he =>
+          he.other ! ExampleMessages.QuinePatternMessages.RegisterPattern(edge.remotePattern, id, newSrc)
         }
-        val initId = StandingQueryId.fresh()
-        val initEffect = patternToEffect(init, initId, None)
-        val initResultsEffect = (results: List[QueryContext]) => {
-          val prevResult = output.getOrElse(initId, List.empty[QueryContext])
-          if (results != prevResult) {
-            output += initId -> results
-            publishResults(id, results)
-          }
+        newSrc
+      case fold: QuinePattern.Fold =>
+        val initSrc = patternToEffect(fold.init, id, outputStream)
+        fold.over.foldLeft(initSrc) { (stream, pattern) =>
+          patternToEffect(pattern, id, stream)
         }
-        val overEffects = over.zipWithIndex.map { case (qp, _) =>
-          val effectId = StandingQueryId.fresh()
-          val effect = patternToEffect(qp, effectId, None)
-          val resultEffectFunc = (results: List[QueryContext]) => {
-            val prevResult = output.getOrElse(effectId, List.empty[QueryContext])
-            val newResult = results
-            if (newResult != prevResult) {
-              output += (effectId -> newResult)
-              publishResults(id, newResult)
-            }
-          }
-          val finalResultEffect = effect.resultEffect.get(effectId) match {
-            case Some(oldEffect) =>
-              (results: List[QueryContext]) => {
-                oldEffect(results)
-                val prevResult = output.getOrElse(effectId, List.empty[QueryContext])
-                val newResult = results
-                if (newResult != prevResult) {
-                  output += (effectId -> newResult)
-                  publishResults(id, newResult)
-                }
-              }
-            case None => resultEffectFunc
-          }
-          Effects(
-            selfEffect = effect.selfEffect,
-            edgeEffect = effect.edgeEffect,
-            resultEffect = effect.resultEffect + (effectId -> finalResultEffect),
-          )
-        }
-        val combinedOverEffects = overEffects.foldLeft(Effects(Map(), Map(), Map())) { (b, a) =>
-          Effects(
-            selfEffect = b.selfEffect ++ a.selfEffect,
-            edgeEffect = b.edgeEffect ++ a.edgeEffect,
-            resultEffect = b.resultEffect ++ a.resultEffect,
-          )
-        }
-        Effects(
-          selfEffect = initEffect.selfEffect ++ combinedOverEffects.selfEffect,
-          edgeEffect = initEffect.edgeEffect ++ combinedOverEffects.edgeEffect,
-          resultEffect =
-            ((initEffect.resultEffect ++ combinedOverEffects.resultEffect) + (initId -> initResultsEffect)) + (id -> binOpEffect),
-        )
     }
-  }
 
-  def updateQuinePatternOnNode(qp: QuinePattern, id: StandingQueryId, sendTo: Option[QuineId] = None): Unit = {
-    val effect = patternToEffect(qp, id, sendTo)
-
-    selfPatterns = selfPatterns ++ effect.selfEffect
-    edgePatterns = edgePatterns ++ effect.edgeEffect
-    resultPatterns = resultPatterns ++ effect.resultEffect
-  }
+  def updateQuinePatternOnNode(
+    qp: QuinePattern,
+    id: StandingQueryId,
+    outputStream: Source[QueryContext, NotUsed],
+  ): Unit = graph.getLoader ! QuinePatternLoaderMessage.MergeQueryStream(id, patternToEffect(qp, id, outputStream))
 
   def updateQuinePatternsOnNode(): Unit = {
     val runningStandingQueries = // Silently empty if namespace is absent.
@@ -187,7 +91,6 @@ trait QuinePatternQueryBehavior
         case qp: StandingQueryPattern.QuinePatternQueryPattern => Some(qp.quinePattern)
         case _ => None
       }
-    } updateQuinePatternOnNode(query, sqId, None)
+    } updateQuinePatternOnNode(query, sqId, Source.empty[QueryContext])
   }
-
 }

@@ -751,6 +751,16 @@ object FileIngestFormat {
     @docs("name of the Cypher parameter holding the string line value") parameter: String = "that",
   ) extends FileIngestFormat
 
+  @title("QuinePatternLine")
+  @unnamed()
+  @docs("""TODO add some docs here
+      |
+      |""".stripMargin.replace('\n', ' '))
+  final case class QuinePatternLine(
+    @docs("QuinePattern query to execute on each line") query: String,
+    @docs("name of the QuinePattern parameter holding the string line value") parameter: String = "that",
+  ) extends FileIngestFormat
+
   /** Create using a cypher query, expecting each line to be a JSON record */
   @title("CypherJson")
   @unnamed()
@@ -761,6 +771,15 @@ object FileIngestFormat {
   final case class CypherJson(
     @docs("Cypher query to execute on each record") query: String,
     @docs("name of the Cypher parameter holding the JSON value") parameter: String = "that",
+  ) extends FileIngestFormat
+
+  @title("CypherJson")
+  @unnamed()
+  @docs("""|TODO Add some docs here
+  """.stripMargin.replace('\n', ' '))
+  final case class QuinePatternJson(
+    @docs("QuinePAttern query to execute on each record") query: String,
+    @docs("name of the QuinePattern parameter holding the JSON value") parameter: String = "that",
   ) extends FileIngestFormat
 
   /** Create using a cypher query, expecting each line to be a single row CSV record */
