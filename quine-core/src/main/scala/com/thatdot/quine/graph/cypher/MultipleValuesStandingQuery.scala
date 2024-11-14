@@ -8,7 +8,7 @@ import com.google.common.hash.Hashing.murmur3_128
 
 import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineValue}
-import com.thatdot.quine.util.Hashable
+import com.thatdot.quine.util.{Funnels, Hashing}
 
 /** AST for a `MultipleValues` standing query */
 sealed abstract class MultipleValuesStandingQuery extends Product with Serializable {
@@ -31,9 +31,10 @@ sealed abstract class MultipleValuesStandingQuery extends Product with Serializa
     *       is structural, not by reference). In order to maximize sharing of standing query state, it is
     *       also desirable that `q1 == q2 implies `q1.queryPartId == q2.queryPartId` whenever possible.
     */
-  final val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId(
-    MultipleValuesStandingQuery.hashable.hashToUuid(murmur3_128, this),
-  )
+  final val queryPartId: MultipleValuesStandingQueryPartId = MultipleValuesStandingQueryPartId {
+    import Funnels.MultipleValuesFunnels._
+    Hashing.hashToUuid(murmur3_128, this).get // `get` is safe because murmur3_128 is >= 128 bits, so valid for a UUID
+  }
 
   /** Direct children of this query
     *
@@ -316,6 +317,4 @@ object MultipleValuesStandingQuery {
     else if (acc.contains(sq)) acc
     // otherwise, traverse
     else sq.children.foldLeft(acc + sq)((acc, child) => indexableSubqueries(child, acc))
-
-  val hashable: Hashable[MultipleValuesStandingQuery] = Hashable[MultipleValuesStandingQuery]
 }

@@ -9,10 +9,11 @@ import java.util.Base64
 import scala.annotation.nowarn
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.Try
+import scala.util.chaining.scalaUtilChainingOps
 import scala.util.hashing.MurmurHash3
 
 import cats.implicits._
-import com.google.common.hash.{HashCode, Hasher, Hashing}
+import com.google.common.hash.{HashCode, Hashing, PrimitiveSink}
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
@@ -71,6 +72,22 @@ sealed abstract class Expr {
     * expression will have no [[Expr.Parameter]] AST nodes remaining in the tree
     */
   def substitute(parameters: ScalaMap[Expr.Parameter, Value]): Expr
+
+  /** Hash of the value, using Guava's implementation of 128-bit murmur3 hash.
+    *
+    * @return 128-bit hash code
+    */
+  final def hash: HashCode =
+    Hashing.murmur3_128().newHasher().tap(addToHasher).hash()
+
+  /** @see [[hash]]
+    *
+    * This should be stable across product versions and JVMs, including dependency updates.
+    *
+    * Assumes that [[String.hashCode]] and [[java.time.ZoneId.hashCode]] are stable across JVM
+    * instances and versions
+    */
+  def addToHasher(hasher: PrimitiveSink): PrimitiveSink
 }
 
 /** TODO: missing values supported by Neo4j (but not required by openCypher)
@@ -151,7 +168,7 @@ object Expr {
   final case class Str(string: String) extends PropertyValue {
     override def typ = Type.Str
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Str".hashCode)
         .putString(string, StandardCharsets.UTF_8)
@@ -296,7 +313,7 @@ object Expr {
 
     def typ = Type.Integer
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Long".hashCode)
         .putLong(long)
@@ -372,7 +389,7 @@ object Expr {
 
     def typ = Type.Floating
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Double".hashCode)
         .putDouble(double)
@@ -415,9 +432,7 @@ object Expr {
 
     override val typ = Type.Bool
 
-    override val hash: HashCode = super.hash
-
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher.putInt("True".hashCode)
 
     override def negate = False
@@ -430,9 +445,7 @@ object Expr {
 
     override val typ = Type.Bool
 
-    override val hash: HashCode = super.hash
-
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher.putInt("False".hashCode)
 
     override def negate = True
@@ -451,9 +464,7 @@ object Expr {
 
     override val typ = Type.Null
 
-    override val hash: HashCode = super.hash
-
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher.putInt("Null".hashCode)
 
     override def +(_other: Number) = Null.asRight
@@ -495,7 +506,7 @@ object Expr {
 
     def typ = Type.Bytes
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Bytes".hashCode)
         .putBytes(b)
@@ -519,7 +530,7 @@ object Expr {
     def typ = Type.Node
 
     // TODO: should we hash the labels/properties?
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Node".hashCode)
         .putBytes(id.array)
@@ -543,7 +554,7 @@ object Expr {
     def typ = Type.Relationship
 
     // TODO: should we hash the properties? re-visit this with edge properties
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Relationship".hashCode)
         .putBytes(start.array)
@@ -567,7 +578,7 @@ object Expr {
 
     def typ = Type.ListOfAnything
 
-    def addToHasher(hasher: Hasher): Hasher = {
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = {
       hasher
         .putInt("List".hashCode)
         .putInt(list.length)
@@ -590,7 +601,7 @@ object Expr {
   final case class Map private (map: SortedMap[String, Value]) extends PropertyValue {
     def typ = Type.Map
 
-    def addToHasher(hasher: Hasher): Hasher = {
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = {
       hasher
         .putInt("Map".hashCode)
         .putInt(map.size)
@@ -602,9 +613,16 @@ object Expr {
     }
   }
   object Map {
-    def apply(entries: IterableOnce[(String, Value)]): Map = new Map(SortedMap.from(entries))
-    def apply(entries: (String, Value)*): Map = new Map(SortedMap.from(entries))
-    val empty: Map = new Map(SortedMap.empty)
+
+    /** The ordering used for constructing the SortedMap. Changing this ordering will break hash functions
+      * over Maps, including MultipleValues query part IDs and `idFrom`. Note that a different ordering,
+      * [[Value.sortedMapEntryOrdering]], is used for comparisons and ORDER BY within the query language
+      */
+    val keyOrdering: Ordering[String] = catsKernelOrderingForOrder(catsKernelStdOrderForString)
+
+    def apply(entries: IterableOnce[(String, Value)]): Map = new Map(SortedMap.from(entries)(keyOrdering))
+    def apply(entries: (String, Value)*): Map = new Map(SortedMap.from(entries)(keyOrdering))
+    val empty: Map = new Map(SortedMap.empty(keyOrdering))
   }
 
   /** A cypher path - a linear sequence of alternating nodes and edges
@@ -624,7 +642,7 @@ object Expr {
       r.isPure && n.isPure
     }
 
-    def addToHasher(hasher: Hasher): Hasher = {
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = {
       hasher
         .putInt("Path".hashCode)
         .putInt(tails.length)
@@ -650,7 +668,7 @@ object Expr {
 
     def typ = Type.LocalDateTime
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("LocalDateTime".hashCode)
         .putLong(localDateTime.toLocalDate.toEpochDay)
@@ -666,7 +684,7 @@ object Expr {
 
     def typ = Type.Date
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Date".hashCode)
         .putLong(date.toEpochDay)
@@ -681,7 +699,7 @@ object Expr {
 
     def typ = Type.Time
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Time".hashCode)
         .putLong(time.toLocalTime.toNanoOfDay)
@@ -697,7 +715,7 @@ object Expr {
 
     def typ = Type.LocalTime
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("LocalTime".hashCode)
         .putLong(localTime.toNanoOfDay)
@@ -712,7 +730,7 @@ object Expr {
 
     def typ = Type.DateTime
 
-    def addToHasher(hasher: Hasher): Hasher = {
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = {
       val instant = zonedDateTime.toInstant
       hasher
         .putInt("DateTime".hashCode)
@@ -801,7 +819,7 @@ object Expr {
 
     def typ = Type.Duration
 
-    def addToHasher(hasher: Hasher): Hasher =
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
       hasher
         .putInt("Duration".hashCode)
         .putInt(duration.getNano)
@@ -843,6 +861,9 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Value] =
       qc.getOrElse(id, Null).asRight
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("Variable".hashCode).putUnencodedChars(id.name)
   }
 
   /** A cypher property access
@@ -926,6 +947,9 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("Property".hashCode).putUnencodedChars(key.name).tap(expr.addToHasher)
   }
 
   /** A dynamic property access
@@ -1047,6 +1071,9 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("DynamicProperty".hashCode).tap(keyExpr.addToHasher).tap(expr.addToHasher)
   }
 
   /** List slice
@@ -1115,6 +1142,14 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("ListSlice".hashCode)
+      .tap(list.addToHasher)
+      .putInt("From".hashCode)
+      .tap(h => from.foreach(_.addToHasher(h)))
+      .putInt("To".hashCode)
+      .tap(h => to.foreach(_.addToHasher(h)))
   }
 
   /** A constant parameter
@@ -1137,6 +1172,8 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Value] =
       p.params.apply(name).asRight
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher.putInt("Parameter".hashCode).putInt(name)
   }
 
   /** A list literal
@@ -1160,6 +1197,11 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Value] =
       expressions.traverse(_.eval(qc)) map (List(_))
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      expressions.foldLeft(hasher.putInt("ListLiteral".hashCode).putInt(expressions.length)) { case (h, expr) =>
+        expr.addToHasher(h)
+      }
   }
 
   /** A map literal
@@ -1184,6 +1226,23 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Expr.Map] =
       (entries.to(collection.immutable.TreeMap): SortedMap[String, Expr]).traverse(_.eval(qc)).map(Map(_))
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      // This implementation discards the order of the literal (which may have already been lost anyway due to the
+      // representation as a scala Map) and hashes the entries in sorted order by their keys. This is consistent with
+      // the implementation on [[Map.addToHasher]], because the same key Ordering used to construct a Map is used to
+      // sort the entries here.
+      {
+        hasher
+          .putInt("MapLiteral".hashCode)
+          .putInt(entries.size)
+        for ((key, value) <- SortedMap.from(entries)(Map.keyOrdering)) {
+          hasher.putString(key, StandardCharsets.UTF_8)
+          value.addToHasher(hasher)
+        }
+        hasher
+      }
+
   }
 
   /** A map projection
@@ -1237,6 +1296,18 @@ object Expr {
         case _ => Map(newItems.toMap)
       }
     } yield result
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("MapProjection".hashCode)
+        .tap(original.addToHasher)
+        .putInt(items.length)
+        .tap { h =>
+          for {
+            (key, expr) <- items
+          } h.putString(key, StandardCharsets.UTF_8).tap(expr.addToHasher)
+        }
+        .putBoolean(includeAllProps)
   }
 
   /** Build a path. NOT IN CYPHER
@@ -1269,6 +1340,11 @@ object Expr {
           case _ => CypherException.Runtime("Path expression must alternate between relationship and node").asLeft
         }
     } yield Path(head, tail)
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      nodeEdges.foldLeft(hasher.putInt("PathExpression".hashCode).putInt(nodeEdges.length)) { case (h, expr) =>
+        expr.addToHasher(h)
+      }
   }
 
   /** Extract the [[com.thatdot.quine.model.QuineId]] of the start of a relationship
@@ -1302,6 +1378,9 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("RelationshipStart".hashCode).tap(relationship.addToHasher)
   }
 
   /** Extract the [[com.thatdot.quine.model.QuineId]] of the end of a relationship
@@ -1335,6 +1414,9 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("RelationshipEnd".hashCode).tap(relationship.addToHasher)
   }
 
   /** Expression equality
@@ -1362,6 +1444,11 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Bool] =
       (lhs, rhs).eval(qc) map { case (l, r) => Value.compare(l, r) }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Equal".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Convenience wrapper trait for all of the arithmetic expression forms */
@@ -1463,6 +1550,9 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("Subtract".hashCode).tap(lhs.addToHasher).tap(rhs.addToHasher)
   }
 
   /** Multiplication expression
@@ -1488,6 +1578,11 @@ object Expr {
     @inline
     def operation(n1: Number, n2: Number): Either[CypherException.Arithmetic, Number] = n1 * n2
     val contextName = "multiplication"
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Multiply".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Division expression
@@ -1513,6 +1608,11 @@ object Expr {
     @inline
     def operation(n1: Number, n2: Number): Either[CypherException.Arithmetic, Number] = n1 / n2
     val contextName = "division"
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Divide".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Modulus expression
@@ -1536,6 +1636,11 @@ object Expr {
     @inline
     def operation(n1: Number, n2: Number): Either[CypherException.Arithmetic, Number] = n1 % n2
     val contextName = "modulus"
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Modulo".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Exponentiation expression
@@ -1560,6 +1665,9 @@ object Expr {
     @inline
     def operation(n1: Number, n2: Number): Either[CypherException.Arithmetic, Number] = n1 ^ n2
     val contextName = "exponentiation"
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("Exponentiate".hashCode).tap(lhs.addToHasher).tap(rhs.addToHasher)
   }
 
   /** Addition expression
@@ -1659,6 +1767,11 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Add".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Unary addition expression
@@ -1696,6 +1809,10 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("UnaryAdd".hashCode)
+      .tap(argument.addToHasher)
   }
 
   /** Negation expression
@@ -1731,6 +1848,10 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("UnarySubtract".hashCode)
+      .tap(argument.addToHasher)
   }
 
   /** Check if an expression is greater than or equal to another
@@ -1764,6 +1885,9 @@ object Expr {
           case None => Null
         }
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("GreaterEqual".hashCode).tap(lhs.addToHasher).tap(rhs.addToHasher)
   }
 
   /** Check if an expression is less than or equal to another
@@ -1797,6 +1921,11 @@ object Expr {
           case None => Null
         }
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("LessEqual".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Check if an expression is strictly greate than another
@@ -1830,6 +1959,9 @@ object Expr {
           case None => Null
         }
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("Greater".hashCode).tap(lhs.addToHasher).tap(rhs.addToHasher)
   }
 
   /** Check if an expression is strictly less than another
@@ -1863,6 +1995,11 @@ object Expr {
           case None => Null
         }
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Less".hashCode)
+      .tap(lhs.addToHasher)
+      .tap(rhs.addToHasher)
   }
 
   /** Check if an expression is contained in a list
@@ -1907,6 +2044,11 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("InList".hashCode)
+      .tap(element.addToHasher)
+      .tap(list.addToHasher)
   }
 
   /** Check if a string starts with another string
@@ -1936,6 +2078,11 @@ object Expr {
         case (Str(scrut), Str(start)) => Bool.apply(scrut.startsWith(start))
         case _ => Null
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("StartsWith".hashCode)
+      .tap(scrutinee.addToHasher)
+      .tap(startsWith.addToHasher)
   }
 
   /** Check if a string ends with another string
@@ -1965,6 +2112,11 @@ object Expr {
         case (Str(scrut), Str(end)) => Bool.apply(scrut.endsWith(end))
         case _ => Null
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("EndsWith".hashCode)
+      .tap(scrutinee.addToHasher)
+      .tap(endsWith.addToHasher)
   }
 
   /** Check if a string is contained in another string
@@ -1994,6 +2146,11 @@ object Expr {
         case (Str(scrut), Str(cont)) => Bool.apply(scrut.contains(cont))
         case _ => Null
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Contains".hashCode)
+      .tap(scrutinee.addToHasher)
+      .tap(contained.addToHasher)
   }
 
   /** Check if a string matches a regex (represented as another string)
@@ -2029,6 +2186,11 @@ object Expr {
         case (Str(scrut), Str(reg)) => Bool.apply(scrut.matches(reg))
         case _ => Null
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Regex".hashCode)
+      .tap(scrutinee.addToHasher)
+      .tap(regex.addToHasher)
   }
 
   /** Check if an expression is 'not' [[Null]]
@@ -2056,6 +2218,10 @@ object Expr {
         case Null => False
         case _ => True
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("IsNotNull".hashCode)
+      .tap(notNull.addToHasher)
   }
 
   /** Check if an expression is [[Null]]
@@ -2083,6 +2249,10 @@ object Expr {
         case Null => True
         case _ => False
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("IsNull".hashCode)
+      .tap(isNull.addToHasher)
   }
 
   /** Logical negation of an expression
@@ -2119,6 +2289,10 @@ object Expr {
             )
             .asLeft
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Not".hashCode)
+      .tap(negated.addToHasher)
   }
 
   /** Logical conjunction of expressions
@@ -2160,6 +2334,11 @@ object Expr {
           }
         }
         .map(_.foldLeft[Bool](True) { case (acc: Bool, b: Bool) => acc.and(b) })
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      conjuncts.foldLeft(hasher.putInt("And".hashCode).putInt(conjuncts.length)) { case (h, expr) =>
+        expr.addToHasher(h)
+      }
   }
 
   /** Logical disjunction of expressions
@@ -2201,6 +2380,11 @@ object Expr {
           }
         }
         .map(_.foldLeft[Bool](False) { case (acc: Bool, b: Bool) => acc.or(b) })
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      disjuncts.foldLeft(hasher.putInt("Or".hashCode).putInt(disjuncts.length)) { case (h, expr) =>
+        expr.addToHasher(h)
+      }
   }
 
   /** Match for expressions
@@ -2239,6 +2423,22 @@ object Expr {
       found <- branches.findM { case (comp, _) => comp.eval(qc).map(e => Value.ordering.equiv(e, scrut)) }
       result <- found.map(_._2).orElse(default).fold((Null: Value).asRight[CypherException])(_.eval(qc))
     } yield result
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("CaseExpression".hashCode)
+        .putInt("scrutinee".hashCode)
+        .tap(h => scrutinee.foreach(_.addToHasher(h)))
+        .putInt("branches".hashCode)
+        .putInt(branches.length)
+        .tap(h =>
+          branches.foldLeft(h) { case (h, (l, r)) =>
+            h.tap(l.addToHasher).tap(r.addToHasher)
+          },
+        )
+        .putInt("default".hashCode)
+        .tap(h => default.foreach(_.addToHasher(h)))
+
   }
 
   /** Scalar function call
@@ -2278,6 +2478,14 @@ object Expr {
           }
         }
       }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink = hasher
+      .putInt("Function".hashCode)
+      .putUnencodedChars(
+        function.name,
+      ) // The function's name is how users interact with it, so a different name must mean a different function
+      .putInt(arguments.length)
+      .tap(h => arguments.foldLeft(h) { case (h, expr) => expr.addToHasher(h) })
   }
 
   /** Filter & map a list
@@ -2323,6 +2531,14 @@ object Expr {
           }
         })
         .map(l => Expr.List(l.flatten))
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("ListComprehension".hashCode)
+        .putUnencodedChars(variable.name)
+        .tap(list.addToHasher)
+        .tap(filterPredicate.addToHasher)
+        .tap(extract.addToHasher)
   }
 
   /** Check that a predicate holds for all elements in the list
@@ -2375,6 +2591,13 @@ object Expr {
             }
           }
         }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("AllInList".hashCode)
+        .putUnencodedChars(variable.name)
+        .tap(list.addToHasher)
+        .tap(filterPredicate.addToHasher)
   }
 
   /** Check that a predicate holds for at least one element in the list
@@ -2425,6 +2648,13 @@ object Expr {
                 .asLeft[Bool]
           }
         })
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("AnyInList".hashCode)
+        .putUnencodedChars(variable.name)
+        .tap(list.addToHasher)
+        .tap(filterPredicate.addToHasher)
   }
 
   /** Check that a predicate holds for a single element in the list
@@ -2489,6 +2719,13 @@ object Expr {
             /* (truesCount == 0) */
             False
         }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("SingleInList".hashCode)
+        .putUnencodedChars(variable.name)
+        .tap(list.addToHasher)
+        .tap(filterPredicate.addToHasher)
   }
 
   /** Fold over a list (starting from the left), updating some accumulator
@@ -2538,6 +2775,15 @@ object Expr {
             }
           }
         }
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher
+        .putInt("ReduceList".hashCode)
+        .putUnencodedChars(accumulator.name)
+        .tap(initial.addToHasher)
+        .putUnencodedChars(variable.name)
+        .tap(list.addToHasher)
+        .tap(reducer.addToHasher)
   }
 
   /** Generates a fresh ID every time it is evaluated. This ID gets put into a
@@ -2555,6 +2801,9 @@ object Expr {
       qc: QueryContext,
     )(implicit idp: QuineIdProvider, p: Parameters, logConfig: LogConfig): Either[CypherException, Value] =
       Expr.fromQuineValue(idp.qidToValue(idp.newQid())).asRight
+
+    def addToHasher(hasher: PrimitiveSink): PrimitiveSink =
+      hasher.putInt("FreshNodeId".hashCode)
   }
 }
 
@@ -2659,24 +2908,6 @@ sealed abstract class Value extends Expr {
     * This is useful for error reporting, especially type mismatch errors.
     */
   def typ: Type
-
-  /** Hash of the value, using Guava's implementation of 128-bit murmur3 hash.
-    *
-    * This should be stable across product versions and JVMs, including dependency updates.
-    * Where implementation uses `hashCode`, it does so on strings (which have very stable hashes)
-    * or ZoneIds, which delegate to hashing their string representations
-    *
-    * TODO: re-consider whether this should work on [[Expr.Node]], [[Expr.Path]],
-    * and [[Expr.Relationship]]
-    *
-    * @return 128-bit hash code
-    */
-  def hash: HashCode =
-    addToHasher(Hashing.murmur3_128().newHasher()).hash()
-
-  /** @see [[hash]]
-    */
-  def addToHasher(hasher: Hasher): Hasher
 
   /** Turn a value into its usual Java value.
     *
