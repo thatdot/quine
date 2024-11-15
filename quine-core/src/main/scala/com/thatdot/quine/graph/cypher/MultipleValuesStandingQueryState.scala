@@ -678,11 +678,18 @@ final case class SubscribeAcrossEdgeState(
         somethingChanged = true
 
       case EdgeRemoved(halfEdge) if edgeResults.contains(halfEdge) =>
-        val oldResult = edgeResults.remove(halfEdge).get
+        val oldResult: Option[Seq[QueryContext]] = edgeResults.remove(halfEdge).get
         effectHandler.cancelSubscription(halfEdge.other, query.andThen.queryPartId)
-        // if we previously reported a result based on this edge's matching, we need to report a new result without it
-        if (oldResult.isDefined)
+
+        if (oldResult.exists(_.nonEmpty)) {
+          // There was (1) a result based on this edge, that (2) had rows we may want to cancel
+
+          // NB this may not immediately issue a cancellation, if any other edges have not yet reported their results.
+          // However, those edges should eventually report results, at which point this will issue a cancellation (and
+          // any new matches from those edges)
           readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
+        }
+
         somethingChanged = true
 
       case _ => () // Ignore all other events.
@@ -712,19 +719,28 @@ final case class SubscribeAcrossEdgeState(
     }
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = {
-    // the result set of a SubscribeAcrossEdge is the concatenation of all the result rows
-    // from the all edges that could match the query's edge (because a MVSQ should report a
-    // row for each way by which it matches)
-    val results = edgeResults
-      .collect {
-        case (he @ _, Some(rows)) => rows
-        case (he @ _, None) => Nil
-      }
-      .flatten
-      .toSeq
-    if (results.nonEmpty) Some(results) else None
-  }
+  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+    if (edgeResults.isEmpty) {
+      // There are no matching edges, so there is an affirmative lack of matches
+      Some(Nil)
+    } else {
+      // If we don't know about _any_ edge, we can't know our results
+      lazy val existentialCheck =
+        if (edgeResults.view.values.exists(maybeRows => maybeRows.isEmpty)) None
+        else Some(edgeResults.view.values.flatten.flatten.toSeq)
+
+      // Alternative semantics: If we don't know about some edges, we still know enough about the others to generate
+      // a result
+      @unused lazy val universalCheck =
+        if (edgeResults.view.values.forall(_.isEmpty)) None
+        else Some(edgeResults.view.values.flatten.flatten.toSeq)
+
+      existentialCheck
+    }
+
+  // the result set of a SubscribeAcrossEdge, when defined, is the concatenation of all the result rows
+  // from the all edges that could match the query's edge (because a MVSQ should report a row for each way
+  // by which it matches)
 
   override def pretty(implicit idProvider: QuineIdProvider): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${edgeResults.map { case (he, v) => he.pretty -> v }})"

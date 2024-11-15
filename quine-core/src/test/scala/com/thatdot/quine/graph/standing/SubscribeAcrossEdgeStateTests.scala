@@ -90,7 +90,7 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
       }
     }
 
-    withClue("Set a second matching edge") {
+    val reciprocal8Id = withClue("Set a second matching edge (with no results)") {
       val halfEdge = HalfEdge(query.edgeName.get, query.edgeDirection.get, qid8)
       val otherHalfEdge = halfEdge.reflect(state.effects.executingNodeId)
       val reciprocal8 = MultipleValuesStandingQuery.EdgeSubscriptionReciprocal(otherHalfEdge, query.andThen.queryPartId)
@@ -101,6 +101,7 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
         assert(sq == reciprocal8)
         assert(effects.isEmpty)
       }
+      reciprocal8.queryPartId
     }
 
     withClue("Remove the first matching edge") {
@@ -113,6 +114,41 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
         // We probably should be cancelling the reciprocal (reciprocal7Id) rather than the thing
         // that the reciprocal subscribes to (andThen.queryPartId), but the net effect should be the same.
         assert(sqId == query.andThen.queryPartId)
+        // No cancellation sent yet, because at least 1 edge (the one to qid8) is pending
+        assert(effects.resultsReported.isEmpty)
+        assert(effects.isEmpty)
+      }
+    }
+
+    withClue("Report a result across the second matching edge") {
+      val result = NewMultipleValuesStateResult(
+        qid8,
+        reciprocal8Id,
+        globalId,
+        Some(query.queryPartId),
+        Seq(QueryContext(Map(andThenAliasedAs -> Expr.Integer(4L)))),
+      )
+      state.reportNewSubscriptionResult(result, shouldHaveEffects = true) { effects =>
+        val reportedResults = effects.resultsReported.dequeue()
+        assert(reportedResults == result.resultGroup) // NB does NOT include the results from the first edge
+        assert(effects.isEmpty)
+      }
+    }
+
+    withClue("Remove the second matching edge") {
+      val halfEdge = HalfEdge(query.edgeName.get, query.edgeDirection.get, qid8)
+      val edgeRemoved = EdgeRemoved(halfEdge)
+      state.reportNodeEvents(Seq(edgeRemoved), shouldHaveEffects = true) { effects =>
+        val (onNode, sqId) = effects.subscriptionsCancelled.dequeue()
+        val results =
+          effects.resultsReported
+            .dequeue()
+        assert(onNode == qid8)
+
+        // We probably should be cancelling the reciprocal (reciprocal7Id) rather than the thing
+        // that the reciprocal subscribes to (andThen.queryPartId), but the net effect should be the same.
+        assert(sqId == query.andThen.queryPartId)
+        assert(results.isEmpty) // All results should be affirmatively cancelled -- there are no matching edges!
         assert(effects.isEmpty)
       }
     }
