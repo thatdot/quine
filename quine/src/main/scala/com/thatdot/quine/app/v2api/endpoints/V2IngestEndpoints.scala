@@ -32,7 +32,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas
     encoder: Encoder[T],
     decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    baseEndpoint[T]("ingest")
+    baseEndpoint[T]("ingests")
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
 
@@ -63,7 +63,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas
     .in(ingestStreamNameElement)
     .in("pause")
     .in(namespaceParameter)
-    .put
+    .post
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
       runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         PauseIngestApiCmd,
@@ -79,7 +79,7 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas
     .in(ingestStreamNameElement)
     .in("start")
     .in(namespaceParameter)
-    .put
+    .post
     .serverLogic { case (memberIdx, ingestStreamName, ns) =>
       runServerLogicFromEither[(String, NamespaceId), Option[ApiIngest.IngestStreamInfoWithName]](
         UnpauseIngestApiCmd,

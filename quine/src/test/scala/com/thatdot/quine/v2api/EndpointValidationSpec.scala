@@ -54,7 +54,7 @@ class EndpointValidationSpec
   val baseUrl = "/api/v2"
 
   "A kinesis ingest with illegal iterator type" should "fail with 400" in {
-    val url = s"$baseUrl/ingest/foo"
+    val url = s"$baseUrl/ingests/foo"
     val kinesisIngest = kinesisGen.sample.get.copy(
       iteratorType = IteratorType.AfterSequenceNumber("ignore"),
       numRetries = 3, //TODO java.lang.IllegalArgumentException: maxAttempts must be positive
@@ -76,7 +76,7 @@ class EndpointValidationSpec
   }
 
   "A kafka ingest with unrecognized properties" should "fail with 400" in {
-    val url = s"$baseUrl/ingest/foo"
+    val url = s"$baseUrl/ingests/foo"
     val kafkaIngest: Api.KafkaIngest = kafkaGen.sample.get.copy(kafkaProperties =
       Map(
         "Unrecognized.property.name" -> "anything",

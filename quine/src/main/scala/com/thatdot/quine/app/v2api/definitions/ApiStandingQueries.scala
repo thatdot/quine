@@ -3,7 +3,7 @@ package com.thatdot.quine.app.v2api.definitions
 import java.time.Instant
 import java.util.UUID
 
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{description, encodedName, title}
 
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.SequencedCypherQuery
@@ -30,6 +30,7 @@ object ApiStandingQueries {
 
   object OutputFormat {
     @title("JSON")
+    @encodedName("Json")
     case object JSON extends OutputFormat
     @title("Protobuf")
     final case class Protobuf(

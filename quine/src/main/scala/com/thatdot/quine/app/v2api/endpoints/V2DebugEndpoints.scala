@@ -90,6 +90,8 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions {
 
   val limitParameter: EndpointInput.Query[Option[Int]] =
     query[Option[Int]]("limit").description("Maximum number of results to return")
+  val fullEdgeParameter: EndpointInput.Query[Option[Boolean]] =
+    query[Option[Boolean]]("onlyFull").description("Only return full edges")
   val edgeDirOptParameter: EndpointInput.Query[Option[TEdgeDirection]] =
     query[Option[TEdgeDirection]]("direction").description("Edge direction. One of: Incoming, Outgoing, Undirected")
   /*
@@ -105,15 +107,18 @@ trait V2DebugEndpoints extends V2QuineEndpointDefinitions {
     encoder: Encoder[T],
     decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
-    baseEndpoint[T]("debug").tag("Debug Node Operations")
+    baseEndpoint[T]("debug", "nodes").tag("Debug Node Operations")
 
   private val debugOpsPropertyGetEndpoint =
     debugEndpoint[Option[Json]]
       .name("Get Property")
-      .description("""Retrieve a single property from the node; note that values are represented as
+      .description(
+        """Retrieve a single property from the node; note that values are represented as
 closely as possible to how they would be emitted by
-[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post).
-""").in(idPathElement)
+[the cypher query endpoint](https://quine.io/reference/rest-api/#/paths/api-v1-query-cypher/post)."""
+        + "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
+      )
+      .in(idPathElement)
       .in("props")
       .in(propKeyParameter)
       .in(atTimeParameter)
@@ -134,7 +139,10 @@ closely as possible to how they would be emitted by
     ], ObjectEnvelope[TLiteralNode[QuineId]], Any, Future] =
     debugEndpoint[TLiteralNode[QuineId]]
       .name("List Properties/Edges")
-      .description("Retrieve a node's list of properties and list of edges.")
+      .description(
+        "Retrieve a node's list of properties and list of edges." +
+        "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
+      )
       .in(idPathElement)
       .in(atTimeParameter)
       .in(namespaceParameter)
@@ -151,7 +159,10 @@ closely as possible to how they would be emitted by
   //TODO temporarily outputs string
   private val debugOpsVerboseEndpoint = debugEndpoint[String]
     .name("List Node State (Verbose)")
-    .description("Returns information relating to the node's internal state.")
+    .description(
+      "Returns information relating to the node's internal state." +
+      "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
+    )
     .in(idPathElement)
     .in("verbose")
     .in(atTimeParameter)
@@ -168,9 +179,11 @@ closely as possible to how they would be emitted by
 
   private val debugOpsEdgesGetEndpoint =
     debugEndpoint[Vector[TRestHalfEdge[QuineId]]]
-      .in("edges")
       .name("List Edges")
-      .description("Retrieve all node edges.")
+      .description(
+        "Retrieve all node edges." +
+        "\n\nThis endpoint's usage, including the structure of the values returned, are implementation-specific and subject to change without warning. This endpoint is not intended for consumption by automated clients. The information returned by this endpoint is formatted for human consumption and is intended to assist the operator[s] of Quine in inspecting specific parts of the internal Quine graph state.",
+      )
       .in(idPathElement)
       .in("edges")
       .in(atTimeParameter)
@@ -178,9 +191,10 @@ closely as possible to how they would be emitted by
       .in(edgeDirOptParameter)
       .in(otherOptParameter)
       .in(edgeTypeOptParameter)
+      .in(fullEdgeParameter)
       .in(namespaceParameter)
       .get
-      .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, ns) =>
+      .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, fullOnly, ns) =>
         runServerLogic[
           (QuineId, Option[AtTime], Option[Int], Option[TEdgeDirection], Option[QuineId], Option[String], NamespaceId),
           Vector[TRestHalfEdge[QuineId]],
@@ -188,33 +202,11 @@ closely as possible to how they would be emitted by
           DebugEdgesGetApiCmd,
           memberIdx,
           (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
-        )
-      }
-
-  private val debugOpsHalfEdgesGetEndpoint =
-    debugEndpoint[Vector[TRestHalfEdge[QuineId]]]
-      .name("List Half Edges")
-      .description("Retrieve all half edges associated with a node.")
-      .in(idPathElement)
-      .in("edges")
-      .in("half")
-      .in(atTimeParameter)
-      .in(limitParameter)
-      .in(edgeDirOptParameter)
-      .in(otherOptParameter)
-      .in(edgeTypeOptParameter)
-      .in(namespaceParameter)
-      .get
-      .serverLogic { case (memberIdx, id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, ns) =>
-        runServerLogic[
-          (QuineId, Option[AtTime], Option[Int], Option[TEdgeDirection], Option[QuineId], Option[String], NamespaceId),
-          Vector[TRestHalfEdge[QuineId]],
-        ](
-          DebugHalfEdgesGetApiCmd,
-          memberIdx,
-          (id, atime, limit, edgeDirOpt, otherOpt, edgeTypeOpt, namespaceFromParam(ns)),
-          t => appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
+          t =>
+            if (fullOnly.getOrElse(true))
+              appMethods.debugOpsEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7)
+            else
+              appMethods.debugOpsHalfEdgesGet(t._1, t._2, t._3, t._4, t._5, t._6, t._7),
         )
       }
 
@@ -223,7 +215,6 @@ closely as possible to how they would be emitted by
     debugOpsGetEndpoint,
     debugOpsVerboseEndpoint,
     debugOpsEdgesGetEndpoint,
-    debugOpsHalfEdgesGetEndpoint,
   )
 
 }

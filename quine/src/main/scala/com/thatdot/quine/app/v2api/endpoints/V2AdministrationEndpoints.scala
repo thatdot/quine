@@ -260,7 +260,7 @@ up ready and start routing user requests to it.
   private val gracefulShutdownEndpoint = adminEndpoint[Unit]("shutdown")
     .name("Graceful Shutdown")
     .description("Initiate a graceful graph shutdown. Final shutdown may take a little longer.")
-    .get
+    .post
     .serverLogic { memberIdx =>
       runServerLogic[Unit, Unit](
         ShutdownApiCmd,
@@ -326,7 +326,7 @@ up ready and start routing user requests to it.
     }
 
   //TODO shardMapLimitSchema
-  private val shardSizesEndpoint = adminEndpoint[Map[Int, TShardInMemoryLimit]]("shard-sizes").post
+  private val shardSizesEndpoint = adminEndpoint[Map[Int, TShardInMemoryLimit]]("shards").post
     .name("Shard Sizes")
     .description("""Get and update the in-memory node limits.
                    |
@@ -335,6 +335,7 @@ up ready and start routing user requests to it.
                    |To apply different values, apply your edits to the returned document and sent those values in
                    |a new POST request.
                    |""".stripMargin)
+    .in("size-limits")
     .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]])
     .serverLogic { case (memberIdx, resizes) =>
       runServerLogic[Map[Int, TShardInMemoryLimit], Map[Int, TShardInMemoryLimit]](
@@ -348,12 +349,13 @@ up ready and start routing user requests to it.
       )
     }
 
-  private val requestNodeSleepEndpoint = adminEndpoint[Unit]("request-node-sleep").post
+  private val requestNodeSleepEndpoint = adminEndpoint[Unit]("nodes").post
     .name("Sleep Node")
     .description("""Attempt to put the specified node to sleep.
                    |
                    |This behavior is not guaranteed. Activity on the node will supersede this request""".stripMargin)
     .in(path[QuineId]("nodeIdSegment"))
+    .in("request-sleep")
     .in(query[Option[String]]("namespace"))
     .out(statusCode(StatusCode.Accepted))
     .serverLogic { case (memberIdx, nodeId, namespace) =>

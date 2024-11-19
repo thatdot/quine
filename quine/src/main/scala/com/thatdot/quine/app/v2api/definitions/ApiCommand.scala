@@ -38,7 +38,6 @@ case object GenerateRandomWalkApiCmd extends ApiCommand
 // debug endpoints
 case object DebugVerboseApiCmd extends ApiCommand
 case object DebugEdgesGetApiCmd extends ApiCommand
-case object DebugHalfEdgesGetApiCmd extends ApiCommand
 case object DebugOpsGetApiCmd extends ApiCommand
 case object DebugOpsPropertygetApiCmd extends ApiCommand
 

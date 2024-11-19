@@ -153,7 +153,7 @@ concatenated to produce the final file name:
  Example file name: `graph-walk-1675122348011_T-10x5-q0-1.0x1.0-_.csv`
 
  The name of the actual file being written is returned in the API response body.""")
-    .in("walk")
+    .in("save-walk")
     .in(walkLengthQs)
     .in(numberOfWalksQs)
     .in(onNodeQueryQs)
@@ -165,7 +165,7 @@ concatenated to produce the final file name:
     .in(parallelismParameter)
     .in(jsonOrYamlBody[TSaveLocation])
     .out(statusCode(StatusCode.Accepted))
-    .put
+    .post
     .serverLogic {
       case (
             memberIdx,
@@ -219,9 +219,10 @@ concatenated to produce the final file name:
   private def generateRandomWalkEndpoint = algorithmEndpoint[Option[List[String]]]
     .name("Generate Random Walk")
     .description("Generate a random walk from a node in the graph and return the results.")
-    .get
-    .in("walk")
+    .post
+    .in("nodes")
     .in(path[QuineId]("id").description("Node id"))
+    .in("walk")
     .in(walkLengthQs)
     .in(onNodeQueryQs)
     .in(returnQs)

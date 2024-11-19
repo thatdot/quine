@@ -45,7 +45,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T],
-  ) = baseEndpoint[T]("query", "standing").tag("Standing Queries")
+  ) = baseEndpoint[T]("standing-queries").tag("Standing Queries")
 
   private val listStandingQueriesEndpoint: ServerEndpoint.Full[Unit, Unit, (Option[Int], Option[String]), ErrorEnvelope[
     _ <: CustomError,
@@ -114,7 +114,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
       "Each standing query can have any number of destinations to which `StandingQueryResults` will be routed.",
     )
     .in(sqName)
-    .in("output")
+    .in("outputs")
     .in(sqOutputName)
     .in(namespaceParameter)
     .in(jsonOrYamlBody[StandingQueryResultOutputUserDef])
@@ -183,7 +183,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
       .name("Delete Standing Query Output")
       .description("Remove an output from a standing query.")
       .in(sqName)
-      .in("output")
+      .in("outputs")
       .in(sqOutputName)
       .in(namespaceParameter)
       .delete

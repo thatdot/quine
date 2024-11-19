@@ -83,7 +83,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T],
-  ) = baseEndpoint[T]("query", "cypher").tag("Cypher Query Language")
+  ) = baseEndpoint[T]("cypher-queries").tag("Cypher Query Language")
 
   private def queryBody =
     oneOfBody[TCypherQuery](jsonBody[TCypherQuery], yamlBody[TCypherQuery](), textBody(cypherQueryAsStringCodec))
@@ -95,6 +95,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     cypherQueryEndpoint[TCypherQueryResult]
       .name("Cypher Query")
       .description(s"Execute an arbitrary [Cypher]($cypherLanguageUrl) query")
+      .in("query-graph")
       .in(atTimeParameter)
       .in(timeoutParameter)
       .in(namespaceParameter)
@@ -116,7 +117,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     .name("Cypher Query Return Nodes")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns nodes.
                       |Queries that do not return nodes will fail with a type error.""".stripMargin)
-    .in("nodes")
+    .in("query-nodes")
     .in(atTimeParameter)
     .in(timeoutParameter)
     .in(namespaceParameter)
@@ -137,7 +138,7 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     .name("Cypher Query Return Edges")
     .description(s"""Execute a [Cypher]($cypherLanguageUrl) query that returns edges.
          |Queries that do not return edges will fail with a type error.""".stripMargin)
-    .in("edges")
+    .in("query-edges")
     .in(atTimeParameter)
     .in(timeoutParameter)
     .in(namespaceParameter)

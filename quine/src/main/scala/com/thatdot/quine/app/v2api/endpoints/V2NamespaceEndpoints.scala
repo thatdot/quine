@@ -16,12 +16,14 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions {
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T],
-  ) = baseEndpoint[T]("namespace")
+  ) = baseEndpoint[T]("namespaces").tag("Namespaces")
 
   val getNamespaceEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
     _ <: CustomError,
   ], ObjectEnvelope[List[String]], Any, Future] =
     namespaceEndpoint[List[String]].get
+      .name("List Namespaces")
+      .description("Retrieve the list of all existing namespaces")
       .serverLogic(memberIdx =>
         runServerLogic[Unit, List[String]](GetNamespaces, memberIdx, (), _ => appMethods.getNamespaces),
       )
@@ -30,6 +32,8 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions {
     _ <: CustomError,
   ], ObjectEnvelope[Boolean], Any, Future] =
     namespaceEndpoint[Boolean]
+      .name("Create Namespace")
+      .description("Create the requested namespace")
       .in(path[String]("namespace"))
       .put
       .serverLogic { case (memberIdx, namespace) =>
@@ -40,6 +44,8 @@ trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions {
     _ <: CustomError,
   ], ObjectEnvelope[Boolean], Any, Future] =
     namespaceEndpoint[Boolean]
+      .name("Delete Namespace")
+      .description("Delete the requested namespace")
       .in(path[String]("namespace"))
       .delete
       .serverLogic { case (memberIdx, namespace) =>
