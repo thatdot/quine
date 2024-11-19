@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.ingest2.sources
 
-import java.nio.charset.Charset
+import java.nio.charset.{Charset, StandardCharsets}
 
 import scala.util.{Success, Try}
 
@@ -14,6 +14,7 @@ import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom
 import com.thatdot.quine.app.ingest2.core.DataFoldableFrom._
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, IngestBounds}
+import com.thatdot.quine.app.ingest2.sources
 import com.thatdot.quine.app.routes.IngestMeter
 case class CsvFileSource(
   src: Source[ByteString, NotUsed],
@@ -28,8 +29,17 @@ case class CsvFileSource(
   decoders: Seq[ContentDecoder] = Seq(),
 ) {
 
-  private val csvLineParser: Flow[ByteString, List[ByteString], NotUsed] =
-    CsvParsing.lineScanner(delimiterChar, quoteChar, escapeChar, maximumLineSize)
+  private val csvLineParser: Flow[ByteString, List[ByteString], NotUsed] = {
+    val lineScanner = CsvParsing.lineScanner(delimiterChar, quoteChar, escapeChar, maximumLineSize)
+    charset match {
+      case StandardCharsets.UTF_8 | StandardCharsets.ISO_8859_1 | StandardCharsets.US_ASCII => lineScanner
+      case _ =>
+        sources
+          .transcodingFlow(charset)
+          .via(lineScanner)
+          .map(_.map(bs => ByteString(bs.decodeString(StandardCharsets.UTF_8), charset)))
+    }
+  }
 
   def decodedSource: DecodedSource = headers match {
 

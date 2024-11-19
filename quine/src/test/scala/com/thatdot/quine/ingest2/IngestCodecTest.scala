@@ -230,8 +230,8 @@ class IngestCodecTest
       r.foreach(config => assert(config == ic))
       assert(r.isRight)
       val allowedEmpty: Vector[String] => Boolean = {
-        case Vector("KafkaIngest", "topics") => true
-        case Vector("KafkaIngest", "kafkaProperties") => true
+        case Vector("topics") => true
+        case Vector("kafkaProperties") => true
         case _ => false
       }
       val ugly = checkForUglyJson(j, allowedEmpty)
