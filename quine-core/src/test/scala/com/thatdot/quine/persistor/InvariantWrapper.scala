@@ -23,16 +23,13 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{DomainGraphNode, QuineId}
-import com.thatdot.quine.util.Log._
 
 /** Wrapper for a persistor that checks that some invariants are upheld:
   *
   *   - for every node: every event occurs at a unique time
   *   - for every node: every snapshot occurs at a unique time
   */
-class InvariantWrapper(wrapped: PersistenceAgent)(implicit val logConfig: LogConfig)
-    extends WrappedPersistenceAgent(wrapped)
-    with PersistenceAgent {
+class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgent(wrapped) with PersistenceAgent {
 
   private val events = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, NodeEvent]]
   private val snapshots = new ConcurrentHashMap[QuineId, ConcurrentHashMap[EventTime, Array[Byte]]]

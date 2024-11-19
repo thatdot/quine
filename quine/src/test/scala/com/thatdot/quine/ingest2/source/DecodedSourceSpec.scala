@@ -21,11 +21,10 @@ import com.thatdot.quine.compiler.{cypher => cyComp}
 import com.thatdot.quine.graph.cypher.RunningCypherQuery
 import com.thatdot.quine.graph.{GraphService, MasterStream, cypher}
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.{buildDecodedSource, srcFromString}
-import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.TestLogging._
 
 class DecodedSourceSpec extends AsyncFunSpec with Matchers with LazyLogging {
 
-  implicit val logConfig: LogConfig = LogConfig.permissive
   @nowarn implicit val protobufSchemaCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking
 
   def fileFromString(s: String): File = {

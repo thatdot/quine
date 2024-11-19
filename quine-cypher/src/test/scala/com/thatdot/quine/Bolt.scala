@@ -17,13 +17,12 @@ import com.thatdot.quine.bolt.Protocol
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
 import com.thatdot.quine.util.ByteConversions
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.TestLogging._
 
 class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   def toHex(str: String): ByteString = ByteString(ByteConversions.parseHexBinary(str.filter(_ != ' ')))
 
   implicit val timeout: Timeout = Timeout(3600 seconds)
-  implicit val logConfig: LogConfig = LogConfig.permissive
   implicit val graph: CypherOpsGraph = Await.result(
     GraphService(
       "bolt-protocol-test-system",

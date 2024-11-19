@@ -71,6 +71,7 @@ object QuineSettings {
   val integrationSettings: Seq[Setting[_]] = Seq(
     Integration / testOptions -= Tests.Argument(TestFrameworks.ScalaTest, "-l", integrationTestTag),
     Integration / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-n", integrationTestTag),
+    Integration / parallelExecution := false,
   ) ++ inConfig(Integration)(Defaults.testTasks)
 
   /* Settings for building a Scala.js/React webapp using Slinky

@@ -10,6 +10,10 @@ addCommandAlias("fixall", "; scalafixAll; fmtall")
 
 ThisBuild / evictionErrorLevel := Level.Info
 
+Global / concurrentRestrictions := Seq(
+  Tags.limit(Tags.Test, 1),
+)
+
 // Core streaming graph interpreter
 lazy val `quine-core`: Project = project
   .settings(commonSettings)
@@ -114,7 +118,7 @@ lazy val `quine-cassandra-persistor`: Project = project
 // Parser and interepreter for a subset of [Gremlin](https://tinkerpop.apache.org/gremlin.html)
 lazy val `quine-gremlin`: Project = project
   .settings(commonSettings)
-  .dependsOn(`quine-core`)
+  .dependsOn(`quine-core` % "compile->compile;test->test")
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang.modules" %% "scala-parser-combinators" % scalaParserCombinatorsV,

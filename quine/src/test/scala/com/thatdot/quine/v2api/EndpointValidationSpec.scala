@@ -22,10 +22,9 @@ import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
 import com.thatdot.quine.ingest2.ArbitraryIngests
-import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.TestLogging._
 
 object EndpointValidationSupport {
-  implicit val logConfig: LogConfig = LogConfig.permissive
   private val graph = IngestTestGraph.makeGraph("endpoint-test")
   private val quineApp = new QuineApp(graph)
   private val app = new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(5.seconds))
@@ -36,7 +35,7 @@ object EndpointValidationSupport {
   def toJsonHttpEntity[T](t: T)(implicit encoder: Encoder[T]): RequestEntity =
     HttpEntity(MediaTypes.`application/json`, t.asJson.spaces2)
 
-  def postRawString[T](uri: String, t: String): HttpRequest =
+  def postRawString(uri: String, t: String): HttpRequest =
     HttpRequest(HttpMethods.POST, uri, headers = Seq(), HttpEntity(MediaTypes.`application/json`, t))
 
   def post[T](uri: String, t: T)(implicit

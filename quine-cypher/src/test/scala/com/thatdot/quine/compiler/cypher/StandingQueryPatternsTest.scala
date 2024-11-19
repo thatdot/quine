@@ -9,13 +9,12 @@ import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Func, Position, SourceText}
 import com.thatdot.quine.graph.{GraphQueryPattern, QuineIdRandomLongProvider, WithExplicitPositions, idFrom}
 import com.thatdot.quine.model.{PositionAwareIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.TestLogging._
 
 class StandingQueryPatternsTest extends AnyFunSpec {
   import GraphQueryPattern._
 
   implicit val idProvider: QuineIdRandomLongProvider.type = QuineIdRandomLongProvider
-  implicit val logConfig: LogConfig = LogConfig.permissive
 
   def testQuery(
     queryText: String,

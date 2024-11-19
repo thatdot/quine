@@ -23,8 +23,8 @@ import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, LiteralOpsGraph, M
 import com.thatdot.quine.model.{PropertyValue, QuineId, QuineValue}
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.{FileIngestFormat, NumberIteratorIngest, StandardInputIngest}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
+import com.thatdot.quine.util.TestLogging._
 
 class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
@@ -34,7 +34,6 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   implicit val ec: ExecutionContextExecutor = system.dispatcher
   val namespace: NamespaceId = None // Use default namespace
   implicit val noOpProtobufCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking: @nowarn
-  implicit val logConfig: LogConfig = LogConfig.permissive
 
   override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
 

@@ -19,9 +19,9 @@ import com.thatdot.quine.persistor.{
   PrimePersistor,
   StatelessPrimePersistor,
 }
-import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.TestLogging._
 
-class HistoricalQueryTests(implicit val logConfig: LogConfig) extends AsyncFunSuite with BeforeAndAfterAll {
+abstract class HistoricalQueryTests extends AsyncFunSuite with BeforeAndAfterAll {
 
   // Override this if tests need to be skipped
   def runnable: Boolean = true

@@ -11,9 +11,9 @@ import org.apache.pekko.stream.Materializer
 import org.apache.commons.io.FileUtils
 
 import com.thatdot.quine.graph.HistoricalQueryTests
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.util.TestLogging._
 
-class RocksDbPersistorTests extends HistoricalQueryTests()(LogConfig.permissive) {
+class RocksDbPersistorTests extends HistoricalQueryTests() {
 
   override val runnable: Boolean = RocksDbPersistor.loadRocksDbLibrary()
 

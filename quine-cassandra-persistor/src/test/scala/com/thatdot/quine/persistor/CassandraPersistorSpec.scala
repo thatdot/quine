@@ -20,9 +20,10 @@ import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
 import com.thatdot.quine.test.tags.IntegrationTest
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
+import com.thatdot.quine.util.TestLogging._
 
 @IntegrationTest
-class CassandraPersistorSpec()(implicit val logConfig: LogConfig) extends PersistenceAgentSpec {
+class CassandraPersistorSpec() extends PersistenceAgentSpec {
 
   val statementSettings: CassandraStatementSettings = CassandraStatementSettings(ConsistencyLevel.ONE, 1.second)
   val cassandraWrapper: CassandraInstanceWrapper[PrimeCassandraPersistor] =

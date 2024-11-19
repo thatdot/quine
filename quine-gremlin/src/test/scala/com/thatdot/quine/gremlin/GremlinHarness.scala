@@ -14,11 +14,10 @@ import org.scalatest.{Assertion, BeforeAndAfterAll}
 import com.thatdot.quine.graph.{GraphService, LiteralOpsGraph, NamespaceId, QuineUUIDProvider}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
-import com.thatdot.quine.util.Log.LogConfig
+import com.thatdot.quine.util.TestLogging._
 
 class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfterAll {
 
-  implicit val logConfig: LogConfig = LogConfig.permissive
   implicit val timeout: Timeout = Timeout(10.seconds)
   implicit val idProv: QuineUUIDProvider.type = QuineUUIDProvider
   implicit val graph: LiteralOpsGraph = Await.result(
@@ -53,7 +52,6 @@ class GremlinHarness(graphName: String) extends AsyncFunSuite with BeforeAndAfte
     ordered: Boolean = true,
   )(implicit
     pos: Position,
-    logConfig: LogConfig,
   ): Future[Assertion] = {
     val queryResults = gremlin.query(queryText, parameters)
     val (killSwitch, resultsFut) = queryResults
