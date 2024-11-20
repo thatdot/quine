@@ -6,7 +6,12 @@ import org.scalactic.source.Position
 import org.scalatest.Assertions
 
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
-import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryEffects, QueryContext}
+import com.thatdot.quine.graph.cypher.{
+  MultipleValuesInitializationEffects,
+  MultipleValuesStandingQuery,
+  MultipleValuesStandingQueryEffects,
+  QueryContext,
+}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.graph.{
   AbstractNodeActor,
@@ -35,7 +40,8 @@ final case class MultipleValuesStandingQueryEffectsTester(
   executingNodeId: QuineId,
   idProvider: QuineIdProvider,
   knownQueries: mutable.Map[MultipleValuesStandingQueryPartId, MultipleValuesStandingQuery],
-) extends MultipleValuesStandingQueryEffects {
+) extends MultipleValuesStandingQueryEffects
+    with MultipleValuesInitializationEffects {
 
   var currentProperties: Map[Symbol, PropertyValue] = Map.empty
   val labelsProperty: Symbol = Symbol("__LABEL")
@@ -105,14 +111,16 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
 
   def initialize[A](
     initialProperties: Map[Symbol, PropertyValue] = Map.empty,
-  )(thenCheck: MultipleValuesStandingQueryEffectsTester => A)(implicit pos: Position): A = {
+  )(
+    thenCheck: (MultipleValuesStandingQueryEffectsTester, Option[Seq[QueryContext]]) => A,
+  )(implicit pos: Position): A = {
     val initialPropertyEvents: Seq[NodeChangeEvent] = initialProperties.map { case (k, v) => PropertySet(k, v) }.toSeq
     effects.trackPropertyEffects(initialPropertyEvents)
     sqState.rehydrate(effects)
     sqState.onInitialize(effects)
     sqState.onNodeEvents(initialPropertyEvents, effects)
     testInvariants()
-    thenCheck(effects)
+    thenCheck(effects, readResults())
   }
 
   /** Simulate node change events
@@ -161,4 +169,6 @@ class StandingQueryStateWrapper[S <: MultipleValuesStandingQuery](
     testInvariants()
     thenCheck(effects)
   }
+
+  def readResults(): Option[Seq[QueryContext]] = sqState.readResults(effects.currentProperties, effects.labelsProperty)
 }

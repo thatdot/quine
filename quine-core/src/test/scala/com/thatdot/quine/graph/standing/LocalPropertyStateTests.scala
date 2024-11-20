@@ -1,12 +1,13 @@
 package com.thatdot.quine.graph.standing
 
+import org.scalatest.OptionValues
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
-class LocalPropertyStateTests extends AnyFunSuite {
+class LocalPropertyStateTests extends AnyFunSuite with OptionValues {
 
   test("any value constraint, no alias") {
 
@@ -19,7 +20,9 @@ class LocalPropertyStateTests extends AnyFunSuite {
     val state = new StandingQueryStateWrapper(query)
 
     withClue("Initializing the state") {
-      state.initialize() { effects =>
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq.empty)
         assert(effects.isEmpty)
       }
     }
@@ -66,9 +69,9 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("Initializing the state emits a 1-result group") {
-      state.initialize() { effects =>
-        val initialResultFromNull = effects.resultsReported.dequeue()
+    withClue("Initializing the state prepares a result") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
         assert(initialResultFromNull == Seq(QueryContext.empty))
         assert(effects.isEmpty)
       }
@@ -119,9 +122,9 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("Initializing the state should yield a 1-result group") {
-      state.initialize() { effects =>
-        val initialResultFromNull = effects.resultsReported.dequeue()
+    withClue("Initializing the state prepares a result") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
         assert(initialResultFromNull == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Null))))
         assert(effects.isEmpty)
       }
@@ -161,7 +164,7 @@ class LocalPropertyStateTests extends AnyFunSuite {
     }
   }
 
-  test("alias but no value constraint") {
+  test("any value constraint and alias") {
 
     val query = MultipleValuesStandingQuery.LocalProperty(
       propKey = Symbol("keyOfInterest"),
@@ -171,8 +174,12 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    state.initialize() { effects =>
-      assert(effects.isEmpty)
+    withClue("Initializing the state") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq.empty)
+        assert(effects.isEmpty)
+      }
     }
 
     withClue("Setting the wrong property doesn't do anything") {
@@ -232,8 +239,12 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    state.initialize() { effects =>
-      assert(effects.isEmpty)
+    withClue("Initializing the state") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq())
+        assert(effects.isEmpty)
+      }
     }
 
     withClue("Setting the wrong property doesn't do anything") {
@@ -243,11 +254,9 @@ class LocalPropertyStateTests extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property with the wrong value emits a 0-result group") {
+    withClue("Setting the right property with the wrong value doesn't do anything") {
       val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
-        val results = effects.resultsReported.dequeue()
-        assert(results == Seq.empty)
+      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = false) { effects =>
         assert(effects.isEmpty)
       }
     }
@@ -297,10 +306,32 @@ class LocalPropertyStateTests extends AnyFunSuite {
       aliasedAs = Some(Symbol("interesting")),
     )
 
+    withClue("Initializing a copy of the state with mismatching properties prepares a 0-result group") {
+      val tempState = new StandingQueryStateWrapper(query)
+      tempState.initialize(Map(query.propKey -> PropertyValue(QuineValue.Integer(2L)))) { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq())
+        assert(effects.isEmpty)
+      }
+    }
+
+    withClue("Initializing a copy of the state with matching properties prepares a 1-result group") {
+      val tempState = new StandingQueryStateWrapper(query)
+      tempState.initialize(Map(query.propKey -> PropertyValue(QuineValue.Integer(1L)))) { (effects, initialResultOpt) =>
+        val initialResultFromMatch = initialResultOpt.value
+        assert(initialResultFromMatch == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L)))))
+        assert(effects.isEmpty)
+      }
+    }
+
     val state = new StandingQueryStateWrapper(query)
 
-    state.initialize() { effects =>
-      assert(effects.isEmpty)
+    withClue("Initializing the state with no properties prepares a 0-result group") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq())
+        assert(effects.isEmpty)
+      }
     }
 
     withClue("Setting the wrong property doesn't do anything") {
@@ -310,11 +341,9 @@ class LocalPropertyStateTests extends AnyFunSuite {
       }
     }
 
-    withClue("Setting the right property with the wrong value emits a 0-result group") {
-      val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(2L)))
-      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = true) { effects =>
-        val results = effects.resultsReported.dequeue()
-        assert(results == Seq.empty)
+    withClue("Setting the right property with the wrong value does nothing") {
+      val rightPropWrongValue = PropertySet(query.propKey, PropertyValue(QuineValue.Integer(3L)))
+      state.reportNodeEvents(Seq(rightPropWrongValue), shouldHaveEffects = false) { effects =>
         assert(effects.isEmpty)
       }
     }
@@ -365,8 +394,12 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    state.initialize() { effects =>
-      assert(effects.isEmpty)
+    withClue("Initializing the state") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq())
+        assert(effects.isEmpty)
+      }
     }
 
     withClue("Setting the wrong property doesn't do anything") {
@@ -432,8 +465,12 @@ class LocalPropertyStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    state.initialize() { effects =>
-      assert(effects.isEmpty)
+    withClue("Initializing the state") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResultFromNull = initialResultOpt.value
+        assert(initialResultFromNull == Seq())
+        assert(effects.isEmpty)
+      }
     }
 
     withClue("Setting the wrong property doesn't do anything") {
@@ -492,4 +529,6 @@ class LocalPropertyStateTests extends AnyFunSuite {
       }
     }
   }
+
+  // TODO add tests for `Unconditional` value constraint (with/without alias)
 }

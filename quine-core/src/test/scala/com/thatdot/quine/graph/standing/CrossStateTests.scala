@@ -42,10 +42,11 @@ class CrossStateTests extends AnyFunSuite {
     val state = makeState(query)
 
     withClue("Initializing the state") {
-      state.initialize() { effects =>
+      state.initialize() { (effects, initialResultsOpt) =>
         val (onNode, sq) = effects.subscriptionsCreated.dequeue()
         assert(onNode == effects.executingNodeId)
         assert(sq == reqQuery)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }
@@ -113,12 +114,13 @@ class CrossStateTests extends AnyFunSuite {
     val state = makeState(query)
 
     withClue("Initializing the state") {
-      state.initialize() { effects =>
+      state.initialize() { (effects, initialResultsOpt) =>
         val (onNode1, sq1) = effects.subscriptionsCreated.dequeue()
         val (onNode2, sq2) = effects.subscriptionsCreated.dequeue()
         assert(onNode1 == effects.executingNodeId)
         assert(onNode2 == effects.executingNodeId)
         assert(Set(sq1, sq2) == Set(reqQuery1, reqQuery2))
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }
@@ -224,10 +226,11 @@ class CrossStateTests extends AnyFunSuite {
     val state = makeState(query)
 
     withClue("Initializing the state") {
-      state.initialize() { effects =>
+      state.initialize() { (effects, initialResultsOpt) =>
         val (onNode1, sq1) = effects.subscriptionsCreated.dequeue()
         assert(onNode1 == effects.executingNodeId)
         assert(sq1 == reqQuery1)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }

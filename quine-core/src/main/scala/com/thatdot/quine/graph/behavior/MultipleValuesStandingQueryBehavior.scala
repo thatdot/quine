@@ -1,5 +1,6 @@
 package com.thatdot.quine.graph.behavior
 
+import scala.annotation.unused
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.util.Try
@@ -8,10 +9,12 @@ import org.apache.pekko.actor.Actor
 
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.{EventSubscriber, StandingQueryWithId}
 import com.thatdot.quine.graph.cypher.{
+  MultipleValuesInitializationEffects,
   MultipleValuesResultsReporter,
   MultipleValuesStandingQuery,
   MultipleValuesStandingQueryEffects,
   MultipleValuesStandingQueryState,
+  QueryContext,
 }
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber.{
@@ -95,6 +98,7 @@ trait MultipleValuesStandingQueryBehavior
 
   implicit class MultipleValuesStandingQuerySubscribersOps(subs: MultipleValuesStandingQueryPartSubscription)
       extends MultipleValuesStandingQueryEffects
+      with MultipleValuesInitializationEffects
       with LazySafeLogging {
 
     @throws[NoSuchElementException]("When a MultipleValuesStandingQueryPartId is not known to this graph")
@@ -204,31 +208,44 @@ trait MultipleValuesStandingQueryBehavior
     * @param command standing query command to process
     */
   protected def multipleValuesStandingQueryBehavior(command: MultipleValuesStandingQueryCommand): Unit = command match {
-
     case CreateMultipleValuesStandingQuerySubscription(subscriber, query) =>
       val combinedId = subscriber.globalId -> query.queryPartId
-      multipleValuesStandingQueries.get(combinedId) match {
-        case None =>
-          val sqState = query.createState()
-          val subscription =
-            MultipleValuesStandingQueryPartSubscription(query.queryPartId, subscriber.globalId, mutable.Set(subscriber))
-          if (subscriber.isInstanceOf[MultipleValuesStandingQuerySubscriber.GlobalSubscriber]) {
-            graph
-              .standingQueries(namespace)
-              .flatMap(_.runningStandingQuery(subscriber.globalId))
-              .foreach { sq =>
-                if (!multipleValuesResultReporters.contains(subscriber.globalId)) {
-                  multipleValuesResultReporters +=
-                    subscriber.globalId -> new MultipleValuesResultsReporter(sq, Seq.empty)
-                }
-              }
+      val alreadyTrackingState
+        : Option[(MultipleValuesStandingQueryPartSubscription, MultipleValuesStandingQueryState)] =
+        multipleValuesStandingQueries.get(combinedId)
 
-          }
+      val (subscription, sqState) = alreadyTrackingState
+        .map { case tup @ (_, oldState) =>
+          // Found a state already being tracked for this query. If the query is different, log a warning about the
+          // collision
+          if (oldState.query != query)
+            log.warn(
+              safe"""While creating subscription for MultipleValues Standing Query [part] $query, detected
+                    |that MultipleValuesStandingQuery part identified by $combinedId is ambiguous.
+                    |Refusing to register query. Continuing to provide results for ID ${combinedId._2}
+                    |to ${oldState.query: MultipleValuesStandingQuery}. New query may miss results. This is a bug in
+                    |MultipleValuesStandingQueryPartId generation.
+                    |""".cleanLines,
+            )
+          tup
+        }
+        .getOrElse {
+          // This node is becoming aware of this SQ state for the first time, so create a state to track the query and an
+          // empty subscription to that state, and have that kick off any side effects so that it will eventually produce
+          // results (eg, if registering a SubscribeAcrossEdge, and there are edges matching its pattern, it should issue
+          // subscriptions across the pattern-matching edges)
+          val sqState = query.createState()
+          // NB this subscription must have an empty set of subscribers to start with. This serves two purposes:
+          // - First, it avoids duplicate events being sent by onNodeEvents and the readResults-then-send later
+          // - Second, it ensures that the "perform side effects necessary when adding a subscriber" if-block
+          //   below gets executed
+          val subscription =
+            MultipleValuesStandingQueryPartSubscription(query.queryPartId, subscriber.globalId, mutable.Set.empty)
           multipleValuesStandingQueries += combinedId -> (subscription -> sqState)
           sqState.rehydrate(subscription)
           sqState.onInitialize(subscription)
           sqState.relevantEventTypes(graph.labelsProperty).foreach { (eventType: WatchableEventType) =>
-            val initialEvents = watchableEventIndex.registerStandingQuery(
+            val initialEvents: Seq[NodeChangeEvent] = watchableEventIndex.registerStandingQuery(
               EventSubscriber(combinedId),
               eventType,
               properties,
@@ -238,58 +255,42 @@ trait MultipleValuesStandingQueryBehavior
             // Notify the standing query of events for pre-existing node state
             sqState.onNodeEvents(initialEvents, subscription)
           }
-          val _ = persistMultipleValuesStandingQueryState(
+          subscription -> sqState
+        }
+
+      // TODO: don't ignore the persistenceEffects Future!
+      @unused val persistenceEffects: Future[Unit] = {
+        // Updates the subscribers set in-place (within `multipleValuesStandingQueries`), returning true iff
+        // the subscriber is new
+        if (subscription.subscribers.add(subscriber)) {
+          // If the new subscriber is the end-user, shim in a MultipleValuesResultsReporter to deduplicate and manage
+          // result groups for this query state
+          subscriber match {
+            case NodeSubscriber(_, _, queryId) => require(subscription.forQuery != queryId)
+            case GlobalSubscriber(_) =>
+              graph
+                .standingQueries(namespace)
+                .flatMap(_.runningStandingQuery(subscriber.globalId))
+                .foreach { sq =>
+                  if (!multipleValuesResultReporters.contains(subscriber.globalId)) {
+                    multipleValuesResultReporters +=
+                      subscriber.globalId -> new MultipleValuesResultsReporter(sq, Seq.empty)
+                  }
+                }
+          }
+
+          // Regardless of whether we were already tracking the state, give the new subscriber the
+          // currently-calculable results
+          val maybeResultGroup: Option[Seq[QueryContext]] = sqState.readResults(properties, graph.labelsProperty)
+          maybeResultGroup.foreach(subscription.reportUpdatedResults)
+
+          // finally, save the updated state (including the new subscription)
+          persistMultipleValuesStandingQueryState(
             subscriber.globalId,
             query.queryPartId,
             Some(subscription -> sqState),
-          ) // TODO: don't ignore the returned future!
-
-        case Some((_, oldState)) if oldState.query != query =>
-          log.warn(
-            safe"""While creating subscription for MultipleValues Standing Query [part] $query, detected
-                 |that MultipleValuesStandingQuery part identified by $combinedId is ambiguous.
-                 |Refusing to register query. Continuing to provide results for ID ${combinedId._2}
-                 |to ${oldState.query: MultipleValuesStandingQuery}. New query may miss results. This is a bug in
-                 |MultipleValuesStandingQueryPartId generation.
-                 |""".cleanLines,
           )
-
-        // SQ is already running on the node
-        case Some(tup @ (subscription, sqState)) =>
-          // Check if this is already an existing subscriber (if so, it's a no-op)
-          if (subscription.subscribers.add(subscriber)) {
-            subscriber match {
-              case NodeSubscriber(_, _, queryId) => require(subscription.forQuery != queryId)
-              case GlobalSubscriber(sqId) =>
-                graph
-                  .standingQueries(namespace)
-                  .flatMap(_.runningStandingQuery(sqId))
-                  .foreach { sq =>
-                    if (!multipleValuesResultReporters.contains(subscriber.globalId)) {
-                      multipleValuesResultReporters +=
-                        subscriber.globalId -> new MultipleValuesResultsReporter(sq, Seq.empty)
-                    }
-                  }
-            }
-            // Send existing results
-            val existingResultGroup = sqState.readResults(properties, graph.labelsProperty)
-            for (resultGroup <- existingResultGroup)
-              subscriber match {
-                case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, sqId, upstreamPartId) =>
-                  quineId ! NewMultipleValuesStateResult(
-                    qid,
-                    query.queryPartId,
-                    sqId,
-                    Some(upstreamPartId),
-                    resultGroup,
-                  )
-                case MultipleValuesStandingQuerySubscriber.GlobalSubscriber(sqId) =>
-                  val reporter = multipleValuesResultReporters(sqId)
-                  reporter.applyAndEmitResults(resultGroup)
-              }
-            val _ = persistMultipleValuesStandingQueryState(subscriber.globalId, query.queryPartId, Some(tup))
-            // TODO: don't ignore the returned future!
-          }
+        } else Future.unit
       }
 
     /** This protocol is only _initiated_ when an edge is removed, causing the tree of subqueries to become selectively

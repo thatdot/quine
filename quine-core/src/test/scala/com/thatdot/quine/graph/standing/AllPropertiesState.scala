@@ -1,12 +1,13 @@
 package com.thatdot.quine.graph.standing
 
+import org.scalatest.OptionValues
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.model.{PropertyValue, QuineValue}
 
-class AllPropertiesStateTest extends AnyFunSuite {
+class AllPropertiesStateTest extends AnyFunSuite with OptionValues {
   val query: MultipleValuesStandingQuery.AllProperties = MultipleValuesStandingQuery.AllProperties(
     aliasedAs = Symbol("props"),
   )
@@ -14,11 +15,11 @@ class AllPropertiesStateTest extends AnyFunSuite {
   test("all properties state with bootstrapped properties") {
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("Initializing the state reports an initial 1-result group") {
+    withClue("Initializing the state prepares an initial 1-result group") {
       val initialProperties = Map(Symbol("one") -> QuineValue(1L), Symbol("two") -> QuineValue(2L))
 
-      state.initialize(initialProperties.map { case (k, v) => k -> PropertyValue(v) }) { effects =>
-        val results = effects.resultsReported.dequeue()
+      state.initialize(initialProperties.map { case (k, v) => k -> PropertyValue(v) }) { (effects, initialResultsOpt) =>
+        val results = initialResultsOpt.value
         assert(
           results == Seq(
             QueryContext(
@@ -52,8 +53,10 @@ class AllPropertiesStateTest extends AnyFunSuite {
     def makeSetEvent(prop: (Symbol, QuineValue)): PropertySet = PropertySet(prop._1, PropertyValue(prop._2))
     def makeDeleteEvent(prop: (Symbol, QuineValue)): PropertyRemoved = PropertyRemoved(prop._1, PropertyValue(prop._2))
 
-    withClue("Initializing the state reports no results") {
-      state.initialize() { effects =>
+    withClue("Initializing the state prepares a 1-result group with an empty properties map") {
+      state.initialize() { (effects, initialResultOpt) =>
+        val initialResult = initialResultOpt.value
+        assert(initialResult == Seq(QueryContext(Map(query.aliasedAs -> Expr.Map.empty))))
         assert(effects.isEmpty)
       }
     }

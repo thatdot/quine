@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.standing
 
 import java.util.UUID
 
+import org.scalatest.OptionValues
 import org.scalatest.funsuite.AnyFunSuite
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
@@ -10,7 +11,7 @@ import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryC
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
-class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
+class SubscribeAcrossEdgeStateTests extends AnyFunSuite with OptionValues {
 
   def makeState(
     query: MultipleValuesStandingQuery.SubscribeAcrossEdge,
@@ -30,8 +31,10 @@ class SubscribeAcrossEdgeStateTests extends AnyFunSuite {
     )
     val state = makeState(query)
 
-    withClue("Initializing the state") {
-      state.initialize() { effects =>
+    withClue("Initializing the state prepares a 0-result group") {
+      state.initialize() { (effects, initialResultsOpt) =>
+        val initialResults = initialResultsOpt.value
+        assert(initialResults == Seq.empty)
         assert(effects.isEmpty)
       }
     }

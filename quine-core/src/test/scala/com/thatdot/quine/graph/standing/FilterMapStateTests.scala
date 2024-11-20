@@ -33,10 +33,11 @@ class FilterMapStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("initializing state creates exactly 1 subscription and no results") {
-      state.initialize() { effects =>
+    withClue("initializing state creates exactly 1 subscription and indeterminate results") {
+      state.initialize() { (effects, initialResultsOpt) =>
         assert(effects.subscriptionsCreated.nonEmpty)
         assert(effects.subscriptionsCreated.dequeue()._2 === upstreamQuery)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }
@@ -107,10 +108,11 @@ class FilterMapStateTests extends AnyFunSuite {
     )
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("initializing state creates exactly 1 subscription and no results") {
-      state.initialize() { effects =>
+    withClue("initializing state creates exactly 1 subscription and indeterminate results") {
+      state.initialize() { (effects, initialResultsOpt) =>
         assert(effects.subscriptionsCreated.nonEmpty)
         assert(effects.subscriptionsCreated.dequeue()._2 === upstreamQuery)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }
@@ -160,10 +162,11 @@ class FilterMapStateTests extends AnyFunSuite {
 
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("initializing state creates exactly 1 subscription and no results") {
-      state.initialize() { effects =>
+    withClue("initializing state creates exactly 1 subscription and indeterminate results") {
+      state.initialize() { (effects, initialResultsOpt) =>
         assert(effects.subscriptionsCreated.nonEmpty)
         assert(effects.subscriptionsCreated.dequeue()._2 === upstreamQuery)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }
@@ -248,10 +251,11 @@ class FilterMapStateTests extends AnyFunSuite {
     )
     val state = new StandingQueryStateWrapper(query)
 
-    withClue("initializing state creates exactly 1 subscription and no results") {
-      state.initialize() { effects =>
+    withClue("initializing state creates exactly 1 subscription and indeterminate results") {
+      state.initialize() { (effects, initialResultsOpt) =>
         assert(effects.subscriptionsCreated.nonEmpty)
         assert(effects.subscriptionsCreated.dequeue()._2 === upstreamQuery)
+        assert(initialResultsOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }

@@ -28,7 +28,8 @@ class EdgeSubscriptionReciprocalStateTests extends AnyFunSuite {
       new StandingQueryStateWrapper(query, Seq(andThen))
 
     withClue("Initializing the state") {
-      state.initialize() { effects =>
+      state.initialize() { (effects, initialResultOpt) =>
+        assert(initialResultOpt.isEmpty)
         assert(effects.isEmpty)
       }
     }

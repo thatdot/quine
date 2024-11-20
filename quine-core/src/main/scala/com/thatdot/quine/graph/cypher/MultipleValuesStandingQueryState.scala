@@ -33,7 +33,13 @@ import com.thatdot.quine.util.Log.implicits._
   * be made to keep the in-memory size of instances small. For example, rather than serializing and reconstructing the
   * StandingQuery instance associated with a State (which would create multiple identical copies of the same Query
   * objects in memory) the States leverage a global registry of StandingQuery instances, and only serialize as much
-  * information as necessary to produce results when requested.
+  * information as necessary to produce results when requested. When data is omitted from serialization, it must be
+  * managed according to the following criteria:
+  * 1) the first call to [[onNodeEvents]] after node wake must set the object's internal state such that subsequent
+  *    calls to [[onNodeEvents]] do not produce duplicate results
+  * 2) [[readResults]] must return the correct results for the state at any point in time after the state
+  *    initialization is completed, including after a node is re-awoken, even if the node does not run [[onNodeEvents]]
+  *    again after waking
   *
   * All operations on these classes must be done on an Actor within the single-threaded flow of message processing.
   * These operations **are not thread safe**.
@@ -69,18 +75,29 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     _query = effectHandler.lookupQuery(queryPartId).asInstanceOf[StateOf]
 
   /** Called the first time the state is created (but not when it is merely being woken up).
-    * This SHOULD NOT emit any results derived from state that may change as a result of new events,
-    * but MUST emit any results derived from state that is known to never change (i.e., the node's ID
-    * or a Unit state result). The code that materializes this state will also compute the relevant
-    * initial events to issue to this state, and explicitly call [[onNodeEvents]]: see the behavior
-    * for [[CreateMultipleValuesStandingQuerySubscription]] messages.
+    * This MUST set any internal state so that the next call to [[readResults]] generates any results which do not
+    * depend on node state (for example, a LocalId's result).
+    * The code that materializes this state is architected to also compute the relevant initial events to issue to
+    * this state, and explicitly call [[onNodeEvents]]: see the behavior for
+    * [[CreateMultipleValuesStandingQuerySubscription]] messages. It should then call [[readResults]] to get the
+    * initial results.
     */
-  def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit = ()
+  def onInitialize(effectHandler: MultipleValuesInitializationEffects): Unit = ()
 
-  /** Process node events. Note that this may re-report any results that were previously reported,
-    * and is guaranteed to do so during node wake, if there is any relevant state in the node's properties/edges.
+  /** Process node events.
     *
-    * Always called on the node's thread
+    * Always called on the node's thread.
+    *
+    * This both processes events as-they-happen, as well as accepts replays of mock events to represent current node
+    * state. The latter mode occurs when the query is initially registered, and should pass an empty set of subscribers
+    * so that any calls to [[effectHandler.reportUpdatedResults]] are no-ops. The results should then be conclusively
+    * decided by a call to [[readResults]], and emitted to any initial subscriber[s].
+    *
+    * The implementation of this function should guarantee that a result group from this state will be reported in
+    * finite time. For example, if this state depends only on node-local data, this must report any changed result
+    * immediately. If this state depends on subqueries, it must ensure that any subqueries will report any changed
+    * results as quickly as they can. Put another way: Once this is called, [[readResults]] should at most
+    * temporarily return None.
     *
     * @param events which node-events happened (after node-side deduplication against current node state)
     *               NB: multiple edge events within the same batch are no longer [1] deduplicated against
@@ -112,17 +129,22 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     *       this will return results according to the properties that are passed in -- which may differ from the
     *       properties returned by `effectHandler.currentProperties`
     *
-    * INV: this returns the same rows as the last call to `effectHandler.reportUpdatedResults` made by either
-    *      `onNewSubscriptionResult` or `onNodeEvents`.
+    * INV: this returns the same rows as the last call to [[effectHandler.reportUpdatedResults]] made by either
+    *      [[onNewSubscriptionResult]] or [[onNodeEvents]].
     *
-    * @param localProperties current local node properties, including the labels property (labelsKey), which is not
-    *                        seen by the ad-hoc cypher interpreter
-    * @param labelsPropertyKey       the property key used to store labels on a node, according to startup-time configuration
+    * [[onNodeEvents]] and [[onNewSubscriptionResult]] should work together across a standing query to ensure that this
+    * function returns [[None]] as little as possible, and only ever temporarily.
+    *
+    * @param localProperties   current local node properties, including the labels property (labelsKey), which is not
+    *                          seen by the ad-hoc cypher interpreter
+    * @param labelsPropertyKey the property key used to store labels on a node, according to startup-time
+    *                          configuration
     * @return Accumulated results at this moment.
-    *         `None` when the internal state has not yet received/produced a result (e.g. still waiting for subqueries).
-    *         `Some(Seq.empty)` when a result was produced but yielded no results
-    *         `Some(Seq(...))` when accumulated results have been resolved into Seq of resulting rows according to whatever
-    *         the StandingQueryState is meant to compute from its cached state.
+    *         `None` when the internal state has not yet received/produced a result (i.e, still waiting for necessary
+    *         subqueries).
+    *         `Some(Seq.empty)` when a result group was produced but yielded no result rows
+    *         `Some(Seq(...))` when accumulated state have been resolved into a nonempty result group according to
+    *         whatever the StandingQueryState is meant to compute from its cached state.
     */
   def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
     logConfig: LogConfig,
@@ -149,7 +171,28 @@ trait MultipleValuesStandingQueryLookupInfo {
   val idProvider: QuineIdProvider
 }
 
-/** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make */
+/** Callbacks available to an MVSQ during `onInitialize` -- i.e., after its `query` is resolved but before
+  * it is able to issue results.
+  */
+trait MultipleValuesInitializationEffects {
+
+  /** Current node */
+  val executingNodeId: QuineId
+
+  /** ID provider */
+  val idProvider: QuineIdProvider
+
+  /** Issue a subscription to a node
+    *
+    * @param onNode node to which the subscription is delivered
+    * @param query standing query whose results are being subscribed to
+    */
+  def createSubscription(onNode: QuineId, query: MultipleValuesStandingQuery): Unit
+}
+
+/** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make during regular
+  * (post-initialization) operation
+  */
 trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLookupInfo {
 
   /** @return a readonly view on the current node properties, including the labels property, which is not seen by the
@@ -211,13 +254,6 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
     */
   private val resultGroup = Seq(QueryContext.empty)
 
-  override def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects,
-  ): Unit =
-    // this state is more similar to an local event driven state than a subquery-driven state,
-    // so we report an initial result (per the scaladoc on [[super]])
-    effectHandler.reportUpdatedResults(resultGroup)
-
   /** There is only one unit query, and we don't need to do a lookup to know its value. */
   override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit =
     _query = MultipleValuesStandingQuery.UnitSq.instance
@@ -252,7 +288,7 @@ final case class CrossState(
     * `def onNewSubscriptionResult`.
     */
   override def onInitialize(
-    effectHandler: MultipleValuesStandingQueryEffects,
+    effectHandler: MultipleValuesInitializationEffects,
   ): Unit =
     for (sq <- if (query.emitSubscriptionsLazily) query.queries.view.take(1) else query.queries.view) {
       // In a `Cross`, `createSubscription` always ends up going to the same node as the Cross itself,
@@ -351,10 +387,13 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
 
   /** NB not serialized. We know that properties can only change when the node is awake, so
     * we don't need to record the last-known properties when the node goes to sleep.
-    * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
-    * will duplicate the last result set reported. This is okay, as the event will be
-    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
-    * the [[MultipleValuesResultsReporter]] will deduplicate it).
+    *
+    * This is not persisted, and meets the 2 criteria specified by [[MultipleValuesStandingQueryState]]:
+    *
+    * 1) The first call to [[onNodeEvents]] will always set this to Some, so subsequent calls will only report if the
+    *    properties differ from this value
+    * 2) [[readResults]] will always return results according to the properties it is provided, and therefore operates
+    *    independently of the internal state of this object.
     */
   private[this] var lastReportedProperties: Option[Properties] = None
 
@@ -386,18 +425,22 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
+    val previousProperties = lastReportedProperties
+    lastReportedProperties = Some(effectHandler.currentProperties)
+
     val somePropertyChanged = events.exists {
       case pe: PropertyEvent if pe.key != effectHandler.labelsProperty => true
       case _ => false
     }
-
     if (somePropertyChanged) {
       // The events contained a property update, so confirm that the set of properties really did change since our
       // last recorded report
-      val previousProperties = lastReportedProperties
-      lastReportedProperties = Some(effectHandler.currentProperties)
       if (previousProperties == lastReportedProperties) {
         // the result has not changed, no need to report. This case is only expected when the node is first woken up.
+        false
+      } else if (previousProperties.isEmpty) {
+        // Optimization: This is our first time calling onNodeEvents after wake, and we have determined that we could
+        // report, but we choose not to, because a report will be generated by a call to [[readResults]] later.
         false
       } else {
         val result = QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(
@@ -458,14 +501,16 @@ final case class LocalPropertyState(
     * Null a valid, present value, distinct from the absence of the property. This means that a
     * property with a Null value will be represented as Some(Some(Null)) in this state.
     *
-    * NB not serialized. We know that properties can only change when the node is awake, so
+    * NB not persisted. We know that properties can only change when the node is awake, so
     * we don't need to record the last-known properties when the node goes to sleep.
-    * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
-    * will duplicate the last result set reported. This is okay, as the event will be
-    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
-    * the [[MultipleValuesResultsReporter]] will deduplicate it).
-    *
-    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    * This satisfies the 2 criteria specified by
+    * [[MultipleValuesStandingQueryState]]:
+    * 1) The first call to [[onNodeEvents]] after wake (or, the first that contains an update for the tracked property,
+    *    which is also be the first call because of the [[WatchableEventType]]) will record value of the watched
+    *    property as a Some here. Subsequent calls will only report if [[lastReportWasAMatch]] or the Some value have
+    *    changed, depending on the query's property constraint and aliasing rule.
+    * 2) [[readResults]] will always return results according to the properties it is provided, and therefore operates
+    *    independently of the internal state of this object.
     */
   var valueAtLastReport: Option[Option[model.PropertyValue]] = None
 
@@ -473,6 +518,7 @@ final case class LocalPropertyState(
     * If we haven't yet reported since registering/waking, this is false.
     *
     * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    * @see [[valueAtLastReport]]
     */
   var lastReportWasAMatch: Boolean = false
 
@@ -529,16 +575,17 @@ final case class LocalPropertyState(
                   .getOrElse(Expr.Null)
               val result = QueryContext.empty + (alias -> currentPropertyExpr)
               lastReportWasAMatch = true
-              effectHandler.reportUpdatedResults(result :: Nil)
+
+              {
+                // Optimization to reduce duplicate results:
+                // If this isn't the first call to [[onNodeEvents]] since wake, we need to report the change.
+                // If this is, a call to [[readResults]] will do so for us (optimization)
+                if (valueAtLastReport.nonEmpty) effectHandler.reportUpdatedResults(result :: Nil)
+              }
               true // we issued a new result
             } else if (valueAtLastReport.contains(currentProperty)) {
               // the property hasn't actually changed, so we don't need to do anything
               false
-            } else if (valueAtLastReport.isEmpty) {
-              // we haven't yet reported whether we match, but we don't -- send a report.
-              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
-              effectHandler.reportUpdatedResults(Nil)
-              true // we issued a new result
             } else if (lastReportWasAMatch) {
               // we used to match but no longer do -- cancel the previous positive result
               lastReportWasAMatch = false
@@ -561,13 +608,13 @@ final case class LocalPropertyState(
                   lastReportWasAMatch = false
                   Nil
                 }
-              effectHandler.reportUpdatedResults(resultGroup)
+              {
+                // Optimization to reduce duplicate results:
+                // If this isn't the first call to [[onNodeEvents]] since wake, we need to report the change.
+                // If this is, a call to [[readResults]] will do so for us (optimization)
+                if (valueAtLastReport.nonEmpty) effectHandler.reportUpdatedResults(resultGroup)
+              }
               true
-            } else if (valueAtLastReport.isEmpty) {
-              // send initial report that nothing matches
-              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
-              effectHandler.reportUpdatedResults(Nil)
-              true // we issued a new result
             } else {
               // nothing changed that we need to report - no-op.
               false
@@ -577,21 +624,14 @@ final case class LocalPropertyState(
         somethingChanged
       }
       .getOrElse {
-        // there was no relevant change. We only have something to do if the query wants results for null values.
-        // As an optimization, we only do this if we haven't yet reported a result since waking. If this node is
-        // waking up, this may be a duplicate event, but that will be deduplicated by the subscriber / result reporter.
-        if (query.propConstraint.satisfiedByNone && valueAtLastReport.isEmpty) {
-          val alwaysReportedPart: QueryContext = QueryContext.empty
-          val aliasedPart: Iterable[(Symbol, Value)] = query.aliasedAs.map(_ -> Expr.Null)
-          val result = Seq(alwaysReportedPart ++ aliasedPart)
+        // valueAtLastReport is defined for all but the first time onNodeEvents is called.
+        // If this is the first call to [[onNodeEvents]] since wake, the property must be None/null, so track that
+        if (valueAtLastReport.isEmpty) {
           valueAtLastReport = Some(None)
-          lastReportWasAMatch = true
-          effectHandler.reportUpdatedResults(result)
-          true // we issued a new result
-        } else {
-          // nothing changed that we need to report - no-op.
-          false
+          lastReportWasAMatch = query.propConstraint.satisfiedByNone
         }
+        // nothing changed that needs persistence
+        false
       }
   }
 
@@ -635,14 +675,16 @@ final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) ext
   /** The value of the labels as of the last time we made a report, or None if we have not
     * made a report since registering/waking.
     *
-    * NB not serialized. We know that properties can only change when the node is awake, so
+    * NB not persisted. We know that labels can only change when the node is awake, so
     * we don't need to record the last-known labels when the node goes to sleep.
     * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
-    * will duplicate the last result set reported. This is okay, as the event will be
-    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
-    * the [[MultipleValuesResultsReporter]] will deduplicate it).
-    *
-    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    * will duplicate the last result set reported. This satisfies the 2 criteria specified by
+    * [[MultipleValuesStandingQueryState]]:
+    * 1) The first call to [[onNodeEvents]] after wake will record the current value of the labels, setting this to
+    *    Some. Subsequent calls will only report if [[lastReportWasAMatch]] or the Some value have changed, depending
+    *    on the query's property constraint and aliasing rule.
+    * 2) [[readResults]] will always return results according to the properties it is provided, and therefore operates
+    *    independently of the internal state of this object.
     */
   var lastReportedLabels: Option[Set[Symbol]] = None
 
@@ -650,6 +692,8 @@ final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) ext
     * If we haven't yet reported since registering/waking, this is false.
     *
     * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    *
+    * @see [[lastReportedLabels]]
     */
   var lastReportWasAMatch: Boolean = false
 
@@ -686,16 +730,17 @@ final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) ext
               val labelsAsExpr = Expr.List(currentLabels.map(_.name).map(Expr.Str).toVector)
               val result = QueryContext.empty + (alias -> labelsAsExpr)
               lastReportWasAMatch = true
-              effectHandler.reportUpdatedResults(result :: Nil)
+
+              {
+                // Optimization to reduce duplicate results:
+                // If this isn't the first call to [[onNodeEvents]] since wake, we need to report the change.
+                // If this is, a call to [[readResults]] will do so for us (optimization)
+                if (lastReportedLabels.nonEmpty) effectHandler.reportUpdatedResults(result :: Nil)
+              }
               true // we issued a new result
             } else if (lastReportedLabels.contains(currentLabels)) {
               // the property hasn't actually changed, so we don't need to do anything
               false
-            } else if (lastReportedLabels.isEmpty) {
-              // we haven't yet reported whether we match, but we don't -- send a report.
-              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
-              effectHandler.reportUpdatedResults(Nil)
-              true // we issued a new result
             } else if (lastReportWasAMatch) {
               // we used to match but no longer do -- cancel the previous positive result
               lastReportWasAMatch = false
@@ -719,13 +764,14 @@ final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) ext
                   lastReportWasAMatch = false
                   Nil
                 }
-              effectHandler.reportUpdatedResults(resultGroup)
+
+              {
+                // Optimization to reduce duplicate results:
+                // If this isn't the first call to [[onNodeEvents]] since wake, we need to report the change.
+                // If this is, a call to [[readResults]] will do so for us (optimization)
+                if (lastReportedLabels.nonEmpty) effectHandler.reportUpdatedResults(resultGroup)
+              }
               true
-            } else if (lastReportedLabels.isEmpty) {
-              // send initial report that nothing matches
-              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
-              effectHandler.reportUpdatedResults(Nil)
-              true // we issued a new result
             } else {
               // nothing changed that we need to report - no-op.
               false
@@ -736,21 +782,14 @@ final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) ext
         somethingChanged
       }
       .getOrElse {
-        // there was no relevant change. We only have something to do if the query wants results for empty labels.
-        // As an optimization, we only do this if we haven't yet reported a result since waking. If this node is
-        // waking up, this may be a duplicate event, but that will be deduplicated by the subscriber / result reporter.
-        if (query.constraint.apply(Set.empty) && lastReportedLabels.isEmpty) {
-          val alwaysReportedPart: QueryContext = QueryContext.empty
-          val aliasedPart: Iterable[(Symbol, Value)] = query.aliasedAs.map(_ -> Expr.List.empty)
-          val result = Seq(alwaysReportedPart ++ aliasedPart)
+        // lastReportedLabels is defined for all but the first time onNodeEvents is called.
+        // If this is the first call to [[onNodeEvents]] since wake, there must be no labels, so track that
+        if (lastReportedLabels.isEmpty) {
           lastReportedLabels = Some(Set.empty)
-          lastReportWasAMatch = true
-          effectHandler.reportUpdatedResults(result)
-          true // we issued a new result
-        } else {
-          // nothing changed that we need to report - no-op.
-          false
+          lastReportWasAMatch = query.constraint(Set.empty)
         }
+        // nothing changed that needs persistence
+        false
       }
   }
 
@@ -825,7 +864,13 @@ final case class LocalIdState(
 
   type StateOf = MultipleValuesStandingQuery.LocalId
 
-  private var result: Seq[QueryContext] = _ // Set during `hydrate`
+  /** Not persisted. This satisfies the 2 criteria specified by [[MultipleValuesStandingQueryState]]:
+    * 1) Results are never proactively reported by this state (only by [[readResults]] when something subscribes
+    *    to this state), so [[onNodeEvents]] does not need to worry about duplicating them
+    * 2) [[readResults]] will always be run after [[rehydrate]], and only [[rehydrate]] changes this value, so
+    *    [[readResults]] will always report the right value
+    */
+  private var result: Seq[QueryContext] = _ // Set during [[rehydrate]]
 
   override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit = {
     super.rehydrate(effectHandler) // Sets `query`
@@ -837,10 +882,6 @@ final case class LocalIdState(
     }
     result = (QueryContext.empty + (query.aliasedAs -> idValue)) :: Nil
   }
-
-  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
-    // this result is not dependent on any events, so we must report it immediately
-    effectHandler.reportUpdatedResults(result)
 
   def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
     logConfig: LogConfig,
@@ -948,13 +989,16 @@ final case class SubscribeAcrossEdgeState(
       // There are no matching edges, so there is an affirmative lack of matches
       Some(Nil)
     } else {
-      // If we don't know about _any_ edge, we can't know our results
+      // If we don't know about _any_ edge, we can't know our results.
+      // This is chosen over the alternative ("universal") semantics because it reduces the number of
+      // intermediate/temporary results, and potentially the number of result invalidations, at the
+      // cost of higher latency in initial matching.
       lazy val existentialCheck =
         if (edgeResults.view.values.exists(maybeRows => maybeRows.isEmpty)) None
         else Some(edgeResults.view.values.flatten.flatten.toSeq)
 
       // Alternative semantics: If we don't know about some edges, we still know enough about the others to generate
-      // a result
+      // a result.
       @unused lazy val universalCheck =
         if (edgeResults.view.values.forall(_.isEmpty)) None
         else Some(edgeResults.view.values.flatten.flatten.toSeq)
@@ -1080,7 +1124,7 @@ final case class FilterMapState(
     */
   var keptResults: Option[Seq[QueryContext]] = None
 
-  override def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit =
+  override def onInitialize(effectHandler: MultipleValuesInitializationEffects): Unit =
     effectHandler.createSubscription(effectHandler.executingNodeId, query.toFilter)
 
   private var condition: QueryContext => Boolean = _ // Set during `rehydrate`
