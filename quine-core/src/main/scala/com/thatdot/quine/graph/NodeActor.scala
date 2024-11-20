@@ -115,6 +115,7 @@ private[graph] class NodeActor(
       dgnRegistry,
       domainGraphSubscribers.subscribersToThisNode.keysIterator,
       multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state },
+      graph.labelsProperty,
     )
     this.watchableEventIndex = watchableEventIndexRestored
 

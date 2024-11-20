@@ -27,6 +27,7 @@ union MultipleValuesStandingQueryState {
   MultipleValuesEdgeSubscriptionReciprocalStandingQueryState,
   MultipleValuesFilterMapStandingQueryState,
   MultipleValuesAllPropertiesStandingQueryState,
+  MultipleValuesLabelsStandingQueryState,
 }
 
 // See [[com.thatdot.quine.graph.cypher.UnitState]]
@@ -84,6 +85,11 @@ table MultipleValuesFilterMapStandingQueryState {
 
 // See [[com.thatdot.quine.graph.cypher.AllPropertiesState]]
 table MultipleValuesAllPropertiesStandingQueryState {
+  query_part_id: MultipleValuesStandingQueryPartId (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.LabelsState]]
+table MultipleValuesLabelsStandingQueryState {
   query_part_id: MultipleValuesStandingQueryPartId (required);
 }
 

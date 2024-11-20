@@ -106,6 +106,42 @@ object MultipleValuesStandingQuery {
   ) extends StandingQuery
    */
 
+  /** Watches for changes to the projection of node properties as a map
+    *
+    * INV: a result emitted by this state on a node `n` has the same value as the result of executing `properties(n)`
+    *      on `n`'s CypherBehavior at the same time
+    * @param aliasedAs
+    * @param columns
+    */
+  final case class AllProperties(
+    aliasedAs: Symbol,
+    columns: Columns = Columns.Omitted,
+  ) extends MultipleValuesStandingQuery {
+    type State = AllPropertiesState
+    def createState(): AllPropertiesState = AllPropertiesState(queryPartId)
+    def children: Seq[MultipleValuesStandingQuery] = Seq.empty
+  }
+
+  /** Watches for a certain local property to be set and returns a result if/when that happens
+    *
+    * @param propKey key of the local property to watch
+    * @param propConstraint additional constraints to enforce on the local property
+    * @param aliasedAs if the property should be extracted, under what name is it stored?
+    */
+  final case class LocalProperty(
+    propKey: Symbol,
+    propConstraint: LocalProperty.ValueConstraint,
+    aliasedAs: Option[Symbol],
+    columns: Columns = Columns.Omitted,
+  ) extends MultipleValuesStandingQuery {
+
+    type State = LocalPropertyState
+
+    override def createState(): LocalPropertyState = LocalPropertyState(queryPartId)
+
+    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
+  }
+
   object LocalProperty {
     sealed abstract class ValueConstraint {
 
@@ -176,40 +212,43 @@ object MultipleValuesStandingQuery {
     }
   }
 
-  /** Watches for changes to the projection of node properties as a map
-    *
-    * INV: a result emitted by this state on a node `n` has the same value as the result of executing `properties(n)`
-    *      on `n`'s CypherBehavior at the same time
-    * @param aliasedAs
-    * @param columns
-    */
-  final case class AllProperties(
-    aliasedAs: Symbol,
+  final case class Labels(
+    aliasedAs: Option[Symbol],
+    constraint: Labels.LabelsConstraint,
     columns: Columns = Columns.Omitted,
   ) extends MultipleValuesStandingQuery {
-    type State = AllPropertiesState
-    def createState(): AllPropertiesState = AllPropertiesState(queryPartId)
+    type State = LabelsState
+    def createState(): LabelsState = LabelsState(queryPartId)
     def children: Seq[MultipleValuesStandingQuery] = Seq.empty
   }
 
-  /** Watches for a certain local property to be set and returns a result if/when that happens
-    *
-    * @param propKey key of the local property to watch
-    * @param propConstraint additional constraints to enforce on the local property
-    * @param aliasedAs if the property should be extracted, under what name is it stored?
-    */
-  final case class LocalProperty(
-    propKey: Symbol,
-    propConstraint: LocalProperty.ValueConstraint,
-    aliasedAs: Option[Symbol],
-    columns: Columns = Columns.Omitted,
-  ) extends MultipleValuesStandingQuery {
+  object Labels {
+    sealed abstract class LabelsConstraint {
+      def apply(labels: Set[Symbol]): Boolean
+    }
 
-    type State = LocalPropertyState
+    /** Gets labels if the node has a specific label[s]
+      * @example MATCH (n:Person) => Contains(Set('Person))
+      * @example MATCH (n: SpacesInLabelsAreBad) => Contains(Set('SpacesInLabelsAreBad))
+      * @example MATCH (n:Animal:Dog) => Contains(Set('Animal, 'Dog))
+      * @example MATCH (n) WHERE "Ethan" IN labels(n) => Contains(Set('Ethan))
+      *
+      * NB labels(n) syntax is not yet supported by the MVSQ compiler
+      * @param mustContain
+      */
+    case class Contains(mustContain: Set[Symbol]) extends LabelsConstraint {
+      def apply(labels: Set[Symbol]): Boolean = mustContain.subsetOf(labels)
+    }
 
-    override def createState(): LocalPropertyState = LocalPropertyState(queryPartId)
-
-    val children: Seq[MultipleValuesStandingQuery] = Seq.empty
+    /** Gets labels
+      * @example RETURN labels(n)
+      * @example (with FilterMap) WHERE labels(n) <> ['Person']
+      * @example (with FilterMap) WHERE "Syntax" IN labels(n) AND NOT "Semantics" IN labels(n)
+      * NB labels(n) syntax is not yet supported by the MVSQ compiler
+      */
+    case object Unconditional extends LabelsConstraint {
+      def apply(labels: Set[Symbol]): Boolean = true
+    }
   }
 
   /** Produces exactly one result, as soon as initialized, with one column: the node ID

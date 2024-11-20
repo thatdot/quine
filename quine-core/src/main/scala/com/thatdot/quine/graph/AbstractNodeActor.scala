@@ -171,6 +171,7 @@ abstract private[graph] class AbstractNodeActor(
         dgnRegistry,
         domainGraphSubscribers.subscribersToThisNode.keysIterator,
         multipleValuesStandingQueries.iterator.map { case (sqIdAndPartId, (_, state)) => sqIdAndPartId -> state },
+        graph.labelsProperty,
       )
       ._1 // take the index, ignoring the record of which DGNs no longer exist (addressed in the aforementioned block)
 
@@ -592,7 +593,7 @@ abstract private[graph] class AbstractNodeActor(
                 sqId.toString,
                 globalId.toString,
                 subs.map(_.pretty).toSet,
-                s"${st.toString}{${st.readResults(properties - graph.labelsProperty).map(_.toList)}}",
+                s"${st.toString}{${st.readResults(properties, graph.labelsProperty).map(_.toList)}}",
               )
           },
           journal.toSet,

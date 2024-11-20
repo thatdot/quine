@@ -348,6 +348,24 @@ object MultipleValuesStandingQueryStateCodec
     cypher.AllPropertiesState(sqId)
   }
 
+  private[this] def writeMultipleValuesLabelsStandingQueryState(
+    builder: FlatBufferBuilder,
+    labelsState: cypher.LabelsState,
+  ): Offset = {
+    val sqIdOff: Offset = writeMultipleValuesStandingQueryPartId(builder, labelsState.queryPartId)
+    persistence.MultipleValuesLabelsStandingQueryState.createMultipleValuesLabelsStandingQueryState(
+      builder,
+      sqIdOff,
+    )
+  }
+
+  private[this] def readMultipleValuesLabelsStandingQueryState(
+    labelsState: persistence.MultipleValuesLabelsStandingQueryState,
+  ): cypher.LabelsState = {
+    val sqId: MultipleValuesStandingQueryPartId = readMultipleValuesStandingQueryPartId(labelsState.queryPartId)
+    cypher.LabelsState(sqId)
+  }
+
   private[this] def writeMultipleValuesStandingQuerySubscriber(
     builder: FlatBufferBuilder,
     subscriber: MultipleValuesStandingQuerySubscriber,
@@ -515,6 +533,9 @@ object MultipleValuesStandingQueryStateCodec
           persistence.MultipleValuesStandingQueryState.MultipleValuesAllPropertiesStandingQueryState,
           offset,
         )
+      case labelsState: cypher.LabelsState =>
+        val offset: Offset = writeMultipleValuesLabelsStandingQueryState(builder, labelsState)
+        TypeAndOffset(persistence.MultipleValuesStandingQueryState.MultipleValuesLabelsStandingQueryState, offset)
     }
 
   private[this] def readMultipleValuesStandingQueryState(
@@ -559,6 +580,11 @@ object MultipleValuesStandingQueryStateCodec
         val propState = makeState(new persistence.MultipleValuesAllPropertiesStandingQueryState())
           .asInstanceOf[persistence.MultipleValuesAllPropertiesStandingQueryState]
         readMultipleValuesAllPropertiesStandingQueryState(propState)
+
+      case persistence.MultipleValuesStandingQueryState.MultipleValuesLabelsStandingQueryState =>
+        val labelsState = makeState(new persistence.MultipleValuesLabelsStandingQueryState())
+          .asInstanceOf[persistence.MultipleValuesLabelsStandingQueryState]
+        readMultipleValuesLabelsStandingQueryState(labelsState)
 
       case other =>
         throw new InvalidUnionType(other, persistence.MultipleValuesStandingQueryState.names)

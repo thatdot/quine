@@ -245,6 +245,7 @@ object StandingQueryWatchableEventIndex {
     multipleValuesStandingQueryStates: Iterator[
       ((StandingQueryId, MultipleValuesStandingQueryPartId), MultipleValuesStandingQueryState),
     ],
+    labelsPropertyKey: Symbol,
   ): (StandingQueryWatchableEventIndex, Iterable[DomainGraphNodeId]) = {
     val toReturn = StandingQueryWatchableEventIndex.empty
     val removed = Iterable.newBuilder[DomainGraphNodeId]
@@ -260,7 +261,7 @@ object StandingQueryWatchableEventIndex {
     } yield event -> EventSubscriber(dgnId)
     val sqStateEvents = for {
       (sqIdAndPartId, queryState) <- multipleValuesStandingQueryStates
-      event <- queryState.relevantEventTypes
+      event <- queryState.relevantEventTypes(labelsPropertyKey)
     } yield event -> EventSubscriber(sqIdAndPartId)
 
     (dgnEvents ++ sqStateEvents).foreach { case (event, handler) =>

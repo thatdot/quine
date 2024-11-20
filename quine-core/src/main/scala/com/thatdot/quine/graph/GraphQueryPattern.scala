@@ -198,7 +198,7 @@ final case class GraphQueryPattern(
     def synthesizeQuery(id: NodePatternId): MultipleValuesStandingQuery = {
       val subQueries = ArraySeq.newBuilder[MultipleValuesStandingQuery]
 
-      val NodePattern(_, labelOpt, qidOpt, props) = remainingNodes.remove(id) getOrElse (throw HasACycle)
+      val NodePattern(_, requiredLabels, qidOpt, props) = remainingNodes.remove(id) getOrElse (throw HasACycle)
 
       // Sub-queries for local properties
       for ((propKey, propPattern) <- props) {
@@ -253,32 +253,15 @@ final case class GraphQueryPattern(
         MultipleValuesStandingQuery.AllProperties(alias)
       }
 
-      // Sub-queries for labels
-      // TODO: add a special case for this in `MultipleValuesStandingQuery.LocalProperty`
-      labelOpt.foreach { label =>
-        val labelTempVar = Symbol("__label")
-        val labelListTempVar = Symbol("__label_list")
-
-        subQueries += MultipleValuesStandingQuery.FilterMap(
-          condition = Some(
-            cypher.Expr.AnyInList(
-              variable = labelTempVar,
-              list = cypher.Expr.Variable(labelListTempVar),
-              filterPredicate = cypher.Expr.Equal(
-                cypher.Expr.Variable(labelTempVar),
-                cypher.Expr.fromQuineValue(QuineValue.Str(label.name)),
-              ),
-            ),
+      // Sub-query for labels that appear in node pattern, eg (n:Person) or (n:Foo:Bar)
+      if (requiredLabels.nonEmpty)
+        subQueries += MultipleValuesStandingQuery.Labels(
+          aliasedAs = None,
+          constraint = MultipleValuesStandingQuery.Labels.Contains(
+            requiredLabels,
           ),
-          dropExisting = true,
-          toFilter = MultipleValuesStandingQuery.LocalProperty(
-            propKey = labelsProperty,
-            propConstraint = MultipleValuesStandingQuery.LocalProperty.Any,
-            aliasedAs = Some(labelListTempVar),
-          ),
-          toAdd = Nil,
         )
-      }
+
       qidOpt.foreach { qid =>
         val nodeIdTempVar = Symbol("__local_id")
         subQueries += MultipleValuesStandingQuery.FilterMap(
@@ -410,12 +393,14 @@ object GraphQueryPattern {
       aliasedAs: Symbol,
     ) extends ReturnColumn
 
+    // n.foo
     final case class Property(
       node: NodePatternId,
       propertyKey: Symbol,
       aliasedAs: Symbol,
     ) extends ReturnColumn
 
+    // properties(n)
     final case class AllProperties(
       node: NodePatternId,
       aliasedAs: Symbol,

@@ -637,21 +637,9 @@ class GraphQueryPatternTest extends AnyFunSuite {
           MultipleValuesStandingQuery.LocalProperty.Equal(cypher.Expr.Str("DEADBEEF")),
           None,
         ),
-        MultipleValuesStandingQuery.FilterMap(
-          Some(
-            cypher.Expr.AnyInList(
-              Symbol("__label"),
-              cypher.Expr.Variable(Symbol("__label_list")),
-              cypher.Expr.Equal(cypher.Expr.Variable(Symbol("__label")), cypher.Expr.Str("LABELLED_NODE")),
-            ),
-          ),
-          MultipleValuesStandingQuery.LocalProperty(
-            Symbol("_LABEL"),
-            MultipleValuesStandingQuery.LocalProperty.Any,
-            Some(Symbol("__label_list")),
-          ),
-          dropExisting = true,
-          List(),
+        MultipleValuesStandingQuery.Labels(
+          None,
+          MultipleValuesStandingQuery.Labels.Contains(Set(Symbol("LABELLED_NODE"))),
         ),
       ),
       emitSubscriptionsLazily = true,

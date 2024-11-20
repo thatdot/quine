@@ -8,8 +8,10 @@ import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.Labels
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistence
+import com.thatdot.quine.persistence.{LabelsConstraintContains, MultipleValuesLabelsStandingQuery}
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
 import com.thatdot.quine.persistor.{BinaryFormat, PersistenceAgent}
 import com.thatdot.quine.util.Log._
@@ -1592,6 +1594,45 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         throw new InvalidUnionType(other, persistence.CypherValueConstraint.names)
     }
 
+  private[this] def writeLabelsConstriant(
+    builder: FlatBufferBuilder,
+    constraint: MultipleValuesStandingQuery.Labels.LabelsConstraint,
+  ): TypeAndOffset = constraint match {
+    case Labels.Contains(values) =>
+      val labelsOffs: Array[Offset] = new Array[Offset](values.size)
+      for ((value, i) <- values.zipWithIndex) {
+        val o: Offset = builder.createString(value.name)
+        labelsOffs(i) = o
+      }
+
+      val labelsOff: Offset = LabelsConstraintContains.createLabelsVector(builder, labelsOffs)
+
+      val off = persistence.LabelsConstraintContains.createLabelsConstraintContains(builder, labelsOff)
+      TypeAndOffset(persistence.LabelsConstraint.LabelsConstraintContains, off)
+    case Labels.Unconditional =>
+      TypeAndOffset(persistence.LabelsConstraint.LabelsConstraintUnconditional, emptyTable(builder))
+  }
+  private[this] def readLabelsConstraint(typ: Byte, makeValueConstraint: Table => Table) = typ match {
+    case persistence.LabelsConstraint.LabelsConstraintContains =>
+      val cons = makeValueConstraint(new persistence.LabelsConstraintContains())
+        .asInstanceOf[persistence.LabelsConstraintContains]
+      val values: Set[Symbol] = {
+        val builder = Set.newBuilder[Symbol]
+        var i = 0
+        val valuesLength = cons.labelsLength
+        while (i < valuesLength) {
+          builder += Symbol(cons.labels(i))
+          i += 1
+        }
+        builder.result()
+      }
+      MultipleValuesStandingQuery.Labels.Contains(values)
+    case persistence.LabelsConstraint.LabelsConstraintUnconditional =>
+      MultipleValuesStandingQuery.Labels.Unconditional
+    case other =>
+      throw new InvalidUnionType(other, persistence.LabelsConstraint.names)
+  }
+
   private[this] def writeMultipleValuesLocalPropertyStandingQuery(
     builder: FlatBufferBuilder,
     query: MultipleValuesStandingQuery.LocalProperty,
@@ -1734,22 +1775,6 @@ trait PersistenceCodec[T] extends LazySafeLogging {
     )
   }
 
-  private[this] def readMultipleValuesAllPropertiesStandingQuery(
-    query: persistence.MultipleValuesAllPropertiesStandingQuery,
-  ): MultipleValuesStandingQuery.AllProperties =
-    MultipleValuesStandingQuery.AllProperties(Symbol(query.aliasedAs))
-
-  private[this] def writeMultipleValuesAllPropertiesStandingQuery(
-    builder: FlatBufferBuilder,
-    query: MultipleValuesStandingQuery.AllProperties,
-  ): Offset = {
-    val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
-    persistence.MultipleValuesAllPropertiesStandingQuery.createMultipleValuesAllPropertiesStandingQuery(
-      builder,
-      aliasedAsOff,
-    )
-  }
-
   private[this] def readMultipleValuesFilterMapStandingQuery(
     query: persistence.MultipleValuesFilterMapStandingQuery,
   ): MultipleValuesStandingQuery.FilterMap = {
@@ -1764,6 +1789,46 @@ trait PersistenceCodec[T] extends LazySafeLogging {
       key -> value
     }
     MultipleValuesStandingQuery.FilterMap(condition, toFilter, query.dropExisting, toAdd)
+  }
+
+  private[this] def writeMultipleValuesAllPropertiesStandingQuery(
+    builder: FlatBufferBuilder,
+    query: MultipleValuesStandingQuery.AllProperties,
+  ): Offset = {
+    val aliasedAsOff: Offset = builder.createString(query.aliasedAs.name)
+    persistence.MultipleValuesAllPropertiesStandingQuery.createMultipleValuesAllPropertiesStandingQuery(
+      builder,
+      aliasedAsOff,
+    )
+  }
+  private[this] def readMultipleValuesAllPropertiesStandingQuery(
+    query: persistence.MultipleValuesAllPropertiesStandingQuery,
+  ): MultipleValuesStandingQuery.AllProperties =
+    MultipleValuesStandingQuery.AllProperties(Symbol(query.aliasedAs))
+
+  private[this] def writeMultipleValuesLabelsStandingQuery(
+    builder: FlatBufferBuilder,
+    query: MultipleValuesStandingQuery.Labels,
+  ): Offset = {
+    val aliasedAsOff: Offset = query.aliasedAs match {
+      case None => NoOffset
+      case Some(an) => builder.createString(an.name)
+    }
+    val TypeAndOffset(consTyp, consOff) = writeLabelsConstriant(builder, query.constraint)
+    persistence.MultipleValuesLabelsStandingQuery.createMultipleValuesLabelsStandingQuery(
+      builder,
+      aliasedAsOff,
+      consTyp,
+      consOff,
+    )
+  }
+
+  private[this] def readMultipleValuesLabelsStandingQuery(
+    query: persistence.MultipleValuesLabelsStandingQuery,
+  ): MultipleValuesStandingQuery.Labels = {
+    val aliasedAs = Option(query.aliasedAs).map(Symbol.apply)
+    val constraint = readLabelsConstraint(query.constraintType(), query.constraint)
+    MultipleValuesStandingQuery.Labels(aliasedAs, constraint)
   }
 
   protected[this] def writeMultipleValuesStandingQuery(
@@ -1805,6 +1870,9 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val offset: Offset = writeMultipleValuesAllPropertiesStandingQuery(builder, allProperties)
         TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesAllPropertiesStandingQuery, offset)
 
+      case labels: MultipleValuesStandingQuery.Labels =>
+        val offset: Offset = writeMultipleValuesLabelsStandingQuery(builder, labels)
+        TypeAndOffset(persistence.MultipleValuesStandingQuery.MultipleValuesLabelsStandingQuery, offset)
     }
 
   protected[this] def readMultipleValuesStandingQuery(
@@ -1852,6 +1920,11 @@ trait PersistenceCodec[T] extends LazySafeLogging {
         val allProperties = makeSq(new persistence.MultipleValuesAllPropertiesStandingQuery())
           .asInstanceOf[persistence.MultipleValuesAllPropertiesStandingQuery]
         readMultipleValuesAllPropertiesStandingQuery(allProperties)
+
+      case persistence.MultipleValuesStandingQuery.MultipleValuesLabelsStandingQuery =>
+        val labels = makeSq(new MultipleValuesLabelsStandingQuery())
+          .asInstanceOf[persistence.MultipleValuesLabelsStandingQuery]
+        readMultipleValuesLabelsStandingQuery(labels)
 
       case other =>
         throw new InvalidUnionType(other, persistence.MultipleValuesStandingQuery.names)

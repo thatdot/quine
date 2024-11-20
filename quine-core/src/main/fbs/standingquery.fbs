@@ -53,6 +53,7 @@ union MultipleValuesStandingQuery {
   MultipleValuesEdgeSubscriptionReciprocalStandingQuery,
   MultipleValuesFilterMapStandingQuery,
   MultipleValuesAllPropertiesStandingQuery,
+  MultipleValuesLabelsStandingQuery,
 }
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.ValueConstraint]]
@@ -94,6 +95,21 @@ table CypherValueConstraintListContains {
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.LocalProperty.Unconditional]]
 table CypherValueConstraintUnconditional { }
+
+
+// See [[com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.Labels.LabelsConstraint]]
+union LabelsConstraint {
+  LabelsConstraintContains,
+  LabelsConstraintUnconditional,
+}
+
+// See [[com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.Labels.Contains]]
+table LabelsConstraintContains {
+  labels: [string];
+}
+
+// See [[com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.Labels.Unconditional]]
+table LabelsConstraintUnconditional { }
 
 
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.UnitSq]]
@@ -148,6 +164,12 @@ table MultipleValuesFilterMapStandingQuery {
 // See [[com.thatdot.quine.graph.cypher.StandingQuery.AllProperties]]
 table MultipleValuesAllPropertiesStandingQuery {
   aliased_as: string (required);
+}
+
+// See [[com.thatdot.quine.graph.cypher.StandingQuery.Labels]]
+table MultipleValuesLabelsStandingQuery {
+  aliased_as: string;
+  constraint: LabelsConstraint (required);
 }
 
 // See [[com.thatdot.quine.graph.StandingQuery]]

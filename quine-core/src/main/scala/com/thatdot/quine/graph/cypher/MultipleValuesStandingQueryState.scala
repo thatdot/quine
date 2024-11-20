@@ -5,10 +5,11 @@ import scala.collection.{View, mutable}
 
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
+import com.thatdot.quine.graph.cypher.LabelsState.extractLabels
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, PropertyEvent, WatchableEventType}
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, QuineIdProvider, QuineType, QuineValue}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
@@ -57,7 +58,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
   def queryPartId: MultipleValuesStandingQueryPartId
 
   /** Non-overlapping group of possible node event categories that this state wants to be notified of */
-  def relevantEventTypes: Seq[WatchableEventType] = Seq.empty
+  def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = Seq.empty
 
   /** Called on state creation or deserialization/wakeup, before `onInitialize` or any other external events/results.
     *
@@ -77,7 +78,7 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
   def onInitialize(effectHandler: MultipleValuesStandingQueryEffects): Unit = ()
 
   /** Process node events. Note that this may re-report any results that were previously reported,
-    * especially at node wake.
+    * and is guaranteed to do so during node wake, if there is any relevant state in the node's properties/edges.
     *
     * Always called on the node's thread
     *
@@ -114,14 +115,18 @@ sealed abstract class MultipleValuesStandingQueryState extends LazySafeLogging {
     * INV: this returns the same rows as the last call to `effectHandler.reportUpdatedResults` made by either
     *      `onNewSubscriptionResult` or `onNodeEvents`.
     *
-    * @param localProperties current local node properties, as seen by the ad-hoc cypher interpreter
+    * @param localProperties current local node properties, including the labels property (labelsKey), which is not
+    *                        seen by the ad-hoc cypher interpreter
+    * @param labelsPropertyKey       the property key used to store labels on a node, according to startup-time configuration
     * @return Accumulated results at this moment.
     *         `None` when the internal state has not yet received/produced a result (e.g. still waiting for subqueries).
     *         `Some(Seq.empty)` when a result was produced but yielded no results
     *         `Some(Seq(...))` when accumulated results have been resolved into Seq of resulting rows according to whatever
     *         the StandingQueryState is meant to compute from its cached state.
     */
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]]
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Option[Seq[QueryContext]]
 
   def pretty(implicit @unused idProvider: QuineIdProvider): String = this.toString
 }
@@ -147,11 +152,15 @@ trait MultipleValuesStandingQueryLookupInfo {
 /** Limited scope of actions that a [[MultipleValuesStandingQueryState]] is allowed to make */
 trait MultipleValuesStandingQueryEffects extends MultipleValuesStandingQueryLookupInfo {
 
-  /** @return a readonly view on the current node properties, consistent with the properties seen by the
-    *         ad-hoc cypher interpreter, including updates made as a result of the event that triggered MVSQ-related
-    *         work
+  /** @return a readonly view on the current node properties, including the labels property, which is not seen by the
+    *         ad-hoc cypher interpreter. Includes updates made as a result of the event that triggered MVSQ-related
+    *         work.
     */
   def currentProperties: Map[Symbol, model.PropertyValue]
+
+  /** @return The property key used to store labels on a node
+    */
+  def labelsProperty: Symbol
 
   /** Issue a subscription to a node
     *
@@ -213,7 +222,9 @@ final case class UnitState() extends MultipleValuesStandingQueryState {
   override def rehydrate(effectHandler: MultipleValuesStandingQueryLookupInfo)(implicit logConfig: LogConfig): Unit =
     _query = MultipleValuesStandingQuery.UnitSq.instance
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(resultGroup)
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Some[Seq[QueryContext]] = Some(resultGroup)
 }
 
 /** Produce a Cartesian product from a sequence of subqueries. The subscriptions for subqueries might be emitted lazily.
@@ -328,7 +339,9 @@ final case class CrossState(
     }
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Option[Seq[QueryContext]] =
     if (subscriptionsEmittedCount == query.queries.length && isReadyToReport()) generateCrossProductResults
     else None
 }
@@ -347,15 +360,19 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
 
   override type StateOf = MultipleValuesStandingQuery.AllProperties
 
-  private def projectProperties(properties: Properties): View[(String, Value)] =
-    properties.view.map { case (k, v) =>
-      k.name -> v.deserialized.fold[Value](_ => Expr.Null, qv => Expr.fromQuineValue(qv))
+  private def projectProperties(properties: Properties, labelsPropertyKey: Symbol): View[(String, Value)] =
+    properties.view.collect {
+      case (k, v) if k != labelsPropertyKey =>
+        k.name -> v.deserialized.fold[Value](_ => Expr.Null, qv => Expr.fromQuineValue(qv))
     }
 
-  private def propertiesAsCypher(properties: Properties): Expr.Map =
-    Expr.Map(projectProperties(properties))
+  private def propertiesAsCypher(properties: Properties, labelsPropertyKey: Symbol): Expr.Map =
+    Expr.Map(projectProperties(properties, labelsPropertyKey))
 
-  override def relevantEventTypes: Seq[WatchableEventType] = Seq(WatchableEventType.AnyPropertyChange)
+  override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = Seq(
+    // This will slightly overtrigger, as it will include changes to the labels property, but that's okay.
+    WatchableEventType.AnyPropertyChange,
+  )
 
   /** NB this rolls up all property-related changes in [[events]] into one downstream event. Alternatively, we _could_
     * emit one downstream event per incoming event, but since Cross et al is already the default mode of event
@@ -370,7 +387,7 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
     val somePropertyChanged = events.exists {
-      case _: PropertyEvent => true
+      case pe: PropertyEvent if pe.key != effectHandler.labelsProperty => true
       case _ => false
     }
 
@@ -383,7 +400,10 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
         // the result has not changed, no need to report. This case is only expected when the node is first woken up.
         false
       } else {
-        val result = QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(lastReportedProperties.get))
+        val result = QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(
+          lastReportedProperties.get,
+          effectHandler.labelsProperty,
+        ))
         effectHandler.reportUpdatedResults(result :: Nil)
         true
       }
@@ -405,8 +425,10 @@ final case class AllPropertiesState(queryPartId: MultipleValuesStandingQueryPart
     false
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(
-    (QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(localProperties))) :: Nil,
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Some[Seq[QueryContext]] = Some(
+    (QueryContext.empty + (query.aliasedAs -> propertiesAsCypher(localProperties, labelsPropertyKey))) :: Nil,
   )
 }
 
@@ -425,7 +447,7 @@ final case class LocalPropertyState(
 
   /** The value of the watched property as of the last time we made a report
     * This is either:
-    * None: we have not yet made a report since starting the query
+    * None: we have not yet made a report since registering/waking the query
     * Some(None): our last report was based on the property being absent
     * Some(Some(value)): our last report was based on the property having the given value
     *
@@ -448,17 +470,28 @@ final case class LocalPropertyState(
   var valueAtLastReport: Option[Option[model.PropertyValue]] = None
 
   /** Whether we have affirmatively matched based on [[valueAtLastReport]].
-    * If we haven't yet reported since registering, this is false.
+    * If we haven't yet reported since registering/waking, this is false.
     *
     * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
     */
   var lastReportWasAMatch: Boolean = false
 
-  override def relevantEventTypes: Seq[WatchableEventType.PropertyChange] = Seq(
-    WatchableEventType.PropertyChange(query.propKey),
-  )
+  override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType.PropertyChange] = {
+    if (query.propKey == labelsPropertyKey) {
+      logger.warn(
+        safe"""LocalProperty MultipleValues standing query part with ID $queryPartId is configured to watch the labels
+              |property (`${Safe(labelsPropertyKey)}`). This is not supported and may result in lost or inconsistent
+              |matches for this standing query. To fix this warning, if your query does not explicitly refer to
+              |`${Safe(labelsPropertyKey)}`, please re-register it. If your query does, either choose a different
+              |property name for your standing query, or else or change the `quine.labels-property` configuration
+              |setting.""".cleanLines,
+      )
+    }
+    Seq(
+      WatchableEventType.PropertyChange(query.propKey),
+    )
+  }
 
-  //noinspection MapGetOrElseBoolean
   override def onNodeEvents(
     events: Seq[NodeChangeEvent],
     effectHandler: MultipleValuesStandingQueryEffects,
@@ -474,7 +507,6 @@ final case class LocalPropertyState(
     }
     relevantChange
       .map { event =>
-        // define some booleans we might need
         val currentProperty: Option[PropertyValue] = event match {
           case PropertySet(_, value) => Some(value)
           case PropertyRemoved(_, _) => None
@@ -513,7 +545,7 @@ final case class LocalPropertyState(
               effectHandler.reportUpdatedResults(Nil)
               true // we issued a new result
             } else {
-              // we didn't use to match and we still don't, nothing to do.
+              // we didn't previously match and we still don't, nothing to do.
               false
             }
           case None =>
@@ -521,7 +553,7 @@ final case class LocalPropertyState(
             if (lastReportWasAMatch != currentPropertyDoesMatch) {
               val resultGroup =
                 if (currentPropertyDoesMatch) {
-                  // we do match, but we didn't use to -- so emit one empty result.
+                  // we do match, but we didn't use to -- so emit one empty (but positive!) result.
                   lastReportWasAMatch = true
                   QueryContext.empty :: Nil
                 } else {
@@ -567,6 +599,7 @@ final case class LocalPropertyState(
     result: NewMultipleValuesStateResult,
     effectHandler: MultipleValuesStandingQueryEffects,
   )(implicit logConfig: LogConfig): Boolean = {
+    // this query issues no subscriptions, so ignore any results that come in from subscriptions
     logger.warn(
       log"""MVSQ LocalPropertyState: ${this.toString} for SQ part: $query received subscription
            |result it didn't subscribe to: $result""".cleanLines,
@@ -574,7 +607,9 @@ final case class LocalPropertyState(
     false
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some {
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Some[Seq[QueryContext]] = Some {
     val theProperty: Option[Value] =
       localProperties
         .get(query.propKey)
@@ -592,6 +627,187 @@ final case class LocalPropertyState(
         case None => Seq(QueryContext.empty)
       }
   }
+}
+
+final case class LabelsState(queryPartId: MultipleValuesStandingQueryPartId) extends MultipleValuesStandingQueryState {
+  type StateOf = MultipleValuesStandingQuery.Labels
+
+  /** The value of the labels as of the last time we made a report, or None if we have not
+    * made a report since registering/waking.
+    *
+    * NB not serialized. We know that properties can only change when the node is awake, so
+    * we don't need to record the last-known labels when the node goes to sleep.
+    * Because we don't explicitly rehydrate this, the first call to [[onNodeEvents]]
+    * will duplicate the last result set reported. This is okay, as the event will be
+    * deduplicated by the subscriber (or, at least, some subscriber upstream -- at worst,
+    * the [[MultipleValuesResultsReporter]] will deduplicate it).
+    *
+    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    */
+  var lastReportedLabels: Option[Set[Symbol]] = None
+
+  /** Whether we have affirmatively matched based on [[lastReportedLabels]].
+    * If we haven't yet reported since registering/waking, this is false.
+    *
+    * Not persisted, but will be appropriately initialized by first call to [[onNodeEvents]]
+    */
+  var lastReportWasAMatch: Boolean = false
+
+  override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType] = Seq(
+    WatchableEventType.PropertyChange(labelsPropertyKey),
+  )
+
+  override def onNodeEvents(events: Seq[NodeChangeEvent], effectHandler: MultipleValuesStandingQueryEffects)(implicit
+    logConfig: LogConfig,
+  ): Boolean = {
+    require(
+      events.collect { case pe: PropertyEvent if pe.key == effectHandler.labelsProperty => pe }.drop(1).isEmpty,
+      "Invariant violated: MVSQ received multiple events for the same node's labels in the same batch",
+    )
+
+    // NB by the scaladoc on [[super]], there is only one (or zero) property event that will affect [[query.propKey]]
+    val relevantChange: Option[PropertyEvent] = events.collectFirst {
+      case pe: PropertyEvent if pe.key == effectHandler.labelsProperty => pe
+    }
+    relevantChange
+      .map { event =>
+        val labelsValue: Option[QuineValue] = event match {
+          case PropertySet(_, value) => Some(value.deserialized.get) // assume the value is a valid QuineValue
+          case PropertyRemoved(_, _) => None
+        }
+        val currentLabels = extractLabels(labelsValue)
+        lazy val matched = query.constraint(currentLabels)
+
+        val somethingChanged: Boolean = query.aliasedAs match {
+          case Some(alias) =>
+            // the query cares about all changes to the node's labels, even those that bring it from matching to still
+            // matching
+            if (!lastReportedLabels.contains(currentLabels) && matched) {
+              val labelsAsExpr = Expr.List(currentLabels.map(_.name).map(Expr.Str).toVector)
+              val result = QueryContext.empty + (alias -> labelsAsExpr)
+              lastReportWasAMatch = true
+              effectHandler.reportUpdatedResults(result :: Nil)
+              true // we issued a new result
+            } else if (lastReportedLabels.contains(currentLabels)) {
+              // the property hasn't actually changed, so we don't need to do anything
+              false
+            } else if (lastReportedLabels.isEmpty) {
+              // we haven't yet reported whether we match, but we don't -- send a report.
+              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else if (lastReportWasAMatch) {
+              // we used to match but no longer do -- cancel the previous positive result
+              lastReportWasAMatch = false
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else {
+              // we didn't use to match and we still don't, nothing to do.
+              false
+            }
+          case None =>
+            // the query only cares about the presence or absense of labels, not their values -- we only
+            // need to send a report when we go from matching to not matching or visa versa
+            if (lastReportWasAMatch != matched) {
+              val resultGroup =
+                if (matched) {
+                  // we do match, but we didn't use to -- so emit one empty (but positive!) result.
+                  lastReportWasAMatch = true
+                  QueryContext.empty :: Nil
+                } else {
+                  // we don't match, but we used to -- so emit that nothing matches.
+                  lastReportWasAMatch = false
+                  Nil
+                }
+              effectHandler.reportUpdatedResults(resultGroup)
+              true
+            } else if (lastReportedLabels.isEmpty) {
+              // send initial report that nothing matches
+              // lastReportWasAMatch = false is unnecessary, because it initializes as false.
+              effectHandler.reportUpdatedResults(Nil)
+              true // we issued a new result
+            } else {
+              // nothing changed that we need to report - no-op.
+              false
+            }
+        }
+
+        lastReportedLabels = Some(currentLabels)
+        somethingChanged
+      }
+      .getOrElse {
+        // there was no relevant change. We only have something to do if the query wants results for empty labels.
+        // As an optimization, we only do this if we haven't yet reported a result since waking. If this node is
+        // waking up, this may be a duplicate event, but that will be deduplicated by the subscriber / result reporter.
+        if (query.constraint.apply(Set.empty) && lastReportedLabels.isEmpty) {
+          val alwaysReportedPart: QueryContext = QueryContext.empty
+          val aliasedPart: Iterable[(Symbol, Value)] = query.aliasedAs.map(_ -> Expr.List.empty)
+          val result = Seq(alwaysReportedPart ++ aliasedPart)
+          lastReportedLabels = Some(Set.empty)
+          lastReportWasAMatch = true
+          effectHandler.reportUpdatedResults(result)
+          true // we issued a new result
+        } else {
+          // nothing changed that we need to report - no-op.
+          false
+        }
+      }
+  }
+
+  override def onNewSubscriptionResult(
+    result: NewMultipleValuesStateResult,
+    effectHandler: MultipleValuesStandingQueryEffects,
+  )(implicit logConfig: LogConfig): Boolean = {
+    // this query issues no subscriptions, so ignore any results that come in from subscriptions
+    logger.warn(
+      log"""MVSQ LabelsState: ${this.toString} for SQ part: $query received subscription
+           |result it didn't subscribe to: $result""".cleanLines,
+    )
+    false
+  }
+
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Some[Seq[QueryContext]] = Some {
+    val labels = extractLabels(
+      localProperties
+        .get(labelsPropertyKey)
+        .map(_.deserialized.get), // assume the value is a valid QuineValue
+    )
+
+    val matched = query.constraint(labels)
+
+    if (!matched) Nil
+    else {
+      query.aliasedAs match {
+        case Some(alias) => Seq(QueryContext(Map(alias -> Expr.List(labels.map(_.name).map(Expr.Str).toVector))))
+        case None => Seq(QueryContext.empty)
+      }
+    }
+  }
+}
+object LabelsState extends LazySafeLogging {
+  private def extractLabels(labelsProperty: Option[QuineValue])(implicit logConfig: LogConfig): Set[Symbol] =
+    // type-checker needs some assistance here
+    (labelsProperty: Iterable[QuineValue]).flatMap {
+      case QuineValue.List(labels) =>
+        labels.flatMap {
+          case QuineValue.Str(label) => Seq(Symbol(label))
+          case other =>
+            logger.warn(
+              log"""Parsing labels from property: ${Safe(labelsProperty)} failed. Expected ${QuineType.Str} but
+                     |found: ${other.quineType} with value: $other. Discarding this value and using all
+                     |${QuineType.Str} as labels""".cleanLines,
+            )
+            Seq.empty
+        }
+      case other =>
+        logger.info(
+          log"""Parsing labels property ${Safe(labelsProperty)} failed. Expected ${QuineType.List} of ${QuineType.Str}
+                 |but found: ${other.quineType} with value: $other. Defaulting to no labels.""".cleanLines,
+        )
+        Seq.empty
+    }.toSet
 }
 
 /** Returns the ID of the node receiving this. It completes immediately, always succeeds, and behaves essentially
@@ -626,7 +842,9 @@ final case class LocalIdState(
     // this result is not dependent on any events, so we must report it immediately
     effectHandler.reportUpdatedResults(result)
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = Some(result)
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Some[Seq[QueryContext]] = Some(result)
 }
 
 /** Issues the subquery across all edges which match the locally testable edge conditions. The reciprocal edge will be
@@ -652,7 +870,7 @@ final case class SubscribeAcrossEdgeState(
     */
   val edgeResults: mutable.Map[HalfEdge, Option[Seq[QueryContext]]] = mutable.Map.empty
 
-  override def relevantEventTypes: Seq[WatchableEventType.EdgeChange] =
+  override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType.EdgeChange] =
     Seq(WatchableEventType.EdgeChange(query.edgeName))
 
   private[this] def edgeMatchesPattern(halfEdge: HalfEdge): Boolean =
@@ -687,7 +905,9 @@ final case class SubscribeAcrossEdgeState(
           // NB this may not immediately issue a cancellation, if any other edges have not yet reported their results.
           // However, those edges should eventually report results, at which point this will issue a cancellation (and
           // any new matches from those edges)
-          readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
+          readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
+            effectHandler.reportUpdatedResults,
+          )
         }
 
         somethingChanged = true
@@ -712,14 +932,18 @@ final case class SubscribeAcrossEdgeState(
     needsUpdate match {
       case Some((edge, oldResult)) if !oldResult.contains(result.resultGroup) =>
         edgeResults += (edge -> Some(result.resultGroup))
-        readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
+        readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
+          effectHandler.reportUpdatedResults,
+        )
         true
       case Some(_) => false // we found a matching edge, but its result didn't change
       case _ => false // we found no matching edge
     }
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+  def readResults(localProperties: Properties, labelsKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Option[Seq[QueryContext]] =
     if (edgeResults.isEmpty) {
       // There are no matching edges, so there is an affirmative lack of matches
       Some(Nil)
@@ -789,7 +1013,7 @@ final case class EdgeSubscriptionReciprocalState(
     // and its `queryPartId` is not in the global registry.
     andThen = effectHandler.lookupQuery(andThenId)
 
-  override def relevantEventTypes: Seq[WatchableEventType.EdgeChange] = Seq(
+  override def relevantEventTypes(labelsPropertyKey: Symbol): Seq[WatchableEventType.EdgeChange] = Seq(
     WatchableEventType.EdgeChange(
       Some(halfEdge.edgeType),
     ),
@@ -805,7 +1029,9 @@ final case class EdgeSubscriptionReciprocalState(
         currentlyMatching = true
         effectHandler.createSubscription(effectHandler.executingNodeId, andThen)
         somethingChanged = true
-        readResults(effectHandler.currentProperties).foreach(effectHandler.reportUpdatedResults)
+        readResults(effectHandler.currentProperties, effectHandler.labelsProperty).foreach(
+          effectHandler.reportUpdatedResults,
+        )
 
       case EdgeRemoved(oldHalfEdge) if halfEdge == oldHalfEdge =>
         currentlyMatching = false
@@ -830,7 +1056,9 @@ final case class EdgeSubscriptionReciprocalState(
     resultIsUpdate
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] =
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Option[Seq[QueryContext]] =
     if (currentlyMatching && cachedResult.isDefined) cachedResult else None
 
   override def pretty(implicit idProvider: QuineIdProvider): String =
@@ -888,7 +1116,9 @@ final case class FilterMapState(
     isUpdated
   }
 
-  def readResults(localProperties: Properties): Option[Seq[QueryContext]] = keptResults
+  def readResults(localProperties: Properties, labelsPropertyKey: Symbol)(implicit
+    logConfig: LogConfig,
+  ): Option[Seq[QueryContext]] = keptResults
 
   override def pretty(implicit idProvider: QuineIdProvider): String =
     s"${this.getClass.getSimpleName}($queryPartId, ${keptResults.mkString("[", ",", "]")})"

@@ -38,6 +38,7 @@ final case class MultipleValuesStandingQueryEffectsTester(
 ) extends MultipleValuesStandingQueryEffects {
 
   var currentProperties: Map[Symbol, PropertyValue] = Map.empty
+  val labelsProperty: Symbol = Symbol("__LABEL")
   def trackPropertyEffects(events: Seq[NodeChangeEvent]): Unit = events.foreach {
     case PropertySet(key, value) => currentProperties += key -> value
     case PropertyRemoved(key, _) => currentProperties -= key

@@ -8,7 +8,7 @@ import com.google.common.hash.{Funnel, PrimitiveSink}
 import shapeless.Lazy
 
 import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
-import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.LocalProperty
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.{Labels, LocalProperty}
 import com.thatdot.quine.graph.cypher.{Columns, Expr, MultipleValuesStandingQuery}
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
 
@@ -168,6 +168,18 @@ object Funnels {
       }
     }
 
+    implicit final val funnelLabelConstraint: FFunnel[Labels.LabelsConstraint] = (sink, constraint) => {
+      sink.putInt("LabelConstraint".hashCode)
+      constraint match {
+        case Labels.Contains(mustContain) =>
+          sink
+            .putInt("Contains".hashCode)
+            .putAll("MustContain", mustContain)
+        case Labels.Unconditional =>
+          sink.putInt("Unconditional".hashCode)
+      }
+    }
+
     implicit final val funnelPartId: FFunnel[MultipleValuesStandingQueryPartId] = (sink, partId) =>
       sink.putInt("MultipleValuesStandingQueryPartId".hashCode).put(partId.uuid)
 
@@ -185,12 +197,18 @@ object Funnels {
             .putInt("AllProperties".hashCode)
             .put(aliasedAs)
             .put(columns)
-        case LocalProperty(propKey, propConstraint, aliasedAs, columns) =>
+        case MultipleValuesStandingQuery.LocalProperty(propKey, propConstraint, aliasedAs, columns) =>
           sink
             .putInt("LocalProperty".hashCode)
             .put(propKey)
             .put(propConstraint)
             .putAll("AliasedAs", aliasedAs)
+            .put(columns)
+        case MultipleValuesStandingQuery.Labels(aliasedAs, constraint, columns) =>
+          sink
+            .putInt("Labels".hashCode)
+            .putAll("AliasedAs", aliasedAs)
+            .put(constraint)
             .put(columns)
         case MultipleValuesStandingQuery.LocalId(aliasedAs, formatAsString, columns) =>
           sink

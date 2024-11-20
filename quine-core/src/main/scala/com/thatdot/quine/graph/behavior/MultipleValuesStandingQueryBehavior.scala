@@ -154,7 +154,8 @@ trait MultipleValuesStandingQueryBehavior
 
     val idProvider: QuineIdProvider = MultipleValuesStandingQueryBehavior.this.idProvider
 
-    def currentProperties: Map[Symbol, PropertyValue] = properties - graph.labelsProperty
+    def currentProperties: Map[Symbol, PropertyValue] = properties
+    val labelsProperty: Symbol = graph.labelsProperty
   }
 
   /** Locally registered & running standing queries
@@ -226,7 +227,7 @@ trait MultipleValuesStandingQueryBehavior
           multipleValuesStandingQueries += combinedId -> (subscription -> sqState)
           sqState.rehydrate(subscription)
           sqState.onInitialize(subscription)
-          sqState.relevantEventTypes.foreach { (eventType: WatchableEventType) =>
+          sqState.relevantEventTypes(graph.labelsProperty).foreach { (eventType: WatchableEventType) =>
             val initialEvents = watchableEventIndex.registerStandingQuery(
               EventSubscriber(combinedId),
               eventType,
@@ -271,7 +272,7 @@ trait MultipleValuesStandingQueryBehavior
                   }
             }
             // Send existing results
-            val existingResultGroup = sqState.readResults(properties - graph.labelsProperty)
+            val existingResultGroup = sqState.readResults(properties, graph.labelsProperty)
             for (resultGroup <- existingResultGroup)
               subscriber match {
                 case MultipleValuesStandingQuerySubscriber.NodeSubscriber(quineId, sqId, upstreamPartId) =>

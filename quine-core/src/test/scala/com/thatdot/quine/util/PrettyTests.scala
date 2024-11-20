@@ -41,9 +41,9 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       s"""Cross (
          |\tqueries = List(
          |\t\tUnit,
-         |\t\tUnit
+         |\t\tUnit,
          |\t),
-         |\temitSubscriptionsLazily = true
+         |\temitSubscriptionsLazily = true,
          |)""".stripMargin
 
     assert(result == expected)
@@ -65,7 +65,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
       s"""LocalProperty (
          |\tpropKey = $name,
          |\tpropConstraint = Any,
-         |\taliasedAs = $pname
+         |\taliasedAs = $pname,
          |)""".stripMargin
 
     assert(result == expected)
@@ -84,7 +84,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val expected =
       s"""LocalId (
          |\taliasedAs = $unknown,
-         |\tformatAsString = true
+         |\tformatAsString = true,
          |)""".stripMargin
 
     assert(result == expected)
@@ -106,7 +106,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
         |\tedgeName = $parent,
         |\tedgeDirection = Some(Outgoing),
         |\tandThen =
-        |\t\tUnit
+        |\t\tUnit,
         |)""".stripMargin
 
     assert(result == expected)
@@ -127,7 +127,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
     val expected =
       s"""EdgeSubscriptionReciprocal (
          |\thalfEdge = HalfEdge($unknown,Incoming,QuineId(68656C6C6F2C20776F726C64)),
-         |\tandThenId = MultipleValuesStandingQueryPartId($id)
+         |\tandThenId = MultipleValuesStandingQueryPartId($id),
          |)""".stripMargin
 
     assert(result == expected)
@@ -151,7 +151,7 @@ class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
          |\ttoFilter =
          |\t\tUnit,
          |\tdropExisting = true,
-         |\ttoAdd = List()
+         |\ttoAdd = List(),
          |)""".stripMargin
 
     assert(result == expected)

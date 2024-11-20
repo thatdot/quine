@@ -84,7 +84,6 @@ object MultipleValuesResultsReporter {
     graph: StandingQueryOpsGraph,
     namespace: NamespaceId,
   )(implicit logConfig: LogConfig): Map[StandingQueryId, MultipleValuesResultsReporter] = {
-    val cypherProperties = nodeProperties - graph.labelsProperty
     def containsGlobalSubscriber(subscribers: Iterable[MultipleValuesStandingQuerySubscriber]): Boolean =
       subscribers.exists {
         case _: MultipleValuesStandingQuerySubscriber.GlobalSubscriber => true
@@ -122,7 +121,10 @@ object MultipleValuesResultsReporter {
         .toSeq
     // finally, pull the actual results for each of those SQs
     topLevelSqStates.map { case ActiveQueryRootedOnThisNode(id, sq, state) =>
-      id -> new MultipleValuesResultsReporter(sq, state.readResults(cypherProperties).getOrElse(Seq.empty))
+      id -> new MultipleValuesResultsReporter(
+        sq,
+        state.readResults(nodeProperties, graph.labelsProperty).getOrElse(Seq.empty),
+      )
     }
   }.toMap
 }
