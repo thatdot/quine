@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.messaging
 import org.apache.pekko.actor.ActorRef
 
 import com.thatdot.quine.graph.{NamespaceId, namespaceFromString, namespaceToString}
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
 
 /** Something to which we can send a message from inside the Quine actor system

@@ -21,6 +21,8 @@ import com.thatdot.quine.model._
 import com.thatdot.quine.routes.{CypherQueryResult, GremlinQuery, QueryUiRoutes, UiEdge, UiNode}
 import com.thatdot.quine.util.Log._
 
+import QuineIdHelpers._
+
 trait QueryUiRoutesImpl
     extends QueryUiRoutes
     with QueryUiCypherApiMethods

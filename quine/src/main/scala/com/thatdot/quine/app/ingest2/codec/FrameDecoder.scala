@@ -52,6 +52,8 @@ object QuinePatternStringDecoder extends FrameDecoder[ast.Value] {
         case ast.Value.DateTime(zdt) => folder.zonedDateTime(zdt)
         case ast.Value.List(values) => ???
         case ast.Value.Map(values) => ???
+        case ast.Value.NodeId(id) => ???
+        case ast.Value.Node(_, _, _) => ???
       }
   }
 

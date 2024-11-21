@@ -21,6 +21,7 @@ import com.thatdot.quine.graph.cypher.{
   Value,
 }
 import com.thatdot.quine.model.QuineId
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 

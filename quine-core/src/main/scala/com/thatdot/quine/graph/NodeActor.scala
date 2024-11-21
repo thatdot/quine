@@ -13,6 +13,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.LiteralCommand
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
@@ -81,13 +82,8 @@ private[graph] class NodeActor(
     case command: DomainNodeSubscriptionCommand => domainNodeIndexBehavior(command)
     case command: MultipleValuesStandingQueryCommand => multipleValuesStandingQueryBehavior(command)
     case command: UpdateStandingQueriesCommand => updateStandingQueriesBehavior(command)
-    case msg =>
-      if (msg.isInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]) {
-        val rp = msg.asInstanceOf[ExampleMessages.QuinePatternMessages.RegisterPattern]
-        updateQuinePatternOnNode(rp.quinePattern, rp.pid, rp.queryStream)
-      } else {
-        log.error(log"Node received an unknown message (from ${sender()}): ${msg.toString}")
-      }
+    case command: QuinePatternCommand => quinePatternQueryBehavior(command)
+    case msg => log.error(log"Node received an unknown message (from ${sender()}): ${msg.toString}")
   }
 
   val edges = defaultSynchronousEdgeProcessor
@@ -202,7 +198,6 @@ private[graph] class NodeActor(
 
       // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
       updateMultipleValuesStandingQueriesOnNode()
-      updateQuinePatternsOnNode()
     }
 
     // Node is done waking up, stop the wakeup timer (if it's running)

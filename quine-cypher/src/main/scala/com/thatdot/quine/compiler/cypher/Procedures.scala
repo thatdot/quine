@@ -46,6 +46,7 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   StandingQueryResult,
 }
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.MonadHelpers._

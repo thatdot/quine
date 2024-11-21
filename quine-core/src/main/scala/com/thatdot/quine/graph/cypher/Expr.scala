@@ -17,6 +17,7 @@ import com.google.common.hash.{HashCode, Hashing, PrimitiveSink}
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.MonadHelpers._

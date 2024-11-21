@@ -5,6 +5,7 @@ import scala.concurrent.duration.DurationLong
 
 import com.thatdot.quine.graph.{BaseNodeActorView, EventTime}
 import com.thatdot.quine.model.Milliseconds
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 

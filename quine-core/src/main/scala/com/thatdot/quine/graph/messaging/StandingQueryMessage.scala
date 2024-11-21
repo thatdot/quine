@@ -10,6 +10,7 @@ import com.thatdot.quine.graph.{
   cypher,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.MonadHelpers._

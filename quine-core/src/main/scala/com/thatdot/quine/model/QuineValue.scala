@@ -18,6 +18,7 @@ import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
 import org.msgpack.core.{ExtensionTypeHeader, MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.util.Log._
 
 /** Values that are recognized by the Quine interpreter. When talking about Quine
@@ -36,6 +37,7 @@ sealed abstract class QuineValue {
   /** Return a presentable string representation */
   def pretty(implicit idProvider: QuineIdProvider): String
 }
+
 object QuineValue {
   def apply(v: Str#JvmType): QuineValue = Str(v)
   def apply(v: Integer#JvmType): QuineValue = Integer(v)

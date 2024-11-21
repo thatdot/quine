@@ -39,6 +39,7 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   namespaceToString,
 }
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, QuineId, QuineIdProvider, QuineValue}
 
 object Log {

@@ -8,7 +8,7 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, MergeHub, Sink, Source}
 
 import com.thatdot.language.phases.DependencyGraph
-import com.thatdot.quine.graph.behavior.ExampleMessages.QuinePatternMessages
+import com.thatdot.quine.graph.behavior.QuinePatternCommand
 import com.thatdot.quine.graph.cypher.{QueryContext, QuinePattern}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.Milliseconds
@@ -97,7 +97,7 @@ class QuinePatternLoader(graph: QuinePatternOpsGraph) extends Actor {
         val stqid = SpaceTimeQuineId(qid, namespace, Some(Milliseconds(System.currentTimeMillis())))
         graph.relayTell(
           stqid,
-          QuinePatternMessages.RegisterPattern(plan, id, Source.single(QueryContext.empty)),
+          QuinePatternCommand.RegisterPattern(plan, id, Source.single(QueryContext.empty)),
           this.self,
         )
       }(graph.materializer)
@@ -107,7 +107,7 @@ class QuinePatternLoader(graph: QuinePatternOpsGraph) extends Actor {
       ()
     case QuinePatternLoaderMessage.LoadIngestQuery(namespace, _, plan, _, _, src, ref) =>
       val stream =
-        com.thatdot.quine.graph.cypher.Compiler.compileDepGraphToStream(plan, namespace, src, graph, this.self)
+        com.thatdot.quine.graph.cypher.Compiler.compileDepGraphToStream(plan, namespace, src, graph)
       ref ! stream.via(Flow[QueryContext].map { qc =>
         ref ! Status.Success("Finished!")
         qc

@@ -8,6 +8,7 @@ import org.apache.pekko.util.{ByteString, Timeout}
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage.{GetRandomWalk, RandomWalkResult}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{Milliseconds, QuineId}
 
 trait AlgorithmGraph extends BaseGraph {

@@ -4,8 +4,10 @@ import java.time.format.DateTimeFormatter
 import java.time.{ZonedDateTime => JavaZonedDateTime}
 import java.util.Locale
 
+import scala.collection.immutable.SortedMap
+import scala.concurrent.Promise
+
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
 import com.google.common.collect.Interners
@@ -13,9 +15,10 @@ import com.google.common.collect.Interners
 import com.thatdot.cypher.phases.SymbolAnalysisModule.SymbolTable
 import com.thatdot.language.ast._
 import com.thatdot.language.phases.DependencyGraph
-import com.thatdot.quine.graph.messaging.{LiteralMessage, SpaceTimeQuineId, WrappedActorRef}
+import com.thatdot.quine.graph.behavior.QuinePatternCommand
+import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.{NamespaceId, QuinePatternOpsGraph, cypher}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 
 sealed trait BinOp
 
@@ -23,6 +26,8 @@ object BinOp {
   case object Merge extends BinOp
   case object Append extends BinOp
 }
+
+class QuinePatternUnimplementedException(msg: String) extends RuntimeException(msg)
 
 sealed trait QuinePattern
 
@@ -60,19 +65,8 @@ object CypherAndQuineHelpers {
       case Value.DateTime(zdt) => Expr.DateTime(zdt)
       case Value.List(values) => Expr.List(values.toVector.map(patternValueToCypherValue))
       case Value.Map(values) => Expr.Map(values.map(p => p._1.name -> patternValueToCypherValue(p._2)))
-    }
-
-  def patternValueToPropertyValue(value: Value): Option[PropertyValue] =
-    value match {
-      case Value.Null => None
-      case Value.True => ???
-      case Value.False => ???
-      case Value.Integer(n) => Some(PropertyValue.apply(n))
-      case Value.Real(d) => ???
-      case Value.Text(str) => Some(PropertyValue.apply(str))
-      case Value.DateTime(zdt) => Some(PropertyValue(QuineValue.DateTime(zdt.toOffsetDateTime)))
-      case Value.List(values) => ???
-      case Value.Map(values) => ???
+      case Value.NodeId(_) => ???
+      case _: Value.Node => ???
     }
 
   def cypherValueToPatternValue(value: cypher.Value): Value = value match {
@@ -100,9 +94,49 @@ object CypherAndQuineHelpers {
         case Expr.Null => Value.Null
       }
     case _: Expr.Bool => ???
-    case Expr.Node(id, labels, properties) => ???
+    case Expr.Node(id, labels, properties) =>
+      Value.Node(id, labels, Value.Map(SortedMap.from(properties.map(p => p._1 -> cypherValueToPatternValue(p._2)))))
     case Expr.Relationship(start, name, properties, end) => ???
     case Expr.Path(head, tails) => ???
+  }
+
+  def patternValueToPropertyValue(value: Value): Option[PropertyValue] =
+    value match {
+      case Value.Null => None
+      case Value.True => ???
+      case Value.False => ???
+      case Value.Integer(n) => Some(PropertyValue.apply(n))
+      case Value.Real(d) => ???
+      case Value.Text(str) => Some(PropertyValue.apply(str))
+      case Value.DateTime(zdt) => Some(PropertyValue(QuineValue.DateTime(zdt.toOffsetDateTime)))
+      case Value.List(values) => ???
+      case Value.Map(values) => ???
+      case Value.NodeId(_) => ???
+      case _: Value.Node => ???
+    }
+
+  def quineValueToPatternValue(value: QuineValue): Value = value match {
+    case QuineValue.Str(string) => ???
+    case QuineValue.Integer(long) => ???
+    case QuineValue.Floating(double) => ???
+    case QuineValue.True => ???
+    case QuineValue.False => ???
+    case QuineValue.Null => ???
+    case QuineValue.Bytes(bytes) => ???
+    case QuineValue.List(list) => ???
+    case QuineValue.Map(map) => ???
+    case QuineValue.DateTime(instant) => ???
+    case QuineValue.Duration(duration) => ???
+    case QuineValue.Date(date) => ???
+    case QuineValue.LocalTime(time) => ???
+    case QuineValue.Time(time) => ???
+    case QuineValue.LocalDateTime(localDateTime) => ???
+    case QuineValue.Id(id) => ???
+  }
+
+  def propertyValueToPatternValue(value: PropertyValue): Value = PropertyValue.unapply(value) match {
+    case Some(qv) => quineValueToPatternValue(qv)
+    case None => ???
   }
 
   def maybeGetByIndex[A](xs: List[A], index: Int): Option[A] = index match {
@@ -117,20 +151,21 @@ object CypherAndQuineHelpers {
     case _ => throw new Exception("This should be either a text value or null.")
   }
 
-  def getNodeIdFromQueryContext(
-    identifier: Identifier,
-    namespaceId: NamespaceId,
-    queryContext: QueryContext,
-  ): SpaceTimeQuineId = {
-    val nodeBytes = queryContext(identifier.name) match {
-      case Expr.Bytes(ba, true) => ba
-      case _ =>
-        println("Failed to get bytes?")
-        ???
-    }
-    val quineId = QuineId(nodeBytes.clone())
-    SpaceTimeQuineId(quineId, namespaceId, None)
+  def getIdentifier(exp: Expression): Expression.Ident = exp match {
+    case ident: Expression.Ident => ident
+    case _ => ???
   }
+
+  def getNode(value: Value): Value.Node = value match {
+    case node: Value.Node => node
+    case _ => ???
+  }
+
+  def getNodeIdFromIdent(identifier: Identifier, queryContext: QueryContext): QuineId =
+    queryContext(identifier.name) match {
+      case node: Expr.Node => node.id
+      case _ => ???
+    }
 
   def invert(direction: EdgeDirection): EdgeDirection = direction match {
     case EdgeDirection.Outgoing => EdgeDirection.Incoming
@@ -140,7 +175,8 @@ object CypherAndQuineHelpers {
 }
 
 object ExpressionInterpreter {
-  def eval(exp: Expression, qc: QueryContext): Value =
+
+  def eval(exp: Expression, idProvider: QuineIdProvider, qc: QueryContext): Value =
     exp match {
       case Expression.AtomicLiteral(_, value, _) => value
       case Expression.ListLiteral(source, value, ty) => ???
@@ -151,8 +187,12 @@ object ExpressionInterpreter {
         val trimName = Symbol(name.name.substring(1))
         CypherAndQuineHelpers.cypherValueToPatternValue(qc(trimName))
       case Expression.Apply(_, name, args, _) =>
-        val evaledArgs = args.map(arg => eval(arg, qc))
+        val evaledArgs = args.map(arg => eval(arg, idProvider, qc))
         name.name match {
+          case "idFrom" =>
+            val cypherIdValues = evaledArgs.map(CypherAndQuineHelpers.patternValueToCypherValue)
+            val id = com.thatdot.quine.graph.idFrom(cypherIdValues: _*)(idProvider)
+            Value.NodeId(id)
           case "datetime" =>
             (for {
               toConvert <- CypherAndQuineHelpers.getTextValue(evaledArgs.head)
@@ -178,8 +218,8 @@ object ExpressionInterpreter {
       case Expression.BinOp(_, op, lhs, rhs, _) =>
         op match {
           case Operator.Plus =>
-            val l = eval(lhs, qc)
-            val r = eval(rhs, qc)
+            val l = eval(lhs, idProvider, qc)
+            val r = eval(rhs, idProvider, qc)
             (l, r) match {
               case (Value.Null, _) => Value.Null
               case (_, Value.Null) => Value.Null
@@ -208,14 +248,14 @@ object ExpressionInterpreter {
           case Operator.Not => ???
         }
       case Expression.FieldAccess(_, of, fieldName, _) =>
-        val thing = eval(of, qc)
+        val thing = eval(of, idProvider, qc)
         thing match {
           case Value.Map(values) => values(fieldName.name)
           case _ => ???
         }
       case Expression.IndexIntoArray(_, of, indexExp, _) =>
-        val list = eval(of, qc).asInstanceOf[Value.List]
-        val index = eval(indexExp, qc).asInstanceOf[Value.Integer]
+        val list = eval(of, idProvider, qc).asInstanceOf[Value.List]
+        val index = eval(indexExp, idProvider, qc).asInstanceOf[Value.Integer]
         val intIndex = index.n.toInt
         CypherAndQuineHelpers.maybeGetByIndex(list.values, intIndex).getOrElse(Value.Null)
     }
@@ -228,109 +268,99 @@ object Compiler {
     namespace: NamespaceId,
     stream: Source[QueryContext, NotUsed],
     graph: QuinePatternOpsGraph,
-    loader: ActorRef,
   ): Source[QueryContext, NotUsed] =
     dependencyGraph match {
       case DependencyGraph.Independent(steps) =>
-        steps.foldLeft(stream)((res, g) => compileDepGraphToStream(g, namespace, res, graph, loader))
+        steps.foldLeft(stream)((res, g) => compileDepGraphToStream(g, namespace, res, graph))
       case DependencyGraph.Dependent(first, second) =>
         compileDepGraphToStream(
           second,
           namespace,
-          compileDepGraphToStream(first, namespace, stream, graph, loader),
+          compileDepGraphToStream(first, namespace, stream, graph),
           graph,
-          loader,
         )
       case DependencyGraph.Step(instruction) =>
         instruction match {
-          case Instruction.NodeById(binding, idParts) =>
-            stream.via(Flow[QueryContext].map { qc =>
-              val idCypherValues =
-                idParts.map(p => ExpressionInterpreter.eval(p, qc)).map(CypherAndQuineHelpers.patternValueToCypherValue)
-              val nodeId = com.thatdot.quine.graph.idFrom(idCypherValues: _*)(graph.idProvider)
-              val nodeIdBytes = Expr.Bytes(nodeId)
-              qc + (binding.name -> nodeIdBytes)
-            })
-          case Instruction.Effect(le) =>
-            stream.via(Flow[QueryContext].map { qc =>
-              le match {
-                case LocalEffect.SetProperty(field, to) =>
-                  field.of match {
-                    case Expression.Ident(_, identifier, _) =>
-                      val stqid = CypherAndQuineHelpers.getNodeIdFromQueryContext(identifier, namespace, qc)
-                      CypherAndQuineHelpers.patternValueToPropertyValue(ExpressionInterpreter.eval(to, qc)) match {
-                        case None =>
-                          graph.relayTell(
-                            stqid,
-                            LiteralMessage.RemovePropertyCommand(field.fieldName.name, WrappedActorRef(loader)),
-                          )
-                        case Some(value) =>
-                          graph.relayTell(
-                            stqid,
-                            LiteralMessage.SetPropertyCommand(field.fieldName.name, value, WrappedActorRef(loader)),
-                          )
-                      }
-                    case _ => ???
-                  }
-                case LocalEffect.SetLabels(on, labels) =>
-                  val stqid = CypherAndQuineHelpers.getNodeIdFromQueryContext(on, namespace, qc)
-                  graph.relayTell(stqid, LiteralMessage.SetLabels(labels, WrappedActorRef(loader)))
-                case LocalEffect.CreateNode(id, labels, maybeProperties) =>
-                  qc.get(id.name) match {
-                    case Some(_) => ()
-                    case None =>
-                      val freshId = graph.idProvider.newQid()
-                      val stqid = SpaceTimeQuineId(freshId, namespace, None)
-                      graph.relayTell(stqid, LiteralMessage.SetLabels(labels, WrappedActorRef(loader)))
-                      maybeProperties match {
-                        case None => ()
-                        case Some(map) =>
-                          map.value.foreach { p =>
-                            val pname = p._1.name
-                            val evaled = ExpressionInterpreter.eval(p._2, qc)
-                            val pval = CypherAndQuineHelpers.patternValueToPropertyValue(evaled)
-                            pval match {
-                              case Some(v) =>
-                                graph.relayTell(
-                                  stqid,
-                                  LiteralMessage.SetPropertyCommand(pname, v, WrappedActorRef(loader)),
-                                )
-                              case None =>
-                                graph.relayTell(
-                                  stqid,
-                                  LiteralMessage.RemovePropertyCommand(pname, WrappedActorRef(loader)),
-                                )
-                            }
-                          }
-                      }
-                  }
-                case LocalEffect.CreateEdge(labels, direction, left, right, _) =>
-                  val ed = direction match {
-                    case Direction.Left => EdgeDirection.Outgoing
-                    case Direction.Right => EdgeDirection.Incoming
-                  }
-                  val lid = CypherAndQuineHelpers.getNodeIdFromQueryContext(left, namespace, qc)
-                  val rid = CypherAndQuineHelpers.getNodeIdFromQueryContext(right, namespace, qc)
-                  graph.relayTell(
-                    lid,
-                    LiteralMessage.AddHalfEdgeCommand(HalfEdge(labels.head, ed, rid.id), WrappedActorRef(loader)),
-                  )
-                  graph.relayTell(
-                    rid,
-                    LiteralMessage.AddHalfEdgeCommand(
-                      HalfEdge(labels.head, CypherAndQuineHelpers.invert(ed), lid.id),
-                      WrappedActorRef(loader),
-                    ),
-                  )
+          case Instruction.NodeById(binding, idExp) =>
+            stream.via(Flow[QueryContext].mapAsync(1) { qc =>
+              val promise = Promise[QueryContext]()
+              ExpressionInterpreter.eval(idExp, graph.idProvider, qc) match {
+                case Value.NodeId(id) =>
+                  val stqid = SpaceTimeQuineId(id, namespace, None)
+                  graph.relayTell(stqid, QuinePatternCommand.LoadNode(binding, qc, promise))
                 case _ =>
-                  println("oops")
+                  //TODO Should be able to handle certain kinds of values here, but how?
                   ???
               }
-              qc
+              promise.future
             })
+          case i @ Instruction.Effect(le) =>
+            le match {
+              case LocalEffect.SetProperty(field, to) =>
+                stream.via(Flow[QueryContext].mapAsync(1) { qc =>
+                  val result = Promise[QueryContext]()
+                  val idExp = CypherAndQuineHelpers.getIdentifier(field.of)
+                  val node = CypherAndQuineHelpers.getNode(ExpressionInterpreter.eval(idExp, graph.idProvider, qc))
+                  val stqid = SpaceTimeQuineId(node.id, namespace, None)
+                  graph.relayTell(
+                    stqid,
+                    QuinePatternCommand.SetProperty(field.fieldName.name, to, idExp.identifier, qc, result),
+                  )
+                  result.future
+                })
+              case LocalEffect.SetLabels(on, labels) =>
+                stream.via(Flow[QueryContext].mapAsync(1) { qc =>
+                  val result = Promise[QueryContext]()
+                  qc(on.name) match {
+                    case node: Expr.Node =>
+                      val stqid = SpaceTimeQuineId(node.id, namespace, None)
+                      graph.relayTell(stqid, QuinePatternCommand.SetLabels(labels, on, qc, result))
+                    case _ => ???
+                  }
+                  result.future
+                })
+              case LocalEffect.CreateNode(id, labels, maybeProperties) =>
+                stream.via(Flow[QueryContext].mapAsync(1) { qc =>
+                  val result = Promise[QueryContext]()
+                  qc(id.name) match {
+                    case node: Expr.Node =>
+                      val stqid = SpaceTimeQuineId(node.id, namespace, None)
+                      graph.relayTell(stqid, QuinePatternCommand.PopulateNode(labels, maybeProperties, id, qc, result))
+                    case _ => ???
+                  }
+                  result.future
+                })
+              case LocalEffect.CreateEdge(labels, direction, leftIdent, rightIdent, _) =>
+                val quineDirection = direction match {
+                  case Direction.Left => EdgeDirection.Outgoing
+                  case Direction.Right => EdgeDirection.Incoming
+                }
+                stream
+                  .via(Flow[QueryContext].mapAsync(1) { qc =>
+                    val result = Promise[QueryContext]()
+                    val leftId = CypherAndQuineHelpers.getNodeIdFromIdent(leftIdent, qc)
+                    val rightId = CypherAndQuineHelpers.getNodeIdFromIdent(rightIdent, qc)
+                    val stqid = SpaceTimeQuineId(leftId, namespace, None)
+                    graph
+                      .relayTell(stqid, QuinePatternCommand.AddEdge(labels.head, quineDirection, rightId, qc, result))
+                    result.future
+                  })
+                  .via(Flow[QueryContext].mapAsync(1) { qc =>
+                    val result = Promise[QueryContext]()
+                    val leftId = CypherAndQuineHelpers.getNodeIdFromIdent(leftIdent, qc)
+                    val rightId = CypherAndQuineHelpers.getNodeIdFromIdent(rightIdent, qc)
+                    val stqid = SpaceTimeQuineId(rightId, namespace, None)
+                    graph.relayTell(
+                      stqid,
+                      QuinePatternCommand.AddEdge(labels.head, quineDirection.reverse, leftId, qc, result),
+                    )
+                    result.future
+                  })
+              case _ => throw new QuinePatternUnimplementedException(s"Unexpected instruction $i")
+            }
           case Instruction.Proj(exp, as) =>
             stream.via(Flow[QueryContext].map { qc =>
-              val evaled = ExpressionInterpreter.eval(exp, qc)
+              val evaled = ExpressionInterpreter.eval(exp, graph.idProvider, qc)
               val cypherValue = CypherAndQuineHelpers.patternValueToCypherValue(evaled)
               qc + (as.name -> cypherValue)
             })

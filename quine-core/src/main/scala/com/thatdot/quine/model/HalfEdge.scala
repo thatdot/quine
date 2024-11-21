@@ -1,5 +1,7 @@
 package com.thatdot.quine.model
 
+import QuineIdHelpers._
+
 /** Half of an edge in Quine
   *
   * An edge in Quine exists iff there exist two reciprocal half edges on the two

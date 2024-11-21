@@ -46,6 +46,7 @@ import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuin
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
 import com.thatdot.quine.util.ByteConversions

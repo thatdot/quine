@@ -23,6 +23,8 @@ import com.thatdot.quine.routes._
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
+import QuineIdHelpers._
+
 trait QueryUiCypherApiMethods extends LazySafeLogging {
   import QueryUiCypherApiMethods._
   implicit def graph: LiteralOpsGraph with CypherOpsGraph

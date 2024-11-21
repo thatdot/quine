@@ -10,6 +10,7 @@ import scala.util.Try
 import org.apache.pekko.actor.Actor
 import org.apache.pekko.dispatch.Envelope
 
+import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{QuineId, QuineIdProvider}
 import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._

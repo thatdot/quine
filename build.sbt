@@ -20,7 +20,6 @@ lazy val `quine-core`: Project = project
   .settings(
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % shapelessV,
-      "com.google.guava" % "guava" % guavaV,
       "org.apache.pekko" %% "pekko-actor" % pekkoV,
       "org.apache.pekko" %% "pekko-stream" % pekkoStreamV,
       "org.apache.pekko" %% "pekko-slf4j" % pekkoV,
@@ -29,7 +28,6 @@ lazy val `quine-core`: Project = project
       "io.circe" %% "circe-parser" % circeV,
       "org.msgpack" % "msgpack-core" % msgPackV,
       "org.apache.commons" % "commons-text" % commonsTextV,
-      "com.47deg" %% "memeid4s" % memeIdV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
       "io.github.hakky54" % "sslcontext-kickstart" % sslContextKickstartV,
       // Testing
@@ -260,7 +258,6 @@ lazy val `quine`: Project = project
       "com.github.pureconfig" %% "pureconfig" % pureconfigV,
       "com.github.scopt" %% "scopt" % scoptV,
       "com.google.api.grpc" % "proto-google-common-protos" % protobufCommonV,
-      "com.google.guava" % "guava" % guavaV,
       "com.github.ben-manes.caffeine" % "caffeine" % caffeineV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
       "com.google.protobuf" % "protobuf-java" % protobufV,
