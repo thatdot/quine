@@ -212,6 +212,14 @@ object MultipleValuesStandingQuery {
     }
   }
 
+  /** Watches a node's labels and emits a result when the labels match the provided constraint.
+    * Similar to [[LocalPropertyState]], emits an empty row when `aliasedAs = None` (because the query
+    * does not use the labels value anyways, this reduces the number of intermediate results). Emits
+    * a single row with one column (`aliasedAs.get`) whose value is a possibly-empty `List` of labels.
+    * Never emits a null value.
+    * @param aliasedAs  The name of the column to emit the labels under, if any.
+    * @param constraint A predicate the node's labels must satisfy in order to be emitted.
+    */
   final case class Labels(
     aliasedAs: Option[Symbol],
     constraint: Labels.LabelsConstraint,
@@ -227,7 +235,7 @@ object MultipleValuesStandingQuery {
       def apply(labels: Set[Symbol]): Boolean
     }
 
-    /** Gets labels if the node has a specific label[s]
+    /** Gets labels if the node has a specific label[s] (all labels must be present)
       * @example MATCH (n:Person) => Contains(Set('Person))
       * @example MATCH (n: SpacesInLabelsAreBad) => Contains(Set('SpacesInLabelsAreBad))
       * @example MATCH (n:Animal:Dog) => Contains(Set('Animal, 'Dog))

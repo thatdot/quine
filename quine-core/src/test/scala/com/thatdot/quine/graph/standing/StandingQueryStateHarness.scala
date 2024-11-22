@@ -44,7 +44,7 @@ final case class MultipleValuesStandingQueryEffectsTester(
     with MultipleValuesInitializationEffects {
 
   var currentProperties: Map[Symbol, PropertyValue] = Map.empty
-  val labelsProperty: Symbol = Symbol("__LABEL")
+  val labelsProperty: Symbol = MultipleValuesStandingQueryEffectsTester.labelsProperty
   def trackPropertyEffects(events: Seq[NodeChangeEvent]): Unit = events.foreach {
     case PropertySet(key, value) => currentProperties += key -> value
     case PropertyRemoved(key, _) => currentProperties -= key
@@ -91,6 +91,8 @@ object MultipleValuesStandingQueryEffectsTester {
       knownQueries =
         mutable.Map(query.queryPartId -> query) ++= initiallyKnownQueries.map(sq => sq.queryPartId -> sq).toMap,
     )
+
+  val labelsProperty: Symbol = Symbol("__LABEL")
 }
 
 /** Harness for checking the behaviour of a [[StandingQueryState]] when it receives different
