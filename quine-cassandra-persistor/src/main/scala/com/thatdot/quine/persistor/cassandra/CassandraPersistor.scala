@@ -173,7 +173,18 @@ abstract class CassandraPersistor(
         _.traverse(time =>
           snapshots
             .getSnapshotParts(id, time)
-            .map(MultipartSnapshot(time, _))(ExecutionContext.parasitic),
+            .map { parts =>
+              val partsWithinCount = parts.map(_.multipartCount).minOption match {
+                case Some(minCount) =>
+                  // Having more than one part count for a timestamp value is only valid when using singleton
+                  // snapshots, as that re-uses a single timestamp value. A successful write of a larger snapshot over
+                  // a smaller one will cause all rows to agree on the count. A successful write of a smaller snapshot
+                  // over a larger one will leave the parts that go past the count. Those should be ignored.
+                  parts.filter(_.multipartIndex < minCount)
+                case None => parts
+              }
+              MultipartSnapshot(time, partsWithinCount)
+            }(ExecutionContext.parasitic),
         ),
       )(multipartSnapshotExecutionContext)
 

@@ -595,6 +595,14 @@ abstract class PersistenceAgentSpec
         },
       )
     }
+
+    it("reads a smaller snapshot written after a larger one with the same timestamp") {
+      for {
+        _ <- altPersistor1.persistSnapshot(qid0, EventTime.MaxValue, snapshot4)
+        _ <- altPersistor1.persistSnapshot(qid0, EventTime.MaxValue, snapshot3)
+        snapshotAfter <- altPersistor1.getLatestSnapshot(qid0, EventTime.MaxValue)
+      } yield snapshotAfter should contain(snapshot3)
+    }
   }
 
   if (runDeletionTests) {
