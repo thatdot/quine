@@ -11,9 +11,8 @@ import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdPro
 import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
 import com.thatdot.quine.util.Log._
 
-/** Implementation of [[QuineEndpoints]] for servers, along with some schemas
-  * for types that are defined in the `model` model (and therefore can't
-  * be part of [[QuineEndpoints]]
+/** Partial implementation of [[QuineEndpoints]] for schemas that are specific to the server,
+  * for types that are defined in the `model` model (and therefore can't be part of [[QuineEndpoints]])
   */
 trait ServerQuineEndpoints extends QuineEndpoints with endpoints4s.generic.JsonSchemas {
 

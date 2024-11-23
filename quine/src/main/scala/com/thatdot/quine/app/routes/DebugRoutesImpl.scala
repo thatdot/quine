@@ -24,9 +24,8 @@ import com.thatdot.quine.util.Log._
 /** The Pekko HTTP implementation of [[DebugOpsRoutes]] */
 trait DebugRoutesImpl
     extends DebugOpsRoutes
-    with endpoints4s.pekkohttp.server.Endpoints
-    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
-    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
+    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas {
 
   implicit protected def logConfig: LogConfig
 

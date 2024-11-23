@@ -4,7 +4,7 @@ import java.io.InputStream
 
 import scala.concurrent.Future
 
-import org.apache.pekko.http.scaladsl.model.{ContentTypeRange, HttpEntity, MediaTypes, StatusCodes}
+import org.apache.pekko.http.scaladsl.model.{ContentTypeRange, HttpEntity, MediaTypes}
 import org.apache.pekko.http.scaladsl.server.{Directive1, Directives}
 import org.apache.pekko.http.scaladsl.unmarshalling._
 import org.apache.pekko.stream.Materializer
@@ -57,6 +57,4 @@ trait ServerEntitiesWithExamples
         Parser.default.decodeAccumulating(new YamlUnicodeReader(requestInputStream))(schema.decoder)
       }(new QuineDispatchers(mat.system).blockingDispatcherEC),
     ).flatMap(circeDecodeResultToEndpointsDirective)
-
-  val ServiceUnavailable = StatusCodes.ServiceUnavailable
 }

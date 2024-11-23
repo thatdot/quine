@@ -18,7 +18,6 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
     with AdministrationRoutes
     with DebugOpsRoutes
     with AlgorithmRoutes
-    with endpoints4s.xhr.future.Endpoints
     with endpoints4s.circe.JsonSchemas
     with exts.NoopEntitiesWithExamples
     with exts.CirceJsonAnySchema
@@ -51,7 +50,5 @@ class ClientRoutes(baseUrl: js.UndefOr[String])
 
   def queryProtocolClient(): WebSocketQueryClient =
     new WebSocketQueryClient(new WebSocket(s"$baseWsUrl/api/v1/query"))
-
-  val ServiceUnavailable: StatusCode = 503
 
 }

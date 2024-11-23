@@ -19,10 +19,10 @@ import com.thatdot.quine.util.SwitchMode
 /** The Pekko HTTP implementation of [[IngestRoutes]] */
 trait IngestRoutesImpl
     extends IngestRoutes
+    with com.thatdot.quine.app.routes.exts.PekkoQuineEndpoints
     with IngestApiMethods
     with endpoints4s.pekkohttp.server.Endpoints
-    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
-    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints {
+    with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas {
 
   implicit def timeout: Timeout
   implicit def materializer: Materializer

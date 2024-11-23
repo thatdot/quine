@@ -21,6 +21,7 @@ import com.thatdot.quine.graph.GraphShardActor.{LivenessStatus, NodeState}
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
 import com.thatdot.quine.graph.messaging.ShardMessage.{
   AwakeNode,
+  CancelShardShutdown,
   CreateNamespace,
   CurrentInMemoryLimits,
   DeleteNamespace,
@@ -101,6 +102,10 @@ final private[quine] class GraphShardActor(
     }
     ShardShutdownProgress(namespacedNodes.map(_._2.size).sum)
   }
+
+  /** If a shard shutdown has been started, stop it. */
+  def cancelShutdown(): Unit =
+    timers.cancel(ShuttingDownShard)
 
   private[this] val shardName = self.path.name
 
@@ -612,6 +617,10 @@ final private[quine] class GraphShardActor(
         node <- nodes.keys
       } sleepActor(node)
       inMemoryActorList.clear()
+
+    case msg @ CancelShardShutdown(_) =>
+      cancelShutdown()
+      msg ?! Done
 
     case CheckForInactiveNodes =>
       inMemoryActorList.doExpiration()

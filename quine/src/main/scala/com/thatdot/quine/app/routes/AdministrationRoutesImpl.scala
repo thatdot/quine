@@ -87,9 +87,8 @@ object GenerateMetrics {
 /** The Pekko HTTP implementation of [[AdministrationRoutes]] */
 trait AdministrationRoutesImpl
     extends AdministrationRoutes
-    with endpoints4s.pekkohttp.server.Endpoints
     with com.thatdot.quine.app.routes.exts.circe.JsonEntitiesFromSchemas
-    with com.thatdot.quine.app.routes.exts.ServerQuineEndpoints { self: LazySafeLogging =>
+    with com.thatdot.quine.app.routes.exts.PekkoQuineEndpoints { self: LazySafeLogging =>
 
   def graph: BaseGraph
   implicit def timeout: Timeout

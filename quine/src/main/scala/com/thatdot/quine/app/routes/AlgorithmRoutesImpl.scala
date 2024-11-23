@@ -49,10 +49,9 @@ trait AlgorithmMethods {
 
 trait AlgorithmRoutesImpl
     extends AlgorithmRoutes
+    with exts.PekkoQuineEndpoints
     with AlgorithmMethods
-    with endpoints4s.pekkohttp.server.Endpoints
-    with JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints {
+    with JsonEntitiesFromSchemas {
 
   implicit def graph: AlgorithmGraph
 

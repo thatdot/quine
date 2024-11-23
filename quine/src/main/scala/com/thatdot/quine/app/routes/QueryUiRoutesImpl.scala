@@ -25,10 +25,10 @@ import QuineIdHelpers._
 
 trait QueryUiRoutesImpl
     extends QueryUiRoutes
+    with exts.PekkoQuineEndpoints
     with QueryUiCypherApiMethods
     with endpoints4s.pekkohttp.server.Endpoints
     with exts.circe.JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints
     with exts.ServerRequestTimeoutOps
     with LazySafeLogging {
 

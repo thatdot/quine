@@ -9,9 +9,8 @@ import com.thatdot.quine.routes.QueryUiConfigurationRoutes
 
 trait QueryUiConfigurationRoutesImpl
     extends QueryUiConfigurationRoutes
-    with endpoints4s.pekkohttp.server.Endpoints
     with JsonEntitiesFromSchemas
-    with exts.ServerQuineEndpoints {
+    with exts.PekkoQuineEndpoints {
 
   protected val quineApp: QueryUiConfigurationState
 

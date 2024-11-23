@@ -30,6 +30,11 @@ object ShardMessage {
   /** Result of calling shutdown on GraphShardActors */
   final case class ShardShutdownProgress(remainingNodeActorCount: Int) extends ShardMessage
 
+  /** Cancel any in-progress shard shutdowns started by InitiateShardShutdown. */
+  final case class CancelShardShutdown(replyTo: QuineRef)
+      extends ShardMessage
+      with AskableQuineMessage[BaseMessage.Done.type]
+
   /** Instruct the shard to forcibly stop all of its nodes */
   case object RemoveNodes extends ShardMessage
 
