@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Base64.Encoder
 import java.util.{Base64, UUID}
 
 import scala.concurrent.duration._
@@ -25,6 +26,7 @@ import io.circe.syntax._
 import com.thatdot.quine.app.ImproveQuine.{
   InstanceHeartbeat,
   InstanceStarted,
+  RecipeInfo,
   TelemetryRequest,
   sinksFromStandingQueries,
   sourcesFromIngestStreams,
@@ -45,6 +47,8 @@ object ImproveQuine {
   /** Telemetry event sent during a regular interval */
   case object InstanceHeartbeat extends Event("instance.heartbeat")
 
+  case class RecipeInfo(recipe_name_hash: String, recipe_contents_hash: String)
+
   case class TelemetryData(
     event: String,
     service: String,
@@ -58,6 +62,7 @@ object ImproveQuine {
     sinks: Option[List[String]],
     recipe: Boolean,
     recipe_canonical_name: Option[String],
+    recipe_info: Option[RecipeInfo],
     apiKey: Option[String],
   )
 
@@ -74,6 +79,7 @@ object ImproveQuine {
     sinks: Option[List[String]],
     recipeUsed: Boolean,
     recipeCanonicalName: Option[String],
+    recipeInfo: Option[RecipeInfo],
     apiKey: Option[String],
   )(implicit system: ActorSystem)
       extends StrictSafeLogging {
@@ -96,6 +102,7 @@ object ImproveQuine {
         sinks,
         recipeUsed,
         recipeCanonicalName,
+        recipeInfo,
         apiKey,
       )
 
@@ -149,11 +156,37 @@ class ImproveQuine(
   version: String,
   persistor: String,
   app: Option[StandingQueryStore with IngestStreamState],
-  recipeUsed: Boolean = false,
+  recipe: Option[Recipe] = None,
   recipeCanonicalName: Option[String] = None,
   apiKey: Option[String] = None,
 )(implicit system: ActorSystem, logConfig: LogConfig)
     extends LazySafeLogging {
+
+  // Since MessageDigest is not thread-safe, each function should create an instance its own use
+  def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
+  val base64: Encoder = Base64.getEncoder
+
+  def recipeContentsHash(recipe: Recipe): Array[Byte] = {
+    val sha256: MessageDigest = hasherInstance()
+    // Since this is not mission-critical, letting the JVM object hash function do the heavy lifting
+    sha256.update(recipe.ingestStreams.hashCode().toByte)
+    sha256.update(recipe.standingQueries.hashCode().toByte)
+    sha256.update(recipe.nodeAppearances.hashCode().toByte)
+    sha256.update(recipe.quickQueries.hashCode().toByte)
+    sha256.update(recipe.sampleQueries.hashCode().toByte)
+    sha256.update(recipe.statusQuery.hashCode().toByte)
+    sha256.digest()
+  }
+
+  val recipeUsed: Boolean = recipe.isDefined
+  val recipeInfo: Option[RecipeInfo] = recipe
+    .map { r =>
+      val sha256: MessageDigest = hasherInstance()
+      RecipeInfo(
+        base64.encodeToString(sha256.digest(r.title.getBytes(StandardCharsets.UTF_8))),
+        base64.encodeToString(recipeContentsHash(r)),
+      )
+    }
 
   private val invalidMacAddresses = Set(
     Array.fill[Byte](6)(0x00),
@@ -174,13 +207,13 @@ class ImproveQuine(
   private val prefixBytes = "Quine_".getBytes(StandardCharsets.UTF_8)
 
   private def hostHash(): String = Try {
+    val sha256: MessageDigest = hasherInstance()
     val mac = hostMac()
-    val encoder = Base64.getEncoder
     // Salt the input to prevent a SHA256 of a MAC address from matching another system using a SHA256 of a MAC
     // address for extra anonymity.
     val prefixedBytes = Array.concat(prefixBytes, mac)
-    val hash = MessageDigest.getInstance("SHA-256").digest(prefixedBytes)
-    encoder.encodeToString(hash)
+    val hash = sha256.digest(prefixedBytes)
+    base64.encodeToString(hash)
   }.getOrElse("host_unavailable")
 
   private def getSources: Option[List[String]] =
@@ -227,6 +260,7 @@ class ImproveQuine(
       sinks,
       recipeUsed,
       recipeCanonicalName,
+      recipeInfo,
       apiKey,
     )
       .run()

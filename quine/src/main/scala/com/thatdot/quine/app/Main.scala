@@ -273,7 +273,7 @@ object Main extends App with LazySafeLogging {
               version = BuildInfo.version,
               persistor = config.store.label,
               app = Some(quineApp),
-              recipeUsed = recipe.isDefined,
+              recipe = recipe,
               recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None,
             )
             iq.startTelemetry()
