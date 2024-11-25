@@ -100,7 +100,7 @@ case object resolveCalls extends StatementRewriter {
     RecentNodes,
     RecentNodeIds,
     JsonLoad,
-    IncrementCounter, // TODO remove on breaking change
+    IncrementCounter, // TODO don't include in Quine Pattern
     AddToInt,
     AddToFloat,
     InsertToSet,
@@ -352,7 +352,7 @@ object CypherLabels
 /** Increment an integer property on a node atomically (doing the get and the
   * set in one step with no intervening operation)
   *
-  * TODO remove at next breaking change
+  * TODO don't include in Quine Pattern
   */
 object IncrementCounter extends UserDefinedProcedure {
   val name = "incrementCounter"
