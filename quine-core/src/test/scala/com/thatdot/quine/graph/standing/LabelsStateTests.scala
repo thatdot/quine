@@ -53,7 +53,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromThreeLabels = initialResultOpt.value
         assert(initialResultFromThreeLabels == Seq(QueryContext.empty))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -68,7 +70,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromEmptyLabels = initialResultOpt.value
         assert(initialResultFromEmptyLabels == Seq(QueryContext.empty))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -162,7 +166,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromThreeLabels = initialResultOpt.value
         assert(initialResultFromThreeLabels == Seq(makeLabelsRow(alias, Set(Symbol("A"), Symbol("B"), Symbol("C")))))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -177,7 +183,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromEmptyLabels = initialResultOpt.value
         assert(initialResultFromEmptyLabels == Seq(makeLabelsRow(alias, Set.empty)))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -280,7 +288,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromThreeLabels = initialResultOpt.value
         assert(initialResultFromThreeLabels == Seq(QueryContext.empty))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -295,7 +305,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromEmptyLabels = initialResultOpt.value
         assert(initialResultFromEmptyLabels == Seq.empty)
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -397,7 +409,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromThreeLabels = initialResultOpt.value
         assert(initialResultFromThreeLabels == Seq(makeLabelsRow(alias, Set(Symbol("A"), Symbol("B"), Symbol("C")))))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -412,7 +426,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromEmptyLabels = initialResultOpt.value
         assert(initialResultFromEmptyLabels == Seq.empty)
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -526,7 +542,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromThreeLabels = initialResultOpt.value
         assert(initialResultFromThreeLabels == Seq(makeLabelsRow(alias, Set(Symbol("A"), Symbol("B"), Symbol("C")))))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -541,7 +559,9 @@ class LabelsStateTests extends AnyFunSuite with OptionValues {
       ) { (effects, initialResultOpt) =>
         val initialResultFromEmptyLabels = initialResultOpt.value
         assert(initialResultFromEmptyLabels == Seq.empty)
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 

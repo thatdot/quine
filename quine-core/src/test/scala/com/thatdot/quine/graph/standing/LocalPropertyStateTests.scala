@@ -311,7 +311,9 @@ class LocalPropertyStateTests extends AnyFunSuite with OptionValues {
       tempState.initialize(Map(query.propKey -> PropertyValue(QuineValue.Integer(2L)))) { (effects, initialResultOpt) =>
         val initialResultFromNull = initialResultOpt.value
         assert(initialResultFromNull == Seq())
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 
@@ -320,7 +322,9 @@ class LocalPropertyStateTests extends AnyFunSuite with OptionValues {
       tempState.initialize(Map(query.propKey -> PropertyValue(QuineValue.Integer(1L)))) { (effects, initialResultOpt) =>
         val initialResultFromMatch = initialResultOpt.value
         assert(initialResultFromMatch == Seq(QueryContext(Map(query.aliasedAs.get -> Expr.Integer(1L)))))
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
 

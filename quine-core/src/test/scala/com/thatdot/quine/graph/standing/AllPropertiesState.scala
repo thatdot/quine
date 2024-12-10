@@ -30,7 +30,9 @@ class AllPropertiesStateTest extends AnyFunSuite with OptionValues {
             ),
           ),
         )
-        assert(effects.isEmpty)
+        assert(effects.subscriptionsCreated.isEmpty)
+        assert(effects.subscriptionsCancelled.isEmpty)
+        assert(effects.resultsReported.nonEmpty)
       }
     }
   }
