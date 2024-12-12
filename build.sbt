@@ -342,7 +342,7 @@ lazy val `quine-docs`: Project = {
     .settings(
       generateDocs := Def
         .sequential(
-          Def.task {
+          Def.taskDyn {
             (Compile / runMain)
               .toTask(
                 List(
