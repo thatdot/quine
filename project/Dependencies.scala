@@ -25,7 +25,7 @@ object Dependencies {
   val endpoints4sXhrClientV = "5.3.0"
   val flatbuffersV = "24.3.25"
   val ioniconsV = "2.0.1"
-  val jnrPosixV = "3.1.19"
+  val jnrPosixV = "3.1.20"
   val jqueryV = "3.6.3"
   val jwtScalaV = "10.0.1"
   // pekko-connectors 1.0.1 requires 3.0.1, which is vulnerable to CVE-2022-34917
