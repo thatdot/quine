@@ -23,6 +23,7 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryOpsGraph,
   StandingQueryResult,
+  StandingQueryResultStructure,
 }
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKafka
 import com.thatdot.quine.routes._
@@ -144,7 +145,7 @@ trait StandingQueryRoutesImpl
             graph
               .standingQueries(namespaceFromParam(namespaceParam))
               // Silently ignores SQs in any absent namespace, returning `None`
-              .flatMap(_.standingResultsHub(sqid)),
+              .flatMap((sq: StandingQueryOpsGraph#NamespaceStandingQueries) => sq.standingResultsHub(sqid)),
           ) match {
           case None => reject(ValidationRejection("No Standing Query with the provided name was found"))
           case Some(source) =>
@@ -154,7 +155,10 @@ trait StandingQueryRoutesImpl
                   Sink.ignore,
                   source
                     .buffer(size = 128, overflowStrategy = OverflowStrategy.dropHead)
-                    .map((r: StandingQueryResult) => ws.TextMessage(r.toJson.noSpaces)),
+                    // todo: Verify this is the correct behavior and it shouldn't depend on some configuration option somewhere
+                    .map((r: StandingQueryResult) =>
+                      ws.TextMessage(r.toJson(StandingQueryResultStructure.WithMetaData()).noSpaces),
+                    ),
                 )
                 .named(s"sq-results-websocket-for-$name"),
             )
@@ -179,7 +183,8 @@ trait StandingQueryRoutesImpl
               source
                 .map(sqResult =>
                   ServerSentEvent(
-                    data = sqResult.toJson.noSpaces,
+                    // todo: Verify this is the correct behavior and it shouldn't depend on some configuration option somewhere
+                    data = sqResult.toJson(StandingQueryResultStructure.WithMetaData()).noSpaces,
                     eventType = Some(if (sqResult.meta.isPositiveMatch) "result" else "cancellation"),
                     id = Some(sqResult.dataHashCode.toString),
                   ),

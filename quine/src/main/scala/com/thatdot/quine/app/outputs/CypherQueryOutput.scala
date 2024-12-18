@@ -39,7 +39,7 @@ class CypherQueryOutput(
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
-    val CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) = config
+    val CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry, structure) = config
 
     val compiledQuery @ cypher.CompiledQuery(_, queryAst, _, _, _) = compiler.cypher.compile(
       query,
@@ -96,7 +96,7 @@ class CypherQueryOutput(
       .flatMapMerge(
         breadth = parallelism,
         result => {
-          val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap)
+          val value: cypher.Value = cypher.Expr.fromQuineValue(result.toQuineValueMap(structure))
 
           val cypherResultRows =
             if (shouldRetry) atLeastOnceCypherQuery.stream(value, inNamespace)(graph)

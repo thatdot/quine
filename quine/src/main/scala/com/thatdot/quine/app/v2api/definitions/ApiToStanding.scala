@@ -48,20 +48,35 @@ object ApiToStanding {
       Standing.StandingQueryPattern.Cypher(query, ApiToStanding(mode))
   }
 
+  private def apply(structure: Api.StandingQueryOutputStructure): Standing.StandingQueryOutputStructure =
+    structure match {
+      case Api.StandingQueryOutputStructure.WithMetadata() => Standing.StandingQueryOutputStructure.WithMetadata()
+      case Api.StandingQueryOutputStructure.Bare() => Standing.StandingQueryOutputStructure.Bare()
+    }
+
   def apply(sq: Api.StandingQueryResultOutputUserDef): Standing.StandingQueryResultOutputUserDef = {
     val result = sq match {
-      case Api.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData, _) =>
+      case Api.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData, _, structure) =>
         Standing.StandingQueryResultOutputUserDef.PostToEndpoint(
           url,
           parallelism,
           onlyPositiveMatchData,
+          ApiToStanding(structure),
         )
-      case Api.StandingQueryResultOutputUserDef.WriteToKafka(topic, bootstrapServers, format, kafkaProperties, _) =>
+      case Api.StandingQueryResultOutputUserDef.WriteToKafka(
+            topic,
+            bootstrapServers,
+            format,
+            kafkaProperties,
+            _,
+            structure,
+          ) =>
         Standing.StandingQueryResultOutputUserDef.WriteToKafka(
           topic,
           bootstrapServers,
           ApiToStanding(format),
           kafkaProperties,
+          ApiToStanding(structure),
         )
       case Api.StandingQueryResultOutputUserDef.WriteToKinesis(
             credentials,
@@ -73,6 +88,7 @@ object ApiToStanding {
             kinesisMaxRecordsPerSecond,
             kinesisMaxBytesPerSecond,
             _,
+            structure,
           ) =>
         Standing.StandingQueryResultOutputUserDef.WriteToKinesis(
           credentials.map(ApiToIngest.apply),
@@ -83,20 +99,23 @@ object ApiToStanding {
           kinesisMaxBatchSize,
           kinesisMaxRecordsPerSecond,
           kinesisMaxBytesPerSecond,
+          ApiToStanding(structure),
         )
-      case Api.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, _) =>
+      case Api.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, _, structure) =>
         Standing.StandingQueryResultOutputUserDef.WriteToSNS(
           credentials.map(ApiToIngest.apply),
           region.map(ApiToIngest.apply),
           topic,
+          ApiToStanding(structure),
         )
-      case Api.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode, _) =>
+      case Api.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode, _, structure) =>
         Standing.StandingQueryResultOutputUserDef.PrintToStandardOut(
           ApiToStanding(logLevel),
           ApiToStanding(logMode),
+          ApiToStanding(structure),
         )
-      case Api.StandingQueryResultOutputUserDef.WriteToFile(path, _) =>
-        Standing.StandingQueryResultOutputUserDef.WriteToFile(path)
+      case Api.StandingQueryResultOutputUserDef.WriteToFile(path, _, structure) =>
+        Standing.StandingQueryResultOutputUserDef.WriteToFile(path, ApiToStanding(structure))
       case Api.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds, _) =>
         Standing.StandingQueryResultOutputUserDef.PostToSlack(
           hookUrl,
@@ -112,6 +131,7 @@ object ApiToStanding {
             allowAllNodeScan,
             shouldRetry,
             _,
+            structure,
           ) =>
         Standing.StandingQueryResultOutputUserDef.CypherQuery(
           query,
@@ -120,6 +140,7 @@ object ApiToStanding {
           None,
           allowAllNodeScan,
           shouldRetry,
+          ApiToStanding(structure),
         )
     }
     sq.sequence.foldRight(result) { case (cypher, sq) =>

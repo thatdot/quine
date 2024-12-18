@@ -20,10 +20,10 @@ class FileOutput(val config: WriteToFile)(implicit private val logConfig: LogCon
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
-    val WriteToFile(path) = config
+    val WriteToFile(path, structure) = config
 
     Flow[StandingQueryResult]
-      .map(result => ByteString(result.toJson(graph.idProvider, logConfig).noSpaces + "\n"))
+      .map(result => ByteString(result.toJson(structure)(graph.idProvider, logConfig).noSpaces + "\n"))
       .alsoTo(
         FileIO
           .toPath(

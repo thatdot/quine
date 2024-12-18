@@ -42,6 +42,7 @@ class KinesisOutput(val config: WriteToKinesis)(implicit
       kinesisMaxBatchSize,
       kinesisMaxRecordsPerSecond,
       kinesisMaxBytesPerSecond,
+      structure,
     ) = config
     val token = execToken(name, inNamespace)
     val builder = KinesisAsyncClient
@@ -63,7 +64,7 @@ class KinesisOutput(val config: WriteToKinesis)(implicit
       s
     }
 
-    serialized(name, format, graph)
+    serialized(name, format, graph, structure)
       .map { bytes =>
         val builder = PutRecordsRequestEntry.builder()
         builder.data(SdkBytes.fromByteArray(bytes))

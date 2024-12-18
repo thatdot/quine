@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
-import sttp.tapir.Schema.annotations.{description, encodedName, title}
+import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.routes.IngestRoutes
 
@@ -136,7 +136,6 @@ object ApiIngest {
           |given Cypher query will be re-executed with the parameter in the query set
           |equal to the new JSON value.
   """.stripMargin)
-    @encodedName("Json")
     final case class CypherJson(
       @description("Cypher query to execute on each record.") query: String,
       @description("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that",
@@ -147,14 +146,12 @@ object ApiIngest {
           |given Cypher query will be re-executed with the parameter in the query set
           |equal to the new value as a Cypher byte array.
   """.stripMargin)
-    @encodedName("Raw")
     final case class CypherRaw(
       @description("Cypher query to execute on each record.") query: String,
       @description("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that",
     ) extends StreamedRecordFormat
 
     @title("Protobuf via Cypher")
-    @encodedName("Protobuf")
     @description(
       "Records are serialized instances of `typeName` as described in the schema (a `.desc` descriptor file) at " +
       "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
@@ -212,7 +209,6 @@ object ApiIngest {
     @description(
       "Commit offsets to the specified Kafka consumer group on successful execution of the ingest query for that record.",
     )
-    @encodedName("Explicit")
     final case class ExplicitCommit(
       @description("Maximum number of messages in a single commit batch.")
       maxBatch: Long = 1000,
@@ -350,7 +346,6 @@ object ApiIngest {
   @title("Ingest source")
   sealed trait IngestSource
   @title("File Ingest")
-  @encodedName("File")
   case class FileIngest(
     @description("format used to decode each incoming line from a file")
     format: FileFormat,
@@ -378,7 +373,6 @@ object ApiIngest {
   ) extends IngestSource
 
   @title("S3 Ingest")
-  @encodedName("S3")
   case class S3Ingest(
     @description("format used to decode each incoming line from a file in S3")
     format: FileFormat,
@@ -408,7 +402,6 @@ object ApiIngest {
   ) extends IngestSource
 
   @title("Standard Input Ingest")
-  @encodedName("StdInput")
   case class StdInputIngest(
     @description("format used to decode each incoming line from stdIn")
     format: FileFormat,
@@ -426,7 +419,6 @@ object ApiIngest {
     "An infinite ingest stream which requires no data source and just produces new sequential numbers" +
     " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value.",
   )
-  @encodedName("NumberIterator")
   case class NumberIteratorIngest(
     startOffset: Long = 0L,
     @description("Optionally end the stream after consuming this many items.")
@@ -435,7 +427,6 @@ object ApiIngest {
 
   @title("Websockets Ingest Stream (Simple Startup)")
   @description("A websocket stream started after a sequence of text messages.")
-  @encodedName("Websocket")
   case class WebsocketIngest(
     @description("Format used to decode each incoming message.")
     format: StreamingFormat,
@@ -450,7 +441,6 @@ object ApiIngest {
 
   @title("Kinesis Data Stream")
   @description("A stream of data being ingested from Kinesis.")
-  @encodedName("Kinesis")
   case class KinesisIngest(
     @description("The format used to decode each Kinesis record.")
     format: StreamingFormat,
@@ -476,7 +466,6 @@ object ApiIngest {
   @description(
     "A server-issued event stream, as might be handled by the EventSource JavaScript API. Only consumes the `data` portion of an event.",
   )
-  @encodedName("ServerSentEvent")
   case class ServerSentEventIngest(
     @description("Format used to decode each event's `data`.")
     format: StreamingFormat,
@@ -490,7 +479,6 @@ object ApiIngest {
 
   @title("Simple Queue Service Queue")
   @description("An active stream of data being ingested from AWS SQS.")
-  @encodedName("SQS")
   case class SQSIngest(
     format: StreamingFormat,
     @description("URL of the queue to ingest.") queueUrl: String,
@@ -507,7 +495,6 @@ object ApiIngest {
 
   @title("Kafka Ingest Stream")
   @description("A stream of data being ingested from Kafka.")
-  @encodedName("Kafka")
   case class KafkaIngest(
     format: StreamingFormat,
     @description(
@@ -542,7 +529,6 @@ object ApiIngest {
 
   @title("File Ingest Format")
   @description("Format by which a file will be interpreted as a stream of elements for ingest.")
-  @encodedName("File")
   sealed trait FileFormat extends IngestFormat
   object FileFormat {
 
@@ -552,7 +538,6 @@ object ApiIngest {
         |re-executed with the parameter in the query set equal to a string matching
         |the new line value. The newline is not included in this string.
   """.stripMargin.replace('\n', ' '))
-    @encodedName("Line")
     case object LineFormat extends FileFormat
 
     /** Create using a cypher query, expecting each line to be a JSON record */
@@ -561,7 +546,6 @@ object ApiIngest {
         |given Cypher query will be re-executed with the parameter in the query set
         |equal to the new JSON value.
   """.stripMargin.replace('\n', ' '))
-    @encodedName("Json")
     case object JsonFormat extends FileFormat
 
     /** Create using a cypher query, expecting each line to be a single row CSV record */
@@ -571,7 +555,6 @@ object ApiIngest {
         |to the parsed row. Rows are parsed into either a Cypher List of strings or a Map, depending on whether a
         |`headers` row is available.""".stripMargin.replace('\n', ' '),
     )
-    @encodedName("Csv")
     case class CsvFormat(
       @description("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
                               |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
@@ -603,7 +586,6 @@ object ApiIngest {
         |given Cypher query will be re-executed with the parameter in the query set
         |equal to the new JSON value.
   """.stripMargin)
-    @encodedName("Json")
     case object JsonFormat extends StreamingFormat
 
     @title("Raw Bytes")
@@ -611,7 +593,6 @@ object ApiIngest {
         |given Cypher query will be re-executed with the parameter in the query set
         |equal to the new value as a Cypher byte array.
   """.stripMargin)
-    @encodedName("Raw")
     case object RawFormat extends StreamingFormat
 
     @title("Protobuf via Cypher")
@@ -620,7 +601,6 @@ object ApiIngest {
       "`schemaUrl`. For every record received, the given Cypher query will be re-executed with the parameter " +
       "in the query set equal to the new (deserialized) Protobuf message.",
     )
-    @encodedName("Protobuf")
     final case class ProtobufFormat(
       @description(
         "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
@@ -631,7 +611,6 @@ object ApiIngest {
     ) extends StreamingFormat
 
     @title("Avro format")
-    @encodedName("Avro")
     case class AvroFormat(
       @description(
         "URL (or local filename) of the file to load to parse the avro schema.",
@@ -641,19 +620,16 @@ object ApiIngest {
 
     @title("Drop")
     @description("Ignore the data without further processing.")
-    @encodedName("Drop")
     case object DropFormat extends StreamingFormat
   }
   sealed trait OnStreamErrorHandler
 
   @title("Retry Stream Error Handler")
   @description("Retry the stream on failure")
-  @encodedName("Retry")
   case class RetryStreamError(retryCount: Int) extends OnStreamErrorHandler
 
   @title("Log Stream Error Handler")
   @description("If the stream fails log a message but do not retry.")
-  @encodedName("Log")
   case object LogStreamError extends OnStreamErrorHandler
 
   // --------------------
@@ -667,14 +643,12 @@ object ApiIngest {
 
   @title("Log Record Error Handler")
   @description("Log a message for each message that encounters an error in processing")
-  @encodedName("Log")
   case object LogRecordErrorHandler extends OnRecordErrorHandler with LazyLogging
 
   @title("Dead-letter Record Error Handler")
   @description(
     "Preserve records that encounter an error in processing by forwarding them to a specified dead-letter destination (TBD)",
   )
-  @encodedName("DeadLetter")
   case object DeadLetterErrorHandler extends OnRecordErrorHandler
 
 }

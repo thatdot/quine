@@ -41,7 +41,7 @@ object StandingToApi {
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut.LogMode.FastSampling
   }
 
-  def prependToOutputDef(
+  private def prependToOutputDef(
     cypher: Api.StandingQueryResultOutputUserDef.SequencedCypherQuery,
     outputDef: Api.StandingQueryResultOutputUserDef,
   ): Api.StandingQueryResultOutputUserDef = outputDef match {
@@ -56,21 +56,34 @@ object StandingToApi {
     case out: Api.StandingQueryResultOutputUserDef.Drop => out.copy(sequence = cypher +: out.sequence)
   }
 
+  def apply(structure: Standing.StandingQueryOutputStructure): Api.StandingQueryOutputStructure = structure match {
+    case Standing.StandingQueryOutputStructure.WithMetadata() => Api.StandingQueryOutputStructure.WithMetadata()
+    case Standing.StandingQueryOutputStructure.Bare() => Api.StandingQueryOutputStructure.Bare()
+  }
+
   def apply(sq: Standing.StandingQueryResultOutputUserDef): Api.StandingQueryResultOutputUserDef = sq match {
-    case Standing.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
+    case Standing.StandingQueryResultOutputUserDef.PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) =>
       Api.StandingQueryResultOutputUserDef.PostToEndpoint(
         url,
         parallelism,
         onlyPositiveMatchData,
         List.empty,
+        StandingToApi(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToKafka(topic, bootstrapServers, format, kafkaProperties) =>
+    case Standing.StandingQueryResultOutputUserDef.WriteToKafka(
+          topic,
+          bootstrapServers,
+          format,
+          kafkaProperties,
+          structure,
+        ) =>
       Api.StandingQueryResultOutputUserDef.WriteToKafka(
         topic,
         bootstrapServers,
         StandingToApi(format),
         kafkaProperties,
         List.empty,
+        StandingToApi(structure),
       )
     case Standing.StandingQueryResultOutputUserDef.WriteToKinesis(
           credentials,
@@ -81,6 +94,7 @@ object StandingToApi {
           kinesisMaxBatchSize,
           kinesisMaxRecordsPerSecond,
           kinesisMaxBytesPerSecond,
+          structure,
         ) =>
       Api.StandingQueryResultOutputUserDef.WriteToKinesis(
         credentials.map(IngestToApi.apply),
@@ -92,27 +106,30 @@ object StandingToApi {
         kinesisMaxRecordsPerSecond,
         kinesisMaxBytesPerSecond,
         List.empty,
+        StandingToApi(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic) =>
+    case Standing.StandingQueryResultOutputUserDef.WriteToSNS(credentials, region, topic, structure) =>
       Api.StandingQueryResultOutputUserDef.WriteToSNS(
         credentials.map(IngestToApi.apply),
         region.map(IngestToApi.apply),
         topic,
         List.empty,
+        StandingToApi(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode) =>
+    case Standing.StandingQueryResultOutputUserDef.PrintToStandardOut(logLevel, logMode, structure) =>
       Api.StandingQueryResultOutputUserDef.PrintToStandardOut(
         StandingToApi(logLevel),
         StandingToApi(logMode),
         List.empty,
+        StandingToApi(structure),
       )
-    case Standing.StandingQueryResultOutputUserDef.WriteToFile(path) =>
-      Api.StandingQueryResultOutputUserDef.WriteToFile(path, List.empty)
+    case Standing.StandingQueryResultOutputUserDef.WriteToFile(path, structure) =>
+      Api.StandingQueryResultOutputUserDef.WriteToFile(path, List.empty, StandingToApi(structure))
     case Standing.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
       Api.StandingQueryResultOutputUserDef.PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds, List.empty)
     case Standing.StandingQueryResultOutputUserDef.Drop =>
       Api.StandingQueryResultOutputUserDef.Drop(List.empty)
-    case Standing.StandingQueryResultOutputUserDef.InternalQueue() =>
+    case Standing.StandingQueryResultOutputUserDef.InternalQueue(_) =>
       // InternalQueue is for internal use, so it should never be exposed to the API
       Api.StandingQueryResultOutputUserDef.Drop(List.empty)
     case Standing.StandingQueryResultOutputUserDef.CypherQuery(
@@ -122,6 +139,7 @@ object StandingToApi {
           None,
           allowAllNodeScan,
           shouldRetry,
+          structure,
         ) =>
       Api.StandingQueryResultOutputUserDef.CypherQuery(
         query,
@@ -130,6 +148,7 @@ object StandingToApi {
         allowAllNodeScan,
         shouldRetry,
         List.empty,
+        StandingToApi(structure),
       )
     case Standing.StandingQueryResultOutputUserDef.CypherQuery(
           query,
@@ -138,6 +157,7 @@ object StandingToApi {
           Some(andThen),
           allowAllNodeScan,
           shouldRetry,
+          _,
         ) =>
       val cypherQuery = Api.StandingQueryResultOutputUserDef.SequencedCypherQuery(
         query,

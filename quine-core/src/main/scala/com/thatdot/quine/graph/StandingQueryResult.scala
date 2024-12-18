@@ -10,6 +10,13 @@ import io.circe.Json
 import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log._
 
+sealed trait StandingQueryResultStructure
+object StandingQueryResultStructure {
+
+  final case class WithMetaData() extends StandingQueryResultStructure
+  final case class Bare() extends StandingQueryResultStructure
+}
+
 /** Standing query result or cancellation
   *
   * @param meta metadata about the match result
@@ -24,20 +31,31 @@ final case class StandingQueryResult(
 
   /** Return this result as a single `QuineValue` (use sparingly, this effectively throws away type safety!)
     */
-  def toQuineValueMap: QuineValue.Map = QuineValue.Map(
-    Map(
-      "meta" -> QuineValue(meta.toMap),
-      "data" -> QuineValue(data),
-    ),
-  )
+  def toQuineValueMap(structure: StandingQueryResultStructure): QuineValue = structure match {
+    case StandingQueryResultStructure.WithMetaData() =>
+      QuineValue.Map(
+        Map(
+          "meta" -> QuineValue(meta.toMap),
+          "data" -> QuineValue(data),
+        ),
+      )
+    case StandingQueryResultStructure.Bare() => QuineValue.Map(data)
+  }
 
-  def toJson(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json =
-    Json.fromFields(
-      Seq(
-        ("meta", meta.toJson),
-        ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)),
-      ),
-    )
+  def toJson(
+    structure: StandingQueryResultStructure,
+  )(implicit idProvider: QuineIdProvider, logConfig: LogConfig): Json = structure match {
+    case StandingQueryResultStructure.WithMetaData() =>
+      Json.fromFields(
+        Seq(
+          ("meta", meta.toJson),
+          ("data", Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)),
+        ),
+      )
+    case StandingQueryResultStructure.Bare() =>
+      Json.fromFields(data.view.map { case (k, v) => (k, QuineValue.toJson(v)) }.toSeq)
+
+  }
 
   // TODO eliminate duplicated code below and in DomainGraphNode.scala
 

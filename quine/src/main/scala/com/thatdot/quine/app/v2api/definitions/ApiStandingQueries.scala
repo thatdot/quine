@@ -3,12 +3,30 @@ package com.thatdot.quine.app.v2api.definitions
 import java.time.Instant
 import java.util.UUID
 
-import sttp.tapir.Schema.annotations.{description, encodedName, title}
+import sttp.tapir.Schema.annotations.{description, title}
 
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.SequencedCypherQuery
 
 object ApiStandingQueries {
+
+  @title("Structure of Output Data")
+  sealed trait StandingQueryOutputStructure
+  object StandingQueryOutputStructure {
+
+    @title("WithMetadata")
+    @description(
+      "Output the result wrapped in an object with a field for the metadata and a field for the query result",
+    )
+    final case class WithMetadata() extends StandingQueryOutputStructure
+
+    @title("Bare")
+    @description(
+      "Output the result as is with no metadata. Warning: if this is used with `includeCancellations=true`" +
+      "then there will be no way to determine the difference between positive and negative matches",
+    )
+    final case class Bare() extends StandingQueryOutputStructure
+  }
   @title("Standing Query")
   @description("Standing Query")
   final case class StandingQueryDefinition(
@@ -30,7 +48,6 @@ object ApiStandingQueries {
 
   object OutputFormat {
     @title("JSON")
-    @encodedName("Json")
     case object JSON extends OutputFormat
     @title("Protobuf")
     final case class Protobuf(
@@ -99,6 +116,7 @@ object ApiStandingQueries {
         "A list of Cypher Queries to be run sequentially and then fed into this output",
       )
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Publish to Kafka Topic")
@@ -117,6 +135,7 @@ object ApiStandingQueries {
         "A list of Cypher Queries to be run sequentially and then fed into this output",
       )
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Publish to Kinesis Data Stream")
@@ -134,6 +153,7 @@ object ApiStandingQueries {
       kinesisMaxBytesPerSecond: Option[Int],
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Publish to SNS Topic")
@@ -152,6 +172,7 @@ object ApiStandingQueries {
       @description("ARN of the topic to publish to") topic: String,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Log JSON to Console")
@@ -161,6 +182,7 @@ object ApiStandingQueries {
       logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     object PrintToStandardOut {
@@ -196,6 +218,7 @@ object ApiStandingQueries {
       path: String,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Publish to Slack Webhook")
@@ -247,6 +270,7 @@ object ApiStandingQueries {
       shouldRetry: Boolean = true,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
       sequence: List[SequencedCypherQuery] = List.empty,
+      structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     //Separate from CypherQuery to prevent recursive structures in the API

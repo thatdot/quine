@@ -22,7 +22,7 @@ class SnsOutput(val config: WriteToSNS)(implicit private val logConfig: LogConfi
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
-    val WriteToSNS(credentialsOpt, regionOpt, topic) = config
+    val WriteToSNS(credentialsOpt, regionOpt, topic, structure) = config
     val awsSnsClient = SnsAsyncClient
       .builder()
       .credentials(credentialsOpt)
@@ -39,7 +39,7 @@ class SnsOutput(val config: WriteToSNS)(implicit private val logConfig: LogConfi
     // TODO if any request to SNS errors, that thread (of the aforementioned 10) will retry its request
     // indefinitely. If all worker threads block, the SnsPublisher.flow will backpressure indefinitely.
     Flow[StandingQueryResult]
-      .map(result => result.toJson(graph.idProvider, logConfig).noSpaces + "\n")
+      .map(result => result.toJson(structure)(graph.idProvider, logConfig).noSpaces + "\n")
       .viaMat(SnsPublisher.flow(topic)(awsSnsClient).named(s"sq-output-sns-producer-for-$name"))(Keep.right)
       .map(_ => token)
   }

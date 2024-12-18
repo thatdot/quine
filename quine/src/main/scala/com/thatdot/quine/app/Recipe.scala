@@ -118,33 +118,33 @@ object Recipe {
       def subs: ValidatedNel[UnboundVariableError, StandingQueryResultOutputUserDef] = soo match {
         case Drop => Validated.valid(Drop)
         case q: InternalQueue => Validated.valid(q)
-        case PostToEndpoint(url, parallelism, onlyPositiveMatchData) =>
+        case PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) =>
           (
             url.subs
-          ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData))
-        case WriteToKafka(topic, bootstrapServers, format, properties) =>
+          ).map(PostToEndpoint(_, parallelism, onlyPositiveMatchData, structure))
+        case WriteToKafka(topic, bootstrapServers, format, properties, structure) =>
           (
             topic.subs,
             bootstrapServers.subs,
-          ).mapN(WriteToKafka(_, _, format, properties))
-        case WriteToSNS(credentialsOpt, regionOpt, topic) =>
+          ).mapN(WriteToKafka(_, _, format, properties, structure))
+        case WriteToSNS(credentialsOpt, regionOpt, topic, structure) =>
           (
             credentialsOpt.traverse(_.subs),
             regionOpt.traverse(_.subs),
             topic.subs,
-          ).mapN(WriteToSNS(_, _, _))
-        case PrintToStandardOut(logLevel, logMode) =>
-          Validated.valid(PrintToStandardOut(logLevel, logMode))
-        case WriteToFile(path) =>
+          ).mapN(WriteToSNS(_, _, _, structure))
+        case PrintToStandardOut(logLevel, logMode, structure) =>
+          Validated.valid(PrintToStandardOut(logLevel, logMode, structure))
+        case WriteToFile(path, structure) =>
           (
             path.subs
-          ).map(WriteToFile(_))
+          ).map(WriteToFile(_, structure))
         case PostToSlack(hookUrl, onlyPositiveMatchData, intervalSeconds) =>
           (
             hookUrl.subs
           ).map(PostToSlack(_, onlyPositiveMatchData, intervalSeconds))
         case StandingQueryResultOutputUserDef
-              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry) =>
+              .CypherQuery(query, parameter, parallelism, andThen, allowAllNodeScan, shouldRetry, structure) =>
           (
             query.subs,
             andThen.traverse(_.subs),
@@ -156,6 +156,7 @@ object Recipe {
               _,
               allowAllNodeScan,
               shouldRetry,
+              structure,
             ),
           )
         case WriteToKinesis(
@@ -167,6 +168,7 @@ object Recipe {
               kinesisMaxBatchSize,
               kinesisMaxRecordsPerSecond,
               kinesisMaxBytesPerSecond,
+              structure,
             ) =>
           (
             credentialsOpt.traverse(_.subs),
@@ -182,6 +184,7 @@ object Recipe {
               kinesisMaxBatchSize,
               kinesisMaxRecordsPerSecond,
               kinesisMaxBytesPerSecond,
+              structure,
             ),
           )
       }

@@ -3,6 +3,7 @@ package com.thatdot.quine.app.v2api.endpoints
 import scala.concurrent.Future
 
 import io.circe.generic.auto._
+import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
@@ -11,6 +12,10 @@ import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, Schema, path, query, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern._
+import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.PrintToStandardOut.{
+  LogLevel,
+  LogMode,
+}
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries._
 import com.thatdot.quine.app.v2api.definitions.{
   CreateSQApiCmd,
@@ -26,11 +31,76 @@ import com.thatdot.quine.app.v2api.definitions.{
 }
 import com.thatdot.quine.graph.NamespaceId
 
-trait V2StandingEndpoints extends V2QuineEndpointDefinitions {
+trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
 
   private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => (s.toString -> s)).toMap
   implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
   implicit val sqModeDecoder: Decoder[StandingQueryMode] = Decoder.decodeString.map(s => sqModesMap.get(s).get)
+
+  implicit lazy val (
+    standingQueryResultOutputStructureSchema: Schema[StandingQueryOutputStructure],
+    standingQueryResultOutputStructureEncoder: Encoder[StandingQueryOutputStructure],
+    standingQueryResultOutputStructureDecoder: Decoder[StandingQueryOutputStructure],
+  ) = {
+    implicit val config = ingestSourceTypeConfig
+    (
+      Schema.derived[StandingQueryOutputStructure],
+      deriveConfiguredEncoder[StandingQueryOutputStructure],
+      deriveConfiguredDecoder[StandingQueryOutputStructure],
+    )
+  }
+
+  implicit lazy val (
+    standingQueryResultOutputUserDefSchema: Schema[StandingQueryResultOutputUserDef],
+    standingQueryResultOutputUserDefEncoder: Encoder[StandingQueryResultOutputUserDef],
+    standingQueryResultOutputUserDefDecoder: Decoder[StandingQueryResultOutputUserDef],
+  ) = {
+    implicit val config = ingestSourceTypeConfig
+    (
+      Schema.derived[StandingQueryResultOutputUserDef],
+      deriveConfiguredEncoder[StandingQueryResultOutputUserDef],
+      deriveConfiguredDecoder[StandingQueryResultOutputUserDef],
+    )
+  }
+
+  implicit lazy val (
+    logLevelSchema: Schema[LogLevel],
+    logLevelEncoder: Encoder[LogLevel],
+    logLevelDecoder: Decoder[LogLevel],
+  ) = {
+    implicit val config = ingestSourceTypeConfig
+    (
+      Schema.derived[LogLevel],
+      deriveConfiguredEncoder[LogLevel],
+      deriveConfiguredDecoder[LogLevel],
+    )
+  }
+
+  implicit lazy val (
+    logModeSchema: Schema[LogMode],
+    logModeEncoder: Encoder[LogMode],
+    logModeDecoder: Decoder[LogMode],
+  ) = {
+    implicit val config = ingestSourceTypeConfig
+    (
+      Schema.derived[LogMode],
+      deriveConfiguredEncoder[LogMode],
+      deriveConfiguredDecoder[LogMode],
+    )
+  }
+
+  implicit lazy val (
+    outputFormatSchema: Schema[OutputFormat],
+    outputFormatEncoder: Encoder[OutputFormat],
+    outputFormatDecoder: Decoder[OutputFormat],
+  ) = {
+    implicit val config = ingestSourceTypeConfig
+    (
+      Schema.derived[OutputFormat],
+      deriveConfiguredEncoder[OutputFormat],
+      deriveConfiguredDecoder[OutputFormat],
+    )
+  }
 
   /** SQ Name path element */
   private val sqName: EndpointInput.PathCapture[String] =

@@ -28,7 +28,7 @@ class KafkaOutput(val config: WriteToKafka)(implicit
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, SqResultsExecToken, NotUsed] = {
-    val WriteToKafka(topic, bootstrapServers, format, properties) = config
+    val WriteToKafka(topic, bootstrapServers, format, properties, structure) = config
     val token = execToken(name, inNamespace)
     val settings = ProducerSettings(
       graph.system,
@@ -37,7 +37,7 @@ class KafkaOutput(val config: WriteToKafka)(implicit
     ).withBootstrapServers(bootstrapServers)
       .withProperties(properties)
     logger.info(safe"Writing to kafka with properties ${Safe(properties)}")
-    serialized(name, format, graph)
+    serialized(name, format, graph, structure)
       .map(bytes => ProducerMessage.single(new ProducerRecord[Array[Byte], Array[Byte]](topic, bytes)))
       .via(KafkaProducer.flexiFlow(settings).named(s"sq-output-kafka-producer-for-$name"))
       .map(_ => token)

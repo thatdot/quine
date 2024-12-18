@@ -25,7 +25,13 @@ import com.thatdot.quine.app.outputs.{
 }
 import com.thatdot.quine.app.serialization.{ConversionFailure, ProtobufSchemaCache, QuineValueToProtobuf}
 import com.thatdot.quine.graph.MasterStream.SqResultsExecToken
-import com.thatdot.quine.graph.{BaseGraph, CypherOpsGraph, NamespaceId, StandingQueryResult}
+import com.thatdot.quine.graph.{
+  BaseGraph,
+  CypherOpsGraph,
+  NamespaceId,
+  StandingQueryResult,
+  StandingQueryResultStructure,
+}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
 import com.thatdot.quine.util.Log._
@@ -121,13 +127,14 @@ object StandingQueryResultOutput extends LazySafeLogging {
     name: String,
     format: OutputFormat,
     graph: BaseGraph,
+    structure: StandingQueryResultStructure,
   )(implicit
     protobufSchemaCache: ProtobufSchemaCache,
     logConfig: LogConfig,
   ): Flow[StandingQueryResult, Array[Byte], NotUsed] =
     format match {
       case OutputFormat.JSON =>
-        Flow[StandingQueryResult].map(_.toJson(graph.idProvider, logConfig).noSpaces.getBytes)
+        Flow[StandingQueryResult].map(_.toJson(structure)(graph.idProvider, logConfig).noSpaces.getBytes)
       case OutputFormat.Protobuf(schemaUrl, typeName) =>
         val serializer: Future[QuineValueToProtobuf] =
           protobufSchemaCache

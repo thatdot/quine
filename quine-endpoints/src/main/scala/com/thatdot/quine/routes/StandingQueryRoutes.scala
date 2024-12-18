@@ -112,6 +112,26 @@ final case class StandingQueryCancelled(
   output: StandingQueryResultOutputUserDef,
 )
 
+@title("Standing query output structure")
+sealed trait StandingQueryOutputStructure
+object StandingQueryOutputStructure {
+  @unnamed
+  @title("With Metadata")
+  @docs("Output the result wrapped in an object with a field for the metadata and a field for the query result")
+  final case class WithMetadata() extends StandingQueryOutputStructure
+  @unnamed
+  @title("Bare")
+  @docs(
+    "Output the result as is with no metadata. Warning: if this is used with `includeCancellations=true`" +
+    "then there will be no way to determine the difference between positive and negative matches",
+  )
+  final case class Bare() extends StandingQueryOutputStructure
+  val docString: String = "Whether the output should contain the metadata. " +
+    "If bare, the result will be returned as is, but if set to include metadata, the output will be wrapped in an object" +
+    "with a field for the metadata and a field for the data itself." +
+    "Warning: if `Bare` with `includeCancellations=true` then there will be no way to determine the difference between positive and negative matches\""
+}
+
 /** Output sink for processing standing query results */
 @title(StandingQueryResultOutputUserDef.title)
 @docs(
@@ -151,6 +171,8 @@ object StandingQueryResultOutputUserDef {
     url: String,
     parallelism: Int = 8,
     onlyPositiveMatchData: Boolean = false,
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug = "http"
   }
@@ -168,6 +190,8 @@ object StandingQueryResultOutputUserDef {
       "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>",
     )
     kafkaProperties: Map[String, String] = Map.empty[String, String],
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "kafka"
   }
@@ -186,6 +210,8 @@ object StandingQueryResultOutputUserDef {
     kinesisMaxBatchSize: Option[Int],
     kinesisMaxRecordsPerSecond: Option[Int],
     kinesisMaxBytesPerSecond: Option[Int],
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "kinesis"
   }
@@ -205,6 +231,8 @@ object StandingQueryResultOutputUserDef {
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
     @docs("ARN of the topic to publish to") topic: String,
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "sns"
   }
@@ -215,6 +243,8 @@ object StandingQueryResultOutputUserDef {
   final case class PrintToStandardOut(
     logLevel: PrintToStandardOut.LogLevel = PrintToStandardOut.LogLevel.Info,
     logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete,
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "stdout"
   }
@@ -253,6 +283,8 @@ object StandingQueryResultOutputUserDef {
   )
   final case class WriteToFile(
     path: String,
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "file"
   }
@@ -310,6 +342,8 @@ object StandingQueryResultOutputUserDef {
         .replace('\n', ' '),
     )
     shouldRetry: Boolean = true,
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
   ) extends StandingQueryResultOutputUserDef {
     override def slug: String = "cypher"
   }
@@ -338,7 +372,10 @@ object StandingQueryResultOutputUserDef {
     */
   @unnamed
   @title("Internal Queue")
-  final case class InternalQueue() extends StandingQueryResultOutputUserDef {
+  final case class InternalQueue(
+    @docs(StandingQueryOutputStructure.docString)
+    structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
+  ) extends StandingQueryResultOutputUserDef {
     var results: AtomicReference[_] = _
 
     override def slug: String = "internalQueue"
@@ -408,6 +445,9 @@ trait StandingQuerySchemas
           |expressive query capabilities, but requires more computation and
           |uses more memory.""".stripMargin,
       )
+
+  implicit lazy val outputStructureSchema: Tagged[StandingQueryOutputStructure] =
+    genericTagged[StandingQueryOutputStructure]
 
   implicit lazy val outputFormatSchema: Tagged[OutputFormat] =
     genericTagged[OutputFormat].withExample(OutputFormat.JSON)

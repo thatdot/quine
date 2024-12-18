@@ -28,7 +28,7 @@ class ConsoleLoggingOutput(val config: PrintToStandardOut)(implicit
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
     val token = execToken(name, inNamespace)
-    val PrintToStandardOut(logLevel, logMode) = config
+    val PrintToStandardOut(logLevel, logMode, structure) = config
 
     import PrintToStandardOut._
     val resultLogger: SafeLogger = logMode match {
@@ -48,7 +48,9 @@ class ConsoleLoggingOutput(val config: PrintToStandardOut)(implicit
       // NB we are using `Safe` here despite `result` potentially containing PII because the entire purpose of this
       // output is to log SQ results. If the user has configured this output, they have accepted the risk of PII
       // in their logs.
-      logFn(log"Standing query `${Safe(name)}` match: ${Safe(result.toJson(graph.idProvider, logConfig).noSpaces)}")
+      logFn(
+        log"Standing query `${Safe(name)}` match: ${Safe(result.toJson(structure)(graph.idProvider, logConfig).noSpaces)}",
+      )
       token
     }
   }

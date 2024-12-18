@@ -28,7 +28,7 @@ class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logC
     output: StandingQueryResultOutputUserDef,
     graph: CypherOpsGraph,
   ): Flow[StandingQueryResult, MasterStream.SqResultsExecToken, NotUsed] = {
-    val PostToEndpoint(url, parallelism, onlyPositiveMatchData) = config
+    val PostToEndpoint(url, parallelism, onlyPositiveMatchData, structure) = config
     val token = execToken(name, inNamespace)
 
     // TODO: use a host connection pool
@@ -45,7 +45,7 @@ class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logC
           entity = HttpEntity(
             contentType = `application/json`,
             if (onlyPositiveMatchData) QuineValue.toJson(QuineValue.Map(result.data)).noSpaces
-            else result.toJson.noSpaces,
+            else result.toJson(structure).noSpaces,
           ),
         )
 
