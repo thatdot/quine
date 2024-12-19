@@ -312,8 +312,12 @@ lazy val `quine`: Project = project
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
-      "io.rsocket" % "rsocket-core" % "1.1.4",
-      "io.rsocket" % "rsocket-transport-netty" % "1.1.4",
+      // transitive dependency of rsocket-transport-netty. Current version required by rsocket-transport-netty has vulnerabilities
+      "io.projectreactor.netty" % "reactor-netty-core" % "1.0.48",
+      // transitive dependency of rsocket-transport-netty. Current version required by rsocket-transport-netty has vulnerabilities
+      "io.projectreactor.netty" % "reactor-netty-http" % "1.0.48",
+      "io.rsocket" % "rsocket-core" % rsocketV,
+      "io.rsocket" % "rsocket-transport-netty" % rsocketV,
     ),
   )
   .enablePlugins(WebScalaJSBundlerPlugin)
