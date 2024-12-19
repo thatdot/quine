@@ -312,6 +312,8 @@ lazy val `quine`: Project = project
       "org.webjars.npm" % "sugar-date" % sugarV,
       "org.webjars.npm" % "vis-network" % visNetworkV,
       "org.apache.avro" % "avro" % avroV,
+      "io.rsocket" % "rsocket-core" % "1.1.4",
+      "io.rsocket" % "rsocket-transport-netty" % "1.1.4",
     ),
   )
   .enablePlugins(WebScalaJSBundlerPlugin)

@@ -15,6 +15,9 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
 
   val openApiVersion = "3.0.0"
 
+  //FORK DIFFERENCE: A placeholder list of types that are not publicly available and should
+  // be excluded from user-facing API documentation
+  val unusedTypes : Set[String] = Set("ReactiveStream")
 
   // FORK DIFFERENCE: mapJson that accepts keys in function
   private def mapJsonUsingKeys[A](map: collection.Map[String, A])(f: (String, A) => ujson.Value): ujson.Obj = {
@@ -105,8 +108,11 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
         result.value ++=
           (oneOf.alternatives match {
             case discAlternatives: Schema.DiscriminatedAlternatives =>
+              //FORK DIFFERENCE: Hides the types specified in the unusedType variable
+              val filteredAlternatives = discAlternatives.alternatives.filter(tag => !unusedTypes.contains(tag._1))
               val mapping = ujson.Obj()
-              discAlternatives.alternatives.foreach {
+              //FORK DIFFERENCE: Hides the types specified in the unusedType variable
+              filteredAlternatives.foreach {
                 case (tag, ref: Schema.Reference) =>
                   mapping.value.put(tag, ujson.Str(Schema.Reference.toRefPath(ref.name)))
                 case _ =>
@@ -120,7 +126,8 @@ case class OpenApiRenderer(isEnterprise: Boolean) {
               }
               List(
                 "oneOf" ->
-                  ujson.Arr.from(discAlternatives.alternatives.map(kv => schemaJson(kv._2))),
+                  //FORK DIFFERENCE: Hides the types specified in the unusedType variable
+                  ujson.Arr.from(filteredAlternatives.map(kv => schemaJson(kv._2))),
                 "discriminator" -> discriminator
               )
             case enumAlternatives: Schema.EnumeratedAlternatives =>

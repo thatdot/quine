@@ -193,6 +193,8 @@ object ApiToIngest {
         src.characterEncoding,
         src.recordDecoders.map(ApiToIngest.apply),
       )
+    case Api.ReactiveStream(url, port, format) =>
+      Ingest.ReactiveStreamIngest(ApiToIngest(url), port, format)
   }
   def apply(handler: Api.OnRecordErrorHandler): Ingest.OnRecordErrorHandler = handler match {
     case ApiIngest.LogRecordErrorHandler => Ingest.LogRecordErrorHandler

@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{description, encodedName, title}
 
 import com.thatdot.quine.routes.IngestRoutes
 
@@ -523,6 +523,15 @@ object ApiIngest {
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
+  ) extends IngestSource
+
+  @title("Reactive Stream Ingest")
+  @description("A stream of data being ingested from a reactive stream.")
+  @encodedName("ReactiveStream")
+  case class ReactiveStream(
+    format: StreamingFormat,
+    url: String,
+    port: Int,
   ) extends IngestSource
 
   sealed trait IngestFormat

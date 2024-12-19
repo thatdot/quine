@@ -243,6 +243,7 @@ object IngestToApi {
         endingOffset,
         recordDecoders.map(IngestToApi.apply),
       )
+    case Ingest.ReactiveStreamIngest(format, url, port) => Api.ReactiveStream(IngestToApi(format), url, port)
   }
 
   def apply(handler: Ingest.OnStreamErrorHandler): Api.OnStreamErrorHandler = handler match {

@@ -13,7 +13,7 @@ object StandingToApi {
         Api.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
 
-  private def apply(format: Standing.OutputFormat): Api.OutputFormat = format match {
+  def apply(format: Standing.OutputFormat): Api.OutputFormat = format match {
     case Standing.OutputFormat.JSON => Api.OutputFormat.JSON
     case Standing.OutputFormat.Protobuf(schemaUrl, typeName) =>
       Api.OutputFormat.Protobuf(schemaUrl, typeName)
@@ -54,6 +54,7 @@ object StandingToApi {
     case out: Api.StandingQueryResultOutputUserDef.PostToSlack => out.copy(sequence = cypher +: out.sequence)
     case out: Api.StandingQueryResultOutputUserDef.CypherQuery => out.copy(sequence = cypher +: out.sequence)
     case out: Api.StandingQueryResultOutputUserDef.Drop => out.copy(sequence = cypher +: out.sequence)
+    case out: Api.StandingQueryResultOutputUserDef.ReactiveStream => out.copy(sequence = cypher +: out.sequence)
   }
 
   def apply(structure: Standing.StandingQueryOutputStructure): Api.StandingQueryOutputStructure = structure match {
@@ -150,6 +151,8 @@ object StandingToApi {
         List.empty,
         StandingToApi(structure),
       )
+    case Standing.StandingQueryResultOutputUserDef.ReactiveStream(address, port, _) =>
+      Api.StandingQueryResultOutputUserDef.ReactiveStream(address, port, List.empty)
     case Standing.StandingQueryResultOutputUserDef.CypherQuery(
           query,
           parameter,

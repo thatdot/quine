@@ -233,6 +233,18 @@ object ApiStandingQueries {
       sequence: List[SequencedCypherQuery] = List.empty,
     ) extends StandingQueryResultOutputUserDef
 
+    @title("Broadcast to Reactive Stream")
+    @description(
+      "Creates a 1 to many reactive stream output that other thatDot products can subscribe to" +
+      "Warning: Reactive Stream outputs do not function correctly when running in a cluster.",
+    )
+    final case class ReactiveStream(
+      @description("The address to bind the reactive stream server on") address: String = "localhost",
+      @description("The port to bind the reactive stream server on") port: Int,
+      @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      sequence: List[SequencedCypherQuery] = List.empty,
+    ) extends StandingQueryResultOutputUserDef
+
     /** Each result is passed into a Cypher query as a parameter
       *
       * @param query what to execute for every standing query result

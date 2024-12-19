@@ -142,6 +142,12 @@ object V2IngestEntities {
       with IngestBoundingSupport
       with IngestDecompressionSupport
 
+  case class ReactiveStreamIngest(
+    format: StreamingFormat,
+    url: String,
+    port: Int,
+  ) extends IngestSource
+
   @title("Standard Input Ingest Stream")
   @description("An active stream of data being ingested from standard input to this Quine process.")
   case class StdInputIngest(
@@ -630,6 +636,8 @@ object V2IngestEntities {
               recordDecoders,
             )
           }
+        case _: ReactiveStreamIngest =>
+          Failure(new Exception("Reactive Streams unsupported in v1 ingests"))
       }
       tryConfig match {
         case Success(v1Config) => v1Config

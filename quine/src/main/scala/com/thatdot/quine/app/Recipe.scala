@@ -187,6 +187,7 @@ object Recipe {
               structure,
             ),
           )
+        case rs: ReactiveStream => Validated.valid(rs)
       }
     }
     implicit class IngestStreamsConfigurationSubs(soo: IngestStreamConfiguration) {

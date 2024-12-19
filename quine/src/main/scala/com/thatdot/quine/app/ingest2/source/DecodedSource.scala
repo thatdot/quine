@@ -463,7 +463,8 @@ object DecodedSource extends LazySafeLogging {
           meter,
           system,
         ).framedSource.map(_.toDecoded(FrameDecoder(format)))
-
+      case ReactiveStreamIngest(format, url, port) =>
+        ReactiveSource(url, port, meter).framedSource.map(_.toDecoded(FrameDecoder(format)))
     }
 
 }

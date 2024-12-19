@@ -20,6 +20,7 @@ import com.thatdot.quine.app.outputs.{
   KafkaOutput,
   KinesisOutput,
   PostToEndpointOutput,
+  ReactiveStreamOutput,
   SlackOutput,
   SnsOutput,
 }
@@ -84,6 +85,9 @@ object StandingQueryResultOutput extends LazySafeLogging {
 
       case slackSettings: PostToSlack =>
         new SlackOutput(slackSettings).flow(name, inNamespace, output, graph)
+
+      case reactiveStream: ReactiveStream =>
+        new ReactiveStreamOutput(reactiveStream).flow(name, inNamespace, output, graph)
 
       case query: CypherQuery =>
         // Closures can't have implicit arguments in scala 2.13, so flatten the arguments list

@@ -349,6 +349,16 @@ object StandingQueryResultOutputUserDef {
   }
 
   @unnamed
+  @title("Reactive Stream")
+  final case class ReactiveStream(
+    address: String,
+    port: Int,
+    format: OutputFormat = OutputFormat.JSON,
+  ) extends StandingQueryResultOutputUserDef {
+    override def slug: String = "reactiveStream"
+  }
+
+  @unnamed
   @title("Drop")
   final case object Drop extends StandingQueryResultOutputUserDef {
     override def slug: String = "drop"

@@ -14,7 +14,7 @@ object ApiToStanding {
       case Api.StandingQueryPattern.StandingQueryMode.QuinePattern =>
         Standing.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
-  private def apply(format: Api.OutputFormat): Standing.OutputFormat = format match {
+  def apply(format: Api.OutputFormat): Standing.OutputFormat = format match {
     case Api.OutputFormat.JSON => Standing.OutputFormat.JSON
     case Api.OutputFormat.Protobuf(schemaUrl, typeName) => Standing.OutputFormat.Protobuf(schemaUrl, typeName)
   }
@@ -142,6 +142,12 @@ object ApiToStanding {
           shouldRetry,
           ApiToStanding(structure),
         )
+      case Api.StandingQueryResultOutputUserDef.ReactiveStream(
+            address,
+            port,
+            _,
+          ) =>
+        Standing.StandingQueryResultOutputUserDef.ReactiveStream(address, port, Standing.OutputFormat.JSON)
     }
     sq.sequence.foldRight(result) { case (cypher, sq) =>
       Standing.StandingQueryResultOutputUserDef.CypherQuery(
