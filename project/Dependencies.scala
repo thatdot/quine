@@ -12,7 +12,7 @@ object Dependencies {
   val caffeineV = "3.1.8"
   val cassandraClientV = "4.18.1"
   val catsV = "2.12.0"
-  val catsEffectV = "3.5.4"
+  val catsEffectV = "3.5.7"
   val circeYamlV = "0.16.0"
   val commonsCodecV = "1.17.1"
   val commonsTextV = "1.12.0"
