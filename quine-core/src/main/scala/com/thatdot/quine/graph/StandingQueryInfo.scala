@@ -10,7 +10,7 @@ import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter, Timer}
 
-import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, QuinePattern}
+import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log._
@@ -78,8 +78,6 @@ object PatternOrigin {
   sealed trait DgbOrigin extends PatternOrigin
   sealed trait SqV4Origin extends PatternOrigin
 
-  case object QuinePatternOrigin extends PatternOrigin
-
   case object DirectDgb extends DgbOrigin
   case object DirectSqV4 extends SqV4Origin
   final case class GraphPattern(
@@ -122,12 +120,6 @@ object StandingQueryPattern {
     compiledQuery: MultipleValuesStandingQuery,
     includeCancellation: Boolean,
     origin: PatternOrigin.SqV4Origin,
-  ) extends StandingQueryPattern
-
-  final case class QuinePatternQueryPattern(
-    quinePattern: QuinePattern,
-    includeCancellation: Boolean,
-    origin: PatternOrigin,
   ) extends StandingQueryPattern
 }
 

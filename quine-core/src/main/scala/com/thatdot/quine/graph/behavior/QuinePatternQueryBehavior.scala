@@ -1,66 +1,74 @@
 package com.thatdot.quine.graph.behavior
 
 import scala.collection.immutable.SortedMap
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.Actor
-import org.apache.pekko.stream.scaladsl.Source
+import org.apache.pekko.actor.Status.Success
+import org.apache.pekko.actor.{Actor, ActorRef}
+import org.apache.pekko.stream.CompletionStrategy
+import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
-import com.thatdot.language.ast.{Expression, Identifier, Instruction, Value}
+import com.thatdot.language.ast.{Expression, Identifier, Value}
 import com.thatdot.quine.graph.EdgeEvent.EdgeAdded
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{
   CypherAndQuineHelpers,
-  Expr,
   ExpressionInterpreter,
   QueryContext,
-  QuinePattern,
+  QueryPlan,
   QuinePatternUnimplementedException,
 }
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineMessage, QuineRefOps}
-import com.thatdot.quine.graph.{BaseNodeActor, QuinePatternOpsGraph, StandingQueryId, StandingQueryOpsGraph}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.quine.graph.{
+  BaseNodeActor,
+  NamespaceId,
+  QuinePatternLoaderMessage,
+  QuinePatternOpsGraph,
+  StandingQueryId,
+  StandingQueryOpsGraph,
+}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 import com.thatdot.quine.util.Log.LazySafeLogging
 
 sealed trait QuinePatternCommand extends QuineMessage
 
 object QuinePatternCommand {
+  case object QuinePatternAck extends QuinePatternCommand
+
   case class RegisterPattern(
-    quinePattern: QuinePattern,
+    quinePattern: QueryPlan,
     pid: StandingQueryId,
     queryStream: Source[QueryContext, NotUsed],
   ) extends QuinePatternCommand
 
-  case class LoadNode(boundTo: Identifier, env: QueryContext, result: Promise[QueryContext]) extends QuinePatternCommand
-  case class SetLabels(labels: Set[Symbol], binding: Identifier, env: QueryContext, result: Promise[QueryContext])
-      extends QuinePatternCommand
-  case class PopulateNode(
-    labels: Set[Symbol],
-    maybeProperties: Option[Expression.MapLiteral],
-    binding: Identifier,
-    env: QueryContext,
-    result: Promise[QueryContext],
-  ) extends QuinePatternCommand
-  case class AddEdge(
-    edgeType: Symbol,
-    edgeDirection: EdgeDirection,
-    other: QuineId,
-    env: QueryContext,
-    result: Promise[QueryContext],
-  ) extends QuinePatternCommand
-  case class SetProperty(
-    propertyName: Symbol,
-    valueExp: Expression,
-    binding: Identifier,
-    env: QueryContext,
-    result: Promise[QueryContext],
+  case class LoadPlan(
+    queryPlan: List[QueryPlan],
+    namespaceId: NamespaceId,
+    product: List[QueryPlan],
+    standingQueryId: StandingQueryId,
+    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
+    output: Source[QueryContext, NotUsed],
   ) extends QuinePatternCommand
 
-  case class RunInstruction(
-    instruction: Instruction,
-    currentEnv: QueryContext,
-    result: Promise[QueryContext],
+  //Local execution instructions
+  case class LoadNode(binding: Identifier, ctx: QueryContext, output: ActorRef) extends QuinePatternCommand
+  case class SetProperty(
+    propertyName: Symbol,
+    to: Expression,
+    ctx: QueryContext,
+    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
+    output: ActorRef,
+  ) extends QuinePatternCommand
+  case class SetLabels(labels: Set[Symbol], ctx: QueryContext, output: ActorRef) extends QuinePatternCommand
+  case class CreateEdge(
+    from: Expression,
+    to: Expression,
+    direction: EdgeDirection,
+    label: Symbol,
+    ctx: QueryContext,
+    parameters: Map[Symbol, com.thatdot.quine.graph.cypher.Value],
+    output: ActorRef,
   ) extends QuinePatternCommand
 }
 
@@ -75,80 +83,117 @@ trait QuinePatternQueryBehavior
   protected def graph: QuinePatternOpsGraph with StandingQueryOpsGraph
 
   def quinePatternQueryBehavior(command: QuinePatternCommand): Unit = command match {
-    case QuinePatternCommand.LoadNode(binding, env, result) =>
-      val updatedEnv = env + (binding.name -> Expr.Node(
+    case QuinePatternCommand.QuinePatternAck => ()
+    case QuinePatternCommand.LoadNode(binding, ctx, output) =>
+      val nodeVal = Value.Node(
         this.qid,
-        this.getLabels().getOrElse(Set.empty[Symbol]),
-        this.properties.map(p => p._1 -> Expr.fromQuineValue(p._2.deserialized.get)),
-      ))
-      result.success(updatedEnv)
-    case QuinePatternCommand.SetLabels(labels, binding, env, result) =>
-      val node = env(binding.name) match {
-        case n: Expr.Node => n
-        case _ => throw new QuinePatternUnimplementedException("Unexpected value")
-      }
-      implicit val ec: ExecutionContext = ExecutionContext.parasitic
-      val future = for {
-        _ <- this.setLabels(node.labels.union(labels)).map(_ => ())
-        updated <- Future.apply(node.copy(labels = this.getLabels().getOrElse(Set.empty[Symbol])))
-      } yield env + (binding.name -> updated)
-      future.onComplete(tqc => result.success(tqc.get))
-    case QuinePatternCommand.PopulateNode(labels, maybeProperties, binding, env, result) =>
-      val node = env(binding.name) match {
-        case n: Expr.Node => n
-        case _ => throw new QuinePatternUnimplementedException("Unexpected value")
-      }
-      implicit val ec: ExecutionContext = ExecutionContext.parasitic
-      val properties = maybeProperties
-        .map(mapLiteral => ExpressionInterpreter.eval(mapLiteral, graph.idProvider, env))
-        .getOrElse(Value.Map(SortedMap.empty[Symbol, Value])) match {
-        case propertyMap: Value.Map => propertyMap
-        case _ => throw new QuinePatternUnimplementedException("Unexpected value")
-      }
-      val events = properties.values.toList.map(p =>
-        PropertySet(p._1, CypherAndQuineHelpers.patternValueToPropertyValue(p._2).get),
+        this.getLabels().getOrElse(Set.empty),
+        Value.Map(
+          SortedMap.from(this.properties.map(p => p._1 -> CypherAndQuineHelpers.propertyValueToPatternValue(p._2))),
+        ),
       )
-      val future = for {
-        _ <- this.setLabels(labels)
-        _ <- processPropertyEvents(events)
-      } yield {
-        val updatedNode = node.copy(properties =
-          properties.values.map(p => p._1 -> CypherAndQuineHelpers.patternValueToCypherValue(p._2)),
-        )
-        env + (binding.name -> updatedNode)
-      }
-      future.onComplete(tqc => result.success(tqc.get))
-    case QuinePatternCommand.AddEdge(edgeType, edgeDirection, other, env, result) =>
-      implicit val ec: ExecutionContext = ExecutionContext.parasitic
-      val event = EdgeAdded(HalfEdge(edgeType, edgeDirection, other))
-      val future = for {
-        _ <- this.processEdgeEvent(event)
-      } yield env
-      future.onComplete(tqc => result.success(tqc.get))
-    case QuinePatternCommand.SetProperty(propertyName, valueExp, binding, env, result) =>
-      implicit val ec: ExecutionContext = ExecutionContext.parasitic
-      val node = env(binding.name) match {
-        case n: Expr.Node => n
-        case _ => throw new QuinePatternUnimplementedException("Unexpected value")
-      }
-      val value = ExpressionInterpreter.eval(valueExp, graph.idProvider, env)
-      val events = value match {
+      val newCtx = ctx + (binding.name -> CypherAndQuineHelpers.patternValueToCypherValue(nodeVal))
+      output ! newCtx
+      output ! Success("Done")
+    case QuinePatternCommand.SetLabels(labels, ctx, output) =>
+      setLabels(labels).onComplete { _ =>
+        output ! ctx
+        output ! Success("Done")
+      }(ExecutionContext.parasitic)
+    case QuinePatternCommand.SetProperty(propertyName, to, ctx, parameters, output) =>
+      //TODO This needs to update the image in the query context, but we can't do that yet
+      val event = ExpressionInterpreter.eval(to, graph.idProvider, ctx, parameters) match {
         case Value.Null =>
+          // remove the property
           properties.get(propertyName) match {
-            case Some(v) => List(PropertyRemoved(propertyName, v))
-            case None => Nil
+            case Some(oldValue) => Some(PropertyRemoved(propertyName, oldValue))
+            case None =>
+              // there already was no property at query.key -- no-op
+              None
           }
-        case _ => List(PropertySet(propertyName, CypherAndQuineHelpers.patternValueToPropertyValue(value).get))
+        case value => Some(PropertySet(propertyName, CypherAndQuineHelpers.patternValueToPropertyValue(value).get))
       }
-      val future = for {
-        _ <- this.processPropertyEvents(events)
-      } yield {
-        val updatedNode = node.copy(properties =
-          node.properties + (propertyName -> CypherAndQuineHelpers.patternValueToCypherValue(value)),
-        )
-        env + (binding.name -> updatedNode)
+      processPropertyEvents(event.toList).onComplete { _ =>
+        output ! ctx
+        output ! Success("Done")
+      }(ExecutionContext.parasitic)
+    case QuinePatternCommand.CreateEdge(from, to, direction, label, ctx, parameters, output) =>
+      val toVal = ExpressionInterpreter.eval(to, graph.idProvider, ctx, parameters) match {
+        case Value.NodeId(id) => id
+        case _ => ???
       }
-      future.onComplete(tqc => result.success(tqc.get))
-    case unknownMsg => throw new QuinePatternUnimplementedException(s"Received unexpected message $unknownMsg")
+      val halfEdge = HalfEdge(label, direction, toVal)
+      val event = EdgeAdded(halfEdge)
+      processEdgeEvent(event).onComplete { _ =>
+        output ! ctx
+        output ! Success("Done")
+      }(ExecutionContext.parasitic)
+    case QuinePatternCommand.LoadPlan(queryPlan, namespace, product, sqid, parameters, output) =>
+      val stream = queryPlan.foldLeft(Flow[QueryContext].map(identity)) { (flow, step) =>
+        step match {
+          case QueryPlan.UnitPlan => flow
+          case QueryPlan.LoadNode(binding) =>
+            flow.via(Flow[QueryContext].flatMapConcat { ctx =>
+              Source
+                .actorRefWithBackpressure(
+                  ackMessage = QuinePatternCommand.QuinePatternAck,
+                  completionMatcher = { case _: Success =>
+                    CompletionStrategy.immediately
+                  },
+                  failureMatcher = PartialFunction.empty,
+                )
+                .mapMaterializedValue { ref =>
+                  self ! QuinePatternCommand.LoadNode(binding, ctx, ref)
+                }
+            })
+          case QueryPlan.Effect(com.thatdot.cypher.ast.Effect.SetProperty(_, property, value)) =>
+            flow.via(Flow[QueryContext].flatMapConcat { ctx =>
+              Source
+                .actorRefWithBackpressure(
+                  ackMessage = QuinePatternCommand.QuinePatternAck,
+                  completionMatcher = { case _: Success =>
+                    CompletionStrategy.immediately
+                  },
+                  failureMatcher = PartialFunction.empty,
+                )
+                .mapMaterializedValue { ref =>
+                  self ! QuinePatternCommand.SetProperty(property.fieldName.name, value, ctx, parameters, ref)
+                }
+            })
+          case QueryPlan.Effect(com.thatdot.cypher.ast.Effect.SetLabel(_, _, labels)) =>
+            flow.via(Flow[QueryContext].flatMapConcat { ctx =>
+              Source
+                .actorRefWithBackpressure(
+                  ackMessage = QuinePatternCommand.QuinePatternAck,
+                  completionMatcher = { case _: Success =>
+                    CompletionStrategy.immediately
+                  },
+                  failureMatcher = PartialFunction.empty,
+                )
+                .mapMaterializedValue { ref =>
+                  self ! QuinePatternCommand.SetLabels(labels, ctx, ref)
+                }
+            })
+          case QueryPlan.CreateHalfEdge(from, to, direction, label) =>
+            flow.via(Flow[QueryContext].flatMapConcat { ctx =>
+              Source
+                .actorRefWithBackpressure(
+                  ackMessage = QuinePatternCommand.QuinePatternAck,
+                  completionMatcher = { case _: Success =>
+                    CompletionStrategy.immediately
+                  },
+                  failureMatcher = PartialFunction.empty,
+                )
+                .mapMaterializedValue { ref =>
+                  self ! QuinePatternCommand.CreateEdge(from, to, direction, label, ctx, parameters, ref)
+                }
+            })
+          case _ => throw new QuinePatternUnimplementedException(s"Not yet implemented: $step")
+        }
+      }
+      val finalStream = output.flatMapConcat(ctx => Source.single(ctx).via(stream))
+      if (product.isEmpty) graph.getLoader ! QuinePatternLoaderMessage.MergeIngestStream(sqid, finalStream)
+      else graph.getLoader ! QuinePatternLoaderMessage.LoadMore(namespace, sqid, product, parameters, finalStream)
+    case _ => ???
   }
 }

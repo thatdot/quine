@@ -9,8 +9,6 @@ object StandingToApi {
         Api.StandingQueryPattern.StandingQueryMode.DistinctId
       case Standing.StandingQueryPattern.StandingQueryMode.MultipleValues =>
         Api.StandingQueryPattern.StandingQueryMode.MultipleValues
-      case Standing.StandingQueryPattern.StandingQueryMode.QuinePattern =>
-        Api.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
 
   def apply(format: Standing.OutputFormat): Api.OutputFormat = format match {

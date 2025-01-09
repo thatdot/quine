@@ -10,7 +10,7 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
 import com.thatdot.quine.persistor.cassandra.support.{
   CassandraCodecs,
@@ -19,16 +19,16 @@ import com.thatdot.quine.persistor.cassandra.support.{
   CassandraTable,
   TableDefinition,
 }
-import com.thatdot.quine.persistor.codecs.QuinePatternCodec
+import com.thatdot.quine.persistor.codecs.QueryPlanCodec
 import com.thatdot.quine.util.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.util.T2
 
 trait QuinePatternsColumnNames {
   import CassandraCodecs._
   implicit def logConfig: LogConfig
-  val quinePatternCodec: TypeCodec[QuinePattern] = fromBinaryFormat(QuinePatternCodec.format)
+  val quinePatternCodec: TypeCodec[QueryPlan] = fromBinaryFormat(QueryPlanCodec.format)
   final protected val queryIdColumn: CassandraColumn[StandingQueryId] = CassandraColumn("query_id")
-  final protected val queriesColumn: CassandraColumn[QuinePattern] = CassandraColumn("queries")(quinePatternCodec)
+  final protected val queriesColumn: CassandraColumn[QueryPlan] = CassandraColumn("queries")(quinePatternCodec)
 }
 
 class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
@@ -68,7 +68,7 @@ class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: Lo
 
   override protected def clusterKeys: List[CassandraColumn[_]] = List.empty
 
-  override protected def dataColumns: List[CassandraColumn[QuinePattern]] = List(queriesColumn)
+  override protected def dataColumns: List[CassandraColumn[QueryPlan]] = List(queriesColumn)
 
   override protected val createTableStatement: SimpleStatement = makeCreateTableStatement.build.setTimeout(ddlTimeout)
 }

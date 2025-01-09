@@ -20,7 +20,7 @@ import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegis
 import org.mapdb._
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -37,7 +37,7 @@ import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
   NodeChangeEventCodec,
-  QuinePatternCodec,
+  QueryPlanCodec,
   StandingQueryCodec,
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
@@ -446,8 +446,8 @@ final class MapDbPersistor(
     !multipleValuesStandingQueryStates.isEmpty
   }(blockingDispatcherEC)
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = Future {
-    val bytes = QuinePatternCodec.format.write(qp)
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = Future {
+    val bytes = QueryPlanCodec.format.write(qp)
     val _ = quinePatterns.add(bytes)
   }(blockingDispatcherEC)
 

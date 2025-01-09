@@ -5,18 +5,17 @@ import scala.util.{Failure, Success, Try}
 
 import org.apache.pekko.actor.Status
 import org.apache.pekko.stream.CompletionStrategy
-import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.Timer
 import com.typesafe.config.ConfigFactory
 import io.circe.jawn.CirceSupportParser
 
-import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, ProgramPhase, SymbolAnalysisPhase}
-import com.thatdot.language.phases.DependencyGraph
+import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
-import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, QueryContext}
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, QueryContext, QueryPlan}
 import com.thatdot.quine.graph.{
   CypherOpsGraph,
   NamespaceId,
@@ -28,7 +27,7 @@ import com.thatdot.quine.graph.{
 import com.thatdot.quine.util.Log._
 
 /** Describes formats that Quine can import
-  * Deserialized type refers to the the (nullable) type to be produced by invocations of this [[ImportFormat]]
+  * Deserialized type refers to the (nullable) type to be produced by invocations of this [[ImportFormat]]
   */
 trait ImportFormat {
 
@@ -131,10 +130,10 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
 
   import com.thatdot.language.phases.UpgradeModule._
 
-  val compiled: DependencyGraph = {
-    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase andThen ProgramPhase
-    val (state, result) = parser.process(query).value.run(LexerState(Nil)).value
-    com.thatdot.quine.graph.cypher.Compiler.compile(result.get, state.symbolTable)
+  val compiled: QueryPlan = {
+    val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
+    val (_, result) = parser.process(query).value.run(LexerState(Nil)).value
+    com.thatdot.quine.graph.cypher.Planner.generatePlanFromDescription(result.get)
   }
 
   def writeValueToGraph(
@@ -149,17 +148,25 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
 
     Source
       .actorRefWithBackpressure(
-        "ack",
-        { case _: Status.Success =>
+        QuinePatternLoaderMessage.LoadAck(id),
+        { case Status.Success(_) =>
           CompletionStrategy.immediately
         },
         PartialFunction.empty,
       )
       .mapMaterializedValue { ref =>
-        val src = Source.single(QueryContext(Map(Symbol(parameter) -> deserialized)))
-        hack.getLoader ! QuinePatternLoaderMessage.LoadIngestQuery(intoNamespace, id, compiled, null, null, src, ref)
+        val parameters = Map(Symbol(parameter) -> deserialized)
+        hack.getLoader ! QuinePatternLoaderMessage.LoadIngestQuery(
+          intoNamespace,
+          id,
+          compiled,
+          null,
+          null,
+          parameters,
+          ref,
+        )
       }
-      .via(Flow[Source[QueryContext, NotUsed]].flatMapConcat(identity))
+      .flatMap((src: Source[QueryContext, NotUsed]) => src)
       .runWith(Sink.ignore)(graph.materializer)
   }
 }

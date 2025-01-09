@@ -3,13 +3,19 @@ package com.thatdot.quine.graph
 import java.time.LocalDateTime
 
 import org.apache.pekko.NotUsed
-import org.apache.pekko.actor.{Actor, ActorRef, Status}
+import org.apache.pekko.actor.Status.Success
+import org.apache.pekko.actor.{Actor, ActorRef}
 import org.apache.pekko.stream.Materializer
-import org.apache.pekko.stream.scaladsl.{Flow, Keep, MergeHub, Sink, Source}
+import org.apache.pekko.stream.scaladsl.{Keep, MergeHub, Sink, Source}
 
-import com.thatdot.language.phases.DependencyGraph
+import com.thatdot.language.ast.Value
 import com.thatdot.quine.graph.behavior.QuinePatternCommand
-import com.thatdot.quine.graph.cypher.{QueryContext, QuinePattern}
+import com.thatdot.quine.graph.cypher.{
+  ExpressionInterpreter,
+  QueryContext,
+  QueryPlan,
+  QuinePatternUnimplementedException,
+}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.model.Milliseconds
 
@@ -34,10 +40,12 @@ sealed trait Anchors
 sealed trait QuinePatternLoaderMessage
 
 object QuinePatternLoaderMessage {
+  case class LoadAck(queryId: StandingQueryId) extends QuinePatternLoaderMessage
+
   case class LoadQuery(
     namespaceId: NamespaceId,
     id: StandingQueryId,
-    queryPlan: QuinePattern,
+    queryPlan: QueryPlan,
     anchors: Anchors,
     mode: ExecutionMode,
   ) extends QuinePatternLoaderMessage
@@ -45,14 +53,25 @@ object QuinePatternLoaderMessage {
   case class LoadIngestQuery(
     namespaceId: NamespaceId,
     id: StandingQueryId,
-    queryPlan: DependencyGraph,
+    queryPlan: QueryPlan,
     anchors: Anchors,
     mode: ExecutionMode,
-    src: Source[QueryContext, NotUsed],
+    parameters: Map[Symbol, cypher.Value],
     ref: ActorRef,
   ) extends QuinePatternLoaderMessage
 
+  case class LoadMore(
+    namespaceId: NamespaceId,
+    id: StandingQueryId,
+    queryPlan: List[QueryPlan],
+    parameters: Map[Symbol, cypher.Value],
+    stream: Source[QueryContext, NotUsed],
+  ) extends QuinePatternLoaderMessage
+
   case class MergeQueryStream(id: StandingQueryId, stream: Source[QueryContext, NotUsed])
+      extends QuinePatternLoaderMessage
+
+  case class MergeIngestStream(id: StandingQueryId, stream: Source[QueryContext, NotUsed])
       extends QuinePatternLoaderMessage
 }
 
@@ -77,16 +96,21 @@ class QuinePatternLoader(graph: QuinePatternOpsGraph) extends Actor {
 
   private var queryHubs = Map.empty[StandingQueryId, Sink[QueryContext, NotUsed]]
 
+  private var ingestHubs = Map.empty[StandingQueryId, ActorRef]
+
   //TODO The compiler needs to provide better anchoring information so that the query loader
   //     can correctly interact with the select nodes that are required. Additionally, the
   //     notion of historical vs. current needs to be handled
   override def receive: Receive = {
+    case QuinePatternLoaderMessage.LoadAck(id) =>
+      ingestHubs(id) ! Success(id)
+      ingestHubs -= id
     case QuinePatternLoaderMessage.LoadQuery(namespace, id, plan, _, mode) =>
       mode match {
         case ExecutionMode.Lazy =>
-          graph.getRegistry ! QuinePatternRegistryMessage.RegisterQuinePattern(namespace, id, plan, true)
+          graph.getRegistry ! QuinePatternRegistryMessage.RegisterQueryPlan(namespace, id, plan, true)
         case ExecutionMode.Eager(_) =>
-          graph.getRegistry ! QuinePatternRegistryMessage.RegisterQuinePattern(namespace, id, plan, false)
+          graph.getRegistry ! QuinePatternRegistryMessage.RegisterQueryPlan(namespace, id, plan, false)
       }
       val printOut = Sink.foreach(println)
       val sourceHub = MergeHub.source[QueryContext]
@@ -105,12 +129,52 @@ class QuinePatternLoader(graph: QuinePatternOpsGraph) extends Actor {
     case QuinePatternLoaderMessage.MergeQueryStream(id, stream) =>
       queryHubs(id).runWith(stream)
       ()
-    case QuinePatternLoaderMessage.LoadIngestQuery(namespace, _, plan, _, _, src, ref) =>
-      val stream =
-        com.thatdot.quine.graph.cypher.Compiler.compileDepGraphToStream(plan, namespace, src, graph)
-      ref ! stream.via(Flow[QueryContext].map { qc =>
-        ref ! Status.Success("Finished!")
-        qc
-      })
+    case QuinePatternLoaderMessage.MergeIngestStream(id, stream) => ingestHubs(id) ! stream
+    case QuinePatternLoaderMessage.LoadMore(namespace, sqid, plan, parameters, stream) =>
+      val plan1 = plan.head
+      plan1 match {
+        case QueryPlan.SpecificId(idExp, nodeInstructions) =>
+          ExpressionInterpreter.eval(idExp, graph.idProvider, QueryContext.empty, parameters) match {
+            case Value.NodeId(id) =>
+              val stqid = SpaceTimeQuineId(id, namespace, None)
+              graph.relayTell(
+                stqid,
+                QuinePatternCommand.LoadPlan(nodeInstructions, namespace, plan.tail, sqid, parameters, stream),
+              )
+            case _ => ???
+          }
+        case QueryPlan.AllNodeScan(_) => ???
+        case QueryPlan.Effect(com.thatdot.cypher.ast.Effect.Create(_, _)) =>
+          throw new QuinePatternUnimplementedException(s"Query plan: $plan1 is not implemented")
+        case _ => ???
+      }
+    case QuinePatternLoaderMessage.LoadIngestQuery(namespace, sqid, plan, _, _, parameters, ref) =>
+      ingestHubs += (sqid -> ref)
+
+      val productPlan = plan.asInstanceOf[QueryPlan.Product].of
+      val plan1 = productPlan.head
+
+      plan1 match {
+        case QueryPlan.SpecificId(idExp, nodeInstructions) =>
+          ExpressionInterpreter.eval(idExp, graph.idProvider, QueryContext.empty, parameters) match {
+            case Value.NodeId(id) =>
+              val stqid = SpaceTimeQuineId(id, namespace, None)
+              graph.relayTell(
+                stqid,
+                QuinePatternCommand.LoadPlan(
+                  nodeInstructions,
+                  namespace,
+                  productPlan.tail,
+                  sqid,
+                  parameters,
+                  Source.single(QueryContext.empty),
+                ),
+              )
+            case _ => ???
+          }
+        case QueryPlan.AllNodeScan(_) => ???
+        case _ => throw new QuinePatternUnimplementedException(s"Query plan: $plan1 is not implemented")
+      }
+
   }
 }

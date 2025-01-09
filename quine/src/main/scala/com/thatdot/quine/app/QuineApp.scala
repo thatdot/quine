@@ -203,13 +203,6 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                   val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
                   (sqv4Pattern, None)
-                case StandingQueryMode.QuinePattern =>
-                  val isEnabled = sys.props.get("qp.enabled").flatMap(_.toBooleanOption) getOrElse false
-                  if (isEnabled) {
-                    sys.error("Oops, broke")
-                  } else {
-                    sys.error("To use this experimental feature, you must set the `qp.enabled` property to `true`.")
-                  }
               }
           }
           (dgnPackage match {
@@ -923,7 +916,6 @@ object QuineApp {
     val mode = internal.queryPattern match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
       case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
-      case _: graph.StandingQueryPattern.QuinePatternQueryPattern => StandingQueryMode.QuinePattern
     }
     val pattern = internal.queryPattern.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>

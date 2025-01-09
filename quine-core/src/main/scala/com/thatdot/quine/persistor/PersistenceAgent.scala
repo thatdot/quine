@@ -8,7 +8,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -222,7 +222,7 @@ trait NamespacedPersistenceAgent extends StrictSafeLogging {
 
   def deleteMultipleValuesStandingQueryStates(id: QuineId): Future[Unit]
 
-  def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit]
+  def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit]
 
   /** Delete all [DomainIndexEvent]]s by their held DgnId. Note that depending on the storage implementation
     * this may be an extremely slow operation.

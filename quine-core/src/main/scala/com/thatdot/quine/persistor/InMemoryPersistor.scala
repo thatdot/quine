@@ -11,7 +11,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -52,7 +52,7 @@ class InMemoryPersistor(
       Byte,
     ]],
   ] = new ConcurrentHashMap(),
-  quinePatterns: ConcurrentMap[StandingQueryId, QuinePattern] = new ConcurrentHashMap(),
+  quinePatterns: ConcurrentMap[StandingQueryId, QueryPlan] = new ConcurrentHashMap(),
   metaData: ConcurrentMap[String, Array[Byte]] = new ConcurrentHashMap(),
   domainGraphNodes: ConcurrentMap[DomainGraphNodeId, DomainGraphNode] = new ConcurrentHashMap(),
   val persistenceConfig: PersistenceConfig = PersistenceConfig(),
@@ -227,7 +227,7 @@ class InMemoryPersistor(
   def getStandingQueries: Future[List[StandingQueryInfo]] =
     Future.successful(standingQueries.values.asScala.toList)
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = {
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = {
     quinePatterns.put(standingQueryId, qp)
     Future.unit
   }

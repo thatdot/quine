@@ -9,7 +9,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -118,8 +118,8 @@ class InvariantWrapper(wrapped: PersistenceAgent) extends WrappedPersistenceAgen
   ): Future[Map[(StandingQueryId, MultipleValuesStandingQueryPartId), Array[Byte]]] =
     wrapped.getMultipleValuesStandingQueryStates(id)
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] =
-    wrapped.persistQuinePattern(standingQueryId, qp)
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] =
+    wrapped.persistQueryPlan(standingQueryId, qp)
 
   def deleteSnapshots(qid: QuineId): Future[Unit] = wrapped.deleteSnapshots(qid)
   def deleteNodeChangeEvents(qid: QuineId): Future[Unit] = wrapped.deleteNodeChangeEvents(qid)

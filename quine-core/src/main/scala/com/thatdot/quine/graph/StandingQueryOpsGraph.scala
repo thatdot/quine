@@ -268,7 +268,6 @@ trait StandingQueryOpsGraph extends BaseGraph {
             partsToAdd,
           )
         case _: StandingQueryPattern.DomainGraphNodeStandingQueryPattern =>
-        case _: StandingQueryPattern.QuinePatternQueryPattern =>
       }
 
       (runningSq, killSwitches)

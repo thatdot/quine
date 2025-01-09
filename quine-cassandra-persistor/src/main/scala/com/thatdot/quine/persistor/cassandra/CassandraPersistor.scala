@@ -17,7 +17,7 @@ import com.datastax.oss.driver.api.core._
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
 import shapeless.poly._
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -231,7 +231,7 @@ abstract class CassandraPersistor(
 
   def containsMultipleValuesStates(): Future[Boolean] = standingQueryStates.containsMultipleValuesStates()
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = ???
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = ???
 
   override def shutdown(): Future[Unit] = session.closeAsync().asScala.void
 

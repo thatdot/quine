@@ -16,7 +16,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.data.NonEmptyList
 import org.rocksdb._
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -33,7 +33,6 @@ import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
   NodeChangeEventCodec,
-//  QuinePatternCodec,
   StandingQueryCodec,
 }
 import com.thatdot.quine.util.Log._
@@ -476,7 +475,7 @@ final class RocksDbPersistor(
       }
     }(ioDispatcher)
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] = ???
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] = ???
 //    Future {
 //    val sqBytes = QuinePatternCodec.format.write(qp)
 //    putKeyValue(quinePatternsCF, standingQueryId.toString.getBytes(UTF_8), sqBytes)

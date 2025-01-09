@@ -7,7 +7,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
-import com.thatdot.quine.graph.cypher.QuinePattern
+import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,
@@ -113,8 +113,8 @@ abstract class PartitionedPersistenceAgent extends PersistenceAgent {
         anyPersistorHasStates
       }(ExecutionContext.parasitic)
 
-  override def persistQuinePattern(standingQueryId: StandingQueryId, qp: QuinePattern): Future[Unit] =
-    rootAgent.persistQuinePattern(standingQueryId, qp)
+  override def persistQueryPlan(standingQueryId: StandingQueryId, qp: QueryPlan): Future[Unit] =
+    rootAgent.persistQueryPlan(standingQueryId, qp)
 
   override def getMetaData(key: String): Future[Option[Array[Byte]]] = rootAgent.getMetaData(key)
 

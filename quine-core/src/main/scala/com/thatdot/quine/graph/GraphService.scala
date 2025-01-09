@@ -99,9 +99,6 @@ class GraphService(
                           .MultipleValuesQueryPattern(_, _, PatternOrigin.GraphPattern(_, _)) =>
                       // this is an MVSQ based on a GraphPattern, but it doesn't illegally specify DISTINCT. No further action needed.
                       ()
-                    case StandingQueryPattern.QuinePatternQueryPattern(_, _, _) =>
-                      // no additional validation is needed for QuinePattern SQs
-                      ()
                   }
                   sqns.startStandingQuery(
                     sqId = sq.id,
