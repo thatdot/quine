@@ -20,6 +20,9 @@ import org.opencypher.v9_0.frontend.phases._
 import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewriter, bottomUp}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
+import com.thatdot.common.logging.Pretty.{Pretty, PrettyHelper}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher.Expr.toQuineValue
 import com.thatdot.quine.graph.cypher.{
@@ -46,9 +49,7 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   StandingQueryResult,
 }
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.MonadHelpers._
 
 /** Like [[UnresolvedCall]] but where the procedure has been resolved
@@ -157,6 +158,7 @@ object RecentNodeIds extends UserDefinedProcedure {
     timeout: Timeout,
     logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
+    implicit val qidPretty: Pretty[QuineId] = location.idProvider
     val limit: Int = arguments match {
       case Seq() => 10
       case Seq(Expr.Integer(l)) => l.toInt
@@ -168,7 +170,7 @@ object RecentNodeIds extends UserDefinedProcedure {
         .recentNodes(limit, location.namespace, location.atTime)
         .map { (nodes: Set[QuineId]) =>
           Source(nodes)
-            .map(qid => Vector(Expr.Str(qid.pretty(location.idProvider))))
+            .map(qid => Vector(Expr.Str(qid.pretty)))
         }(location.graph.nodeDispatcherEC)
     }
   }

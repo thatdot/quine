@@ -8,9 +8,9 @@ import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineValue}
-import com.thatdot.quine.util.Log._
 
 /** Entry point for running Gremlin queries on Quine.
   *

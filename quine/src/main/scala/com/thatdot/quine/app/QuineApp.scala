@@ -16,6 +16,7 @@ import cats.data.{Validated, ValidatedNel}
 import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
@@ -26,11 +27,7 @@ import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
-import com.thatdot.quine.graph.StandingQueryPattern.{
-  DomainGraphNodeStandingQueryPattern,
-  MultipleValuesQueryPattern,
-  //QuinePatternQueryPattern,
-}
+import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.{
   GraphService,
@@ -47,7 +44,6 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.{PrimePersistor, Version}
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{BaseError, SwitchMode}
 

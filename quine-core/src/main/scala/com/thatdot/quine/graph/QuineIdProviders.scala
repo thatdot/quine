@@ -10,9 +10,10 @@ import scala.util.{Failure, Success, Try}
 
 import memeid.{UUID => UUID4s}
 
-import com.thatdot.quine.model.{PositionAwareIdProvider, QuineGraphLocation, QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.ByteConversions.uuidToBytes
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.ByteConversions.uuidToBytes
+import com.thatdot.quine.model.{PositionAwareIdProvider, QuineGraphLocation, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.Log.implicits._
 
 /** This provider is special: it is a no-op provider in the sense that none of the

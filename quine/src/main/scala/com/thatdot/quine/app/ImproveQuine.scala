@@ -23,6 +23,7 @@ import org.apache.pekko.pattern.retry
 import io.circe.generic.auto._
 import io.circe.syntax._
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
 import com.thatdot.quine.app.ImproveQuine.{
   InstanceHeartbeat,
   InstanceStarted,
@@ -34,7 +35,6 @@ import com.thatdot.quine.app.ImproveQuine.{
 import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery, StandingQueryResultOutputUserDef}
-import com.thatdot.quine.util.Log._
 
 object ImproveQuine {
 

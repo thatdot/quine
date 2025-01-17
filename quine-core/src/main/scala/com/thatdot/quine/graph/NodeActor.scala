@@ -5,6 +5,8 @@ import java.util.concurrent.locks.StampedLock
 
 import scala.collection.mutable
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.{NodeParentIndex, SubscribersToThisNodeUtil}
 import com.thatdot.quine.graph.behavior._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
@@ -13,9 +15,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.LiteralCommand
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, SpaceTimeQuineId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.{HalfEdge, PropertyValue}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 case class NodeConstructorArgs(

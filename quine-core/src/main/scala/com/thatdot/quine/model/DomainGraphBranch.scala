@@ -2,6 +2,7 @@ package com.thatdot.quine.model
 
 import java.util.regex.{Pattern, PatternSyntaxException}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.model
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}

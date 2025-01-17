@@ -9,8 +9,8 @@ import org.scalacheck.{Arbitrary, Gen}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{EventTime, MultipleValuesStandingQueryPartId, StandingQueryId}
-import com.thatdot.quine.model.QuineId
 
 class RocksDbKeyEncodingTest extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
 

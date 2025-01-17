@@ -14,11 +14,11 @@ import com.datastax.oss.driver.api.core.ConsistencyLevel
 import com.github.nosan.embedded.cassandra.{Cassandra, CassandraBuilder, Settings, WorkingDirectoryDestroyer}
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.persistor.cassandra
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
 import com.thatdot.quine.test.tags.IntegrationTest
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.TestLogging._
 

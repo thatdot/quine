@@ -7,6 +7,7 @@ import scala.util.{Failure, Success, Try}
 import com.typesafe.scalalogging.LazyLogging
 import sttp.tapir.Schema.annotations.{description, title}
 
+import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.routes.UnifiedIngestConfiguration
 import com.thatdot.quine.routes.FileIngestFormat.CypherCsv
 import com.thatdot.quine.routes.IngestRoutes.defaultNumberFormat
@@ -35,7 +36,6 @@ import com.thatdot.quine.routes.{
   StreamedRecordFormat,
   WebsocketSimpleStartupIngest,
 }
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.{routes => V1}
 
 object V2IngestEntities {

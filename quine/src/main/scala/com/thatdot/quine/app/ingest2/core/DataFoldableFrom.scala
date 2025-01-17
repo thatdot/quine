@@ -6,9 +6,8 @@ import scala.util.Try
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.avro.generic.{GenericArray, GenericEnumSymbol, GenericFixed, GenericRecord}
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.util.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
-
 trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
 

@@ -17,6 +17,8 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import com.codahale.metrics.Timer
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.GraphShardActor.{LivenessStatus, NodeState}
 import com.thatdot.quine.graph.messaging.BaseMessage.{Ack, DeliveryRelay, Done, LocalMessageDelivery}
 import com.thatdot.quine.graph.messaging.ShardMessage.{
@@ -44,8 +46,7 @@ import com.thatdot.quine.graph.messaging.{
   QuineRefOps,
   SpaceTimeQuineId,
 }
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{ExpiringLruSet, QuineDispatchers}
 

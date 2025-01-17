@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph
 
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.Milliseconds
 
 /** Thrown to indicate that there was an attempted change to historical state
   *

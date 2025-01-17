@@ -6,8 +6,8 @@ import scala.collection.mutable.ArrayBuffer
 
 import cats.implicits.catsSyntaxEitherId
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.MonadHelpers._
 
 sealed abstract class Aggregator {

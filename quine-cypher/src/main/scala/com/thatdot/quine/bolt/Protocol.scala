@@ -6,12 +6,12 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl._
 import org.apache.pekko.util.{ByteString, ByteStringBuilder, Timeout}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.BuildInfo
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.utils.CypherLoggables._
 

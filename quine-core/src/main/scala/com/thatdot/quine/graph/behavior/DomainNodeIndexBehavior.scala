@@ -6,6 +6,15 @@ import scala.concurrent.Future
 
 import org.apache.pekko.actor.Actor
 
+import com.thatdot.common.logging.Log.{
+  ActorSafeLogging,
+  AlwaysSafeLoggable,
+  LogConfig,
+  Safe,
+  SafeLoggableInterpolator,
+  SafeLogger,
+}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.EventSubscriber
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
@@ -31,8 +40,7 @@ import com.thatdot.quine.graph.{
   WatchableEventType,
 }
 import com.thatdot.quine.model.DomainGraphNode.{DomainGraphEdge, DomainGraphNodeId}
-import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, QuineId, SingleBranch}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{DomainGraphNode, HalfEdge, IdentifiedDomainGraphNode, SingleBranch}
 import com.thatdot.quine.util.Log.implicits._
 
 /** Conceptual note:

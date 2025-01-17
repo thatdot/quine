@@ -5,6 +5,7 @@ import scala.concurrent.Future
 import cats.implicits._
 import org.apache.pekko
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.cypher
 import com.thatdot.quine.graph.cypher.{
   CypherException,
@@ -16,7 +17,6 @@ import com.thatdot.quine.graph.cypher.{
   Value,
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
 
 /** Catch-all suite for validating the correctness of the Cypher compiler and interpreter. For specific
   * clause validation, see other [[CypherHarness]] subclasses, eg [[CypherReturn]], [[CypherLists]],

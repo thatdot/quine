@@ -14,14 +14,14 @@ import org.apache.pekko.util.Timeout
 
 import io.circe.Json
 
+import com.thatdot.common.logging.Log.LazySafeLogging
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.gremlin._
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes.{CypherQueryResult, GremlinQuery, QueryUiRoutes, UiEdge, UiNode}
-import com.thatdot.quine.util.Log._
-
-import QuineIdHelpers._
 
 trait QueryUiRoutesImpl
     extends QueryUiRoutes

@@ -5,6 +5,7 @@ import scala.concurrent.ExecutionContext
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.cypher.{CompiledQuery, CypherInterpreter, Location, RunningCypherQuery}
 import com.thatdot.quine.graph.messaging.CypherMessage.{
@@ -16,8 +17,6 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
 import com.thatdot.quine.util.InterpM
-import com.thatdot.quine.util.Log._
-
 trait CypherBehavior extends cypher.OnNodeInterpreter with BaseNodeActor with QuineIdOps with QuineRefOps {
 
   /** Run a [[CompiledQuery]] on this node's interpreter

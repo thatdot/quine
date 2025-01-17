@@ -9,9 +9,10 @@ import scala.jdk.CollectionConverters._
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.LiteralOpsGraph
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** Cypher procedure
   *

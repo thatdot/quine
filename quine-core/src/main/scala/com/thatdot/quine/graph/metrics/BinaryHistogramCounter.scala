@@ -2,7 +2,7 @@ package com.thatdot.quine.graph.metrics
 
 import com.codahale.metrics.{Counter, MetricRegistry, NoopMetricRegistry}
 
-import com.thatdot.quine.util.Log.{Safe, SafeLoggableInterpolator, StrictSafeLogging}
+import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator, StrictSafeLogging}
 
 /** Histogram where elements can be added or removed
   *

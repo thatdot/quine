@@ -4,8 +4,9 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{ByteBufferOps, EdgeEvent, NodeChangeEvent, PropertyEvent}
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{Offset, TypeAndOffset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}

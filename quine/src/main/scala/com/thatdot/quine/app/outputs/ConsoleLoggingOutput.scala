@@ -3,11 +3,7 @@ package com.thatdot.quine.app.outputs
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Flow
 
-import com.thatdot.quine.app.outputs.ConsoleLoggingOutput.{printLogger, printLoggerNonBlocking}
-import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
-import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
-import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.PrintToStandardOut
-import com.thatdot.quine.util.Log.{
+import com.thatdot.common.logging.Log.{
   LazySafeLogging,
   LogConfig,
   Safe,
@@ -15,7 +11,10 @@ import com.thatdot.quine.util.Log.{
   SafeLoggableInterpolator,
   SafeLogger,
 }
-
+import com.thatdot.quine.app.outputs.ConsoleLoggingOutput.{printLogger, printLoggerNonBlocking}
+import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
+import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
+import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.PrintToStandardOut
 class ConsoleLoggingOutput(val config: PrintToStandardOut)(implicit
   private val logConfig: LogConfig,
 ) extends OutputRuntime

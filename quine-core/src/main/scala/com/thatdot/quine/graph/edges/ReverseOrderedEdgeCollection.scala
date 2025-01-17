@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.edges
 
-import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge}
 import com.thatdot.quine.util.ReversibleLinkedHashSet
 
 /** Conceptually, this is a mutable `ReversibleLinkedHashSet[HalfEdge]`.

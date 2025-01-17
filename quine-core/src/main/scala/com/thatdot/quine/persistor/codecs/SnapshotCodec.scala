@@ -7,10 +7,11 @@ import scala.collection.{AbstractIterable, mutable}
 
 import com.google.flatbuffers.FlatBufferBuilder
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior
 import com.thatdot.quine.graph.{AbstractNodeSnapshot, ByteBufferOps, EventTime, Notifiable, StandingQueryId}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}

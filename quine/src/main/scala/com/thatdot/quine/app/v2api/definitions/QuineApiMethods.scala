@@ -18,6 +18,8 @@ import cats.data.NonEmptyList
 import cats.implicits.toFunctorOps
 import io.circe.Json
 
+import com.thatdot.common.logging.Log._
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
@@ -50,10 +52,9 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
   namespaceToString,
 }
-import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineId, QuineValue}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes.{CypherQuery, MetricsReport, ShardInMemoryLimit}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes}
 

@@ -6,11 +6,11 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 
 import org.apache.pekko.stream.Materializer
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.{BaseGraph, MemberIdx, NamespaceId, StandingQueryInfo, defaultNamespaceId}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.PersistenceAgent.CurrentVersion
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFilterSize: Option[Long])(implicit

@@ -5,10 +5,11 @@ import scala.concurrent.Future
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.messaging.LiteralMessage.AddToAtomicResult.Aux
 import com.thatdot.quine.graph.{EventTime, GraphNodeHashCode, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineValue}
 
 /** Top-level type of all literal-related messages relayed through the graph
   *

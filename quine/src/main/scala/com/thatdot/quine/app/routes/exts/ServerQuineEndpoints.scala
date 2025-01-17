@@ -6,10 +6,11 @@ import org.apache.pekko.util.ByteString
 
 import endpoints4s.{Codec, Invalid, Valid, Validated}
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{NamespaceId, namespaceFromString}
-import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{EdgeDirection, Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.exts.{NamespaceParameter, QuineEndpoints}
-import com.thatdot.quine.util.Log._
 
 /** Partial implementation of [[QuineEndpoints]] for schemas that are specific to the server,
   * for types that are defined in the `model` model (and therefore can't be part of [[QuineEndpoints]])

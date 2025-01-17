@@ -3,6 +3,7 @@ package com.thatdot.quine.app.outputs
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Flow
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
@@ -12,10 +13,8 @@ import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, Stand
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.CypherQuery
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.wireTapFirst
-
 class CypherQueryOutput(
   val config: CypherQuery,
   val createRecursiveOutput: (

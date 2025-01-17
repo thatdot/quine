@@ -9,6 +9,7 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.{Assertion, Inspectors, LoneElement}
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.HalfEdgeGen
 import com.thatdot.quine.model.{
   DependsUpon,
@@ -18,7 +19,6 @@ import com.thatdot.quine.model.{
   FetchConstraint,
   GenericEdge,
   HalfEdge,
-  QuineId,
 }
 
 trait EdgeCollectionTests extends AnyFlatSpecLike with ScalaCheckDrivenPropertyChecks with Matchers with LoneElement {

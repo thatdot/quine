@@ -7,6 +7,7 @@ import org.apache.pekko.util.Timeout
 import cats.data.Validated.invalidNel
 import cats.data.ValidatedNel
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest2.V2IngestEntities
 import com.thatdot.quine.app.ingest2.source.{DecodedSource, QuineValueIngestQuery}
@@ -15,10 +16,9 @@ import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.exceptions.{DuplicateIngestException, NamespaceNotFoundException}
 import com.thatdot.quine.graph.{CypherOpsGraph, MemberIdx, NamespaceId, defaultNamespaceId, namespaceToString}
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{BaseError, SwitchMode}
 
-import V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration, QuineIngestStreamWithStatus}
+import V2IngestEntities.{QuineIngestStreamWithStatus, QuineIngestConfiguration => V2IngestConfiguration}
 
 /** Store ingests allowing for either v1 or v2 types. */
 case class UnifiedIngestConfiguration(config: Either[V2IngestConfiguration, IngestStreamConfiguration]) {

@@ -17,6 +17,7 @@ import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Codec, DecodeResult, Schema, oneOfBody}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQuery,
@@ -26,7 +27,6 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   cypherQueryAsStringCodec,
 }
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.QuineId
 
 object V2CypherEndpointEntities extends TapirJsonCirce {
   @title("Cypher Query")

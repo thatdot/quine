@@ -10,12 +10,12 @@ import org.apache.pekko.http.scaladsl.model.{HttpEntity, HttpMethods, HttpReques
 import org.apache.pekko.http.scaladsl.unmarshalling.Unmarshal
 import org.apache.pekko.stream.scaladsl.Flow
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.PostToEndpoint
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 class PostToEndpointOutput(val config: PostToEndpoint)(implicit private val logConfig: LogConfig)

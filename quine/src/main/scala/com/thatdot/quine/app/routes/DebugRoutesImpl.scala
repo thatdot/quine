@@ -6,6 +6,8 @@ import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log._
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
   DgnWatchableEventIndexSummary,
@@ -19,7 +21,6 @@ import com.thatdot.quine.model.{EdgeDirection => _, _}
 import com.thatdot.quine.routes.EdgeDirection._
 import com.thatdot.quine.routes._
 import com.thatdot.quine.routes.exts.NamespaceParameter
-import com.thatdot.quine.util.Log._
 
 /** The Pekko HTTP implementation of [[DebugOpsRoutes]] */
 trait DebugRoutesImpl

@@ -10,11 +10,12 @@ import cats.data.NonEmptyList
 import cats.implicits._
 import pprint.{apply => pprint}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.InvalidQueryPattern._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{EdgeDirection, QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{EdgeDirection, QuineIdProvider, QuineValue}
 
 sealed abstract class InvalidQueryPattern(val message: String) extends RuntimeException(message) with NoStackTrace
 object InvalidQueryPattern {

@@ -12,6 +12,7 @@ import org.apache.pekko.{Done, NotUsed}
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{FileFormat, LogRecordErrorHandler, QuineIngestConfiguration}
@@ -27,7 +28,6 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.util.{BaseError, SwitchMode, Valve, ValveSwitch}
 
 /** A decoded source represents a source of interpreted values, that is, values that have

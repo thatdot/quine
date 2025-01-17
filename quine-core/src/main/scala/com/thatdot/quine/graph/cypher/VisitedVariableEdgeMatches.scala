@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.cypher
 
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** Tracks which edges have been visited so far in a variable length edge
   * traversal, along with the index of that match

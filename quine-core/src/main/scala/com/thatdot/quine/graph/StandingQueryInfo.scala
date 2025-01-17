@@ -10,10 +10,10 @@ import org.apache.pekko.{Done, NotUsed}
 
 import com.codahale.metrics.{Counter, Meter, Timer}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Information about a standing query that gets persisted and reloaded on startup

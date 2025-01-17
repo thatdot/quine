@@ -5,8 +5,9 @@ import scala.concurrent.Future
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.Milliseconds
 
 trait QuineIdOps {
 

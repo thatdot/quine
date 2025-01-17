@@ -5,6 +5,7 @@ import scala.util.Try
 
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest2.V2IngestEntities.QuineIngestConfiguration
 import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.DropFormat
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
@@ -12,7 +13,6 @@ import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log.LogConfig
 
 trait QuineIngestQuery {
   def apply(

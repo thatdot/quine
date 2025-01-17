@@ -20,11 +20,11 @@ import io.circe.Json
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, CypherJsonInputFormat}
 import com.thatdot.quine.app.{IngestTestGraph, ShutdownSwitch, WritableInputStream}
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}
 
 class RawValuesIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {

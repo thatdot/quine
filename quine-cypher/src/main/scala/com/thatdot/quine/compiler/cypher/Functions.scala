@@ -33,13 +33,14 @@ import org.opencypher.v9_0.util.Rewritable.IteratorEq
 import org.opencypher.v9_0.util.StepSequencer.Condition
 import org.opencypher.v9_0.util.{InputPosition, Rewritable, Rewriter, bottomUp, symbols}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.graph
 import com.thatdot.quine.graph.cypher.UserDefinedProcedure.extractQuineId
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{hashOfCypherValues, idFrom}
-import com.thatdot.quine.model.{PositionAwareIdProvider, QuineId, QuineIdProvider}
-import com.thatdot.quine.util.ByteConversions
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{PositionAwareIdProvider, QuineIdProvider}
 import com.thatdot.quine.util.Log.implicits._
 
 /** Class that wraps a Quine UDF into something that openCypher accepts as a function

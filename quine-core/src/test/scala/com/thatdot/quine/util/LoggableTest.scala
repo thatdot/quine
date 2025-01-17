@@ -7,9 +7,10 @@ import scala.jdk.DurationConverters._
 
 import org.scalatest.funspec.AnyFunSpecLike
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.Expr
 import com.thatdot.quine.graph.cypher.Func.UserDefined
-import com.thatdot.quine.model.{QuineId, QuineValue}
+import com.thatdot.quine.model.QuineValue
 
 import Log.implicits.{logExpr, logQuineValue, LogQuineIdRaw}
 

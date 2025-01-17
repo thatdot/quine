@@ -3,8 +3,8 @@ package com.thatdot.quine.graph.standing
 import org.scalatest.OptionValues
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
-import com.thatdot.quine.util.Log._
 
 class LocalIdStateTests extends AnyFunSuite with OptionValues {
 

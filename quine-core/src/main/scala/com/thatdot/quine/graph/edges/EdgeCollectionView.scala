@@ -1,6 +1,7 @@
 package com.thatdot.quine.graph.edges
 
-import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge}
 
 /** Similar to [[EdgeCollection]], but does not allow any modifications */
 abstract class EdgeCollectionView {

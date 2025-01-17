@@ -2,10 +2,10 @@ package com.thatdot.quine.bolt
 
 import scala.util.hashing.MurmurHash3
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty.PrettyHelper
 import com.thatdot.quine.graph.cypher.{Expr, Value}
-import com.thatdot.quine.model.QuineIdHelpers._
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.MonadHelpers._
 

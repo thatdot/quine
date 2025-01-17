@@ -6,6 +6,7 @@ import scala.util.control.NoStackTrace
 
 import org.apache.pekko.stream.{Materializer, StreamDetachedException}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.graph.{BaseGraph, NamespaceId}
@@ -15,7 +16,6 @@ import com.thatdot.quine.routes.{
   IngestStreamInfoWithName,
   IngestStreamStatus,
 }
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 object IngestApiEntities {

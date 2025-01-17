@@ -22,6 +22,7 @@ import org.scalacheck.util.Buildable
 import org.scalacheck.{Arbitrary, Gen}
 import shapeless.cachedImplicit
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil

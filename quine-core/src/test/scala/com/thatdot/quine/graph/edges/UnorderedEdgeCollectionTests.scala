@@ -3,7 +3,7 @@ package com.thatdot.quine.graph.edges
 import org.scalactic.source.Position
 import org.scalatest.Assertion
 
-import com.thatdot.quine.model.QuineId
+import com.thatdot.common.quineid.QuineId
 
 class UnorderedEdgeCollectionTests extends SyncEdgeCollectionTests {
 

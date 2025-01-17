@@ -9,6 +9,9 @@ import org.apache.pekko.util.Timeout
 
 import com.google.protobuf.InvalidProtocolBufferException
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty._
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.cypher.{
   Expr,
@@ -20,9 +23,6 @@ import com.thatdot.quine.graph.cypher.{
   UserDefinedProcedureSignature,
   Value,
 }
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 
 /** Parse a protobuf message into a Cypher map according to a schema provided by a schema cache.
@@ -42,11 +42,12 @@ class CypherParseProtobuf(private val cache: ProtobufSchemaCache) extends UserDe
     timeout: Timeout,
     logConfig: LogConfig,
   ): Source[Vector[Value], _] = {
+    implicit val prettyId: Pretty[QuineId] = location.idProvider
     val (bytes, schemaUrl, typeName): (Array[Byte], URL, String) = arguments match {
       case Seq(Expr.Bytes(bytes, bytesRepresentId), Expr.Str(schemaUrl), Expr.Str(typeName)) =>
         if (bytesRepresentId)
           logger.info(
-            safe"""Received an ID (${Safe(QuineId(bytes).pretty(location.idProvider))}) as a source of
+            safe"""Received an ID (${Safe(QuineId(bytes).pretty)}) as a source of
                  |bytes to parse a protobuf value of type: ${Safe(typeName)}.""".cleanLines,
           )
         (bytes, filenameOrUrl(schemaUrl), typeName)

@@ -2,6 +2,7 @@ package com.thatdot.quine.app.migrations
 
 import scala.concurrent.{ExecutionContext, Future}
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.migrations.instances.MultipleValuesRewrite
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryPattern}
 import com.thatdot.quine.migrations.MigrationError
@@ -14,7 +15,6 @@ import com.thatdot.quine.persistor.{
   WrappedPersistenceAgent,
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
-import com.thatdot.quine.util.Log._
 
 /** [[Migration.Apply]] instances for the Quine application. These may be reused by the other Quine-based applications
   * if appropriate.

@@ -14,6 +14,7 @@ import org.scalatest.funspec.AsyncFunSpec
 import org.scalatest.matchers.should
 import org.scalatest.{Assertion, BeforeAndAfterAll, Inspectors, OptionValues}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.DomainIndexEvent.CancelDomainNodeSubscription
 import com.thatdot.quine.graph.Generators.generateN
 import com.thatdot.quine.graph.PropertyEvent.PropertySet
@@ -36,7 +37,7 @@ import com.thatdot.quine.graph.{
   namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineId, QuineValue}
+import com.thatdot.quine.model.{DomainGraphNode, PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.PersistenceAgentSpec.assertArraysEqual
 
 /** Abstract test suite that can be implemented just by specifying `persistor`.

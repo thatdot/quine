@@ -11,7 +11,8 @@ import org.apache.pekko.util.Timeout
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AsyncFunSuite
 
-import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineValue}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineValue}
 import com.thatdot.quine.persistor.{
   EventEffectOrder,
   InMemoryPersistor,

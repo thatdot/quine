@@ -4,8 +4,8 @@ import scala.util.Success
 
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.cypher.Expr
-import com.thatdot.quine.util.Log._
 
 class ImportFormatTest extends AnyFunSuite {
 

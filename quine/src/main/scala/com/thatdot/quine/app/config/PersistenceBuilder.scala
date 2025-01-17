@@ -7,13 +7,13 @@ import scala.concurrent.duration._
 
 import org.apache.pekko.stream.Materializer
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.Metrics
 import com.thatdot.quine.app.config.PersistenceAgentType.{Cassandra, ClickHouse, Keyspaces, MapDb}
 import com.thatdot.quine.persistor._
 import com.thatdot.quine.persistor.cassandra.aws.PrimeKeyspacesPersistor
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.vanilla.PrimeCassandraPersistor
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.QuineDispatchers
 
 /** Options for persistence */

@@ -16,10 +16,9 @@ import com.datastax.oss.driver.api.querybuilder.delete.DeleteSelection
 import com.datastax.oss.driver.api.querybuilder.schema.CreateTable
 import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.Chunker
-import com.thatdot.quine.util.Log._
-
 abstract class TableDefinition[A](unqualifiedTableName: String, namespace: NamespaceId) extends LazySafeLogging {
 
   def create(

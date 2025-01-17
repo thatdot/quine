@@ -5,7 +5,7 @@ import java.util.{LinkedHashMap => JavaLinkedHashMap, Map => JavaMap}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.util.Log.implicits._
 
 abstract class NanoTimeSource {

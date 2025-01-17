@@ -3,6 +3,7 @@ package com.thatdot.quine.graph.edges
 import scala.collection.AbstractIterable
 import scala.collection.mutable.{Map => MutableMap, Set => MutableSet}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model._
 
 /** Conceptually, this is a mutable `Set[HalfEdge]`.

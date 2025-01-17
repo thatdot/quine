@@ -11,11 +11,10 @@ import com.github.benmanes.caffeine.cache.RemovalCause
 import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 import org.apache.pekko
 
+import com.thatdot.common.logging.Log.SafeLoggableInterpolator
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.model._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
-
 final case class SkipOptimizerKey(
   location: Query[Location.External],
   namespace: NamespaceId,

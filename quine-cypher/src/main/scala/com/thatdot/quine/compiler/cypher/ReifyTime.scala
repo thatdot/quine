@@ -10,11 +10,12 @@ import scala.concurrent.Future
 import org.apache.pekko.stream.scaladsl.Source
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.CypherException.ConstraintViolation
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{LiteralOpsGraph, idFrom}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 
 object ReifyTime extends UserDefinedProcedure {
   val name = "reify.time"

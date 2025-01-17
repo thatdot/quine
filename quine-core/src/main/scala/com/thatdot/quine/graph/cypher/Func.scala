@@ -17,8 +17,8 @@ import scala.math.BigDecimal.RoundingMode.{
   UP,
 }
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 
 /** Scalar Cypher function
   *

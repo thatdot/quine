@@ -12,8 +12,8 @@ import pureconfig.generic.semiauto.deriveConvert
 import pureconfig.{ConfigConvert, ConfigReader, ConfigWriter}
 import software.amazon.awssdk.regions.Region
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.persistor._
-import com.thatdot.quine.util.Log._
 
 /** Options for persistence */
 sealed abstract class PersistenceAgentType(val isLocal: Boolean, val label: String) {

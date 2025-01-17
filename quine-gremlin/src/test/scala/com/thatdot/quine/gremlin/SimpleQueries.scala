@@ -4,7 +4,8 @@ import java.util.UUID
 
 import scala.concurrent.Await
 
-import com.thatdot.quine.model.{QuineId, QuineValue}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.QuineValue
 
 class SimpleQueries extends GremlinHarness("quine-simple-gremlin-queries") {
 

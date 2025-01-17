@@ -39,6 +39,7 @@ lazy val `quine-core`: Project = project
       "org.typelevel" %% "cats-core" % catsV,
       "org.typelevel" %% "cats-effect" % catsEffectV,
       "com.thatdot" %% "query-language" % quineQueryV,
+      "com.thatdot" %% "quine-id" % quineCommonV,
       "com.lihaoyi" %% "pprint" % pprintV,
     ),
     // Compile different files depending on scala version

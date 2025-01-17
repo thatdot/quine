@@ -6,6 +6,7 @@ import scala.reflect.ClassTag
 import com.datastax.oss.driver.api.core.`type`.codec.ExtraTypeCodecs.BLOB_TO_ARRAY
 import com.datastax.oss.driver.api.core.`type`.codec.{TypeCodec, TypeCodecs}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,
@@ -13,7 +14,7 @@ import com.thatdot.quine.graph.{
   NodeChangeEvent,
   StandingQueryId,
 }
-import com.thatdot.quine.model.{DomainGraphNode, EdgeDirection, QuineId}
+import com.thatdot.quine.model.{DomainGraphNode, EdgeDirection}
 import com.thatdot.quine.persistor.BinaryFormat
 import com.thatdot.quine.persistor.codecs.{DomainGraphNodeCodec, DomainIndexEventCodec, NodeChangeEventCodec}
 

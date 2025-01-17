@@ -13,14 +13,14 @@ import org.apache.pekko.util.Timeout
 
 import org.webjars.WebJarAssetLocator
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.routes.websocketquinepattern.WebSocketQuinePatternServer
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{BaseApp, BuildInfo, QuineApp}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.gremlin.GremlinQueryRunner
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 
 /** Main webserver routes for Quine
   *

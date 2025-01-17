@@ -7,6 +7,8 @@ import scala.util.Try
 
 import org.apache.pekko.actor.Actor
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.StandingQueryWatchableEventIndex.{EventSubscriber, StandingQueryWithId}
 import com.thatdot.quine.graph.cypher.{
   MultipleValuesInitializationEffects,
@@ -43,10 +45,9 @@ import com.thatdot.quine.graph.{
   WatchableEventType,
   cypher,
 }
-import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{PropertyValue, QuineIdProvider}
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig, PersistenceSchedule}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 trait MultipleValuesStandingQueryBehavior

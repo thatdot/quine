@@ -2,7 +2,8 @@ package com.thatdot.quine.graph.edges
 import org.scalactic.source.Position
 import org.scalatest.Assertion
 
-import com.thatdot.quine.model.{DomainEdge, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{DomainEdge, HalfEdge}
 
 abstract class SyncEdgeCollectionTests extends EdgeCollectionTests {
   type F[A] = A

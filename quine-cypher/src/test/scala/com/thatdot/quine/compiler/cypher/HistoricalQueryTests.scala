@@ -8,9 +8,10 @@ import org.apache.pekko.stream.scaladsl.{Keep, Sink}
 
 import org.scalatest.Assertion
 
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.{Expr, Value}
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{Milliseconds, QuineId, QuineValue}
+import com.thatdot.quine.model.{Milliseconds, QuineValue}
 
 class HistoricalQueryTests extends CypherHarness("historical-query-tests") {
   implicit val ec: ExecutionContextExecutor = graph.system.dispatcher

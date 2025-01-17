@@ -19,9 +19,10 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.IngestRoutes
 
 object V2AlgorithmEndpointEntities extends TapirJsonCirce {

@@ -10,7 +10,7 @@ import org.apache.pekko.{Done, NotUsed}
 
 import org.apache.pekko
 
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.util.PekkoStreams.errorSuppressingMergeHub
 
 class MasterStream(implicit val mat: Materializer, val logConfig: LogConfig) extends LazySafeLogging {

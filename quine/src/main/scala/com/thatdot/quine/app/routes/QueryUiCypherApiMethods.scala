@@ -8,6 +8,15 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import io.circe.Json
 
+import com.thatdot.common.logging.Log.{
+  LazySafeLogging,
+  LogConfig,
+  OnlySafeStringInterpolator,
+  Safe,
+  SafeLoggableInterpolator,
+}
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.CypherProcedures
 import com.thatdot.quine.graph.cypher.{
@@ -20,10 +29,7 @@ import com.thatdot.quine.graph.cypher.{
 import com.thatdot.quine.graph.{CypherOpsGraph, LiteralOpsGraph, NamespaceId}
 import com.thatdot.quine.model._
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
-
-import QuineIdHelpers._
 
 trait QueryUiCypherApiMethods extends LazySafeLogging {
   import QueryUiCypherApiMethods._
@@ -228,8 +234,8 @@ object QueryUiCypherApiMethods extends LazySafeLogging {
 class OSSQueryUiCypherMethods(quineGraph: LiteralOpsGraph with CypherOpsGraph)(implicit
   protected val logConfig: LogConfig,
 ) extends QueryUiCypherApiMethods() {
-  def hostIndex(qid: com.thatdot.quine.model.QuineId): Int = 0
+  def hostIndex(qid: com.thatdot.common.quineid.QuineId): Int = 0
   override def idProvider: QuineIdProvider = graph.idProvider
-  def transformUiNode(uiNode: com.thatdot.quine.routes.UiNode[com.thatdot.quine.model.QuineId]) = uiNode
+  def transformUiNode(uiNode: com.thatdot.quine.routes.UiNode[com.thatdot.common.quineid.QuineId]) = uiNode
   override def graph = quineGraph
 }

@@ -14,8 +14,8 @@ import org.eclipse.lsp4j.jsonrpc.messages.Message
 import org.eclipse.lsp4j.jsonrpc.{Launcher, MessageConsumer}
 import org.eclipse.lsp4j.services.LanguageClient
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.language.server.QuineLanguageServer
-import com.thatdot.quine.util.Log._
 
 /** Receives WebSocket Messages, pipes them to the LSPLauncher containing our `QuineLanguageServer`,
   * and sends the response to the `outgoingActorRef`, which sends the message to the client.

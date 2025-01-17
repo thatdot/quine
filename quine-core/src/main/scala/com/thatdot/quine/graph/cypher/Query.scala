@@ -1,7 +1,8 @@
 package com.thatdot.quine.graph.cypher
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.EntryPoint.{AllNodesScan, NodeById}
-import com.thatdot.quine.model.{EdgeDirection, QuineId}
+import com.thatdot.quine.model.EdgeDirection
 
 /** Subset of Cypher queries which rely on indices/persistors (i.e. are
   * non-local). These are also the query types that ignore their inputs

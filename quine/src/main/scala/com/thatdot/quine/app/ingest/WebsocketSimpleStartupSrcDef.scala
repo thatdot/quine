@@ -11,13 +11,13 @@ import org.apache.pekko.http.scaladsl.settings.ClientConnectionSettings
 import org.apache.pekko.stream.scaladsl.{Flow, Keep, Source}
 import org.apache.pekko.util.ByteString
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.WebsocketSimpleStartupSrcDef.UpgradeFailedException
 import com.thatdot.quine.app.ingest.serialization.ImportFormat
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest
 import com.thatdot.quine.routes.WebsocketSimpleStartupIngest.KeepaliveProtocol
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 object WebsocketSimpleStartupSrcDef {

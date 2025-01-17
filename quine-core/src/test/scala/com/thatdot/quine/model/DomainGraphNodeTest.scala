@@ -7,6 +7,7 @@ import org.scalacheck.rng.Seed
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{ArbitraryInstances, Generators}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.PropertyComparisonFunctions.{

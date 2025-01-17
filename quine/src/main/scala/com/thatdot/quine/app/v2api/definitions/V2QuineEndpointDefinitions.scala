@@ -16,12 +16,13 @@ import sttp.tapir.generic.auto.schemaForCaseClass
 import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{EndpointOutput, endpoint, _}
 
+import com.thatdot.common.logging.Log._
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
-import com.thatdot.quine.util.Log._
 
 /** Response Envelopes */
 case class ErrorEnvelope[T](error: T)

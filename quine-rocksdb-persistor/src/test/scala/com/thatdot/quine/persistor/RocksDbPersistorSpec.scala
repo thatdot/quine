@@ -9,7 +9,7 @@ import org.apache.pekko.actor.CoordinatedShutdown
 
 import org.apache.commons.io.FileUtils
 
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.LogConfig
 
 class RocksDbPersistorSpec(implicit protected val logConfig: LogConfig) extends PersistenceAgentSpec {
 

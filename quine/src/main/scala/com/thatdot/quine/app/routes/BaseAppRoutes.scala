@@ -13,10 +13,10 @@ import org.apache.pekko.util.Timeout
 
 import nl.altindag.ssl.SSLFactory
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.config.WebServerBindConfig
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Tls.SSLFactoryBuilderOps
 
 object MediaTypes {

@@ -24,13 +24,13 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, Deserializer}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.KafkaKillSwitch
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{KafkaAutoOffsetReset, KafkaIngest, KafkaOffsetCommitting, KafkaSecurityProtocol}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 object KafkaSrcDef {

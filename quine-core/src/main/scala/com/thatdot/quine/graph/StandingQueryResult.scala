@@ -7,8 +7,9 @@ import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 import io.circe.Json
 
-import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 
 sealed trait StandingQueryResultStructure
 object StandingQueryResultStructure {

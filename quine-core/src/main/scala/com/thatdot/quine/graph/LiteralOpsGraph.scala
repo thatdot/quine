@@ -5,6 +5,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.messaging.LiteralMessage._
 import com.thatdot.quine.graph.messaging.ShardMessage.PurgeNode
 import com.thatdot.quine.graph.messaging.{BaseMessage, SpaceTimeQuineId}

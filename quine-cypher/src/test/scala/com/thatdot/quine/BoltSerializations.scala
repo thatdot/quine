@@ -4,9 +4,9 @@ import org.apache.pekko.util.ByteString
 
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.graph.QuineIdLongProvider
 import com.thatdot.quine.graph.cypher.{Expr, Value}
-import com.thatdot.quine.util.ByteConversions
 
 /* This tests the examples given in https://boltprotocol.org/v1/#serialization.
  * Note that the tests themselves use `HexConversions`.

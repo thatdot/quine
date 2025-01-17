@@ -6,8 +6,8 @@ import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.stream.Materializer
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 class RocksDbPrimePersistor(

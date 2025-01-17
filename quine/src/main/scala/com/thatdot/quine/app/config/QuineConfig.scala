@@ -11,8 +11,8 @@ import pureconfig.generic.auto._
 import pureconfig.generic.semiauto.deriveConvert
 import shapeless.{Lens, lens}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.persistor.PersistenceConfig
-import com.thatdot.quine.util.Log.LogConfig
 
 /** Top-level config for Quine
   *

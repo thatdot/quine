@@ -5,8 +5,9 @@ import scala.jdk.CollectionConverters._
 import com.google.common.hash.Hashing.combineUnordered
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.messaging.QuineMessage
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, PropertyValue}
 
 case class GraphNodeHashCode(value: Long) extends QuineMessage
 

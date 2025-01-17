@@ -9,6 +9,7 @@ import org.scalatest.AppendedClues
 import org.scalatest.Inside.inside
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.compiler
 import com.thatdot.quine.graph.cypher.{
   Aggregator,
@@ -26,7 +27,6 @@ import com.thatdot.quine.graph.cypher.{
   Value,
 }
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 
 // disable warnings raised by giving names to parts of pattern matches to make the large pattern matches more readable
 // Commented out rather than removed -- if still unnecessary in scala 2.13.16+, OK to remove

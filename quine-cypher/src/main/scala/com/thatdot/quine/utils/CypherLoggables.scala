@@ -1,5 +1,6 @@
 package com.thatdot.quine.utils
 
+import com.thatdot.common.logging.Log.Loggable
 import com.thatdot.quine.bolt.Protocol.{
   AckFailure,
   DiscardAll,
@@ -12,8 +13,6 @@ import com.thatdot.quine.bolt.Protocol.{
   Run,
   Success,
 }
-import com.thatdot.quine.util.Log._
-
 object CypherLoggables {
   implicit val logProtocolMessage: Loggable[com.thatdot.quine.bolt.Protocol.ProtocolMessage] =
     Loggable[com.thatdot.quine.bolt.Protocol.ProtocolMessage] {

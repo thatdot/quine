@@ -2,8 +2,8 @@ package com.thatdot.quine.graph.cypher
 
 import org.apache.pekko.NotUsed
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.namespaceToString
-import com.thatdot.quine.util.Log._
 
 /** Packages together all the information about a query that can be run
   *

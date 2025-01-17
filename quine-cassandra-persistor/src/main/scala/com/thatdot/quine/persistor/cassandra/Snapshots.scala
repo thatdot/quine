@@ -13,13 +13,12 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.DESC
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{EventTime, NamespaceId}
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.MultipartSnapshotPersistenceAgent.MultipartSnapshotPart
 import com.thatdot.quine.persistor.cassandra.support._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T4}
-
 trait SnapshotsColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")

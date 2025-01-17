@@ -9,9 +9,10 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
-import com.thatdot.quine.model.{EdgeDirection, Milliseconds, PropertyValue, QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{EdgeDirection, Milliseconds, PropertyValue, QuineIdProvider}
 import com.thatdot.quine.util.PekkoStreams.{statefulFilter, wireTapFirst}
 
 // Functionality for describing and running queries

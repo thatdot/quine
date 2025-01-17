@@ -12,6 +12,8 @@ import org.apache.pekko.util.Timeout
 import cats.implicits._
 import com.google.common.collect.MinMaxPriorityQueue
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.Query._
@@ -20,17 +22,8 @@ import com.thatdot.quine.graph.messaging.CypherMessage.{CheckOtherHalfEdge, Quer
 import com.thatdot.quine.graph.messaging.LiteralMessage.{DeleteNodeCommand, RemoveHalfEdgeCommand}
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, CypherOpsGraph, NamespaceId, PropertyEvent, SkipOptimizerKey}
-import com.thatdot.quine.model.{
-  EdgeDirection,
-  HalfEdge,
-  Milliseconds,
-  PropertyValue,
-  QuineId,
-  QuineIdProvider,
-  QuineValue,
-}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge, Milliseconds, PropertyValue, QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.InterpM
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.MonadHelpers._
 

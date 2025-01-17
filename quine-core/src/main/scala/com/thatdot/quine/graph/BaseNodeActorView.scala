@@ -3,10 +3,11 @@ package com.thatdot.quine.graph
 import org.apache.pekko.actor.Actor
 import org.apache.pekko.stream.Materializer
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.edges.EdgeCollectionView
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
-import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{Milliseconds, PropertyValue, QuineIdProvider, QuineValue}
 
 /** Read-only view of a node actor */
 trait BaseNodeActorView extends Actor {

@@ -20,6 +20,8 @@ import com.codahale.metrics.{Counter, Histogram, MetricRegistry, NoopMetricRegis
 import org.mapdb._
 import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper, SerializerLong}
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
@@ -31,8 +33,8 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryInfo,
 }
+import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 import com.thatdot.quine.persistor.codecs.{
   DomainGraphNodeCodec,
   DomainIndexEventCodec,
@@ -41,7 +43,6 @@ import com.thatdot.quine.persistor.codecs.{
   StandingQueryCodec,
 }
 import com.thatdot.quine.util.ComputeAndBlockingExecutionContext
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 

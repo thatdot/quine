@@ -7,6 +7,7 @@ import org.apache.pekko.stream.connectors.csv.scaladsl.{CsvParsing, CsvToMap}
 import org.apache.pekko.stream.scaladsl.{Flow, Framing, Source}
 import org.apache.pekko.util.ByteString
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.ingest.serialization.{
   CypherJsonInputFormat,
   CypherRawInputFormat,
@@ -19,7 +20,6 @@ import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
 import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine, QuinePatternJson, QuinePatternLine}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** Ingest source runtime that requires managing its own record delimitation -- for example, line-based ingests or CSV

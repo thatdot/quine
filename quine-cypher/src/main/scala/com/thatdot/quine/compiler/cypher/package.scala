@@ -26,10 +26,10 @@ import org.opencypher.v9_0.util.{
 }
 import org.opencypher.v9_0.{ast, expressions}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.cypher._
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphQueryPattern, NamespaceId}
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.MonadHelpers._
 
 package object cypher {

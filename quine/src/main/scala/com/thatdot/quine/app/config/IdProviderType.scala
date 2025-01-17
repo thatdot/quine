@@ -4,6 +4,7 @@ import java.{util => ju}
 
 import memeid.{UUID => UUID4s}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.{
   IdentityIdProvider,
   QuineIdLongProvider,
@@ -15,7 +16,6 @@ import com.thatdot.quine.graph.{
   WithExplicitPositions,
 }
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 
 /** Options for ID representations */
 sealed abstract class IdProviderType {

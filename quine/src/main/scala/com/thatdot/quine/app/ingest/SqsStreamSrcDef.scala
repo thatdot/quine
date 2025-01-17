@@ -12,6 +12,7 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.sqs.SqsAsyncClient
 import software.amazon.awssdk.services.sqs.model.Message
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
@@ -19,7 +20,6 @@ import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** The definition of an incoming AWS SQS stream.

@@ -3,8 +3,8 @@ package com.thatdot.quine.app.config
 import pureconfig.ConfigConvert
 import pureconfig.generic.semiauto.deriveEnumerationConvert
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.edges.{ReverseOrderedEdgeCollection, SyncEdgeCollection, UnorderedEdgeCollection}
-import com.thatdot.quine.model.QuineId
 
 /** Options for edge collection iteration */
 sealed abstract class EdgeIteration {

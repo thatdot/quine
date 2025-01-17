@@ -21,6 +21,7 @@ import cats.implicits.catsSyntaxValidatedId
 import com.codahale.metrics.Timer
 import org.apache.kafka.common.KafkaException
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.serialization._
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.routes.{IngestMeter, IngestMetered}
@@ -31,7 +32,6 @@ import com.thatdot.quine.graph.cypher.{Value => CypherValue}
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
 import com.thatdot.quine.util.{SwitchMode, Valve, ValveSwitch}

@@ -5,11 +5,12 @@ import scala.util.{Failure, Success, Try}
 
 import cats.data.NonEmptyList
 
+import com.thatdot.common.logging.Log.{LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.metrics.BinaryHistogramCounter
 import com.thatdot.quine.graph.{CostToSleep, EdgeEvent, EventTime, NodeChangeEvent, NodeEvent}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 
 class PersistorFirstEdgeProcessor(

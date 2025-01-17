@@ -11,10 +11,11 @@ import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{Endpoint, Schema, path, query, statusCode}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities._
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes._
 
 /** Objects mapping to endpoints4s annotated objects appearing in [[com.thatdot.quine.routes.AdministrationRoutes]] . These

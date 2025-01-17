@@ -2,8 +2,8 @@ package com.thatdot.quine.persistor
 
 import org.apache.pekko.stream.Materializer
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.util.Log._
 
 class StatelessPrimePersistor(
   persistenceConfig: PersistenceConfig,

@@ -10,12 +10,11 @@ import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId, StandingQueryInfo}
 import com.thatdot.quine.persistor.cassandra.support._
 import com.thatdot.quine.persistor.codecs.StandingQueryCodec
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
-
 trait StandingQueriesColumnNames {
   import CassandraCodecs._
   implicit def logConfig: LogConfig

@@ -35,8 +35,9 @@ import software.amazon.awssdk.services.sts.model.AssumeRoleRequest
 import software.amazon.awssdk.utils.SdkAutoCloseable
 import software.aws.mcs.auth.SigV4AuthProvider
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{
   Chunker,
@@ -45,7 +46,6 @@ import com.thatdot.quine.persistor.cassandra.{
   SnapshotsTableDefinition,
 }
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.PekkoStreams.distinctConsecutive
 import com.thatdot.quine.util.Retry

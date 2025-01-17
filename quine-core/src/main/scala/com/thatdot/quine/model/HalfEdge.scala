@@ -1,6 +1,7 @@
 package com.thatdot.quine.model
 
-import QuineIdHelpers._
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 
 /** Half of an edge in Quine
   *

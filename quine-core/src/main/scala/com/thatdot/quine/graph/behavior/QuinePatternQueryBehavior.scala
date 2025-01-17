@@ -9,6 +9,7 @@ import org.apache.pekko.actor.{Actor, ActorRef}
 import org.apache.pekko.stream.CompletionStrategy
 import org.apache.pekko.stream.scaladsl.{Flow, Source}
 
+import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.language.ast.{Expression, Identifier, Value}
 import com.thatdot.quine.graph.EdgeEvent.EdgeAdded
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
@@ -29,7 +30,6 @@ import com.thatdot.quine.graph.{
   StandingQueryOpsGraph,
 }
 import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
-import com.thatdot.quine.util.Log.LazySafeLogging
 
 sealed trait QuinePatternCommand extends QuineMessage
 

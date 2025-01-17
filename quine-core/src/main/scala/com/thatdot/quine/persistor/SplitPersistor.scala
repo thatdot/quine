@@ -4,9 +4,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 import scala.jdk.CollectionConverters._
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents,
   * creating new agents the first time new partition keys are seen.

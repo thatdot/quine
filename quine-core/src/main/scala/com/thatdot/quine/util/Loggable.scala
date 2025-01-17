@@ -6,18 +6,17 @@ import java.nio.file.Path
 import java.time.temporal.TemporalUnit
 
 import scala.annotation.unused
-import scala.jdk.CollectionConverters._
 
 import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
-import cats.implicits._
 import com.typesafe.config.ConfigOrigin
-import com.typesafe.scalalogging
-import org.slf4j
 
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil.DistinctIdSubscription
 import com.thatdot.quine.graph.cypher.{
   AllPropertiesState,
@@ -39,163 +38,11 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
   namespaceToString,
 }
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{DomainGraphBranch, DomainGraphNode, QuineIdProvider, QuineValue}
 
 object Log {
 
-  sealed trait SafeString {
-    def interpolateSafe(): String
-    def interpolateUnsafe(redactor: String => String): String
-  }
-  // A class that holds the result of interpolating a PII safe string using the macro below
-  // We must store the interpolated string lazily because we do not know yet if we will
-  // be creating a `safe` or `unsafe` string as it depends on the settings in the logger
-  class SafeInterpolator private (
-    val safeString: () => String,
-    val unsafeString: (String => String) => String,
-    val exception: Option[Throwable] = None,
-  ) extends SafeString {
-    private def copy(
-      safeString: () => String = safeString,
-      unsafeString: (String => String) => String = unsafeString,
-      exception: Option[Throwable] = exception,
-    ) = new SafeInterpolator(safeString, unsafeString, exception)
-    private def map(f: String => String) = copy(
-      safeString = () => f(safeString()),
-      unsafeString = (redactor: String => String) => f(unsafeString(redactor)),
-    )
-    def interpolateSafe(): String = safeString()
-    def interpolateUnsafe(redactor: String => String): String = unsafeString(redactor)
-    def withException(e: Throwable): SafeInterpolator = copy(exception = Some(e))
-    def +(other: SafeInterpolator): SafeInterpolator = copy(
-      safeString = () => safeString() + other.safeString(),
-      unsafeString = (redactor: String => String) => unsafeString(redactor) + unsafeString(redactor),
-      exception = exception.handleErrorWith(_ => (other.exception)),
-    )
-    def stripMargin: SafeInterpolator = map(_.stripMargin)
-    def trim: SafeInterpolator = map(_.trim)
-    def replaceNewline(r: Char): SafeInterpolator = map(_.replace('\n', r))
-    def cleanLines: SafeInterpolator = stripMargin.replaceNewline(' ').trim
-  }
-  object SafeInterpolator {
-    // Private so this object can only be created from within the "log" interpolator
-    private[Log] def apply(
-      ss: Seq[String],
-      safeArgs: Seq[() => String],
-      unsafeArgs: Seq[(String => String) => String],
-    ) = new SafeInterpolator(
-      () => StringContext.standardInterpolator(StringContext.processEscapes, safeArgs.map(_()), ss),
-      (redactor: String => String) =>
-        StringContext.standardInterpolator(StringContext.processEscapes, unsafeArgs.map(_(redactor)), ss),
-    )
-  }
-
-  // This is like SafeInterpolator, but it represents strings that can only be safe
-  // This is also only constructed below, but in the "safe" interpolator function rather than the "log" interpolator
-  class OnlySafeStringInterpolator private[Log] (
-    val safeString: () => String,
-  ) extends SafeString {
-    def copy(
-      safeString: () => String = safeString,
-    ): OnlySafeStringInterpolator = new OnlySafeStringInterpolator(safeString)
-    def interpolateSafe(): String = safeString()
-    def interpolateUnsafe(redactor: String => String): String = interpolateSafe()
-    def +(other: OnlySafeStringInterpolator): OnlySafeStringInterpolator =
-      copy(safeString = () => safeString() + other.safeString())
-    private def map(f: String => String): OnlySafeStringInterpolator = copy(safeString = () => f(safeString()))
-    def stripMargin: OnlySafeStringInterpolator = map(_.stripMargin)
-    def trim: OnlySafeStringInterpolator = map(_.trim)
-    def replaceNewline(r: Char): OnlySafeStringInterpolator = map(_.replace('\n', r))
-    def cleanLines: OnlySafeStringInterpolator = stripMargin.replaceNewline(' ').trim
-  }
-  object OnlySafeStringInterpolator {
-    private[Log] def apply(ss: Seq[String], safeArgs: Seq[() => String]) = new OnlySafeStringInterpolator(() =>
-      StringContext.standardInterpolator(StringContext.processEscapes, safeArgs.map(_()), ss),
-    )
-  }
-
-  // A typeclass that represents a datatype that can be converted into a string for the purpose of logging
-  trait Loggable[A] {
-    // Will be called if we are treating this data as "safe"
-    // i.e. we have enabled unsafe logging in the config or this has been marked as "Safe" (see the "Safe" class)
-    def safe(a: A): String
-    // Will be called if this data could be unsafe. Should replace all fields that could contain
-    //  PII with `redacted(unsafeInfo)`
-    def unsafe(a: A, redactor: String => String): String
-  }
-
-  // A typeclass that represents a type that can always be considered safe. These should never be redacted
-  // and always be considered safe to pass to the "safe" interpolator below
-  trait AlwaysSafeLoggable[A] extends Loggable[A] {
-    def safe(a: A): String
-    final def unsafe(a: A, redactor: String => String): String = safe(a)
-  }
-
-  // Declares the data in a loggable is safe.
-  // When the "unsafe" method is called on a Safe[A] we just call the "safe" method of A, since we have
-  // declared that the data in this instance of "A" is safe
-  case class Safe[A](a: A)(implicit val loggable: Loggable[A])
-  // The AlwaysSafeLoggable instance for variables marked "Safe"
-  implicit def SafeLoggable[A]: AlwaysSafeLoggable[Safe[A]] = new AlwaysSafeLoggable[Safe[A]] {
-    def safe(a: Safe[A]): String = a.loggable.safe(a.a)
-  }
-
-  // Helper class that is needed for how we construct StringInterpolators
-  // When the log function declares that it takes a variable number of arguments, it declares their type must be LogObj
-  // so that we can have a implicit Loggable instance for each argument.
-  // (We cannot have a variable number of implicit arguments whose type depends on the first variable argument list)
-  implicit class LogObj[A](val value: A)(implicit val loggable: Loggable[A]) {
-    def safe: () => String = () => loggable.safe(value)
-    def unsafe: (String => String) => String = f => loggable.unsafe(value, f)
-  }
-  // Works like the LogObj class above, except it is for the AlwaysSafeLoggable typeclass
-  implicit class AlwaysSafeLogObj[A](val value: A)(implicit val loggable: AlwaysSafeLoggable[A]) {
-    def safe: () => String = () => loggable.safe(value)
-  }
-
-  // An implicit class that extends AnyVal and has a StringContext is how we add new string interpolation methods
-  implicit class SafeLoggableInterpolator(private val sc: StringContext) extends AnyVal {
-
-    // Preforms a string interpolation, but the arguments must have an implicit SafeLoggable instance
-    // The actual interpolation is lazy and is not performed until the string is actually logged
-    // Note: Actually logging this object (calling "warn", "error", "info", etc) requires an implicit LogConfig in context
-    def log(args: LogObj[_]*): SafeInterpolator = SafeInterpolator(
-      sc.parts,
-      args.map(_.safe),
-      args.map(_.unsafe),
-    )
-
-    // Preforms a string interpolation like the "log" interpolator, but this can only accept variables that are marked as "safe"
-    // This is functionally equivalent to "log" (safe does not mark its arguments as safe, it just requires that they must already marked as safe)
-    // The method exists because the result of preforming the "safe" interpolation does not rely on a LogConfig
-    def safe(args: AlwaysSafeLogObj[_]*): OnlySafeStringInterpolator =
-      OnlySafeStringInterpolator(sc.parts, args.map(_.safe))
-  }
-
-  // Declares the keys in a map are safe but the values may not be
-  case class SafeKeys[K, V](m: Map[K, V])(implicit val safeLoggable: Loggable[Map[Safe[K], V]])
-  implicit def SafeKeysLoggable[K, V](implicit loggableKeys: Loggable[K]): Loggable[SafeKeys[K, V]] =
-    new Loggable[SafeKeys[K, V]] {
-      def safe(m: SafeKeys[K, V]): String = m.safeLoggable.safe(m.m map { case (k, v) =>
-        (Safe(k), v)
-      })
-      def unsafe(m: SafeKeys[K, V], redactor: String => String): String = m.safeLoggable.unsafe(
-        m.m map { case (k, v) =>
-          (Safe(k), v)
-        },
-        redactor,
-      )
-    }
-
-  private[Log] trait SafeToStringLoggable[A] extends Loggable[A] {
-    def safe(a: A) = a.toString
-  }
-  // Helper function for generating a "Loggable" for primitive types
-  // that encoding them is as simple as calling .toString
-  def toStringLoggable[A]: SafeToStringLoggable[A] = (a: A, redactor: String => String) => redactor(a.toString)
-
-  implicit val LogString: Loggable[String] = toStringLoggable[String]
+  import com.thatdot.common.logging.Log._
 
   trait LowPriorityImplicits {
     implicit def loggableOption[A](implicit loggable: Loggable[A]): Loggable[Option[A]] = new Loggable[Option[A]] {
@@ -223,61 +70,23 @@ object Log {
     implicit def loggableMap[K, V, MapT[X, Y] <: scala.collection.Map[X, Y]](implicit
       loggableKey: Loggable[K],
       loggableVal: Loggable[V],
-    ): Loggable[MapT[K, V]] =
-      new Loggable[MapT[K, V]] {
-        override def safe(a: MapT[K, V]): String = a.map { case (k, v) =>
-          (loggableKey.safe(k), loggableVal.safe(v))
-        }.toString
+    ): Loggable[MapT[K, V]] = CollectionLoggableImplicits.loggableMap
 
-        override def unsafe(a: MapT[K, V], redactor: String => String): String = a.map { case (k, v) =>
-          (loggableKey.unsafe(k, redactor), loggableVal.unsafe(v, redactor))
-        }.toString
-      }
     implicit def loggableIterable[A, ItT[X] <: scala.collection.Iterable[X]](implicit
       loggableElems: Loggable[A],
-    ): Loggable[ItT[A]] =
-      new Loggable[ItT[A]] {
-        override def safe(l: ItT[A]): String = "[" + l
-          .map { case e =>
-            loggableElems.safe(e)
-          }
-          .mkString(", ") + "]"
-        override def unsafe(l: ItT[A], redactor: String => String): String = "[" + l
-          .map { case e =>
-            loggableElems.unsafe(e, redactor)
-          }
-          .mkString(",") + "]"
-      }
+    ): Loggable[ItT[A]] = CollectionLoggableImplicits.loggableIterable
+
     implicit def loggableSet[A, SetT[X] <: scala.collection.Set[X]](implicit
       loggableElems: Loggable[A],
-    ): Loggable[SetT[A]] =
-      new Loggable[SetT[A]] {
-        override def safe(l: SetT[A]): String = "{" + l
-          .map { case e =>
-            loggableElems.safe(e)
-          }
-          .mkString(", ") + "}"
-        override def unsafe(l: SetT[A], redactor: String => String): String = "{" + l
-          .map { case e =>
-            loggableElems.unsafe(e, redactor)
-          }
-          .mkString(",") + "}"
-      }
+    ): Loggable[SetT[A]] = CollectionLoggableImplicits.loggableSet
+
     implicit def loggableNonEmptyList[A](implicit loggableElems: Loggable[A]): Loggable[NonEmptyList[A]] =
-      new Loggable[NonEmptyList[A]] {
-        override def safe(l: NonEmptyList[A]): String = loggableIterable(loggableElems).safe(l.toList)
-        override def unsafe(l: NonEmptyList[A], redactor: String => String): String =
-          loggableIterable(loggableElems).unsafe(l.toList, redactor)
-      }
+      CollectionLoggableImplicits.loggableNonEmptyList
+
     implicit def loggableConcurrentLinkedDeque[A](implicit
       loggableElems: Loggable[A],
     ): Loggable[java.util.concurrent.ConcurrentLinkedDeque[A]] =
-      new Loggable[java.util.concurrent.ConcurrentLinkedDeque[A]] {
-        override def safe(l: java.util.concurrent.ConcurrentLinkedDeque[A]): String =
-          loggableIterable(loggableElems).safe(l.iterator.asScala.to(Iterable))
-        override def unsafe(l: java.util.concurrent.ConcurrentLinkedDeque[A], redactor: String => String): String =
-          loggableIterable(loggableElems).unsafe(l.iterator.asScala.to(Iterable), redactor)
-      }
+      CollectionLoggableImplicits.loggableConcurrentLinkedDeque
   }
 
   // Special case for compositional Loggables: If all their components are AlwaysSafe, we can make an AlwaysSafe
@@ -286,26 +95,23 @@ object Log {
     implicit def alwaysSafeMap[K, V, MapT[X, Y] <: scala.collection.Map[X, Y]](implicit
       loggableKey: AlwaysSafeLoggable[K],
       loggableVal: AlwaysSafeLoggable[V],
-    ): AlwaysSafeLoggable[MapT[K, V]] =
-      _.map { case (k, v) =>
-        (loggableKey.safe(k), loggableVal.safe(v))
-      }.toString
+    ): AlwaysSafeLoggable[MapT[K, V]] = AlwaysSafeCollectionImplicits.alwaysSafeMap
+
     implicit def alwaysSafeIterable[A, ItT[X] <: scala.collection.Iterable[X]](implicit
       loggableElems: AlwaysSafeLoggable[A],
-    ): AlwaysSafeLoggable[ItT[A]] =
-      _.map(loggableElems.safe).mkString("[", ", ", "]")
+    ): AlwaysSafeLoggable[ItT[A]] = AlwaysSafeCollectionImplicits.alwaysSafeIterable
+
     implicit def alwaysSafeSet[A, SetT[X] <: scala.collection.Set[X]](implicit
       loggableElems: AlwaysSafeLoggable[A],
-    ): AlwaysSafeLoggable[SetT[A]] =
-      _.map(loggableElems.safe).mkString("{", ", ", "}")
+    ): AlwaysSafeLoggable[SetT[A]] = AlwaysSafeCollectionImplicits.alwaysSafeSet
+
     implicit def alwaysSafeNonEmptyList[A](implicit
       loggableElems: AlwaysSafeLoggable[A],
-    ): AlwaysSafeLoggable[NonEmptyList[A]] = nel => alwaysSafeIterable(loggableElems).safe(nel.toList)
+    ): AlwaysSafeLoggable[NonEmptyList[A]] = AlwaysSafeCollectionImplicits.alwaysSafeNonEmptyList
     implicit def alwaysSafeConcurrentLinkedDeque[A](implicit
       loggableElems: AlwaysSafeLoggable[A],
     ): AlwaysSafeLoggable[java.util.concurrent.ConcurrentLinkedDeque[A]] =
-      (l: java.util.concurrent.ConcurrentLinkedDeque[A]) =>
-        alwaysSafeIterable(loggableElems).safe(l.iterator.asScala.to(Iterable))
+      AlwaysSafeCollectionImplicits.alwaysSafeConcurrentLinkedDeque
   }
   // All of the implicit instances of Loggable for primitives and Quine Values.
   // This is put inside of another object so you aren't given all of the implicits every time you import Loggable._
@@ -478,6 +284,8 @@ object Log {
     implicit val LogBoolean: Loggable[Boolean] = toStringLoggable[Boolean]
     implicit val LogLong: Loggable[Long] = toStringLoggable[Long]
     implicit val LogConfigOrigin: Loggable[ConfigOrigin] = toStringLoggable[ConfigOrigin]
+    implicit def SafeLoggable[A]: AlwaysSafeLoggable[Safe[A]] = com.thatdot.common.logging.Log.SafeLoggable
+
     implicit def logStandingQueryResult(implicit qidLoggable: Loggable[QuineId]): Loggable[StandingQueryResult] =
       Loggable { (result, redactor) =>
         val sanitizedData: Map[Safe[String], Safe[String]] = result.data.view
@@ -615,182 +423,5 @@ object Log {
 
     implicit def logJson[Json <: io.circe.Json]: Loggable[Json] = toStringLoggable[Json]
     implicit def LogSource[A, B]: AlwaysSafeLoggable[Source[A, B]] = _.toString
-  }
-
-  object Loggable {
-    // Helper function for creating a `Loggable`
-    // Since the `safe` function is often just the same as the `unsafe` function but without
-    //  obfuscation of potentially unsafe value, you can just supply the `unsafe` function
-    //  and have this function derive the `safe` function
-    def apply[A](f: (A, String => String) => String): Loggable[A] = new Loggable[A] {
-      def safe(a: A) = f(a, identity)
-      def unsafe(a: A, redactor: (String => String)) = f(a, redactor)
-    }
-    def alwaysSafe[A](f: A => String): AlwaysSafeLoggable[A] = new AlwaysSafeLoggable[A] {
-      def safe(a: A) = f(a)
-    }
-  }
-
-  // The method for actually Redacting potential PII
-  // Currently the only option for this is RedactHide, which replaces the PII with "**REDACTED**"
-  sealed trait RedactMethod {
-    def redactor(s: String): String
-  }
-  case object RedactHide extends RedactMethod {
-    override def redactor(s: String): String = "**REDACTED**"
-  }
-
-  case class LogConfig(
-    showUnsafe: Boolean = false,
-    showExceptions: Boolean = false,
-    redactor: RedactMethod = RedactHide,
-  )
-  object LogConfig {
-
-    /** The most permissive log config. Useful for testing environments or when you want the best visibility
-      */
-    val permissive: LogConfig = LogConfig(showUnsafe = true, showExceptions = true, redactor = RedactHide)
-
-    /** The strictest log config. Useful for production environments where the system operator is not necessarily
-      * the data owner
-      */
-    val strict: LogConfig = LogConfig(showUnsafe = false, showExceptions = false, redactor = RedactHide)
-  }
-
-  // Unifies scalalogging loggers with pekko LoggingAdapters
-  class SafeLogger(
-    private val logger: Either[
-      scalalogging.Logger,
-      org.apache.pekko.event.LoggingAdapter,
-    ],
-  ) {
-
-    def whenDebugEnabled(body: => Unit): Unit = logger match {
-      case Left(logger) => logger.whenDebugEnabled(body)
-      case Right(logger) => if (logger.isDebugEnabled) body
-    }
-    def whenWarnEnabled(body: => Unit): Unit = logger match {
-      case Left(logger) => logger.whenWarnEnabled(body)
-      case Right(logger) => if (logger.isWarningEnabled) body
-    }
-    def whenInfoEnabled(body: => Unit): Unit = logger match {
-      case Left(logger) => logger.whenInfoEnabled(body)
-      case Right(logger) => if (logger.isInfoEnabled) body
-    }
-    def whenErrorEnabled(body: => Unit): Unit = logger match {
-      case Left(logger) => logger.whenErrorEnabled(body)
-      case Right(logger) => if (logger.isErrorEnabled) body
-    }
-    def whenTraceEnabled(body: => Unit): Unit = logger match {
-      case Left(logger) => logger.whenTraceEnabled(body)
-      case Right(_) => ()
-    }
-
-    private def warn(s: String): Unit = logger match {
-      case Left(logger) => logger.warn(s)
-      case Right(logger) => logger.warning(s)
-    }
-    private def info[A](s: String): Unit = logger match {
-      case Left(logger) => logger.info(s)
-      case Right(logger) => logger.info(s)
-    }
-    private def error[A](s: String): Unit = logger match {
-      case Left(logger) => logger.error(s)
-      case Right(logger) => logger.error(s)
-    }
-    private def debug[A](s: String): Unit = logger match {
-      case Left(logger) => logger.debug(s)
-      case Right(logger) => logger.debug(s)
-    }
-    private def trace[A](s: String): Unit = logger match {
-      case Left(logger) => logger.trace(s)
-      case Right(_) => () // Pekko logging does not have trace, so we must do nothing here
-    }
-
-    def warn[A](s: => OnlySafeStringInterpolator): Unit = whenWarnEnabled(warn(s.interpolateSafe()))
-    def info[A](s: => OnlySafeStringInterpolator): Unit = whenInfoEnabled(info(s.interpolateSafe()))
-    def error[A](s: => OnlySafeStringInterpolator): Unit = whenErrorEnabled(error(s.interpolateSafe()))
-    def debug[A](s: => OnlySafeStringInterpolator): Unit = whenDebugEnabled(debug(s.interpolateSafe()))
-    def trace[A](s: => OnlySafeStringInterpolator): Unit = whenTraceEnabled(trace(s.interpolateSafe()))
-
-    private def warn(s: String, throws: Throwable): Unit = logger match {
-      case Left(logger) => logger.warn(s, throws)
-      case Right(logger) => logger.warning(s)
-    }
-    private def info[A](s: String, throws: Throwable): Unit = logger match {
-      case Left(logger) => logger.info(s, throws)
-      case Right(logger) => logger.info(s)
-    }
-    private def error[A](s: String, throws: Throwable): Unit = logger match {
-      case Left(logger) => logger.error(s, throws)
-      case Right(logger) => logger.error(s)
-    }
-    private def debug[A](s: String, throws: Throwable): Unit = logger match {
-      case Left(logger) => logger.debug(s, throws)
-      case Right(logger) => logger.debug(s)
-    }
-    private def trace[A](s: String, throws: Throwable): Unit = logger match {
-      case Left(logger) => logger.trace(s, throws)
-      case Right(_) => ()
-    }
-
-    def warn[A](si: => SafeInterpolator)(implicit config: LogConfig): Unit = whenWarnEnabled {
-      val msg = if (config.showUnsafe) si.interpolateSafe() else si.interpolateUnsafe(config.redactor.redactor)
-      (config.showExceptions, si.exception) match {
-        case (true, Some(e)) => warn(msg, e)
-        case _ => warn(msg)
-      }
-    }
-    def info[A](si: => SafeInterpolator)(implicit config: LogConfig): Unit = whenInfoEnabled {
-      val msg = if (config.showUnsafe) si.interpolateSafe() else si.interpolateUnsafe(config.redactor.redactor)
-      (config.showExceptions, si.exception) match {
-        case (true, Some(e)) => info(msg, e)
-        case _ => info(msg)
-      }
-    }
-    def error[A](si: => SafeInterpolator)(implicit config: LogConfig): Unit = whenErrorEnabled {
-      val msg = if (config.showUnsafe) si.interpolateSafe() else si.interpolateUnsafe(config.redactor.redactor)
-      (config.showExceptions, si.exception) match {
-        case (true, Some(e)) => error(msg, e)
-        case _ => error(msg)
-      }
-    }
-    def debug[A](si: => SafeInterpolator)(implicit config: LogConfig): Unit = whenDebugEnabled {
-      val msg = if (config.showUnsafe) si.interpolateSafe() else si.interpolateUnsafe(config.redactor.redactor)
-      (config.showExceptions, si.exception) match {
-        case (true, Some(e)) => debug(msg, e)
-        case _ => debug(msg)
-      }
-    }
-    def trace[A](si: => SafeInterpolator)(implicit config: LogConfig): Unit = whenTraceEnabled {
-      val msg = if (config.showUnsafe) si.interpolateSafe() else si.interpolateUnsafe(config.redactor.redactor)
-      (config.showExceptions, si.exception) match {
-        case (true, Some(e)) => trace(msg, e)
-        case _ => trace(msg)
-      }
-    }
-  }
-
-  // Constructor for creating a SafeLogger outside of this file
-  object SafeLogger {
-    def apply(name: String) = new SafeLogger(Left(scalalogging.Logger(name)))
-  }
-
-  // Works Like scalalogging LazyLogging, but LazyLogging creates a scalalogging.Logger while LazySafeLogging wraps it in a SafeLogger
-  trait LazySafeLogging {
-    @transient
-    protected lazy val logger: SafeLogger = new SafeLogger(
-      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName))),
-    )
-  }
-  // Works Like scalalogging StrictLogging, but StrictLogging creates a scalalogging.Logger while StrictSafeLogging wraps it in a SafeLogger
-  trait StrictSafeLogging {
-    protected val logger: SafeLogger = new SafeLogger(
-      Left(scalalogging.Logger(slf4j.LoggerFactory.getLogger(getClass.getName))),
-    )
-  }
-  // Works Like Pekko ActorLogging, but Pekko ActorLogging creates a pekko logger while ActorSafeLogging wraps it in a SafeLogger
-  trait ActorSafeLogging { this: org.apache.pekko.actor.Actor =>
-    protected lazy val log: SafeLogger = new SafeLogger(Right(org.apache.pekko.event.Logging(context.system, this)))
   }
 }

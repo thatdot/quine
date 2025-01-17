@@ -6,6 +6,8 @@ import scala.collection.immutable.ArraySeq
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
+import com.thatdot.common.logging.Log.LazySafeLogging
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.Labels
@@ -14,7 +16,6 @@ import com.thatdot.quine.persistence
 import com.thatdot.quine.persistence.{LabelsConstraintContains, MultipleValuesLabelsStandingQuery}
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}
 import com.thatdot.quine.persistor.{BinaryFormat, PersistenceAgent}
-import com.thatdot.quine.util.Log._
 
 /** The deserialization failed because a union (eg, a coproduct or enum) was tagged with an unknown type.
   *

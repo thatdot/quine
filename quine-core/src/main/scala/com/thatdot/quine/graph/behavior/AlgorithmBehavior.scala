@@ -5,12 +5,12 @@ import scala.util.{Failure, Success}
 
 import org.apache.pekko.stream.scaladsl.Sink
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Expr, Location, RunningCypherQuery}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, QuineIdOps, QuineRefOps}
 import com.thatdot.quine.graph.{BaseNodeActor, cypher}
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.MonadHelpers._
 

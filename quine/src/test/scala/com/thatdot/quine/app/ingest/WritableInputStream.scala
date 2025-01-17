@@ -9,9 +9,9 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.{GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
-import com.thatdot.quine.util.Log._
 
 /** An input stream that can be written to for testing input-stream based  ingest types. */
 class WritableInputStream() extends AutoCloseable {

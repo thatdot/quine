@@ -12,11 +12,10 @@ import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.config.SaslConfigs.SASL_JAAS_CONFIG
 import org.apache.kafka.common.config.{AbstractConfig, ConfigDef, ConfigValue}
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.routes.KafkaIngest.KafkaProperties
 import com.thatdot.quine.routes.KafkaOffsetCommitting
-import com.thatdot.quine.util.Log._
-
 object KafkaSettingsValidator extends LazySafeLogging {
   type ErrorString = String
 

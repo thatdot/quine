@@ -2,8 +2,8 @@ package com.thatdot.quine.graph
 
 import cats.Order
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, SafeLogger}
 import com.thatdot.quine.model.Milliseconds
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Timestamp for providing a strict total ordering on events observed along one clock. See

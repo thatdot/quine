@@ -18,8 +18,9 @@ import org.msgpack.core.MessagePack.Code.EXT_TIMESTAMP
 import org.msgpack.core.{ExtensionTypeHeader, MessageFormat, MessagePack, MessagePacker, MessageUnpacker}
 import org.msgpack.value.ValueType
 
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 
 /** Values that are recognized by the Quine interpreter. When talking about Quine
   * as a graph interpreter, these are a part of the "values" handled by this

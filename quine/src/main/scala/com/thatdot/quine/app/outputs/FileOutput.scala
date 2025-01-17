@@ -6,10 +6,10 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{FileIO, Flow}
 import org.apache.pekko.util.ByteString
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToFile
-import com.thatdot.quine.util.Log._
 
 class FileOutput(val config: WriteToFile)(implicit private val logConfig: LogConfig) extends OutputRuntime {
 

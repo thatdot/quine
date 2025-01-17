@@ -1,8 +1,8 @@
 package com.thatdot.quine.persistor
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 
 /** Persistence agent that multiplexes nodes across a pre-determined number of underlying
   * persistence agents.

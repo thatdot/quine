@@ -6,9 +6,10 @@ import scala.util.parsing.input.{Position, Positional}
 
 import org.apache.commons.text.StringEscapeUtils
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{BaseGraph, cypher, idFrom}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.MonadHelpers._
 
 /** A Gremlin vertex object. This is what gets returned from a query like `g.V().has("foo")`.

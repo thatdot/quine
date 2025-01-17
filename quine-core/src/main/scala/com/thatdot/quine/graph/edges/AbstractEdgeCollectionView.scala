@@ -8,7 +8,8 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Source, StreamConverters}
 
-import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{DomainEdge, EdgeDirection, GenericEdge, HalfEdge}
 
 trait AbstractEdgeCollectionView {
 

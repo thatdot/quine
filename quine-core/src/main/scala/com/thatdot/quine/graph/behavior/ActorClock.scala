@@ -3,10 +3,10 @@ package com.thatdot.quine.graph.behavior
 import scala.concurrent.Promise
 import scala.concurrent.duration.DurationLong
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty._
 import com.thatdot.quine.graph.{BaseNodeActorView, EventTime}
 import com.thatdot.quine.model.Milliseconds
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Mix this in last to build in a monotonic [[EventTime]] clock to the actor.

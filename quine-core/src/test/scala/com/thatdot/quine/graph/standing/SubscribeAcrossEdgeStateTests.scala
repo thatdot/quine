@@ -5,11 +5,12 @@ import java.util.UUID
 import org.scalatest.OptionValues
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.StandingQueryId
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 class SubscribeAcrossEdgeStateTests extends AnyFunSuite with OptionValues {
 

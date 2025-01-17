@@ -13,10 +13,10 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.bolt.Protocol
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphService, QuineIdLongProvider}
 import com.thatdot.quine.persistor.{EventEffectOrder, InMemoryPersistor}
-import com.thatdot.quine.util.ByteConversions
 import com.thatdot.quine.util.TestLogging._
 
 class Bolt extends AnyFunSuite with Matchers with BeforeAndAfterAll {

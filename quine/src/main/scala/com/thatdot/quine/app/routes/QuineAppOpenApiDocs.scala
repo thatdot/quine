@@ -6,13 +6,13 @@ import org.apache.pekko.http.scaladsl.server.Route
 
 import endpoints4s.openapi.model._
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.BuildInfo
 import com.thatdot.quine.app.config.QuineConfig
 import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.BaseGraph
 import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 
 /** The OpenAPI docs for our API
   *

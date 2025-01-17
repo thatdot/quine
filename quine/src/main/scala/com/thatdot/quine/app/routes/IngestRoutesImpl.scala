@@ -9,11 +9,11 @@ import org.apache.pekko.http.scaladsl.server.Route
 import org.apache.pekko.stream.Materializer
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.exceptions.NamespaceNotFoundException
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** The Pekko HTTP implementation of [[IngestRoutes]] */

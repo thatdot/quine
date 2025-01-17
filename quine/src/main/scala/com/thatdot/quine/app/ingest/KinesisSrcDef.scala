@@ -22,13 +22,13 @@ import software.amazon.awssdk.retries.StandardRetryStrategy
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamRequest
 import software.amazon.awssdk.services.kinesis.{KinesisAsyncClient, model => kinesisModel}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ingest.serialization.{ContentDecoder, ImportFormat}
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
 import com.thatdot.quine.graph.MasterStream.IngestSrcExecToken
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId}
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion, KinesisIngest}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.SwitchMode
 
 /** The definition of a source stream from Amazon Kinesis

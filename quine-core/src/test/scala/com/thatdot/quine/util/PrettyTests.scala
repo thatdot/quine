@@ -7,9 +7,10 @@ import scala.collection.immutable.ArraySeq
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 class PrettyTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
   "tabString" should "generate empty string for negative/zero input" in {

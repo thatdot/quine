@@ -5,6 +5,7 @@ import scala.concurrent.Future
 import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.{EndpointInput, query}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.{
   V2AdministrationEndpoints,
@@ -14,7 +15,6 @@ import com.thatdot.quine.app.v2api.endpoints.{
   V2IngestEndpoints,
   V2StandingEndpoints,
 }
-import com.thatdot.quine.util.Log._
 
 /** Gathering of Quine OSS tapir-defined routes.
   */

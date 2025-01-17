@@ -7,6 +7,7 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import cats.data.NonEmptyList
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -18,8 +19,8 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   StandingQueryInfo,
 }
+import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{DomainGraphNode, QuineId}
 
 /** Persistence agent that multiplexes nodes across multiple underlying persistence agents
   *

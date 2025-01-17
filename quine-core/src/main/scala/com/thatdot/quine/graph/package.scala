@@ -6,11 +6,11 @@ import java.{util => ju}
 
 import scala.concurrent.{ExecutionContext, Future, blocking}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.{
   EdgeDirection,
   NodeLocalComparisonFunctions,
   PropertyComparisonFunctions,
-  QuineId,
   QuineIdProvider,
 }
 

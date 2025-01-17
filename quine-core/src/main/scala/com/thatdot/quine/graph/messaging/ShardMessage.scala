@@ -5,8 +5,9 @@ import scala.concurrent.Future
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.Source
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{InMemoryNodeLimit, NamespaceId}
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.Milliseconds
 
 /** Top-level type of all shard-related messages relayed through the graph
   *

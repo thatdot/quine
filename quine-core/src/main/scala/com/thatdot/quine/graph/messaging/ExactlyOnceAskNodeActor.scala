@@ -8,10 +8,10 @@ import org.apache.pekko.actor.{Actor, ActorRef, Cancellable, Timers}
 
 import com.codahale.metrics.Timer
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.Expires
 import com.thatdot.quine.graph.metrics.HostQuineMetrics.RelayAskMetric
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits.LogActorRef
 
 /** Temporary actor facilitating asks to nodes with exactly-once delivery across the Quine graph

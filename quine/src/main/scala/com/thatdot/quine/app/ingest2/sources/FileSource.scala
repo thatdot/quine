@@ -12,6 +12,7 @@ import cats.data.ValidatedNel
 import cats.implicits.catsSyntaxValidatedId
 import com.typesafe.scalalogging.LazyLogging
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.ShutdownSwitch
 import com.thatdot.quine.app.ingest.NamedPipeSource
 import com.thatdot.quine.app.ingest.serialization.ContentDecoder
@@ -21,7 +22,6 @@ import com.thatdot.quine.app.ingest2.source._
 import com.thatdot.quine.app.routes.IngestMeter
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.util.BaseError
-import com.thatdot.quine.util.Log.LogConfig
 
 /** Build a framed source from a file-like stream of ByteStrings. In practice this
   * means a finite, non-streaming source: File sources, S3 file sources, and std ingest.

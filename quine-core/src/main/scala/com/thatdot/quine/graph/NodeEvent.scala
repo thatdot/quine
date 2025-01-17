@@ -1,7 +1,8 @@
 package com.thatdot.quine.graph
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 
 sealed trait NodeEvent
 

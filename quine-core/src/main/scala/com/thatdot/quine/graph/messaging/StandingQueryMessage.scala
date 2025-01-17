@@ -1,5 +1,8 @@
 package com.thatdot.quine.graph.messaging
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{
   MultipleValuesStandingQueryPartId,
@@ -10,9 +13,7 @@ import com.thatdot.quine.graph.{
   cypher,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.MonadHelpers._
 
 /** Top-level type of all SQ-related messages relayed through the graph

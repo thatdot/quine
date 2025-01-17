@@ -12,6 +12,7 @@ import software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 import software.amazon.awssdk.services.kinesis.model.PutRecordsRequestEntry
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.quine.app.StandingQueryResultOutput.serialized
 import com.thatdot.quine.app.ingest.util.AwsOps
 import com.thatdot.quine.app.ingest.util.AwsOps.AwsBuilderOps
@@ -19,8 +20,6 @@ import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.WriteToKinesis
-import com.thatdot.quine.util.Log.{LazySafeLogging, LogConfig}
-
 class KinesisOutput(val config: WriteToKinesis)(implicit
   private val logConfig: LogConfig,
   private val protobufSchemaCache: ProtobufSchemaCache,

@@ -4,7 +4,8 @@ import java.nio.ByteBuffer
 
 import org.scalacheck.Gen
 
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 trait HalfEdgeGen {
   val edgeTypes: List[Symbol] =

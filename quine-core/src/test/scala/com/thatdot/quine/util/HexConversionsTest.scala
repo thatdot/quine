@@ -4,6 +4,8 @@ import org.scalacheck.Gen
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.scalacheck.ScalaCheckDrivenPropertyChecks
 
+import com.thatdot.common.util.ByteConversions
+
 class ByteConversionsTests extends AnyFlatSpec with ScalaCheckDrivenPropertyChecks {
 
   // Array[Byte] => String => Array[Byte]

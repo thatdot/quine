@@ -6,11 +6,11 @@ import scala.collection.mutable
 
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
 import com.thatdot.quine.graph.{ByteBufferOps, MultipleValuesStandingQueryPartId, StandingQueryId, cypher}
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset}
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}

@@ -7,9 +7,10 @@ import org.apache.pekko.util.Timeout
 
 import cats.implicits._
 
+import com.thatdot.common.logging.Log.LogConfig
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{LiteralOpsGraph, NamespaceId}
-import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 
 /** Cypher user defined procedures (UDP) must extend this class
   *

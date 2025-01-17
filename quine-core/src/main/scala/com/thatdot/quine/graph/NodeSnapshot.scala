@@ -2,10 +2,11 @@ package com.thatdot.quine.graph
 
 import scala.collection.mutable.{Map => MutableMap}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior
 import com.thatdot.quine.graph.behavior.DomainNodeIndexBehavior.SubscribersToThisNodeUtil
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 import com.thatdot.quine.persistor.codecs.{AbstractSnapshotCodec, UnsupportedExtension}
 
 abstract class AbstractNodeSnapshot {

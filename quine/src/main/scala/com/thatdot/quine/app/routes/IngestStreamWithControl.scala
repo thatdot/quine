@@ -14,9 +14,9 @@ import org.apache.pekko.{Done, NotUsed, pattern}
 import com.codahale.metrics.Metered
 import io.circe.Json
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Loggable, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.QuineIngestSource
 import com.thatdot.quine.routes.{IngestStreamStats, IngestStreamStatus, RatesSummary}
-import com.thatdot.quine.util.Log.{LogConfig, _}
 import com.thatdot.quine.util.{SwitchMode, ValveSwitch}
 
 /** Adds to the ingest stream configuration extra information that will be

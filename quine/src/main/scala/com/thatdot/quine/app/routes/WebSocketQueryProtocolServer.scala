@@ -17,6 +17,7 @@ import cats.syntax.either._
 import io.circe
 import io.circe.{Decoder, Encoder}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.CypherException
 import com.thatdot.quine.graph.{GraphNotReadyException, defaultNamespaceId}
 import com.thatdot.quine.gremlin.QuineGremlinException
@@ -30,7 +31,6 @@ import com.thatdot.quine.routes.{
   UiEdge,
   UiNode,
 }
-import com.thatdot.quine.util.Log._
 
 /** Information about the queries that are running under a websocket connection
   *

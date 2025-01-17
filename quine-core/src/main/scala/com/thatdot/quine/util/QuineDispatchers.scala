@@ -5,7 +5,7 @@ import scala.concurrent.ExecutionContext
 import org.apache.pekko.actor.ActorSystem
 import org.apache.pekko.dispatch.MessageDispatcher
 
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.util.QuineDispatchers._
 
 abstract class ComputeAndBlockingExecutionContext {

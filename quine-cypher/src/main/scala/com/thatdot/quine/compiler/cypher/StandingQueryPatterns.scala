@@ -12,12 +12,13 @@ import org.opencypher.v9_0.util.AnonymousVariableNameGenerator
 import org.opencypher.v9_0.util.helpers.NameDeduplicator
 import org.opencypher.v9_0.{ast, expressions}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.compiler.cypher.QueryPart.IdFunc
 import com.thatdot.quine.graph.GraphQueryPattern
 import com.thatdot.quine.graph.cypher.Expr.toQuineValue
 import com.thatdot.quine.graph.cypher.{CypherException, Expr, Query, SourceText, UserDefinedFunction}
-import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.MonadHelpers._
 
 object StandingQueryPatterns extends LazySafeLogging {

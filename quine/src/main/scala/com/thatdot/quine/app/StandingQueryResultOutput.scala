@@ -12,6 +12,7 @@ import org.apache.pekko.stream.{KillSwitches, UniqueKillSwitch}
 import cats.syntax.either._
 import io.circe.Json
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.outputs.{
   ConsoleLoggingOutput,
   CypherQueryOutput,
@@ -35,10 +36,8 @@ import com.thatdot.quine.graph.{
 }
 import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.routes.{OutputFormat, StandingQueryResultOutputUserDef}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.StringInput.filenameOrUrl
-
 object StandingQueryResultOutput extends LazySafeLogging {
 
   import StandingQueryResultOutputUserDef._

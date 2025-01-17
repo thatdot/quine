@@ -6,6 +6,7 @@ import java.util.regex.Pattern
 import cats.data.NonEmptyList
 import com.google.flatbuffers.{FlatBufferBuilder, Table}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.{
   GraphQueryPattern,
@@ -15,7 +16,6 @@ import com.thatdot.quine.graph.{
   StandingQueryPattern,
   cypher,
 }
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistence
 import com.thatdot.quine.persistence.ReturnColumnAllProperties
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.{NoOffset, Offset, TypeAndOffset, emptyTable}

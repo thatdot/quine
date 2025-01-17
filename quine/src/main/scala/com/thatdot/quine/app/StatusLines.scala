@@ -5,8 +5,7 @@ import java.io.PrintStream
 import scala.collection.mutable
 import scala.concurrent.blocking
 
-import com.thatdot.quine.util.Log._
-
+import com.thatdot.common.logging.Log.{LogConfig, SafeInterpolator, SafeLogger}
 class StatusLines(
   logger: SafeLogger,
   realtimeOutput: PrintStream,

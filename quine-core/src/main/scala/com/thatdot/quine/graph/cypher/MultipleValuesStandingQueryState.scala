@@ -3,14 +3,15 @@ package com.thatdot.quine.graph.cypher
 import scala.annotation.unused
 import scala.collection.{View, mutable}
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.EdgeEvent.{EdgeAdded, EdgeRemoved}
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.LabelsState.extractLabels
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
 import com.thatdot.quine.graph.{MultipleValuesStandingQueryPartId, NodeChangeEvent, PropertyEvent, WatchableEventType}
 import com.thatdot.quine.model
-import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineId, QuineIdProvider, QuineType, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.quine.model.{HalfEdge, Properties, PropertyValue, QuineIdProvider, QuineType, QuineValue}
 import com.thatdot.quine.util.Log.implicits._
 
 /** The stateful component of a standing query, holding on to the information necessary for:

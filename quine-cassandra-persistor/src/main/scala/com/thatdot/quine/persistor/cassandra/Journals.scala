@@ -15,8 +15,9 @@ import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{EventTime, NamespaceId, NodeChangeEvent, NodeEvent}
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.{
   CassandraCodecs,
   CassandraColumn,
@@ -25,9 +26,7 @@ import com.thatdot.quine.persistor.cassandra.support.{
   TableDefinition,
   syntax,
 }
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T2, T9}
-
 trait JournalColumnNames {
   import CassandraCodecs._
   final protected val quineIdColumn: CassandraColumn[QuineId] = CassandraColumn[QuineId]("quine_id")

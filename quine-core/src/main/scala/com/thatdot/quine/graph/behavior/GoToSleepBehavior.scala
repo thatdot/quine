@@ -12,6 +12,7 @@ import org.apache.pekko.actor.{ActorRef, Scheduler}
 import com.codahale.metrics.Timer
 import org.apache.pekko
 
+import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph._
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQueryState
 import com.thatdot.quine.graph.edges.EdgeProcessor
@@ -19,7 +20,6 @@ import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.persistor.codecs.MultipleValuesStandingQueryStateCodec
 import com.thatdot.quine.persistor.{NamespacedPersistenceAgent, PersistenceConfig}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 trait GoToSleepBehavior extends BaseNodeActorView with ActorClock {

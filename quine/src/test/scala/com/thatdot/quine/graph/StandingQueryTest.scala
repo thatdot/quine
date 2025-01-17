@@ -13,13 +13,13 @@ import org.scalatest.concurrent.Futures.interval
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app._
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryPattern.StandingQueryMode
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.CypherQuery
 import com.thatdot.quine.routes.{StandingQueryPattern => SqPattern, _}
-import com.thatdot.quine.util.Log._
 
 class StandingQueryTest extends AnyFunSuite with Matchers {
   val namespace: NamespaceId = defaultNamespaceId

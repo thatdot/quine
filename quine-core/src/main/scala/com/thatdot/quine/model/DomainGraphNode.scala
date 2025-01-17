@@ -1,10 +1,10 @@
 package com.thatdot.quine.model
-
 import scala.jdk.CollectionConverters._
 
 import com.google.common.hash.Hashing.{combineOrdered, combineUnordered}
 import com.google.common.hash.{HashCode, Hasher, Hashing}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 
 /** Persistent data model for [[DomainGraphBranch]].

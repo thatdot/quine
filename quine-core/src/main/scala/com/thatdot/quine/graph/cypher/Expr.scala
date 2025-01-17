@@ -17,11 +17,12 @@ import com.google.common.hash.{HashCode, Hashing, PrimitiveSink}
 import io.circe.{Json, JsonNumber, JsonObject}
 import org.apache.commons.text.StringEscapeUtils
 
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{QuineId, QuineIdProvider, QuineValue}
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty._
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.{ByteConversions, TypeclassInstances}
+import com.thatdot.quine.model.{QuineIdProvider, QuineValue}
 import com.thatdot.quine.util.MonadHelpers._
-import com.thatdot.quine.util.{ByteConversions, TypeclassInstances}
 
 /** Maps directly onto Cypher's expressions
   *

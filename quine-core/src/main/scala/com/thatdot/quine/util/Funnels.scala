@@ -7,10 +7,11 @@ import scala.jdk.CollectionConverters.IterableHasAsJava
 import com.google.common.hash.{Funnel, PrimitiveSink}
 import shapeless.Lazy
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.MultipleValuesStandingQueryPartId
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery.{Labels, LocalProperty}
 import com.thatdot.quine.graph.cypher.{Columns, Expr, MultipleValuesStandingQuery}
-import com.thatdot.quine.model.{EdgeDirection, HalfEdge, QuineId}
+import com.thatdot.quine.model.{EdgeDirection, HalfEdge}
 
 /** Guava Funnel instances. These are grouped into traits to allow for easy import of only the funnels related to
   * a specific domain. Each trait is accompanied by an object mixing in that trait, so funnels can be imported as

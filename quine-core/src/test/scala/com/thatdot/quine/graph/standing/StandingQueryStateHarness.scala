@@ -5,6 +5,7 @@ import scala.collection.mutable
 import org.scalactic.source.Position
 import org.scalatest.Assertions
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
 import com.thatdot.quine.graph.cypher.{
   MultipleValuesInitializationEffects,
@@ -21,7 +22,7 @@ import com.thatdot.quine.graph.{
   PropertyEvent,
   QuineIdLongProvider,
 }
-import com.thatdot.quine.model.{PropertyValue, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{PropertyValue, QuineIdProvider}
 import com.thatdot.quine.util.TestLogging._
 
 /** Mocked up handler of standing query effects - instead of actually doing anything with the

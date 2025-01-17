@@ -14,11 +14,11 @@ import com.datastax.oss.driver.api.core.metadata.schema.ClusteringOrder.ASC
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.timeWindowCompactionStrategy
 import com.datastax.oss.driver.api.querybuilder.select.Select
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.{DomainIndexEvent, EventTime, NamespaceId, NodeEvent}
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{T3, T9}
 
 trait DomainIndexEventColumnNames {

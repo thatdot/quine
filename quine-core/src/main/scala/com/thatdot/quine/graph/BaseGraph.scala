@@ -12,6 +12,8 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.stream.scaladsl.{Flow, Sink, Source}
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.{LogConfig, StrictSafeLogging}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.edges.SyncEdgeCollection
 import com.thatdot.quine.graph.messaging.LiteralMessage.GetNodeHashCode
 import com.thatdot.quine.graph.messaging.ShardMessage.RequestNodeSleep
@@ -26,9 +28,8 @@ import com.thatdot.quine.graph.messaging.{
   SpaceTimeQuineId,
 }
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
-import com.thatdot.quine.model.{Milliseconds, QuineId, QuineIdProvider}
+import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.persistor.{EmptyPersistor, EventEffectOrder, PrimePersistor, WrappedPersistenceAgent}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.{QuineDispatchers, SharedValve, ValveFlow}
 
 trait BaseGraph extends StrictSafeLogging {

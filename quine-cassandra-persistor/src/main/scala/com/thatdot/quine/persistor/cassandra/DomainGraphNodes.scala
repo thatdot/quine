@@ -10,12 +10,11 @@ import cats.syntax.apply._
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.model.DomainGraphNode
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.persistor.cassandra.support._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
-
 trait DomainGraphNodeColumnNames {
   import CassandraCodecs._
   final protected val domainGraphNodeIdColumn: CassandraColumn[DomainGraphNodeId] = CassandraColumn[Long]("dgn_id")

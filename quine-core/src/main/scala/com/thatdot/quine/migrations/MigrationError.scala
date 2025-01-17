@@ -1,6 +1,5 @@
 package com.thatdot.quine.migrations
-
-import com.thatdot.quine.util.Log.OnlySafeStringInterpolator
+import com.thatdot.common.logging.Log.OnlySafeStringInterpolator
 
 sealed trait MigrationError {
   def message: String

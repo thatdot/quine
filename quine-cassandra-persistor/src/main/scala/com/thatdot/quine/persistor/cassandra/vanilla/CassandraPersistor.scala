@@ -17,14 +17,13 @@ import com.datastax.oss.driver.api.core.{CqlSession, CqlSessionBuilder, InvalidK
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.createKeyspace
 import shapeless.syntax.std.tuple._
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.support.CassandraStatementSettings
 import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, NoOpChunker, SnapshotsTableDefinition}
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.CompletionException
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
-
 abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
   constructor: (
     PersistenceConfig,

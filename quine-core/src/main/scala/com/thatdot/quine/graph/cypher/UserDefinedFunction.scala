@@ -2,8 +2,8 @@ package com.thatdot.quine.graph.cypher
 
 import scala.jdk.CollectionConverters._
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.model.QuineIdProvider
-import com.thatdot.quine.util.Log._
 
 /** Cypher user defined functions (UDF) must extend this class
   *

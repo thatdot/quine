@@ -6,10 +6,10 @@ import org.apache.pekko.NotUsed
 import org.apache.pekko.actor.{Actor, ActorRef}
 import org.apache.pekko.stream.scaladsl.{BroadcastHub, Source}
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.Query.Return
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, SkipOptimizerKey}
 import com.thatdot.quine.model.Milliseconds
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Manages SKIP optimizations for a [family of] queries, eg (SKIP n LIMIT m, SKIP n+m LIMIT o, ...)

@@ -21,12 +21,12 @@ import org.slf4j.LoggerFactory
 import pureconfig.ConfigSource
 import pureconfig.error.ConfigReaderException
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, SafeLogger}
 import com.thatdot.quine.app.config.{PersistenceAgentType, PersistenceBuilder, QuineConfig, WebServerBindConfig}
 import com.thatdot.quine.app.migrations.QuineMigrations
 import com.thatdot.quine.app.routes.QuineAppRoutes
 import com.thatdot.quine.graph._
 import com.thatdot.quine.migrations.{MigrationError, MigrationVersion}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 object Main extends App with LazySafeLogging {

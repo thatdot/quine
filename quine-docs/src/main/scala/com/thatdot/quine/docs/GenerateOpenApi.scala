@@ -5,10 +5,10 @@ import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 
 import endpoints4s.openapi.model.OpenApi
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.routes.QuineAppOpenApiDocs
 import com.thatdot.quine.app.util.OpenApiRenderer
 import com.thatdot.quine.graph.QuineUUIDProvider
-import com.thatdot.quine.util.Log._
 
 object GenerateOpenApi extends App {
   val logConfig: LogConfig = LogConfig()

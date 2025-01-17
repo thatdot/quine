@@ -11,9 +11,8 @@ import software.amazon.awssdk.auth.credentials.{
 import software.amazon.awssdk.awscore.client.builder.AwsClientBuilder
 import software.amazon.awssdk.regions.Region
 
+import com.thatdot.common.logging.Log._
 import com.thatdot.quine.routes.{AwsCredentials, AwsRegion}
-import com.thatdot.quine.util.Log._
-
 case object AwsOps extends LazySafeLogging {
   // the maximum number of simultaneous API requests any individual AWS client should make
   // invariant: all AWS clients using HTTP will set this as a maximum concurrency value

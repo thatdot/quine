@@ -14,12 +14,12 @@ import io.rsocket.{Payload, SocketAcceptor}
 import org.reactivestreams.{Publisher, Subscriber, Subscription}
 import reactor.core.publisher.Flux
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig}
 import com.thatdot.quine.app.serialization.ProtobufSchemaCache
 import com.thatdot.quine.graph.{CypherOpsGraph, MasterStream, NamespaceId, StandingQueryResult}
 import com.thatdot.quine.model.QuineValue
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef
 import com.thatdot.quine.routes.StandingQueryResultOutputUserDef.ReactiveStream
-import com.thatdot.quine.util.Log.{LazySafeLogging, LogConfig}
 
 object ReactiveStreamOutput {
   def makeServer(address: String, port: Int): Sink[ByteBuffer, CloseableChannel] = {

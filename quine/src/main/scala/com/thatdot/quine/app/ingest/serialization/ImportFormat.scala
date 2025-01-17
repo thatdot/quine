@@ -12,6 +12,7 @@ import com.codahale.metrics.Timer
 import com.typesafe.config.ConfigFactory
 import io.circe.jawn.CirceSupportParser
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
@@ -24,7 +25,6 @@ import com.thatdot.quine.graph.{
   StandingQueryId,
   cypher,
 }
-import com.thatdot.quine.util.Log._
 
 /** Describes formats that Quine can import
   * Deserialized type refers to the (nullable) type to be produced by invocations of this [[ImportFormat]]

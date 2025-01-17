@@ -16,12 +16,11 @@ import org.apache.pekko.util.ByteString
 
 import jnr.posix.POSIXFactory
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.routes.FileIngestMode
 import com.thatdot.quine.routes.FileIngestMode.NamedPipe
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.QuineDispatchers
-
 object NamedPipeSource extends LazySafeLogging {
   def fromPath(
     path: Path,

@@ -4,11 +4,11 @@ import java.util.UUID
 
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.StandingQueryId
 import com.thatdot.quine.graph.cypher.Expr.Variable
 import com.thatdot.quine.graph.cypher.{Expr, MultipleValuesStandingQuery, QueryContext}
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.NewMultipleValuesStateResult
-import com.thatdot.quine.model.QuineId
 
 class FilterMapStateTests extends AnyFunSuite {
   val qid1: QuineId = QuineId(Array(1.toByte))

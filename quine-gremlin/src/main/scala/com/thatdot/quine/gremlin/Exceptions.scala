@@ -2,7 +2,7 @@ package com.thatdot.quine.gremlin
 
 import scala.util.parsing.input.Position
 
-import com.thatdot.quine.util.ByteConversions
+import com.thatdot.common.util.ByteConversions
 
 /** The sort of exceptions that can be thrown when interpreting Gremlin queries.
   *

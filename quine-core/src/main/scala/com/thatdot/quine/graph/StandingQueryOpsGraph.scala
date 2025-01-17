@@ -17,13 +17,13 @@ import org.apache.pekko.{Done, NotUsed}
 import cats.implicits._
 import com.github.blemale.scaffeine.{LoadingCache, Scaffeine}
 
+import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.StandingQueryOpsGraph.StandingQueryPartNotFoundException
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Functionality for namespaced standing queries. */

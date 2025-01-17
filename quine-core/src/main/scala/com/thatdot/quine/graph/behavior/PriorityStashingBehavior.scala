@@ -10,9 +10,10 @@ import scala.util.Try
 import org.apache.pekko.actor.Actor
 import org.apache.pekko.dispatch.Envelope
 
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Log.implicits._
 
 /** Functionality for pausing the processing of messages while a future completes.

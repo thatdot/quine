@@ -5,7 +5,8 @@ import org.scalacheck.rng.Seed
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import com.thatdot.quine.model.{HalfEdge, PropertyValue, QuineId}
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 
 class GraphNodeHashCodeTest extends AnyFlatSpec with Matchers with HalfEdgeGen with ArbitraryInstances {
   it must "generate stable identifiers for arbitrary values" in {

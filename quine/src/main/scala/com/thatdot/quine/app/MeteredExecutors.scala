@@ -16,8 +16,8 @@ import com.github.blemale.scaffeine.{Cache, Scaffeine}
 import com.typesafe.config.{Config => TypesafeConfig, ConfigException, ConfigRenderOptions}
 import pureconfig.ConfigWriter
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Morally, Metered Executors are more of a Quine construct (internal metering of internal properties) but because

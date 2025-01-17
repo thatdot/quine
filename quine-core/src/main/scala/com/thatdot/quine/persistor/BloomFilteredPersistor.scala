@@ -10,6 +10,8 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.data.NonEmptyList
 import com.google.common.hash.{BloomFilter, Funnel, PrimitiveSink}
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
@@ -23,8 +25,6 @@ import com.thatdot.quine.graph.{
   StandingQueryInfo,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 // This needs to be serializable for the bloom filter to be serializable

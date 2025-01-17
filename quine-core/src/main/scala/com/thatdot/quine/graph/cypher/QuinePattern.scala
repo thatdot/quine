@@ -9,10 +9,11 @@ import scala.collection.immutable.SortedMap
 import cats.data.State
 import cats.implicits._
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.cypher.{ast => Cypher}
 import com.thatdot.language.ast._
 import com.thatdot.quine.graph.cypher
-import com.thatdot.quine.model.{EdgeDirection, PropertyValue, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{EdgeDirection, PropertyValue, QuineIdProvider, QuineValue}
 
 class QuinePatternUnimplementedException(msg: String) extends RuntimeException(msg)
 

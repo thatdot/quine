@@ -8,12 +8,12 @@ import org.apache.pekko.stream.scaladsl.Source
 
 import org.apache.pekko
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery.RetriableQueryFailure
 import com.thatdot.quine.graph.cypher.Location
 import com.thatdot.quine.graph.messaging.ExactlyOnceTimeoutException
 import com.thatdot.quine.graph.{CypherOpsGraph, GraphNotReadyException, NamespaceId, ShardNotAvailableException, cypher}
 import com.thatdot.quine.persistor.WrappedPersistorException
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** A Cypher query that will be retried against the graph until the entire query succeeds

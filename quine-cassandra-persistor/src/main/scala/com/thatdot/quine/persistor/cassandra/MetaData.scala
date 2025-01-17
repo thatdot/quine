@@ -10,10 +10,9 @@ import cats.implicits._
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.datastax.oss.driver.api.core.{CqlIdentifier, CqlSession}
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.persistor.cassandra.support._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.T2
-
 trait MetaDataColumnName {
   import CassandraCodecs._
   final protected val keyColumn: CassandraColumn[String] = CassandraColumn("key")

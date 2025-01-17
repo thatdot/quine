@@ -4,14 +4,15 @@ import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.NodeActor.{Journal, MultipleValuesStandingQueries}
 import com.thatdot.quine.graph.StaticNodeSupport.{deserializeSnapshotBytes, getMultipleValuesStandingQueryStates}
 import com.thatdot.quine.graph.cypher.{MultipleValuesStandingQuery, MultipleValuesStandingQueryLookupInfo}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
-import com.thatdot.quine.model.{QuineId, QuineIdProvider}
+import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.persistor.codecs.{AbstractSnapshotCodec, MultipleValuesStandingQueryStateCodec}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 abstract class StaticNodeSupport[

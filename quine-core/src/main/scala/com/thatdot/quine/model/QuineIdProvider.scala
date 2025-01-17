@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
 import scala.util.{Failure, Try}
 
-import com.thatdot.quine.util.ByteConversions
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.StrictSafeLogging
+import com.thatdot.common.logging.Pretty.Pretty
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.ByteConversions
 
 /** Used to map user node IDs to the representation used internally by Quine.
   *
@@ -33,7 +35,7 @@ import com.thatdot.quine.util.Log._
   *                newCustomId -------'
   * }}}
   */
-abstract class QuineIdProvider extends StrictSafeLogging {
+abstract class QuineIdProvider extends StrictSafeLogging with Pretty[QuineId] {
   type CustomIdType
   val customIdTag: ClassTag[CustomIdType]
 
@@ -155,6 +157,8 @@ abstract class QuineIdProvider extends StrictSafeLogging {
     */
   def nodeLocation(node: QuineId): QuineGraphLocation =
     QuineIdProvider.defaultNodeDistribution(node)
+
+  final override def makePretty(qid: QuineId): String = qidToPrettyString(qid)
 
 }
 

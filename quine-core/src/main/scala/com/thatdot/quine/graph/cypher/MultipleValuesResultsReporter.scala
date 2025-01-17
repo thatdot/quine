@@ -2,6 +2,7 @@ package com.thatdot.quine.graph.cypher
 
 import scala.collection.View
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.graph.behavior.MultipleValuesStandingQueryPartSubscription
 import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter.generateResultReports
 import com.thatdot.quine.graph.messaging.StandingQueryMessage.MultipleValuesStandingQuerySubscriber
@@ -13,7 +14,6 @@ import com.thatdot.quine.graph.{
   StandingQueryResult,
 }
 import com.thatdot.quine.model.Properties
-import com.thatdot.quine.util.Log.LogConfig
 import com.thatdot.quine.util.MonadHelpers._
 
 /** This class manages a stateful flatmap operation for SQ results reporting. Effectively, this is a node's

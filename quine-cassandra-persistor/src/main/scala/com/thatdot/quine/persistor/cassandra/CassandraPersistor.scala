@@ -17,6 +17,8 @@ import com.datastax.oss.driver.api.core._
 import com.datastax.oss.driver.api.querybuilder.SchemaBuilder.dropKeyspace
 import shapeless.poly._
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
@@ -30,10 +32,8 @@ import com.thatdot.quine.graph.{
   namespaceToString,
 }
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineId
 import com.thatdot.quine.persistor.cassandra.support.{CassandraStatementSettings, CassandraTable, TableDefinition}
 import com.thatdot.quine.persistor.{MultipartSnapshotPersistenceAgent, NamespacedPersistenceAgent, PersistenceConfig}
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** Used to break up large batch queries on AWS Keyspaces - which doesn't support batches of over 30 elements

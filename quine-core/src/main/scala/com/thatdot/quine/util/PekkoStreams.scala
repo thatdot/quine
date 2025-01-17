@@ -5,7 +5,7 @@ import scala.concurrent.Future
 import org.apache.pekko.NotUsed
 import org.apache.pekko.stream.scaladsl.{Flow, MergeHub, Sink, Source}
 
-import com.thatdot.quine.util.Log._
+import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 
 object PekkoStreams extends LazySafeLogging {
 

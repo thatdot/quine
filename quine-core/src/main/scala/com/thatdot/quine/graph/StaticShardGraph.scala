@@ -12,6 +12,8 @@ import org.apache.pekko.actor.{ActorRef, Props}
 import org.apache.pekko.dispatch.Envelope
 import org.apache.pekko.util.Timeout
 
+import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.GraphShardActor.NodeState
 import com.thatdot.quine.graph.messaging.ShardMessage._
 import com.thatdot.quine.graph.messaging.{
@@ -25,8 +27,6 @@ import com.thatdot.quine.graph.messaging.{
   SpaceTimeQuineId,
   WrappedActorRef,
 }
-import com.thatdot.quine.model.QuineId
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 import com.thatdot.quine.util.{QuineDispatchers, Retry}
 

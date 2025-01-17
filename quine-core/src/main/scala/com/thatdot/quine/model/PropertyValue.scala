@@ -2,7 +2,7 @@ package com.thatdot.quine.model
 
 import scala.util.{Success, Try}
 
-import com.thatdot.quine.util.ByteConversions
+import com.thatdot.common.util.ByteConversions
 
 /** Abstraction for values that are being read to, written to, and stored on
   * nodes.

@@ -5,11 +5,12 @@ import scala.concurrent.Future
 import org.apache.pekko.stream.scaladsl.{Sink, Source}
 import org.apache.pekko.util.{ByteString, Timeout}
 
+import com.thatdot.common.logging.Pretty._
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
 import com.thatdot.quine.graph.messaging.AlgorithmMessage.{GetRandomWalk, RandomWalkResult}
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{Milliseconds, QuineId}
+import com.thatdot.quine.model.Milliseconds
 
 trait AlgorithmGraph extends BaseGraph {
 
@@ -112,6 +113,7 @@ trait AlgorithmGraph extends BaseGraph {
     )(implicit
       timeout: Timeout,
     ): Future[SinkMat] = {
+      implicit val idPretty: Pretty[QuineId] = idProvider
       requireCompatibleNodeType()
       enumerateAllNodeIds(namespace)
         .flatMapConcat(qid => Source(0 until walksPerNode).map(qid -> _))
@@ -120,7 +122,7 @@ trait AlgorithmGraph extends BaseGraph {
             .map(walk =>
               // Prepending the QuineId as the first row value in the final output to indicate where each walk began.
               // Note that if a user provides a query, it could be that the node ID never shows up; this mitigates that.
-              ByteString(s"${(qid.pretty(idProvider) :: walk.acc).mkString(",")}\n"),
+              ByteString(s"${(qid.pretty :: walk.acc).mkString(",")}\n"),
             )(nodeDispatcherEC)
         }
         .runWith(saveSink)

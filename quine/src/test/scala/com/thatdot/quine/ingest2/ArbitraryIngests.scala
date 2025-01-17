@@ -6,13 +6,13 @@ import scala.jdk.CollectionConverters._
 
 import org.scalacheck.{Arbitrary, Gen}
 
+import com.thatdot.common.logging.Log.LogConfig
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileFormat.LineFormat
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileIngestMode.{NamedPipe, Regular}
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.KafkaOffsetCommitting.ExplicitCommit
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.WebsocketSimpleStartupIngest.KeepaliveProtocol
 import com.thatdot.quine.app.v2api.definitions.ApiIngest._
 import com.thatdot.quine.ingest2.IngestSourceTestSupport.randomString
-import com.thatdot.quine.util.Log.LogConfig
 trait ArbitraryIngests {
 
   implicit val genCharset: Gen[Charset] =

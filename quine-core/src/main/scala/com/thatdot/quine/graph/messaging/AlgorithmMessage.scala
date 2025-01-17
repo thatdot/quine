@@ -1,7 +1,8 @@
 package com.thatdot.quine.graph.messaging
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.graph.cypher.{CompiledQuery, Location}
-import com.thatdot.quine.model.{HalfEdge, QuineId}
+import com.thatdot.quine.model.HalfEdge
 
 /** Top-level type of all algorithms-related messages relayed through the graph
   *

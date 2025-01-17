@@ -11,12 +11,12 @@ import org.apache.pekko.util.{ByteString, Timeout}
 import cats.implicits._
 import io.circe.Json
 
+import com.thatdot.common.logging.Log.LazySafeLogging
 import com.thatdot.quine.app.config.{BaseConfig, QuineConfig}
 import com.thatdot.quine.graph.{BaseGraph, InMemoryNodeLimit}
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes._
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo}
 
 trait AdministrationRoutesState {

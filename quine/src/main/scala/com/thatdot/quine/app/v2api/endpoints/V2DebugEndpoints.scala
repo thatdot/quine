@@ -11,10 +11,10 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{Codec, DecodeResult, Endpoint, EndpointInput, Schema, path, query}
 
+import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.v2api.definitions._
 import com.thatdot.quine.app.v2api.endpoints.V2DebugEndpointEntities.{TEdgeDirection, TLiteralNode, TRestHalfEdge}
 import com.thatdot.quine.graph.NamespaceId
-import com.thatdot.quine.model.QuineId
 
 object V2DebugEndpointEntities {
   sealed abstract class TEdgeDirection

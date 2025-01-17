@@ -16,6 +16,10 @@ import cats.data.NonEmptyList
 import cats.implicits._
 import org.apache.pekko
 
+import com.thatdot.common.logging.Log.{ActorSafeLogging, LogConfig, Safe, SafeInterpolator, SafeLoggableInterpolator}
+import com.thatdot.common.logging.Pretty.PrettyHelper
+import com.thatdot.common.quineid.QuineId
+import com.thatdot.common.util.ByteConversions
 import com.thatdot.quine.graph.AbstractNodeActor.internallyDeduplicatePropertyEvents
 import com.thatdot.quine.graph.NodeEvent.WithTime
 import com.thatdot.quine.graph.PropertyEvent.{PropertyRemoved, PropertySet}
@@ -46,11 +50,8 @@ import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuin
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
-import com.thatdot.quine.model.QuineIdHelpers._
-import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineId, QuineIdProvider, QuineValue}
+import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
-import com.thatdot.quine.util.ByteConversions
-import com.thatdot.quine.util.Log._
 import com.thatdot.quine.util.Log.implicits._
 
 /** The fundamental graph unit for both data storage (eg [[properties]]) and
