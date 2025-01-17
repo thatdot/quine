@@ -608,7 +608,9 @@ final private[quine] class GraphShardActor(
       if (remaining.remainingNodeActorCount > 0)
         log.info(
           safe"""Shard #${Safe(shardId)} has ${Safe(remaining.remainingNodeActorCount)} node(s) awake.
-                |Sample of awake nodes: ${Safe(namespacedNodes.take(5).mkString(", "))}""".cleanLines,
+                |Sample of awake nodes: ${Safe {
+            namespacedNodes.view.mapValues(_.take(5)).take(5).mkString(", ")
+          }}""".cleanLines,
         )
       msg ?! remaining
 
