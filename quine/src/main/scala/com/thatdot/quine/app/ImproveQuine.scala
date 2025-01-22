@@ -24,32 +24,33 @@ import io.circe.generic.auto._
 import io.circe.syntax._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
-import com.thatdot.quine.app.ImproveQuine.{
-  InstanceHeartbeat,
-  InstanceStarted,
-  RecipeInfo,
-  TelemetryRequest,
-  sinksFromStandingQueries,
-  sourcesFromIngestStreams,
-}
 import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
 import com.thatdot.quine.graph.defaultNamespaceId
 import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery, StandingQueryResultOutputUserDef}
 
 object ImproveQuine {
 
+  val runUpIntervals: List[FiniteDuration] = List(
+    15.minutes,
+    1.hours,
+    3.hours,
+    6.hours,
+    12.hours,
+  )
+  val regularHeartbeatInterval: FiniteDuration = 1.day
+
   /** Type for the category of a telemetry event */
   sealed abstract class Event(val slug: String)
 
   /** Telemetry event when the application first starts */
-  case object InstanceStarted extends Event("instance.started")
+  private case object InstanceStarted extends Event("instance.started")
 
   /** Telemetry event sent during a regular interval */
-  case object InstanceHeartbeat extends Event("instance.heartbeat")
+  private case object InstanceHeartbeat extends Event("instance.heartbeat")
 
-  case class RecipeInfo(recipe_name_hash: String, recipe_contents_hash: String)
+  private case class RecipeInfo(recipe_name_hash: String, recipe_contents_hash: String)
 
-  case class TelemetryData(
+  private case class TelemetryData(
     event: String,
     service: String,
     version: String,
@@ -66,8 +67,8 @@ object ImproveQuine {
     apiKey: Option[String],
   )
 
-  val eventUri: Uri = Uri("https://improve.quine.io/event")
-  case class TelemetryRequest(
+  private val eventUri: Uri = Uri("https://improve.quine.io/event")
+  private case class TelemetryRequest(
     event: Event,
     service: String,
     version: String,
@@ -132,7 +133,7 @@ object ImproveQuine {
       .toSet
       .toList
 
-  def unrollCypherOutput(output: StandingQueryResultOutputUserDef): List[StandingQueryResultOutputUserDef] =
+  private def unrollCypherOutput(output: StandingQueryResultOutputUserDef): List[StandingQueryResultOutputUserDef] =
     output match {
       case cypherOutput: StandingQueryResultOutputUserDef.CypherQuery =>
         cypherOutput.andThen match {
@@ -151,6 +152,9 @@ object ImproveQuine {
 
 }
 
+/** Schedules and sends reportable activity telemetry. Performs core value derivations
+  * and serves as a helper for the same purpose via controllers in clustered settings.
+  */
 class ImproveQuine(
   service: String,
   version: String,
@@ -161,12 +165,13 @@ class ImproveQuine(
   apiKey: Option[String] = None,
 )(implicit system: ActorSystem, logConfig: LogConfig)
     extends LazySafeLogging {
+  import ImproveQuine._
 
-  // Since MessageDigest is not thread-safe, each function should create an instance its own use
-  def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
-  val base64: Encoder = Base64.getEncoder
+  /** Since MessageDigest is not thread-safe, each function should create an instance its own use */
+  private def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
+  private val base64: Encoder = Base64.getEncoder
 
-  def recipeContentsHash(recipe: Recipe): Array[Byte] = {
+  private def recipeContentsHash(recipe: Recipe): Array[Byte] = {
     val sha256: MessageDigest = hasherInstance()
     // Since this is not mission-critical, letting the JVM object hash function do the heavy lifting
     sha256.update(recipe.ingestStreams.hashCode().toByte)
@@ -178,8 +183,8 @@ class ImproveQuine(
     sha256.digest()
   }
 
-  val recipeUsed: Boolean = recipe.isDefined
-  val recipeInfo: Option[RecipeInfo] = recipe
+  private val recipeUsed: Boolean = recipe.isDefined
+  private val recipeInfo: Option[RecipeInfo] = recipe
     .map { r =>
       val sha256: MessageDigest = hasherInstance()
       RecipeInfo(
@@ -188,7 +193,7 @@ class ImproveQuine(
       )
     }
 
-  private val invalidMacAddresses = Set(
+  private val invalidMacAddresses: Set[ByteBuffer] = Set(
     Array.fill[Byte](6)(0x00),
     Array.fill[Byte](6)(0xFF.toByte),
   ).map(ByteBuffer.wrap)
@@ -204,7 +209,7 @@ class ImproveQuine(
       .getOrElse(ByteBuffer.wrap(Array.emptyByteArray))
       .array()
 
-  private val prefixBytes = "Quine_".getBytes(StandardCharsets.UTF_8)
+  private val prefixBytes: Array[Byte] = "Quine_".getBytes(StandardCharsets.UTF_8)
 
   private def hostHash(): String = Try {
     val sha256: MessageDigest = hasherInstance()
@@ -233,62 +238,52 @@ class ImproveQuine(
   private val sessionId: UUID = UUID.randomUUID()
   private val startTime: Instant = Instant.now()
 
-  private val oneOffHeartbeatIntervals: List[FiniteDuration] = List(
-    15.minutes,
-    1.hours,
-    3.hours,
-    6.hours,
-    12.hours,
-  )
-  private val regularHeartbeatInterval: FiniteDuration = 1.day
-
-  private def send(
-    event: ImproveQuine.Event,
+  protected def send(
+    event: Event,
     sources: Option[List[String]],
     sinks: Option[List[String]],
-  )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = {
-    val uptime: Long = startTime.until(Instant.now(), ChronoUnit.SECONDS)
-    TelemetryRequest(
-      event,
-      service,
-      version,
-      hostHash(),
-      sessionId,
-      uptime,
-      persistor,
-      sources,
-      sinks,
-      recipeUsed,
-      recipeCanonicalName,
-      recipeInfo,
-      apiKey,
-    )
-      .run()
-  }
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = TelemetryRequest(
+    event = event,
+    service = service,
+    version = version,
+    hostHash = hostHash(),
+    sessionId = sessionIdentifier,
+    uptime = sessionStartedAt.until(Instant.now(), ChronoUnit.SECONDS),
+    persistor = persistor,
+    sources = sources,
+    sinks = sinks,
+    recipeUsed = recipeUsed,
+    recipeCanonicalName = recipeCanonicalName,
+    recipeInfo = recipeInfo,
+    apiKey = apiKey,
+  ).run()
 
-  private def startup(sources: Option[List[String]], sinks: Option[List[String]]): Future[Unit] =
-    send(InstanceStarted, sources, sinks)
+  def startup(
+    sources: Option[List[String]],
+    sinks: Option[List[String]],
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  ): Future[Unit] = send(InstanceStarted, sources, sinks, sessionStartedAt, sessionIdentifier)
 
-  private def heartbeat(sources: Option[List[String]], sinks: Option[List[String]]): Future[Unit] =
-    send(InstanceHeartbeat, sources, sinks)
+  def heartbeat(
+    sources: Option[List[String]],
+    sinks: Option[List[String]],
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  ): Future[Unit] = send(InstanceHeartbeat, sources, sinks, sessionStartedAt, sessionIdentifier)
 
-  private val heartbeatRunnable: Runnable = new Runnable {
+  /** A runnable for use in an actor system schedule that fires-and-forgets the heartbeat Future */
+  private val heartbeatRunnable: Runnable = () => {
     implicit val ec: ExecutionContext = system.dispatcher
-    def run(): Unit = {
-      val sources = getSources
-      for {
-        sinks <- getSinks
-        res <- heartbeat(
-          sources = sources,
-          sinks = sinks,
-        )
-      } yield res // Fire and forget heartbeat Future
-      ()
-    }
+    val _ = for {
+      sources <- Future(getSources)
+      sinks <- getSinks
+    } yield heartbeat(sources, sinks)
   }
 
-  /** Fire and forget function to send startup telemetry and schedule regular heartbeat events.
-    */
+  /** Fire and forget function to send startup telemetry and schedule regular heartbeat events. */
   def startTelemetry(): Unit = {
     logger.info(safe"Starting usage telemetry")
     implicit val ec: ExecutionContext = system.dispatcher
@@ -299,9 +294,7 @@ class ImproveQuine(
       _ <- startup(sources, sinks)
     } yield ()
     // Schedule initial and regular "instance.heartbeat" events
-    oneOffHeartbeatIntervals.foreach { i =>
-      system.scheduler.scheduleOnce(i, heartbeatRunnable)
-    }
+    runUpIntervals.foreach(system.scheduler.scheduleOnce(_, heartbeatRunnable))
     system.scheduler.scheduleAtFixedRate(regularHeartbeatInterval, regularHeartbeatInterval)(heartbeatRunnable)
     () // Intentionally discard the cancellables for the scheduled heartbeats.
     // In future these could be retained if desired.
