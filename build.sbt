@@ -282,7 +282,7 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
-      "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
+      "org.apache.pulsar" % "pulsar-client-kafka" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
       "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni"),
