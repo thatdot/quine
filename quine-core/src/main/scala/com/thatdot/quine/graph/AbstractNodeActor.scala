@@ -287,7 +287,7 @@ abstract private[graph] class AbstractNodeActor(
     * @param events Just for the [[IllegalHistoricalUpdate]] error returned, which doesn't even use it in its message?
     *               Maybe it should be passed-through as an arg to [[action]], so callers don't have to specify it
     *               twice?
-    * @param action The action to run if this is indeed not a hisorical node.
+    * @param action The action to run if this is indeed not a historical node.
     * @tparam A
     * @return
     */

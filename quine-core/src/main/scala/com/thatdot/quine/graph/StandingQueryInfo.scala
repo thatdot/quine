@@ -132,7 +132,7 @@ object StandingQueryPattern {
   * @param resultsHub a source that lets you listen in on current results
   * @param outputTermination completes when [[resultsQueue]] completes OR when [[resultsHub]] cancels
   * @param resultMeter metric of results coming out of the query
-  * @param droppedCounter counter of rsults dropped (should be zero unless something has gone wrong)
+  * @param droppedCounter counter of results dropped (should be zero unless something has gone wrong)
   * @param startTime when the query was started (or restarted) running
   */
 final class RunningStandingQuery(

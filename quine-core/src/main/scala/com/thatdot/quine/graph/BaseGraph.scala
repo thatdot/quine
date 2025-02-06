@@ -166,7 +166,7 @@ trait BaseGraph extends StrictSafeLogging {
       throw new GraphNotReadyException()
     }
 
-  /** Run code in the provided Future if the graphis ready, or short-circuit and return a failed Future immediately. */
+  /** Run code in the provided Future if the graph is ready, or short-circuit and return a failed Future immediately. */
   def requiredGraphIsReadyFuture[A](f: => Future[A]): Future[A] =
     if (isReady) f
     else Future.failed(new GraphNotReadyException())

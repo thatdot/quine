@@ -142,24 +142,24 @@ private[graph] class NodeActor(
     // By doing this after removing `locallyWatchedDgnsToRemove`, we'll have fewer wasted entries in the
     // reconstructed index. By doing this after journal restoration, we ensure that this reconstruction + removal
     // detection will be as complete as possible
-    val (nodeParentIndexPruned, propogationDgnsToRemove) =
+    val (nodeParentIndexPruned, propagationsToRemove) =
       NodeParentIndex.reconstruct(domainNodeIndex, domainGraphSubscribers.subscribersToThisNode.keys, dgnRegistry)
     this.domainGraphNodeParentIndex = nodeParentIndexPruned
 
-    // stop tracking subscribers of deleted DGNs that were previously propogating messages
-    domainGraphSubscribers.removeSubscribersOf(propogationDgnsToRemove)
+    // stop tracking subscribers of deleted DGNs that were previously propagating messages
+    domainGraphSubscribers.removeSubscribersOf(propagationsToRemove)
 
     // Now that we have a comprehensive diff of the SQs added/removed, debug-log that diff.
     log.whenDebugEnabled {
       if (
-        ((propogationDgnsToRemove: Iterable[_]) ++
+        ((propagationsToRemove: Iterable[_]) ++
         (locallyWatchedDgnsToRemove: Iterable[_]) ++
         (newDistinctIdSqDgns: Iterable[_])).nonEmpty
       ) {
         // serializing DGN collections is potentially nontrivial work, so only do it when the target log level is enabled
         log.trace(
           safe"""Detected Standing Query changes while asleep. Removed DGN IDs:
-                |${Safe((propogationDgnsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
+                |${Safe((propagationsToRemove ++ locallyWatchedDgnsToRemove).toList.distinct.toString)}.
                 |Added DGN IDs: ${Safe(newDistinctIdSqDgns.toString)}. Catching up now.""".cleanLines,
         )
       }
@@ -190,7 +190,7 @@ private[graph] class NodeActor(
     //
     // By corollary, a thoroughgoing node at time X may have a more complete DistinctId Standing Query index than a
     // reconstruction of that same node as a historical (atTime=Some(X)) node. This is acceptable, as historical nodes
-    // should not receive updates and therefore should not propogate standing query effects.
+    // should not receive updates and therefore should not propagate standing query effects.
     if (atTime.isEmpty) {
       newDistinctIdSqDgns.foreach { case (sqId, dgnId) =>
         receive(CreateDomainNodeSubscription(dgnId, Right(sqId), Set(sqId)))

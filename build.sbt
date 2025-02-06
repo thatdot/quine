@@ -30,17 +30,17 @@ lazy val `quine-core`: Project = project
       "org.apache.commons" % "commons-text" % commonsTextV,
       "com.github.blemale" %% "scaffeine" % scaffeineV,
       "io.github.hakky54" % "sslcontext-kickstart" % sslContextKickstartV,
+      "org.typelevel" %% "cats-core" % catsV,
+      "org.typelevel" %% "cats-effect" % catsEffectV,
+      "com.thatdot" %% "query-language" % quineQueryV,
+      "com.thatdot" %% "quine-id" % quineCommonV,
+      "com.lihaoyi" %% "pprint" % pprintV,
       // Testing
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "org.scalacheck" %% "scalacheck" % scalaCheckV % Test,
       "org.scalatestplus" %% "scalacheck-1-17" % scalaTestScalaCheckV % Test,
       "ch.qos.logback" % "logback-classic" % logbackV % Test,
       "commons-io" % "commons-io" % commonsIoV % Test,
-      "org.typelevel" %% "cats-core" % catsV,
-      "org.typelevel" %% "cats-effect" % catsEffectV,
-      "com.thatdot" %% "query-language" % quineQueryV,
-      "com.thatdot" %% "quine-id" % quineCommonV,
-      "com.lihaoyi" %% "pprint" % pprintV,
     ),
     // Compile different files depending on scala version
     Compile / unmanagedSourceDirectories += {

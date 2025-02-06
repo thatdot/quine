@@ -61,3 +61,6 @@ public/project/
 
 # Snyk
 .dccache
+
+# run/test outputs
+metrics-logs

@@ -29,7 +29,7 @@ abstract class EdgeProcessor(
     * - signalling relevant standing queries to update
     * - updating the node's cost to sleep and metrics related to edge state
     *
-    * @param events a list of edgeevents to apply
+    * @param events a list of edge events to apply
     *               INV: no more than 1 event in `events` refers to the same edge
     * @param atTime a (possibly side-effecting) generator for unique EventTime timestamps within the same message
     *               boundary
