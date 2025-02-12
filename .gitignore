@@ -64,3 +64,6 @@ public/project/
 
 # run/test outputs
 metrics-logs
+
+# exclusions
+!/scripts/build/
