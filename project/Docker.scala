@@ -1,4 +1,5 @@
 import sbt._
+import sbt.io.IO
 import sbt.Keys.{name, version}
 import sbtassembly.AssemblyPlugin
 import sbtassembly.AssemblyKeys.assembly
@@ -6,6 +7,7 @@ import sbtdocker.{DockerPlugin, Dockerfile, ImageName}
 import sbtdocker.DockerKeys.{docker, dockerfile, imageNames}
 
 import scala.concurrent.duration._
+import scala.sys.process._
 
 object Docker extends AutoPlugin {
 
@@ -27,6 +29,17 @@ object Docker extends AutoPlugin {
     docker / dockerfile := {
       val jar: sbt.File = assembly.value
       val jarPath = "/" + jar.name
+      val jmxPrometheusJarName = "jmx_prometheus_javaagent.jar"
+      val temp = IO.createTemporaryDirectory
+      val jmxPrometheusFile: sbt.File = temp / "jmx_prometheus_javaagent.jar"
+      url(
+        "https://github.com/prometheus/jmx_exporter/releases/download/1.1.0/jmx_prometheus_javaagent-1.1.0.jar",
+      ) #> jmxPrometheusFile !
+      val jmxPrometheusJavaAgentPath = "/" + jmxPrometheusJarName
+      val exporterYamlName = "exporter.yaml"
+      val exporterYamlFile = temp / exporterYamlName
+      IO.append(exporterYamlFile, "rules:\n- pattern: \".*\"")
+      val exporterYamlPath = "/" + exporterYamlName
       new Dockerfile {
         from(
           ImageName(
@@ -53,6 +66,8 @@ object Docker extends AutoPlugin {
           jarPath,
         )
         copy(jar, jarPath)
+        copy(jmxPrometheusFile, jmxPrometheusJarName)
+        copy(exporterYamlFile, exporterYamlPath)
       }
     },
   )
