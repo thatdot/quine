@@ -51,7 +51,7 @@ object Dependencies {
   val pekkoConnectorsV = "1.0.2"
   val plotlyV = "1.57.1"
   val pprintV = "0.9.0"
-  val protobufV = "3.25.5"
+  val protobufV = "3.25.6"
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.8"
   val quineQueryV = "0.2.0"
