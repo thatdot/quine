@@ -1,6 +1,5 @@
 package com.thatdot.quine.gremlin
 
-import scala.annotation.nowarn
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util._
 import scala.util.parsing.input.{Position, Positional}
@@ -465,9 +464,7 @@ private[gremlin] trait GremlinTypes extends LazySafeLogging {
 
                 // Only add to the result path if we go to a vertex
                 newPath = if (toVertex) otherQid :: path else path
-              } yield Result(newU, newPath, matchContext)): @nowarn(
-                "cat=unused-pat-vars", // suppress false positive on newU and newPath from 2.13.15 bug,
-              ),
+              } yield Result(newU, newPath, matchContext)),
             )
           }(gremlinEc))
         }

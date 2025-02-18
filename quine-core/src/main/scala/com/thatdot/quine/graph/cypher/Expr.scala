@@ -6,7 +6,6 @@ import java.time.temporal._
 import java.time.{Duration => JavaDuration, LocalDateTime => JavaLocalDateTime, ZonedDateTime => JavaZonedDateTime}
 import java.util.Base64
 
-import scala.annotation.nowarn
 import scala.collection.immutable.{Map => ScalaMap, SortedMap}
 import scala.util.Try
 import scala.util.chaining.scalaUtilChainingOps
@@ -1053,7 +1052,7 @@ object Expr {
                 CypherException.InvalidIndex(keyVal).asLeft
               else
                 elems.applyOrElse(keyMod.toInt, (_: Int) => Null).asRight
-          } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
+          } yield result)
 
         case Null => Null.asRight
 
@@ -1116,7 +1115,7 @@ object Expr {
                   if (!keyMod.isValidInt)
                     CypherException.InvalidIndex(idx).asLeft
                   else keyMod.toInt.asRight
-              } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
+              } yield result)
             }.sequence
 
             toVal <- to.map { (toExpr: Expr) =>
@@ -1128,7 +1127,7 @@ object Expr {
                   if (!keyMod.isValidInt)
                     CypherException.InvalidIndex(idx).asLeft
                   else keyMod.toInt.asRight
-              } yield result): @nowarn("cat=unused-pat-vars") // suppress false positive on keyMod from 2.13.15 bug
+              } yield result)
             }.sequence
 
           } yield List(elems.slice(fromVal.getOrElse(0), toVal.getOrElse(elems.length)))
