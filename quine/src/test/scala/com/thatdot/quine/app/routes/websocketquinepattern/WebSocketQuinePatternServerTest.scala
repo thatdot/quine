@@ -35,6 +35,17 @@ class WebSocketQuinePatternServerTest extends AnyFunSuite with BeforeAndAfterAll
       super.afterAll()
     }
 
+  /** Returns the string content part of a JRPC message
+    *
+    * @param jrpc_full_message_string The full JRPC message, with Content-Length header and Content Part
+    * @return The Content Part of the JRPC message
+    */
+  def jrpc_content_part(jrpc_full_message_string: String): String =
+    jrpc_full_message_string.split("\r\n\r\n", 2) match {
+      case Array(_, json) => json
+      case _ => fail("Content-Length header not found in the message")
+    }
+
   test("ensure Initialize message is handled correctly") {
     val messageFlow: Flow[Message, Message, _] = createMessageFlow()
 
@@ -97,8 +108,8 @@ class WebSocketQuinePatternServerTest extends AnyFunSuite with BeforeAndAfterAll
 
     whenReady(initializeMessageResultFuture) { msgSeq =>
       msgSeq.headOption match {
-        case Some(Strict(message)) =>
-          decode[JsonRpcResponse](message) match {
+        case Some(Strict(full_message)) =>
+          decode[JsonRpcResponse](jrpc_content_part(full_message)) match {
             case Right(actualResponse) => assert(actualResponse == expectedResponse)
             case Left(error) => fail(s"Initialize Response did not parse: ${error}")
           }
@@ -176,8 +187,8 @@ class WebSocketQuinePatternServerTest extends AnyFunSuite with BeforeAndAfterAll
 
     whenReady(initializeMessageResultFuture) { msgSeq =>
       msgSeq.headOption match {
-        case Some(Strict(message)) =>
-          decode[JsonRpcResponse](message) match {
+        case Some(Strict(full_message)) =>
+          decode[JsonRpcResponse](jrpc_content_part(full_message)) match {
             case Right(actualMessage) => assert(actualMessage == expectedMessage)
             case Left(error) => fail(s"Initialize Response did not parse: ${error}")
           }
@@ -236,8 +247,8 @@ class WebSocketQuinePatternServerTest extends AnyFunSuite with BeforeAndAfterAll
 
     whenReady(messagesFuture) { msgSeq =>
       msgSeq.lift(1) match {
-        case Some(Strict(msgString)) =>
-          decode[JsonRpcResponse](msgString) match {
+        case Some(Strict(full_message)) =>
+          decode[JsonRpcResponse](jrpc_content_part(full_message)) match {
             case Right(actualCompletionMessage) => assert(actualCompletionMessage == expectedCompletionMessage)
             case Left(error) => fail(s"Initialize Response did not parse: ${error}")
           }
@@ -287,8 +298,8 @@ class WebSocketQuinePatternServerTest extends AnyFunSuite with BeforeAndAfterAll
 
     whenReady(initializeMessageResultFuture) { msgSeq =>
       msgSeq.lift(1) match {
-        case Some(Strict(msg)) =>
-          decode[JsonRpcResponse](msg) match {
+        case Some(Strict(full_message)) =>
+          decode[JsonRpcResponse](jrpc_content_part(full_message)) match {
             case Right(JsonRpcResponse(_, _, DiagnosticResult(_, actualDiagnosticItems))) =>
               val expectedDiagnosticItems =
                 List(DiagnosticItem(message = "no viable alternative at input 'MATCH (n) RETUR'"))

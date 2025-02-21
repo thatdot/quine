@@ -5,9 +5,10 @@ import java.io.{OutputStream, PipedInputStream, PipedOutputStream}
 import scala.concurrent.ExecutionContext
 
 import org.apache.pekko.actor.{Actor, ActorRef, Status}
-import org.apache.pekko.http.scaladsl.model.ws.TextMessage
+import org.apache.pekko.http.scaladsl.model.ws.{BinaryMessage, TextMessage}
 import org.apache.pekko.pattern.pipe
 import org.apache.pekko.stream.Materializer
+import org.apache.pekko.util.ByteString
 
 import io.circe.parser._
 import org.eclipse.lsp4j.jsonrpc.messages.Message
@@ -47,7 +48,12 @@ class LSPActor(outgoingActorRef: ActorRef) extends Actor with LazySafeLogging {
           val messageString = message.toString()
           if (isOutgoingMessage(messageString)) {
             logger.info(log"Message received from Quine Language Server, going to client: ${Safe(messageString)}")
-            outgoingActorRef ! TextMessage.Strict(messageString)
+            val contentBytes = messageString.getBytes("UTF-8")
+
+            // We are framing the language server message with a Content-Length header per the
+            // [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/).
+            val framedMessage = s"Content-Length: ${contentBytes.length}\r\n\r\n$messageString"
+            outgoingActorRef ! TextMessage.Strict(framedMessage)
           }
           consumer.consume(message)
         }
@@ -73,6 +79,15 @@ class LSPActor(outgoingActorRef: ActorRef) extends Actor with LazySafeLogging {
       textStream.runFold("")(_ + _).map(TextMessage.Strict).pipeTo(self)
       ()
 
+    case BinaryMessage.Strict(data) =>
+      processBinaryMessageBytes(data)
+
+    case BinaryMessage.Streamed(dataStream) =>
+      dataStream.runFold(ByteString.empty)(_ ++ _).map { completeData =>
+        processBinaryMessageBytes(completeData)
+      } pipeTo self
+      ()
+
     case Status.Success(_) =>
       logger.info(log"Stream completed")
 
@@ -89,6 +104,12 @@ class LSPActor(outgoingActorRef: ActorRef) extends Actor with LazySafeLogging {
     val header = s"Content-Length: ${contentBytes.length}\r\n\r\n"
     outClient.write(header.getBytes("UTF-8"))
     outClient.write(contentBytes)
+    outClient.flush()
+  }
+
+  def processBinaryMessageBytes(data: ByteString): Unit = {
+    logger.info(log"Binary message received from client (length: ${Safe(data.length.toString)} bytes)")
+    outClient.write(data.toArray)
     outClient.flush()
   }
 
