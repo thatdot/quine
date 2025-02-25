@@ -21,7 +21,7 @@ lazy val `quine-core`: Project = project
     libraryDependencies ++= Seq(
       "com.chuusai" %% "shapeless" % shapelessV,
       "org.apache.pekko" %% "pekko-actor" % pekkoV,
-      "org.apache.pekko" %% "pekko-stream" % pekkoStreamV,
+      "org.apache.pekko" %% "pekko-stream" % pekkoV,
       "org.apache.pekko" %% "pekko-slf4j" % pekkoV,
       "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingV,
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
