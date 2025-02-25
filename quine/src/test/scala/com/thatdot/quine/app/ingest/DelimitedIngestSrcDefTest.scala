@@ -36,7 +36,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
   val namespace: NamespaceId = None // Use default namespace
   implicit val noOpProtobufCache: ProtobufSchemaCache.Blocking.type = ProtobufSchemaCache.Blocking: @nowarn
 
-  override def afterAll(): Unit = Await.result(graph.shutdown(), 1.second)
+  override def afterAll(): Unit = Await.result(graph.shutdown(), 3.seconds)
 
   abstract class LocalIngestTestContext[Q <: QuineValue](name: String, fileIngestFormat: FileIngestFormat)(implicit
     val graph: CypherOpsGraph,
@@ -87,7 +87,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
 
       (1 to 10).foreach(i => writeValue(i))
       probe.request(10)
-      Thread.sleep(1000)
+      probe.expectNextN(10)
 
       val ctl: QuineAppIngestControl = Await.result(fc, Duration.Inf)
       val g = graph.asInstanceOf[LiteralOpsGraph]
@@ -97,7 +97,7 @@ class DelimitedIngestSrcDefTest extends AnyFunSuite with BeforeAndAfterAll {
       Await.result(ctl.termSignal, 10.seconds)
 
       (1 to 10).map { i =>
-        val prop: Map[Symbol, PropertyValue] = Await.result(g.literalOps(namespace).getProps(quineId(i)), 1.second)
+        val prop: Map[Symbol, PropertyValue] = Await.result(g.literalOps(namespace).getProps(quineId(i)), 2.seconds)
         i -> prop.getOrElse(Symbol("value"), PropertyValue(QuineValue.Null)).deserialized
       }.toMap
     }

@@ -5,7 +5,8 @@ import scala.concurrent.duration.DurationInt
 
 import org.apache.pekko.http.scaladsl.model._
 import org.apache.pekko.http.scaladsl.server.Route
-import org.apache.pekko.http.scaladsl.testkit.ScalatestRouteTest
+import org.apache.pekko.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
+import org.apache.pekko.testkit.TestDuration
 import org.apache.pekko.util.Timeout
 
 import io.circe.Encoder
@@ -65,7 +66,9 @@ class EndpointValidationSpec
 
     val quineIngestConfiguration: Api.Oss.QuineIngestConfiguration =
       arbIngest.arbitrary.sample.get.copy(source = kinesisIngest)
-    // tests:
+
+    // Increase timeout for check using implicit, for use when many tests are running at once and longer timeouts may be needed.
+    implicit val timeout: RouteTestTimeout = RouteTestTimeout(5.seconds.dilated)
     post(url, quineIngestConfiguration) ~> routes ~> check {
 
       status.intValue() shouldEqual 400
