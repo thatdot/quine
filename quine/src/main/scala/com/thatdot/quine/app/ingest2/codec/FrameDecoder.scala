@@ -151,7 +151,7 @@ case class CsvVecDecoder(delimiterChar: Char, quoteChar: Char, escapeChar: Char,
       .setDelimiter(delimiterChar)
       .setEscape(escapeChar)
       .setHeader()
-      .build()
+      .get()
 
   override val foldable: DataFoldableFrom[Iterable[String]] = DataFoldableFrom.stringIterableDataFoldable
   override def decode(bytes: Array[Byte]): Try[Iterable[String]] =
