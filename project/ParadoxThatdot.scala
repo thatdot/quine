@@ -1,7 +1,7 @@
-import io.github.jonas.paradox.material.theme.ParadoxMaterialThemePlugin
-import com.typesafe.sbt.site.paradox.ParadoxSitePlugin
+import com.github.sbt.paradox.material.theme.ParadoxMaterialThemePlugin
 import com.lightbend.paradox.sbt.ParadoxPlugin
 import com.typesafe.sbt.site.SitePreviewPlugin
+import com.typesafe.sbt.site.paradox.ParadoxSitePlugin
 import com.typesafe.sbt.web.Import.WebKeys
 import com.typesafe.sbt.web.SbtWeb
 
@@ -22,10 +22,10 @@ object ParadoxThatdot extends AutoPlugin {
     val templateDirectory = settingKey[File]("directory containing template overrides")
   }
 
-  import autoImport._
-  import ParadoxPlugin.autoImport._
-  import ParadoxMaterialThemePlugin.autoImport._
-  import ParadoxSitePlugin.autoImport._
+  import autoImport.*
+  import ParadoxPlugin.autoImport.*
+  import ParadoxMaterialThemePlugin.autoImport.*
+  import ParadoxSitePlugin.autoImport.*
 
   override lazy val projectSettings = inConfig(Compile)(
     Seq(
