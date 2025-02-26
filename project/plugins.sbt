@@ -22,4 +22,4 @@ libraryDependencies += "software.amazon.awssdk" % "ecr" % "2.17.231"
 libraryDependencies += "org.eclipse.jgit" % "org.eclipse.jgit" % "7.0.0.202409031743-r"
 addSbtPlugin("com.github.sbt" % "sbt-boilerplate" % "0.7.0")
 addSbtPlugin("net.vonbuchholtz" % "sbt-dependency-check" % "5.1.0")
-addSbtPlugin("io.github.siculo" %% "sbt-bom" % "0.3.0")
+addSbtPlugin("com.github.sbt" %% "sbt-sbom" % "0.4.0")
