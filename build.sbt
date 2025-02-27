@@ -290,6 +290,10 @@ lazy val `quine`: Project = project
       "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
       "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
       "org.apache.commons" % "commons-compress" % apacheCommonsCompressV,
+      // AWS SDK deps (next 3) effectively bundle sibling JARs needed for certain features, despite no code references
+      "software.amazon.awssdk" % "sso" % awsSdkV,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV,
+      "software.amazon.awssdk" % "sts" % awsSdkV,
       "com.github.erosb" % "everit-json-schema" % "1.14.4",
       "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
