@@ -45,7 +45,7 @@ object Dependencies {
   val pekkoHttpCirceV = "3.0.0"
   val pekkoManagementV = "1.1.0"
   val pekkoKafkaV = "1.1.0"
-  val pekkoConnectorsV = "1.0.2"
+  val pekkoConnectorsV = "1.1.0"
   val plotlyV = "1.57.1"
   val pprintV = "0.9.0"
   val protobufV = "3.25.6"
