@@ -274,8 +274,6 @@ lazy val `quine`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.softwaremill.sttp.client3" %% "circe" % "3.10.2" % Test,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
-      // override for transitive dep from software.amazon.glue:schema-registry-serde:1.1.22
-      "com.github.erosb" % "everit-json-schema" % "1.14.4",
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.4",
@@ -327,7 +325,7 @@ lazy val `quine`: Project = project
       // [ ] | com.thatdot:quine                              | io.projectreactor.netty:reactor-netty-http     | 1.0.48
       // [ ] | com.thatdot:quine                              | io.rsocket:rsocket-transport-netty             | 1.1.4
       // [ ] | com.thatdot:quine                              | org.apache.peko:pekko-connectors-kinesis_2.13  | 1.0.2
-      // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.22
+      // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.23
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:ssooidc                 | 2.29.52
       "io.netty" % "netty-handler" % "4.1.118.Final",
