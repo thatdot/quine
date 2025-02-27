@@ -274,6 +274,8 @@ lazy val `quine`: Project = project
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
       "com.softwaremill.sttp.client3" %% "circe" % "3.10.2" % Test,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
+      // override for transitive dep from software.amazon.glue:schema-registry-serde:1.1.22
+      "com.github.erosb" % "everit-json-schema" % "1.14.4",
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
       "io.circe" %% "circe-generic-extras" % "0.14.4",
@@ -282,19 +284,11 @@ lazy val `quine`: Project = project
       "io.dropwizard.metrics" % "metrics-core" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jmx" % dropwizardMetricsV,
       "io.dropwizard.metrics" % "metrics-jvm" % dropwizardMetricsV,
+      "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
-      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni"),
-      // 3 Next deps: override outdated pekko-connectors-kinesis dependencies
-      "software.amazon.kinesis" % "amazon-kinesis-client" % amazonKinesisClientV,
-      "org.apache.commons" % "commons-csv" % apacheCommonsCsvV,
-      "org.apache.commons" % "commons-compress" % apacheCommonsCompressV,
-      // AWS SDK deps (next 3) effectively bundle sibling JARs needed for certain features, despite no code references
-      "software.amazon.awssdk" % "sso" % awsSdkV,
-      "software.amazon.awssdk" % "ssooidc" % awsSdkV,
-      "software.amazon.awssdk" % "sts" % awsSdkV,
-      "com.github.erosb" % "everit-json-schema" % "1.14.4",
+      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni") exclude ("software.amazon.kinesis", "amazon-kinesis-client"),
       "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoConnectorsV,
@@ -325,17 +319,22 @@ lazy val `quine`: Project = project
       "io.rsocket" % "rsocket-transport-netty" % rsocketV,
       // Transitive dep of several others. Vulnerable >= 4.1.91.Final, <= 4.1.117.Final.
       // When checklist is complete, remove this override.
-      //     | Project                               | Dependency                                     | Known vulnerable version
-      // ----+---------------------------------------+------------------------------------------------+-------------------------
-      // [ ] | com.thatdot:quine-cassandra-persistor | software.amazon.awssdk:sts                     | 2.29.43
-      // [ ] | com.thatdot:quine-cassandra-persistor | org.apache.cassandra:java-driver-query-builder | 4.18.1 (note: lower version evicted by sibling dep)
-      // [ ] | com.thatdot:quine                     | io.projectreactor.netty:reactor-netty-core     | 1.0.48
-      // [ ] | com.thatdot:quine                     | io.projectreactor.netty:reactor-netty-http     | 1.0.48
-      // [ ] | com.thatdot:quine                     | io.rsocket:rsocket-transport-netty             | 1.1.4
-      // [ ] | com.thatdot:quine                     | org.apache.peko:pekko-connectors-kinesis_2.13  | 1.0.2
-      // [ ] | com.thatdot:quine                     | software.amazon.glue:schema-registry-serde     | 1.1.22
-      // [ ] | com.thatdot:quine                     | software.amazon.kinesis:amazon-kinesis-client  | 2.6.0
+      //     | Project                                        | Dependency                                     | Known vulnerable version
+      // ----+------------------------------------------------+------------------------------------------------+-------------------------
+      // [ ] | com.thatdot:[quine, quine-cassandra-persistor] | software.amazon.awssdk:sts                     | 2.29.52
+      // [ ] | com.thatdot:quine-cassandra-persistor          | org.apache.cassandra:java-driver-query-builder | 4.18.1 (note: lower version evicted by sibling dep)
+      // [ ] | com.thatdot:quine                              | io.projectreactor.netty:reactor-netty-core     | 1.0.48
+      // [ ] | com.thatdot:quine                              | io.projectreactor.netty:reactor-netty-http     | 1.0.48
+      // [ ] | com.thatdot:quine                              | io.rsocket:rsocket-transport-netty             | 1.1.4
+      // [ ] | com.thatdot:quine                              | org.apache.peko:pekko-connectors-kinesis_2.13  | 1.0.2
+      // [x] | com.thatdot:quine                              | software.amazon.glue:schema-registry-serde     | 1.1.22
+      // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
+      // [ ] | com.thatdot:quine                              | software.amazon.awssdk:ssooidc                 | 2.29.52
       "io.netty" % "netty-handler" % "4.1.118.Final",
+      // AWS SDK deps (next 3) effectively bundle sibling JARs needed for certain features, despite no code references
+      "software.amazon.awssdk" % "sso" % awsSdkV,
+      "software.amazon.awssdk" % "ssooidc" % awsSdkV,
+      "software.amazon.awssdk" % "sts" % awsSdkV,
     ),
   )
   .enablePlugins(WebScalaJSBundlerPlugin)
