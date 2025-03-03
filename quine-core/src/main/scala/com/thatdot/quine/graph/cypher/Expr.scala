@@ -203,7 +203,7 @@ object Expr {
     /** Java API: extract underlying long value */
     def getLong: Long = long
 
-    def +(other: Number) = other match {
+    def +(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(long + f2).asRight
       case Integer(i2) =>
         try Integer(Math.addExact(long, i2)).asRight
@@ -219,7 +219,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def -(other: Number) = other match {
+    def -(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(long - f2).asRight
       case Integer(i2) =>
         try Integer(Math.subtractExact(long, i2)).asRight
@@ -235,7 +235,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def *(other: Number) = other match {
+    def *(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(long * f2).asRight
       case Integer(i2) =>
         try Integer(Math.multiplyExact(long, i2)).asRight
@@ -251,7 +251,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def /(other: Number) = other match {
+    def /(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(long / f2).asRight
       case Integer(i2) =>
         try Integer(long / i2).asRight
@@ -267,7 +267,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def %(other: Number) = other match {
+    def %(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(long % f2).asRight
       case Integer(i2) =>
         try Integer(long % i2).asRight
@@ -283,7 +283,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def ^(other: Number) = other match {
+    def ^(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(Math.pow(long.toDouble, f2)).asRight
       case Integer(i2) =>
         try Floating(Math.pow(long.toDouble, i2.toDouble)).asRight
@@ -299,7 +299,7 @@ object Expr {
       case Null => Null.asRight
     }
 
-    def unary_- = try Integer(Math.negateExact(long)).asRight
+    def unary_- : Either[CypherException.Arithmetic, Number] = try Integer(Math.negateExact(long)).asRight
     catch {
       case a: ArithmeticException =>
         CypherException
@@ -348,43 +348,43 @@ object Expr {
     /** Java API: extract underlying double value */
     def getDouble: Double = double
 
-    def +(other: Number) = other match {
+    def +(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(double + f2).asRight
       case Integer(i2) => Floating(double + i2).asRight
       case Null => Null.asRight
     }
 
-    def -(other: Number) = other match {
+    def -(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(double - f2).asRight
       case Integer(i2) => Floating(double - i2).asRight
       case Null => Null.asRight
     }
 
-    def *(other: Number) = other match {
+    def *(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(double * f2).asRight
       case Integer(i2) => Floating(double * i2).asRight
       case Null => Null.asRight
     }
 
-    def /(other: Number) = other match {
+    def /(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(double / f2).asRight
       case Integer(i2) => Floating(double / i2).asRight
       case Null => Null.asRight
     }
 
-    def %(other: Number) = other match {
+    def %(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(double % f2).asRight
       case Integer(i2) => Floating(double % i2).asRight
       case Null => Null.asRight
     }
 
-    def ^(other: Number) = other match {
+    def ^(other: Number): Either[CypherException.Arithmetic, Number] = other match {
       case Floating(f2) => Floating(Math.pow(double, f2)).asRight
       case Integer(i2) => Floating(Math.pow(double, i2.toDouble)).asRight
       case Null => Null.asRight
     }
 
-    def unary_- = Floating(-double).asRight
+    def unary_- : Either[CypherException.Arithmetic, Number] = Floating(-double).asRight
 
     def string = double.toString
 

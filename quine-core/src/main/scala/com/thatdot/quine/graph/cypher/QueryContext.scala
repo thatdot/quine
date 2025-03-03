@@ -90,7 +90,7 @@ object Columns {
   }
 
   final case class Specified(variables: Vector[Symbol]) extends Columns {
-    def +(variable: Symbol) = {
+    def +(variable: Symbol): Specified = {
       require(
         !variables.contains(variable),
         s"Variable $variable cannot be added to a context it is already in ($variables)",

@@ -20,7 +20,8 @@ import com.thatdot.quine.model.QuineIdProvider
 import com.thatdot.quine.util.Tls.SSLFactoryBuilderOps
 
 object MediaTypes {
-  val `application/yaml` = MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
+  val `application/yaml`: MediaType.WithFixedCharset =
+    MediaType.applicationWithFixedCharset("yaml", HttpCharsets.`UTF-8`, "yaml")
 }
 
 trait BaseAppRoutes extends LazySafeLogging with endpoints4s.pekkohttp.server.Endpoints {
