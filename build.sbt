@@ -272,7 +272,7 @@ lazy val `quine`: Project = project
       "ch.qos.logback" % "logback-classic" % logbackV,
       "com.softwaremill.sttp.tapir" %% "tapir-sttp-stub-server" % tapirV % Test,
       "org.scalatest" %% "scalatest" % scalaTestV % Test,
-      "com.softwaremill.sttp.client3" %% "circe" % "3.10.2" % Test,
+      "com.softwaremill.sttp.client3" %% "circe" % "3.10.3" % Test,
       "software.amazon.glue" % "schema-registry-serde" % amazonGlueV, // for its protobuf DynamicSchema utility
       //"commons-io" % "commons-io" % commonsIoV  % Test,
       "io.circe" %% "circe-config" % "0.10.1",
