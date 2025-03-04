@@ -63,7 +63,7 @@ object QuineSettings {
       ExclusionRule("commons-logging", "commons-logging"),
     ),
     libraryDependencies ++= Seq(
-      "org.slf4j" % "jcl-over-slf4j" % "2.0.16",
+      "org.slf4j" % "jcl-over-slf4j" % "2.0.17",
     ),
   )
 
