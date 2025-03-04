@@ -19,6 +19,9 @@ abstract class PrimePersistor(val persistenceConfig: PersistenceConfig, bloomFil
 
   type PersistenceAgentType <: NamespacedPersistenceAgent
 
+  /** The short label for this kind of persistor */
+  val slug: String
+
   protected var persistors: Map[NamespaceId, NamespacedPersistenceAgent] = Map.empty
 
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgentType

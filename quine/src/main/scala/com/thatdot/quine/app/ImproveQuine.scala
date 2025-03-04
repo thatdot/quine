@@ -24,9 +24,147 @@ import io.circe.generic.auto._
 import io.circe.syntax._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
-import com.thatdot.quine.app.routes.{IngestStreamState, IngestStreamWithControl, StandingQueryStore}
-import com.thatdot.quine.graph.defaultNamespaceId
+import com.thatdot.quine.app.routes.IngestStreamWithControl
 import com.thatdot.quine.routes.{IngestStreamConfiguration, RegisteredStandingQuery, StandingQueryResultOutputUserDef}
+
+/** Schedules and sends reportable activity telemetry. Performs core value derivations
+  * and serves as a helper for the same purpose via controllers in clustered settings.
+  */
+class ImproveQuine(
+  service: String,
+  version: String,
+  persistorSlug: String,
+  getSources: () => Future[Option[List[String]]],
+  getSinks: () => Future[Option[List[String]]],
+  recipe: Option[Recipe] = None,
+  recipeCanonicalName: Option[String] = None,
+  apiKey: Option[String] = None,
+)(implicit system: ActorSystem, logConfig: LogConfig)
+    extends LazySafeLogging {
+  import ImproveQuine._
+
+  /** Since MessageDigest is not thread-safe, each function should create an instance its own use */
+  private def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
+  private val base64: Encoder = Base64.getEncoder
+
+  private def recipeContentsHash(recipe: Recipe): Array[Byte] = {
+    val sha256: MessageDigest = hasherInstance()
+    // Since this is not mission-critical, letting the JVM object hash function do the heavy lifting
+    sha256.update(recipe.ingestStreams.hashCode().toByte)
+    sha256.update(recipe.standingQueries.hashCode().toByte)
+    sha256.update(recipe.nodeAppearances.hashCode().toByte)
+    sha256.update(recipe.quickQueries.hashCode().toByte)
+    sha256.update(recipe.sampleQueries.hashCode().toByte)
+    sha256.update(recipe.statusQuery.hashCode().toByte)
+    sha256.digest()
+  }
+
+  private val recipeUsed: Boolean = recipe.isDefined
+  private val recipeInfo: Option[RecipeInfo] = recipe
+    .map { r =>
+      val sha256: MessageDigest = hasherInstance()
+      RecipeInfo(
+        base64.encodeToString(sha256.digest(r.title.getBytes(StandardCharsets.UTF_8))),
+        base64.encodeToString(recipeContentsHash(r)),
+      )
+    }
+
+  private val invalidMacAddresses: Set[ByteBuffer] = Set(
+    Array.fill[Byte](6)(0x00),
+    Array.fill[Byte](6)(0xFF.toByte),
+  ).map(ByteBuffer.wrap)
+
+  private def hostMac(): Array[Byte] =
+    NetworkInterface.getNetworkInterfaces.asScala
+      .filter(_.getHardwareAddress != null)
+      .map(nic => ByteBuffer.wrap(nic.getHardwareAddress))
+      .filter(address => !invalidMacAddresses.contains(address))
+      .toVector
+      .sorted
+      .headOption
+      .getOrElse(ByteBuffer.wrap(Array.emptyByteArray))
+      .array()
+
+  private val prefixBytes: Array[Byte] = "Quine_".getBytes(StandardCharsets.UTF_8)
+
+  private def hostHash(): String = Try {
+    val sha256: MessageDigest = hasherInstance()
+    val mac = hostMac()
+    // Salt the input to prevent a SHA256 of a MAC address from matching another system using a SHA256 of a MAC
+    // address for extra anonymity.
+    val prefixedBytes = Array.concat(prefixBytes, mac)
+    val hash = sha256.digest(prefixedBytes)
+    base64.encodeToString(hash)
+  }.getOrElse("host_unavailable")
+
+  protected val sessionId: UUID = UUID.randomUUID()
+  protected val startTime: Instant = Instant.now()
+
+  protected def send(
+    event: Event,
+    sources: Option[List[String]],
+    sinks: Option[List[String]],
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = TelemetryRequest(
+    event = event,
+    service = service,
+    version = version,
+    hostHash = hostHash(),
+    sessionId = sessionIdentifier,
+    uptime = sessionStartedAt.until(Instant.now(), ChronoUnit.SECONDS),
+    persistor = persistorSlug,
+    sources = sources,
+    sinks = sinks,
+    recipeUsed = recipeUsed,
+    recipeCanonicalName = recipeCanonicalName,
+    recipeInfo = recipeInfo,
+    apiKey = apiKey,
+  ).run()
+
+  def startup(
+    sources: Option[List[String]],
+    sinks: Option[List[String]],
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  ): Future[Unit] = send(InstanceStarted, sources, sinks, sessionStartedAt, sessionIdentifier)
+
+  def heartbeat(
+    sources: Option[List[String]],
+    sinks: Option[List[String]],
+    sessionStartedAt: Instant = startTime,
+    sessionIdentifier: UUID = sessionId,
+  ): Future[Unit] = send(InstanceHeartbeat, sources, sinks, sessionStartedAt, sessionIdentifier)
+
+  /** A runnable for use in an actor system schedule that fires-and-forgets the heartbeat Future */
+  private val heartbeatRunnable: Runnable = () => {
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    val _ = for {
+      sources <- getSources()
+      sinks <- getSinks()
+      _ <- heartbeat(sources, sinks)
+    } yield ()
+  }
+
+  /** Fire and forget function to send startup telemetry and schedule regular heartbeat events. */
+  def startTelemetry(): Unit = {
+    logger.info(safe"Starting usage telemetry")
+    implicit val ec: ExecutionContext = ExecutionContext.parasitic
+    for {
+      sources <- getSources()
+      sinks <- getSinks()
+      _ <- startup(sources, sinks)
+    } yield ()
+    // Schedule run-up "instance.heartbeat" events
+    runUpIntervals.foreach(system.scheduler.scheduleOnce(_, heartbeatRunnable))
+    // Schedule regular "instance.heartbeat" events
+    system.scheduler.scheduleAtFixedRate(regularHeartbeatInterval, regularHeartbeatInterval)(heartbeatRunnable)
+    // Intentionally discard the cancellables for the scheduled heartbeats.
+    // In future these could be retained if desired.
+    ()
+  }
+
+}
 
 object ImproveQuine {
 
@@ -149,155 +287,5 @@ object ImproveQuine {
       .flatMap(unrollCypherOutput)
       .map(_.slug)
       .distinct
-
-}
-
-/** Schedules and sends reportable activity telemetry. Performs core value derivations
-  * and serves as a helper for the same purpose via controllers in clustered settings.
-  */
-class ImproveQuine(
-  service: String,
-  version: String,
-  persistor: String,
-  app: Option[StandingQueryStore with IngestStreamState],
-  recipe: Option[Recipe] = None,
-  recipeCanonicalName: Option[String] = None,
-  apiKey: Option[String] = None,
-)(implicit system: ActorSystem, logConfig: LogConfig)
-    extends LazySafeLogging {
-  import ImproveQuine._
-
-  /** Since MessageDigest is not thread-safe, each function should create an instance its own use */
-  private def hasherInstance(): MessageDigest = MessageDigest.getInstance("SHA-256")
-  private val base64: Encoder = Base64.getEncoder
-
-  private def recipeContentsHash(recipe: Recipe): Array[Byte] = {
-    val sha256: MessageDigest = hasherInstance()
-    // Since this is not mission-critical, letting the JVM object hash function do the heavy lifting
-    sha256.update(recipe.ingestStreams.hashCode().toByte)
-    sha256.update(recipe.standingQueries.hashCode().toByte)
-    sha256.update(recipe.nodeAppearances.hashCode().toByte)
-    sha256.update(recipe.quickQueries.hashCode().toByte)
-    sha256.update(recipe.sampleQueries.hashCode().toByte)
-    sha256.update(recipe.statusQuery.hashCode().toByte)
-    sha256.digest()
-  }
-
-  private val recipeUsed: Boolean = recipe.isDefined
-  private val recipeInfo: Option[RecipeInfo] = recipe
-    .map { r =>
-      val sha256: MessageDigest = hasherInstance()
-      RecipeInfo(
-        base64.encodeToString(sha256.digest(r.title.getBytes(StandardCharsets.UTF_8))),
-        base64.encodeToString(recipeContentsHash(r)),
-      )
-    }
-
-  private val invalidMacAddresses: Set[ByteBuffer] = Set(
-    Array.fill[Byte](6)(0x00),
-    Array.fill[Byte](6)(0xFF.toByte),
-  ).map(ByteBuffer.wrap)
-
-  private def hostMac(): Array[Byte] =
-    NetworkInterface.getNetworkInterfaces.asScala
-      .filter(_.getHardwareAddress != null)
-      .map(nic => ByteBuffer.wrap(nic.getHardwareAddress))
-      .filter(address => !invalidMacAddresses.contains(address))
-      .toVector
-      .sorted
-      .headOption
-      .getOrElse(ByteBuffer.wrap(Array.emptyByteArray))
-      .array()
-
-  private val prefixBytes: Array[Byte] = "Quine_".getBytes(StandardCharsets.UTF_8)
-
-  private def hostHash(): String = Try {
-    val sha256: MessageDigest = hasherInstance()
-    val mac = hostMac()
-    // Salt the input to prevent a SHA256 of a MAC address from matching another system using a SHA256 of a MAC
-    // address for extra anonymity.
-    val prefixedBytes = Array.concat(prefixBytes, mac)
-    val hash = sha256.digest(prefixedBytes)
-    base64.encodeToString(hash)
-  }.getOrElse("host_unavailable")
-
-  private def getSources: Option[List[String]] =
-    app
-      .map(_.getIngestStreams(defaultNamespaceId))
-      .map(sourcesFromIngestStreams)
-
-  private def getSinks: Future[Option[List[String]]] = app match {
-    case Some(a) =>
-      a.getStandingQueries(defaultNamespaceId)
-        .map(sinksFromStandingQueries)(ExecutionContext.parasitic)
-        .map(Some(_))(ExecutionContext.parasitic)
-    case None =>
-      Future.successful(None)
-  }
-
-  private val sessionId: UUID = UUID.randomUUID()
-  private val startTime: Instant = Instant.now()
-
-  protected def send(
-    event: Event,
-    sources: Option[List[String]],
-    sinks: Option[List[String]],
-    sessionStartedAt: Instant = startTime,
-    sessionIdentifier: UUID = sessionId,
-  )(implicit system: ActorSystem, logConfig: LogConfig): Future[Unit] = TelemetryRequest(
-    event = event,
-    service = service,
-    version = version,
-    hostHash = hostHash(),
-    sessionId = sessionIdentifier,
-    uptime = sessionStartedAt.until(Instant.now(), ChronoUnit.SECONDS),
-    persistor = persistor,
-    sources = sources,
-    sinks = sinks,
-    recipeUsed = recipeUsed,
-    recipeCanonicalName = recipeCanonicalName,
-    recipeInfo = recipeInfo,
-    apiKey = apiKey,
-  ).run()
-
-  def startup(
-    sources: Option[List[String]],
-    sinks: Option[List[String]],
-    sessionStartedAt: Instant = startTime,
-    sessionIdentifier: UUID = sessionId,
-  ): Future[Unit] = send(InstanceStarted, sources, sinks, sessionStartedAt, sessionIdentifier)
-
-  def heartbeat(
-    sources: Option[List[String]],
-    sinks: Option[List[String]],
-    sessionStartedAt: Instant = startTime,
-    sessionIdentifier: UUID = sessionId,
-  ): Future[Unit] = send(InstanceHeartbeat, sources, sinks, sessionStartedAt, sessionIdentifier)
-
-  /** A runnable for use in an actor system schedule that fires-and-forgets the heartbeat Future */
-  private val heartbeatRunnable: Runnable = () => {
-    implicit val ec: ExecutionContext = system.dispatcher
-    val _ = for {
-      sources <- Future(getSources)
-      sinks <- getSinks
-    } yield heartbeat(sources, sinks)
-  }
-
-  /** Fire and forget function to send startup telemetry and schedule regular heartbeat events. */
-  def startTelemetry(): Unit = {
-    logger.info(safe"Starting usage telemetry")
-    implicit val ec: ExecutionContext = system.dispatcher
-    val sources = getSources
-    for {
-      sinks <- getSinks
-      // Send the "instance.started" event
-      _ <- startup(sources, sinks)
-    } yield ()
-    // Schedule initial and regular "instance.heartbeat" events
-    runUpIntervals.foreach(system.scheduler.scheduleOnce(_, heartbeatRunnable))
-    system.scheduler.scheduleAtFixedRate(regularHeartbeatInterval, regularHeartbeatInterval)(heartbeatRunnable)
-    () // Intentionally discard the cancellables for the scheduled heartbeats.
-    // In future these could be retained if desired.
-  }
 
 }

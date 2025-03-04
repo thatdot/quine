@@ -12,6 +12,8 @@ class StatelessPrimePersistor(
 )(implicit materializer: Materializer, override val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
+  override val slug: String = "stateless"
+
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
     create(persistenceConfig, namespace)
 }

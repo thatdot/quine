@@ -30,6 +30,8 @@ abstract class PrimeCassandraPersistor(
 
   type PersistenceAgentType = CassandraPersistor
 
+  override val slug: String = "cassandra"
+
   protected val chunker: Chunker
 
   // This is so we can have syntax like .mapN and .tupled, without making the parasitic ExecutionContext implicit.

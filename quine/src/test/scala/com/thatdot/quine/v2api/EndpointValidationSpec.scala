@@ -27,7 +27,7 @@ import com.thatdot.quine.util.TestLogging._
 
 object EndpointValidationSupport {
   private val graph = IngestTestGraph.makeGraph("endpoint-test")
-  private val quineApp = new QuineApp(graph)
+  private val quineApp = new QuineApp(graph, false)
   private val app = new OssApiMethods(graph, quineApp, QuineConfig(), Timeout(5.seconds))
   private val apiRoutes = new V2OssRoutes(app)
   implicit val ec: ExecutionContext.parasitic.type = ExecutionContext.parasitic

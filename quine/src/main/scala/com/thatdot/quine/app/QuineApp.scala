@@ -57,7 +57,12 @@ import com.thatdot.quine.util.{BaseError, SwitchMode}
   *
   * @param graph reference to the underlying graph
   */
-final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
+final class QuineApp(
+  graph: GraphService,
+  helpMakeQuineBetter: Boolean,
+  recipe: Option[Recipe] = None,
+  recipeCanonicalName: Option[String] = None,
+)(implicit val logConfig: LogConfig)
     extends BaseApp(graph)
     with AdministrationRoutesState
     with QueryUiConfigurationState
@@ -286,6 +291,14 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
       cancelledSqState.sequence productL storeStandingQueries()
     }
   }
+
+  private def getSources: Future[Option[List[String]]] =
+    Future.successful(Some(ImproveQuine.sourcesFromIngestStreams(getIngestStreams(defaultNamespaceId))))
+
+  private def getSinks: Future[Option[List[String]]] =
+    getStandingQueries(defaultNamespaceId)
+      .map(ImproveQuine.sinksFromStandingQueries)(ExecutionContext.parasitic)
+      .map(Some(_))(ExecutionContext.parasitic)
 
   /** Adds a new user-defined output handler to an existing standing query.
     *
@@ -676,6 +689,43 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
       }(implicitly, graph.system.dispatcher)
       .map(_ => ())(graph.system.dispatcher)
   }
+
+  /** Report telemetry only if the user has opted in (always `true` in trial-mode).
+    * This needs to be loaded after the webserver is started; if not, the initial telemetry
+    * startup message may not get sent.
+    *
+    * @param testOnlyImproveQuine ⚠️ only for testing: this [unfortunate] approach makes it possible,
+    *                             with limited refactoring, to observe the effects of an [[ImproveQuine]]
+    *                             class when the relationship between it and the Quine App is the
+    *                             effectful relationship under test
+    */
+  private def initializeTelemetry(testOnlyImproveQuine: Option[ImproveQuine]): Unit =
+    if (helpMakeQuineBetter) {
+      val iq = testOnlyImproveQuine.getOrElse {
+        new ImproveQuine(
+          service = "Quine",
+          version = BuildInfo.version,
+          persistorSlug = graph.namespacePersistor.slug,
+          getSources = () => getSources,
+          getSinks = () => getSinks,
+          recipe = recipe,
+          recipeCanonicalName = recipeCanonicalName,
+        )(system = graph.system, logConfig = logConfig)
+      }
+      iq.startTelemetry()
+    }
+
+  /** Notifies this Quine App that the web server has started.
+    * Intended to enable the App to execute tasks that are not
+    * safe to execute until the web server has started.
+    *
+    * @param testOnlyImproveQuine ⚠️ only for testing: this [unfortunate] approach makes it possible,
+    *                             with limited refactoring, to observe the effects of an [[ImproveQuine]]
+    *                             class when the relationship between it and the Quine App is the
+    *                             effectful relationship under test
+    */
+  def notifyWebServerStarted(testOnlyImproveQuine: Option[ImproveQuine] = None): Unit =
+    initializeTelemetry(testOnlyImproveQuine)
 
   /** Prepare for a shutdown */
   def shutdown()(implicit ec: ExecutionContext): Future[Unit] =

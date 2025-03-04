@@ -22,6 +22,8 @@ class RocksDbPrimePersistor(
 )(implicit materializer: Materializer, val logConfig: LogConfig)
     extends UnifiedPrimePersistor(persistenceConfig, bloomFilterSize) {
 
+  override val slug: String = "rocksdb"
+
   private val parentDir = topLevelPath.getAbsoluteFile.getParentFile
   if (createParentDir)
     if (parentDir.mkdirs())

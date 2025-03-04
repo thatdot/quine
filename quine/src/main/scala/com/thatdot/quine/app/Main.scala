@@ -164,7 +164,12 @@ object Main extends App with LazySafeLogging {
 
   implicit val system: ActorSystem = graph.system
   val ec: ExecutionContext = graph.shardDispatcherEC
-  val quineApp = new QuineApp(graph)
+  val quineApp = new QuineApp(
+    graph = graph,
+    helpMakeQuineBetter = config.helpMakeQuineBetter,
+    recipe = recipe,
+    recipeCanonicalName = recipe.flatMap(_ => cmdArgs.recipe.flatMap(Recipe.getCanonicalName)),
+  )
 
   // Initialize the namespaces and apply migrations
   val hydrateAndMigrate: Future[Either[MigrationError, Unit]] = {
@@ -264,20 +269,7 @@ object Main extends App with LazySafeLogging {
           if (config.api2Enabled) {
             statusLines.info(log"Api v2 enabled")
           }
-          // report telemetry only if the user has opted in.
-          // This needs to be loaded after the webserver is started; if not, the initial telemetry
-          // startup message may not get sent.
-          if (config.helpMakeQuineBetter) {
-            val iq = new ImproveQuine(
-              service = "Quine",
-              version = BuildInfo.version,
-              persistor = config.store.label,
-              app = Some(quineApp),
-              recipe = recipe,
-              recipeCanonicalName = if (recipe.isDefined) cmdArgs.recipe.flatMap(Recipe.getCanonicalName) else None,
-            )
-            iq.startTelemetry()
-          }
+          quineApp.notifyWebServerStarted()
         case Failure(_) => // pekko will have logged a stacktrace to the debug logger
       }(ec)
   }

@@ -55,6 +55,8 @@ class TempMapDbPrimePersistor(
       ExecutionContext,
     ) {
 
+  override val slug: String = "temp-mapdb"
+
   protected def agentCreator(persistenceConfig: PersistenceConfig, namespace: NamespaceId): PersistenceAgent =
     numberPartitions match {
       case 1 => dbForPath(MapDbPersistor.TemporaryDb)
@@ -81,6 +83,8 @@ class PersistedMapDbPrimePersistor(
       bloomFilterSize,
       ExecutionContext,
     ) {
+
+  override val slug: String = "mapdb"
 
   private val parentDir = basePath.getAbsoluteFile.getParentFile
 
