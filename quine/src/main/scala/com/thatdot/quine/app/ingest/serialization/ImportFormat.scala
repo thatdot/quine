@@ -3,10 +3,8 @@ package com.thatdot.quine.app.ingest.serialization
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
-import org.apache.pekko.actor.Status
-import org.apache.pekko.stream.CompletionStrategy
-import org.apache.pekko.stream.scaladsl.{Sink, Source}
-import org.apache.pekko.{Done, NotUsed}
+import org.apache.pekko.Done
+import org.apache.pekko.stream.scaladsl.Sink
 
 import com.codahale.metrics.Timer
 import com.typesafe.config.ConfigFactory
@@ -16,15 +14,15 @@ import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLog
 import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.util.AtLeastOnceCypherQuery
 import com.thatdot.quine.compiler
-import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, QueryContext, QueryPlan}
-import com.thatdot.quine.graph.{
-  CypherOpsGraph,
-  NamespaceId,
-  QuinePatternLoaderMessage,
-  QuinePatternOpsGraph,
-  StandingQueryId,
-  cypher,
+import com.thatdot.quine.graph.cypher.quinepattern.{
+  EagerQuinePatternQueryPlanner,
+  QueryPlan,
+  QueryTarget,
+  QuinePatternInterpreter,
 }
+import com.thatdot.quine.graph.cypher.{CompiledQuery, Location, QueryContext}
+import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
+import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 
 /** Describes formats that Quine can import
   * Deserialized type refers to the (nullable) type to be produced by invocations of this [[ImportFormat]]
@@ -124,7 +122,34 @@ abstract class CypherImportFormat(query: String, parameter: String) extends Impo
       .runWith(Sink.ignore)(graph.materializer)
 }
 
+/** An abstract implementation of the `ImportFormat` trait that allows importing
+  * data into Quine graphs, utilizing the Quine Pattern query language.
+  *
+  * @constructor Creates a new instance of `QuinePatternImportFormat`.
+  * @param query     the Quine Pattern query that defines how the data should be interpreted.
+  * @param parameter the symbol in the query to be replaced with deserialized data during execution.
+  *
+  *                  This class processes a defined query using the Quine Pattern query pipeline,
+  *                  which includes lexing, parsing, symbol analysis, and query planning. The resulting
+  *                  `QueryPlan` is used for interpreting data and writing it into a Quine graph.
+  *
+  *                  The class checks the system property `qp.enabled` to ensure the Quine Pattern
+  *                  functionality is enabled, throwing an error if not configured correctly.
+  *
+  *                  The `writeValueToGraph` method interprets the compiled query with the provided
+  *                  deserialized data and writes it to the target namespace in the Quine graph.
+  */
 abstract class QuinePatternImportFormat(query: String, parameter: String) extends ImportFormat with LazySafeLogging {
+  val maybeIsQPEnabled: Option[Boolean] = for {
+    pv <- Option(System.getProperty("qp.enabled"))
+    b <- pv.toBooleanOption
+  } yield b
+
+  maybeIsQPEnabled match {
+    case Some(true) => ()
+    case _ => sys.error("Quine pattern must be enabled using -Dqp.enabled=true to use this feature.")
+  }
+
   override val label: String = "QuinePattern " + query
   implicit protected def logConfig: LogConfig
 
@@ -133,7 +158,7 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
   val compiled: QueryPlan = {
     val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
     val (_, result) = parser.process(query).value.run(LexerState(Nil)).value
-    com.thatdot.quine.graph.cypher.Planner.generatePlanFromDescription(result.get)
+    EagerQuinePatternQueryPlanner.generatePlan(result.get)
   }
 
   def writeValueToGraph(
@@ -142,32 +167,16 @@ abstract class QuinePatternImportFormat(query: String, parameter: String) extend
     deserialized: cypher.Value,
   ): Future[Done] = {
 
+    // Typecast is required here because `ImportFormat` is hard coded
+    // to existing Quine structures
     val hack = graph.asInstanceOf[QuinePatternOpsGraph]
 
-    val id = StandingQueryId.fresh()
-
-    Source
-      .actorRefWithBackpressure(
-        QuinePatternLoaderMessage.LoadAck(id),
-        { case Status.Success(_) =>
-          CompletionStrategy.immediately
-        },
-        PartialFunction.empty,
+    QuinePatternInterpreter
+      .interpret(compiled, QueryTarget.None, intoNamespace, Map(Symbol(parameter) -> deserialized), QueryContext.empty)(
+        hack,
       )
-      .mapMaterializedValue { ref =>
-        val parameters = Map(Symbol(parameter) -> deserialized)
-        hack.getLoader ! QuinePatternLoaderMessage.LoadIngestQuery(
-          intoNamespace,
-          id,
-          compiled,
-          null,
-          null,
-          parameters,
-          ref,
-        )
-      }
-      .flatMap((src: Source[QueryContext, NotUsed]) => src)
       .runWith(Sink.ignore)(graph.materializer)
+
   }
 }
 
@@ -206,6 +215,12 @@ class QuinePatternStringInputFormat(query: String, parameter: String, charset: S
   override protected def importBytes(data: Array[Byte]): Try[cypher.Value] = Success(
     cypher.Expr.Str(new String(data, charset)),
   )
+}
+
+class QuinePatternRawInputFormat(query: String, parameter: String)(implicit val logConfig: LogConfig)
+    extends QuinePatternImportFormat(query, parameter) {
+  override def importBytes(arr: Array[Byte]): Try[cypher.Value] =
+    Success(cypher.Expr.Bytes(arr, representsId = false))
 }
 
 class CypherRawInputFormat(query: String, parameter: String)(implicit val logConfig: LogConfig)

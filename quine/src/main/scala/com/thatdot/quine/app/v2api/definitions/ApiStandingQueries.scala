@@ -340,7 +340,9 @@ object ApiStandingQueries {
       // SQv4/Cypher interpreter
       case object MultipleValues extends StandingQueryMode
 
-      val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues)
+      case object QuinePattern extends StandingQueryMode
+
+      val values: Seq[StandingQueryMode] = Seq(DistinctId, MultipleValues, QuinePattern)
     }
   }
 

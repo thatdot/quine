@@ -22,7 +22,7 @@ import org.mapdb.serializer.{SerializerArrayTuple, SerializerCompressionWrapper,
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator, StrictSafeLogging}
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.cypher.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
 import com.thatdot.quine.graph.{
   DomainIndexEvent,
   EventTime,

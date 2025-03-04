@@ -568,6 +568,12 @@ object StreamedRecordFormat {
   ) extends StreamedRecordFormat
       with IngestQuery
 
+  final case class QuinePatternJson(
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that",
+  ) extends StreamedRecordFormat
+      with IngestQuery
+
   @title("Raw Bytes via Cypher")
   @unnamed
   @docs("""Records may have any format. For every record received, the
@@ -781,6 +787,35 @@ object FileIngestFormat {
     @docs("QuinePAttern query to execute on each record") query: String,
     @docs("name of the QuinePattern parameter holding the JSON value") parameter: String = "that",
   ) extends FileIngestFormat
+
+  @title("QuinePatternCSV")
+  @unnamed()
+  @docs("""blah blah blah""")
+  final case class QuinePatternCsv(
+    @docs("Cypher query to execute on each record.") query: String,
+    @docs("Name of the Cypher parameter holding the parsed CSV row.")
+    parameter: String = "that",
+    @docs("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
+            |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+            |type available to the Cypher query will be a List of strings with values accessible by index. When
+            |headers are available (supplied or read from the file), the resulting type available to the Cypher
+            |query will be a Map[String, String], with values accessible using the corresponding header string.
+            |CSV rows containing more records than the `headers` will have items that don't match a header column
+            |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+            |Default: `false`.""".stripMargin)
+    headers: Either[Boolean, List[String]] = Left(false),
+    @docs("CSV row delimiter character.")
+    delimiter: CsvCharacter = CsvCharacter.Comma,
+    @docs("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
+            |section will be a part of the CSV value.""".stripMargin)
+    quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
+    @docs("Character used to escape special characters.")
+    escapeChar: CsvCharacter = CsvCharacter.Backslash,
+  ) extends FileIngestFormat {
+    require(delimiter != quoteChar, "Different characters must be used for `delimiter` and `quoteChar`.")
+    require(delimiter != escapeChar, "Different characters must be used for `delimiter` and `escapeChar`.")
+    require(quoteChar != escapeChar, "Different characters must be used for `quoteChar` and `escapeChar`.")
+  }
 
   /** Create using a cypher query, expecting each line to be a single row CSV record */
   @title("CypherCSV")

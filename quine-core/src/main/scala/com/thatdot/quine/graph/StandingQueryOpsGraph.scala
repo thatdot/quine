@@ -21,6 +21,7 @@ import com.thatdot.common.logging.Log.{Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.StandingQueryOpsGraph.StandingQueryPartNotFoundException
 import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
+import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner.LazyQueryPlan
 import com.thatdot.quine.graph.messaging.SpaceTimeQuineId
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.model.DomainGraphNodePackage
@@ -36,6 +37,14 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
   def standingQueries(namespace: NamespaceId): Option[NamespaceStandingQueries] =
     namespaceStandingQueries.get(namespace)
+
+  case class RunningQuinePattern(
+    plan: LazyQueryPlan,
+    outputs: Map[String, Sink[StandingQueryResult, UniqueKillSwitch]],
+  )
+
+  val quinePatternLazyQueries: collection.concurrent.Map[StandingQueryId, RunningQuinePattern] =
+    new ConcurrentHashMap[StandingQueryId, RunningQuinePattern]().asScala
 
   private val namespaceStandingQueries: collection.concurrent.Map[NamespaceId, NamespaceStandingQueries] =
     new ConcurrentHashMap[NamespaceId, NamespaceStandingQueries].asScala
@@ -210,6 +219,8 @@ trait StandingQueryOpsGraph extends BaseGraph {
 
       // if this is a cypher SQ (at runtime), also register its components in the index as appropriate
       pattern match {
+        case StandingQueryPattern.QuinePatternQueryPattern(plan) =>
+          quinePatternLazyQueries.put(sqId, RunningQuinePattern(plan, outputs))
         case runsAsCypher: StandingQueryPattern.MultipleValuesQueryPattern =>
           val partsToAdd = MultipleValuesStandingQuery
             .indexableSubqueries(runsAsCypher.compiledQuery)

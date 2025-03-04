@@ -14,12 +14,20 @@ import com.thatdot.quine.app.ingest.serialization.{
   CypherStringInputFormat,
   ImportFormat,
   QuinePatternJsonInputFormat,
+  QuinePatternRawInputFormat,
   QuinePatternStringInputFormat,
 }
 import com.thatdot.quine.graph.cypher.Value
 import com.thatdot.quine.graph.{CypherOpsGraph, NamespaceId, cypher}
 import com.thatdot.quine.routes.FileIngestFormat
-import com.thatdot.quine.routes.FileIngestFormat.{CypherCsv, CypherJson, CypherLine, QuinePatternJson, QuinePatternLine}
+import com.thatdot.quine.routes.FileIngestFormat.{
+  CypherCsv,
+  CypherJson,
+  CypherLine,
+  QuinePatternCsv,
+  QuinePatternJson,
+  QuinePatternLine,
+}
 import com.thatdot.quine.util.SwitchMode
 
 /** Ingest source runtime that requires managing its own record delimitation -- for example, line-based ingests or CSV
@@ -81,6 +89,83 @@ abstract class LineDelimitedIngestSrcDef[A](
     .map(line => if (!line.isEmpty && line.last == '\r') line.dropRight(1) else line)
 
   def rawBytes(value: ByteString): Array[Byte] = value.toArray
+}
+
+case class QuinePatternCsvIngestSrcDef(
+  initialSwitchMode: SwitchMode,
+  format: FileIngestFormat.QuinePatternCsv,
+  src: Source[ByteString, NotUsed],
+  encodingString: String,
+  parallelism: Int,
+  maximumLineSize: Int,
+  startAtOffset: Long,
+  ingestLimit: Option[Long],
+  maxPerSecond: Option[Int],
+  override val name: String,
+  override val intoNamespace: NamespaceId,
+)(implicit val graph: CypherOpsGraph, val logConfig: LogConfig)
+    extends ContentDelimitedIngestSrcDef(
+      initialSwitchMode,
+      new QuinePatternRawInputFormat(format.query, format.parameter),
+      src,
+      encodingString,
+      parallelism,
+      startAtOffset,
+      ingestLimit,
+      maxPerSecond,
+      name,
+      intoNamespace,
+    ) {
+  type InputType = List[ByteString] // csv row
+
+  def source(): Source[List[ByteString], NotUsed] = src
+    .via(
+      CsvParsing.lineScanner(format.delimiter.byte, format.quoteChar.byte, format.escapeChar.byte, maximumLineSize),
+    )
+    .via(bounded)
+
+  def csvHeadersFlow(headerDef: Either[Boolean, List[String]]): Flow[List[ByteString], Value, NotUsed] =
+    headerDef match {
+      case Right(h) =>
+        CsvToMap
+          .withHeaders(h: _*)
+          .map(m => cypher.Expr.Map(m.view.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+      case Left(true) =>
+        CsvToMap
+          .toMap()
+          .map(m => cypher.Expr.Map(m.view.mapValues(bs => cypher.Expr.Str(bs.decodeString(charset)))))
+      case Left(false) =>
+        Flow[List[ByteString]]
+          .map(l => cypher.Expr.List(l.map(bs => cypher.Expr.Str(bs.decodeString(charset))).toVector))
+    }
+
+  override val deserializeAndMeter: Flow[List[ByteString], TryDeserialized, NotUsed] =
+    Flow[List[ByteString]]
+      // NB when using headers, the record count here will consider the header-defining row as a "record". Since Quine
+      // metrics are only heuristic, this is an acceptable trade-off for simpler code.
+      .wireTap(bs => meter.mark(bs.map(_.length).sum))
+      .via(csvHeadersFlow(format.headers))
+      // Here the empty list is a placeholder for the original
+      // value in the TryDeserialized response value. Since this
+      // is only used in errors and this is a success response,
+      // it's not necessary to populate it.
+      .map((t: Value) => (Success(t), Nil))
+
+  /** Define a way to extract raw bytes from a single input event */
+  def rawBytes(value: List[ByteString]): Array[Byte] = {
+    // inefficient, but should never be used anyways since csv defines its own deserializeAndMeter
+    logger.debug(
+      safe"""${Safe(getClass.getSimpleName)}.rawBytes was called: this function has an inefficient
+            |implementation but should not be accessible during normal operation.""".cleanLines,
+    )
+    value.reduce { (l, r) =>
+      val bs = ByteString.createBuilder
+      bs ++= l
+      bs += format.delimiter.byte
+      bs ++= r
+      bs.result()
+    }.toArray
+  }
 }
 
 case class CsvIngestSrcDef(
@@ -374,6 +459,20 @@ object ContentDelimitedIngestSrcDef {
         CsvIngestSrcDef(
           initialSwitchMode,
           cv,
+          src,
+          encodingString,
+          parallelism,
+          maximumLineSize,
+          startAtOffset,
+          ingestLimit,
+          maxPerSecond,
+          name,
+          intoNamespace,
+        )
+      case qpcv @ QuinePatternCsv(_, _, _, _, _, _) =>
+        QuinePatternCsvIngestSrcDef(
+          initialSwitchMode,
+          qpcv,
           src,
           encodingString,
           parallelism,

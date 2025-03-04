@@ -510,6 +510,12 @@ object StandingQueryCodec extends PersistenceCodec[StandingQueryInfo] {
       case cypher: StandingQueryPattern.MultipleValuesQueryPattern =>
         val offset: Offset = writeSqV4StandingQuery(builder, cypher)
         TypeAndOffset(persistence.StandingQueryPattern.SqV4Query, offset)
+
+      case _: StandingQueryPattern.QuinePatternQueryPattern =>
+        //val offset: Offset = writeQuinePattern(builder, qp)
+        persistence.QuinePatternQueryPattern.startQuinePatternQueryPattern(builder)
+        val offset = persistence.QuinePatternQueryPattern.endQuinePatternQueryPattern(builder)
+        TypeAndOffset(persistence.StandingQueryPattern.QuinePatternQueryPattern, offset)
     }
 
   private[this] def readStandingQueryPattern(

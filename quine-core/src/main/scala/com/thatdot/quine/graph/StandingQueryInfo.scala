@@ -12,6 +12,7 @@ import com.codahale.metrics.{Counter, Meter, Timer}
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.MultipleValuesStandingQuery
+import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner.LazyQueryPlan
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.util.Log.implicits._
@@ -121,6 +122,13 @@ object StandingQueryPattern {
     includeCancellation: Boolean,
     origin: PatternOrigin.SqV4Origin,
   ) extends StandingQueryPattern
+
+  final case class QuinePatternQueryPattern(
+    compiledQuery: LazyQueryPlan,
+  ) extends StandingQueryPattern {
+    val includeCancellation: Boolean = false
+    val origin: PatternOrigin = PatternOrigin.DirectSqV4
+  }
 }
 
 /** Information kept around about a standing query (on this host) while the query is running

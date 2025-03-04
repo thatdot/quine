@@ -11,6 +11,8 @@ object ApiToStanding {
         Standing.StandingQueryPattern.StandingQueryMode.DistinctId
       case Api.StandingQueryPattern.StandingQueryMode.MultipleValues =>
         Standing.StandingQueryPattern.StandingQueryMode.MultipleValues
+      case Api.StandingQueryPattern.StandingQueryMode.QuinePattern =>
+        Standing.StandingQueryPattern.StandingQueryMode.QuinePattern
     }
   def apply(format: Api.OutputFormat): Standing.OutputFormat = format match {
     case Api.OutputFormat.JSON => Standing.OutputFormat.JSON

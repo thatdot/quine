@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import com.google.flatbuffers.FlatBufferBuilder
 
-import com.thatdot.quine.graph.cypher.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
 import com.thatdot.quine.persistor.PackedFlatBufferBinaryFormat.Offset
 import com.thatdot.quine.persistor.{BinaryFormat, PackedFlatBufferBinaryFormat}
 

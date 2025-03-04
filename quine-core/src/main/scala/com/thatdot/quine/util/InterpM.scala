@@ -104,7 +104,7 @@ class InterpM[E <: AnyError: ClassTag, S] private (private val source: Source[S,
 
   /** Converts this InterpM to an interpM with types `E2` and `S2`
     * Note, this should only be used when the specific type of this is known to be an `InterpM[E2,S2]`
-    * as it will throw an exception of it is not the correct type
+    * as it will throw an exception if it is not the correct type
     * @throws java.lang.ClassCastException
     */
   def collectType[E2 <: AnyError, S2]: InterpM[E2, S2] = asInstanceOf[InterpM[E2, S2]]

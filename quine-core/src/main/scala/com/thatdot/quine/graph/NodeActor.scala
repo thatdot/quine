@@ -14,6 +14,7 @@ import com.thatdot.quine.graph.messaging.CypherMessage._
 import com.thatdot.quine.graph.messaging.LiteralMessage.LiteralCommand
 import com.thatdot.quine.graph.messaging.StandingQueryMessage._
 import com.thatdot.quine.graph.messaging.{AlgorithmCommand, SpaceTimeQuineId}
+import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, PropertyValue}
 import com.thatdot.quine.util.Log.implicits._
@@ -74,7 +75,12 @@ private[graph] class NodeActor(
     )(logConfig) {
   implicit def logConfig_ : LogConfig = logConfig
   def receive: Receive = actorClockBehavior {
-    case control: NodeControlMessage => goToSleepBehavior(control)
+    case control: NodeControlMessage =>
+      control match {
+        case GoToSleep => quinePatternQueryBehavior(QuinePatternCommand.QuinePatternStop)
+        case _ => ()
+      }
+      goToSleepBehavior(control)
     case StashedMessage(message) => receive(message)
     case query: CypherQueryInstruction => cypherBehavior(query)
     case command: LiteralCommand => literalCommandBehavior(command)
@@ -198,6 +204,16 @@ private[graph] class NodeActor(
 
       // Final phase: sync MultipleValues SQs (mixes local + off-node effects)
       updateMultipleValuesStandingQueriesOnNode()
+
+      val maybeIsQPEnabled = for {
+        pv <- Option(System.getProperty("qp.enabled"))
+        b <- pv.toBooleanOption
+      } yield b
+
+      maybeIsQPEnabled match {
+        case Some(true) => loadQuinePatternLazyQueries()
+        case _ => ()
+      }
     }
 
     // Node is done waking up, stop the wakeup timer (if it's running)

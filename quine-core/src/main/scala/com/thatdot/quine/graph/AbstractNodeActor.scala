@@ -37,6 +37,7 @@ import com.thatdot.quine.graph.behavior.{
   QuinePatternQueryBehavior,
 }
 import com.thatdot.quine.graph.cypher.MultipleValuesResultsReporter
+import com.thatdot.quine.graph.cypher.quinepattern.WatchState
 import com.thatdot.quine.graph.edges.{EdgeProcessor, MemoryFirstEdgeProcessor, PersistorFirstEdgeProcessor}
 import com.thatdot.quine.graph.messaging.BaseMessage.Done
 import com.thatdot.quine.graph.messaging.LiteralMessage.{
@@ -49,6 +50,7 @@ import com.thatdot.quine.graph.messaging.LiteralMessage.{
 import com.thatdot.quine.graph.messaging.{QuineIdOps, QuineRefOps, SpaceTimeQuineId}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.metrics.implicits.TimeFuture
+import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.model.DomainGraphNode.DomainGraphNodeId
 import com.thatdot.quine.model.{HalfEdge, Milliseconds, PropertyValue, QuineIdProvider, QuineValue}
 import com.thatdot.quine.persistor.{EventEffectOrder, NamespacedPersistenceAgent, PersistenceConfig}
@@ -416,6 +418,10 @@ abstract private[graph] class AbstractNodeActor(
       }
       metrics.nodePropertyCounter(namespace).increment(previousCount = properties.size)
       properties = properties + (key -> value)
+      states.values().forEach {
+        case ws: WatchState => ws.propertyAdded(key, value)
+        case _ => ()
+      }
     case PropertyRemoved(key, _) =>
       metrics.nodePropertyCounter(namespace).decrement(previousCount = properties.size)
       properties = properties - key

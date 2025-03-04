@@ -8,7 +8,7 @@ import org.apache.pekko.stream.scaladsl.Source
 import cats.data.NonEmptyList
 
 import com.thatdot.common.quineid.QuineId
-import com.thatdot.quine.graph.cypher.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
 import com.thatdot.quine.graph.{
   BaseGraph,
   DomainIndexEvent,

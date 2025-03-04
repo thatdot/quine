@@ -51,7 +51,7 @@ object Dependencies {
   val protobufV = "3.25.6"
   val protobufCommonV = "2.14.2"
   val pureconfigV = "0.17.8"
-  val quineQueryV = "0.2.1"
+  val quineQueryV = "0.2.2"
   val quineCommonV = "0.0.3"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"

@@ -18,6 +18,7 @@ import com.thatdot.quine.graph.edges.{ReverseOrderedEdgeCollection, SyncEdgeColl
 import com.thatdot.quine.graph.messaging.LocalShardRef
 import com.thatdot.quine.graph.messaging.ShardMessage.{CreateNamespace, DeleteNamespace}
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
+import com.thatdot.quine.graph.quinepattern.QuinePatternOpsGraph
 import com.thatdot.quine.model._
 import com.thatdot.quine.persistor.{EventEffectOrder, PrimePersistor}
 import com.thatdot.quine.util.Log.implicits._
@@ -99,6 +100,8 @@ class GraphService(
                     case StandingQueryPattern
                           .MultipleValuesQueryPattern(_, _, PatternOrigin.GraphPattern(_, _)) =>
                       // this is an MVSQ based on a GraphPattern, but it doesn't illegally specify DISTINCT. No further action needed.
+                      ()
+                    case _: StandingQueryPattern.QuinePatternQueryPattern =>
                       ()
                   }
                   sqns.startStandingQuery(

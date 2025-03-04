@@ -281,6 +281,8 @@ object IngestSrcDef extends LazySafeLogging {
     label: StreamedRecordFormat,
   )(implicit protobufSchemaCache: ProtobufSchemaCache, logConfig: LogConfig): ImportFormat =
     label match {
+      case StreamedRecordFormat.QuinePatternJson(query, parameter) =>
+        new QuinePatternJsonInputFormat(query, parameter)
       case StreamedRecordFormat.CypherJson(query, parameter) =>
         new CypherJsonInputFormat(query, parameter)
       case StreamedRecordFormat.CypherProtobuf(query, parameter, schemaUrl, typeName) =>

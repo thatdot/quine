@@ -17,6 +17,7 @@ import cats.instances.future.catsStdInstancesForFuture
 import cats.syntax.all._
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
+import com.thatdot.cypher.phases.{LexerPhase, LexerState, ParserPhase, SymbolAnalysisPhase}
 import com.thatdot.quine.app.ingest.serialization.{CypherParseProtobuf, CypherToProtobuf}
 import com.thatdot.quine.app.ingest.{IngestSrcDef, QuineIngestSource}
 import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration, QuineIngestStreamWithStatus}
@@ -27,7 +28,12 @@ import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.compiler.cypher
 import com.thatdot.quine.compiler.cypher.{CypherStandingWiretap, registerUserDefinedProcedure}
 import com.thatdot.quine.graph.InvalidQueryPattern._
-import com.thatdot.quine.graph.StandingQueryPattern.{DomainGraphNodeStandingQueryPattern, MultipleValuesQueryPattern}
+import com.thatdot.quine.graph.StandingQueryPattern.{
+  DomainGraphNodeStandingQueryPattern,
+  MultipleValuesQueryPattern,
+  QuinePatternQueryPattern,
+}
+import com.thatdot.quine.graph.cypher.quinepattern.LazyQuinePatternQueryPlanner
 import com.thatdot.quine.graph.metrics.HostQuineMetrics
 import com.thatdot.quine.graph.{
   GraphService,
@@ -199,6 +205,24 @@ final class QuineApp(graph: GraphService)(implicit val logConfig: LogConfig)
                   val compiledQuery = pattern.compiledMultipleValuesStandingQuery(graph.labelsProperty, idProvider)
                   val sqv4Pattern = MultipleValuesQueryPattern(compiledQuery, query.includeCancellations, origin)
                   (sqv4Pattern, None)
+                case StandingQueryMode.QuinePattern =>
+                  val maybeIsQPEnabled = for {
+                    pv <- Option(System.getProperty("qp.enabled"))
+                    b <- pv.toBooleanOption
+                  } yield b
+
+                  maybeIsQPEnabled match {
+                    case Some(true) =>
+                      import com.thatdot.language.phases.UpgradeModule._
+
+                      val parser = LexerPhase andThen ParserPhase andThen SymbolAnalysisPhase
+                      val (state, result) = parser.process(cypherQuery).value.run(LexerState(Nil)).value
+                      val queryPlan = LazyQuinePatternQueryPlanner.planQuery(result.get, state.symbolTable)
+
+                      val qpPattern = QuinePatternQueryPattern(queryPlan)
+                      (qpPattern, None)
+                    case _ => sys.error("Quine pattern must be enabled using -Dqp.enabled=true to use this feature.")
+                  }
               }
           }
           (dgnPackage match {
@@ -912,6 +936,7 @@ object QuineApp {
     val mode = internal.queryPattern match {
       case _: graph.StandingQueryPattern.DomainGraphNodeStandingQueryPattern => StandingQueryMode.DistinctId
       case _: graph.StandingQueryPattern.MultipleValuesQueryPattern => StandingQueryMode.MultipleValues
+      case _: graph.StandingQueryPattern.QuinePatternQueryPattern => StandingQueryMode.QuinePattern
     }
     val pattern = internal.queryPattern.origin match {
       case graph.PatternOrigin.GraphPattern(_, Some(cypherQuery)) =>

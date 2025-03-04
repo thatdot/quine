@@ -11,7 +11,7 @@ import com.datastax.oss.driver.api.core.`type`.codec.TypeCodec
 import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
-import com.thatdot.quine.graph.cypher.QueryPlan
+import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
 import com.thatdot.quine.persistor.cassandra.support.{
   CassandraCodecs,
