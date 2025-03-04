@@ -72,7 +72,7 @@ object Dependencies {
   val sslContextKickstartV = "9.0.0"
   val stoplightElementsV = "7.12.0"
   val sugarV = "2.0.6"
-  val tapirV = "1.11.13"
+  val tapirV = "1.11.16"
   val ujsonCirceV = "3.3.1"
   val circeV = "0.14.9"
   val circeOpticsV = "0.15.0"
