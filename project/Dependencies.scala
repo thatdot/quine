@@ -55,7 +55,7 @@ object Dependencies {
   val quineCommonV = "0.0.3"
   val reactPlotlyV = "2.5.1"
   val reactV = "17.0.2"
-  val rocksdbV = "9.7.3"
+  val rocksdbV = "9.7.4"
   val rsocketV = "1.1.5"
   val scaffeineV = "5.3.0"
   val scalaCheckV = "1.18.1"
