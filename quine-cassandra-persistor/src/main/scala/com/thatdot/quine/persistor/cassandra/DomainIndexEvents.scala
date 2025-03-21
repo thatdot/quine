@@ -155,7 +155,7 @@ class DomainIndexEvents(
 }
 
 class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
-    extends TableDefinition[DomainIndexEvents]("domain_index_events", namespace)
+    extends TableDefinition.DefaultType[DomainIndexEvents]("domain_index_events", namespace)
     with DomainIndexEventColumnNames {
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
@@ -221,12 +221,7 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
       .where(quineIdColumn.is.eq, timestampColumn.is.eq)
       .build()
 
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  def create(config: TableDefinition.DefaultCreateConfig)(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
@@ -244,17 +239,17 @@ class DomainIndexEventsDefinition(namespace: NamespaceId)(implicit val logConfig
       selectWithTimeByQuineIdUntilTimestampQuery,
       selectWithTimeByQuineIdSinceUntilTimestampQuery,
       selectByDgnId,
-    ).map(prepare(session, readSettings))
+    ).map(prepare(config.session, config.readSettings))
     val updates = T3(
       insertStatement,
       deleteStatement,
       deleteAllByPartitionKeyStatement,
-    ).map(prepare(session, writeSettings))
+    ).map(prepare(config.session, config.writeSettings))
     (selects ++ updates).mapN(
       new DomainIndexEvents(
-        session,
-        chunker,
-        writeSettings,
+        config.session,
+        config.chunker,
+        config.writeSettings,
         logConfig,
         firstRowStatement,
         dropTableStatement,

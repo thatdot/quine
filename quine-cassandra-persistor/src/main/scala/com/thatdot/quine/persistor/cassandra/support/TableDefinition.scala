@@ -19,13 +19,22 @@ import com.datastax.oss.driver.api.querybuilder.select.SelectFrom
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.persistor.cassandra.Chunker
-abstract class TableDefinition[A](unqualifiedTableName: String, namespace: NamespaceId) extends LazySafeLogging {
 
-  def create(
+object TableDefinition {
+  case class DefaultCreateConfig(
     session: CqlSession,
     chunker: Chunker,
     readSettings: CassandraStatementSettings,
     writeSettings: CassandraStatementSettings,
+  )
+  type DefaultType[A] = TableDefinition[A, TableDefinition.DefaultCreateConfig]
+}
+
+abstract class TableDefinition[A, CreateConfig](unqualifiedTableName: String, namespace: NamespaceId)
+    extends LazySafeLogging {
+
+  def create(
+    config: CreateConfig,
   )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[A]
 
   /** The name of the table defined by this class.

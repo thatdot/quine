@@ -34,7 +34,7 @@ trait JournalColumnNames {
   final protected val dataColumn: CassandraColumn[NodeChangeEvent] = CassandraColumn[NodeChangeEvent]("data")
 }
 abstract class JournalsTableDefinition(namespace: NamespaceId)
-    extends TableDefinition[Journals]("journals", namespace)
+    extends TableDefinition.DefaultType[Journals]("journals", namespace)
     with JournalColumnNames {
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[EventTime]] = List(timestampColumn)
@@ -94,19 +94,13 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
       )
       .build()
 
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  override def create(config: TableDefinition.DefaultCreateConfig)(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
   ): Future[Journals] = {
     import shapeless.syntax.std.tuple._ // to concatenate tuples
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
-
     (
       T9(
         selectAllQuineIds,
@@ -118,15 +112,15 @@ abstract class JournalsTableDefinition(namespace: NamespaceId)
         selectWithTimeByQuineIdSinceTimestampQuery,
         selectWithTimeByQuineIdUntilTimestampQuery,
         selectWithTimeByQuineIdSinceUntilTimestampQuery,
-      ).map(prepare(session, readSettings)).toTuple ++
+      ).map(prepare(config.session, config.readSettings)).toTuple ++
       T2(insertStatement, deleteAllByPartitionKeyStatement)
-        .map(prepare(session, writeSettings))
+        .map(prepare(config.session, config.writeSettings))
         .toTuple
     ).mapN(
       new Journals(
-        session,
-        chunker,
-        writeSettings,
+        config.session,
+        config.chunker,
+        config.writeSettings,
         firstRowStatement,
         dropTableStatement,
         _,

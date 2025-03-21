@@ -24,7 +24,7 @@ trait StandingQueriesColumnNames {
 }
 
 class StandingQueriesDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
-    extends TableDefinition[StandingQueries]("standing_queries", namespace)
+    extends TableDefinition.DefaultType[StandingQueries]("standing_queries", namespace)
     with StandingQueriesColumnNames {
   protected val partitionKey: CassandraColumn[StandingQueryId] = queryIdColumn
   protected val clusterKeys = List.empty
@@ -42,12 +42,7 @@ class StandingQueriesDefinition(namespace: NamespaceId)(implicit val logConfig: 
       .build()
       .setIdempotent(true)
 
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  def create(config: TableDefinition.DefaultCreateConfig)(implicit
     mat: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
@@ -56,9 +51,9 @@ class StandingQueriesDefinition(namespace: NamespaceId)(implicit val logConfig: 
     logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
 
     (
-      T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
-      prepare(session, readSettings)(selectAllStatement)
-    ).mapN(new StandingQueries(session, firstRowStatement, dropTableStatement, _, _, _))
+      T2(insertStatement, deleteStatement).map(prepare(config.session, config.writeSettings)).toTuple :+
+      prepare(config.session, config.readSettings)(selectAllStatement)
+    ).mapN(new StandingQueries(config.session, firstRowStatement, dropTableStatement, _, _, _))
   }
 }
 

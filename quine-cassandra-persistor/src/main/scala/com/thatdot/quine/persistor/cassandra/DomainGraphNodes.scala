@@ -21,8 +21,17 @@ trait DomainGraphNodeColumnNames {
   final protected val dataColumn: CassandraColumn[DomainGraphNode] = CassandraColumn[DomainGraphNode]("data")
 }
 
+case class DomainGraphNodesCreateConfig(
+  session: CqlSession,
+  verifyTable: CqlIdentifier => Future[Unit],
+  chunker: Chunker,
+  readSettings: CassandraStatementSettings,
+  writeSettings: CassandraStatementSettings,
+  shouldCreateTables: Boolean,
+)
+
 object DomainGraphNodesDefinition
-    extends TableDefinition[DomainGraphNodes]("domain_graph_nodes", None)
+    extends TableDefinition[DomainGraphNodes, DomainGraphNodesCreateConfig]("domain_graph_nodes", None)
     with DomainGraphNodeColumnNames {
   protected val partitionKey: CassandraColumn[DomainGraphNodeId] = domainGraphNodeIdColumn
   protected val clusterKeys = List.empty
@@ -42,43 +51,38 @@ object DomainGraphNodesDefinition
       .build
 
   def create(
-    session: CqlSession,
-    verifyTable: CqlIdentifier => Future[Unit],
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean,
-  )(implicit mat: Materializer, futureInstance: Applicative[Future]): Future[DomainGraphNodes] = {
+    config: DomainGraphNodesCreateConfig,
+  )(implicit mat: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[DomainGraphNodes] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
     val createdSchema = futureInstance.whenA(
-      shouldCreateTables,
+      config.shouldCreateTables,
     )(
-      session
+      config.session
         .executeAsync(createTableStatement)
         .asScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic),
+        .flatMap(_ => config.verifyTable(tableName))(ExecutionContext.parasitic),
     )
 
     createdSchema.flatMap(_ =>
       (
-        T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
-        prepare(session, readSettings)(selectAllStatement)
-      ).mapN(new DomainGraphNodes(session, chunker, writeSettings, firstRowStatement, dropTableStatement, _, _, _)),
+        T2(insertStatement, deleteStatement).map(prepare(config.session, config.writeSettings)).toTuple :+
+        prepare(config.session, config.readSettings)(selectAllStatement)
+      ).mapN(
+        new DomainGraphNodes(
+          config.session,
+          config.chunker,
+          config.writeSettings,
+          firstRowStatement,
+          dropTableStatement,
+          _,
+          _,
+          _,
+        ),
+      ),
     )(ExecutionContext.parasitic)
   }
-
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
-    materializer: Materializer,
-    futureInstance: Applicative[Future],
-    logConfig: LogConfig,
-  ): Future[DomainGraphNodes] = ???
 }
 
 class DomainGraphNodes(

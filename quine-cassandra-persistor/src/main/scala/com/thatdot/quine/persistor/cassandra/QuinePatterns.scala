@@ -13,13 +13,7 @@ import com.datastax.oss.driver.api.core.cql.{PreparedStatement, SimpleStatement}
 import com.thatdot.common.logging.Log.{LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.graph.cypher.quinepattern.QueryPlan
 import com.thatdot.quine.graph.{NamespaceId, StandingQueryId}
-import com.thatdot.quine.persistor.cassandra.support.{
-  CassandraCodecs,
-  CassandraColumn,
-  CassandraStatementSettings,
-  CassandraTable,
-  TableDefinition,
-}
+import com.thatdot.quine.persistor.cassandra.support.{CassandraCodecs, CassandraColumn, CassandraTable, TableDefinition}
 import com.thatdot.quine.persistor.codecs.QueryPlanCodec
 import com.thatdot.quine.util.T2
 
@@ -32,7 +26,7 @@ trait QuinePatternsColumnNames {
 }
 
 class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: LogConfig)
-    extends TableDefinition[QuinePatterns]("quine_patterns", namespace)
+    extends TableDefinition.DefaultType[QuinePatterns]("quine_patterns", namespace)
     with QuinePatternsColumnNames {
 
   private val selectAllStatement: SimpleStatement = select
@@ -45,12 +39,7 @@ class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: Lo
       .build()
       .setIdempotent(true)
 
-  override def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  override def create(config: TableDefinition.DefaultCreateConfig)(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
@@ -59,9 +48,9 @@ class QuinePatternsDefinition(namespace: NamespaceId)(implicit val logConfig: Lo
     logger.debug(log"Preparing statements for ${Safe(tableName.toString)}")
 
     (
-      T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple :+
-      prepare(session, readSettings)(selectAllStatement)
-    ).mapN(new QuinePatterns(session, firstRowStatement, dropTableStatement, _, _, _))
+      T2(insertStatement, deleteStatement).map(prepare(config.session, config.writeSettings)).toTuple :+
+      prepare(config.session, config.readSettings)(selectAllStatement)
+    ).mapN(new QuinePatterns(config.session, firstRowStatement, dropTableStatement, _, _, _))
   }
 
   override protected def partitionKey: CassandraColumn[StandingQueryId] = queryIdColumn

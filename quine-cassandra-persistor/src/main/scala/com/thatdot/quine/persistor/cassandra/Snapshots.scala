@@ -29,7 +29,7 @@ trait SnapshotsColumnNames {
 }
 
 abstract class SnapshotsTableDefinition(namespace: NamespaceId)
-    extends TableDefinition[Snapshots]("snapshots", namespace)
+    extends TableDefinition.DefaultType[Snapshots]("snapshots", namespace)
     with SnapshotsColumnNames {
   protected val partitionKey = quineIdColumn
   protected val clusterKeys: List[CassandraColumn[_]] = List(timestampColumn, multipartIndexColumn)
@@ -57,12 +57,7 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
 
   protected val selectAllQuineIds: SimpleStatement
 
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  def create(config: TableDefinition.DefaultCreateConfig)(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
@@ -72,12 +67,12 @@ abstract class SnapshotsTableDefinition(namespace: NamespaceId)
 
     (
       T2(insertStatement, deleteAllByPartitionKeyStatement)
-        .map(prepare(session, writeSettings))
+        .map(prepare(config.session, config.writeSettings))
         .toTuple ++
       T4(getLatestTime.build, getLatestTimeBefore, getParts, selectAllQuineIds)
-        .map(prepare(session, readSettings))
+        .map(prepare(config.session, config.readSettings))
         .toTuple
-    ).mapN(new Snapshots(session, firstRowStatement, dropTableStatement, _, _, _, _, _, _))
+    ).mapN(new Snapshots(config.session, firstRowStatement, dropTableStatement, _, _, _, _, _, _))
   }
 
 }

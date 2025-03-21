@@ -64,12 +64,12 @@ abstract class CassandraPersistorDefinition {
   protected def journalsTableDef(namespace: NamespaceId): JournalsTableDefinition
   protected def snapshotsTableDef(namespace: NamespaceId): SnapshotsTableDefinition
   def tablesForNamespace(namespace: NamespaceId)(implicit logConfig: LogConfig): (
-    TableDefinition[Journals],
-    TableDefinition[Snapshots],
-    TableDefinition[StandingQueries],
-    TableDefinition[StandingQueryStates],
-    //TableDefinition[QuinePatterns],
-    TableDefinition[DomainIndexEvents],
+    TableDefinition.DefaultType[Journals],
+    TableDefinition.DefaultType[Snapshots],
+    TableDefinition.DefaultType[StandingQueries],
+    TableDefinition.DefaultType[StandingQueryStates],
+    //TableDefinition.DefaultType[QuinePatterns],
+    TableDefinition.DefaultType[DomainIndexEvents],
   ) = (
     journalsTableDef(namespace),
     snapshotsTableDef(namespace),
@@ -93,7 +93,7 @@ abstract class CassandraPersistorDefinition {
         // on the output of .tablesForNamespace().
         // 2) Extract a stand-alone reproduction
         // 3) Open a bug against shapeless with that reproduction
-        _.asInstanceOf[TableDefinition[_]].executeCreateTable(session, verifyTable(session)),
+        _.asInstanceOf[TableDefinition.DefaultType[_]].executeCreateTable(session, verifyTable(session)),
       )
       .map(_ => ())(ExecutionContext.parasitic)
 }
@@ -104,8 +104,9 @@ class PrepareStatements(
   readSettings: CassandraStatementSettings,
   writeSettings: CassandraStatementSettings,
 )(implicit materializer: Materializer, futureInstance: Applicative[Future], val logConfig: LogConfig)
-    extends (TableDefinition ~> Future) {
-  def apply[A](f: TableDefinition[A]): Future[A] = f.create(session, chunker, readSettings, writeSettings)
+    extends (TableDefinition.DefaultType ~> Future) {
+  def apply[A](f: TableDefinition.DefaultType[A]): Future[A] =
+    f.create(TableDefinition.DefaultCreateConfig(session, chunker, readSettings, writeSettings))
 }
 
 /** Persistence implementation backed by Cassandra.

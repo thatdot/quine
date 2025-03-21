@@ -41,9 +41,18 @@ abstract class PrimeCassandraPersistor(
   private lazy val (metaData, domainGraphNodes) = Await.result(
     (
       MetaDataDefinition
-        .create(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables),
+        .create(MetaDataCreateConfig(session, verifyTable(session), readSettings, writeSettings, shouldCreateTables)),
       DomainGraphNodesDefinition
-        .create(session, verifyTable(session), chunker, readSettings, writeSettings, shouldCreateTables),
+        .create(
+          DomainGraphNodesCreateConfig(
+            session,
+            verifyTable(session),
+            chunker,
+            readSettings,
+            writeSettings,
+            shouldCreateTables,
+          ),
+        ),
     ).tupled,
     36.seconds,
   )

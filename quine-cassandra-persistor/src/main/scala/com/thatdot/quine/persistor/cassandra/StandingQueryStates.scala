@@ -28,7 +28,7 @@ trait StandingQueryStatesColumnNames {
 }
 
 class StandingQueryStatesDefinition(namespace: NamespaceId)
-    extends TableDefinition[StandingQueryStates]("standing_query_states", namespace)
+    extends TableDefinition.DefaultType[StandingQueryStates]("standing_query_states", namespace)
     with StandingQueryStatesColumnNames {
   //protected val indexName = "standing_query_states_idx"
   protected val partitionKey: CassandraColumn[QuineId] = quineIdColumn
@@ -83,12 +83,7 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
       .build()
       .setIdempotent(true)
 
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit
+  def create(config: TableDefinition.DefaultCreateConfig)(implicit
     materializer: Materializer,
     futureInstance: Applicative[Future],
     logConfig: LogConfig,
@@ -98,14 +93,14 @@ class StandingQueryStatesDefinition(namespace: NamespaceId)
 
     (
       T4(insertStatement, removeStandingQueryState, removeStandingQuery, deleteAllByPartitionKeyStatement)
-        .map(prepare(session, writeSettings))
+        .map(prepare(config.session, config.writeSettings))
         .toTuple ++
       T2(getMultipleValuesStandingQueryStates, getIdsForStandingQuery)
-        .map(prepare(session, readSettings))
+        .map(prepare(config.session, config.readSettings))
         .toTuple
     ).mapN(
       new StandingQueryStates(
-        session,
+        config.session,
         firstRowStatement,
         dropTableStatement,
         _,

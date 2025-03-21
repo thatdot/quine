@@ -19,7 +19,17 @@ trait MetaDataColumnName {
   final protected val valueColumn: CassandraColumn[Array[Byte]] = CassandraColumn("value")
 }
 
-object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) with MetaDataColumnName {
+case class MetaDataCreateConfig(
+  session: CqlSession,
+  verifyTable: CqlIdentifier => Future[Unit],
+  readSettings: CassandraStatementSettings,
+  writeSettings: CassandraStatementSettings,
+  shouldCreateTables: Boolean,
+)
+
+object MetaDataDefinition
+    extends TableDefinition[MetaData, MetaDataCreateConfig]("meta_data", None)
+    with MetaDataColumnName {
   protected val partitionKey: CassandraColumn[String] = keyColumn
   protected val clusterKeys = List.empty
   protected val dataColumns: List[CassandraColumn[Array[Byte]]] = List(valueColumn)
@@ -43,41 +53,28 @@ object MetaDataDefinition extends TableDefinition[MetaData]("meta_data", None) w
       .build()
       .setIdempotent(true)
 
-  def create(
-    session: CqlSession,
-    verifyTable: CqlIdentifier => Future[Unit],
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-    shouldCreateTables: Boolean,
-  )(implicit
+  def create(config: MetaDataCreateConfig)(implicit
     mat: Materializer,
     futureInstance: Applicative[Future],
+    logConfig: LogConfig,
   ): Future[MetaData] = {
     import shapeless.syntax.std.tuple._
     logger.debug(safe"Preparing statements for ${Safe(tableName.toString)}")
 
-    val createdSchema = futureInstance.whenA(shouldCreateTables)(
-      session
+    val createdSchema = futureInstance.whenA(config.shouldCreateTables)(
+      config.session
         .executeAsync(createTableStatement)
         .asScala
-        .flatMap(_ => verifyTable(tableName))(ExecutionContext.parasitic),
+        .flatMap(_ => config.verifyTable(tableName))(ExecutionContext.parasitic),
     )
 
     createdSchema.flatMap(_ =>
       (
-        T2(insertStatement, deleteStatement).map(prepare(session, writeSettings)).toTuple ++
-        T2(selectAllStatement, selectSingleStatement).map(prepare(session, readSettings)).toTuple
-      ).mapN(new MetaData(session, firstRowStatement, dropTableStatement, _, _, _, _)),
+        T2(insertStatement, deleteStatement).map(prepare(config.session, config.writeSettings)).toTuple ++
+        T2(selectAllStatement, selectSingleStatement).map(prepare(config.session, config.readSettings)).toTuple
+      ).mapN(new MetaData(config.session, firstRowStatement, dropTableStatement, _, _, _, _)),
     )(ExecutionContext.parasitic)
   }
-
-  def create(
-    session: CqlSession,
-    chunker: Chunker,
-    readSettings: CassandraStatementSettings,
-    writeSettings: CassandraStatementSettings,
-  )(implicit materializer: Materializer, futureInstance: Applicative[Future], logConfig: LogConfig): Future[MetaData] =
-    ???
 }
 
 class MetaData(
