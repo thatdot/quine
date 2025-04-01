@@ -67,7 +67,7 @@ object Dependencies {
   val scalaTestV = "3.2.19"
   val scalajsMacroTaskExecutorV = "1.1.1"
   val scoptV = "4.1.0"
-  val shapelessV = "2.3.12"
+  val shapelessV = "2.3.13"
   val slinkyV = "0.7.4"
   val sslContextKickstartV = "9.0.0"
   val stoplightElementsV = "7.12.0"
