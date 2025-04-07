@@ -77,9 +77,21 @@ object PersistenceAgentType extends PureconfigInstances {
     shouldCreateKeyspace: Boolean = true,
     bloomFilterSize: Option[Long] = None,
     snapshotPartMaxSizeBytes: Int = 1000000,
+    oauth: Option[OAuth2Config] = None,
   ) extends PersistenceAgentType(isLocal = false, "cassandra") {
     assert(endpoints.nonEmpty, "Must specify at least one Cassandra endpoint")
   }
+
+  final case class OAuth2Config(
+    clientId: String,
+    certFile: String,
+    certAlias: Option[String],
+    certFilePassword: String,
+    keyAlias: Option[String],
+    adfsEnv: Option[String],
+    resourceURI: Option[String],
+    discoveryURL: Option[String],
+  )
 
   final case class Keyspaces(
     keyspace: String = sys.env.getOrElse("CASSANDRA_KEYSPACE", "quine"),

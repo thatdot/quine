@@ -24,6 +24,11 @@ import com.thatdot.quine.persistor.cassandra.{Chunker, JournalsTableDefinition, 
 import com.thatdot.quine.persistor.{PersistenceConfig, cassandra}
 import com.thatdot.quine.util.CompletionException
 import com.thatdot.quine.util.Log.implicits._
+
+trait OAuthBuilder {
+  def build(builder: CqlSessionBuilder)(implicit logConfig: LogConfig): Unit
+}
+
 abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
   constructor: (
     PersistenceConfig,
@@ -59,13 +64,18 @@ abstract class AbstractGlobalCassandraPersistor[C <: PrimeCassandraPersistor](
     writeSettings: CassandraStatementSettings,
     snapshotPartMaxSizeBytes: Int,
     metricRegistry: Option[MetricRegistry],
+    oAuth2: Option[OAuthBuilder] = None,
   )(implicit materializer: Materializer, logConfig: LogConfig): Future[PrimeCassandraPersistor] = {
 
     // This is mutable, so needs to be a def to get a new one w/out prior settings.
-    def sessionBuilder: CqlSessionBuilder = CqlSession.builder
-      .addContactPoints(endpoints.asJava)
-      .withLocalDatacenter(localDatacenter)
-      .withMetricRegistry(metricRegistry.orNull)
+    def sessionBuilder: CqlSessionBuilder = {
+      val builder = CqlSession.builder
+        .addContactPoints(endpoints.asJava)
+        .withLocalDatacenter(localDatacenter)
+        .withMetricRegistry(metricRegistry.orNull)
+      oAuth2.foreach(_.build(builder))
+      builder
+    }
 
     def createQualifiedSession(): Future[CqlSession] = sessionBuilder
       .withKeyspace(keyspace)

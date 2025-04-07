@@ -301,6 +301,7 @@ object Log {
         s"${result.getClass.getSimpleName}(${result.meta}, Data($sanitizedDataStr))"
       }
     implicit val LogPath: Loggable[Path] = toStringLoggable[Path]
+    implicit val LogDate: AlwaysSafeLoggable[java.util.Date] = _.toString
     implicit val LogUrl: Loggable[java.net.URL] = toStringLoggable[java.net.URL]
     implicit val LogInetSocketAddress: Loggable[InetSocketAddress] = toStringLoggable[InetSocketAddress]
     implicit val LogEventTime: AlwaysSafeLoggable[EventTime] = _.toString
