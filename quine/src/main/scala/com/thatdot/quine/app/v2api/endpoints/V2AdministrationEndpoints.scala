@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.{ExecutionContext, Future}
 
-import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
+import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
@@ -126,33 +126,9 @@ object V2AdministrationEndpointEntities {
 
 }
 
-trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions {
-
+trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
   implicit lazy val graphHashCodeSchema: Schema[TGraphHashCode] =
     Schema.derived[TGraphHashCode].description("Graph Hash Code").encodedExample(TGraphHashCode(1000L, 12345L).asJson)
-
-  implicit val graphHashCodeEncoder: Encoder[TGraphHashCode] = deriveEncoder[TGraphHashCode]
-  implicit val graphHashCodeDecoder: Decoder[TGraphHashCode] = deriveDecoder[TGraphHashCode]
-  implicit val infoEncoder: Encoder.AsObject[TQuineInfo] = deriveEncoder[TQuineInfo]
-  implicit val infoDecoder: Decoder[TQuineInfo] = deriveDecoder[TQuineInfo]
-
-  implicit val metricsSchema: Schema[TMetricsReport] = Schema.derived
-
-  implicit lazy val metricsEncoder: Encoder[TMetricsReport] = deriveEncoder[TMetricsReport]
-  implicit lazy val metricsDecoder: Decoder[TMetricsReport] = deriveDecoder[TMetricsReport]
-
-  implicit lazy val counterEncoder: Encoder[TCounter] = deriveEncoder[TCounter]
-  implicit lazy val counterDecoder: Decoder[TCounter] = deriveDecoder[TCounter]
-
-  implicit lazy val timerEncoder: Encoder[TTimerSummary] = deriveEncoder[TTimerSummary]
-  implicit lazy val timerDecoder: Decoder[TTimerSummary] = deriveDecoder[TTimerSummary]
-
-  implicit lazy val gaugeEncoder: Encoder[TNumericGauge] = deriveEncoder[TNumericGauge]
-  implicit lazy val gaugeDecoder: Decoder[TNumericGauge] = deriveDecoder[TNumericGauge]
-
-  implicit lazy val shardInMemoryLimitEncoder: Encoder[TShardInMemoryLimit] = deriveEncoder[TShardInMemoryLimit]
-  implicit lazy val shardInMemoryLimitDecoder: Decoder[TShardInMemoryLimit] = deriveDecoder[TShardInMemoryLimit]
-  implicit lazy val shardInMemoryLimitSchema: Schema[TShardInMemoryLimit] = Schema.derived[TShardInMemoryLimit]
 
   val exampleShardMap: Map[Int, TShardInMemoryLimit] = (0 to 3).map(_ -> TShardInMemoryLimit(10000, 75000)).toMap
   implicit lazy val shardInMemoryLimitMSchema: Schema[Map[Int, TShardInMemoryLimit]] = Schema
@@ -164,14 +140,16 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions {
     rawEndpoint("admin").in(path).tag("Administration")
 
   /** Generate an endpoint at  /api/ v2/admin/$path */
-  private def adminEndpoint[T](path: String)(implicit
+  protected def adminEndpoint[T](path: String)(implicit
     schema: Schema[ObjectEnvelope[T]],
     encoder: Encoder[T],
     decoder: Decoder[T],
   ): Endpoint[Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[T], Any] =
     withOutput[T](rawAdminEndpoint(path))
 
-  private val buildInfoEndpoint = adminEndpoint[TQuineInfo]("build-info")
+  protected val buildInfoEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+    _ <: CustomError,
+  ], ObjectEnvelope[TQuineInfo], Any, Future] = adminEndpoint[TQuineInfo]("build-info")
     .name("Build Information")
     .description("Returns a JSON object containing information about how Quine was built")
     .get
@@ -179,7 +157,9 @@ trait V2AdministrationEndpoints extends V2QuineEndpointDefinitions {
       runServerLogic[Unit, TQuineInfo](GetBuildInfoApiCmd, memberIdx, (), _ => Future.successful(appMethods.buildInfo))
     }
 
-  private val configEndpoint = {
+  protected val configEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+    _ <: CustomError,
+  ], ObjectEnvelope[Json], Any, Future] = {
     implicit val configSchema: Schema[ObjectEnvelope[Json]] =
       Schema
         .derived[ObjectEnvelope[Json]]
@@ -206,7 +186,7 @@ endpoint.
       }
   }
 
-  private val graphHashCodeEndpoint
+  protected val graphHashCodeEndpoint
     : ServerEndpoint.Full[Unit, Unit, (Option[Int], Option[Milliseconds], Option[String]), ErrorEnvelope[
       _ <: CustomError,
     ], ObjectEnvelope[TGraphHashCode], Any, Future] = adminEndpoint[TGraphHashCode]("graph-hash-code")
@@ -232,7 +212,7 @@ endpoint.
       )
     }
 
-  private val livenessEndpoint =
+  protected val livenessEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], Unit, Unit, Any, Future] =
     rawAdminEndpoint("liveness")
       .name("Process Liveness")
       .description("""This is a basic no-op endpoint for use when checking if the system is hung or responsive.
@@ -243,7 +223,9 @@ endpoint.
       .out(statusCode(StatusCode.NoContent))
       .serverLogicSuccess(_ => Future.successful(()))
 
-  private val readinessEndpoint = adminEndpoint[Boolean]("readiness")
+  protected val readinessEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+    _ <: CustomError,
+  ], ObjectEnvelope[Boolean], Any, Future] = adminEndpoint[Boolean]("readiness")
     .name("Process Readiness")
     .description("""This indicates whether the system is fully up and ready to service user requests.
 The intended use is for a load balancer to use this to know when the instance is
@@ -258,20 +240,26 @@ up ready and start routing user requests to it.
       )
     }
 
-  private val gracefulShutdownEndpoint = adminEndpoint[Unit]("shutdown")
-    .name("Graceful Shutdown")
-    .description("Initiate a graceful graph shutdown. Final shutdown may take a little longer.")
-    .post
-    .serverLogic { memberIdx =>
-      runServerLogic[Unit, Unit](
-        ShutdownApiCmd,
-        memberIdx,
-        (),
-        _ => appMethods.performShutdown(),
+  protected val gracefulShutdownEndpoint
+    : ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[_ <: CustomError], ObjectEnvelope[Unit], Any, Future] =
+    adminEndpoint[Unit]("shutdown")
+      .name("Graceful Shutdown")
+      .description(
+        "Initiate a graceful graph shutdown. Final shutdown may take a little longer. `200` indicates a shutdown has been successfully initiated.",
       )
-    }
+      .post
+      .serverLogic { memberIdx =>
+        runServerLogic[Unit, Unit](
+          ShutdownApiCmd,
+          memberIdx,
+          (),
+          _ => appMethods.performShutdown(),
+        )
+      }
 
-  private val metaDataEndpoint =
+  protected val metaDataEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+    _ <: CustomError,
+  ], ObjectEnvelope[Map[String, String]], Any, Future] =
     adminEndpoint[Map[String, String]]("meta-data")
       .name("Persisted Meta-Data")
       .summary("Meta-data")
@@ -285,8 +273,9 @@ up ready and start routing user requests to it.
         )
       }
 
-  //TMetricsReport
-  private val metricsEndpoint = adminEndpoint[TMetricsReport]("metrics")
+  protected val metricsEndpoint: ServerEndpoint.Full[Unit, Unit, Option[Int], ErrorEnvelope[
+    _ <: CustomError,
+  ], ObjectEnvelope[TMetricsReport], Any, Future] = adminEndpoint[TMetricsReport]("metrics")
     .name("Metrics")
     .summary("Metrics Summary")
     .description(
@@ -327,30 +316,39 @@ up ready and start routing user requests to it.
     }
 
   //TODO shardMapLimitSchema
-  private val shardSizesEndpoint = adminEndpoint[Map[Int, TShardInMemoryLimit]]("shards").post
-    .name("Shard Sizes")
-    .description("""Get and update the in-memory node limits.
+  protected val shardSizesEndpoint
+    : ServerEndpoint.Full[Unit, Unit, (Option[Int], Map[Int, TShardInMemoryLimit]), ErrorEnvelope[
+      _ <: CustomError,
+    ], ObjectEnvelope[Map[Int, TShardInMemoryLimit]], Any, Future] =
+    adminEndpoint[Map[Int, TShardInMemoryLimit]]("shards").post
+      .name("Shard Sizes")
+      .description("""Get and update the in-memory node limits.
                    |
                    |Sending a request containing an empty json object will return the current in-memory node settings.
                    |
                    |To apply different values, apply your edits to the returned document and sent those values in
                    |a new POST request.
                    |""".stripMargin)
-    .in("size-limits")
-    .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]])
-    .serverLogic { case (memberIdx, resizes) =>
-      runServerLogic[Map[Int, TShardInMemoryLimit], Map[Int, TShardInMemoryLimit]](
-        GetMetricsApiCmd,
-        memberIdx,
-        resizes,
-        r =>
-          appMethods
-            .shardSizes(r.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
-            .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(ExecutionContext.parasitic),
-      )
-    }
+      .in("size-limits")
+      .in(jsonOrYamlBody[Map[Int, TShardInMemoryLimit]](Some(exampleShardMap)))
+      .serverLogic { case (memberIdx, resizes) =>
+        runServerLogic[Map[Int, TShardInMemoryLimit], Map[Int, TShardInMemoryLimit]](
+          GetMetricsApiCmd,
+          memberIdx,
+          resizes,
+          r =>
+            appMethods
+              .shardSizes(r.view.mapValues(v => ShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)
+              .map(_.view.mapValues(v => TShardInMemoryLimit(v.softLimit, v.hardLimit)).toMap)(
+                ExecutionContext.parasitic,
+              ),
+        )
+      }
 
-  private val requestNodeSleepEndpoint = adminEndpoint[Unit]("nodes").post
+  protected val requestNodeSleepEndpoint
+    : ServerEndpoint.Full[Unit, Unit, (Option[Int], QuineId, Option[String]), ErrorEnvelope[
+      _ <: CustomError,
+    ], ObjectEnvelope[Unit], Any, Future] = adminEndpoint[Unit]("nodes").post
     .name("Sleep Node")
     .description("""Attempt to put the specified node to sleep.
                    |
@@ -373,7 +371,6 @@ up ready and start routing user requests to it.
   val adminEndpoints: List[ServerEndpoint[Any, Future]] = List(
     buildInfoEndpoint,
     configEndpoint,
-    gracefulShutdownEndpoint,
     graphHashCodeEndpoint,
     livenessEndpoint,
     metaDataEndpoint,
@@ -381,6 +378,7 @@ up ready and start routing user requests to it.
     readinessEndpoint,
     requestNodeSleepEndpoint,
     shardSizesEndpoint,
+    gracefulShutdownEndpoint,
   )
 
 }

@@ -2,8 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.generic.auto._
-import io.circe.generic.extras.semiauto.{deriveConfiguredDecoder, deriveConfiguredEncoder}
+import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
@@ -11,11 +10,9 @@ import sttp.tapir.server.ServerEndpoint
 import sttp.tapir.server.ServerEndpoint.Full
 import sttp.tapir.{EndpointInput, Schema, path, query, statusCode}
 
+import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern.StandingQueryMode.MultipleValues
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryPattern._
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.PrintToStandardOut.{
-  LogLevel,
-  LogMode,
-}
+import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.PrintToStandardOut
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries._
 import com.thatdot.quine.app.v2api.definitions.{
   CreateSQApiCmd,
@@ -31,76 +28,7 @@ import com.thatdot.quine.app.v2api.definitions.{
 }
 import com.thatdot.quine.graph.NamespaceId
 
-trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
-
-  private val sqModesMap: Map[String, StandingQueryMode] = StandingQueryMode.values.map(s => (s.toString -> s)).toMap
-  implicit val sqModeEncoder: Encoder[StandingQueryMode] = Encoder.encodeString.contramap(_.toString)
-  implicit val sqModeDecoder: Decoder[StandingQueryMode] = Decoder.decodeString.map(s => sqModesMap.get(s).get)
-
-  implicit lazy val (
-    standingQueryResultOutputStructureSchema: Schema[StandingQueryOutputStructure],
-    standingQueryResultOutputStructureEncoder: Encoder[StandingQueryOutputStructure],
-    standingQueryResultOutputStructureDecoder: Decoder[StandingQueryOutputStructure],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
-    (
-      Schema.derived[StandingQueryOutputStructure],
-      deriveConfiguredEncoder[StandingQueryOutputStructure],
-      deriveConfiguredDecoder[StandingQueryOutputStructure],
-    )
-  }
-
-  implicit lazy val (
-    standingQueryResultOutputUserDefSchema: Schema[StandingQueryResultOutputUserDef],
-    standingQueryResultOutputUserDefEncoder: Encoder[StandingQueryResultOutputUserDef],
-    standingQueryResultOutputUserDefDecoder: Decoder[StandingQueryResultOutputUserDef],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
-    (
-      Schema.derived[StandingQueryResultOutputUserDef],
-      deriveConfiguredEncoder[StandingQueryResultOutputUserDef],
-      deriveConfiguredDecoder[StandingQueryResultOutputUserDef],
-    )
-  }
-
-  implicit lazy val (
-    logLevelSchema: Schema[LogLevel],
-    logLevelEncoder: Encoder[LogLevel],
-    logLevelDecoder: Decoder[LogLevel],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
-    (
-      Schema.derived[LogLevel],
-      deriveConfiguredEncoder[LogLevel],
-      deriveConfiguredDecoder[LogLevel],
-    )
-  }
-
-  implicit lazy val (
-    logModeSchema: Schema[LogMode],
-    logModeEncoder: Encoder[LogMode],
-    logModeDecoder: Decoder[LogMode],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
-    (
-      Schema.derived[LogMode],
-      deriveConfiguredEncoder[LogMode],
-      deriveConfiguredDecoder[LogMode],
-    )
-  }
-
-  implicit lazy val (
-    outputFormatSchema: Schema[OutputFormat],
-    outputFormatEncoder: Encoder[OutputFormat],
-    outputFormatDecoder: Decoder[OutputFormat],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
-    (
-      Schema.derived[OutputFormat],
-      deriveConfiguredEncoder[OutputFormat],
-      deriveConfiguredDecoder[OutputFormat],
-    )
-  }
+trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2StandingApiSchemas with V2ApiConfiguration {
 
   /** SQ Name path element */
   private val sqName: EndpointInput.PathCapture[String] =
@@ -162,10 +90,14 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
                      |""".stripMargin)
       .in("control")
       .in("propagate")
-      .in(query[Option[Boolean]]("include-sleeping"))
+      .in(
+        query[Option[Boolean]]("include-sleeping").description(
+          "Propagate to all sleeping nodes. Setting to true can be costly if there is lot of data. Default is false.",
+        ),
+      )
       .in(namespaceParameter)
       .in(query[Option[Int]]("wake-up-parallelism"))
-      .get //NOTE this is a POST in V1, tapir does not accept a post with an empty body
+      .post
       .serverLogic { case (memberIdx, includeSleeping, namespace, wakeUpParallelism) =>
         runServerLogic[(Option[Boolean], NamespaceId, Int), Unit](
           PropagateSQsApiCmd,
@@ -187,7 +119,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
     .in("outputs")
     .in(sqOutputName)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[StandingQueryResultOutputUserDef])
+    .in(jsonOrYamlBody[StandingQueryResultOutputUserDef](Some(StandingQueryResultOutputUserDef.PrintToStandardOut())))
     .out(statusCode(StatusCode.Created))
     .post
     .serverLogic { case (memberIdx, sqName, sqOutputName, namespace, outputDef) =>
@@ -198,6 +130,11 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
         t => appMethods.addSQOutput(t._1, t._2, t._3, t._4),
       )
     }
+
+  private val exPattern = """MATCH (n) WHERE n % 100 == 0 RETURN n.num"""
+
+  private val createSqExample: StandingQueryDefinition =
+    StandingQueryDefinition(Cypher(exPattern, MultipleValues), Map.from(List("stdout" -> PrintToStandardOut())))
 
   private val createSQEndpoint
     : Full[Unit, Unit, (Option[Int], String, Option[String], StandingQueryDefinition), ErrorEnvelope[
@@ -216,7 +153,7 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
                      |in the docs.""".stripMargin)
     .in(sqName)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[StandingQueryDefinition])
+    .in(jsonOrYamlBody[StandingQueryDefinition](Some(createSqExample)))
     .post
     .out(statusCode(StatusCode.Created))
     .serverLogic { case (memberIdx, sqName, namespace, definition) =>
@@ -285,13 +222,13 @@ trait V2StandingEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
       }
 
   val standingQueryEndpoints: List[ServerEndpoint[Any, Future]] = List(
-    addSQOutputEndpoint,
+    listStandingQueriesEndpoint,
+    getSqEndpoint,
     createSQEndpoint,
+    propagateStandingQueryEndpoint,
+    addSQOutputEndpoint,
     deleteSQEndpoint,
     deleteSQOutputEndpoint,
-    getSqEndpoint,
-    listStandingQueriesEndpoint,
-    propagateStandingQueryEndpoint,
   )
 
 }

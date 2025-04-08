@@ -10,7 +10,7 @@ import sttp.tapir.{Schema, path}
 import com.thatdot.quine.app.v2api.definitions._
 
 /** Placeholder route to demonstrate V2. Not intended to represent a final endpoint. */
-trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiSchemas {
+trait V2NamespaceEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
 
   private def namespaceEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],

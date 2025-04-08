@@ -7,19 +7,19 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
-import io.circe.generic.auto._
+import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder, Json}
 import sttp.model.StatusCode
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.DecodeResult.Value
-import sttp.tapir.generic.auto.schemaForCaseClass
-import sttp.tapir.json.circe.TapirJsonCirce
+import sttp.tapir.generic.auto._
 import sttp.tapir.{EndpointOutput, endpoint, _}
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
+import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
@@ -29,7 +29,7 @@ case class ErrorEnvelope[T](error: T)
 case class ObjectEnvelope[T](data: T)
 
 /** Component definitions for Tapir endpoints. */
-trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
+trait V2EndpointDefinitions extends IngestApiSchemas with LazySafeLogging {
 
   implicit protected def logConfig: LogConfig
 
@@ -55,9 +55,10 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
   implicit val atTimeEndpointCodec: Codec[String, AtTime, TextPlain] = Codec.long.mapDecode(toAtTime)(_.millis)
 
   val atTimeParameter: EndpointInput.Query[Option[AtTime]] =
-    query[Option[AtTime]]("atTime").description(
-      "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query",
-    )
+    query[Option[AtTime]]("atTime")
+      .description(
+        "An integer timestamp in milliseconds since the Unix epoch representing the historical moment to query",
+      )
 
   // ------- id ----------------
   protected def toQuineId(s: String): DecodeResult[QuineId] =
@@ -113,10 +114,11 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
       ),
     )
 
-  protected def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] = (a: ObjectEnvelope[T]) =>
-    Json.fromFields(
-      Seq(("data", encoder.apply(a.data).deepDropNullValues)),
-    ) // always drop null values from output json.
+  protected def toObjectEnvelopeEncoder[T](encoder: Encoder[T]): Encoder[ObjectEnvelope[T]] =
+    (a: ObjectEnvelope[T]) =>
+      Json.fromFields(
+        Seq(("data", encoder.apply(a.data).deepDropNullValues)),
+      ) // always drop null values from output json.
 
   protected def toObjectEnvelopeDecoder[T](decoder: Decoder[T]): Decoder[ObjectEnvelope[T]] =
     c => decoder.apply(c.downField("data").root).map(ObjectEnvelope(_))
@@ -127,12 +129,15 @@ trait V2EndpointDefinitions extends TapirJsonCirce with LazySafeLogging {
     decoder: Decoder[T],
   ): EndpointIO.Body[String, T] = stringBodyAnyFormat(YamlCodec.createCodec[T](), StandardCharsets.UTF_8)
 
-  def jsonOrYamlBody[T](implicit
+  def jsonOrYamlBody[T](tOpt: Option[T] = None)(implicit
     schema: Schema[T],
     encoder: Encoder[T],
     decoder: Decoder[T],
-  ): EndpointIO.OneOfBody[T, T] =
-    oneOfBody[T](jsonBody[T], yamlBody[T]())
+  ): EndpointIO.OneOfBody[T, T] = tOpt match {
+    case None => oneOfBody[T](jsonBody[T], yamlBody[T]())
+    case Some(t) =>
+      oneOfBody[T](jsonBody[T].example(t), yamlBody[T]().example(t))
+  }
 
   def textBody[T](codec: Codec[String, T, TextPlain]): EndpointIO.Body[String, T] =
     stringBodyAnyFormat(codec, Charset.defaultCharset())

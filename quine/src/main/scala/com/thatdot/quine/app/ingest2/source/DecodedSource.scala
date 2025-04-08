@@ -416,6 +416,33 @@ object DecodedSource extends LazySafeLogging {
           recordDecoders.map(ContentDecoder(_)),
         )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
 
+      case KinesisKclIngest(
+            name,
+            streamName,
+            format,
+            credentialsOpt,
+            regionOpt,
+            iteratorType,
+            numRetries,
+            bufferSize,
+            backpressureTimeoutMillis,
+            recordDecoders,
+            checkpointSettings,
+          ) =>
+        KinesisKclSrc(
+          name,
+          streamName,
+          meter,
+          credentialsOpt,
+          regionOpt,
+          iteratorType,
+          numRetries,
+          recordDecoders.map(ContentDecoder(_)),
+          bufferSize,
+          backpressureTimeoutMillis,
+          checkpointSettings,
+        )(ExecutionContext.parasitic).framedSource.map(_.toDecoded(FrameDecoder(format)))
+
       case ServerSentEventIngest(format, url, recordDecoders) =>
         ServerSentEventSource(url, meter, recordDecoders.map(ContentDecoder(_)))(system).framedSource
           .map(_.toDecoded(FrameDecoder(format)))

@@ -6,8 +6,7 @@ import scala.util.{Failure, Success}
 
 import cats.implicits.catsSyntaxEitherId
 import io.circe.Encoder.encodeString
-import io.circe.generic.auto._
-import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.auto._
 import io.circe.generic.extras.semiauto.{
   deriveConfiguredDecoder,
   deriveConfiguredEncoder,
@@ -16,15 +15,15 @@ import io.circe.generic.extras.semiauto.{
 }
 import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
 import io.circe.syntax.EncoderOps
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Decoder, Encoder}
 import sttp.tapir.CodecFormat.TextPlain
-import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.{Codec, DecodeResult, Schema}
 
 import com.thatdot.quine.app.ingest2.V2IngestEntities.FileFormat.CsvFormat
 import com.thatdot.quine.app.ingest2.V2IngestEntities.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.ingest2.V2IngestEntities._
 import com.thatdot.quine.app.serialization.EncoderDecoder
+import com.thatdot.quine.app.v2api.endpoints.V2ApiConfiguration
 import com.thatdot.quine.routes.CsvCharacter.{Backslash, Comma, DoubleQuote}
 import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
 
@@ -43,7 +42,10 @@ object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
   }
 }
 
-trait V2IngestEntitySchemas extends TapirJsonCirce {
+trait V2IngestEntitySchemas extends V2ApiConfiguration {
+
+  implicit lazy val config: Configuration = ingestSourceTypeConfig
+
   implicit val csvCharacterSchema: Schema[CsvCharacter] = Schema.derived[CsvCharacter]
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =
     Schema.derived[RecordDecodingType]
@@ -74,6 +76,7 @@ trait V2IngestEntitySchemas extends TapirJsonCirce {
   implicit lazy val kafkaOffsetCommittingSchema: Schema[KafkaOffsetCommitting] = Schema.derived
   implicit lazy val awsCredentialsSchema: Schema[AwsCredentials] = Schema.derived
   implicit lazy val kinesisIteratorSchema: Schema[V1KinesisIngest.IteratorType] = Schema.derived
+  implicit lazy val kinesisKCLIteratorSchema: Schema[KCLIteratorType] = Schema.derived
   implicit lazy val awsRegionSchema: Schema[AwsRegion] = Schema.derived
   implicit lazy val keepaliveProtocolSchema: Schema[WebsocketSimpleStartupIngest.KeepaliveProtocol] = Schema.derived
   implicit lazy val csvIngestFormatSchema: Schema[CsvFormat] = Schema.derived
@@ -82,6 +85,8 @@ trait V2IngestEntitySchemas extends TapirJsonCirce {
     Schema.schemaForArray(recordDecodingTypeSchema).map(a => Some(a.toSeq))(s => s.toArray)
   implicit lazy val fileFormatTypeSchema: Schema[FileFormat] = Schema.derived
   implicit lazy val streamingFormatTypeSchema: Schema[StreamingFormat] = Schema.derived
+  implicit lazy val checkpointSettingsSchema: Schema[KinesisCheckpointSettings] =
+    Schema.derived[KinesisCheckpointSettings]
   implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived[IngestSource]
 
   implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
@@ -103,35 +108,11 @@ trait V2IngestEntitySchemas extends TapirJsonCirce {
   implicit lazy val csvCharacterEncoder: Encoder[CsvCharacter] = deriveEnumerationEncoder[CsvCharacter]
   implicit lazy val csvCharacterDecoder: Decoder[CsvCharacter] = deriveEnumerationDecoder[CsvCharacter]
 
-  val ingestSourceTypeConfig: Configuration = Configuration.default.withDiscriminator("type")
-
   implicit lazy val (
     kafkaOffsetCommittingEncoder: Encoder[KafkaOffsetCommitting],
     kafkaOffsetCommittingDecoder: Decoder[KafkaOffsetCommitting],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
+  ) =
     (deriveConfiguredEncoder[KafkaOffsetCommitting], deriveConfiguredDecoder[KafkaOffsetCommitting])
-  }
-  trait JsonDisjoint[A, B]
-  trait JsonPrim[A]
-  trait JsonListLike[A]
-  trait JsonObjLike[A]
-
-  implicit val jsonPrimInt: JsonPrim[Int] = new JsonPrim[Int] {}
-  implicit val jsonPrimString: JsonPrim[String] = new JsonPrim[String] {}
-  implicit val jsonPrimBoolean: JsonPrim[Boolean] = new JsonPrim[Boolean] {}
-
-  implicit def jsonObjMap[K, V]: JsonObjLike[Map[K, V]] = new JsonObjLike[Map[K, V]] {}
-
-  implicit def jsonListList[A]: JsonListLike[List[A]] = new JsonListLike[List[A]] {}
-  implicit def jsonListSet[A]: JsonListLike[Set[A]] = new JsonListLike[Set[A]] {}
-
-  implicit def jsonDisjointPrimObj[A: JsonPrim, B: JsonObjLike]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
-  implicit def jsonDisjointObjPrim[A: JsonObjLike, B: JsonPrim]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
-  implicit def jsonDisjointPrimList[A: JsonPrim, B: JsonListLike]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
-  implicit def jsonDisjointListPrim[A: JsonListLike, B: JsonPrim]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
-  implicit def jsonDisjointListObj[A: JsonListLike, B: JsonObjLike]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
-  implicit def jsonDisjointObjList[A: JsonObjLike, B: JsonListLike]: JsonDisjoint[A, B] = new JsonDisjoint[A, B] {}
 
   implicit val (
     encodeKafkaSecurityProtocol: Encoder[KafkaSecurityProtocol],
@@ -151,74 +132,43 @@ trait V2IngestEntitySchemas extends TapirJsonCirce {
   implicit lazy val (
     encodeKeepaliveProtocol: Encoder[WebsocketSimpleStartupIngest.KeepaliveProtocol],
     decodeKeepaliveProtocol: Decoder[WebsocketSimpleStartupIngest.KeepaliveProtocol],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
+  ) =
     (
       deriveConfiguredEncoder[WebsocketSimpleStartupIngest.KeepaliveProtocol],
       deriveConfiguredDecoder[WebsocketSimpleStartupIngest.KeepaliveProtocol],
     )
-  }
+
+  implicit lazy val (
+    encodeKCLIteratorType: Encoder[KCLIteratorType],
+    decodeKCLIteratorType: Decoder[KCLIteratorType],
+  ) =
+    (deriveConfiguredEncoder[KCLIteratorType], deriveConfiguredDecoder[KCLIteratorType])
 
   implicit lazy val (
     encodeIteratorType: Encoder[V1KinesisIngest.IteratorType],
     decodeIteratorType: Decoder[V1KinesisIngest.IteratorType],
-  ) = {
-    implicit val config = ingestSourceTypeConfig
+  ) =
     (deriveConfiguredEncoder[V1KinesisIngest.IteratorType], deriveConfiguredDecoder[V1KinesisIngest.IteratorType])
-  }
 
-  implicit def disjointEitherEncoder[A, B](implicit
-    disjoint: JsonDisjoint[A, B],
-    encodeA: Encoder[A],
-    encodeB: Encoder[B],
-  ): Encoder[Either[A, B]] = new Encoder[Either[A, B]] {
-    override def apply(a: Either[A, B]): Json = a match {
-      case Left(value) => encodeA(value)
-      case Right(value) => encodeB(value)
-    }
-  }
-  implicit def disjointEitherDecoder[A, B](implicit
-    disjoint: JsonDisjoint[A, B],
-    decodeA: Decoder[A],
-    decodeB: Decoder[B],
-  ): Decoder[Either[A, B]] =
-    decodeA.map(Left(_)).or(decodeB.map(Right(_)))
-
-  implicit lazy val FileFormatEncoder: Encoder[FileFormat] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val FileFormatEncoder: Encoder[FileFormat] =
     deriveConfiguredEncoder[FileFormat]
-  }
 
-  implicit lazy val FileFormatDecoder: Decoder[FileFormat] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val FileFormatDecoder: Decoder[FileFormat] =
     deriveConfiguredDecoder[FileFormat]
-  }
-  implicit lazy val StreamingFormatEncoder: Encoder[StreamingFormat] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val StreamingFormatEncoder: Encoder[StreamingFormat] =
     deriveConfiguredEncoder[StreamingFormat]
-  }
 
-  implicit lazy val StreamingFormatDecoder: Decoder[StreamingFormat] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val StreamingFormatDecoder: Decoder[StreamingFormat] =
     deriveConfiguredDecoder[StreamingFormat]
-  }
 
-  implicit lazy val onRecordErrorHandlerEncoder: Encoder[OnRecordErrorHandler] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val onRecordErrorHandlerEncoder: Encoder[OnRecordErrorHandler] =
     deriveConfiguredEncoder[OnRecordErrorHandler]
-  }
-  implicit lazy val onRecordErrorHandlerDecoder: Decoder[OnRecordErrorHandler] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val onRecordErrorHandlerDecoder: Decoder[OnRecordErrorHandler] =
     deriveConfiguredDecoder[OnRecordErrorHandler]
-  }
-  implicit lazy val OnStreamErrorHandlerEncoder: Encoder[OnStreamErrorHandler] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val OnStreamErrorHandlerEncoder: Encoder[OnStreamErrorHandler] =
     deriveConfiguredEncoder[OnStreamErrorHandler]
-  }
-  implicit lazy val OnStreamErrorHandlerDecoder: Decoder[OnStreamErrorHandler] = {
-    implicit val config = ingestSourceTypeConfig
+  implicit lazy val OnStreamErrorHandlerDecoder: Decoder[OnStreamErrorHandler] =
     deriveConfiguredDecoder[OnStreamErrorHandler]
-  }
 
   implicit val encoder: Encoder.AsObject[QuineIngestConfiguration] = deriveEncoder[QuineIngestConfiguration]
   implicit val decoder: Decoder[QuineIngestConfiguration] = deriveDecoder[QuineIngestConfiguration]

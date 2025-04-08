@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 
 import cats.implicits._
 import io.circe.Decoder.Result
-import io.circe.generic.auto._
+import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import org.scalatest.Assertion

@@ -26,6 +26,7 @@ import com.thatdot.quine.routes.{
   KafkaIngest => V1KafkaIngest,
   KafkaOffsetCommitting,
   KafkaSecurityProtocol,
+  KinesisCheckpointSettings,
   KinesisIngest => V1KinesisIngest,
   NumberIteratorIngest => V1NumberIteratorIngest,
   RecordDecodingType,
@@ -214,6 +215,39 @@ object V2IngestEntities {
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
     recordDecoders: Seq[RecordDecodingType] = Seq(),
+  ) extends StreamingIngestSource
+      with IngestDecompressionSupport
+
+  sealed trait KCLIteratorType
+
+  @title("Latest")
+  @description("All records added to the shard since subscribing.")
+  case object Latest extends KCLIteratorType
+
+  @title("TrimHorizon")
+  @description("All records in the shard.")
+  case object TrimHorizon extends KCLIteratorType
+
+  @title("AtTimestamp")
+  @description("All records starting from the provided data time.")
+  final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
+      extends KCLIteratorType
+
+  @title("Kinesis Data Stream Using Kcl lib")
+  @description("A stream of data being ingested from Kinesis")
+  case class KinesisKclIngest(
+    name: String,
+    streamName: String,
+    @description("The format used to decode each Kinesis record.")
+    format: StreamingFormat,
+    credentialsOpt: Option[AwsCredentials],
+    regionOpt: Option[AwsRegion],
+    iteratorType: KCLIteratorType,
+    numRetries: Int,
+    bufferSize: Int,
+    backpressureTimeoutMillis: Long,
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    checkpointSettings: KinesisCheckpointSettings,
   ) extends StreamingIngestSource
       with IngestDecompressionSupport
 
@@ -453,9 +487,9 @@ object V2IngestEntities {
     override def onError[Frame](e: Throwable, frame: Frame): Unit = ()
   }
 
-  /** Enforce shared structure between quine and novelty ingest useages.
-    * Novelty ingests are identical to quine ingests with the exeception
-    * of omitting query and parameter fields.
+  /** Enforce shared structure between quine and novelty ingest usages.
+    * Novelty ingests are identical to quine ingests with the exception
+    * that they omit query and parameter fields.
     */
   trait V2IngestConfiguration {
     val source: IngestSource
@@ -636,6 +670,8 @@ object V2IngestEntities {
               recordDecoders,
             )
           }
+        case _: KinesisKclIngest =>
+          Failure(new Exception("v2 KCL Kinesis unsupported in v1 ingests"))
         case _: ReactiveStreamIngest =>
           Failure(new Exception("Reactive Streams unsupported in v1 ingests"))
       }
@@ -746,7 +782,7 @@ object V2IngestEntities {
       case ingest: V1NumberIteratorIngest =>
         NumberIteratorIngest(
           // Can't convert from a FileFormat to a StreamingFormat,
-          // but a format doesn't makes sense for NumberIteratorIngest anyway
+          // but a format doesn't make sense for NumberIteratorIngest anyway
           StreamingFormat.RawFormat,
           ingest.startAtOffset,
           ingest.ingestLimit,

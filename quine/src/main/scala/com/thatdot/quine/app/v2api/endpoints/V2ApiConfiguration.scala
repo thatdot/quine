@@ -1,11 +1,14 @@
 package com.thatdot.quine.app.v2api.endpoints
 
 import io.circe.generic.extras.{Configuration => CirceConfig}
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Decoder, Encoder, Json, Printer}
 import sttp.tapir.generic.{Configuration => TapirConfig}
 import sttp.tapir.json.circe.TapirJsonCirce
 
-trait V2ApiSchemas extends TapirJsonCirce {
+trait V2ApiConfiguration extends TapirJsonCirce {
+
+  override def jsonPrinter: Printer = Printer(dropNullValues = true, indent = "")
+
   //For some reason the Schema derivation uses Circe configuration while encoder/decoder derivation uses
   //Tapir configuration, so this exists to unify the two for options we need
   case class Configuration(discriminator: Option[String], renameConstructors: Map[String, String]) {
@@ -24,6 +27,7 @@ trait V2ApiSchemas extends TapirJsonCirce {
         .copy(
           transformConstructorNames = s => renameConstructors.getOrElse(s, s),
         )
+        .withDefaults
     def withDiscriminator(d: String): Configuration =
       copy(discriminator = Some(d))
     def renameConstructor(from: String, to: String): Configuration = copy(
@@ -47,6 +51,7 @@ trait V2ApiSchemas extends TapirJsonCirce {
       .renameConstructor("StdInputIngest", "StdInput")
       .renameConstructor("WebsocketIngest", "Websocket")
       .renameConstructor("KinesisIngest", "Kinesis")
+      .renameConstructor("KinesisKclIngest", "KinesisKcl")
       .renameConstructor("ServerSentEventIngest", "ServerSentEvent")
       .renameConstructor("SQSIngest", "SQS")
       .renameConstructor("KafkaIngest", "Kafka")

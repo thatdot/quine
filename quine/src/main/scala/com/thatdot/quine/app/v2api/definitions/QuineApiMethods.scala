@@ -72,7 +72,57 @@ trait ApplicationApiMethods {
   def isReady = graph.isReady
 
   def isLive = true
+
+  // --------------------- Admin Endpoints ------------------------
+  def performShutdown(): Future[Unit] = {
+    graph.system.terminate()
+    Future.successful(())
+  }
+
+  def graphHashCode(atTime: Option[Milliseconds], namespace: NamespaceId): Future[TGraphHashCode] =
+    graph.requiredGraphIsReadyFuture {
+      val at = atTime.getOrElse(Milliseconds.currentTime())
+      graph
+        .getGraphHashCode(namespace, Some(at))
+        .map(TGraphHashCode(_, at.millis))(ExecutionContext.parasitic)
+    }
+
+  def buildInfo: TQuineInfo = {
+    val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
+      .map(_ + (if (QuineBuildInfo.gitUncommittedChanges) "-DIRTY" else ""))
+    TQuineInfo(
+      BuildInfo.version,
+      gitCommit,
+      QuineBuildInfo.gitHeadCommitDate,
+      QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
+      PersistenceAgent.CurrentVersion.shortString,
+    )
+  }
+
+  def metaData: Future[Map[String, String]] = {
+    implicit val ec = ExecutionContext.parasitic
+    graph.namespacePersistor.getAllMetaData().flatMap { m =>
+      Future.successful(m.view.mapValues(new String(_)).toMap)
+    }
+  }
+
+  def metrics: MetricsReport = GenerateMetrics.metricsReport(graph)
+
+  def shardSizes(resizes: Map[Int, ShardInMemoryLimit]): Future[Map[Int, ShardInMemoryLimit]] =
+    graph
+      .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
+      .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
+        shardIdx -> ShardInMemoryLimit(soft, hard)
+      })(ExecutionContext.parasitic)
+
+  def requestNodeSleep(quineId: QuineId, namespaceId: NamespaceId): Future[Unit] =
+    graph.requiredGraphIsReadyFuture(
+      graph.requestNodeSleep(namespaceId, quineId),
+    )
+
 }
+// --------------------- End Admin Endpoints ------------------------
+
 // retained functionality methods from in v1 route definitions
 import com.thatdot.quine.app.routes.{AlgorithmMethods => V1AlgorithmMethods}
 
@@ -154,52 +204,7 @@ trait QuineApiMethods extends ApplicationApiMethods with V1AlgorithmMethods {
     Future.sequence(app.getNamespaces.map(app.getStandingQueries)).map(_.toList.flatten).map(_.map(StandingToApi.apply))
   }
 
-  // --------------------- Admin Endpoints ------------------------
-  def graphHashCode(atTime: Option[Milliseconds], namespace: NamespaceId): Future[TGraphHashCode] =
-    graph.requiredGraphIsReadyFuture {
-      val at = atTime.getOrElse(Milliseconds.currentTime())
-      graph
-        .getGraphHashCode(namespace, Some(at))
-        .map(TGraphHashCode(_, at.millis))(ExecutionContext.parasitic)
-    }
-
-  def buildInfo: TQuineInfo = {
-    val gitCommit: Option[String] = QuineBuildInfo.gitHeadCommit
-      .map(_ + (if (QuineBuildInfo.gitUncommittedChanges) "-DIRTY" else ""))
-    TQuineInfo(
-      BuildInfo.version,
-      gitCommit,
-      QuineBuildInfo.gitHeadCommitDate,
-      QuineBuildInfo.javaVmName + " " + QuineBuildInfo.javaVersion + " (" + QuineBuildInfo.javaVendor + ")",
-      PersistenceAgent.CurrentVersion.shortString,
-    )
-  }
-
-  def performShutdown(): Future[Unit] = graph.system.terminate().map(_ => ())(ExecutionContext.parasitic)
-
-  def metaData: Future[Map[String, String]] = {
-    implicit val ec = ExecutionContext.parasitic
-    graph.namespacePersistor.getAllMetaData().flatMap { m =>
-      Future.successful(m.view.mapValues(new String(_)).toMap)
-    }
-  }
-
-  def metrics: MetricsReport = GenerateMetrics.metricsReport(graph)
-
-  def shardSizes(resizes: Map[Int, ShardInMemoryLimit]): Future[Map[Int, ShardInMemoryLimit]] =
-    graph
-      .shardInMemoryLimits(resizes.fmap(l => InMemoryNodeLimit(l.softLimit, l.hardLimit)))
-      .map(_.collect { case (shardIdx, Some(InMemoryNodeLimit(soft, hard))) =>
-        shardIdx -> ShardInMemoryLimit(soft, hard)
-      })(ExecutionContext.parasitic)
-
-  def requestNodeSleep(quineId: QuineId, namespaceId: NamespaceId): Future[Unit] =
-    graph.requiredGraphIsReadyFuture(
-      graph.requestNodeSleep(namespaceId, quineId),
-    )
-
   // --------------------- Standing Query Endpoints ------------------------
-
   def listStandingQueries(namespaceId: NamespaceId): Future[List[ApiStandingQueries.RegisteredStandingQuery]] =
     graph.requiredGraphIsReadyFuture {
       app.getStandingQueries(namespaceId).map(_.map(StandingToApi.apply))(ExecutionContext.parasitic)

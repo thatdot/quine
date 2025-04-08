@@ -4,9 +4,9 @@ import java.nio.charset.Charset
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
-import sttp.tapir.Schema.annotations.{description, encodedName, title}
+import sttp.tapir.Schema.annotations.{default, description, encodedName, title}
 
-import com.thatdot.quine.routes.IngestRoutes
+import com.thatdot.quine.routes.{IngestRoutes, KinesisCheckpointSettings}
 
 object ApiIngest {
 
@@ -99,7 +99,13 @@ object ApiIngest {
           // to start or stay in a soft-paused state
           if (shouldResumeRestoredIngests) Running else Restored
       }
-    sealed abstract class TerminalStatus extends IngestStreamStatus(isTerminal = true, position = ValvePosition.Closed)
+
+    sealed abstract class TerminalStatus(
+      @default(true)
+      override val isTerminal: Boolean = true,
+      @default("Closed")
+      override val position: ValvePosition = ValvePosition.Closed,
+    ) extends IngestStreamStatus(isTerminal, position)
 
     @description(
       "The stream is currently actively running, and possibly waiting for new records to become available upstream.",
@@ -138,6 +144,7 @@ object ApiIngest {
   """.stripMargin)
     final case class CypherJson(
       @description("Cypher query to execute on each record.") query: String,
+      @default("that")
       @description("Name of the Cypher parameter to populate with the JSON value.") parameter: String = "that",
     ) extends StreamedRecordFormat
 
@@ -148,6 +155,7 @@ object ApiIngest {
   """.stripMargin)
     final case class CypherRaw(
       @description("Cypher query to execute on each record.") query: String,
+      @default("that")
       @description("Name of the Cypher parameter to populate with the byte array.") parameter: String = "that",
     ) extends StreamedRecordFormat
 
@@ -159,7 +167,9 @@ object ApiIngest {
     )
     final case class CypherProtobuf(
       @description("Cypher query to execute on each record.") query: String,
-      @description("Name of the Cypher parameter to populate with the Protobuf message.") parameter: String = "that",
+      @description("Name of the Cypher parameter to populate with the Protobuf message.")
+      @default("that")
+      parameter: String = "that",
       @description(
         "URL (or local filename) of the Protobuf `.desc` file to load to parse the `typeName`.",
       ) schemaUrl: String,
@@ -194,6 +204,7 @@ object ApiIngest {
     case object Latest extends KafkaAutoOffsetReset("latest")
     case object Earliest extends KafkaAutoOffsetReset("earliest")
     case object None extends KafkaAutoOffsetReset("none")
+    @default(Seq(Latest, Earliest, None))
     val values: Seq[KafkaAutoOffsetReset] = Seq(Latest, Earliest, None)
   }
 
@@ -211,12 +222,16 @@ object ApiIngest {
     )
     final case class ExplicitCommit(
       @description("Maximum number of messages in a single commit batch.")
+      @default(1000)
       maxBatch: Long = 1000,
       @description("Maximum interval between commits in milliseconds.")
+      @default(10000)
       maxIntervalMillis: Int = 10000,
       @description("Parallelism for async committing.")
+      @default(100)
       parallelism: Int = 100,
       @description("Wait for a confirmation from Kafka on ack.")
+      @default(true)
       waitForCommitConfirmation: Boolean = true,
     ) extends KafkaOffsetCommitting
   }
@@ -243,10 +258,11 @@ object ApiIngest {
     sealed trait KeepaliveProtocol
     @title("Ping/Pong on interval")
     @description("Send empty websocket messages at the specified interval (in milliseconds).")
-    final case class PingPongInterval(intervalMillis: Int = 5000) extends KeepaliveProtocol
+    final case class PingPongInterval(@default(5000) intervalMillis: Int = 5000) extends KeepaliveProtocol
     @title("Text Keepalive Message on Interval")
     @description("Send the same text-based Websocket message at the specified interval (in milliseconds).")
-    final case class SendMessageInterval(message: String, intervalMillis: Int = 5000) extends KeepaliveProtocol
+    final case class SendMessageInterval(message: String, @default(5000) intervalMillis: Int = 5000)
+        extends KeepaliveProtocol
     @title("No Keepalive")
     @description("Only send data messages, no keepalives.")
     final case object NoKeepalive extends KeepaliveProtocol
@@ -266,7 +282,7 @@ object ApiIngest {
     case object Gzip extends RecordDecodingType
     @description("Base64 encoding")
     case object Base64 extends RecordDecodingType
-
+    @default(Seq(Zlib, Gzip, Base64))
     val values: Seq[RecordDecodingType] = Seq(Zlib, Gzip, Base64)
 
   }
@@ -277,7 +293,7 @@ object ApiIngest {
     case object Regular extends FileIngestMode
     @description("Named pipe to be regularly reopened and polled for more data")
     case object NamedPipe extends FileIngestMode
-
+    @default(Seq(Regular, NamedPipe))
     val values: Seq[FileIngestMode] = Seq(Regular, NamedPipe)
   }
 
@@ -331,14 +347,18 @@ object ApiIngest {
       @description("Cypher query to execute on each record.")
       query: String,
       @description("Name of the Cypher parameter to populate with the JSON value.")
+      @default("that")
       parameter: String = "that",
       @description("Maximum number of records to process at once.")
+      @default(16)
       parallelism: Int = IngestRoutes.defaultWriteParallelism,
       @description("Maximum number of records to process per second.")
       maxPerSecond: Option[Int] = None,
       @description("Action to take on a single failed record")
+      @default(LogRecordErrorHandler)
       onRecordError: OnRecordErrorHandler = LogRecordErrorHandler,
       @description("Action to take on a failure of the input stream")
+      @default(LogStreamError)
       onStreamError: OnStreamErrorHandler = LogStreamError,
     )
   }
@@ -369,6 +389,7 @@ object ApiIngest {
     @description(
       "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
@@ -398,6 +419,7 @@ object ApiIngest {
     @description(
       "List of decodings to be applied to each input. The specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
@@ -420,6 +442,8 @@ object ApiIngest {
     " every time the stream is (re)started. The numbers are Java `Long`s` and will wrap at their max value.",
   )
   case class NumberIteratorIngest(
+    @description("Begin the stream with this number.")
+    @default(0)
     startOffset: Long = 0L,
     @description("Optionally end the stream after consuming this many items.")
     limit: Option[Long],
@@ -435,6 +459,7 @@ object ApiIngest {
     @description("Initial messages to send to the server on connecting.")
     initMessages: Seq[String],
     @description("Strategy to use for sending keepalive messages, if any.")
+    @default(WebsocketSimpleStartupIngest.PingPongInterval())
     keepAlive: WebsocketSimpleStartupIngest.KeepaliveProtocol = WebsocketSimpleStartupIngest.PingPongInterval(),
     characterEncoding: Charset,
   ) extends IngestSource
@@ -450,16 +475,78 @@ object ApiIngest {
       "Shards IDs within the named kinesis stream to ingest; if empty or excluded, all shards on the stream are processed.",
     )
     shardIds: Option[Set[String]],
-    @description("AWS credentials for this Kinesis stream")
+    @description(
+      "AWS credentials for this Kinesis stream. If not provided the default credentials provider chain is used.",
+    )
     credentials: Option[AwsCredentials],
     @description("AWS region for this Kinesis stream")
     region: Option[AwsRegion],
-    @description("Shard iterator type.") iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
-    @description("Number of retries to attempt on Kineses error.") numRetries: Int = 3,
+    @description("Shard iterator type.")
+    @default(KinesisIngest.IteratorType.Latest)
+    iteratorType: KinesisIngest.IteratorType = KinesisIngest.IteratorType.Latest,
+    @description("Number of retries to attempt on Kineses error.")
+    @default(3)
+    numRetries: Int = 3,
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
+  ) extends IngestSource
+
+  sealed trait KCLIteratorType
+
+  @title("Latest")
+  @description("All records added to the shard since subscribing.")
+  case object Latest extends KCLIteratorType
+
+  @title("TrimHorizon")
+  @description("All records in the shard.")
+  case object TrimHorizon extends KCLIteratorType
+
+  @title("AtTimestamp")
+  @description("All records starting from the provided unix millisecond timestamp.")
+  final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
+      extends KCLIteratorType
+
+  @title("Kinesis Data Stream Using Kcl lib")
+  @description("A stream of data being ingested from Kinesis")
+  case class KinesisKclIngest(
+    @description("The unique, human-facing name of the ingest stream")
+    name: String,
+    @description("Name of the Kinesis stream to ingest.")
+    streamName: String,
+    @description("The format used to decode each Kinesis record.")
+    format: StreamingFormat,
+    @description(
+      "AWS credentials for this Kinesis stream. If not provided the default credentials provider chain is used.",
+    )
+    credentials: Option[AwsCredentials],
+    @description("AWS region for this Kinesis stream. If none is provided uses aws default.")
+    regionOpt: Option[AwsRegion],
+    @description("Where to start in the kinesis stream")
+    @default(Latest)
+    iteratorType: KCLIteratorType = Latest,
+    @description("Number of retries to attempt when communicating with aws services")
+    @default(3)
+    numRetries: Int = 3,
+    @description(
+      "Sets the KinesisSchedulerSourceSettings buffer size. Buffer size must be greater than 0; use size 1 to disable stage buffering.",
+    )
+    @default(1000)
+    bufferSize: Int = 1000,
+    @description(
+      "Sets the KinesisSchedulerSourceSettings backpressureTimeout in milliseconds",
+    )
+    @default(6000)
+    backpressureTimeoutMillis: Long = 60000,
+    @description(
+      "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
+    )
+    @default(Seq())
+    recordDecoders: Seq[RecordDecodingType] = Seq(),
+    @description("When should checkpoints occur for a stream")
+    checkpointSettings: KinesisCheckpointSettings,
   ) extends IngestSource
 
   @title("Server Sent Events Stream")
@@ -474,6 +561,7 @@ object ApiIngest {
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
@@ -482,14 +570,18 @@ object ApiIngest {
   case class SQSIngest(
     format: StreamingFormat,
     @description("URL of the queue to ingest.") queueUrl: String,
-    @description("Maximum number of records to read from the queue simultaneously.") readParallelism: Int = 1,
+    @description("Maximum number of records to read from the queue simultaneously.")
+    @default(1)
+    readParallelism: Int = 1,
     credentials: Option[AwsCredentials],
     region: Option[AwsRegion],
     @description("Whether the queue consumer should acknowledge receipt of in-flight messages.")
+    @default(true)
     deleteReadMessages: Boolean = true,
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
@@ -509,8 +601,10 @@ object ApiIngest {
       "Consumer group ID that this ingest stream should report belonging to; defaults to the name of the ingest stream.",
     )
     groupId: Option[String],
+    @default(KafkaSecurityProtocol.PlainText)
     securityProtocol: KafkaSecurityProtocol = KafkaSecurityProtocol.PlainText,
     offsetCommitting: Option[KafkaOffsetCommitting],
+    @default(KafkaAutoOffsetReset.Latest)
     autoOffsetReset: KafkaAutoOffsetReset = KafkaAutoOffsetReset.Latest,
     @description(
       "Map of Kafka client properties. See <https://docs.confluent.io/platform/current/installation/configuration/consumer-configs.html#ak-consumer-configurations-for-cp>",
@@ -522,6 +616,7 @@ object ApiIngest {
     @description(
       "List of decodings to be applied to each input, where specified decodings are applied in declared array order.",
     )
+    @default(Seq())
     recordDecoders: Seq[RecordDecodingType] = Seq(),
   ) extends IngestSource
 
@@ -573,13 +668,17 @@ object ApiIngest {
                               |CSV rows containing more records than the `headers` will have items that don't match a header column
                               |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
                               |Default: `false`.""".stripMargin)
+      @default(Left(false))
       headers: Either[Boolean, List[String]] = Left(false),
       @description("CSV row delimiter character.")
+      @default(CsvCharacter.Comma)
       delimiter: CsvCharacter = CsvCharacter.Comma,
       @description("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
                               |section will be a part of the CSV value.""".stripMargin)
+      @default(CsvCharacter.DoubleQuote)
       quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
       @description("Character used to escape special characters.")
+      @default(CsvCharacter.Backslash)
       escapeChar: CsvCharacter = CsvCharacter.Backslash,
     ) extends FileFormat
   }

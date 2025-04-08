@@ -280,12 +280,14 @@ object KafkaOffsetCommitting {
 @description("Settings for batch configuration for Kinesis stream checkpointing.")
 @unnamed
 final case class KinesisCheckpointSettings(
+  @docs("App name ")
+  appName: String,
   @docs("Maximum checkpoint batch size.")
   @description("Maximum checkpoint batch size.")
   maxBatchSize: Int,
   @docs("Maximum checkpoint batch wait time in ms.")
   @description("Maximum checkpoint batch wait time in ms.")
-  maxBatchWait: Long,
+  maxBatchWaitMillis: Long,
 )
 @title("Ingest Stream Configuration")
 @docs("A specification of a data source and rules for consuming data from that source.")
@@ -917,7 +919,7 @@ trait IngestSchemas extends endpoints4s.generic.JsonSchemas with AwsConfiguratio
   }
 
   implicit val kinesisCheckpointSettingsSchema: Record[KinesisCheckpointSettings] =
-    genericRecord[KinesisCheckpointSettings].withExample(KinesisCheckpointSettings(100, 1000))
+    genericRecord[KinesisCheckpointSettings].withExample(KinesisCheckpointSettings("myApp", 100, 1000))
 
   val exampleIngestStreamInfo: IngestStreamInfo = IngestStreamInfo(
     status = IngestStreamStatus.Running,

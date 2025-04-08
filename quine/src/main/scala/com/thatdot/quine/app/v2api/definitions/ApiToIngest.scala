@@ -78,6 +78,12 @@ object ApiToIngest {
   }
   def apply(cred: Api.AwsCredentials): V1.AwsCredentials = V1.AwsCredentials(cred.accessKeyId, cred.secretAccessKey)
   def apply(region: Api.AwsRegion): V1.AwsRegion = V1.AwsRegion(region.region)
+  def apply(ingest: Api.KCLIteratorType): V2IngestEntities.KCLIteratorType = ingest match {
+    case Api.Latest => V2IngestEntities.Latest
+    case Api.TrimHorizon => V2IngestEntities.TrimHorizon
+    case Api.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
+      V2IngestEntities.AtTimestamp(year, month, date, hourOfDay, minute, second)
+  }
   def apply(ingest: Api.KinesisIngest.IteratorType): V1.KinesisIngest.IteratorType = ingest match {
     case Api.KinesisIngest.IteratorType.Latest => V1.KinesisIngest.IteratorType.Latest
     case Api.KinesisIngest.IteratorType.TrimHorizon => V1.KinesisIngest.IteratorType.TrimHorizon
@@ -151,6 +157,32 @@ object ApiToIngest {
         ApiToIngest(src.iteratorType),
         src.numRetries,
         src.recordDecoders.map(ApiToIngest.apply),
+      )
+    case Api.KinesisKclIngest(
+          name,
+          streamName,
+          format,
+          credentialsOpt,
+          regionOpt,
+          iteratorType,
+          numRetries,
+          maxBatchSize,
+          backpressureTimeoutMillis,
+          recordDecoders,
+          checkpointSettings,
+        ) =>
+      Ingest.KinesisKclIngest(
+        name,
+        streamName,
+        ApiToIngest(format),
+        credentialsOpt.map(ApiToIngest.apply),
+        regionOpt.map(ApiToIngest.apply),
+        ApiToIngest(iteratorType),
+        numRetries,
+        maxBatchSize,
+        backpressureTimeoutMillis,
+        recordDecoders.map(ApiToIngest.apply),
+        checkpointSettings,
       )
     case src: ApiIngest.ServerSentEventIngest =>
       Ingest.ServerSentEventIngest(

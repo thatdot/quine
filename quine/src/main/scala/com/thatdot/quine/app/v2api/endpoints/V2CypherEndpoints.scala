@@ -6,8 +6,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 import endpoints4s.generic.title
-import io.circe.generic.auto._
-import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
+import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import io.circe.{Decoder, Encoder, Json}
 import sttp.tapir.CodecFormat.TextPlain
@@ -24,7 +23,6 @@ import com.thatdot.quine.app.v2api.endpoints.V2CypherEndpointEntities.{
   TCypherQueryResult,
   TUiEdge,
   TUiNode,
-  cypherQueryAsStringCodec,
 }
 import com.thatdot.quine.graph.NamespaceId
 
@@ -34,21 +32,6 @@ object V2CypherEndpointEntities extends TapirJsonCirce {
     @description("Text of the query to execute") text: String,
     @description("Parameters the query expects, if any") parameters: Map[String, Json] = Map.empty,
   )
-
-  implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
-    .derived[TCypherQuery]
-    .encodedExample(
-      TCypherQuery(
-        "MATCH (n) RETURN n LIMIT $lim",
-        Map("lim" -> Json.fromInt(1)),
-      ).asJson,
-    )
-
-  val cypherQueryAsStringCodec: Codec[String, TCypherQuery, TextPlain] =
-    Codec.string.mapDecode(s => DecodeResult.Value(TCypherQuery(s)))(_.text)
-
-  implicit lazy val mapSchema: Schema[Map[String, Json]] = Schema
-    .schemaForMap[String, Json](identity)
 
   @title("Cypher Query Result")
   @description("""Cypher queries are designed to return data in a table format. This gets
@@ -66,16 +49,23 @@ object V2CypherEndpointEntities extends TapirJsonCirce {
 
   case class TUiEdge(from: QuineId, edgeType: String, to: QuineId, isDirected: Boolean = true)
 }
-trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
+trait V2CypherEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
 
-  implicit val cypherQueryResultDecoder: Decoder[TCypherQueryResult] = deriveDecoder[TCypherQueryResult]
-  implicit val cypherQueryResultEncoder: Encoder[TCypherQueryResult] = deriveEncoder[TCypherQueryResult]
-  implicit val cypherQueryEncoder: Encoder[TCypherQuery] = deriveEncoder[TCypherQuery]
-  implicit val cypherQueryDecoder: Decoder[TCypherQuery] = deriveDecoder[TCypherQuery]
-  implicit val quineIdNodeEncoder: Encoder[TUiNode] = deriveEncoder[TUiNode]
-  implicit val quineIdNodeDecoder: Decoder[TUiNode] = deriveDecoder[TUiNode]
-  implicit val quineIdEdgeEncoder: Encoder[TUiEdge] = deriveEncoder[TUiEdge]
-  implicit val quineIdEdgeDecoder: Decoder[TUiEdge] = deriveDecoder[TUiEdge]
+  implicit val cypherQuerySchema: Schema[TCypherQuery] = Schema
+    .derived[TCypherQuery]
+    .encodedExample(
+      TCypherQuery(
+        "MATCH (n) RETURN n LIMIT $lim",
+        Map("lim" -> Json.fromInt(1)),
+      ).asJson,
+    )
+
+  val cypherQueryAsStringCodec: Codec[String, TCypherQuery, TextPlain] =
+    Codec.string.mapDecode(s => DecodeResult.Value(TCypherQuery(s)))(_.text)
+
+  implicit lazy val mapSchema: Schema[Map[String, Json]] = Schema
+    .schemaForMap[String, Json](identity)
+
   private val cypherLanguageUrl = "https://s3.amazonaws.com/artifacts.opencypher.org/openCypher9.pdf"
 
   /** SQ Base path */
@@ -85,8 +75,17 @@ trait V2CypherEndpoints extends V2QuineEndpointDefinitions {
     decoder: Decoder[T],
   ) = baseEndpoint[T]("cypher-queries").tag("Cypher Query Language")
 
+  private val textEx = TCypherQuery(
+    "MATCH (n) RETURN n LIMIT $lim",
+    Map("lim" -> Json.fromInt(1)),
+  )
+
   private def queryBody =
-    oneOfBody[TCypherQuery](jsonBody[TCypherQuery], yamlBody[TCypherQuery](), textBody(cypherQueryAsStringCodec))
+    oneOfBody[TCypherQuery](
+      jsonBody[TCypherQuery].example(textEx),
+      yamlBody[TCypherQuery]().example(textEx),
+      textBody(cypherQueryAsStringCodec).example(textEx),
+    )
   // TODO timeout duration: Temporary!
   private def toConcreteDuration(duration: Option[FiniteDuration]): FiniteDuration =
     duration.getOrElse(FiniteDuration.apply(20, TimeUnit.SECONDS)) //akka default http timeout

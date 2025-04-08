@@ -286,7 +286,7 @@ lazy val `quine`: Project = project
       "org.apache.kafka" % "kafka-clients" % kafkaClientsV,
       "org.apache.pekko" %% "pekko-connectors-csv" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-kafka" % pekkoKafkaV,
-      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni") exclude ("software.amazon.kinesis", "amazon-kinesis-client"),
+      "org.apache.pekko" %% "pekko-connectors-kinesis" % pekkoConnectorsV exclude ("org.rocksdb", "rocksdbjni"),
       "org.apache.pekko" %% "pekko-connectors-s3" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sns" % pekkoConnectorsV,
       "org.apache.pekko" %% "pekko-connectors-sqs" % pekkoConnectorsV,

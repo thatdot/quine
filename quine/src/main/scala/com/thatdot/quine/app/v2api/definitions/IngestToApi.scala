@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import com.thatdot.quine.app.ingest2.{V2IngestEntities => Ingest}
+import com.thatdot.quine.app.ingest2.{V2IngestEntities, V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
@@ -79,6 +79,12 @@ object IngestToApi {
     case V1.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis) =>
       Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
+  }
+  def apply(ingest: V2IngestEntities.KCLIteratorType): Api.KCLIteratorType = ingest match {
+    case V2IngestEntities.Latest => Api.Latest
+    case V2IngestEntities.TrimHorizon => Api.TrimHorizon
+    case V2IngestEntities.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
+      Api.AtTimestamp(year, month, date, hourOfDay, minute, second)
   }
   def apply(it: V1.KinesisIngest.IteratorType): Api.KinesisIngest.IteratorType = it match {
     case V1.KinesisIngest.IteratorType.Latest => Api.KinesisIngest.IteratorType.Latest
@@ -202,6 +208,33 @@ object IngestToApi {
         IngestToApi(iteratorType),
         numRetries,
         recordDecoders.map(IngestToApi.apply),
+      )
+
+    case Ingest.KinesisKclIngest(
+          name,
+          streamName,
+          format,
+          credentialsOpt,
+          regionOpt,
+          iteratorType,
+          numRetries,
+          maxBatchSize,
+          backpressureTimeoutMillis,
+          recordDecoders,
+          checkpointSettings,
+        ) =>
+      Api.KinesisKclIngest(
+        name,
+        streamName,
+        IngestToApi(format),
+        credentialsOpt.map(IngestToApi.apply),
+        regionOpt.map(IngestToApi.apply),
+        IngestToApi(iteratorType),
+        numRetries,
+        maxBatchSize,
+        backpressureTimeoutMillis,
+        recordDecoders.map(IngestToApi.apply),
+        checkpointSettings,
       )
     case Ingest.ServerSentEventIngest(format, url, recordDecoders) =>
       Api.ServerSentEventIngest(

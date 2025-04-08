@@ -10,13 +10,12 @@ import org.apache.pekko.stream.connectors.s3.scaladsl.S3
 import org.apache.pekko.stream.scaladsl.{FileIO, Sink}
 import org.apache.pekko.util.ByteString
 
-import io.circe.generic.auto._
+import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder}
 import sttp.model.StatusCode
 import sttp.tapir.Schema.annotations.{description, title}
 import sttp.tapir._
 import sttp.tapir.generic.auto.schemaForCaseClass
-import sttp.tapir.json.circe.TapirJsonCirce
 import sttp.tapir.server.ServerEndpoint
 
 import com.thatdot.common.quineid.QuineId
@@ -25,12 +24,11 @@ import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.Milliseconds
 import com.thatdot.quine.routes.IngestRoutes
 
-object V2AlgorithmEndpointEntities extends TapirJsonCirce {
+object V2AlgorithmEndpointEntities extends V2ApiConfiguration {
   /* WARNING: these values duplicate `AlgorithmGraph.defaults.walkPrefix` and `walkSuffix` from the
    * `com.thatdot.quine.graph` package which is not available here.
    * Beware of changes in one place not mirrored to the other!
    */
-
   private val queryPrefix = "MATCH (thisNode) WHERE id(thisNode) = $n "
   private val querySuffix = "RETURN id(thisNode)"
 
@@ -38,7 +36,7 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
 
   /** SQ Output Name path element */
   val walkLengthQs: EndpointInput.Query[Option[Int]] =
-    query[Option[Int]]("length").description("Maximum length of a walk. Default: `10`")
+    query[Option[Int]]("length").description("Maximum length of a walk.").default(Some(10))
 
   val onNodeQueryQs: EndpointInput.Query[Option[String]] = query[Option[String]]("query").description(
     s"""Cypher query run on each node of the walk. You can use this query to collect properties instead of node IDs.
@@ -52,17 +50,22 @@ object V2AlgorithmEndpointEntities extends TapirJsonCirce {
        |`$querySuffix`""".stripMargin,
   )
   val numberOfWalksQs: EndpointInput.Query[Option[Int]] = query[Option[Int]]("count")
-    .description("An optional integer for how many random walks from each node to generate. Default: `5`")
+    .description("An optional integer for how many random walks from each node to generate.")
+    .default(Some(5))
 
-  val returnQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("return").description(
-    "the `p` parameter to determine likelihood of returning to the node just visited: `1/p`  Lower is " +
-    "more likely; but if `0`, never return to previous node. Default: `1`",
-  )
+  val returnQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("return")
+    .description(
+      "the `p` parameter to determine likelihood of returning to the node just visited: `1/p`  Lower is " +
+      "more likely; but if `0`, never return to previous node.",
+    )
+    .default(Some(1))
 
-  val inOutQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("in-out").description(
-    "the `q` parameter to determine likelihood of visiting a node outside the neighborhood of the" +
-    " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood. Default: `1`",
-  )
+  val inOutQs: EndpointInput.Query[Option[Double]] = query[Option[Double]]("in-out")
+    .description(
+      "the `q` parameter to determine likelihood of visiting a node outside the neighborhood of the" +
+      " starting node: `1/q`  Lower is more likely; but if `0`, never visit the neighborhood.",
+    )
+    .default(Some(1))
 
   val randomSeedOptQs: EndpointInput.Query[Option[String]] = query[Option[String]]("seed").description(
     "Optionally specify any string as a random seed for generating walks. This is used to determine all " +
@@ -164,7 +167,7 @@ concatenated to produce the final file name:
     .in(namespaceParameter)
     .in(atTimeParameter)
     .in(parallelismParameter)
-    .in(jsonOrYamlBody[TSaveLocation])
+    .in(jsonOrYamlBody[TSaveLocation](Some(S3Bucket("your-s3-bucket-name", None))))
     .out(statusCode(StatusCode.Accepted))
     .post
     .serverLogic {

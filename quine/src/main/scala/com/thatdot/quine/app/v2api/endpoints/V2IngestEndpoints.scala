@@ -2,11 +2,12 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.generic.auto._
+import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder}
+import sttp.model.StatusCode
 import sttp.tapir.generic.auto._
 import sttp.tapir.server.ServerEndpoint
-import sttp.tapir.{Endpoint, EndpointInput, Schema, path}
+import sttp.tapir.{Endpoint, EndpointInput, Schema, path, statusCode}
 
 import com.thatdot.quine.app.v2api.definitions.{
   ApiIngest,
@@ -20,12 +21,13 @@ import com.thatdot.quine.app.v2api.definitions.{
   V2QuineEndpointDefinitions,
 }
 import com.thatdot.quine.graph.NamespaceId
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas with V2ApiSchemas {
+
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas {
 
   import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OssConversions._
 
   private val ingestStreamNameElement: EndpointInput.PathCapture[String] =
-    path[String]("name").description("Ingest stream name")
+    path[String]("name").description("Ingest stream name").default("NumbersStream")
 
   private def ingestEndpoint[T](implicit
     schema: Schema[ObjectEnvelope[T]],
@@ -35,6 +37,14 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas
     baseEndpoint[T]("ingests")
       .tag("Ingest Streams")
       .description("Sources of streaming data ingested into the graph interpreter.")
+
+  private val ingestExample = ApiIngest.Oss.QuineIngestConfiguration(
+    ApiIngest.NumberIteratorIngest(0, None),
+    query = "MATCH (n) WHERE id(n) = idFrom($that) SET n.num = $that ",
+    onRecordError = ApiIngest.LogRecordErrorHandler,
+    onStreamError = ApiIngest.LogStreamError,
+    maxPerSecond = Some(100),
+  )
 
   private val createIngestEndpoint = ingestEndpoint[Boolean]
     .name("Create Ingest Stream")
@@ -46,8 +56,9 @@ trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas
                    |on the event stream data to create nodes and relationships in the graph.""".stripMargin)
     .in(ingestStreamNameElement)
     .in(namespaceParameter)
-    .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration])
+    .in(jsonOrYamlBody[ApiIngest.Oss.QuineIngestConfiguration](Some(ingestExample)))
     .post
+    .out(statusCode(StatusCode.Created))
     .serverLogic { case (memberIdx, ingestStreamName, ns, ingestStreamConfig) =>
       runServerLogicFromEither[(String, ApiIngest.Oss.QuineIngestConfiguration, NamespaceId), Boolean](
         CreateIngestApiCmd,

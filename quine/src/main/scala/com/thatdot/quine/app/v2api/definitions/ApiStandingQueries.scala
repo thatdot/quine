@@ -3,7 +3,7 @@ package com.thatdot.quine.app.v2api.definitions
 import java.time.Instant
 import java.util.UUID
 
-import sttp.tapir.Schema.annotations.{description, title}
+import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.{AwsCredentials, AwsRegion, RatesSummary}
 import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries.StandingQueryResultOutputUserDef.SequencedCypherQuery
@@ -36,10 +36,13 @@ object ApiStandingQueries {
     )
     outputs: Map[String, StandingQueryResultOutputUserDef],
     @description("Whether or not to include cancellations in the results of this query")
+    @default(false)
     includeCancellations: Boolean = false,
     @description("how many standing query results to buffer before backpressuring")
+    @default(32)
     inputBufferSize: Int = 32, // should match [[StandingQuery.DefaultQueueBackpressureThreshold]]
     @description("For debug and test only")
+    @default(false)
     shouldCalculateResultHashCode: Boolean = false,
   )
 
@@ -110,12 +113,16 @@ object ApiStandingQueries {
     )
     final case class PostToEndpoint(
       url: String,
+      @default(8)
       parallelism: Int = 8,
+      @default(false)
       onlyPositiveMatchData: Boolean = false,
       @description(
         "A list of Cypher Queries to be run sequentially and then fed into this output",
       )
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
@@ -126,6 +133,7 @@ object ApiStandingQueries {
     final case class WriteToKafka(
       topic: String,
       bootstrapServers: String,
+      @default(OutputFormat.JSON)
       format: OutputFormat = OutputFormat.JSON,
       @description(
         "Map of Kafka producer properties. See <https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html>",
@@ -134,7 +142,9 @@ object ApiStandingQueries {
       @description(
         "A list of Cypher Queries to be run sequentially and then fed into this output",
       )
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
@@ -146,13 +156,16 @@ object ApiStandingQueries {
       credentials: Option[AwsCredentials],
       region: Option[AwsRegion],
       streamName: String,
+      @default(OutputFormat.JSON)
       format: OutputFormat = OutputFormat.JSON,
       kinesisParallelism: Option[Int],
       kinesisMaxBatchSize: Option[Int],
       kinesisMaxRecordsPerSecond: Option[Int],
       kinesisMaxBytesPerSecond: Option[Int],
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
@@ -171,17 +184,23 @@ object ApiStandingQueries {
       region: Option[AwsRegion],
       @description("ARN of the topic to publish to") topic: String,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     @title("Log JSON to Console")
     @description("Prints each result as a single-line JSON object to stdout on the Quine server.")
     final case class PrintToStandardOut(
+      @default(PrintToStandardOut.LogLevel.Info)
       logLevel: PrintToStandardOut.LogLevel = PrintToStandardOut.LogLevel.Info,
+      @default(PrintToStandardOut.LogMode.Complete)
       logMode: PrintToStandardOut.LogMode = PrintToStandardOut.LogMode.Complete,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
@@ -217,7 +236,9 @@ object ApiStandingQueries {
     final case class WriteToFile(
       path: String,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
@@ -227,9 +248,13 @@ object ApiStandingQueries {
     )
     final case class PostToSlack(
       hookUrl: String,
+      @default(false)
       onlyPositiveMatchData: Boolean = false,
-      @description("Number of seconds to wait between messages; minimum 1") intervalSeconds: Int = 20,
+      @description("Number of seconds to wait between messages; minimum 1")
+      @default(20)
+      intervalSeconds: Int = 20,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
     ) extends StandingQueryResultOutputUserDef
 
@@ -239,9 +264,12 @@ object ApiStandingQueries {
       "Warning: Reactive Stream outputs do not function correctly when running in a cluster.",
     )
     final case class ReactiveStream(
-      @description("The address to bind the reactive stream server on") address: String = "localhost",
+      @description("The address to bind the reactive stream server on")
+      @default("localhost")
+      address: String = "localhost",
       @description("The port to bind the reactive stream server on") port: Int,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
     ) extends StandingQueryResultOutputUserDef
 
@@ -258,8 +286,11 @@ object ApiStandingQueries {
     )
     final case class CypherQuery(
       @description("Cypher query to execute on standing query result") query: String,
-      @description("Name of the Cypher parameter holding the standing query result") parameter: String = "that",
+      @description("Name of the Cypher parameter holding the standing query result")
+      @default("that")
+      parameter: String = "that",
       @description("maximum number of standing query results being processed at once")
+      @default(com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism)
       parallelism: Int = com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism,
       @description(
         """Send the result of the Cypher query to another standing query output (in order to provide chained
@@ -270,6 +301,7 @@ object ApiStandingQueries {
       @description(
         "To prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true",
       )
+      @default(false)
       allowAllNodeScan: Boolean = false,
       @description(
         """Whether queries that raise a potentially-recoverable error should be retried. If set to true (the default),
@@ -279,17 +311,23 @@ object ApiStandingQueries {
                                     |but may be dropped in the case of external system failure""".stripMargin
           .replace('\n', ' '),
       )
+      @default(true)
       shouldRetry: Boolean = true,
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
+      @default(StandingQueryOutputStructure.WithMetadata())
       structure: StandingQueryOutputStructure = StandingQueryOutputStructure.WithMetadata(),
     ) extends StandingQueryResultOutputUserDef
 
     //Separate from CypherQuery to prevent recursive structures in the API
     final case class SequencedCypherQuery(
       @description("Cypher query to execute on standing query result") query: String,
-      @description("Name of the Cypher parameter holding the standing query result") parameter: String = "that",
+      @description("Name of the Cypher parameter holding the standing query result")
+      @default("that")
+      parameter: String = "that",
       @description("maximum number of standing query results being processed at once")
+      @default(com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism)
       parallelism: Int = com.thatdot.quine.routes.IngestRoutes.defaultWriteParallelism,
       @description(
         """Send the result of the Cypher query to another standing query output (in order to provide chained
@@ -300,6 +338,7 @@ object ApiStandingQueries {
       @description(
         "To prevent unintentional resource use, if the Cypher query possibly contains an all node scan, then this parameter must be true",
       )
+      @default(false)
       allowAllNodeScan: Boolean = false,
       @description(
         """Whether queries that raise a potentially-recoverable error should be retried. If set to true (the default),
@@ -309,12 +348,14 @@ object ApiStandingQueries {
                                     |but may be dropped in the case of external system failure""".stripMargin
           .replace('\n', ' '),
       )
+      @default(true)
       shouldRetry: Boolean = true,
     )
 
     @title("Drop")
     final case class Drop(
       @description("A list of Cypher Queries to be run sequentially and then fed into this output")
+      @default(List.empty)
       sequence: List[SequencedCypherQuery] = List.empty,
     ) extends StandingQueryResultOutputUserDef
   }
@@ -330,6 +371,7 @@ object ApiStandingQueries {
                                    |MATCH <pattern> WHERE <condition> RETURN <columns>. When the `mode` is `DistinctId`,
                                    |the `RETURN` must also be `DISTINCT`.""".stripMargin)
       query: String,
+      @default(StandingQueryMode.DistinctId)
       mode: StandingQueryMode = StandingQueryMode.DistinctId,
     ) extends StandingQueryPattern
 

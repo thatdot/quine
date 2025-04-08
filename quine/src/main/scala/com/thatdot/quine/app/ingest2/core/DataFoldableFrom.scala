@@ -118,7 +118,6 @@ object DataFoldableFrom {
   import com.google.protobuf.Descriptors.EnumValueDescriptor
   import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
   import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
-  import com.google.protobuf.LegacyDescriptorsUtil.LegacyOneofDescriptor
   import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
 
   import scala.jdk.CollectionConverters._
@@ -142,7 +141,16 @@ object DataFoldableFrom {
       val descriptor: Descriptors.Descriptor = message.getDescriptorForType
       val oneOfs: SeqView[Descriptors.OneofDescriptor] = descriptor.getOneofs.asScala.view
       // optionals are modeled as (synthetic) oneOfs of a single field.
-      val (optionals, realOneOfs) = oneOfs.partition(LegacyOneofDescriptor.isSynthetic)
+
+      //  Kind of annoying finding a replacement for isSynthetic: https://github.com/googleapis/sdk-platform-java/pull/2764
+      val (optionals, realOneOfs) = oneOfs.partition { oneof =>
+        // `getRealContainingOneof` call ends up being `null` if the `oneof` is synthetic,
+        // with a use of `isSynthetic` in its implementation.
+        // There might be a case where a user really has a `oneof` with a single optional
+        // field, so I did not use isOptional here.
+        oneof.getField(0).getRealContainingOneof == null
+      }
+
       // synthetic oneOfs (optionals) just have the one field
       val setOptionals: View[Descriptors.FieldDescriptor] = optionals.map(_.getField(0)).filter(message.hasField)
       // Find which field in each oneOf is set

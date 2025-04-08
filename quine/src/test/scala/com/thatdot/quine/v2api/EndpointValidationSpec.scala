@@ -10,6 +10,7 @@ import org.apache.pekko.testkit.TestDuration
 import org.apache.pekko.util.Timeout
 
 import io.circe.Encoder
+import io.circe.generic.extras.auto._
 import io.circe.syntax.EncoderOps
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers

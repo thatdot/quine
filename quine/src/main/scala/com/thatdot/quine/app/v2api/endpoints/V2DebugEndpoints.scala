@@ -2,7 +2,7 @@ package com.thatdot.quine.app.v2api.endpoints
 
 import scala.concurrent.Future
 
-import io.circe.generic.auto._
+import io.circe.generic.extras.auto._
 import io.circe.{Decoder, Encoder, Json}
 import sttp.tapir.CodecFormat.TextPlain
 import sttp.tapir.Schema.annotations.{description, title}
@@ -24,18 +24,6 @@ object V2DebugEndpointEntities {
     case object Undirected extends TEdgeDirection
 
     val values: Seq[TEdgeDirection] = Seq(Outgoing, Incoming, Undirected)
-  }
-
-  implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
-
-    def fromString(s: String): DecodeResult[TEdgeDirection] = s.toLowerCase match {
-      case "outgoing" => DecodeResult.Value(TEdgeDirection.Outgoing)
-      case "incoming" => DecodeResult.Value(TEdgeDirection.Incoming)
-      case "undirected" => DecodeResult.Value(TEdgeDirection.Undirected)
-      case other => DecodeResult.Error(other, new IllegalArgumentException(s"'$other' is not a valid EdgeDirection"))
-    }
-
-    Codec.string.mapDecode(fromString)(_.toString)
   }
 
   @title("Node Data")
@@ -71,7 +59,20 @@ the two nodes at the edge's endpoints contain half edges that:
 
 }
 
-trait V2DebugEndpoints extends V2QuineEndpointDefinitions {
+trait V2DebugEndpoints extends V2QuineEndpointDefinitions with V2ApiConfiguration {
+
+  implicit val tEdgeDirectionCodec: Codec[String, TEdgeDirection, TextPlain] = {
+
+    def fromString(s: String): DecodeResult[TEdgeDirection] = s.toLowerCase match {
+      case "outgoing" => DecodeResult.Value(TEdgeDirection.Outgoing)
+      case "incoming" => DecodeResult.Value(TEdgeDirection.Incoming)
+      case "undirected" => DecodeResult.Value(TEdgeDirection.Undirected)
+      case other => DecodeResult.Error(other, new IllegalArgumentException(s"'$other' is not a valid EdgeDirection"))
+    }
+
+    Codec.string.mapDecode(fromString)(_.toString)
+  }
+
   val idPathElement: EndpointInput.PathCapture[QuineId] = path[QuineId]("id").description("Node id")
   val propKeyParameter: EndpointInput.Query[String] =
     query[String]("key").description(
