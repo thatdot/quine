@@ -20,6 +20,7 @@ import cats.data.{NonEmptyList, Validated, ValidatedNel}
 import cats.implicits.catsSyntaxValidatedId
 import com.codahale.metrics.Timer
 import org.apache.kafka.common.KafkaException
+import software.amazon.awssdk.core.exception.SdkException
 
 import com.thatdot.common.logging.Log.{LazySafeLogging, LogConfig, Safe, SafeLoggableInterpolator}
 import com.thatdot.quine.app.ingest.serialization._
@@ -72,6 +73,7 @@ trait QuineIngestSource extends LazySafeLogging {
       .withMaxRestarts(3, 31.seconds)
       .withRestartOn {
         case _: KafkaException => true
+        case _: SdkException => true
         case _ => false
       }
 
@@ -379,7 +381,7 @@ object IngestSrcDef extends LazySafeLogging {
           numRetries,
           maxPerSecond,
           recordEncodings,
-          _,
+          None,
         ) =>
       KinesisSrcDef(
         name,
@@ -395,6 +397,35 @@ object IngestSrcDef extends LazySafeLogging {
         numRetries,
         maxPerSecond,
         recordEncodings.map(ContentDecoder.apply),
+      ).valid
+
+    case KinesisIngest(
+          format: StreamedRecordFormat,
+          streamName: String,
+          _,
+          parallelism,
+          creds,
+          region,
+          iteratorType,
+          numRetries,
+          maxPerSecond,
+          recordEncodings,
+          Some(checkpointSettings),
+        ) =>
+      KinesisKclSrcDef(
+        name,
+        intoNamespace,
+        streamName,
+        importFormatFor(format),
+        initialSwitchMode,
+        parallelism,
+        creds,
+        region,
+        iteratorType,
+        numRetries,
+        maxPerSecond,
+        recordEncodings.map(ContentDecoder.apply),
+        checkpointSettings,
       ).valid
 
     case ServerSentEventsIngest(format, url, parallelism, maxPerSecond, recordEncodings) =>

@@ -8,6 +8,7 @@ import org.apache.avro.generic.{GenericArray, GenericEnumSymbol, GenericFixed, G
 
 import com.thatdot.common.logging.Log._
 import com.thatdot.quine.graph.cypher.Expr
+
 trait DataFoldableFrom[A] extends LazySafeLogging {
   def fold[B](value: A, folder: DataFolderTo[B]): B
 
