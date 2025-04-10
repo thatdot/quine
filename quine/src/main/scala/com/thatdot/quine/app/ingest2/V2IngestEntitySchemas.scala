@@ -85,10 +85,8 @@ trait V2IngestEntitySchemas extends V2ApiConfiguration {
     Schema.schemaForArray(recordDecodingTypeSchema).map(a => Some(a.toSeq))(s => s.toArray)
   implicit lazy val fileFormatTypeSchema: Schema[FileFormat] = Schema.derived
   implicit lazy val streamingFormatTypeSchema: Schema[StreamingFormat] = Schema.derived
-  implicit lazy val checkpointSettingsSchema: Schema[KinesisCheckpointSettings] =
-    Schema.derived[KinesisCheckpointSettings]
-  implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived[IngestSource]
-
+  implicit lazy val checkpointSettingsSchema: Schema[KinesisCheckpointSettings] = Schema.derived
+  implicit lazy val ingestSourceTypeSchema: Schema[IngestSource] = Schema.derived
   implicit lazy val ingestSchema: Schema[QuineIngestConfiguration] = Schema.derived[QuineIngestConfiguration]
 
   implicit val charsetEncoder: Encoder[Charset] = Encoder.encodeString.contramap(_.name)

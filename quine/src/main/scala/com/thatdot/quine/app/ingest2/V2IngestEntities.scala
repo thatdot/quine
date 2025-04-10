@@ -124,7 +124,7 @@ object V2IngestEntities {
     maximumLineSize: Option[Int] = None,
     @description(
       s"""Begin processing at the record with the given index. Useful for skipping some number of lines (e.g. CSV headers) or
-                                                    |resuming ingest from a partially consumed file.""".stripMargin,
+        |resuming ingest from a partially consumed file.""".stripMargin,
     )
     startOffset: Long,
     @description(s"Optionally limit how many records are ingested from this file.")
@@ -229,7 +229,7 @@ object V2IngestEntities {
   case object TrimHorizon extends KCLIteratorType
 
   @title("AtTimestamp")
-  @description("All records starting from the provided data time.")
+  @description("All records starting from the provided date-time.")
   final case class AtTimestamp(year: Int, month: Int, date: Int, hourOfDay: Int, minute: Int, second: Int)
       extends KCLIteratorType
 
@@ -290,7 +290,7 @@ object V2IngestEntities {
     format: StreamingFormat,
     @description(
       """Kafka topics from which to ingest: Either an array of topic names, or an object whose keys are topic names and
-                              |whose values are partition indices.""".stripMargin
+        |whose values are partition indices.""".stripMargin
         .replace('\n', ' '),
     )
     topics: Either[V1KafkaIngest.Topics, V1KafkaIngest.PartitionAssignments],
@@ -412,18 +412,18 @@ object V2IngestEntities {
     )
     case class CsvFormat(
       @description("""Read a CSV file containing headers in the file's first row (`true`) or with no headers (`false`).
-                                    |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
-                                    |type available to the Cypher query will be a List of strings with values accessible by index. When
-                                    |headers are available (supplied or read from the file), the resulting type available to the Cypher
-                                    |query will be a Map[String, String], with values accessible using the corresponding header string.
-                                    |CSV rows containing more records than the `headers` will have items that don't match a header column
-                                    |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
-                                    |Default: `false`.""".stripMargin)
+                     |Alternatively, an array of column headers can be passed in. If headers are not supplied, the resulting
+                     |type available to the Cypher query will be a List of strings with values accessible by index. When
+                     |headers are available (supplied or read from the file), the resulting type available to the Cypher
+                     |query will be a Map[String, String], with values accessible using the corresponding header string.
+                     |CSV rows containing more records than the `headers` will have items that don't match a header column
+                     |discarded. CSV rows with fewer columns than the `headers` will have `null` values for the missing headers.
+                     |Default: `false`.""".stripMargin)
       headers: Either[Boolean, List[String]] = Left(false),
       @description("CSV row delimiter character.")
       delimiter: CsvCharacter = CsvCharacter.Comma,
       @description("""Character used to quote values in a field. Special characters (like new lines) inside of a quoted
-                                    |section will be a part of the CSV value.""".stripMargin)
+                     |section will be a part of the CSV value.""".stripMargin)
       quoteChar: CsvCharacter = CsvCharacter.DoubleQuote,
       @description("Character used to escape special characters.")
       escapeChar: CsvCharacter = CsvCharacter.Backslash,

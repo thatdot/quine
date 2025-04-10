@@ -91,6 +91,7 @@ final case class KinesisKclSrc(
       .httpClient(httpClient)
       .region(regionOpt)
       .build
+
     val schedulerSourceSettings =
       KinesisSchedulerSourceSettings(
         bufferSize,

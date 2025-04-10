@@ -20,7 +20,7 @@ import com.thatdot.quine.app.config.QuineConfig
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorType
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.{Oss, RecordDecodingType}
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
-import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
+import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.app.v2api.{OssApiMethods, V2OssRoutes}
 import com.thatdot.quine.app.{IngestTestGraph, QuineApp}
 import com.thatdot.quine.ingest2.ArbitraryIngests
@@ -51,7 +51,7 @@ class EndpointValidationSpec
     with Matchers
     with ScalatestRouteTest
     with ArbitraryIngests
-    with IngestApiSchemas {
+    with V2IngestApiSchemas {
   import EndpointValidationSupport._
   val baseUrl = "/api/v2"
 

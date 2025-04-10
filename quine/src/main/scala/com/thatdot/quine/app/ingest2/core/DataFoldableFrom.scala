@@ -116,12 +116,12 @@ object DataFoldableFrom {
         builder.finish()
       }
     }
+  import scala.jdk.CollectionConverters._
+
+  import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
   import com.google.protobuf.Descriptors.EnumValueDescriptor
   import com.google.protobuf.Descriptors.FieldDescriptor.JavaType
   import com.google.protobuf.Descriptors.FieldDescriptor.JavaType._
-  import com.google.protobuf.{ByteString, Descriptors, DynamicMessage}
-
-  import scala.jdk.CollectionConverters._
   implicit val protobufDataFoldable: DataFoldableFrom[DynamicMessage] = new DataFoldableFrom[DynamicMessage] {
 
     private def fieldToValue[B](javaType: JavaType, value: AnyRef, folder: DataFolderTo[B]): B =

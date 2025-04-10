@@ -4,7 +4,7 @@ import java.nio.charset.Charset
 import java.time.Instant
 
 import com.typesafe.scalalogging.LazyLogging
-import sttp.tapir.Schema.annotations.{default, description, encodedName, title}
+import sttp.tapir.Schema.annotations.{default, description, title}
 
 import com.thatdot.quine.routes.{IngestRoutes, KinesisCheckpointSettings}
 
@@ -237,9 +237,6 @@ object ApiIngest {
   }
 
   @title("AWS Region")
-  @description(
-    "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
-  )
   @description(
     "AWS region code. e.g. `us-west-2`. If not provided, defaults according to the default AWS region provider chain. See: <https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/region-selection.html#automatically-determine-the-aws-region-from-the-environment>.",
   )
@@ -622,7 +619,6 @@ object ApiIngest {
 
   @title("Reactive Stream Ingest")
   @description("A stream of data being ingested from a reactive stream.")
-  @encodedName("ReactiveStream")
   case class ReactiveStream(
     format: StreamingFormat,
     url: String,

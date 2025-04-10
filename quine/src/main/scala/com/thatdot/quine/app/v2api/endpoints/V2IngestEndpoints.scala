@@ -22,7 +22,7 @@ import com.thatdot.quine.app.v2api.definitions.{
 }
 import com.thatdot.quine.graph.NamespaceId
 
-trait V2IngestEndpoints extends V2QuineEndpointDefinitions with IngestApiSchemas {
+trait V2IngestEndpoints extends V2QuineEndpointDefinitions {
 
   import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OssConversions._
 

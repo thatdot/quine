@@ -24,10 +24,10 @@ import com.thatdot.quine.app.config.BaseConfig
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator
 import com.thatdot.quine.app.ingest.util.KafkaSettingsValidator.ErrorString
 import com.thatdot.quine.app.ingest2.V2IngestEntities
+import com.thatdot.quine.app.ingest2.V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 import com.thatdot.quine.app.routes.IngestApiEntities.PauseOperationException
 import com.thatdot.quine.app.routes._
 import com.thatdot.quine.app.util.QuineLoggables._
-import com.thatdot.quine.app.v2api.definitions.ApiStandingQueries
 import com.thatdot.quine.app.v2api.definitions.ApiToIngest.OfApiMethod
 import com.thatdot.quine.app.v2api.endpoints.V2AdministrationEndpointEntities.{TGraphHashCode, TQuineInfo}
 import com.thatdot.quine.app.v2api.endpoints.V2AlgorithmEndpointEntities.TSaveLocation
@@ -57,8 +57,6 @@ import com.thatdot.quine.persistor.PersistenceAgent
 import com.thatdot.quine.routes.{CypherQuery, MetricsReport, ShardInMemoryLimit}
 import com.thatdot.quine.util.SwitchMode
 import com.thatdot.quine.{BuildInfo => QuineBuildInfo, model, routes}
-
-import V2IngestEntities.{QuineIngestConfiguration => V2IngestConfiguration}
 
 trait ApplicationApiMethods {
   val graph: BaseGraph with LiteralOpsGraph with CypherOpsGraph with StandingQueryOpsGraph

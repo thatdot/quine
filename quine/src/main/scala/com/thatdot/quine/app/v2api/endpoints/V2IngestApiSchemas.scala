@@ -17,7 +17,7 @@ import com.thatdot.quine.app.v2api.definitions.ApiIngest.CsvCharacter.{Backslash
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.FileFormat.CsvFormat
 import com.thatdot.quine.app.v2api.definitions.ApiIngest._
 
-trait IngestApiSchemas extends V2ApiConfiguration {
+trait V2IngestApiSchemas extends V2ApiConfiguration {
   implicit val config: Configuration = ingestSourceTypeConfig
 
   implicit val recordDecodingTypeSchema: Schema[RecordDecodingType] =

@@ -17,12 +17,12 @@ import com.thatdot.quine.app.v2api.definitions.ApiIngest.KinesisIngest.IteratorT
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.RecordDecodingType._
 import com.thatdot.quine.app.v2api.definitions.ApiIngest.StreamingFormat.ProtobufFormat
 import com.thatdot.quine.app.v2api.definitions.ApiIngest._
-import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
+import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 
 class IngestCodecTest
     extends AnyFunSuite
     with ScalaCheckDrivenPropertyChecks
-    with IngestApiSchemas
+    with V2IngestApiSchemas
     with ArbitraryIngests {
 
   def testJsonEncodeDecode[V: Encoder: Decoder](v: V): Assertion = {

@@ -1,6 +1,6 @@
 package com.thatdot.quine.app.v2api.definitions
 
-import com.thatdot.quine.app.ingest2.{V2IngestEntities, V2IngestEntities => Ingest}
+import com.thatdot.quine.app.ingest2.{V2IngestEntities => Ingest}
 import com.thatdot.quine.app.v2api.definitions.{ApiIngest => Api}
 import com.thatdot.quine.{routes => V1}
 
@@ -80,10 +80,10 @@ object IngestToApi {
       Api.WebsocketSimpleStartupIngest.SendMessageInterval(message, intervalMillis)
     case V1.WebsocketSimpleStartupIngest.NoKeepalive => Api.WebsocketSimpleStartupIngest.NoKeepalive
   }
-  def apply(ingest: V2IngestEntities.KCLIteratorType): Api.KCLIteratorType = ingest match {
-    case V2IngestEntities.Latest => Api.Latest
-    case V2IngestEntities.TrimHorizon => Api.TrimHorizon
-    case V2IngestEntities.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
+  def apply(ingest: Ingest.KCLIteratorType): Api.KCLIteratorType = ingest match {
+    case Ingest.Latest => Api.Latest
+    case Ingest.TrimHorizon => Api.TrimHorizon
+    case Ingest.AtTimestamp(year, month, date, hourOfDay, minute, second) =>
       Api.AtTimestamp(year, month, date, hourOfDay, minute, second)
   }
   def apply(it: V1.KinesisIngest.IteratorType): Api.KinesisIngest.IteratorType = it match {

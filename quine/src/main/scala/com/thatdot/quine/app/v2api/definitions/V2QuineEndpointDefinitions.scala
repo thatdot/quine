@@ -19,7 +19,7 @@ import com.thatdot.common.logging.Log._
 import com.thatdot.common.quineid.QuineId
 import com.thatdot.quine.app.util.QuineLoggables._
 import com.thatdot.quine.app.v2api.definitions.CustomError.toCustomError
-import com.thatdot.quine.app.v2api.endpoints.IngestApiSchemas
+import com.thatdot.quine.app.v2api.endpoints.V2IngestApiSchemas
 import com.thatdot.quine.graph.NamespaceId
 import com.thatdot.quine.model.{Milliseconds, QuineIdProvider}
 import com.thatdot.quine.routes.IngestRoutes
@@ -29,7 +29,7 @@ case class ErrorEnvelope[T](error: T)
 case class ObjectEnvelope[T](data: T)
 
 /** Component definitions for Tapir endpoints. */
-trait V2EndpointDefinitions extends IngestApiSchemas with LazySafeLogging {
+trait V2EndpointDefinitions extends V2IngestApiSchemas with LazySafeLogging {
 
   implicit protected def logConfig: LogConfig
 
