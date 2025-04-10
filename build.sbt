@@ -329,10 +329,11 @@ lazy val `quine`: Project = project
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:sso                     | 2.29.52
       // [ ] | com.thatdot:quine                              | software.amazon.awssdk:ssooidc                 | 2.29.52
       "io.netty" % "netty-handler" % "4.1.119.Final",
-      // AWS SDK deps (next 3) effectively bundle sibling JARs needed for certain features, despite no code references
+      // AWS SDK deps (next 4) effectively bundle sibling JARs needed for certain features, despite no code references
       "software.amazon.awssdk" % "sso" % awsSdkV,
       "software.amazon.awssdk" % "ssooidc" % awsSdkV,
       "software.amazon.awssdk" % "sts" % awsSdkV,
+      "software.amazon.awssdk" % "aws-query-protocol" % awsSdkV,
     ),
   )
   .enablePlugins(WebScalaJSBundlerPlugin)
