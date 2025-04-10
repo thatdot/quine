@@ -118,7 +118,7 @@ final case class KinesisSrcDef(
 
     // A Flow that limits the stream to 2MB * (number of shards) per second
     // TODO This is an imperfect heuristic, as the limit imposed is literally 2MB _per shard_,
-    // not 2MB per shard "on average across all shards".
+    //  not 2MB per shard "on average across all shards".
     val kinesisRateLimiter: Flow[kinesisModel.Record, kinesisModel.Record, NotUsed] = Flow
       .futureFlow(
         shardSettingsFut.map { shards =>

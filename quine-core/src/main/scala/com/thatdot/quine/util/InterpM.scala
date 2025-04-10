@@ -11,7 +11,7 @@ import cats.Applicative
 
 import com.thatdot.quine.util.InterpM.liftUnsafe
 
-/** Interpreter monad for concurrent operations . This is a monad that represents a computation that can fail with an error.
+/** Interpreter monad for concurrent operations. This is a monad that represents a computation that can fail with an error.
   * The Source wrapped in the Future should be assumed to be side-effecting, and combining ConcurrentMs should never cause
   * their Sources to be run.
   *

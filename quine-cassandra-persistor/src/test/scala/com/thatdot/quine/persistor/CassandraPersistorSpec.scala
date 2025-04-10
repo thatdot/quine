@@ -92,7 +92,7 @@ class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFrom
 
   private def addOpensArg(pkg: String): String = s"--add-opens=java.base/$pkg=ALL-UNNAMED"
 
-  private def launchEmbeddedCassanrda(): Cassandra = {
+  private def launchEmbeddedCassandra(): Cassandra = {
     val cassandra = new CassandraBuilder()
       .startupTimeout(Duration.ofMinutes(5))
       .addJvmOptions("-XX:+IgnoreUnrecognizedVMOptions")
@@ -117,7 +117,7 @@ class CassandraInstanceWrapper[T <: cassandra.PrimeCassandraPersistor](buildFrom
     */
   private lazy val runnableAddress: InetSocketAddress = localCassandra getOrElse {
     try {
-      embeddedCassandra = launchEmbeddedCassanrda()
+      embeddedCassandra = launchEmbeddedCassandra()
       val address = addressFromEmbeddedCassandra(embeddedCassandra.getSettings)
       logger.warn(log"Using embedded cassandra at: ${Safe(address)}")
       address

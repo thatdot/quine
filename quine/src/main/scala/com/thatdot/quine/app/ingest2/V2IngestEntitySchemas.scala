@@ -29,7 +29,7 @@ import com.thatdot.quine.routes.{KinesisIngest => V1KinesisIngest, _}
 
 object V2IngestEntityEncoderDecoders extends V2IngestEntitySchemas {
 
-  // Importing V2IngestEncoderDecoders.implicits._ imports all of the  EncoderDecoders without
+  // Importing V2IngestEncoderDecoders.implicits._ imports all of the EncoderDecoders without
   // importing anything related to Tapir Schemas
   // This allows selectively importing the EncoderDecoders for V2 ingests without importing the entire
   // V2IngestSchemas, which is necessary for working with EncoderDecoders in an environment where

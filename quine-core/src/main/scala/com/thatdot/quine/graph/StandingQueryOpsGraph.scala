@@ -436,7 +436,7 @@ trait StandingQueryOpsGraph extends BaseGraph {
         case Success(_) => // Do nothing. This is the shutdown case.
       }(shardDispatcherEC)
 
-      // Start each output stream by attaching to to the SQ results hub and the completion tokens stream,
+      // Start each output stream by attaching to the SQ results hub and the completion tokens stream,
       // accumulating a registry of each output's kill switch
       val killSwitches: Map[String, UniqueKillSwitch] = outputs.view.mapValues { outputStream =>
         timedResultsHub.runWith(outputStream) // materialize the stream from the broadcasthub to the token sink

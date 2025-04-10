@@ -743,9 +743,9 @@ final class QuineApp(
 
   /** Load all the state from the persistor
     *
-    * Not threadsafe. But we we wait for this to complete before serving up the API.
+    * Not threadsafe, but we wait for this to complete before serving up the API.
     *
-    * @param timeout            used repeatedly for individual calls to get meta data when restoring ingest streams.
+    * @param timeout            used repeatedly for individual calls to get metadata when restoring ingest streams.
     * @param shouldResumeIngest should restored ingest streams be resumed
     * @return A Future that success/fails indicating whether or not state was successfully restored (if any).
     */
@@ -929,7 +929,7 @@ object QuineApp {
     // Example storage keys: "standing_query_outputs-myNamespace" or for default: "standing_query_outputs"
     basedOnKey + namespace.fold("")(_ => "-" + namespaceToString(namespace))
 
-  // the maximum time to allow a configuring API call (eg, "add ingest query" or "update node appearances") to execute
+  // the maximum time to allow a configuring API call (e.g., "add ingest query" or "update node appearances") to execute
   final val ConfigApiTimeout: FiniteDuration = 30.seconds
 
   /** Aggressively synchronize a unit of work returning a Future, and block on the Future's completion

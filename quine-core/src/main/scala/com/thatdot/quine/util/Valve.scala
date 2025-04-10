@@ -60,7 +60,7 @@ object Valve {
 
 }
 
-/** Materializes into a [[Future]] of [[ValveSwitch]] which provides a the method flip that stops or restarts the flow of elements passing through the stage. As long as the valve is closed it will backpressure.
+/** Materializes into a [[Future]] of [[ValveSwitch]] which provides a method, `flip`, that stops or restarts the flow of elements passing through the stage. As long as the valve is closed it will backpressure.
   *
   * Note that closing the valve could result in one element being buffered inside the stage, and if the stream completes or fails while being closed, that element may be lost.
   *

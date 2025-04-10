@@ -289,7 +289,7 @@ trait KeyspacesPersistorDefinition extends cassandra.CassandraPersistorDefinitio
 }
 object KeyspacesPersistorDefinition extends KeyspacesPersistorDefinition
 
-/** Persistence implementation backed by AWS Keypaces.
+/** Persistence implementation backed by AWS Keyspaces.
   *
   * @param keyspace The keyspace the quine tables should live in.
   * @param readConsistency
