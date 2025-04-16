@@ -67,10 +67,10 @@ object Docker extends AutoPlugin {
       if (includeNginx.value && name.value != "quine") {
         val quinePlusRootDir = baseDirectory.value.getParentFile
         val initScriptName = "init-quine.sh"
-        val initScript = quinePlusRootDir / s"scripts/init/$initScriptName"
+        val initScript = quinePlusRootDir / s"docker/$initScriptName"
         val initScriptDest = s"/$initScriptName"
         val nginxConfName = "nginx.conf.template"
-        val nginxConf = quinePlusRootDir / s"$nginxConfName"
+        val nginxConf = quinePlusRootDir / s"docker/$nginxConfName"
         val nginxDest = s"/etc/nginx/$nginxConfName"
         val uid = 777
         val permissionsFix = s""" chown -R $uid:0 /var/log/nginx \\
